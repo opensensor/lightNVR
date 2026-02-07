@@ -5,11 +5,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
 #include "web/api_handlers_common.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "database/db_core.h"
@@ -17,12 +19,12 @@
 #include "database/db_auth.h"
 #include "video/stream_manager.h"
 #include "video/hls_streaming.h"
-#include "mongoose.h"
 
 /**
  * @brief Direct handler for GET /api/settings
  */
-void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_settings(const http_request_t *req, http_response_t *res) {
+    (void)req;
     log_info("Handling GET /api/settings request");
     
     // Get global configuration
@@ -30,7 +32,7 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     cJSON *settings = cJSON_CreateObject();
     if (!settings) {
         log_error("Failed to create settings JSON object");
-        mg_send_json_error(c, 500, "Failed to create settings JSON");
+        http_response_set_json_error(res, 500, "Failed to create settings JSON");
         return;
     }
     
@@ -86,12 +88,12 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
     if (!json_str) {
         log_error("Failed to convert settings JSON to string");
         cJSON_Delete(settings);
-        mg_send_json_error(c, 500, "Failed to convert settings JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert settings JSON to string");
         return;
     }
     
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     
     // Clean up
     free(json_str);
@@ -103,19 +105,19 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
 /**
  * @brief Direct handler for POST /api/settings
  */
-void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_settings(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/settings request");
 
     // Check if user has admin privileges to modify settings
-    if (!mg_check_admin_privileges(c, hm)) {
+    if (!httpd_check_admin_privileges(req, res)) {
         return;  // Error response already sent
     }
 
     // Parse JSON from request body
-    cJSON *settings = mg_parse_json_body(hm);
+    cJSON *settings = httpd_parse_json_body(req);
     if (!settings) {
         log_error("Failed to parse settings JSON from request body");
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -499,7 +501,7 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
             
             // Send error response
             cJSON_Delete(settings);
-            mg_send_json_error(c, 500, "Failed to initialize database with new path");
+            http_response_set_json_error(res, 500, "Failed to initialize database with new path");
             return;
         }
         
@@ -509,7 +511,7 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
             
             // Send error response
             cJSON_Delete(settings);
-            mg_send_json_error(c, 500, "Failed to reinitialize stream manager");
+            http_response_set_json_error(res, 500, "Failed to reinitialize stream manager");
             return;
         }
         
@@ -789,7 +791,7 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
             if (save_result != 0) {
                 log_error("Failed to save configuration, error code: %d", save_result);
                 cJSON_Delete(settings);
-                mg_send_json_error(c, 500, "Failed to save configuration");
+                http_response_set_json_error(res, 500, "Failed to save configuration");
                 return;
             }
             
@@ -816,7 +818,7 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
     cJSON *success = cJSON_CreateObject();
     if (!success) {
         log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
+        http_response_set_json_error(res, 500, "Failed to create success JSON");
         return;
     }
     
@@ -827,12 +829,12 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
     if (!json_str) {
         log_error("Failed to convert success JSON to string");
         cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
         return;
     }
     
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     
     // Clean up
     free(json_str);

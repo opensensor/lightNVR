@@ -8,14 +8,15 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "mongoose.h"
 
 
 /**
@@ -207,17 +208,15 @@ int log_level_meets_minimum(const char *log_level, const char *min_level) {
 /**
  * @brief Direct handler for GET /api/system/logs
  */
-void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/system/logs request");
 
     // Get query parameters
     char level[16] = "debug";
 
     // Extract log level from query parameters
-    struct mg_str query = mg_str_n(mg_str_get_ptr(&hm->query), mg_str_get_len(&hm->query));
     char level_buf[16] = {0};
-    int level_len = mg_http_get_var(&query, "level", level_buf, sizeof(level_buf) - 1);
-    if (level_len > 0) {
+    if (http_request_get_query_param(req, "level", level_buf, sizeof(level_buf)) == 0 && level_buf[0]) {
         strncpy(level, level_buf, sizeof(level) - 1);
         level[sizeof(level) - 1] = '\0';
     }
@@ -229,7 +228,7 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
     const int result = get_json_logs_tail(level, NULL, &logs, &count);
 
     if (result != 0 || !logs) {
-        mg_send_json_error(c, 500, "Failed to get system logs");
+        http_response_set_json_error(res, 500, "Failed to get system logs");
         return;
     }
 
@@ -248,7 +247,7 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
             free(logs);
         }
 
-        mg_send_json_error(c, 500, "Failed to create logs JSON");
+        http_response_set_json_error(res, 500, "Failed to create logs JSON");
         return;
     }
 
@@ -268,7 +267,7 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
         }
 
         cJSON_Delete(logs_obj);
-        mg_send_json_error(c, 500, "Failed to create logs array");
+        http_response_set_json_error(res, 500, "Failed to create logs array");
         return;
     }
 
@@ -333,12 +332,12 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
 
     if (!json_str) {
         log_error("Failed to convert logs JSON to string");
-        mg_send_json_error(c, 500, "Failed to convert logs JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert logs JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
@@ -349,7 +348,7 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
 /**
  * @brief Direct handler for POST /api/system/logs/clear
  */
-void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_system_logs_clear(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/logs/clear request");
 
     // Get log file path
@@ -388,7 +387,7 @@ void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_me
         cJSON *success = cJSON_CreateObject();
         if (!success) {
             log_error("Failed to create success JSON object");
-            mg_send_json_error(c, 500, "Failed to create success JSON");
+            http_response_set_json_error(res, 500, "Failed to create success JSON");
             return;
         }
 
@@ -400,12 +399,12 @@ void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_me
         if (!json_str) {
             log_error("Failed to convert success JSON to string");
             cJSON_Delete(success);
-            mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+            http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
             return;
         }
 
         // Send response
-        mg_send_json_response(c, 200, json_str);
+        http_response_set_json(res, 200, json_str);
 
         // Clean up
         free(json_str);
@@ -417,7 +416,7 @@ void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_me
         cJSON *error = cJSON_CreateObject();
         if (!error) {
             log_error("Failed to create error JSON object");
-            mg_send_json_error(c, 500, "Failed to create error JSON");
+            http_response_set_json_error(res, 500, "Failed to create error JSON");
             return;
         }
 
@@ -429,12 +428,12 @@ void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_me
         if (!json_str) {
             log_error("Failed to convert error JSON to string");
             cJSON_Delete(error);
-            mg_send_json_error(c, 500, "Failed to convert error JSON to string");
+            http_response_set_json_error(res, 500, "Failed to convert error JSON to string");
             return;
         }
 
         // Send response
-        mg_send_json_error(c, 500, json_str);
+        http_response_set_json_error(res, 500, json_str);
 
         // Clean up
         free(json_str);

@@ -9,13 +9,13 @@
 #include <pthread.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
-#include "mongoose.h"
 #include "video/detection_stream.h"
 #include "video/unified_detection_thread.h"
 #include "database/database_manager.h"
@@ -25,7 +25,7 @@
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_api.h"
-#include "web/mongoose_server_multithreading.h"
+
 
 /**
  * @brief Structure for PUT stream update task
@@ -302,25 +302,19 @@ static void put_stream_worker(put_stream_task_t *task) {
  *
  * This function is called by the multithreading system.
  */
-static void put_stream_handler(struct mg_connection *c, struct mg_http_message *hm) {
-    (void)c;  // Response already sent, we don't use the connection
-
-    // The handler was set but the actual work is done via spawning the worker
-    // This function exists for compatibility with the threading pattern
-    log_debug("put_stream_handler called - work done via task");
-}
+// put_stream_handler removed - work done via update_stream_task_func
 
 /**
  * @brief Direct handler for POST /api/streams
  */
-void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_stream(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/streams request");
 
     // Parse JSON from request body
-    cJSON *stream_json = mg_parse_json_body(hm);
+    cJSON *stream_json = httpd_parse_json_body(req);
     if (!stream_json) {
         log_error("Failed to parse stream JSON from request body");
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -335,7 +329,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     if (!name || !cJSON_IsString(name) || !url || !cJSON_IsString(url)) {
         log_error("Missing required fields in stream configuration");
         cJSON_Delete(stream_json);
-        mg_send_json_error(c, 400, "Missing required fields (name, url)");
+        http_response_set_json_error(res, 400, "Missing required fields (name, url)");
         return;
     }
 
@@ -555,7 +549,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     stream_handle_t existing_stream = get_stream_by_name(config.name);
     if (existing_stream) {
         log_error("Stream already exists: %s", config.name);
-        mg_send_json_error(c, 409, "Stream already exists");
+        http_response_set_json_error(res, 409, "Stream already exists");
         return;
     }
 
@@ -563,7 +557,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     uint64_t stream_id = add_stream_config(&config);
     if (stream_id == 0) {
         log_error("Failed to add stream configuration to database");
-        mg_send_json_error(c, 500, "Failed to add stream configuration");
+        http_response_set_json_error(res, 500, "Failed to add stream configuration");
         return;
     }
 
@@ -573,7 +567,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
         log_error("Failed to create stream: %s", config.name);
         // Delete from database since we couldn't create it in memory
         delete_stream_config(config.name);
-        mg_send_json_error(c, 500, "Failed to create stream");
+        http_response_set_json_error(res, 500, "Failed to create stream");
         return;
     }
 
@@ -616,7 +610,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     cJSON *success = cJSON_CreateObject();
     if (!success) {
         log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
+        http_response_set_json_error(res, 500, "Failed to create success JSON");
         return;
     }
 
@@ -638,12 +632,12 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
     if (!json_str) {
         log_error("Failed to convert success JSON to string");
         cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 201, json_str);
+    http_response_set_json(res, 201, json_str);
 
     // Clean up
     free(json_str);
@@ -655,18 +649,18 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm) 
 /**
  * @brief Direct handler for PUT /api/streams/:id
  */
-void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_put_stream(const http_request_t *req, http_response_t *res) {
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
-    if (mg_extract_path_param(hm, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
+    if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
         log_error("Failed to extract stream ID from URL");
-        mg_send_json_error(c, 400, "Invalid request path");
+        http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
 
     // URL-decode the stream identifier
     char decoded_id[MAX_STREAM_NAME];
-    mg_url_decode(stream_id, strlen(stream_id), decoded_id, sizeof(decoded_id), 0);
+    url_decode(stream_id, decoded_id, sizeof(decoded_id));
 
     log_info("Handling PUT /api/streams/%s request", decoded_id);
 
@@ -674,7 +668,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     stream_handle_t stream = get_stream_by_name(decoded_id);
     if (!stream) {
         log_error("Stream not found: %s", decoded_id);
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     }
 
@@ -682,15 +676,15 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     stream_config_t config;
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get stream configuration for: %s", decoded_id);
-        mg_send_json_error(c, 500, "Failed to get stream configuration");
+        http_response_set_json_error(res, 500, "Failed to get stream configuration");
         return;
     }
 
     // Parse JSON from request body
-    cJSON *stream_json = mg_parse_json_body(hm);
+    cJSON *stream_json = httpd_parse_json_body(req);
     if (!stream_json) {
         log_error("Failed to parse stream JSON from request body");
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -1081,7 +1075,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     put_stream_task_t *task = calloc(1, sizeof(put_stream_task_t));
     if (!task) {
         log_error("Failed to allocate memory for PUT stream task");
-        mg_send_json_error(c, 500, "Failed to allocate memory for task");
+        http_response_set_json_error(res, 500, "Failed to allocate memory for task");
         return;
     }
 
@@ -1114,7 +1108,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     if (!response) {
         log_error("Failed to create response JSON object");
         put_stream_task_free(task);
-        mg_send_json_error(c, 500, "Failed to create response JSON");
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
 
@@ -1138,11 +1132,11 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
     if (!json_str) {
         log_error("Failed to convert response JSON to string");
         put_stream_task_free(task);
-        mg_send_json_error(c, 500, "Failed to convert response JSON");
+        http_response_set_json_error(res, 500, "Failed to convert response JSON");
         return;
     }
 
-    mg_send_json_response(c, 202, json_str);
+    http_response_set_json(res, 202, json_str);
     free(json_str);
 
     // Spawn background thread to perform the actual update work
@@ -1166,29 +1160,26 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm) {
 /**
  * @brief Direct handler for DELETE /api/streams/:id
  */
-void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
-    if (mg_extract_path_param(hm, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
+    if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
         log_error("Failed to extract stream ID from URL");
-        mg_send_json_error(c, 400, "Invalid request path");
+        http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
 
     // URL-decode the stream identifier
     char decoded_id[MAX_STREAM_NAME];
-    mg_url_decode(stream_id, strlen(stream_id), decoded_id, sizeof(decoded_id), 0);
+    url_decode(stream_id, decoded_id, sizeof(decoded_id));
 
     log_info("Handling DELETE /api/streams/%s request", decoded_id);
 
     // Check if permanent delete is requested
     bool permanent_delete = false;
-    if (hm->query.len > 0) {
-        char query_buf[256];
-        mg_url_decode(mg_str_get_ptr(&hm->query), hm->query.len, query_buf, sizeof(query_buf), 0);
-
-        // Check for permanent=true in query string
-        if (strstr(query_buf, "permanent=true") != NULL) {
+    char permanent_param[16] = {0};
+    if (http_request_get_query_param(req, "permanent", permanent_param, sizeof(permanent_param)) == 0) {
+        if (strcmp(permanent_param, "true") == 0) {
             permanent_delete = true;
             log_info("Permanent delete requested for stream: %s", decoded_id);
         }
@@ -1198,7 +1189,7 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
     stream_handle_t stream = get_stream_by_name(decoded_id);
     if (!stream) {
         log_error("Stream not found: %s", decoded_id);
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     }
 
@@ -1232,7 +1223,7 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
     // Delete stream from memory
     if (remove_stream(stream) != 0) {
         log_error("Failed to delete stream: %s", decoded_id);
-        mg_send_json_error(c, 500, "Failed to delete stream");
+        http_response_set_json_error(res, 500, "Failed to delete stream");
         return;
     }
 
@@ -1240,7 +1231,7 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
     if (delete_stream_config_internal(decoded_id, permanent_delete) != 0) {
         log_error("Failed to %s stream configuration in database",
                 permanent_delete ? "permanently delete" : "disable");
-        mg_send_json_error(c, 500, permanent_delete ?
+        http_response_set_json_error(res, 500, permanent_delete ?
                 "Failed to permanently delete stream configuration" :
                 "Failed to disable stream configuration");
         return;
@@ -1260,7 +1251,7 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
     cJSON *success = cJSON_CreateObject();
     if (!success) {
         log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
+        http_response_set_json_error(res, 500, "Failed to create success JSON");
         return;
     }
 
@@ -1272,12 +1263,12 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
     if (!json_str) {
         log_error("Failed to convert success JSON to string");
         cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
@@ -1296,14 +1287,14 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_stream_refresh(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/streams/:name/refresh request");
 
     // Extract stream name from URL
     char stream_name[MAX_STREAM_NAME] = {0};
-    if (mg_extract_path_param(hm, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
+    if (http_request_extract_path_param(req, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
         log_error("Failed to extract stream name from URL");
-        mg_send_json_error(c, 400, "Invalid stream name in URL");
+        http_response_set_json_error(res, 400, "Invalid stream name in URL");
         return;
     }
 
@@ -1315,7 +1306,7 @@ void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_messa
 
     // URL decode the stream name
     char decoded_name[MAX_STREAM_NAME] = {0};
-    mg_url_decode_string(stream_name, decoded_name, sizeof(decoded_name));
+    url_decode(stream_name, decoded_name, sizeof(decoded_name));
 
     log_info("Refreshing go2rtc registration for stream: %s", decoded_name);
 
@@ -1323,14 +1314,14 @@ void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_messa
     stream_handle_t stream = get_stream_by_name(decoded_name);
     if (!stream) {
         log_error("Stream not found: %s", decoded_name);
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     }
 
     // Check if go2rtc integration is initialized
     if (!go2rtc_integration_is_initialized()) {
         log_error("go2rtc integration not initialized");
-        mg_send_json_error(c, 503, "go2rtc integration not available");
+        http_response_set_json_error(res, 503, "go2rtc integration not available");
         return;
     }
 
@@ -1376,12 +1367,12 @@ void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_messa
         cJSON_AddStringToObject(response, "stream", decoded_name);
 
         char *json_str = cJSON_PrintUnformatted(response);
-        mg_send_json_response(c, 200, json_str);
+        http_response_set_json(res, 200, json_str);
 
         free(json_str);
         cJSON_Delete(response);
     } else {
         log_error("Failed to refresh go2rtc registration for stream: %s", decoded_name);
-        mg_send_json_error(c, 500, "Failed to refresh stream with go2rtc");
+        http_response_set_json_error(res, 500, "Failed to refresh stream with go2rtc");
     }
 }

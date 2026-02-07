@@ -7,12 +7,12 @@
 
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "database/db_streams.h"
 #include "video/onvif_ptz.h"
-#include "../../external/mongoose/mongoose.h"
 #include <cjson/cJSON.h>
 
 /**
@@ -101,9 +101,9 @@ static const char* get_profile_token(const stream_config_t *config) {
  * Helper to extract stream name from PTZ URL path
  * URL format: /api/streams/{stream_name}/ptz/{action}
  */
-static int extract_ptz_stream_name(struct mg_http_message *hm, char *stream_name, size_t name_size) {
+static int extract_ptz_stream_name(const http_request_t *req, char *stream_name, size_t name_size) {
     // Extract stream name from URL
-    if (mg_extract_path_param(hm, "/api/streams/", stream_name, name_size) != 0) {
+    if (http_request_extract_path_param(req, "/api/streams/", stream_name, name_size) != 0) {
         return -1;
     }
 
@@ -116,10 +116,10 @@ static int extract_ptz_stream_name(struct mg_http_message *hm, char *stream_name
     return 0;
 }
 
-void mg_handle_ptz_move(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_move(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -128,17 +128,17 @@ void mg_handle_ptz_move(struct mg_connection *c, struct mg_http_message *hm) {
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
     
     // Parse request body
-    cJSON *body = cJSON_ParseWithLength(hm->body.buf, hm->body.len);
+    cJSON *body = httpd_parse_json_body(req);
     if (!body) {
-        mg_send_json_error(c, 400, "Invalid JSON body");
+        http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
     
@@ -156,7 +156,7 @@ void mg_handle_ptz_move(struct mg_connection *c, struct mg_http_message *hm) {
     // Build PTZ URL and execute move
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
     
@@ -166,7 +166,7 @@ void mg_handle_ptz_move(struct mg_connection *c, struct mg_http_message *hm) {
                                    pan, tilt, zoom);
     
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ move failed");
+        http_response_set_json_error(res, 500, "PTZ move failed");
         return;
     }
     
@@ -177,14 +177,14 @@ void mg_handle_ptz_move(struct mg_connection *c, struct mg_http_message *hm) {
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_stop(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_stop(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -193,16 +193,16 @@ void mg_handle_ptz_stop(struct mg_connection *c, struct mg_http_message *hm) {
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -210,7 +210,7 @@ void mg_handle_ptz_stop(struct mg_connection *c, struct mg_http_message *hm) {
     rc = onvif_ptz_stop(ptz_url, profile_token, config.onvif_username, config.onvif_password, true, true);
 
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ stop failed");
+        http_response_set_json_error(res, 500, "PTZ stop failed");
         return;
     }
 
@@ -221,14 +221,14 @@ void mg_handle_ptz_stop(struct mg_connection *c, struct mg_http_message *hm) {
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_absolute(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -237,16 +237,16 @@ void mg_handle_ptz_absolute(struct mg_connection *c, struct mg_http_message *hm)
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
-    cJSON *body = cJSON_ParseWithLength(hm->body.buf, hm->body.len);
+    cJSON *body = httpd_parse_json_body(req);
     if (!body) {
-        mg_send_json_error(c, 400, "Invalid JSON body");
+        http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
 
@@ -263,7 +263,7 @@ void mg_handle_ptz_absolute(struct mg_connection *c, struct mg_http_message *hm)
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -271,7 +271,7 @@ void mg_handle_ptz_absolute(struct mg_connection *c, struct mg_http_message *hm)
     rc = onvif_ptz_absolute_move(ptz_url, profile_token, config.onvif_username, config.onvif_password, pan, tilt, zoom);
 
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ absolute move failed");
+        http_response_set_json_error(res, 500, "PTZ absolute move failed");
         return;
     }
 
@@ -282,14 +282,14 @@ void mg_handle_ptz_absolute(struct mg_connection *c, struct mg_http_message *hm)
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_relative(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -298,16 +298,16 @@ void mg_handle_ptz_relative(struct mg_connection *c, struct mg_http_message *hm)
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
-    cJSON *body = cJSON_ParseWithLength(hm->body.buf, hm->body.len);
+    cJSON *body = httpd_parse_json_body(req);
     if (!body) {
-        mg_send_json_error(c, 400, "Invalid JSON body");
+        http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
 
@@ -324,7 +324,7 @@ void mg_handle_ptz_relative(struct mg_connection *c, struct mg_http_message *hm)
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -332,7 +332,7 @@ void mg_handle_ptz_relative(struct mg_connection *c, struct mg_http_message *hm)
     rc = onvif_ptz_relative_move(ptz_url, profile_token, config.onvif_username, config.onvif_password, pan, tilt, zoom);
 
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ relative move failed");
+        http_response_set_json_error(res, 500, "PTZ relative move failed");
         return;
     }
 
@@ -343,14 +343,14 @@ void mg_handle_ptz_relative(struct mg_connection *c, struct mg_http_message *hm)
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_home(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_home(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -359,16 +359,16 @@ void mg_handle_ptz_home(struct mg_connection *c, struct mg_http_message *hm) {
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -376,7 +376,7 @@ void mg_handle_ptz_home(struct mg_connection *c, struct mg_http_message *hm) {
     rc = onvif_ptz_goto_home(ptz_url, profile_token, config.onvif_username, config.onvif_password);
 
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ go to home failed");
+        http_response_set_json_error(res, 500, "PTZ go to home failed");
         return;
     }
 
@@ -387,14 +387,14 @@ void mg_handle_ptz_home(struct mg_connection *c, struct mg_http_message *hm) {
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_set_home(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_set_home(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -403,16 +403,16 @@ void mg_handle_ptz_set_home(struct mg_connection *c, struct mg_http_message *hm)
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -420,7 +420,7 @@ void mg_handle_ptz_set_home(struct mg_connection *c, struct mg_http_message *hm)
     rc = onvif_ptz_set_home(ptz_url, profile_token, config.onvif_username, config.onvif_password);
 
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ set home failed");
+        http_response_set_json_error(res, 500, "PTZ set home failed");
         return;
     }
 
@@ -431,14 +431,14 @@ void mg_handle_ptz_set_home(struct mg_connection *c, struct mg_http_message *hm)
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_get_presets(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_get_presets(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -447,16 +447,16 @@ void mg_handle_ptz_get_presets(struct mg_connection *c, struct mg_http_message *
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -480,28 +480,28 @@ void mg_handle_ptz_get_presets(struct mg_connection *c, struct mg_http_message *
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_goto_preset(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
     // Get preset token from request body
-    cJSON *body = cJSON_ParseWithLength(hm->body.buf, hm->body.len);
+    cJSON *body = httpd_parse_json_body(req);
     if (!body) {
-        mg_send_json_error(c, 400, "Invalid JSON body");
+        http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
 
     cJSON *token_json = cJSON_GetObjectItem(body, "token");
     if (!token_json || !cJSON_IsString(token_json)) {
         cJSON_Delete(body);
-        mg_send_json_error(c, 400, "Missing preset token");
+        http_response_set_json_error(res, 400, "Missing preset token");
         return;
     }
 
@@ -515,16 +515,16 @@ void mg_handle_ptz_goto_preset(struct mg_connection *c, struct mg_http_message *
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -532,7 +532,7 @@ void mg_handle_ptz_goto_preset(struct mg_connection *c, struct mg_http_message *
     rc = onvif_ptz_goto_preset(ptz_url, profile_token, config.onvif_username, config.onvif_password, preset_token);
 
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ go to preset failed");
+        http_response_set_json_error(res, 500, "PTZ go to preset failed");
         return;
     }
 
@@ -543,14 +543,14 @@ void mg_handle_ptz_goto_preset(struct mg_connection *c, struct mg_http_message *
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_set_preset(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_set_preset(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -559,16 +559,16 @@ void mg_handle_ptz_set_preset(struct mg_connection *c, struct mg_http_message *h
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
-    cJSON *body = cJSON_ParseWithLength(hm->body.buf, hm->body.len);
+    cJSON *body = httpd_parse_json_body(req);
     if (!body) {
-        mg_send_json_error(c, 400, "Invalid JSON body");
+        http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
 
@@ -581,7 +581,7 @@ void mg_handle_ptz_set_preset(struct mg_connection *c, struct mg_http_message *h
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
         cJSON_Delete(body);
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -593,7 +593,7 @@ void mg_handle_ptz_set_preset(struct mg_connection *c, struct mg_http_message *h
     cJSON_Delete(body);
 
     if (rc != 0) {
-        mg_send_json_error(c, 500, "PTZ set preset failed");
+        http_response_set_json_error(res, 500, "PTZ set preset failed");
         return;
     }
 
@@ -605,14 +605,14 @@ void mg_handle_ptz_set_preset(struct mg_connection *c, struct mg_http_message *h
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }
 
-void mg_handle_ptz_capabilities(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_ptz_capabilities(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
-    if (extract_ptz_stream_name(hm, stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -621,16 +621,16 @@ void mg_handle_ptz_capabilities(struct mg_connection *c, struct mg_http_message 
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
-        mg_send_json_error(c, 400, "PTZ not enabled for this stream");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
-        mg_send_json_error(c, 500, "Failed to build PTZ URL");
+        http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
 
@@ -671,6 +671,6 @@ void mg_handle_ptz_capabilities(struct mg_connection *c, struct mg_http_message 
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
 }

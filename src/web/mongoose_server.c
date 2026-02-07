@@ -101,7 +101,7 @@ static const mg_api_route_t s_api_routes[] = {
 
     // Streams API
     {"GET", "/api/streams", NULL, true, handle_get_streams},  // Opt out of auto-threading to prevent double threading
-    {"POST", "/api/streams", mg_handle_post_stream, false},
+    {"POST", "/api/streams", NULL, false, handle_post_stream},
     {"POST", "/api/streams/test", NULL, false, handle_test_stream},
 
     // Detection Zones API (must come before /api/streams/# to match correctly)
@@ -115,26 +115,26 @@ static const mg_api_route_t s_api_routes[] = {
 
     // Stream Refresh API (must come before /api/streams/# to match correctly)
     // Triggers go2rtc re-registration for self-healing WebRTC connections
-    {"POST", "/api/streams/#/refresh", mg_handle_post_stream_refresh, false},
+    {"POST", "/api/streams/#/refresh", NULL, false, handle_post_stream_refresh},
 
     {"GET", "/api/streams/#/full", NULL, true, handle_get_stream_full},  // Aggregated stream + motion config
     {"GET", "/api/streams/#", NULL, true, handle_get_stream},  // Opt out of auto-threading to prevent double threading
-    {"PUT", "/api/streams/#", mg_handle_put_stream, false},
-    {"DELETE", "/api/streams/#", mg_handle_delete_stream, false},
+    {"PUT", "/api/streams/#", NULL, false, handle_put_stream},
+    {"DELETE", "/api/streams/#", NULL, false, handle_delete_stream},
 
     // Settings API
-    {"GET", "/api/settings", mg_handle_get_settings, false},
-    {"POST", "/api/settings", mg_handle_post_settings, false},
+    {"GET", "/api/settings", NULL, false, handle_get_settings},
+    {"POST", "/api/settings", NULL, false, handle_post_settings},
 
     // System API
-    {"GET", "/api/system", mg_handle_get_system_info, false},
-    {"GET", "/api/system/info", mg_handle_get_system_info, false}, // Keep for backward compatibility
-    {"GET", "/api/system/logs", mg_handle_get_system_logs, false},
-    {"POST", "/api/system/restart", mg_handle_post_system_restart, false},
-    {"POST", "/api/system/shutdown", mg_handle_post_system_shutdown, false},
-    {"POST", "/api/system/logs/clear", mg_handle_post_system_logs_clear, false},
-    {"POST", "/api/system/backup", mg_handle_post_system_backup, false},
-    {"GET", "/api/system/status", mg_handle_get_system_status, false},
+    {"GET", "/api/system", NULL, false, handle_get_system_info},
+    {"GET", "/api/system/info", NULL, false, handle_get_system_info}, // Keep for backward compatibility
+    {"GET", "/api/system/logs", NULL, false, handle_get_system_logs},
+    {"POST", "/api/system/restart", NULL, false, handle_post_system_restart},
+    {"POST", "/api/system/shutdown", NULL, false, handle_post_system_shutdown},
+    {"POST", "/api/system/logs/clear", NULL, false, handle_post_system_logs_clear},
+    {"POST", "/api/system/backup", NULL, false, handle_post_system_backup},
+    {"GET", "/api/system/status", NULL, false, handle_get_system_status},
     {"GET", "/api/health", NULL, false, handle_get_health},
     {"GET", "/api/health/hls", NULL, false, handle_get_hls_health},
 
@@ -183,16 +183,16 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/onvif/device/test", mg_handle_post_test_onvif_connection, false},
 
     // PTZ API (must come before /api/streams/# to match correctly)
-    {"GET", "/api/streams/#/ptz/capabilities", mg_handle_ptz_capabilities, false},
-    {"GET", "/api/streams/#/ptz/presets", mg_handle_ptz_get_presets, false},
-    {"POST", "/api/streams/#/ptz/move", mg_handle_ptz_move, false},
-    {"POST", "/api/streams/#/ptz/stop", mg_handle_ptz_stop, false},
-    {"POST", "/api/streams/#/ptz/absolute", mg_handle_ptz_absolute, false},
-    {"POST", "/api/streams/#/ptz/relative", mg_handle_ptz_relative, false},
-    {"POST", "/api/streams/#/ptz/home", mg_handle_ptz_home, false},
-    {"POST", "/api/streams/#/ptz/sethome", mg_handle_ptz_set_home, false},
-    {"POST", "/api/streams/#/ptz/preset", mg_handle_ptz_goto_preset, false},
-    {"PUT", "/api/streams/#/ptz/preset", mg_handle_ptz_set_preset, false},
+    {"GET", "/api/streams/#/ptz/capabilities", NULL, false, handle_ptz_capabilities},
+    {"GET", "/api/streams/#/ptz/presets", NULL, false, handle_ptz_get_presets},
+    {"POST", "/api/streams/#/ptz/move", NULL, false, handle_ptz_move},
+    {"POST", "/api/streams/#/ptz/stop", NULL, false, handle_ptz_stop},
+    {"POST", "/api/streams/#/ptz/absolute", NULL, false, handle_ptz_absolute},
+    {"POST", "/api/streams/#/ptz/relative", NULL, false, handle_ptz_relative},
+    {"POST", "/api/streams/#/ptz/home", NULL, false, handle_ptz_home},
+    {"POST", "/api/streams/#/ptz/sethome", NULL, false, handle_ptz_set_home},
+    {"POST", "/api/streams/#/ptz/preset", NULL, false, handle_ptz_goto_preset},
+    {"PUT", "/api/streams/#/ptz/preset", NULL, false, handle_ptz_set_preset},
 
     // Timeline API
     {"GET", "/api/timeline/segments", mg_handle_get_timeline_segments, true},  // Opt out of auto-threading to prevent hanging
@@ -200,15 +200,15 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/timeline/play", mg_handle_timeline_playback, false},
 
     // Motion Recording API
-    {"GET", "/api/motion/config/#", mg_handle_get_motion_config, false},
-    {"POST", "/api/motion/config/#", mg_handle_post_motion_config, false},
-    {"DELETE", "/api/motion/config/#", mg_handle_delete_motion_config, false},
-    {"POST", "/api/motion/test/#", mg_handle_test_motion_event, false},
-    {"GET", "/api/motion/stats/#", mg_handle_get_motion_stats, false},
-    {"GET", "/api/motion/recordings/#", mg_handle_get_motion_recordings, false},
-    {"DELETE", "/api/motion/recordings/#", mg_handle_delete_motion_recording, false},
-    {"POST", "/api/motion/cleanup", mg_handle_post_motion_cleanup, false},
-    {"GET", "/api/motion/storage", mg_handle_get_motion_storage, false},
+    {"GET", "/api/motion/config/#", NULL, false, handle_get_motion_config},
+    {"POST", "/api/motion/config/#", NULL, false, handle_post_motion_config},
+    {"DELETE", "/api/motion/config/#", NULL, false, handle_delete_motion_config},
+    {"POST", "/api/motion/test/#", NULL, false, handle_test_motion_event},
+    {"GET", "/api/motion/stats/#", NULL, false, handle_get_motion_stats},
+    {"GET", "/api/motion/recordings/#", NULL, false, handle_get_motion_recordings},
+    {"DELETE", "/api/motion/recordings/#", NULL, false, handle_delete_motion_recording},
+    {"POST", "/api/motion/cleanup", NULL, false, handle_post_motion_cleanup},
+    {"GET", "/api/motion/storage", NULL, false, handle_get_motion_storage},
 
     // End of table marker
     {NULL, NULL, NULL, false}

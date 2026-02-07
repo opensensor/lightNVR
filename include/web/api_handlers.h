@@ -6,7 +6,7 @@
 #ifndef API_HANDLERS_H
 #define API_HANDLERS_H
 
-#include "mongoose.h"
+#include "web/request_response.h"
 #include <cjson/cJSON.h>
 #include "core/config.h"
 #include "web/api_handlers_auth.h"
@@ -45,7 +45,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res);
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_stream(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for PUT /api/streams/:id
@@ -53,7 +53,7 @@ void mg_handle_post_stream(struct mg_connection *c, struct mg_http_message *hm);
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm);
+void handle_put_stream(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for DELETE /api/streams/:id
@@ -61,7 +61,7 @@ void mg_handle_put_stream(struct mg_connection *c, struct mg_http_message *hm);
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm);
+void handle_delete_stream(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/streams/:id/refresh
@@ -72,7 +72,7 @@ void mg_handle_delete_stream(struct mg_connection *c, struct mg_http_message *hm
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_stream_refresh(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_stream_refresh(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/streams/:id/toggle_streaming
@@ -88,7 +88,7 @@ void mg_handle_toggle_streaming(struct mg_connection *c, struct mg_http_message 
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_settings(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/settings
@@ -96,7 +96,7 @@ void mg_handle_get_settings(struct mg_connection *c, struct mg_http_message *hm)
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_settings(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for GET /api/system/info
@@ -104,7 +104,7 @@ void mg_handle_post_settings(struct mg_connection *c, struct mg_http_message *hm
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_system_info(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for GET /api/system/logs
@@ -112,7 +112,7 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_system_logs(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/system/restart
@@ -120,7 +120,7 @@ void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_system_restart(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_system_restart(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/system/shutdown
@@ -128,7 +128,7 @@ void mg_handle_post_system_restart(struct mg_connection *c, struct mg_http_messa
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_system_shutdown(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for GET /api/recordings
@@ -234,7 +234,7 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_system_logs_clear(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/system/backup
@@ -242,7 +242,7 @@ void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_me
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_system_backup(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for GET /api/system/status
@@ -250,7 +250,7 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_get_system_status(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_system_status(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/streaming/:stream/webrtc/offer

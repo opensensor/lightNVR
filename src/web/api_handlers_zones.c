@@ -6,6 +6,7 @@
 #include "database/db_zones.h"
 #include "core/logger.h"
 #include <cjson/cJSON.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
