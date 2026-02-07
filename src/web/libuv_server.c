@@ -184,7 +184,12 @@ static void close_walk_cb(uv_handle_t *handle, void *arg) {
     (void)arg;
     if (!uv_is_closing(handle)) {
         log_debug("close_walk_cb: Closing handle type %d", handle->type);
-        uv_close(handle, NULL);
+        // Use proper close callback for connection handles
+        if (handle->type == UV_TCP && handle->data) {
+            uv_close(handle, libuv_close_cb);
+        } else {
+            uv_close(handle, NULL);
+        }
     }
 }
 
@@ -328,7 +333,8 @@ static void on_connection(uv_stream_t *listener, int status) {
     int r = uv_accept(listener, (uv_stream_t *)&conn->handle);
     if (r != 0) {
         log_error("on_connection: Accept failed: %s", uv_strerror(r));
-        libuv_connection_destroy(conn);
+        // Must close handle before destroying connection
+        libuv_connection_close(conn);
         return;
     }
 

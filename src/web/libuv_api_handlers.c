@@ -20,6 +20,7 @@
 #include "web/api_handlers_motion.h"
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_detection.h"
+#include "web/api_handlers_recordings_playback.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -56,34 +57,34 @@ int register_all_libuv_handlers(http_server_handle_t server) {
 
     // Stream-specific routes (must come before /api/streams/# wildcard)
     // Detection Zones API
-    http_server_register_handler(server, "/api/streams/", "GET", handle_get_zones);  // Will match /api/streams/{id}/zones
-    http_server_register_handler(server, "/api/streams/", "POST", handle_post_zones);
-    http_server_register_handler(server, "/api/streams/", "DELETE", handle_delete_zones);
+    http_server_register_handler(server, "/api/streams/#/zones", "GET", handle_get_zones);
+    http_server_register_handler(server, "/api/streams/#/zones", "POST", handle_post_zones);
+    http_server_register_handler(server, "/api/streams/#/zones", "DELETE", handle_delete_zones);
 
     // Stream Retention API
-    http_server_register_handler(server, "/api/streams/", "GET", handle_get_stream_retention);
-    http_server_register_handler(server, "/api/streams/", "PUT", handle_put_stream_retention);
+    http_server_register_handler(server, "/api/streams/#/retention", "GET", handle_get_stream_retention);
+    http_server_register_handler(server, "/api/streams/#/retention", "PUT", handle_put_stream_retention);
 
     // Stream Refresh API
-    http_server_register_handler(server, "/api/streams/", "POST", handle_post_stream_refresh);
+    http_server_register_handler(server, "/api/streams/#/refresh", "POST", handle_post_stream_refresh);
 
     // PTZ API
-    http_server_register_handler(server, "/api/streams/", "GET", handle_ptz_capabilities);
-    http_server_register_handler(server, "/api/streams/", "GET", handle_ptz_get_presets);
-    http_server_register_handler(server, "/api/streams/", "POST", handle_ptz_move);
-    http_server_register_handler(server, "/api/streams/", "POST", handle_ptz_stop);
-    http_server_register_handler(server, "/api/streams/", "POST", handle_ptz_absolute);
-    http_server_register_handler(server, "/api/streams/", "POST", handle_ptz_relative);
-    http_server_register_handler(server, "/api/streams/", "POST", handle_ptz_home);
-    http_server_register_handler(server, "/api/streams/", "POST", handle_ptz_set_home);
-    http_server_register_handler(server, "/api/streams/", "POST", handle_ptz_goto_preset);
-    http_server_register_handler(server, "/api/streams/", "PUT", handle_ptz_set_preset);
+    http_server_register_handler(server, "/api/streams/#/ptz/capabilities", "GET", handle_ptz_capabilities);
+    http_server_register_handler(server, "/api/streams/#/ptz/presets", "GET", handle_ptz_get_presets);
+    http_server_register_handler(server, "/api/streams/#/ptz/move", "POST", handle_ptz_move);
+    http_server_register_handler(server, "/api/streams/#/ptz/stop", "POST", handle_ptz_stop);
+    http_server_register_handler(server, "/api/streams/#/ptz/absolute", "POST", handle_ptz_absolute);
+    http_server_register_handler(server, "/api/streams/#/ptz/relative", "POST", handle_ptz_relative);
+    http_server_register_handler(server, "/api/streams/#/ptz/home", "POST", handle_ptz_home);
+    http_server_register_handler(server, "/api/streams/#/ptz/set-home", "POST", handle_ptz_set_home);
+    http_server_register_handler(server, "/api/streams/#/ptz/goto-preset", "POST", handle_ptz_goto_preset);
+    http_server_register_handler(server, "/api/streams/#/ptz/preset", "PUT", handle_ptz_set_preset);
 
     // Stream CRUD (wildcards - must come after specific routes)
-    http_server_register_handler(server, "/api/streams/", "GET", handle_get_stream_full);  // /api/streams/{id}/full
-    http_server_register_handler(server, "/api/streams/", "GET", handle_get_stream);       // /api/streams/{id}
-    http_server_register_handler(server, "/api/streams/", "PUT", handle_put_stream);
-    http_server_register_handler(server, "/api/streams/", "DELETE", handle_delete_stream);
+    http_server_register_handler(server, "/api/streams/#/full", "GET", handle_get_stream_full);
+    http_server_register_handler(server, "/api/streams/#", "GET", handle_get_stream);
+    http_server_register_handler(server, "/api/streams/#", "PUT", handle_put_stream);
+    http_server_register_handler(server, "/api/streams/#", "DELETE", handle_delete_stream);
 
     // Settings API
     http_server_register_handler(server, "/api/settings", "GET", handle_get_settings);
@@ -114,7 +115,46 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/motion/cleanup", "POST", handle_post_motion_cleanup);
     http_server_register_handler(server, "/api/motion/storage", "GET", handle_get_motion_storage);
 
-    log_info("Successfully registered %d API handlers", 40);  // Update count as we add more
+    // Recordings API (backend-agnostic handlers)
+    // Note: More specific routes must come before wildcard routes
+    http_server_register_handler(server, "/api/recordings/play/#", "GET", handle_recordings_playback);
+    http_server_register_handler(server, "/api/recordings/download/#", "GET", handle_recordings_download);
+    http_server_register_handler(server, "/api/recordings/protected", "GET", handle_get_protected_recordings);
+    http_server_register_handler(server, "/api/recordings/batch-protect", "POST", handle_batch_protect_recordings);
+    http_server_register_handler(server, "/api/recordings/sync", "POST", handle_post_recordings_sync);
+    http_server_register_handler(server, "/api/recordings/#/protect", "PUT", handle_put_recording_protect);
+    http_server_register_handler(server, "/api/recordings/#/retention", "PUT", handle_put_recording_retention);
+    http_server_register_handler(server, "/api/recordings", "GET", handle_get_recordings);
+
+    // TODO: Port remaining Mongoose-specific recordings handlers to backend-agnostic:
+    // - GET /api/recordings/:id (get single)
+    // - DELETE /api/recordings/:id
+    // - POST /api/recordings/batch-delete
+    // - GET /api/recordings/batch-delete/progress/:id
+    // - GET /api/recordings/files/check
+    // - DELETE /api/recordings/files
+    //
+    // These handlers are in src/web/api_handlers_recordings_get.c and use Mongoose-specific
+    // mg_connection and mg_http_message types. They need to be refactored to use
+    // http_request_t and http_response_t.
+
+    // TODO: Port auth/users API handlers to backend-agnostic:
+    // CRITICAL - Login/logout won't work without these:
+    // - POST /api/auth/login - REQUIRED for login
+    // - POST /api/auth/logout (also GET /logout) - REQUIRED for logout
+    // - GET /api/auth/verify - REQUIRED for auth verification
+    // - GET /api/auth/users
+    // - GET /api/auth/users/:id
+    // - POST /api/auth/users
+    // - PUT /api/auth/users/:id
+    // - DELETE /api/auth/users/:id
+    // - POST /api/auth/users/:id/api-key
+    //
+    // These handlers are in src/web/api_handlers_auth.c and src/web/api_handlers_users.c
+    // and use Mongoose-specific types. They need to be refactored to use http_request_t
+    // and http_response_t.
+
+    log_info("Successfully registered %d API handlers", 48);  // Update count as we add more
 
     return 0;
 }

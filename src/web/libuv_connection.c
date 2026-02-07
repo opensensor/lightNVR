@@ -42,17 +42,17 @@ libuv_connection_t *libuv_connection_create(libuv_server_t *server) {
         safe_free(conn);
         return NULL;
     }
-    
+
     // Store connection pointer in handle data
     conn->handle.data = conn;
     conn->server = server;
-    
+
     // Allocate receive buffer
     conn->recv_buffer = safe_malloc(LIBUV_RECV_BUFFER_INITIAL);
     if (!conn->recv_buffer) {
         log_error("libuv_connection_create: Failed to allocate receive buffer");
-        uv_close((uv_handle_t *)&conn->handle, NULL);
-        safe_free(conn);
+        // Must use proper close callback to free connection
+        uv_close((uv_handle_t *)&conn->handle, libuv_close_cb);
         return NULL;
     }
     conn->recv_buffer_size = LIBUV_RECV_BUFFER_INITIAL;
@@ -110,8 +110,10 @@ void libuv_connection_reset(libuv_connection_t *conn) {
  */
 void libuv_connection_close(libuv_connection_t *conn) {
     if (!conn) return;
-    
+
     if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
+        // Stop reading to prevent callbacks after close starts
+        uv_read_stop((uv_stream_t *)&conn->handle);
         uv_close((uv_handle_t *)&conn->handle, libuv_close_cb);
     }
 }
@@ -148,7 +150,14 @@ void libuv_close_cb(uv_handle_t *handle) {
  */
 void libuv_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
     libuv_connection_t *conn = (libuv_connection_t *)handle->data;
-    
+
+    // Safety check - connection might be closing
+    if (!conn || !conn->recv_buffer) {
+        buf->base = NULL;
+        buf->len = 0;
+        return;
+    }
+
     // Ensure we have space in the receive buffer
     size_t available = conn->recv_buffer_size - conn->recv_buffer_used;
     if (available < 1024) {
@@ -176,6 +185,11 @@ void libuv_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
  */
 void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     libuv_connection_t *conn = (libuv_connection_t *)stream->data;
+
+    // Safety check - connection might be closing
+    if (!conn) {
+        return;
+    }
 
     if (nread < 0) {
         if (nread != UV_EOF) {
@@ -349,6 +363,58 @@ static int on_body(llhttp_t *parser, const char *at, size_t length) {
 /**
  * @brief Message complete callback - dispatch to handler
  */
+/**
+ * @brief Match a path against a pattern with wildcard support
+ *
+ * Supports '#' as a single-segment wildcard (matches anything except '/')
+ * Examples:
+ *   - "/api/streams" matches "/api/streams" exactly
+ *   - "/api/streams/#" matches "/api/streams/foo" but not "/api/streams/foo/bar"
+ *   - "/api/streams/#/zones" matches "/api/streams/foo/zones"
+ *
+ * @param path The request path to match
+ * @param pattern The pattern to match against
+ * @return true if path matches pattern, false otherwise
+ */
+static bool path_matches_pattern(const char *path, const char *pattern) {
+    const char *p = path;
+    const char *pat = pattern;
+
+    while (*pat) {
+        if (*pat == '#') {
+            // Wildcard - match any characters except '/'
+            pat++; // Move past '#'
+
+            // Skip characters in path until we hit '/' or end
+            while (*p && *p != '/') {
+                p++;
+            }
+
+            // If pattern expects more after wildcard, continue matching
+            // Otherwise, we're done
+            if (!*pat) {
+                // Pattern ends with '#', path should also end here
+                return *p == '\0';
+            }
+
+            // Pattern continues, path must also continue
+            if (!*p) {
+                return false;
+            }
+        } else if (*pat == *p) {
+            // Exact character match
+            pat++;
+            p++;
+        } else {
+            // Mismatch
+            return false;
+        }
+    }
+
+    // Both should be at end for exact match
+    return *p == '\0' && *pat == '\0';
+}
+
 static int on_message_complete(llhttp_t *parser) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
     conn->message_complete = true;
@@ -365,10 +431,8 @@ static int on_message_complete(llhttp_t *parser) {
             }
         }
 
-        // Check path match (simple prefix match for now)
-        // TODO: Implement proper pattern matching with wildcards
-        if (strncmp(conn->request.path, server->handlers[i].path,
-                    strlen(server->handlers[i].path)) == 0) {
+        // Check path match with wildcard support
+        if (path_matches_pattern(conn->request.path, server->handlers[i].path)) {
             handler = server->handlers[i].handler;
             break;
         }

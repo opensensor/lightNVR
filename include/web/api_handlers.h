@@ -407,6 +407,12 @@ void handle_put_recording_protect(const http_request_t *req, http_response_t *re
 void handle_put_recording_retention(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Handler for GET /api/recordings
+ * List all recordings with pagination and filtering
+ */
+void handle_get_recordings(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief Handler for GET /api/recordings/protected
  */
 void handle_get_protected_recordings(const http_request_t *req, http_response_t *res);
