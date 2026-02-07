@@ -47,6 +47,7 @@
 #include "video/mp4_recording.h"
 #include "video/streams.h"
 #include "video/go2rtc/go2rtc_stream.h"
+#include "video/go2rtc/go2rtc_snapshot.h"
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 
@@ -791,6 +792,15 @@ static void *unified_detection_thread_func(void *arg) {
         log_info("[%s] Closing active recording before thread exit", stream_name);
         udt_stop_recording(ctx);
     }
+
+    // Disconnect from stream to free FFmpeg decoder_ctx and input_ctx
+    // This handles the case where the thread exits the loop while still connected
+    // (e.g., during shutdown while in BUFFERING/RECORDING state)
+    disconnect_from_stream(ctx);
+
+    // Clean up thread-local CURL handle used by go2rtc_get_snapshot()
+    // This must be called from the same thread that created the handle
+    go2rtc_snapshot_cleanup_thread();
 
     // Cleanup
     av_packet_free(&pkt);

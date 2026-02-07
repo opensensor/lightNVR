@@ -102,7 +102,7 @@ static const mg_api_route_t s_api_routes[] = {
     // Streams API
     {"GET", "/api/streams", NULL, true, handle_get_streams},  // Opt out of auto-threading to prevent double threading
     {"POST", "/api/streams", mg_handle_post_stream, false},
-    {"POST", "/api/streams/test", mg_handle_test_stream, false},
+    {"POST", "/api/streams/test", NULL, false, handle_test_stream},
 
     // Detection Zones API (must come before /api/streams/# to match correctly)
     {"GET", "/api/streams/#/zones", NULL, false, handle_get_zones},
