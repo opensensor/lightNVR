@@ -10,10 +10,9 @@
 #include <dirent.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "mongoose.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
@@ -25,42 +24,41 @@
 #define MAX_DETECTION_AGE 5
 
 /**
- * @brief Direct handler for GET /api/detection/results/:stream
+ * @brief Backend-agnostic handler for GET /api/detection/results/:stream
  */
-void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_detection_results(const http_request_t *req, http_response_t *res) {
     // Extract stream name from URL
     char stream_name[MAX_STREAM_NAME];
-    if (mg_extract_path_param(hm, "/api/detection/results/", stream_name, sizeof(stream_name)) != 0) {
+    if (http_request_extract_path_param(req, "/api/detection/results/", stream_name, sizeof(stream_name)) != 0) {
         log_error("Failed to extract stream name from URL");
-        mg_send_json_error(c, 400, "Invalid request path");
+        http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
-    
+
     log_debug("Handling GET /api/detection/results/%s request", stream_name);
 
     // Check if stream exists
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
         log_error("Stream not found: %s", stream_name);
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     }
 
     // Parse query parameters for time range
-    struct mg_str query = hm->query;
     time_t start_time = 0;
     time_t end_time = 0;
 
     // Extract start time parameter
     char start_str[32] = {0};
-    if (mg_http_get_var(&query, "start", start_str, sizeof(start_str)) > 0) {
+    if (http_request_get_query_param(req, "start", start_str, sizeof(start_str)) == 0 && start_str[0]) {
         start_time = (time_t)strtoll(start_str, NULL, 10);
         log_debug("Using start_time filter: %lld", (long long)start_time);
     }
 
     // Extract end time parameter
     char end_str[32] = {0};
-    if (mg_http_get_var(&query, "end", end_str, sizeof(end_str)) > 0) {
+    if (http_request_get_query_param(req, "end", end_str, sizeof(end_str)) == 0 && end_str[0]) {
         end_time = (time_t)strtoll(end_str, NULL, 10);
         log_debug("Using end_time filter: %lld", (long long)end_time);
     }
@@ -88,7 +86,7 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
     
     if (count < 0) {
         log_error("Failed to get detections from database for stream: %s", stream_name);
-        mg_send_json_error(c, 500, "Failed to get detection results");
+        http_response_set_json_error(res, 500, "Failed to get detection results");
         return;
     }
     
@@ -96,7 +94,7 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         log_error("Failed to create response JSON object");
-        mg_send_json_error(c, 500, "Failed to create response JSON");
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
     
@@ -105,7 +103,7 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
     if (!detections_array) {
         log_error("Failed to create detections JSON array");
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to create detections JSON");
+        http_response_set_json_error(res, 500, "Failed to create detections JSON");
         return;
     }
     
@@ -144,12 +142,12 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
     if (!json_str) {
         log_error("Failed to convert response JSON to string");
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to convert response JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert response JSON to string");
         return;
     }
-    
+
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     
     // Clean up
     free(json_str);

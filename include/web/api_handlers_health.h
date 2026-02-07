@@ -8,7 +8,7 @@
 
 #include <stdbool.h>
 #include <pthread.h>
-#include "mongoose.h"
+#include "web/request_response.h"
 
 /**
  * @brief Initialize health check system
@@ -71,19 +71,13 @@ void reset_server_restart_flag(void);
 void set_web_server_thread_id(pthread_t thread_id);
 
 /**
- * @brief Direct handler for GET /api/health
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/health
  */
-void mg_handle_get_health(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_health(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for GET /api/health/hls
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/health/hls
  */
-void mg_handle_get_hls_health(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_hls_health(const http_request_t *req, http_response_t *res);
 
 #endif /* API_HANDLERS_HEALTH_H */

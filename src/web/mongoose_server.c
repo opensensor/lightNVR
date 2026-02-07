@@ -50,15 +50,20 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
 // Default initial handler capacity
 #define INITIAL_HANDLER_CAPACITY 32
 
-// API handler function type
+// API handler function type (legacy mongoose-coupled)
 typedef void (*mg_api_handler_t)(struct mg_connection *c, struct mg_http_message *hm);
 
 // API route entry structure
+// During migration, routes can have either handler (legacy) or new_handler (abstract).
+// Once migration is complete, all routes will use new_handler and handler will be removed.
+// NOTE: new_handler is placed LAST so existing route table entries don't need updating
+// (C zero-initializes trailing fields).
 typedef struct {
-    const char *method;     // HTTP method (GET, POST, etc.)
-    const char *uri;        // URI pattern
-    mg_api_handler_t handler; // Handler function
-    bool no_auto_threading;  // If true, don't automatically thread this handler
+    const char *method;              // HTTP method (GET, POST, etc.)
+    const char *uri;                 // URI pattern
+    mg_api_handler_t handler;        // Legacy handler function (mongoose-coupled)
+    bool no_auto_threading;          // If true, don't automatically thread this handler
+    request_handler_t new_handler;   // New handler function (backend-agnostic) - NULL = use legacy
 } mg_api_route_t;
 
 // Forward declarations
@@ -95,25 +100,25 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/auth/users/#/api-key", mg_handle_users_generate_api_key, true},  // Already uses threading
 
     // Streams API
-    {"GET", "/api/streams", mg_handle_get_streams, true},  // Opt out of auto-threading to prevent double threading
+    {"GET", "/api/streams", NULL, true, handle_get_streams},  // Opt out of auto-threading to prevent double threading
     {"POST", "/api/streams", mg_handle_post_stream, false},
     {"POST", "/api/streams/test", mg_handle_test_stream, false},
 
     // Detection Zones API (must come before /api/streams/# to match correctly)
-    {"GET", "/api/streams/#/zones", mg_handle_get_zones, false},
-    {"POST", "/api/streams/#/zones", mg_handle_post_zones, false},
-    {"DELETE", "/api/streams/#/zones", mg_handle_delete_zones, false},
+    {"GET", "/api/streams/#/zones", NULL, false, handle_get_zones},
+    {"POST", "/api/streams/#/zones", NULL, false, handle_post_zones},
+    {"DELETE", "/api/streams/#/zones", NULL, false, handle_delete_zones},
 
     // Stream Retention API (must come before /api/streams/# to match correctly)
-    {"GET", "/api/streams/#/retention", mg_handle_get_stream_retention, false},
-    {"PUT", "/api/streams/#/retention", mg_handle_put_stream_retention, false},
+    {"GET", "/api/streams/#/retention", NULL, false, handle_get_stream_retention},
+    {"PUT", "/api/streams/#/retention", NULL, false, handle_put_stream_retention},
 
     // Stream Refresh API (must come before /api/streams/# to match correctly)
     // Triggers go2rtc re-registration for self-healing WebRTC connections
     {"POST", "/api/streams/#/refresh", mg_handle_post_stream_refresh, false},
 
-    {"GET", "/api/streams/#/full", mg_handle_get_stream_full, true},  // Aggregated stream + motion config
-    {"GET", "/api/streams/#", mg_handle_get_stream, true},  // Opt out of auto-threading to prevent double threading
+    {"GET", "/api/streams/#/full", NULL, true, handle_get_stream_full},  // Aggregated stream + motion config
+    {"GET", "/api/streams/#", NULL, true, handle_get_stream},  // Opt out of auto-threading to prevent double threading
     {"PUT", "/api/streams/#", mg_handle_put_stream, false},
     {"DELETE", "/api/streams/#", mg_handle_delete_stream, false},
 
@@ -130,8 +135,8 @@ static const mg_api_route_t s_api_routes[] = {
     {"POST", "/api/system/logs/clear", mg_handle_post_system_logs_clear, false},
     {"POST", "/api/system/backup", mg_handle_post_system_backup, false},
     {"GET", "/api/system/status", mg_handle_get_system_status, false},
-    {"GET", "/api/health", mg_handle_get_health, false},
-    {"GET", "/api/health/hls", mg_handle_get_hls_health, false},
+    {"GET", "/api/health", NULL, false, handle_get_health},
+    {"GET", "/api/health/hls", NULL, false, handle_get_hls_health},
 
     // Recordings API
     // NOTE: More specific routes MUST come before wildcard routes (e.g., /api/recordings/#)
@@ -140,13 +145,13 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/recordings/download/#", mg_handle_download_recording, true},  // Opt out of auto-threading to prevent hanging
     {"GET", "/api/recordings/files/check", mg_handle_check_recording_file, true},  // Already uses threading
     {"DELETE", "/api/recordings/files", mg_handle_delete_recording_file, true},  // Already uses threading
-    {"GET", "/api/recordings/protected", mg_handle_get_protected_recordings, false},  // Get protected recordings count
-    {"POST", "/api/recordings/batch-protect", mg_handle_batch_protect_recordings, false},  // Batch protect/unprotect
+    {"GET", "/api/recordings/protected", NULL, false, handle_get_protected_recordings},  // Get protected recordings count
+    {"POST", "/api/recordings/batch-protect", NULL, false, handle_batch_protect_recordings},  // Batch protect/unprotect
     {"POST", "/api/recordings/batch-delete", mg_handle_batch_delete_recordings, true},  // Already uses threading
     {"GET", "/api/recordings/batch-delete/progress/#", mg_handle_batch_delete_progress, false},  // Progress check is fast
-    {"POST", "/api/recordings/sync", mg_handle_post_recordings_sync, false},  // Sync recordings file sizes
-    {"PUT", "/api/recordings/#/protect", mg_handle_put_recording_protect, false},  // Set recording protection
-    {"PUT", "/api/recordings/#/retention", mg_handle_put_recording_retention, false},  // Set recording retention override
+    {"POST", "/api/recordings/sync", NULL, false, handle_post_recordings_sync},  // Sync recordings file sizes
+    {"PUT", "/api/recordings/#/protect", NULL, false, handle_put_recording_protect},  // Set recording protection
+    {"PUT", "/api/recordings/#/retention", NULL, false, handle_put_recording_retention},  // Set recording retention override
     {"GET", "/api/recordings/#", mg_handle_get_recording, false},  // Wildcard - must be after specific routes
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Wildcard - must be after specific routes
 
@@ -166,8 +171,8 @@ static const mg_api_route_t s_api_routes[] = {
     {"OPTIONS", "/api/webrtc/ice", mg_handle_go2rtc_webrtc_ice_options, false},  // OPTIONS requests are fast, no need for threading
 
     // Detection API
-    {"GET", "/api/detection/results/#", mg_handle_get_detection_results, true},  // Opt out of auto-threading to prevent double threading
-    {"GET", "/api/detection/models", mg_handle_get_detection_models, false},
+    {"GET", "/api/detection/results/#", NULL, true, handle_get_detection_results},  // Opt out of auto-threading to prevent double threading
+    {"GET", "/api/detection/models", NULL, false, handle_get_detection_models},
 
     // ONVIF API
     {"GET", "/api/onvif/discovery/status", mg_handle_get_onvif_discovery_status, false},
@@ -264,6 +269,7 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
             data->conn_id = c->id;
             data->mgr = c->mgr;
             data->handler_func = s_api_routes[route_index].handler;
+            data->new_handler_func = s_api_routes[route_index].new_handler;
 
             // Start thread
             mg_start_thread(mg_thread_function, data);
@@ -275,9 +281,23 @@ static bool handle_api_request(struct mg_connection *c, struct mg_http_message *
             if (s_api_routes[route_index].no_auto_threading) {
                 log_debug("Handler has opted out of auto-threading: %s %s", method_buf, uri_buf);
             }
-            // Call handler directly
-            log_debug("Handling API request directly: %s %s", method_buf, uri_buf);
-            s_api_routes[route_index].handler(c, hm);
+
+            // Check for new-style handler first, fall back to legacy
+            if (s_api_routes[route_index].new_handler) {
+                log_debug("Handling API request directly (new handler): %s %s", method_buf, uri_buf);
+                http_request_t req;
+                http_response_t res;
+                http_request_init(&req);
+                http_response_init(&res);
+                http_server_mg_to_request(c, hm, &req);
+                s_api_routes[route_index].new_handler(&req, &res);
+                http_server_send_response(c, &res);
+                http_response_free(&res);
+            } else {
+                // Legacy handler path
+                log_debug("Handling API request directly (legacy): %s %s", method_buf, uri_buf);
+                s_api_routes[route_index].handler(c, hm);
+            }
             return true;
         }
     }

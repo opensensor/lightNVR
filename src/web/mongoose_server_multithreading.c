@@ -14,6 +14,8 @@
 
 #include "web/mongoose_server.h"
 #include "web/mongoose_server_multithreading.h"
+#include "web/http_server.h"
+#include "web/request_response.h"
 #include "core/logger.h"
 #include "core/shutdown_coordinator.h"
 
@@ -68,9 +70,41 @@ void *mg_thread_function(void *param) {
       uri[uri_len] = '\0';
     }
 
-    // Call the handler function if provided
-    if (p->handler_func) {
-      log_debug("Calling handler function for URI: %s", uri);
+    // Check if we have a new-style (backend-agnostic) handler
+    if (p->new_handler_func) {
+      log_debug("Calling new handler function for URI: %s", uri);
+
+      // Set up fake connection buffer to capture the response
+      fake_conn.send.buf = NULL;
+      fake_conn.send.len = 0;
+      fake_conn.send.size = 0;
+
+      // Convert mongoose types to abstract types
+      http_request_t req;
+      http_response_t res;
+      http_request_init(&req);
+      http_response_init(&res);
+      http_server_mg_to_request(&fake_conn, &hm, &req);
+
+      // Call the new handler
+      p->new_handler_func(&req, &res);
+
+      // Convert abstract response back to mongoose response
+      http_server_send_response(&fake_conn, &res);
+      http_response_free(&res);
+
+      // Check if the handler sent a response
+      if (fake_conn.send.buf && fake_conn.send.len > 0) {
+        log_debug("New handler sent response of length %zu", fake_conn.send.len);
+        mg_wakeup(p->mgr, p->conn_id, fake_conn.send.buf, fake_conn.send.len);
+        free((void *)fake_conn.send.buf);
+      } else {
+        log_debug("New handler did not send a response, sending default");
+        mg_wakeup(p->mgr, p->conn_id, "Handler completed", 16);
+      }
+    } else if (p->handler_func) {
+      // Legacy handler path
+      log_debug("Calling legacy handler function for URI: %s", uri);
 
       // Set up a buffer to capture the response
       fake_conn.send.buf = NULL;

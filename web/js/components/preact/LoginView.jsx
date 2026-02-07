@@ -223,7 +223,7 @@ export function LoginView() {
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           <p>Default credentials: admin / admin</p>
-          <p className="mt-2">You can change these in Settings after login</p>
+          <p className="mt-2">You can change this password in Users after login</p>
         </div>
       </div>
     </section>

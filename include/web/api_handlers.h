@@ -10,6 +10,7 @@
 #include <cjson/cJSON.h>
 #include "core/config.h"
 #include "web/api_handlers_auth.h"
+#include "web/request_response.h"
 
 /**
  * @brief Register API handlers
@@ -22,29 +23,20 @@
 void register_api_handlers(struct mg_mgr *mgr);
 
 /**
- * @brief Direct handler for GET /api/streams
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/streams
  */
-void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_streams(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for GET /api/streams/:id
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/streams/:id
  */
-void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_stream(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for GET /api/streams/:id/full
+ * @brief Backend-agnostic handler for GET /api/streams/:id/full
  * Returns both stream and motion recording config
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
  */
-void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_stream_full(const http_request_t *req, http_response_t *res);
 
 
 /**
@@ -179,12 +171,9 @@ void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_m
 void mg_handle_batch_delete_progress(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
- * @brief Direct handler for POST /api/recordings/sync
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for POST /api/recordings/sync
  */
-void mg_handle_post_recordings_sync(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_recordings_sync(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for GET /api/recordings/play/:id
@@ -227,12 +216,9 @@ void mg_handle_hls_media_playlist(struct mg_connection *c, struct mg_http_messag
 void mg_handle_hls_segment(struct mg_connection *c, struct mg_http_message *hm);
 
 /**
- * @brief Direct handler for GET /api/detection/results/:stream
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/detection/results/:stream
  */
-void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_detection_results(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for GET /api/detection/models
@@ -240,7 +226,7 @@ void mg_handle_get_detection_results(struct mg_connection *c, struct mg_http_mes
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  */
-void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_detection_models(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Direct handler for POST /api/system/logs/clear
@@ -406,32 +392,32 @@ int mg_json_has_key(const cJSON *json, const char *key);
 /**
  * @brief Handler for GET /api/streams/:name/retention
  */
-void mg_handle_get_stream_retention(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_stream_retention(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Handler for PUT /api/streams/:name/retention
  */
-void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_message *hm);
+void handle_put_stream_retention(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Handler for PUT /api/recordings/:id/protect
  */
-void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_message *hm);
+void handle_put_recording_protect(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Handler for PUT /api/recordings/:id/retention
  */
-void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_message *hm);
+void handle_put_recording_retention(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Handler for GET /api/recordings/protected
  */
-void mg_handle_get_protected_recordings(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_protected_recordings(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Handler for POST /api/recordings/batch-protect
  */
-void mg_handle_batch_protect_recordings(struct mg_connection *c, struct mg_http_message *hm);
+void handle_batch_protect_recordings(const http_request_t *req, http_response_t *res);
 
 // Health check functions
 void init_health_check_system(void);

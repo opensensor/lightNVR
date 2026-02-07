@@ -1,6 +1,8 @@
 #include "web/api_handlers_zones.h"
 #include "web/api_handlers.h"
-#include "web/mongoose_server_auth.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
+#include "core/config.h"
 #include "database/db_zones.h"
 #include "core/logger.h"
 #include <cjson/cJSON.h>
@@ -10,13 +12,13 @@
 /**
  * Handler for GET /api/streams/:stream_name/zones
  */
-void mg_handle_get_zones(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_zones(const http_request_t *req, http_response_t *res) {
     // Check authentication
-    http_server_t *server = (http_server_t *)c->fn_data;
-    if (server && server->config.auth_enabled) {
-        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (!httpd_get_authenticated_user(req, &user)) {
             log_error("Authentication failed for GET zones request");
-            mg_send_json_error(c, 401, "Unauthorized");
+            http_response_set_json_error(res, 401, "Unauthorized");
             return;
         }
     }
@@ -24,8 +26,8 @@ void mg_handle_get_zones(struct mg_connection *c, struct mg_http_message *hm) {
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
-    if (mg_extract_path_param(hm, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (http_request_extract_path_param(req, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -42,21 +44,21 @@ void mg_handle_get_zones(struct mg_connection *c, struct mg_http_message *hm) {
     int count = get_detection_zones(stream_name, zones, MAX_ZONES_PER_STREAM);
 
     if (count < 0) {
-        mg_send_json_error(c, 500, "Failed to get detection zones");
+        http_response_set_json_error(res, 500, "Failed to get detection zones");
         return;
     }
 
     // Create JSON response
     cJSON *response = cJSON_CreateObject();
     if (!response) {
-        mg_send_json_error(c, 500, "Failed to create JSON response");
+        http_response_set_json_error(res, 500, "Failed to create JSON response");
         return;
     }
 
     cJSON *zones_array = cJSON_CreateArray();
     if (!zones_array) {
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to create zones array");
+        http_response_set_json_error(res, 500, "Failed to create zones array");
         return;
     }
 
@@ -96,23 +98,23 @@ void mg_handle_get_zones(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON_Delete(response);
 
     if (json_str) {
-        mg_send_json_response(c, 200, json_str);
+        http_response_set_json(res, 200, json_str);
         free(json_str);
     } else {
-        mg_send_json_error(c, 500, "Failed to serialize JSON");
+        http_response_set_json_error(res, 500, "Failed to serialize JSON");
     }
 }
 
 /**
  * Handler for POST /api/streams/:stream_name/zones
  */
-void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_zones(const http_request_t *req, http_response_t *res) {
     // Check authentication
-    http_server_t *server = (http_server_t *)c->fn_data;
-    if (server && server->config.auth_enabled) {
-        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (!httpd_get_authenticated_user(req, &user)) {
             log_error("Authentication failed for POST zones request");
-            mg_send_json_error(c, 401, "Unauthorized");
+            http_response_set_json_error(res, 401, "Unauthorized");
             return;
         }
     }
@@ -120,8 +122,8 @@ void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
-    if (mg_extract_path_param(hm, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (http_request_extract_path_param(req, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -134,9 +136,9 @@ void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
     log_info("POST /api/streams/%s/zones", stream_name);
 
     // Parse JSON body
-    cJSON *json = mg_parse_json_body(hm);
+    cJSON *json = httpd_parse_json_body(req);
     if (!json) {
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -144,14 +146,14 @@ void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON *zones_array = cJSON_GetObjectItem(json, "zones");
     if (!zones_array || !cJSON_IsArray(zones_array)) {
         cJSON_Delete(json);
-        mg_send_json_error(c, 400, "Missing or invalid 'zones' array");
+        http_response_set_json_error(res, 400, "Missing or invalid 'zones' array");
         return;
     }
 
     int zone_count = cJSON_GetArraySize(zones_array);
     if (zone_count > MAX_ZONES_PER_STREAM) {
         cJSON_Delete(json);
-        mg_send_json_error(c, 400, "Too many zones");
+        http_response_set_json_error(res, 400, "Too many zones");
         return;
     }
 
@@ -233,7 +235,7 @@ void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
 
     // Save zones to database
     if (save_detection_zones(stream_name, zones, zone_count) != 0) {
-        mg_send_json_error(c, 500, "Failed to save detection zones");
+        http_response_set_json_error(res, 500, "Failed to save detection zones");
         return;
     }
 
@@ -247,23 +249,23 @@ void mg_handle_post_zones(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON_Delete(response);
 
     if (json_str) {
-        mg_send_json_response(c, 200, json_str);
+        http_response_set_json(res, 200, json_str);
         free(json_str);
     } else {
-        mg_send_json_error(c, 500, "Failed to serialize JSON");
+        http_response_set_json_error(res, 500, "Failed to serialize JSON");
     }
 }
 
 /**
  * Handler for DELETE /api/streams/:stream_name/zones
  */
-void mg_handle_delete_zones(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_delete_zones(const http_request_t *req, http_response_t *res) {
     // Check authentication
-    http_server_t *server = (http_server_t *)c->fn_data;
-    if (server && server->config.auth_enabled) {
-        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (!httpd_get_authenticated_user(req, &user)) {
             log_error("Authentication failed for DELETE zones request");
-            mg_send_json_error(c, 401, "Unauthorized");
+            http_response_set_json_error(res, 401, "Unauthorized");
             return;
         }
     }
@@ -271,8 +273,8 @@ void mg_handle_delete_zones(struct mg_connection *c, struct mg_http_message *hm)
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
-    if (mg_extract_path_param(hm, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name");
+    if (http_request_extract_path_param(req, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name");
         return;
     }
 
@@ -286,7 +288,7 @@ void mg_handle_delete_zones(struct mg_connection *c, struct mg_http_message *hm)
 
     // Delete zones from database
     if (delete_detection_zones(stream_name) != 0) {
-        mg_send_json_error(c, 500, "Failed to delete detection zones");
+        http_response_set_json_error(res, 500, "Failed to delete detection zones");
         return;
     }
 
@@ -299,10 +301,10 @@ void mg_handle_delete_zones(struct mg_connection *c, struct mg_http_message *hm)
     cJSON_Delete(response);
 
     if (json_str) {
-        mg_send_json_response(c, 200, json_str);
+        http_response_set_json(res, 200, json_str);
         free(json_str);
     } else {
-        mg_send_json_error(c, 500, "Failed to serialize JSON");
+        http_response_set_json_error(res, 500, "Failed to serialize JSON");
     }
 }
 

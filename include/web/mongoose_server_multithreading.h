@@ -7,15 +7,20 @@
 #define MONGOOSE_SERVER_MULTITHREADING_H
 
 #include "mongoose.h"
+#include "web/request_response.h"
 
 /**
  * @brief Thread data structure for worker threads
+ *
+ * During migration, supports both legacy (handler_func) and new (new_handler_func)
+ * handler types. Only one should be set per request.
  */
 struct mg_thread_data {
   struct mg_mgr *mgr;
   unsigned long conn_id;  // Parent connection ID
   struct mg_str message;  // Original HTTP request
-  void (*handler_func)(struct mg_connection *c, struct mg_http_message *hm);  // Handler function
+  void (*handler_func)(struct mg_connection *c, struct mg_http_message *hm);  // Legacy handler
+  request_handler_t new_handler_func;  // New backend-agnostic handler (NULL = use legacy)
 };
 
 /**

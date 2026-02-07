@@ -22,8 +22,10 @@
 #include "core/shutdown_coordinator.h"
 
 #include "web/api_handlers.h"
+#include "web/api_handlers_health.h"
 #include "web/mongoose_adapter.h"
 #include "web/http_server.h"
+#include "web/request_response.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "mongoose.h"
@@ -150,12 +152,10 @@ static bool perform_health_check(void) {
 
 
 /**
- * @brief Direct handler for GET /api/health
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/health
  */
-void mg_handle_get_health(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_health(const http_request_t *req, http_response_t *res) {
+    (void)req;
     log_info("Handling GET /api/health request");
 
     // Update last health check time
@@ -165,7 +165,7 @@ void mg_handle_get_health(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON *health = cJSON_CreateObject();
     if (!health) {
         log_error("Failed to create health JSON object");
-        mg_send_json_error(c, 500, "Failed to create health JSON");
+        http_response_set_json_error(res, 500, "Failed to create health JSON");
         return;
     }
 
@@ -190,12 +190,12 @@ void mg_handle_get_health(struct mg_connection *c, struct mg_http_message *hm) {
     if (!json_str) {
         log_error("Failed to convert health JSON to string");
         cJSON_Delete(health);
-        mg_send_json_error(c, 500, "Failed to convert health JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert health JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
@@ -219,12 +219,10 @@ void set_web_server_thread_id(pthread_t thread_id) {
 }
 
 /**
- * @brief Direct handler for GET /api/health/hls
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/health/hls
  */
-void mg_handle_get_hls_health(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_hls_health(const http_request_t *req, http_response_t *res) {
+    (void)req;
     log_info("Handling GET /api/health/hls request");
 
     // Get the HLS watchdog restart count
@@ -235,7 +233,7 @@ void mg_handle_get_hls_health(struct mg_connection *c, struct mg_http_message *h
     cJSON *health = cJSON_CreateObject();
     if (!health) {
         log_error("Failed to create HLS health JSON object");
-        mg_send_json_error(c, 500, "Failed to create HLS health JSON");
+        http_response_set_json_error(res, 500, "Failed to create HLS health JSON");
         return;
     }
 
@@ -256,12 +254,12 @@ void mg_handle_get_hls_health(struct mg_connection *c, struct mg_http_message *h
     if (!json_str) {
         log_error("Failed to convert HLS health JSON to string");
         cJSON_Delete(health);
-        mg_send_json_error(c, 500, "Failed to convert HLS health JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert HLS health JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);

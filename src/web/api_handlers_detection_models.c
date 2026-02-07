@@ -9,10 +9,9 @@
 #include <unistd.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "mongoose.h"
 #include "video/detection.h"
 #include "video/api_detection.h"
 #include "video/onvif_detection.h"
@@ -21,13 +20,14 @@
 #define DEFAULT_MODELS_DIR "/var/lib/lightnvr/models"
 
 /**
- * @brief Direct handler for GET /api/detection/models
- * 
+ * @brief Backend-agnostic handler for GET /api/detection/models
+ *
  * This handler returns a list of available detection models
  */
-void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_detection_models(const http_request_t *req, http_response_t *res) {
+    (void)req;
     log_info("Handling GET /api/detection/models request");
-    
+
     // Get models directory from config or use default
     config_t *config = &g_config;
     const char *models_dir = config->models_path;
@@ -41,7 +41,7 @@ void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_mess
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         log_error("Failed to create response JSON object");
-        mg_send_json_error(c, 500, "Failed to create response JSON");
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
     
@@ -50,7 +50,7 @@ void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_mess
     if (!models_array) {
         log_error("Failed to create models JSON array");
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to create models JSON");
+        http_response_set_json_error(res, 500, "Failed to create models JSON");
         return;
     }
     
@@ -70,12 +70,12 @@ void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_mess
         if (!json_str) {
             log_error("Failed to convert response JSON to string");
             cJSON_Delete(response);
-            mg_send_json_error(c, 500, "Failed to convert response JSON to string");
+            http_response_set_json_error(res, 500, "Failed to convert response JSON to string");
             return;
         }
-        
+
         // Send response
-        mg_send_json_response(c, 200, json_str);
+        http_response_set_json(res, 200, json_str);
         
         // Clean up
         free(json_str);
@@ -200,12 +200,12 @@ void mg_handle_get_detection_models(struct mg_connection *c, struct mg_http_mess
     if (!json_str) {
         log_error("Failed to convert response JSON to string");
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to convert response JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert response JSON to string");
         return;
     }
-    
+
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     
     // Clean up
     free(json_str);

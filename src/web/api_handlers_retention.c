@@ -12,9 +12,9 @@
 #include <ctype.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
-#include "mongoose.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
 
@@ -22,13 +22,13 @@
  * @brief Handler for GET /api/streams/:name/retention
  * Get retention configuration for a stream
  */
-void mg_handle_get_stream_retention(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_stream_retention(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/streams/:name/retention request");
 
     // Extract stream name from URL
     char stream_name[64] = {0};
-    if (mg_extract_path_param(hm, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name in URL");
+    if (http_request_extract_path_param(req, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name in URL");
         return;
     }
 
@@ -40,12 +40,12 @@ void mg_handle_get_stream_retention(struct mg_connection *c, struct mg_http_mess
 
     // URL decode the stream name
     char decoded_name[64] = {0};
-    mg_url_decode_string(stream_name, decoded_name, sizeof(decoded_name));
+    url_decode(stream_name, decoded_name, sizeof(decoded_name));
 
     // Get retention config
     stream_retention_config_t config;
     if (get_stream_retention_config(decoded_name, &config) != 0) {
-        mg_send_json_error(c, 404, "Stream not found or failed to get retention config");
+        http_response_set_json_error(res, 404, "Stream not found or failed to get retention config");
         return;
     }
 
@@ -57,7 +57,7 @@ void mg_handle_get_stream_retention(struct mg_connection *c, struct mg_http_mess
     cJSON_AddNumberToObject(json, "max_storage_mb", (double)config.max_storage_mb);
 
     char *json_str = cJSON_PrintUnformatted(json);
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     free(json_str);
     cJSON_Delete(json);
@@ -67,13 +67,13 @@ void mg_handle_get_stream_retention(struct mg_connection *c, struct mg_http_mess
  * @brief Handler for PUT /api/streams/:name/retention
  * Update retention configuration for a stream
  */
-void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_put_stream_retention(const http_request_t *req, http_response_t *res) {
     log_info("Handling PUT /api/streams/:name/retention request");
 
     // Extract stream name from URL
     char stream_name[64] = {0};
-    if (mg_extract_path_param(hm, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
-        mg_send_json_error(c, 400, "Invalid stream name in URL");
+    if (http_request_extract_path_param(req, "/api/streams/", stream_name, sizeof(stream_name)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid stream name in URL");
         return;
     }
 
@@ -85,12 +85,12 @@ void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_mess
 
     // URL decode the stream name
     char decoded_name[64] = {0};
-    mg_url_decode_string(stream_name, decoded_name, sizeof(decoded_name));
+    url_decode(stream_name, decoded_name, sizeof(decoded_name));
 
     // Parse JSON body
-    cJSON *json = mg_parse_json_body(hm);
+    cJSON *json = httpd_parse_json_body(req);
     if (!json) {
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -98,7 +98,7 @@ void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_mess
     stream_retention_config_t config;
     if (get_stream_retention_config(decoded_name, &config) != 0) {
         cJSON_Delete(json);
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     }
 
@@ -122,7 +122,7 @@ void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_mess
 
     // Save config
     if (set_stream_retention_config(decoded_name, &config) != 0) {
-        mg_send_json_error(c, 500, "Failed to save retention config");
+        http_response_set_json_error(res, 500, "Failed to save retention config");
         return;
     }
 
@@ -135,7 +135,7 @@ void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_mess
     cJSON_AddStringToObject(response, "message", "Retention config updated successfully");
 
     char *json_str = cJSON_PrintUnformatted(response);
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     free(json_str);
     cJSON_Delete(response);
@@ -149,13 +149,13 @@ void mg_handle_put_stream_retention(struct mg_connection *c, struct mg_http_mess
  * @brief Handler for PUT /api/recordings/:id/protect
  * Set protection status for a recording
  */
-void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_put_recording_protect(const http_request_t *req, http_response_t *res) {
     log_info("Handling PUT /api/recordings/:id/protect request");
 
     // Extract recording ID from URL
     char id_str[32] = {0};
-    if (mg_extract_path_param(hm, "/api/recordings/", id_str, sizeof(id_str)) != 0) {
-        mg_send_json_error(c, 400, "Invalid recording ID in URL");
+    if (http_request_extract_path_param(req, "/api/recordings/", id_str, sizeof(id_str)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid recording ID in URL");
         return;
     }
 
@@ -168,14 +168,14 @@ void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_mes
     // Parse ID
     uint64_t id = strtoull(id_str, NULL, 10);
     if (id == 0) {
-        mg_send_json_error(c, 400, "Invalid recording ID");
+        http_response_set_json_error(res, 400, "Invalid recording ID");
         return;
     }
 
     // Parse JSON body
-    cJSON *json = mg_parse_json_body(hm);
+    cJSON *json = httpd_parse_json_body(req);
     if (!json) {
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -183,7 +183,7 @@ void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_mes
     cJSON *protected_json = cJSON_GetObjectItem(json, "protected");
     if (!protected_json || !cJSON_IsBool(protected_json)) {
         cJSON_Delete(json);
-        mg_send_json_error(c, 400, "Missing or invalid 'protected' field (boolean required)");
+        http_response_set_json_error(res, 400, "Missing or invalid 'protected' field (boolean required)");
         return;
     }
 
@@ -192,7 +192,7 @@ void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_mes
 
     // Update protection status
     if (set_recording_protected(id, protected) != 0) {
-        mg_send_json_error(c, 500, "Failed to update recording protection status");
+        http_response_set_json_error(res, 500, "Failed to update recording protection status");
         return;
     }
 
@@ -203,7 +203,7 @@ void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_mes
     cJSON_AddStringToObject(response, "message", protected ? "Recording protected" : "Recording unprotected");
 
     char *json_str = cJSON_PrintUnformatted(response);
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     free(json_str);
     cJSON_Delete(response);
@@ -215,13 +215,13 @@ void mg_handle_put_recording_protect(struct mg_connection *c, struct mg_http_mes
  * @brief Handler for PUT /api/recordings/:id/retention
  * Set custom retention override for a recording
  */
-void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_put_recording_retention(const http_request_t *req, http_response_t *res) {
     log_info("Handling PUT /api/recordings/:id/retention request");
 
     // Extract recording ID from URL
     char id_str[32] = {0};
-    if (mg_extract_path_param(hm, "/api/recordings/", id_str, sizeof(id_str)) != 0) {
-        mg_send_json_error(c, 400, "Invalid recording ID in URL");
+    if (http_request_extract_path_param(req, "/api/recordings/", id_str, sizeof(id_str)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid recording ID in URL");
         return;
     }
 
@@ -234,14 +234,14 @@ void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_m
     // Parse ID
     uint64_t id = strtoull(id_str, NULL, 10);
     if (id == 0) {
-        mg_send_json_error(c, 400, "Invalid recording ID");
+        http_response_set_json_error(res, 400, "Invalid recording ID");
         return;
     }
 
     // Parse JSON body
-    cJSON *json = mg_parse_json_body(hm);
+    cJSON *json = httpd_parse_json_body(req);
     if (!json) {
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -249,7 +249,7 @@ void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_m
     cJSON *days_json = cJSON_GetObjectItem(json, "retention_days");
     if (!days_json || !cJSON_IsNumber(days_json)) {
         cJSON_Delete(json);
-        mg_send_json_error(c, 400, "Missing or invalid 'retention_days' field (number required, -1 to remove override)");
+        http_response_set_json_error(res, 400, "Missing or invalid 'retention_days' field (number required, -1 to remove override)");
         return;
     }
 
@@ -258,7 +258,7 @@ void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_m
 
     // Update retention override
     if (set_recording_retention_override(id, days) != 0) {
-        mg_send_json_error(c, 500, "Failed to update recording retention override");
+        http_response_set_json_error(res, 500, "Failed to update recording retention override");
         return;
     }
 
@@ -273,7 +273,7 @@ void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_m
     }
 
     char *json_str = cJSON_PrintUnformatted(response);
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     free(json_str);
     cJSON_Delete(response);
@@ -285,25 +285,17 @@ void mg_handle_put_recording_retention(struct mg_connection *c, struct mg_http_m
  * @brief Handler for GET /api/recordings/protected
  * Get count of protected recordings
  */
-void mg_handle_get_protected_recordings(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_protected_recordings(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/recordings/protected request");
 
     // Check for stream_name query parameter
     char stream_name[64] = {0};
-    struct mg_str query = hm->query;
-
-    if (query.len > 0) {
-        struct mg_str stream_param = mg_http_var(query, mg_str("stream"));
-        if (stream_param.len > 0 && stream_param.len < sizeof(stream_name)) {
-            memcpy(stream_name, stream_param.buf, stream_param.len);
-            stream_name[stream_param.len] = '\0';
-        }
-    }
+    http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name));
 
     // Get protected count
     int count = get_protected_recordings_count(stream_name[0] ? stream_name : NULL);
     if (count < 0) {
-        mg_send_json_error(c, 500, "Failed to get protected recordings count");
+        http_response_set_json_error(res, 500, "Failed to get protected recordings count");
         return;
     }
 
@@ -315,7 +307,7 @@ void mg_handle_get_protected_recordings(struct mg_connection *c, struct mg_http_
     }
 
     char *json_str = cJSON_PrintUnformatted(response);
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     free(json_str);
     cJSON_Delete(response);
@@ -325,13 +317,13 @@ void mg_handle_get_protected_recordings(struct mg_connection *c, struct mg_http_
  * @brief Handler for POST /api/recordings/batch-protect
  * Batch protect/unprotect multiple recordings
  */
-void mg_handle_batch_protect_recordings(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_batch_protect_recordings(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/recordings/batch-protect request");
 
     // Parse JSON body
-    cJSON *json = mg_parse_json_body(hm);
+    cJSON *json = httpd_parse_json_body(req);
     if (!json) {
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
 
@@ -339,7 +331,7 @@ void mg_handle_batch_protect_recordings(struct mg_connection *c, struct mg_http_
     cJSON *ids_json = cJSON_GetObjectItem(json, "ids");
     if (!ids_json || !cJSON_IsArray(ids_json)) {
         cJSON_Delete(json);
-        mg_send_json_error(c, 400, "Missing or invalid 'ids' field (array required)");
+        http_response_set_json_error(res, 400, "Missing or invalid 'ids' field (array required)");
         return;
     }
 
@@ -347,7 +339,7 @@ void mg_handle_batch_protect_recordings(struct mg_connection *c, struct mg_http_
     cJSON *protected_json = cJSON_GetObjectItem(json, "protected");
     if (!protected_json || !cJSON_IsBool(protected_json)) {
         cJSON_Delete(json);
-        mg_send_json_error(c, 400, "Missing or invalid 'protected' field (boolean required)");
+        http_response_set_json_error(res, 400, "Missing or invalid 'protected' field (boolean required)");
         return;
     }
 
@@ -380,7 +372,7 @@ void mg_handle_batch_protect_recordings(struct mg_connection *c, struct mg_http_
     cJSON_AddStringToObject(response, "message", protected ? "Recordings protected" : "Recordings unprotected");
 
     char *json_str = cJSON_PrintUnformatted(response);
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     free(json_str);
     cJSON_Delete(response);
