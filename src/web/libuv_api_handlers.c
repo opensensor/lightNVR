@@ -119,20 +119,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     return 0;
 }
 
-/**
- * @brief Handler for root path "/" - redirects to /index.html
- */
-static void handle_root_path(const http_request_t *req, http_response_t *res) {
-    (void)req;
-
-    // Send a redirect to /index.html
-    res->status_code = 302;
-    http_response_add_header(res, "Location", "/index.html");
-    strncpy(res->content_type, "text/html", sizeof(res->content_type) - 1);
-    http_response_set_body(res, "<html><body>Redirecting to <a href=\"/index.html\">index.html</a></body></html>");
-
-    log_debug("Root path accessed, redirecting to /index.html");
-}
+// Root path handler removed - static file serving will handle "/" by serving index.html
 
 /**
  * @brief Handler for serving static files from web_root
@@ -186,6 +173,9 @@ static void handle_static_file(const http_request_t *req, http_response_t *res) 
  * This should be called after registering API handlers to ensure API routes
  * take precedence over static file serving.
  *
+ * Note: Static file serving is handled automatically in libuv_connection.c
+ * when no handler matches. This function is kept for future extensions.
+ *
  * @param server The HTTP server handle
  * @return 0 on success, -1 on error
  */
@@ -195,16 +185,11 @@ int register_static_file_handler(http_server_handle_t server) {
         return -1;
     }
 
-    log_info("Registering static file handler with libuv server");
+    log_info("Static file serving enabled (handled by default fallback)");
 
-    // Register root path handler
-    http_server_register_handler(server, "/", "GET", handle_root_path);
+    // Static files are served automatically when no handler matches
+    // See libuv_connection.c on_message_complete() for implementation
 
-    // TODO: Register catch-all handler for static files
-    // This requires refactoring to properly pass the connection to the handler
-    // For now, API handlers will work, but static files won't be served
-
-    log_info("Root path handler registered");
     return 0;
 }
 

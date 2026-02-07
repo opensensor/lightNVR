@@ -28,7 +28,8 @@ typedef struct libuv_server {
     http_server_config_t config;        // Server configuration (copied)
     bool running;                       // Server running flag
     bool owns_loop;                     // Whether we own the event loop
-    
+    bool shutting_down;                 // Server is shutting down
+
     // Handler registry (same structure as http_server_t)
     struct {
         char path[256];                 // Request path pattern
@@ -37,10 +38,10 @@ typedef struct libuv_server {
     } *handlers;
     int handler_count;                  // Number of registered handlers
     int handler_capacity;               // Capacity of handlers array
-    
+
     // TLS context (optional, NULL if TLS disabled)
     void *tls_ctx;
-    
+
     // Server thread (for blocking start)
     uv_thread_t thread;
     bool thread_running;

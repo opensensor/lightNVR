@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <llhttp.h>
 #include <uv.h>
 
@@ -177,6 +178,17 @@ static void server_thread_func(void *arg) {
 }
 
 /**
+ * @brief Walk callback to close all handles
+ */
+static void close_walk_cb(uv_handle_t *handle, void *arg) {
+    (void)arg;
+    if (!uv_is_closing(handle)) {
+        log_debug("close_walk_cb: Closing handle type %d", handle->type);
+        uv_close(handle, NULL);
+    }
+}
+
+/**
  * @brief Stop the HTTP server
  */
 void libuv_server_stop(http_server_handle_t handle) {
@@ -187,11 +199,27 @@ void libuv_server_stop(http_server_handle_t handle) {
 
     log_info("libuv_server_stop: Stopping server");
     server->running = false;
+    server->shutting_down = true;  // Signal shutdown to all callbacks
 
     // Close the listener to stop accepting new connections
     if (!uv_is_closing((uv_handle_t *)&server->listener)) {
         uv_close((uv_handle_t *)&server->listener, NULL);
     }
+
+    // Give pending operations a chance to complete
+    log_info("libuv_server_stop: Waiting for pending operations");
+    for (int i = 0; i < 10; i++) {
+        uv_run(server->loop, UV_RUN_NOWAIT);
+        usleep(50000);  // 50ms
+    }
+
+    // Walk all handles and close them
+    log_info("libuv_server_stop: Closing all active handles");
+    uv_walk(server->loop, close_walk_cb, NULL);
+
+    // Run the loop to process all close callbacks
+    log_info("libuv_server_stop: Processing close callbacks");
+    uv_run(server->loop, UV_RUN_DEFAULT);
 
     // Stop the event loop
     uv_stop(server->loop);
@@ -201,6 +229,8 @@ void libuv_server_stop(http_server_handle_t handle) {
         uv_thread_join(&server->thread);
         server->thread_running = false;
     }
+
+    log_info("libuv_server_stop: Server stopped");
 }
 
 /**

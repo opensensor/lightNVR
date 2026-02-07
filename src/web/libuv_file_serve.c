@@ -199,14 +199,19 @@ static void file_serve_cleanup(file_serve_ctx_t *ctx) {
  */
 static void on_file_open(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+    libuv_connection_t *conn = ctx->conn;
 
     if (req->result < 0) {
         log_error("on_file_open: Failed to open file: %s", uv_strerror(req->result));
 
         // Send 404 response
-        http_response_set_json_error(&ctx->conn->response, 404, "File Not Found");
-        libuv_send_response(ctx->conn, &ctx->conn->response);
+        http_response_set_json_error(&conn->response, 404, "File Not Found");
+        libuv_send_response(conn, &conn->response);
         file_serve_cleanup(ctx);
+
+        // Close connection after error
+        extern void libuv_connection_close(libuv_connection_t *conn);
+        libuv_connection_close(conn);
         return;
     }
 
@@ -227,12 +232,13 @@ static void on_file_open(uv_fs_t *req) {
  */
 static void on_file_stat(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+    libuv_connection_t *conn = ctx->conn;
 
     if (req->result < 0) {
         log_error("on_file_stat: Failed to stat file: %s", uv_strerror(req->result));
-        http_response_set_json_error(&ctx->conn->response, 500, "Failed to stat file");
-        libuv_send_response(ctx->conn, &ctx->conn->response);
-        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        http_response_set_json_error(&conn->response, 500, "Failed to stat file");
+        libuv_send_response(conn, &conn->response);
+        uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
 
@@ -241,14 +247,14 @@ static void on_file_stat(uv_fs_t *req) {
 
     // Handle Range header
     if (ctx->has_range) {
-        const char *range_header = http_request_get_header(&ctx->conn->request, "Range");
+        const char *range_header = http_request_get_header(&conn->request, "Range");
         if (!libuv_parse_range_header(range_header, ctx->file_size,
                                        &ctx->range_start, &ctx->range_end)) {
             // Invalid range - send 416
-            http_response_set_json_error(&ctx->conn->response, 416,
+            http_response_set_json_error(&conn->response, 416,
                                          "Requested Range Not Satisfiable");
-            libuv_send_response(ctx->conn, &ctx->conn->response);
-            uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+            libuv_send_response(conn, &conn->response);
+            uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
             return;
         }
         ctx->offset = ctx->range_start;
@@ -271,7 +277,7 @@ static void on_file_stat(uv_fs_t *req) {
             "Content-Length: %zu\r\n"
             "Content-Range: bytes %zu-%zu/%zu\r\n"
             "Accept-Ranges: bytes\r\n"
-            "Connection: keep-alive\r\n"
+            "Connection: close\r\n"
             "\r\n",
             ctx->content_type, ctx->remaining,
             ctx->range_start, ctx->range_end, ctx->file_size);
@@ -281,7 +287,7 @@ static void on_file_stat(uv_fs_t *req) {
             "Content-Type: %s\r\n"
             "Content-Length: %zu\r\n"
             "Accept-Ranges: bytes\r\n"
-            "Connection: keep-alive\r\n"
+            "Connection: close\r\n"
             "\r\n",
             ctx->content_type, ctx->file_size);
     }
@@ -365,8 +371,25 @@ static void on_file_read(uv_fs_t *req) {
  */
 static void on_file_close(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+    libuv_connection_t *conn = ctx->conn;
+
     uv_fs_req_cleanup(req);
     file_serve_cleanup(ctx);
+
+    // Check if server is shutting down
+    if (conn->server->shutting_down) {
+        log_debug("on_file_close: Server shutting down, skipping connection close");
+        return;
+    }
+
+    // Close the connection after serving the file
+    // We use Connection: close header, so we must close the connection
+    extern void libuv_connection_close(libuv_connection_t *conn);
+
+    // Only close if not already closing
+    if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
+        libuv_connection_close(conn);
+    }
 }
 
 #endif /* HTTP_BACKEND_LIBUV */

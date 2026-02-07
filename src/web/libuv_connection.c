@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 #include <llhttp.h>
 #include <uv.h>
 
@@ -194,10 +195,18 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     enum llhttp_errno err = llhttp_execute(&conn->parser, buf->base, nread);
 
     if (err != HPE_OK) {
+        // HPE_CLOSED_CONNECTION is expected when client sends data after Connection: close
+        // Just close the connection without sending an error response
+        if (err == HPE_CLOSED_CONNECTION) {
+            log_debug("libuv_read_cb: Connection closed by parser (expected after Connection: close)");
+            libuv_connection_close(conn);
+            return;
+        }
+
         log_error("libuv_read_cb: Parse error: %s %s",
                   llhttp_errno_name(err), llhttp_get_error_reason(&conn->parser));
 
-        // Send 400 Bad Request
+        // Send 400 Bad Request for actual parse errors
         conn->response.status_code = 400;
         http_response_set_json_error(&conn->response, 400, "Bad Request");
         libuv_send_response(conn, &conn->response);
@@ -371,14 +380,53 @@ static int on_message_complete(llhttp_t *parser) {
     if (handler) {
         // Call handler
         handler(&conn->request, &conn->response);
+
+        // Send response
+        libuv_send_response(conn, &conn->response);
     } else {
-        // 404 Not Found
-        http_response_set_json_error(&conn->response, 404, "Not Found");
+        // No handler matched - try to serve static file
+        // Build file path
+        char file_path[1024];
+        snprintf(file_path, sizeof(file_path), "%s%s",
+                 server->config.web_root, conn->request.path);
+
+        // Check if file exists
+        struct stat st;
+        if (stat(file_path, &st) == 0) {
+            // If it's a directory, try to serve index.html
+            if (S_ISDIR(st.st_mode)) {
+                snprintf(file_path, sizeof(file_path), "%s%s/index.html",
+                         server->config.web_root, conn->request.path);
+                if (stat(file_path, &st) != 0) {
+                    log_debug("Directory index not found: %s", file_path);
+                    http_response_set_json_error(&conn->response, 404, "Directory index not found");
+                    libuv_send_response(conn, &conn->response);
+                    goto handle_keepalive;
+                }
+            }
+
+            // Serve the file asynchronously
+            log_debug("Serving static file: %s", file_path);
+            extern int libuv_serve_file(libuv_connection_t *conn, const char *path,
+                                       const char *content_type, const char *extra_headers);
+            if (libuv_serve_file(conn, file_path, NULL, NULL) == 0) {
+                // File serving started successfully - don't send response here
+                // The file serve callbacks will handle the response
+                goto skip_keepalive;
+            } else {
+                log_error("Failed to serve file: %s", file_path);
+                http_response_set_json_error(&conn->response, 500, "Failed to serve file");
+                libuv_send_response(conn, &conn->response);
+            }
+        } else {
+            // File not found
+            log_debug("Static file not found: %s", file_path);
+            http_response_set_json_error(&conn->response, 404, "Not Found");
+            libuv_send_response(conn, &conn->response);
+        }
     }
 
-    // Send response
-    libuv_send_response(conn, &conn->response);
-
+handle_keepalive:
     // Handle keep-alive
     if (conn->keep_alive && llhttp_should_keep_alive(parser)) {
         libuv_connection_reset(conn);
@@ -386,6 +434,8 @@ static int on_message_complete(llhttp_t *parser) {
         libuv_connection_close(conn);
     }
 
+skip_keepalive:
+    // File serving is async, keep-alive will be handled in file serve callbacks
     return 0;
 }
 
