@@ -176,4 +176,24 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
  */
 void handle_batch_delete_progress(const http_request_t *req, http_response_t *res);
 
+/**
+ * @brief Backend-agnostic handler for GET /api/recordings/files/check
+ *
+ * Checks if a recording file exists and returns its metadata.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_check_recording_file(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Backend-agnostic handler for DELETE /api/recordings/files
+ *
+ * Deletes a recording file from the filesystem.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_delete_recording_file(const http_request_t *req, http_response_t *res);
+
 #endif /* API_HANDLERS_RECORDINGS_H */

@@ -144,6 +144,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Note: More specific routes must come before wildcard routes
     http_server_register_handler(server, "/api/recordings/play/#", "GET", handle_recordings_playback);
     http_server_register_handler(server, "/api/recordings/download/#", "GET", handle_recordings_download);
+    http_server_register_handler(server, "/api/recordings/files/check", "GET", handle_check_recording_file);
+    http_server_register_handler(server, "/api/recordings/files", "DELETE", handle_delete_recording_file);
     http_server_register_handler(server, "/api/recordings/batch-delete/progress/#", "GET", handle_batch_delete_progress);
     http_server_register_handler(server, "/api/recordings/batch-delete", "POST", handle_batch_delete_recordings);
     http_server_register_handler(server, "/api/recordings/protected", "GET", handle_get_protected_recordings);
@@ -155,11 +157,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/recordings/#", "DELETE", handle_delete_recording);
     http_server_register_handler(server, "/api/recordings", "GET", handle_get_recordings);
 
-    // TODO: Port remaining Mongoose-specific recordings file handlers to backend-agnostic:
-    // - GET /api/recordings/files/check
-    // - DELETE /api/recordings/files
-
-    log_info("Successfully registered %d API handlers", 68);  // Updated: added 4 recording handlers (get, delete, batch delete, batch progress)
+    log_info("Successfully registered %d API handlers", 70);  // Updated: added 6 recording handlers (get, delete, batch delete, batch progress, file check, file delete)
 
     return 0;
 }

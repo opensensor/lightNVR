@@ -1,3 +1,8 @@
+/**
+ * @file api_handlers_recordings_files.c
+ * @brief Backend-agnostic API handlers for recording file operations
+ */
+
 #define _XOPEN_SOURCE
 #define _GNU_SOURCE
 
@@ -9,84 +14,15 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <time.h>
+#include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
-#include "web/mongoose_server_multithreading.h"
-
-/**
- * @brief Structure for file operations task
- */
-typedef struct {
-    struct mg_connection *connection;  // Mongoose connection
-    char *path;                        // File path
-    char *operation;                   // Operation type (e.g., "check", "delete")
-} file_operation_task_t;
-
-/**
- * @brief Create a file operation task
- * 
- * @param c Mongoose connection
- * @param path File path
- * @param operation Operation type
- * @return file_operation_task_t* Pointer to the task or NULL on error
- */
-file_operation_task_t *file_operation_task_create(struct mg_connection *c, const char *path, const char *operation) {
-    file_operation_task_t *task = calloc(1, sizeof(file_operation_task_t));
-    if (!task) {
-        log_error("Failed to allocate memory for file operation task");
-        return NULL;
-    }
-    
-    task->connection = c;
-    
-    if (path) {
-        task->path = strdup(path);
-        if (!task->path) {
-            log_error("Failed to allocate memory for file path");
-            free(task);
-            return NULL;
-        }
-    } else {
-        task->path = NULL;
-    }
-    
-    if (operation) {
-        task->operation = strdup(operation);
-        if (!task->operation) {
-            log_error("Failed to allocate memory for operation");
-            if (task->path) free(task->path);
-            free(task);
-            return NULL;
-        }
-    } else {
-        task->operation = NULL;
-    }
-    
-    return task;
-}
-
-/**
- * @brief Free a file operation task
- * 
- * @param task Task to free
- */
-void file_operation_task_free(file_operation_task_t *task) {
-    if (task) {
-        if (task->path) {
-            free(task->path);
-        }
-        if (task->operation) {
-            free(task->operation);
-        }
-        free(task);
-    }
-}
 
 /**
  * @brief File operation task function
