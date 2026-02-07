@@ -12,7 +12,7 @@ ENABLE_GO2RTC=1
 # Default SOD linking mode
 SOD_DYNAMIC=0
 
-# HTTP backend: libuv (new) or mongoose (legacy)
+# HTTP backend: libuv (default, new) or mongoose (legacy, deprecated)
 HTTP_BACKEND="libuv"
 
 # Default go2rtc settings
@@ -80,6 +80,18 @@ while [[ $# -gt 0 ]]; do
             GO2RTC_API_PORT="${key#*=}"
             shift
             ;;
+        --http-backend=*)
+            HTTP_BACKEND="${key#*=}"
+            shift
+            ;;
+        --with-libuv)
+            HTTP_BACKEND="libuv"
+            shift
+            ;;
+        --with-mongoose)
+            HTTP_BACKEND="mongoose"
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -97,6 +109,9 @@ while [[ $# -gt 0 ]]; do
             echo "  --go2rtc-binary=PATH  Set go2rtc binary path (default: /usr/local/bin/go2rtc)"
             echo "  --go2rtc-config-dir=DIR  Set go2rtc config directory (default: /etc/lightnvr/go2rtc)"
             echo "  --go2rtc-api-port=PORT  Set go2rtc API port (default: 1984)"
+            echo "  --http-backend=BACKEND  Set HTTP backend: libuv (default) or mongoose"
+            echo "  --with-libuv       Use libuv + llhttp HTTP backend (default)"
+            echo "  --with-mongoose    Use Mongoose HTTP backend (deprecated)"
             echo "  --help             Show this help message"
             exit 0
             ;;
