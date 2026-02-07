@@ -60,9 +60,18 @@ export async function getGo2rtcApiPort() {
 
 /**
  * Get the go2rtc base URL for API calls
- * @returns {Promise<string>} - go2rtc base URL (e.g., "http://hostname:1984")
+ * When the page is loaded over HTTPS, returns the current origin so that
+ * WebRTC signaling goes through lightNVR's built-in go2rtc proxy (/api/webrtc)
+ * instead of directly to go2rtc on port 1984 (which would be blocked as mixed content).
+ * @returns {Promise<string>} - go2rtc base URL (e.g., "http://hostname:1984" or "https://hostname")
  */
 export async function getGo2rtcBaseUrl() {
+  // When served over HTTPS (e.g., behind an ingress/reverse proxy), we must
+  // use the same origin to avoid mixed-content blocks.  lightNVR already
+  // proxies /api/webrtc → localhost:1984 internally.
+  if (window.location.protocol === 'https:') {
+    return window.location.origin;
+  }
   const port = await getGo2rtcApiPort();
   return `http://${window.location.hostname}:${port}`;
 }

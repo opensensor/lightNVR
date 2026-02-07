@@ -53,7 +53,7 @@ RUN mkdir -p /usr/lib/pkgconfig && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
-# Build go2rtc from opensensor fork (includes memory leak fixes)
+# Build go2rtc from local submodule (AlexxIT/go2rtc v1.9.14)
 # Install Go for building go2rtc
 # Map dpkg architecture to Go architecture (armhf -> armv6l)
 RUN DPKG_ARCH=$(dpkg --print-architecture) && \
@@ -63,15 +63,13 @@ RUN DPKG_ARCH=$(dpkg --print-architecture) && \
         armhf) GO_ARCH="armv6l" ;; \
         *) echo "Unsupported architecture: $DPKG_ARCH" && exit 1 ;; \
     esac && \
-    curl -L "https://go.dev/dl/go1.23.4.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - && \
+    curl -L "https://go.dev/dl/go1.24.0.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - && \
     export PATH=$PATH:/usr/local/go/bin && \
     mkdir -p /bin /etc/lightnvr/go2rtc && \
-    # Clone and build go2rtc from opensensor fork
-    cd /tmp && \
-    git clone --depth 1 --branch feature/native-jpeg-transcode https://github.com/opensensor/go2rtc.git && \
-    cd go2rtc && \
+    # Build go2rtc from local submodule (already copied by COPY . .)
+    cd /opt/go2rtc && \
     CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
-    cd / && rm -rf /tmp/go2rtc /usr/local/go && \
+    cd /opt && rm -rf /usr/local/go && \
     chmod +x /bin/go2rtc && \
     # Create basic configuration file
     echo "# go2rtc configuration file" > /etc/lightnvr/go2rtc/go2rtc.yaml && \
