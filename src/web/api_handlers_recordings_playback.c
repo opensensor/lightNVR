@@ -117,27 +117,11 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
 
     log_info("Handling GET /api/recordings/play/%llu request", (unsigned long long)id);
 
-    // Check if this request is already being processed
-    if (is_request_active(id)) {
-        log_warn("Request for recording %llu already being processed, skipping duplicate",
-                (unsigned long long)id);
-        http_response_set_json_error(res, 429, "This recording is already being processed");
-        return;
-    }
-
-    // Mark this request as active
-    if (!mark_request_active(id)) {
-        log_error("Failed to mark request as active, too many concurrent requests");
-        http_response_set_json_error(res, 503, "Too many concurrent requests");
-        return;
-    }
-
     // Get recording from database
     recording_metadata_t recording = {0};
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
         http_response_set_json_error(res, 404, "Recording not found");
-        mark_request_inactive(id);
         return;
     }
 
@@ -145,7 +129,6 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
     if (recording.file_path[0] == '\0') {
         log_error("Recording has empty file path: %llu", (unsigned long long)id);
         http_response_set_json_error(res, 500, "Recording has invalid file path");
-        mark_request_inactive(id);
         return;
     }
 
@@ -154,7 +137,6 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
     if (stat(recording.file_path, &st) != 0) {
         log_error("Recording file not found: %s (error: %s)", recording.file_path, strerror(errno));
         http_response_set_json_error(res, 404, "Recording file not found");
-        mark_request_inactive(id);
         return;
     }
 
@@ -191,17 +173,15 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
     }
 
     // Serve the file using backend-agnostic function
+    // Note: For libuv backend, this is async and will complete in background callbacks
+    // For Mongoose backend, this completes synchronously
     log_info("Serving file for playback using backend-agnostic file server");
     if (http_serve_file(req, res, recording.file_path, content_type, headers) != 0) {
         log_error("Failed to serve file: %s", recording.file_path);
         http_response_set_json_error(res, 500, "Failed to serve file");
-        mark_request_inactive(id);
         return;
     }
 
-    // Mark the request as inactive
-    mark_request_inactive(id);
-
-    log_info("Successfully handled GET /api/recordings/play/%llu request", (unsigned long long)id);
+    log_info("File serving initiated for GET /api/recordings/play/%llu", (unsigned long long)id);
 }
 

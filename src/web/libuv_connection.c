@@ -438,12 +438,19 @@ static int on_message_complete(llhttp_t *parser) {
         }
     }
 
-    // Set user_data to point to server
-    conn->request.user_data = server;
+    // Set user_data to point to connection (needed for file serving)
+    conn->request.user_data = conn;
 
     if (handler) {
         // Call handler
         handler(&conn->request, &conn->response);
+
+        // Check if handler initiated async response (e.g., file serving)
+        if (conn->async_response_pending) {
+            // Handler will manage response and connection lifecycle
+            log_debug("on_message_complete: Async response pending, skipping response send");
+            goto skip_keepalive;
+        }
 
         // Send response
         libuv_send_response(conn, &conn->response);

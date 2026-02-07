@@ -21,6 +21,7 @@
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
+#include "web/api_handlers_recordings.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_users.h"
 #include "core/logger.h"
@@ -143,26 +144,22 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Note: More specific routes must come before wildcard routes
     http_server_register_handler(server, "/api/recordings/play/#", "GET", handle_recordings_playback);
     http_server_register_handler(server, "/api/recordings/download/#", "GET", handle_recordings_download);
+    http_server_register_handler(server, "/api/recordings/batch-delete/progress/#", "GET", handle_batch_delete_progress);
+    http_server_register_handler(server, "/api/recordings/batch-delete", "POST", handle_batch_delete_recordings);
     http_server_register_handler(server, "/api/recordings/protected", "GET", handle_get_protected_recordings);
     http_server_register_handler(server, "/api/recordings/batch-protect", "POST", handle_batch_protect_recordings);
     http_server_register_handler(server, "/api/recordings/sync", "POST", handle_post_recordings_sync);
     http_server_register_handler(server, "/api/recordings/#/protect", "PUT", handle_put_recording_protect);
     http_server_register_handler(server, "/api/recordings/#/retention", "PUT", handle_put_recording_retention);
+    http_server_register_handler(server, "/api/recordings/#", "GET", handle_get_recording);
+    http_server_register_handler(server, "/api/recordings/#", "DELETE", handle_delete_recording);
     http_server_register_handler(server, "/api/recordings", "GET", handle_get_recordings);
 
-    // TODO: Port remaining Mongoose-specific recordings handlers to backend-agnostic:
-    // - GET /api/recordings/:id (get single)
-    // - DELETE /api/recordings/:id
-    // - POST /api/recordings/batch-delete
-    // - GET /api/recordings/batch-delete/progress/:id
+    // TODO: Port remaining Mongoose-specific recordings file handlers to backend-agnostic:
     // - GET /api/recordings/files/check
     // - DELETE /api/recordings/files
-    //
-    // These handlers are in src/web/api_handlers_recordings_get.c and use Mongoose-specific
-    // mg_connection and mg_http_message types. They need to be refactored to use
-    // http_request_t and http_response_t.
 
-    log_info("Successfully registered %d API handlers", 64);  // Updated: added 6 user management handlers
+    log_info("Successfully registered %d API handlers", 68);  // Updated: added 4 recording handlers (get, delete, batch delete, batch progress)
 
     return 0;
 }

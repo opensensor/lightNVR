@@ -133,4 +133,47 @@ void mg_handle_check_recording_file(struct mg_connection *c, struct mg_http_mess
  */
 void mg_handle_delete_recording_file(struct mg_connection *c, struct mg_http_message *hm);
 
+/* Backend-Agnostic Recording Handlers */
+#include "web/request_response.h"
+
+/**
+ * @brief Backend-agnostic handler for GET /api/recordings/:id
+ *
+ * Gets detailed information about a single recording.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_get_recording(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Backend-agnostic handler for DELETE /api/recordings/:id
+ *
+ * Deletes a single recording from the database and filesystem.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_delete_recording(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Backend-agnostic handler for POST /api/recordings/batch-delete
+ *
+ * Initiates a batch delete operation and returns a job ID for progress tracking.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_batch_delete_recordings(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Backend-agnostic handler for GET /api/recordings/batch-delete/progress/:job_id
+ *
+ * Returns the progress status of a batch delete operation.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_batch_delete_progress(const http_request_t *req, http_response_t *res);
+
 #endif /* API_HANDLERS_RECORDINGS_H */

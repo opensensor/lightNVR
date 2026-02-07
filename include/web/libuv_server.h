@@ -77,6 +77,9 @@ typedef struct libuv_connection {
     // Keep-alive support
     bool keep_alive;                    // Connection should be kept alive
     int requests_handled;               // Number of requests on this connection
+
+    // Async response handling
+    bool async_response_pending;        // Async file serving or streaming in progress
 } libuv_connection_t;
 
 /**

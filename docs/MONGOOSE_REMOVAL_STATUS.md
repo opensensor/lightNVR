@@ -53,9 +53,13 @@ The following API handlers still use `struct mg_connection` and `struct mg_http_
 - ✅ `handle_auth_logout` - Backend-agnostic version exists
 - ✅ `handle_auth_verify` - Backend-agnostic version exists
 
-### User Management (Not Converted)
-- ❌ All user CRUD operations in `api_handlers_users.c`
-- ❌ API key generation handlers
+### User Management (✅ Converted)
+- ✅ `handle_users_list` - GET /api/auth/users
+- ✅ `handle_users_get` - GET /api/auth/users/:id
+- ✅ `handle_users_create` - POST /api/auth/users
+- ✅ `handle_users_update` - PUT /api/auth/users/:id
+- ✅ `handle_users_delete` - DELETE /api/auth/users/:id
+- ✅ `handle_users_generate_api_key` - POST /api/auth/users/:id/api-key
 
 ### ONVIF Discovery (✅ Converted)
 - ✅ `handle_get_onvif_discovery_status` - Backend-agnostic version

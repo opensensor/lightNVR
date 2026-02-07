@@ -122,14 +122,18 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
     if (!conn || !path) {
         return -1;
     }
-    
+
+    // Mark that async response is pending
+    conn->async_response_pending = true;
+
     // Allocate context
     file_serve_ctx_t *ctx = safe_calloc(1, sizeof(file_serve_ctx_t));
     if (!ctx) {
         log_error("libuv_serve_file: Failed to allocate context");
+        conn->async_response_pending = false;
         return -1;
     }
-    
+
     ctx->conn = conn;
     ctx->fd = -1;
     
@@ -153,6 +157,7 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
     if (!ctx->buffer) {
         log_error("libuv_serve_file: Failed to allocate buffer");
         safe_free(ctx);
+        conn->async_response_pending = false;
         return -1;
     }
     ctx->buffer_size = LIBUV_FILE_BUFFER_SIZE;
@@ -375,6 +380,9 @@ static void on_file_close(uv_fs_t *req) {
 
     uv_fs_req_cleanup(req);
     file_serve_cleanup(ctx);
+
+    // Clear async response flag
+    conn->async_response_pending = false;
 
     // Check if server is shutting down
     if (conn->server->shutting_down) {
