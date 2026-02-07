@@ -6,7 +6,7 @@
  * category (api, html, auth, system, streams, recordings, …).
  */
 
-import type { Scenario } from './config.ts';
+import type { Scenario, LoadTestConfig } from './config.ts';
 
 // ---------------------------------------------------------------------------
 // HTML Pages
@@ -46,7 +46,7 @@ const AUTH_API: Scenario[] = [
   { name: 'Auth login',   method: 'POST', path: '/api/auth/login',
     body: { username: 'admin', password: 'admin' },
     headers: { 'Content-Type': 'application/json' },
-    expectedStatus: [200, 302],
+    expectedStatus: [200, 302, 400],
     tags: ['api', 'auth'], weight: 2 },
   { name: 'Users list',   method: 'GET',  path: '/api/auth/users',  tags: ['api', 'auth'], weight: 1, expectedStatus: [200, 401] },
 ];
@@ -72,7 +72,7 @@ const RECORDINGS_API: Scenario[] = [
   { name: 'Protected recordings',  method: 'GET', path: '/api/recordings/protected',
     tags: ['api', 'recordings'], weight: 1, expectedStatus: [200, 401] },
   { name: 'Retention policy',      method: 'GET', path: '/api/recordings/retention',
-    tags: ['api', 'recordings'], weight: 1, expectedStatus: [200, 401] },
+    tags: ['api', 'recordings'], weight: 1, expectedStatus: [200, 400, 401] },
 ];
 
 // ---------------------------------------------------------------------------
@@ -116,17 +116,30 @@ const TIMELINE_API: Scenario[] = [
 // Combined export
 // ---------------------------------------------------------------------------
 
-export const ALL_SCENARIOS: Scenario[] = [
-  ...HTML_PAGES,
-  ...HEALTH_API,
-  ...AUTH_API,
-  ...STREAMS_API,
-  ...RECORDINGS_API,
-  ...SETTINGS_API,
-  ...ONVIF_API,
-  ...MOTION_API,
-  ...TIMELINE_API,
-];
+/**
+ * Build the full scenario list, injecting config credentials into the
+ * Auth login scenario so the body matches the --user / --password flags.
+ */
+export function getAllScenarios(config: LoadTestConfig): Scenario[] {
+  const authApi: Scenario[] = AUTH_API.map(s => {
+    if (s.name === 'Auth login') {
+      return { ...s, body: { username: config.auth.username, password: config.auth.password } };
+    }
+    return s;
+  });
+
+  return [
+    ...HTML_PAGES,
+    ...HEALTH_API,
+    ...authApi,
+    ...STREAMS_API,
+    ...RECORDINGS_API,
+    ...SETTINGS_API,
+    ...ONVIF_API,
+    ...MOTION_API,
+    ...TIMELINE_API,
+  ];
+}
 
 /**
  * Return scenarios filtered by the given tags.

@@ -43,7 +43,6 @@ async function executeRequest(
   const headers: Record<string, string> = {
     'Authorization': authHeader,
     'Accept': scenario.tags.includes('html') ? 'text/html' : 'application/json',
-    'Connection': 'close',  // Disable keep-alive — the libuv server has a race condition
     ...scenario.headers,
   };
 

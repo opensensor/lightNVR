@@ -9,7 +9,7 @@
  */
 
 import { parseArgs } from './config.ts';
-import { ALL_SCENARIOS, filterScenarios } from './scenarios.ts';
+import { getAllScenarios, filterScenarios } from './scenarios.ts';
 import { runLoadTest } from './runner.ts';
 import { printReport, writeCSV } from './reporter.ts';
 
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const config = parseArgs(process.argv);
 
   // Filter scenarios by tags
-  const scenarios = filterScenarios(ALL_SCENARIOS, config.tags);
+  const scenarios = filterScenarios(getAllScenarios(config), config.tags);
 
   console.log('\n🔧 lightNVR Load Test Harness');
   console.log('─'.repeat(40));
