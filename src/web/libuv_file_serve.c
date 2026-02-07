@@ -162,14 +162,210 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
     ctx->close_req.data = ctx;
     
     // Open file asynchronously
-    int r = uv_fs_open(conn->server->loop, &ctx->open_req, path, 
+    int r = uv_fs_open(conn->server->loop, &ctx->open_req, path,
                        UV_FS_O_RDONLY, 0, on_file_open);
     if (r != 0) {
         log_error("libuv_serve_file: Failed to start open: %s", uv_strerror(r));
         file_serve_cleanup(ctx);
         return -1;
     }
-    
+
     return 0;
 }
+
+/**
+ * @brief Cleanup file serve context
+ */
+static void file_serve_cleanup(file_serve_ctx_t *ctx) {
+    if (!ctx) return;
+
+    if (ctx->buffer) {
+        safe_free(ctx->buffer);
+    }
+
+    // Clean up uv_fs_t requests
+    uv_fs_req_cleanup(&ctx->open_req);
+    uv_fs_req_cleanup(&ctx->stat_req);
+    uv_fs_req_cleanup(&ctx->read_req);
+    uv_fs_req_cleanup(&ctx->close_req);
+
+    safe_free(ctx);
+}
+
+/**
+ * @brief File open callback
+ */
+static void on_file_open(uv_fs_t *req) {
+    file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+
+    if (req->result < 0) {
+        log_error("on_file_open: Failed to open file: %s", uv_strerror(req->result));
+
+        // Send 404 response
+        http_response_set_json_error(&ctx->conn->response, 404, "File Not Found");
+        libuv_send_response(ctx->conn, &ctx->conn->response);
+        file_serve_cleanup(ctx);
+        return;
+    }
+
+    ctx->fd = req->result;
+    uv_fs_req_cleanup(req);
+
+    // Get file stats
+    int r = uv_fs_fstat(ctx->conn->server->loop, &ctx->stat_req, ctx->fd, on_file_stat);
+    if (r != 0) {
+        log_error("on_file_open: Failed to start stat: %s", uv_strerror(r));
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+}
+
+/**
+ * @brief File stat callback
+ */
+static void on_file_stat(uv_fs_t *req) {
+    file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+
+    if (req->result < 0) {
+        log_error("on_file_stat: Failed to stat file: %s", uv_strerror(req->result));
+        http_response_set_json_error(&ctx->conn->response, 500, "Failed to stat file");
+        libuv_send_response(ctx->conn, &ctx->conn->response);
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
+    ctx->file_size = req->statbuf.st_size;
+    uv_fs_req_cleanup(req);
+
+    // Handle Range header
+    if (ctx->has_range) {
+        const char *range_header = http_request_get_header(&ctx->conn->request, "Range");
+        if (!libuv_parse_range_header(range_header, ctx->file_size,
+                                       &ctx->range_start, &ctx->range_end)) {
+            // Invalid range - send 416
+            http_response_set_json_error(&ctx->conn->response, 416,
+                                         "Requested Range Not Satisfiable");
+            libuv_send_response(ctx->conn, &ctx->conn->response);
+            uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+            return;
+        }
+        ctx->offset = ctx->range_start;
+        ctx->remaining = ctx->range_end - ctx->range_start + 1;
+    } else {
+        ctx->offset = 0;
+        ctx->remaining = ctx->file_size;
+        ctx->range_start = 0;
+        ctx->range_end = ctx->file_size - 1;
+    }
+
+    // Send headers
+    char headers[1024];
+    int len;
+
+    if (ctx->has_range) {
+        len = snprintf(headers, sizeof(headers),
+            "HTTP/1.1 206 Partial Content\r\n"
+            "Content-Type: %s\r\n"
+            "Content-Length: %zu\r\n"
+            "Content-Range: bytes %zu-%zu/%zu\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Connection: keep-alive\r\n"
+            "\r\n",
+            ctx->content_type, ctx->remaining,
+            ctx->range_start, ctx->range_end, ctx->file_size);
+    } else {
+        len = snprintf(headers, sizeof(headers),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: %s\r\n"
+            "Content-Length: %zu\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Connection: keep-alive\r\n"
+            "\r\n",
+            ctx->content_type, ctx->file_size);
+    }
+
+    char *header_buf = safe_malloc(len);
+    if (!header_buf) {
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+    memcpy(header_buf, headers, len);
+
+    libuv_connection_send(ctx->conn, header_buf, len, true);
+    ctx->headers_sent = true;
+
+    // Start sending file content
+    send_file_chunk(ctx);
+}
+
+/**
+ * @brief Send next chunk of file
+ */
+static void send_file_chunk(file_serve_ctx_t *ctx) {
+    if (ctx->remaining == 0) {
+        // Done sending file
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
+    size_t to_read = ctx->remaining < ctx->buffer_size ? ctx->remaining : ctx->buffer_size;
+
+    uv_buf_t buf = uv_buf_init(ctx->buffer, to_read);
+    int r = uv_fs_read(ctx->conn->server->loop, &ctx->read_req, ctx->fd,
+                       &buf, 1, ctx->offset, on_file_read);
+    if (r != 0) {
+        log_error("send_file_chunk: Failed to start read: %s", uv_strerror(r));
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+    }
+}
+
+/**
+ * @brief File read callback
+ */
+static void on_file_read(uv_fs_t *req) {
+    file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+
+    if (req->result < 0) {
+        log_error("on_file_read: Read error: %s", uv_strerror(req->result));
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
+    if (req->result == 0) {
+        // EOF
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
+    size_t bytes_read = req->result;
+    uv_fs_req_cleanup(req);
+
+    // Copy data to a new buffer for sending (async write needs its own buffer)
+    char *send_buf = safe_malloc(bytes_read);
+    if (!send_buf) {
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+    memcpy(send_buf, ctx->buffer, bytes_read);
+
+    // Send this chunk
+    libuv_connection_send(ctx->conn, send_buf, bytes_read, true);
+
+    ctx->offset += bytes_read;
+    ctx->remaining -= bytes_read;
+
+    // Continue with next chunk
+    send_file_chunk(ctx);
+}
+
+/**
+ * @brief File close callback
+ */
+static void on_file_close(uv_fs_t *req) {
+    file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
+    uv_fs_req_cleanup(req);
+    file_serve_cleanup(ctx);
+}
+
+#endif /* HTTP_BACKEND_LIBUV */
 

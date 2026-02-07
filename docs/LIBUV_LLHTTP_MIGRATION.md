@@ -183,13 +183,40 @@ else()
 endif()
 ```
 
+## Implementation Status
+
+| Component | Status | File(s) |
+|-----------|--------|---------|
+| libuv_server.h interface | ✅ Complete | `include/web/libuv_server.h` |
+| libuv_connection.h | ✅ Complete | `include/web/libuv_connection.h` |
+| Core event loop | ✅ Complete | `src/web/libuv_server.c` |
+| llhttp request parsing | ✅ Complete | `src/web/libuv_connection.c` |
+| Response serialization | ✅ Complete | `src/web/libuv_response.c` |
+| Async file serving | ✅ Complete | `src/web/libuv_file_serve.c` |
+| TLS integration | ⏸️ Deferred | Headers have placeholder |
+| Build system (CMake) | ✅ Complete | `CMakeLists.txt` |
+
+## Building with libuv Backend
+
+```bash
+# Install dependencies (Ubuntu/Debian)
+sudo apt-get install libuv1-dev
+
+# Build with libuv backend
+mkdir build && cd build
+cmake -DHTTP_BACKEND=libuv ..
+make
+
+# Or keep using Mongoose (default)
+cmake ..
+make
+```
+
 ## Next Steps
 
-1. **Create libuv_server.h** - Define interface matching mongoose_server
-2. **Implement core event loop** - TCP listener, connection handling
-3. **Integrate llhttp** - Request parsing to http_request_t
-4. **Response serialization** - http_response_t to wire format
-5. **File serving** - Async file I/O with sendfile optimization
-6. **TLS integration** - OpenSSL/mbedTLS on top of libuv
-7. **Testing** - Benchmark against Mongoose under load
+1. **Test basic HTTP handling** - Verify request/response flow works
+2. **Port remaining handlers** - Convert 10 files still using Mongoose types
+3. **Add TLS support** - Integrate OpenSSL/mbedTLS when base is stable
+4. **Benchmark** - Compare throughput vs Mongoose under concurrent load
+5. **Unified event loop** - Share loop with RTSP, timers, etc.
 

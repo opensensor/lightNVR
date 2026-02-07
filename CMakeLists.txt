@@ -21,6 +21,10 @@ option(ENABLE_SSL "Enable SSL/TLS support" OFF)
 option(USE_MBEDTLS "Use mbedTLS instead of OpenSSL (if SSL is enabled)" OFF)
 option(USE_WOLFSSL "Use WolfSSL instead of OpenSSL (if SSL is enabled)" OFF)
 
+# HTTP backend option: mongoose (default) or libuv
+set(HTTP_BACKEND "mongoose" CACHE STRING "HTTP server backend: mongoose or libuv")
+set_property(CACHE HTTP_BACKEND PROPERTY STRINGS mongoose libuv)
+
 # Define TLS constants (from mongoose.h)
 set(MG_TLS_NONE 0)
 set(MG_TLS_MBED 1)
@@ -215,25 +219,67 @@ if(ENABLE_SOD)
     endif()
 endif()
 
-# Set up Mongoose (required component)
-# Check if Mongoose is already in external directory, if not download it
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
-    message(STATUS "Mongoose not found, will download it")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
-    file(DOWNLOAD
-            "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.c"
-            "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c"
-            SHOW_PROGRESS
+# HTTP Backend Configuration
+if(HTTP_BACKEND STREQUAL "libuv")
+    message(STATUS "Using libuv + llhttp HTTP backend")
+    add_definitions(-DHTTP_BACKEND_LIBUV)
+
+    # Find libuv
+    pkg_check_modules(LIBUV REQUIRED libuv)
+
+    # llhttp - try to find via pkg-config first, otherwise use bundled
+    pkg_check_modules(LLHTTP QUIET libllhttp)
+    if(NOT LLHTTP_FOUND)
+        # Check if llhttp is in external directory
+        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp/llhttp.c")
+            message(STATUS "llhttp not found, please install libllhttp-dev or add to external/llhttp")
+            message(FATAL_ERROR "llhttp library required for libuv backend")
+        endif()
+        set(LLHTTP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp/llhttp.c")
+        add_library(llhttp_lib STATIC ${LLHTTP_SOURCES})
+        target_include_directories(llhttp_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp")
+        set(HTTP_BACKEND_LIBS llhttp_lib ${LIBUV_LIBRARIES})
+    else()
+        set(HTTP_BACKEND_LIBS ${LLHTTP_LIBRARIES} ${LIBUV_LIBRARIES})
+    endif()
+
+    set(HTTP_BACKEND_INCLUDE_DIRS ${LIBUV_INCLUDE_DIRS} ${LLHTTP_INCLUDE_DIRS})
+
+    # libuv server sources
+    set(LIBUV_SERVER_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_server.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_connection.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_response.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_file_serve.c"
     )
-    file(DOWNLOAD
-            "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.h"
-            "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.h"
-            SHOW_PROGRESS
-    )
+else()
+    message(STATUS "Using Mongoose HTTP backend (default)")
+    add_definitions(-DHTTP_BACKEND_MONGOOSE)
+
+    # Set up Mongoose
+    # Check if Mongoose is already in external directory, if not download it
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
+        message(STATUS "Mongoose not found, will download it")
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
+        file(DOWNLOAD
+                "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.c"
+                "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c"
+                SHOW_PROGRESS
+        )
+        file(DOWNLOAD
+                "https://raw.githubusercontent.com/cesanta/mongoose/master/mongoose.h"
+                "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.h"
+                SHOW_PROGRESS
+        )
+    endif()
+    set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
+    add_library(mongoose_lib STATIC ${MONGOOSE_SOURCES})
+    target_include_directories(mongoose_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
+
+    set(HTTP_BACKEND_LIBS mongoose_lib)
+    set(HTTP_BACKEND_INCLUDE_DIRS "")
+    set(LIBUV_SERVER_SOURCES "")
 endif()
-set(MONGOOSE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose/mongoose.c")
-add_library(mongoose_lib STATIC ${MONGOOSE_SOURCES})
-target_include_directories(mongoose_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose")
 
 # Set up inih library
 set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
@@ -261,6 +307,11 @@ if(CJSON_INCLUDE_DIRS)
     list(APPEND LIGHTNVR_INCLUDE_DIRS ${CJSON_INCLUDE_DIRS})
 endif()
 
+# Add HTTP backend include directories
+if(HTTP_BACKEND_INCLUDE_DIRS)
+    list(APPEND LIGHTNVR_INCLUDE_DIRS ${HTTP_BACKEND_INCLUDE_DIRS})
+endif()
+
 # Apply include directories
 include_directories(${LIGHTNVR_INCLUDE_DIRS})
 
@@ -273,10 +324,22 @@ file(GLOB_RECURSE UTILS_SOURCES "src/utils/*.c")
 list(FILTER UTILS_SOURCES EXCLUDE REGEX ".*rebuild_recordings\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from main executable")
 file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
+
+# Filter web sources based on HTTP backend
+if(HTTP_BACKEND STREQUAL "libuv")
+    # Exclude libuv sources from glob (they're explicitly added via LIBUV_SERVER_SOURCES)
+    list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
+else()
+    # Exclude libuv sources when using mongoose backend
+    list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
+endif()
+
 file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
 # Exclude sod.c and rebuild_recordings.c from ROOT_SOURCES to avoid static linking and multiple main functions
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*utils/rebuild_recordings\\.c$")
+# Also exclude libuv sources from ROOT_SOURCES (they're added separately if needed)
+list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
 
 # Explicitly list video sources to exclude motion_detection_optimized.c, detection_thread_pool.c,
@@ -334,6 +397,11 @@ if(ENABLE_GO2RTC)
     list(APPEND SOURCES ${GO2RTC_SOURCES})
 endif()
 
+# Add libuv server sources if using libuv backend
+if(HTTP_BACKEND STREQUAL "libuv")
+    list(APPEND SOURCES ${LIBUV_SERVER_SOURCES})
+endif()
+
 # Define the shared library
 add_library(lightnvr_lib STATIC ${SOURCES})
 target_include_directories(lightnvr_lib PUBLIC ${LIGHTNVR_INCLUDE_DIRS})
@@ -341,6 +409,11 @@ target_include_directories(lightnvr_lib PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/external/mongoose"
     "${CMAKE_CURRENT_SOURCE_DIR}/external/inih"
 )
+
+# Add HTTP backend include directories to library
+if(HTTP_BACKEND_INCLUDE_DIRS)
+    target_include_directories(lightnvr_lib PRIVATE ${HTTP_BACKEND_INCLUDE_DIRS})
+endif()
 
 # Define the main executable
 add_executable(lightnvr src/core/main.c)
@@ -373,7 +446,7 @@ set_target_properties(lightnvr rebuild_recordings PROPERTIES
 # Link libraries for main executable
 target_link_libraries(lightnvr
         lightnvr_lib
-        mongoose_lib
+        ${HTTP_BACKEND_LIBS}
         inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
@@ -388,7 +461,7 @@ target_link_libraries(lightnvr
 # Link libraries for rebuild_recordings utility
 target_link_libraries(rebuild_recordings
         lightnvr_lib
-        mongoose_lib
+        ${HTTP_BACKEND_LIBS}
         inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
@@ -479,6 +552,7 @@ add_dependencies(lightnvr generate_version_js)
 
 # Print build information
 message(STATUS "Building LightNVR ${PROJECT_VERSION} with the following configuration:")
+message(STATUS "- HTTP backend: ${HTTP_BACKEND}")
 message(STATUS "- SOD object detection: ${ENABLE_SOD}")
 if(ENABLE_SOD)
     if(SOD_DYNAMIC_LINK)

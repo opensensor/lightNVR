@@ -12,6 +12,9 @@ ENABLE_GO2RTC=1
 # Default SOD linking mode
 SOD_DYNAMIC=0
 
+# HTTP backend: libuv (new) or mongoose (legacy)
+HTTP_BACKEND="libuv"
+
 # Default go2rtc settings
 GO2RTC_BINARY_PATH="/usr/local/bin/go2rtc"
 GO2RTC_CONFIG_DIR="/etc/lightnvr/go2rtc"
