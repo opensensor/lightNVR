@@ -377,7 +377,7 @@ list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*mongoose_adapter.*\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_users\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_onvif\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_recordings_files\\.c$")
-list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_timeline\\.c$")
+# api_handlers_timeline.c is now backend-agnostic - DO NOT EXCLUDE
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_go2rtc_proxy\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
 
