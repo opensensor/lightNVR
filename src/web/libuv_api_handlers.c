@@ -22,6 +22,7 @@
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
 #include "web/api_handlers_recordings.h"
+#include "web/api_handlers_timeline.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_users.h"
 #include "core/logger.h"
