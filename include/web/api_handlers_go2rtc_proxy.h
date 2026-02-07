@@ -83,4 +83,15 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
 void mg_handle_go2rtc_webrtc_config(struct mg_connection *c, struct mg_http_message *hm);
 
 
+/**
+ * @brief Generic go2rtc proxy handler
+ *
+ * Forwards the request to go2rtc at localhost:1984, preserving URI and query.
+ * Used for HLS endpoints (stream.m3u8, hls/*) and other go2rtc APIs.
+ *
+ * @param c Mongoose connection
+ * @param hm Mongoose HTTP message
+ */
+void mg_handle_go2rtc_proxy(struct mg_connection *c, struct mg_http_message *hm);
+
 #endif /* API_HANDLERS_GO2RTC_PROXY_H */

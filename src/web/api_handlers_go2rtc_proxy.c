@@ -634,6 +634,90 @@ void mg_handle_go2rtc_webrtc_ice_options(struct mg_connection *c, struct mg_http
 
 
 /**
+ * @brief Generic go2rtc proxy handler
+ *
+ * Forwards any request to go2rtc at localhost:1984, preserving the URI path
+ * and query string.  Used for HLS endpoints (stream.m3u8, hls/playlist.m3u8,
+ * hls/segment.ts, hls/init.mp4, hls/segment.m4s) and any other go2rtc API
+ * that doesn't need special lightNVR processing.
+ */
+void mg_handle_go2rtc_proxy(struct mg_connection *c, struct mg_http_message *hm) {
+    // Check authentication
+    http_server_t *server = (http_server_t *)c->fn_data;
+    if (server && server->config.auth_enabled) {
+        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+            log_debug("Auth failed for go2rtc proxy request");
+            mg_send_json_error(c, 401, "Unauthorized");
+            return;
+        }
+    }
+
+    // Build the go2rtc URL: http://localhost:1984/<uri>[?<query>]
+    char uri[URL_BUFFER_SIZE] = {0};
+    size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
+    memcpy(uri, hm->uri.buf, uri_len);
+    uri[uri_len] = '\0';
+
+    char url[URL_BUFFER_SIZE];
+    if (hm->query.len > 0) {
+        char query[URL_BUFFER_SIZE] = {0};
+        size_t q_len = hm->query.len < sizeof(query) - 1 ? hm->query.len : sizeof(query) - 1;
+        memcpy(query, hm->query.buf, q_len);
+        query[q_len] = '\0';
+        snprintf(url, sizeof(url), "http://localhost:1984%s?%s", uri, query);
+    } else {
+        snprintf(url, sizeof(url), "http://localhost:1984%s", uri);
+    }
+
+    log_debug("go2rtc proxy: %s", url);
+
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        log_error("go2rtc proxy: curl_easy_init failed");
+        mg_send_json_error(c, 500, "Internal error");
+        return;
+    }
+
+    struct curl_response response = {0};
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        log_error("go2rtc proxy: curl failed: %s", curl_easy_strerror(res));
+        mg_send_json_error(c, 502, "go2rtc unavailable");
+        curl_easy_cleanup(curl);
+        free(response.data);
+        return;
+    }
+
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    // Determine Content-Type from the go2rtc response
+    char *ct = NULL;
+    curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct);
+    const char *content_type = ct ? ct : "application/octet-stream";
+
+    // Build response headers
+    char hdrs[512];
+    snprintf(hdrs, sizeof(hdrs),
+        "Content-Type: %s\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Connection: close\r\n",
+        content_type);
+
+    mg_http_reply(c, (int)http_code, hdrs, "%.*s",
+                  (int)(response.size), response.data ? response.data : "");
+
+    curl_easy_cleanup(curl);
+    free(response.data);
+}
+
+/**
  * @brief Handler for GET /api/webrtc/config
  *
  * Returns WebRTC configuration (including ICE servers) from the go2rtc config.

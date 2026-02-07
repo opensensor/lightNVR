@@ -149,7 +149,12 @@ static const mg_api_route_t s_api_routes[] = {
     {"GET", "/api/recordings/#", mg_handle_get_recording, false},  // Wildcard - must be after specific routes
     {"DELETE", "/api/recordings/#", mg_handle_delete_recording, true},  // Wildcard - must be after specific routes
 
-    // No direct HLS handlers - handled by static file handler
+    // go2rtc HLS proxy routes (forwarded to go2rtc at localhost:1984)
+    {"GET", "/api/stream.m3u8", mg_handle_go2rtc_proxy, false},
+    {"GET", "/api/hls/playlist.m3u8", mg_handle_go2rtc_proxy, false},
+    {"GET", "/api/hls/segment.ts", mg_handle_go2rtc_proxy, false},
+    {"GET", "/api/hls/init.mp4", mg_handle_go2rtc_proxy, false},
+    {"GET", "/api/hls/segment.m4s", mg_handle_go2rtc_proxy, false},
 
     // go2rtc WebRTC API
     {"GET", "/api/webrtc/config", mg_handle_go2rtc_webrtc_config, false},  // GET WebRTC config from go2rtc
