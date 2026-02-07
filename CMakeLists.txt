@@ -289,7 +289,7 @@ set(LIBUV_SERVER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_api_handlers.c"
 )
 
-# Mongoose has been completely removed - all handlers now use libuv backend
+
 
 # Set up inih library
 set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
@@ -555,7 +555,7 @@ add_dependencies(lightnvr generate_version_js)
 
 # Print build information
 message(STATUS "Building LightNVR ${PROJECT_VERSION} with the following configuration:")
-message(STATUS "- HTTP backend: libuv + llhttp (mongoose removed)")
+message(STATUS "- HTTP backend: libuv + llhttp")
 message(STATUS "- SOD object detection: ${ENABLE_SOD}")
 if(ENABLE_SOD)
     if(SOD_DYNAMIC_LINK)
