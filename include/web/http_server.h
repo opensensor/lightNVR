@@ -1,6 +1,6 @@
 /**
  * @file http_server.h
- * @brief HTTP server implementation using Mongoose
+ * @brief HTTP server interface
  */
 
 #ifndef HTTP_SERVER_H
@@ -10,11 +10,6 @@
 #include <stdbool.h>
 #include <time.h>
 #include "request_response.h"
-
-// Forward declaration of Mongoose structures
-struct mg_mgr;
-struct mg_connection;
-struct mg_http_message;
 
 // Forward declarations
 
@@ -44,7 +39,6 @@ typedef struct {
  * @brief HTTP server structure
  */
 typedef struct http_server {
-    struct mg_mgr *mgr;             // Mongoose event manager
     http_server_config_t config;    // Server configuration
     bool running;                   // Server running flag
     
@@ -176,25 +170,5 @@ int http_server_set_max_connections(http_server_handle_t server, int max_connect
  * @return int 0 on success, non-zero on error
  */
 int http_server_set_connection_timeout(http_server_handle_t server, int timeout_seconds);
-
-/**
- * @brief Convert Mongoose HTTP message to HTTP request
- * 
- * @param conn Mongoose connection
- * @param msg Mongoose HTTP message
- * @param request HTTP request to fill
- * @return int 0 on success, non-zero on error
- */
-int http_server_mg_to_request(struct mg_connection *conn, struct mg_http_message *msg, 
-                             http_request_t *request);
-
-/**
- * @brief Send HTTP response using Mongoose
- * 
- * @param conn Mongoose connection
- * @param response HTTP response
- * @return int 0 on success, non-zero on error
- */
-int http_server_send_response(struct mg_connection *conn, const http_response_t *response);
 
 #endif /* HTTP_SERVER_H */

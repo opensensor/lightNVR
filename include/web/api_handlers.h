@@ -13,16 +13,6 @@
 #include "web/request_response.h"
 
 /**
- * @brief Register API handlers
- *
- * This function registers API handlers that work directly with Mongoose's
- * HTTP message format, eliminating the need for conversion between formats.
- *
- * @param mgr Mongoose event manager
- */
-void register_api_handlers(struct mg_mgr *mgr);
-
-/**
  * @brief Backend-agnostic handler for GET /api/streams
  */
 void handle_get_streams(const http_request_t *req, http_response_t *res);
@@ -40,93 +30,55 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res);
 
 
 /**
- * @brief Direct handler for POST /api/streams
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for POST /api/streams
  */
 void handle_post_stream(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for PUT /api/streams/:id
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for PUT /api/streams/:id
  */
 void handle_put_stream(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for DELETE /api/streams/:id
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for DELETE /api/streams/:id
  */
 void handle_delete_stream(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for POST /api/streams/:id/refresh
+ * @brief Handler for POST /api/streams/:id/refresh
  *
  * Triggers a re-registration of the stream with go2rtc.
  * Useful when WebRTC connections fail and the stream needs to be refreshed.
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
  */
 void handle_post_stream_refresh(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for POST /api/streams/:id/toggle_streaming
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
- */
-void mg_handle_toggle_streaming(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * @brief Direct handler for GET /api/settings
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for GET /api/settings
  */
 void handle_get_settings(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for POST /api/settings
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for POST /api/settings
  */
 void handle_post_settings(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for GET /api/system/info
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for GET /api/system/info
  */
 void handle_get_system_info(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for GET /api/system/logs
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for GET /api/system/logs
  */
 void handle_get_system_logs(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for POST /api/system/restart
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for POST /api/system/restart
  */
 void handle_post_system_restart(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Direct handler for POST /api/system/shutdown
- *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Handler for POST /api/system/shutdown
  */
 void handle_post_system_shutdown(const http_request_t *req, http_response_t *res);
 
