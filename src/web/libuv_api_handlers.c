@@ -21,6 +21,7 @@
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
+#include "web/api_handlers_onvif.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -121,6 +122,14 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/auth/verify", "GET", handle_auth_verify);
     http_server_register_handler(server, "/logout", "GET", handle_auth_logout);  // Simple GET logout route
 
+    // ONVIF API (backend-agnostic handlers)
+    http_server_register_handler(server, "/api/onvif/discovery/status", "GET", handle_get_onvif_discovery_status);
+    http_server_register_handler(server, "/api/onvif/devices", "GET", handle_get_discovered_onvif_devices);
+    http_server_register_handler(server, "/api/onvif/discovery/discover", "POST", handle_post_discover_onvif_devices);
+    http_server_register_handler(server, "/api/onvif/device/profiles", "GET", handle_get_onvif_device_profiles);
+    http_server_register_handler(server, "/api/onvif/device/add", "POST", handle_post_add_onvif_device_as_stream);
+    http_server_register_handler(server, "/api/onvif/device/test", "POST", handle_post_test_onvif_connection);
+
     // Recordings API (backend-agnostic handlers)
     // Note: More specific routes must come before wildcard routes
     http_server_register_handler(server, "/api/recordings/play/#", "GET", handle_recordings_playback);
@@ -155,7 +164,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // These handlers are in src/web/api_handlers_users.c and use Mongoose-specific types.
     // They need to be refactored to use http_request_t and http_response_t.
 
-    log_info("Successfully registered %d API handlers", 52);  // Update count as we add more
+    log_info("Successfully registered %d API handlers", 58);  // Update count as we add more
 
     return 0;
 }

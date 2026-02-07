@@ -57,13 +57,8 @@ void init_recordings_system(void);
 #include "database/db_recordings_sync.h"
 #include <sqlite3.h>
 #include "web/http_server.h"
-#ifdef HTTP_BACKEND_LIBUV
 #include "web/libuv_server.h"
 #include "web/libuv_api_handlers.h"
-#else
-#include "web/mongoose_server.h"
-#include "mongoose.h"
-#endif
 #include "web/api_handlers.h"
 #include "web/api_handlers_health.h"
 #include "web/batch_delete_progress.h"
@@ -968,11 +963,10 @@ int main(int argc, char *argv[]) {
         strncpy(server_config.password, config.web_password, sizeof(server_config.password) - 1);
     }
 
-    // Initialize HTTP server (libuv or mongoose based on build configuration)
+    // Initialize HTTP server (libuv + llhttp)
     log_info("Initializing web server on port %d (daemon_mode: %s)",
              config.web_port, daemon_mode ? "true" : "false");
 
-#ifdef HTTP_BACKEND_LIBUV
     http_server = libuv_server_init(&server_config);
     if (!http_server) {
         log_error("Failed to initialize libuv web server");
@@ -997,32 +991,16 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     log_info("Static file handler registered successfully");
-#else
-    http_server = mongoose_server_init(&server_config);
-    if (!http_server) {
-        log_error("Failed to initialize Mongoose web server");
-        goto cleanup;
-    }
-    log_info("Mongoose web server initialized successfully");
-#endif
 
     log_info("Starting web server...");
     if (http_server_start(http_server) != 0) {
-#ifdef HTTP_BACKEND_LIBUV
         log_error("Failed to start libuv web server on port %d", config.web_port);
-#else
-        log_error("Failed to start Mongoose web server on port %d", config.web_port);
-#endif
         http_server_destroy(http_server);
         http_server = NULL;  // Prevent double-free in cleanup
         goto cleanup;
     }
 
-#ifdef HTTP_BACKEND_LIBUV
     log_info("libuv web server started successfully on port %d", config.web_port);
-#else
-    log_info("Mongoose web server started successfully on port %d", config.web_port);
-#endif
 
     // Initialize and start health check system for web server self-healing
     init_health_check_system();
