@@ -184,7 +184,7 @@ The web interface provides:
 - REST API for programmatic access
 
 Key files:
-- `src/web/mongoose_server.c`: Web server implementation using Mongoose
+- `src/web/libuv_server.c`: Web server implementation using libuv + llhttp
 - `src/web/api_handlers.c`: API request routing
 - `src/web/api_handlers_streams*.c`: Stream API endpoints
 - `src/web/api_handlers_recordings*.c`: Recording API endpoints
@@ -220,7 +220,7 @@ LightNVR uses a multi-threaded architecture:
 
 1. **Main Thread**: Application lifecycle, signal handling, shutdown coordination
 2. **go2rtc Process**: Separate process managed by LightNVR (handles all camera I/O)
-3. **Mongoose Server Thread**: HTTP/WebSocket event loop
+3. **HTTP Server Thread**: HTTP/WebSocket event loop (libuv)
 4. **Per-Request Threads**: API requests handled in thread pool
 5. **HLS Writer Threads**: One per stream writing HLS segments
 6. **MP4 Recording Threads**: One per active MP4 recording

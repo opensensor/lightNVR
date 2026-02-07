@@ -1284,8 +1284,8 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
  * It's useful when WebRTC connections fail and the stream needs to be refreshed
  * without changing any configuration.
  *
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @param req HTTP request
+ * @param res HTTP response
  */
 void handle_post_stream_refresh(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/streams/:name/refresh request");

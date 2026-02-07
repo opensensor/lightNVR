@@ -941,7 +941,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Initialize Mongoose web server with direct handlers
+    // Initialize web server with direct handlers
     http_server_config_t server_config = {
         .port = config.web_port,
         .web_root = config.web_root,

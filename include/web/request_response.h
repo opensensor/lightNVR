@@ -173,7 +173,7 @@ int url_decode(const char *src, char *dst, size_t dst_size);
 /**
  * @brief Serve a file with range request support (backend-agnostic)
  *
- * This function serves a file using the appropriate backend (Mongoose or libuv).
+ * This function serves a file using the libuv backend.
  * It automatically handles:
  * - Range requests for video seeking
  * - MIME type detection

@@ -173,8 +173,7 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
     }
 
     // Serve the file using backend-agnostic function
-    // Note: For libuv backend, this is async and will complete in background callbacks
-    // For Mongoose backend, this completes synchronously
+    // Note: This is async and will complete in background callbacks
     log_info("Serving file for playback using backend-agnostic file server");
     if (http_serve_file(req, res, recording.file_path, content_type, headers) != 0) {
         log_error("Failed to serve file: %s", recording.file_path);

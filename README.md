@@ -516,7 +516,8 @@ LightNVR is built on the shoulders of giants. Special thanks to:
 - **[FFmpeg](https://ffmpeg.org/)** - Video processing and codec support
 - **[go2rtc](https://github.com/AlexxIT/go2rtc)** - WebRTC and RTSP streaming engine
 - **[SQLite](https://www.sqlite.org/)** - Efficient embedded database
-- **[Mongoose](https://github.com/cesanta/mongoose)** - Embedded web server
+- **[libuv](https://github.com/libuv/libuv)** - Cross-platform async I/O library
+- **[llhttp](https://github.com/nodejs/llhttp)** - HTTP parser
 - **[cJSON](https://github.com/DaveGamble/cJSON)** - Lightweight JSON parser
 
 ### Frontend Stack

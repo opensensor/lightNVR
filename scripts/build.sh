@@ -12,7 +12,7 @@ ENABLE_GO2RTC=1
 # Default SOD linking mode
 SOD_DYNAMIC=0
 
-# HTTP backend: libuv (default, new) or mongoose (legacy, deprecated)
+# HTTP backend
 HTTP_BACKEND="libuv"
 
 # Default go2rtc settings
@@ -88,10 +88,6 @@ while [[ $# -gt 0 ]]; do
             HTTP_BACKEND="libuv"
             shift
             ;;
-        --with-mongoose)
-            HTTP_BACKEND="mongoose"
-            shift
-            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -109,9 +105,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --go2rtc-binary=PATH  Set go2rtc binary path (default: /usr/local/bin/go2rtc)"
             echo "  --go2rtc-config-dir=DIR  Set go2rtc config directory (default: /etc/lightnvr/go2rtc)"
             echo "  --go2rtc-api-port=PORT  Set go2rtc API port (default: 1984)"
-            echo "  --http-backend=BACKEND  Set HTTP backend: libuv (default) or mongoose"
+            echo "  --http-backend=BACKEND  Set HTTP backend (default: libuv)"
             echo "  --with-libuv       Use libuv + llhttp HTTP backend (default)"
-            echo "  --with-mongoose    Use Mongoose HTTP backend (deprecated)"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -188,11 +183,7 @@ fi
 # Configure HTTP backend
 HTTP_BACKEND_OPTION="-DHTTP_BACKEND=$HTTP_BACKEND"
 echo "Building with HTTP backend: $HTTP_BACKEND"
-if [ "$HTTP_BACKEND" = "libuv" ]; then
-    echo "  Using libuv + llhttp (event-driven async I/O)"
-else
-    echo "  Using Mongoose (deprecated, will be removed)"
-fi
+echo "  Using libuv + llhttp (event-driven async I/O)"
 
 # Create a temporary CMake module to find the custom FFmpeg
 mkdir -p cmake/modules
