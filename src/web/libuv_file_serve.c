@@ -1,7 +1,7 @@
 /**
  * @file libuv_file_serve.c
  * @brief Async file serving for libuv HTTP server
- * 
+ *
  * Uses libuv's async file I/O (uv_fs_*) for non-blocking file serving.
  * Supports Range requests for video seeking.
  */
@@ -11,12 +11,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <llhttp.h>
 #include <uv.h>
 
+#include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "core/logger.h"
-#include "utils/memory.h"
 
 // Forward declarations
 static void on_file_open(uv_fs_t *req);

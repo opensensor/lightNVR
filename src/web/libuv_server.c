@@ -8,20 +8,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <uv.h>
 #include <llhttp.h>
+#include <uv.h>
 
+#include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "core/logger.h"
-#include "utils/memory.h"
 
 // Initial handler capacity
 #define INITIAL_HANDLER_CAPACITY 32
 
 // Forward declarations
 static void on_connection(uv_stream_t *server, int status);
-static void *server_thread_func(void *arg);
+static void server_thread_func(void *arg);
 
 /**
  * @brief Initialize libuv server with configuration
@@ -163,7 +163,7 @@ int libuv_server_start(http_server_handle_t handle) {
 /**
  * @brief Server thread function - runs the event loop
  */
-static void *server_thread_func(void *arg) {
+static void server_thread_func(void *arg) {
     libuv_server_t *server = (libuv_server_t *)arg;
 
     log_info("libuv_server: Event loop thread started");
@@ -174,7 +174,6 @@ static void *server_thread_func(void *arg) {
     }
 
     log_info("libuv_server: Event loop thread exiting");
-    return NULL;
 }
 
 /**
@@ -324,6 +323,30 @@ static void on_connection(uv_stream_t *listener, int status) {
         log_error("on_connection: Failed to start reading: %s", uv_strerror(r));
         libuv_connection_close(conn);
     }
+}
+
+/**
+ * @brief Generic wrapper functions for API compatibility
+ *
+ * These provide the generic http_server_* API that the rest of the codebase expects,
+ * mapping to the libuv-specific implementations.
+ */
+
+int http_server_start(http_server_handle_t server) {
+    return libuv_server_start(server);
+}
+
+void http_server_stop(http_server_handle_t server) {
+    libuv_server_stop(server);
+}
+
+void http_server_destroy(http_server_handle_t server) {
+    libuv_server_destroy(server);
+}
+
+int http_server_register_handler(http_server_handle_t server, const char *path,
+                                 const char *method, request_handler_t handler) {
+    return libuv_server_register_handler(server, path, method, handler);
 }
 
 #endif /* HTTP_BACKEND_LIBUV */

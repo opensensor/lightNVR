@@ -185,6 +185,15 @@ else
     echo "Building without go2rtc integration"
 fi
 
+# Configure HTTP backend
+HTTP_BACKEND_OPTION="-DHTTP_BACKEND=$HTTP_BACKEND"
+echo "Building with HTTP backend: $HTTP_BACKEND"
+if [ "$HTTP_BACKEND" = "libuv" ]; then
+    echo "  Using libuv + llhttp (event-driven async I/O)"
+else
+    echo "  Using Mongoose (deprecated, will be removed)"
+fi
+
 # Create a temporary CMake module to find the custom FFmpeg
 mkdir -p cmake/modules
 cat > cmake/modules/FindFFmpeg.cmake << 'EOF'
@@ -269,7 +278,7 @@ cd "$BUILD_DIR"
 
 # Use our custom module path
 CMAKE_MODULE_PATH="$(pwd)/../../cmake/modules"
-cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $GO2RTC_OPTION $FFMPEG_CMAKE_OPTIONS \
+cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $GO2RTC_OPTION $HTTP_BACKEND_OPTION $FFMPEG_CMAKE_OPTIONS \
       -DCMAKE_MODULE_PATH="$CMAKE_MODULE_PATH" ../..
 
 # Return to project root

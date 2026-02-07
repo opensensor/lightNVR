@@ -227,19 +227,66 @@ if(HTTP_BACKEND STREQUAL "libuv")
     # Find libuv
     pkg_check_modules(LIBUV REQUIRED libuv)
 
-    # llhttp - try to find via pkg-config first, otherwise use bundled
+    # llhttp - try to find via pkg-config first, otherwise download and build
     pkg_check_modules(LLHTTP QUIET libllhttp)
     if(NOT LLHTTP_FOUND)
-        # Check if llhttp is in external directory
-        if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp/llhttp.c")
-            message(STATUS "llhttp not found, please install libllhttp-dev or add to external/llhttp")
-            message(FATAL_ERROR "llhttp library required for libuv backend")
+        # Check if llhttp is in external directory, if not download it
+        set(LLHTTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp")
+        if(NOT EXISTS "${LLHTTP_DIR}/src/llhttp.c")
+            message(STATUS "llhttp not found, downloading from GitHub...")
+            file(MAKE_DIRECTORY "${LLHTTP_DIR}")
+            file(MAKE_DIRECTORY "${LLHTTP_DIR}/src")
+            file(MAKE_DIRECTORY "${LLHTTP_DIR}/include")
+
+            # Download llhttp release (v9.2.1 - stable release)
+            set(LLHTTP_VERSION "release/v9.2.1")
+            set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_VERSION}")
+
+            file(DOWNLOAD
+                "${LLHTTP_BASE_URL}/src/llhttp.c"
+                "${LLHTTP_DIR}/src/llhttp.c"
+                SHOW_PROGRESS
+                STATUS DOWNLOAD_STATUS
+            )
+            list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
+            if(NOT STATUS_CODE EQUAL 0)
+                message(FATAL_ERROR "Failed to download llhttp.c")
+            endif()
+
+            file(DOWNLOAD
+                "${LLHTTP_BASE_URL}/src/api.c"
+                "${LLHTTP_DIR}/src/api.c"
+                SHOW_PROGRESS
+            )
+
+            file(DOWNLOAD
+                "${LLHTTP_BASE_URL}/src/http.c"
+                "${LLHTTP_DIR}/src/http.c"
+                SHOW_PROGRESS
+            )
+
+            file(DOWNLOAD
+                "${LLHTTP_BASE_URL}/include/llhttp.h"
+                "${LLHTTP_DIR}/include/llhttp.h"
+                SHOW_PROGRESS
+            )
+
+            message(STATUS "llhttp downloaded successfully")
         endif()
-        set(LLHTTP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp/llhttp.c")
+
+        # Build llhttp from source
+        set(LLHTTP_SOURCES
+            "${LLHTTP_DIR}/src/llhttp.c"
+            "${LLHTTP_DIR}/src/api.c"
+            "${LLHTTP_DIR}/src/http.c"
+        )
         add_library(llhttp_lib STATIC ${LLHTTP_SOURCES})
-        target_include_directories(llhttp_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp")
+        target_include_directories(llhttp_lib PUBLIC "${LLHTTP_DIR}/include")
         set(HTTP_BACKEND_LIBS llhttp_lib ${LIBUV_LIBRARIES})
+        set(LLHTTP_INCLUDE_DIRS "${LLHTTP_DIR}/include")
+        message(STATUS "Building llhttp from source")
     else()
+        message(STATUS "Found llhttp via pkg-config: ${LLHTTP_LIBRARIES}")
         set(HTTP_BACKEND_LIBS ${LLHTTP_LIBRARIES} ${LIBUV_LIBRARIES})
     endif()
 
@@ -251,6 +298,7 @@ if(HTTP_BACKEND STREQUAL "libuv")
         "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_connection.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_response.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_file_serve.c"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_api_handlers.c"
     )
 else()
     message(STATUS "Using Mongoose HTTP backend (default)")
@@ -327,6 +375,9 @@ file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
 
 # Filter web sources based on HTTP backend
 if(HTTP_BACKEND STREQUAL "libuv")
+    # Exclude mongoose-specific sources when using libuv backend
+    list(FILTER WEB_SOURCES EXCLUDE REGEX ".*mongoose_server.*\\.c$")
+    list(FILTER WEB_SOURCES EXCLUDE REGEX ".*mongoose_adapter.*\\.c$")
     # Exclude libuv sources from glob (they're explicitly added via LIBUV_SERVER_SOURCES)
     list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
 else()
@@ -340,6 +391,11 @@ list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*utils/rebuild_recordings\\.c$")
 # Also exclude libuv sources from ROOT_SOURCES (they're added separately if needed)
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
+# Exclude mongoose-specific sources when using libuv backend
+if(HTTP_BACKEND STREQUAL "libuv")
+    list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*mongoose_server.*\\.c$")
+    list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*mongoose_adapter.*\\.c$")
+endif()
 message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
 
 # Explicitly list video sources to exclude motion_detection_optimized.c, detection_thread_pool.c,

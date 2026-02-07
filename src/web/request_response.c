@@ -10,6 +10,13 @@
 #include "web/web_server.h"
 #include "core/logger.h"
 
+#ifdef HTTP_BACKEND_LIBUV
+#include "web/libuv_server.h"
+#else
+#include "mongoose.h"
+#include "web/mongoose_adapter.h"
+#endif
+
 #define MAX_HEADER_SIZE 8192
 #define RECV_BUFFER_SIZE 4096
 
@@ -225,4 +232,46 @@ int http_response_set_json_error(http_response_t *res, int status_code, const ch
     int ret = http_response_set_json(res, status_code, json_buf);
     free(json_buf);
     return ret;
+}
+
+int http_serve_file(const http_request_t *req, http_response_t *res,
+                    const char *file_path, const char *content_type,
+                    const char *extra_headers) {
+    if (!req || !res || !file_path) {
+        log_error("http_serve_file: Invalid parameters");
+        return -1;
+    }
+
+#ifdef HTTP_BACKEND_LIBUV
+    // For libuv backend, we need the connection from user_data
+    libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
+    if (!conn) {
+        log_error("http_serve_file: No connection in request user_data");
+        return -1;
+    }
+    return libuv_serve_file(conn, file_path, content_type, extra_headers);
+#else
+    // For Mongoose backend, we need the connection from user_data
+    struct mg_connection *c = (struct mg_connection *)req->user_data;
+    if (!c) {
+        log_error("http_serve_file: No connection in request user_data");
+        return -1;
+    }
+
+    // We also need the HTTP message for range requests
+    // It should be stored in response->user_data by the adapter
+    struct mg_http_message *hm = (struct mg_http_message *)res->user_data;
+    if (!hm) {
+        log_error("http_serve_file: No HTTP message in response user_data");
+        return -1;
+    }
+
+    // Use Mongoose's file serving
+    struct mg_http_serve_opts opts = {0};
+    opts.mime_types = content_type ? content_type : "";
+    opts.extra_headers = extra_headers;
+
+    mg_http_serve_file(c, hm, file_path, &opts);
+    return 0;
+#endif
 }

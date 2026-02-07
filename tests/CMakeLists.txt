@@ -61,7 +61,7 @@ if(ENABLE_SOD)
         sod
         sqlite3
         curl
-        mongoose_lib
+        ${HTTP_BACKEND_LIBS}
         inih_lib
     )
     if(CJSON_BUNDLED)
@@ -84,7 +84,7 @@ if(ENABLE_SOD)
         sod
         sqlite3
         curl
-        mongoose_lib
+        ${HTTP_BACKEND_LIBS}
         inih_lib
     )
     if(CJSON_BUNDLED)
@@ -121,7 +121,7 @@ target_link_libraries(test_db_backup
     ${SSL_LIBRARIES}  # Add SSL libraries which include mbedcrypto
     pthread
     dl
-    mongoose_lib
+    ${HTTP_BACKEND_LIBS}
     inih_lib
 )
 if(ENABLE_MQTT AND MOSQUITTO_FOUND)
@@ -154,7 +154,7 @@ target_link_libraries(test_stream_detection
     dl
     sqlite3
     curl
-    mongoose_lib
+    ${HTTP_BACKEND_LIBS}
     inih_lib
 )
 if(CJSON_BUNDLED)
@@ -196,7 +196,7 @@ target_link_libraries(test_go2rtc_recovery
     dl
     sqlite3
     curl
-    mongoose_lib
+    ${HTTP_BACKEND_LIBS}
     inih_lib
 )
 if(CJSON_BUNDLED)

@@ -14,8 +14,8 @@
 
 #ifdef HTTP_BACKEND_LIBUV
 
-#include <uv.h>
 #include <llhttp.h>
+#include <uv.h>
 #include "web/http_server.h"
 #include "web/request_response.h"
 

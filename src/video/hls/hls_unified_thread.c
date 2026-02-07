@@ -165,8 +165,8 @@ static pthread_mutex_t pending_deletions_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define WATCHDOG_MAX_RESTART_ATTEMPTS 5  // Maximum number of restart attempts
 #define WATCHDOG_RESTART_COOLDOWN_SEC 300  // 5 minutes between restart attempts
 
-// Function to allocate memory with guard bytes
-static void *safe_malloc(size_t size) {
+// Function to allocate memory with guard bytes (HLS-specific with guard pattern)
+static void *hls_guarded_malloc(size_t size) {
     // Allocate extra space for guard bytes
     size_t total_size = size + (2 * MEMORY_GUARD_SIZE);
     unsigned char *mem = malloc(total_size);
@@ -184,8 +184,8 @@ static void *safe_malloc(size_t size) {
     return mem + MEMORY_GUARD_SIZE;
 }
 
-// Function to free memory allocated with safe_malloc
-void *safe_free(void *ptr) {
+// Function to free memory allocated with hls_guarded_malloc
+static void *hls_guarded_free(void *ptr) {
     if (!ptr) {
         return NULL;
     }
@@ -2079,7 +2079,7 @@ void *hls_unified_thread_func(void *arg) {
                 clear_context_pending_deletion(ctx_to_free);
 
                 // Free the context with additional protection
-                safe_free(ctx_to_free);
+                hls_guarded_free(ctx_to_free);
 
                 // Cancel the alarm and restore signal handler
                 alarm(0);
@@ -2313,7 +2313,7 @@ int start_hls_unified_stream(const char *stream_name) {
     clear_stream_hls_segments(stream_name);
 
     // Create context with memory guards
-    hls_unified_thread_ctx_t *ctx = safe_malloc(sizeof(hls_unified_thread_ctx_t));
+    hls_unified_thread_ctx_t *ctx = hls_guarded_malloc(sizeof(hls_unified_thread_ctx_t));
     if (!ctx) {
         log_error("Memory allocation failed for unified HLS context");
         return -1;
@@ -2405,14 +2405,14 @@ int start_hls_unified_stream(const char *stream_name) {
         // Create the final directory
         if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
             log_error("Failed to create output directory: %s (error: %s)", temp_path, strerror(errno));
-            safe_free(ctx);
+            hls_guarded_free(ctx);
             return -1;
         }
 
         // Verify the directory was created
         if (stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
             log_error("Failed to verify output directory: %s", ctx->output_path);
-            safe_free(ctx);
+            hls_guarded_free(ctx);
             return -1;
         }
     }
@@ -2473,7 +2473,7 @@ int start_hls_unified_stream(const char *stream_name) {
 
     if (thread_result != 0) {
         log_error("Failed to create unified HLS thread for %s", stream_name);
-        safe_free(ctx);
+        hls_guarded_free(ctx);
         return -1;
     }
 
@@ -2803,7 +2803,7 @@ int stop_hls_unified_stream(const char *stream_name) {
                     clear_context_pending_deletion(ctx_to_free);
 
                     // Free the context with additional protection
-                    safe_free(ctx_to_free);
+                    hls_guarded_free(ctx_to_free);
 
                     // Cancel the alarm and restore signal handler
                     alarm(0);
@@ -2843,7 +2843,7 @@ int stop_hls_unified_stream(const char *stream_name) {
             mark_context_as_freed(extra_ctx);
 
             // Free the context
-            safe_free(extra_ctx);
+            av_free(extra_ctx);
 
             log_info("Cleaned up additional HLS context for stream %s", stream_name);
         }

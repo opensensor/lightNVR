@@ -8,13 +8,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <uv.h>
+#include <strings.h>
 #include <llhttp.h>
+#include <uv.h>
 
+#include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "core/logger.h"
-#include "utils/memory.h"
 
 // Forward declarations for llhttp callbacks
 static int on_url(llhttp_t *parser, const char *at, size_t length);
@@ -243,13 +244,15 @@ static int on_url(llhttp_t *parser, const char *at, size_t length) {
     const char *method = llhttp_method_name(llhttp_get_method(parser));
     strncpy(conn->request.method_str, method, sizeof(conn->request.method_str) - 1);
 
-    // Map to enum
-    if (strcmp(method, "GET") == 0) conn->request.method = HTTP_GET;
-    else if (strcmp(method, "POST") == 0) conn->request.method = HTTP_POST;
-    else if (strcmp(method, "PUT") == 0) conn->request.method = HTTP_PUT;
-    else if (strcmp(method, "DELETE") == 0) conn->request.method = HTTP_DELETE;
-    else if (strcmp(method, "OPTIONS") == 0) conn->request.method = HTTP_OPTIONS;
-    else if (strcmp(method, "HEAD") == 0) conn->request.method = HTTP_HEAD;
+    // Map to enum (using HTTP_METHOD_ prefix to avoid llhttp conflicts)
+    if (strcmp(method, "GET") == 0) conn->request.method = HTTP_METHOD_GET;
+    else if (strcmp(method, "POST") == 0) conn->request.method = HTTP_METHOD_POST;
+    else if (strcmp(method, "PUT") == 0) conn->request.method = HTTP_METHOD_PUT;
+    else if (strcmp(method, "DELETE") == 0) conn->request.method = HTTP_METHOD_DELETE;
+    else if (strcmp(method, "OPTIONS") == 0) conn->request.method = HTTP_METHOD_OPTIONS;
+    else if (strcmp(method, "HEAD") == 0) conn->request.method = HTTP_METHOD_HEAD;
+    else if (strcmp(method, "PATCH") == 0) conn->request.method = HTTP_METHOD_PATCH;
+    else conn->request.method = HTTP_METHOD_UNKNOWN;
 
     return 0;
 }

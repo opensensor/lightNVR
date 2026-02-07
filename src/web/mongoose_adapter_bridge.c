@@ -22,13 +22,14 @@
  * Parse method string to enum
  */
 static http_method_t parse_method(const char *method) {
-    if (strcasecmp(method, "GET") == 0) return HTTP_GET;
-    if (strcasecmp(method, "POST") == 0) return HTTP_POST;
-    if (strcasecmp(method, "PUT") == 0) return HTTP_PUT;
-    if (strcasecmp(method, "DELETE") == 0) return HTTP_DELETE;
-    if (strcasecmp(method, "OPTIONS") == 0) return HTTP_OPTIONS;
-    if (strcasecmp(method, "HEAD") == 0) return HTTP_HEAD;
-    return HTTP_GET; // default
+    if (strcasecmp(method, "GET") == 0) return HTTP_METHOD_GET;
+    if (strcasecmp(method, "POST") == 0) return HTTP_METHOD_POST;
+    if (strcasecmp(method, "PUT") == 0) return HTTP_METHOD_PUT;
+    if (strcasecmp(method, "DELETE") == 0) return HTTP_METHOD_DELETE;
+    if (strcasecmp(method, "OPTIONS") == 0) return HTTP_METHOD_OPTIONS;
+    if (strcasecmp(method, "HEAD") == 0) return HTTP_METHOD_HEAD;
+    if (strcasecmp(method, "PATCH") == 0) return HTTP_METHOD_PATCH;
+    return HTTP_METHOD_UNKNOWN;
 }
 
 int http_server_mg_to_request(struct mg_connection *conn, struct mg_http_message *msg,

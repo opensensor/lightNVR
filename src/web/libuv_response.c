@@ -8,12 +8,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <llhttp.h>
 #include <uv.h>
 
+#include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "core/logger.h"
-#include "utils/memory.h"
 
 // HTTP status reason phrases
 static const char *get_status_phrase(int status_code) {

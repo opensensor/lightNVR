@@ -13,14 +13,16 @@
 // Maximum query string parameters
 #define MAX_QUERY_PARAMS 32
 
-// HTTP methods
+// HTTP methods (prefixed with HTTP_METHOD_ to avoid conflicts with llhttp)
 typedef enum {
-    HTTP_GET,
-    HTTP_POST,
-    HTTP_PUT,
-    HTTP_DELETE,
-    HTTP_OPTIONS,
-    HTTP_HEAD
+    HTTP_METHOD_GET,
+    HTTP_METHOD_POST,
+    HTTP_METHOD_PUT,
+    HTTP_METHOD_DELETE,
+    HTTP_METHOD_OPTIONS,
+    HTTP_METHOD_HEAD,
+    HTTP_METHOD_PATCH,
+    HTTP_METHOD_UNKNOWN
 } http_method_t;
 
 // HTTP header structure
@@ -167,5 +169,26 @@ void http_response_free(http_response_t *res);
  * @return 0 on success, -1 on error
  */
 int url_decode(const char *src, char *dst, size_t dst_size);
+
+/**
+ * @brief Serve a file with range request support (backend-agnostic)
+ *
+ * This function serves a file using the appropriate backend (Mongoose or libuv).
+ * It automatically handles:
+ * - Range requests for video seeking
+ * - MIME type detection
+ * - Proper HTTP status codes (200, 206, 404, 416)
+ * - CORS headers
+ *
+ * @param req HTTP request (used to get Range header and backend connection)
+ * @param res HTTP response (may be modified for error responses)
+ * @param file_path Path to the file to serve
+ * @param content_type MIME type (or NULL for auto-detection)
+ * @param extra_headers Additional headers to include (or NULL)
+ * @return 0 on success, -1 on error
+ */
+int http_serve_file(const http_request_t *req, http_response_t *res,
+                    const char *file_path, const char *content_type,
+                    const char *extra_headers);
 
 #endif /* REQUEST_RESPONSE_H */

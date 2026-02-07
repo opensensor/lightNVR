@@ -11,6 +11,7 @@
 
 #ifdef HTTP_BACKEND_LIBUV
 
+#include <llhttp.h>
 #include <uv.h>
 #include "web/libuv_server.h"
 
