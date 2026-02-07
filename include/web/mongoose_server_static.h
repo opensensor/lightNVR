@@ -13,8 +13,23 @@ struct mg_connection;
 struct mg_http_message;
 
 /**
+ * @brief Read file from disk and write a complete HTTP response to connection's send buffer.
+ *
+ * Unlike mg_http_serve_file(), this writes the ENTIRE response (headers + body)
+ * at once, making it safe for use with fake connections in worker threads.
+ *
+ * @param c Mongoose connection (can be a real or fake connection)
+ * @param path Path to the file on disk
+ * @param content_type MIME content type (e.g., "text/html")
+ * @param extra_headers Additional HTTP headers (each ending with \r\n), or NULL
+ * @return true if file was served successfully, false otherwise
+ */
+bool serve_file_buffered(struct mg_connection *c, const char *path,
+                         const char *content_type, const char *extra_headers);
+
+/**
  * @brief Handle static file request
- * 
+ *
  * @param c Mongoose connection
  * @param hm Mongoose HTTP message
  * @param server HTTP server

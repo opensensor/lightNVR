@@ -25,6 +25,16 @@ export function LiveView({isWebRTCDisabled}) {
 
   // State for streams and layout
   const [streams, setStreams] = useState([]);
+
+  // State for toggling stream labels and controls visibility
+  const [showLabels, setShowLabels] = useState(() => {
+    const stored = localStorage.getItem('lightnvr-show-labels');
+    return stored !== null ? stored === 'true' : true;
+  });
+  const [showControls, setShowControls] = useState(() => {
+    const stored = localStorage.getItem('lightnvr-show-controls');
+    return stored !== null ? stored === 'true' : true;
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   // Initialize layout from URL or localStorage if available
@@ -400,6 +410,49 @@ export function LiveView({isWebRTCDisabled}) {
           )}
 
           <button
+            className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showLabels ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            onClick={() => {
+              const newVal = !showLabels;
+              setShowLabels(newVal);
+              localStorage.setItem('lightnvr-show-labels', String(newVal));
+            }}
+            title={showLabels ? 'Hide Stream Labels' : 'Show Stream Labels'}
+          >
+            {/* Tag/label icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+              <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              {!showLabels && <line x1="2" y1="22" x2="22" y2="2" stroke="currentColor" strokeWidth="2"></line>}
+            </svg>
+          </button>
+
+          <button
+            className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showControls ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            onClick={() => {
+              const newVal = !showControls;
+              setShowControls(newVal);
+              localStorage.setItem('lightnvr-show-controls', String(newVal));
+            }}
+            title={showControls ? 'Hide Stream Controls' : 'Show Stream Controls'}
+          >
+            {/* Sliders/controls icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14"></line>
+              <line x1="4" y1="10" x2="4" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12" y2="3"></line>
+              <line x1="20" y1="21" x2="20" y2="16"></line>
+              <line x1="20" y1="12" x2="20" y2="3"></line>
+              <line x1="1" y1="14" x2="7" y2="14"></line>
+              <line x1="9" y1="8" x2="15" y2="8"></line>
+              <line x1="17" y1="16" x2="23" y2="16"></line>
+              {!showControls && <line x1="2" y1="22" x2="22" y2="2" stroke="currentColor" strokeWidth="2"></line>}
+            </svg>
+          </button>
+
+          <button
             id="fullscreen-btn"
             className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
             onClick={() => toggleFullscreen()}
@@ -467,6 +520,8 @@ export function LiveView({isWebRTCDisabled}) {
                 onToggleFullscreen={toggleStreamFullscreen}
                 streamId={stream.name} // Add explicit streamId prop to prevent re-renders
                 initDelay={index * 500} // Stagger initialization by 500ms per stream
+                showLabels={showLabels}
+                showControls={showControls}
               />
             ))
           )}

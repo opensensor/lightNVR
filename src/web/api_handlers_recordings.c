@@ -12,6 +12,7 @@
 #include <time.h>
 
 #include "web/api_handlers.h"
+#include "web/mongoose_server_static.h"
 #include "core/logger.h"
 #include "mongoose.h"
 #include "database/db_recordings.h"
@@ -62,23 +63,16 @@ void serve_mp4_file(struct mg_connection *c, const char *file_path, const char *
         return;
     }
     
-    // Set headers for streaming playback
-    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-    mg_printf(c, "Content-Type: video/mp4\r\n");
-    mg_printf(c, "Content-Length: %ld\r\n", st.st_size);
-    mg_printf(c, "Content-Disposition: attachment; filename=\"%s\"\r\n", filename);
-    mg_printf(c, "Accept-Ranges: bytes\r\n");
-    mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
-    mg_printf(c, "Cache-Control: max-age=3600\r\n");
-    mg_printf(c, "\r\n");
-    
-    // Use mg_http_serve_file for efficient file serving
-    struct mg_http_serve_opts opts = {
-        .mime_types = "mp4=video/mp4",
-        .extra_headers = "Content-Disposition: attachment; filename=\"%s\"\r\n"
-    };
-    
-    mg_http_serve_file(c, NULL, file_path, &opts);
+    // Build extra headers for download
+    char extra_headers[512];
+    snprintf(extra_headers, sizeof(extra_headers),
+             "Content-Disposition: attachment; filename=\"%s\"\r\n"
+             "Access-Control-Allow-Origin: *\r\n"
+             "Cache-Control: max-age=3600\r\n"
+             "Connection: close\r\n",
+             filename);
+
+    serve_file_buffered(c, file_path, "video/mp4", extra_headers);
 }
 
 /**
@@ -101,24 +95,17 @@ void serve_file_for_download(struct mg_connection *c, const char *file_path, con
         mg_http_reply(c, 404, headers, "{\"error\": \"File not found\"}");
         return;
     }
-    
-    // Set headers for download
-    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-    mg_printf(c, "Content-Type: application/octet-stream\r\n");
-    mg_printf(c, "Content-Length: %ld\r\n", st.st_size);
-    mg_printf(c, "Content-Disposition: attachment; filename=\"%s\"\r\n", filename);
-    mg_printf(c, "Accept-Ranges: bytes\r\n");
-    mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
-    mg_printf(c, "Cache-Control: max-age=3600\r\n");
-    mg_printf(c, "\r\n");
-    
-    // Use mg_http_serve_file for efficient file serving
-    struct mg_http_serve_opts opts = {
-        .mime_types = "mp4=application/octet-stream",
-        .extra_headers = "Content-Disposition: attachment; filename=\"%s\"\r\n"
-    };
-    
-    mg_http_serve_file(c, NULL, file_path, &opts);
+
+    // Build extra headers for download
+    char extra_headers[512];
+    snprintf(extra_headers, sizeof(extra_headers),
+             "Content-Disposition: attachment; filename=\"%s\"\r\n"
+             "Access-Control-Allow-Origin: *\r\n"
+             "Cache-Control: max-age=3600\r\n"
+             "Connection: close\r\n",
+             filename);
+
+    serve_file_buffered(c, file_path, "application/octet-stream", extra_headers);
 }
 
 /**
@@ -200,23 +187,16 @@ void serve_download_file(struct mg_connection *c, const char *file_path, const c
         }
     }
     
-    // Set headers for download
-    mg_printf(c, "HTTP/1.1 200 OK\r\n");
-    mg_printf(c, "Content-Type: %s\r\n", content_type);
-    mg_printf(c, "Content-Length: %ld\r\n", st.st_size);
-    mg_printf(c, "Content-Disposition: attachment; filename=\"%s\"\r\n", filename);
-    mg_printf(c, "Accept-Ranges: bytes\r\n");
-    mg_printf(c, "Access-Control-Allow-Origin: *\r\n");
-    mg_printf(c, "Cache-Control: max-age=3600\r\n");
-    mg_printf(c, "\r\n");
-    
-    // Use mg_http_serve_file for efficient file serving
-    struct mg_http_serve_opts opts = {
-        .mime_types = "mp4=video/mp4",
-        .extra_headers = "Content-Disposition: attachment; filename=\"%s\"\r\n"
-    };
-    
-    mg_http_serve_file(c, NULL, file_path, &opts);
+    // Build extra headers for download
+    char extra_headers[512];
+    snprintf(extra_headers, sizeof(extra_headers),
+             "Content-Disposition: attachment; filename=\"%s\"\r\n"
+             "Access-Control-Allow-Origin: *\r\n"
+             "Cache-Control: max-age=3600\r\n"
+             "Connection: close\r\n",
+             filename);
+
+    serve_file_buffered(c, file_path, content_type, extra_headers);
 }
 
 /**

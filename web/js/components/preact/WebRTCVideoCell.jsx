@@ -25,7 +25,9 @@ import adapter from 'webrtc-adapter';
 export function WebRTCVideoCell({
   stream,
   streamId,
-  onToggleFullscreen
+  onToggleFullscreen,
+  showLabels = true,
+  showControls = true
 }) {
   // Component state
   const [isLoading, setIsLoading] = useState(true);
@@ -864,47 +866,50 @@ export function WebRTCVideoCell({
       )}
 
       {/* Stream name overlay with connection quality indicator */}
-      <div
-        className="stream-name-overlay"
-        style={{
-          position: 'absolute',
-          top: '10px',
-          left: '10px',
-          padding: '5px 10px',
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          color: 'white',
-          borderRadius: '4px',
-          fontSize: '14px',
-          zIndex: 3,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}
-      >
-        {stream.name}
-        
-        {/* Connection quality indicator - only show when we have quality data and stream is playing */}
-        {isPlaying && connectionQuality !== 'unknown' && (
-          <div 
-            className={`connection-quality-indicator quality-${connectionQuality}`}
-            title={`Connection Quality: ${connectionQuality.charAt(0).toUpperCase() + connectionQuality.slice(1)}`}
-            style={{
-              width: '10px',
-              height: '10px',
-              borderRadius: '50%',
-              backgroundColor: 
-                connectionQuality === 'good' ? '#10B981' :  // Green
-                connectionQuality === 'fair' ? '#FBBF24' :  // Yellow
-                connectionQuality === 'poor' ? '#F97316' :  // Orange
-                connectionQuality === 'bad' ? '#EF4444' :   // Red
-                '#6B7280',                                  // Gray (unknown)
-              boxShadow: '0 0 4px rgba(0, 0, 0, 0.3)'
-            }}
-          />
-        )}
-      </div>
+      {showLabels && (
+        <div
+          className="stream-name-overlay"
+          style={{
+            position: 'absolute',
+            top: '10px',
+            left: '10px',
+            padding: '5px 10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            color: 'white',
+            borderRadius: '4px',
+            fontSize: '14px',
+            zIndex: 3,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          {stream.name}
+
+          {/* Connection quality indicator - only show when we have quality data and stream is playing */}
+          {isPlaying && connectionQuality !== 'unknown' && (
+            <div
+              className={`connection-quality-indicator quality-${connectionQuality}`}
+              title={`Connection Quality: ${connectionQuality.charAt(0).toUpperCase() + connectionQuality.slice(1)}`}
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor:
+                  connectionQuality === 'good' ? '#10B981' :  // Green
+                  connectionQuality === 'fair' ? '#FBBF24' :  // Yellow
+                  connectionQuality === 'poor' ? '#F97316' :  // Orange
+                  connectionQuality === 'bad' ? '#EF4444' :   // Red
+                  '#6B7280',                                  // Gray (unknown)
+                boxShadow: '0 0 4px rgba(0, 0, 0, 0.3)'
+              }}
+            />
+          )}
+        </div>
+      )}
 
       {/* Stream controls */}
+      {showControls && (
       <div
         className="stream-controls"
         style={{
@@ -1104,6 +1109,32 @@ export function WebRTCVideoCell({
             </svg>
           </button>
         )}
+        {/* Force refresh stream button */}
+        {isPlaying && (
+          <button
+            className="force-refresh-btn"
+            title="Force Refresh Stream"
+            onClick={handleRetry}
+            style={{
+              backgroundColor: 'transparent',
+              border: 'none',
+              padding: '5px',
+              borderRadius: '4px',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            {/* Refresh/reload icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </button>
+        )}
         <button
           className="fullscreen-btn"
           title="Toggle Fullscreen"
@@ -1124,6 +1155,7 @@ export function WebRTCVideoCell({
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
         </button>
       </div>
+      )}
 
       {/* PTZ Controls overlay */}
       <PTZControls

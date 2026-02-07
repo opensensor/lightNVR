@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <regex.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -862,138 +863,6 @@ int http_server_get_stats(http_server_handle_t server, int *active_connections,
 }
 
 /**
- * @brief Thread data for static file serving in worker threads
- *
- * Extends the basic thread data pattern with a server pointer,
- * needed by mongoose_server_handle_static_file().
- */
-struct static_file_thread_data {
-    struct mg_mgr *mgr;
-    unsigned long conn_id;
-    struct mg_str message;
-    http_server_t *server;
-};
-
-/**
- * @brief Worker thread function for static file serving
- *
- * Runs in a detached pthread. Parses the HTTP request, calls the
- * static file handler on a fake connection, then sends the captured
- * response back to the real connection via mg_wakeup().
- */
-static void *static_file_thread_function(void *param) {
-    struct static_file_thread_data *p = (struct static_file_thread_data *)param;
-    unsigned long conn_id = p->conn_id;
-
-    log_debug("Static file worker started for connection ID %lu", conn_id);
-
-    // Create a fake connection to capture the response
-    struct mg_connection fake_conn = {0};
-    fake_conn.mgr = p->mgr;
-    fake_conn.id = p->conn_id;
-    fake_conn.send.buf = NULL;
-    fake_conn.send.len = 0;
-    fake_conn.send.size = 0;
-
-    // Parse the stored HTTP message
-    struct mg_http_message hm = {0};
-    if (mg_http_parse((char *)p->message.buf, p->message.len, &hm) > 0) {
-        // Serve the static file (writes into fake_conn.send)
-        mongoose_server_handle_static_file(&fake_conn, &hm, p->server);
-
-        if (fake_conn.send.buf && fake_conn.send.len > 0) {
-            log_debug("Static file worker sending %zu bytes for conn %lu",
-                      fake_conn.send.len, conn_id);
-            mg_wakeup(p->mgr, p->conn_id, fake_conn.send.buf, fake_conn.send.len);
-            free((void *)fake_conn.send.buf);
-        } else {
-            const char *err_resp =
-                "HTTP/1.1 500 Internal Server Error\r\n"
-                "Content-Length: 22\r\nConnection: close\r\n\r\n"
-                "Internal Server Error\n";
-            mg_wakeup(p->mgr, p->conn_id, err_resp, strlen(err_resp));
-        }
-    } else {
-        log_error("Static file worker: failed to parse HTTP message");
-        const char *err_resp =
-            "HTTP/1.1 400 Bad Request\r\n"
-            "Content-Length: 12\r\nConnection: close\r\n\r\n"
-            "Bad Request\n";
-        mg_wakeup(p->mgr, p->conn_id, err_resp, strlen(err_resp));
-    }
-
-    free((void *)p->message.buf);
-    free(p);
-    log_debug("Static file worker completed for connection ID %lu", conn_id);
-    return NULL;
-}
-
-/**
- * @brief Dispatch a static file request to a worker thread
- *
- * Instead of serving the file inline in the event loop (blocking all
- * other connections), this copies the HTTP message, spawns a worker
- * thread, and returns immediately so the event loop can continue
- * processing other connections.
- */
-static bool dispatch_static_file_to_thread(struct mg_connection *c,
-                                           struct mg_http_message *hm,
-                                           http_server_t *server) {
-    struct static_file_thread_data *data = calloc(1, sizeof(*data));
-    if (!data) {
-        log_error("Failed to allocate static file thread data");
-        mg_http_reply(c, 500, "", "Internal Server Error\n");
-        return true;
-    }
-
-    data->message = mg_strdup(hm->message);
-    if (data->message.len == 0) {
-        log_error("Failed to duplicate HTTP message for static file thread");
-        free(data);
-        mg_http_reply(c, 500, "", "Internal Server Error\n");
-        return true;
-    }
-
-    data->conn_id = c->id;
-    data->mgr = c->mgr;
-    data->server = server;
-
-    mg_start_thread(static_file_thread_function, data);
-    return true;
-}
-
-/**
- * @brief Dispatch an HLS request to a worker thread
- *
- * Uses the existing mg_thread_data + mg_thread_function pattern since
- * mg_handle_direct_hls_request matches the handler_func signature.
- */
-static bool dispatch_hls_to_thread(struct mg_connection *c,
-                                   struct mg_http_message *hm) {
-    struct mg_thread_data *data = calloc(1, sizeof(*data));
-    if (!data) {
-        log_error("Failed to allocate HLS thread data");
-        mg_http_reply(c, 500, "", "Internal Server Error\n");
-        return true;
-    }
-
-    data->message = mg_strdup(hm->message);
-    if (data->message.len == 0) {
-        log_error("Failed to duplicate HTTP message for HLS thread");
-        free(data);
-        mg_http_reply(c, 500, "", "Internal Server Error\n");
-        return true;
-    }
-
-    data->conn_id = c->id;
-    data->mgr = c->mgr;
-    data->handler_func = mg_handle_direct_hls_request;
-
-    mg_start_thread(mg_thread_function, data);
-    return true;
-}
-
-/**
  * @brief Mongoose event handler
  */
 static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_data) {
@@ -1168,36 +1037,80 @@ static void mongoose_event_handler(struct mg_connection *c, int ev, void *ev_dat
         bool is_direct_hls = strncasecmp(uri, "/hls/", 5) == 0;
         bool handled = false;
 
-        // Special handling for root path — dispatch to worker thread
+        // Special handling for root path — serve index.html inline
         if (strcmp(uri, "/") == 0) {
-            log_debug("Root path detected, dispatching to static file worker: %s", uri);
-            dispatch_static_file_to_thread(c, hm, server);
+            log_debug("Root path detected in main handler, serving index.html");
+            // Directly serve index.html for root path
+            char index_path[MAX_PATH_LENGTH * 2];
+            snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
+
+            // Check if index.html exists
+            struct stat st;
+            if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
+                // Use Mongoose's built-in file serving capabilities
+                struct mg_http_serve_opts opts = {
+                    .root_dir = server->config.web_root,
+                    .mime_types = "html=text/html,htm=text/html,css=text/css,js=application/javascript,"
+                                "json=application/json,jpg=image/jpeg,jpeg=image/jpeg,png=image/png,"
+                                "gif=image/gif,svg=image/svg+xml,ico=image/x-icon,mp4=video/mp4,"
+                                "webm=video/webm,ogg=video/ogg,mp3=audio/mpeg,wav=audio/wav,"
+                                "txt=text/plain,xml=application/xml,pdf=application/pdf",
+                    .extra_headers = "Connection: close\r\n"
+                };
+
+                log_debug("Serving index file for root path using mg_http_serve_file: %s", index_path);
+                mg_http_serve_file(c, hm, index_path, &opts);
+            } else {
+                // If index.html doesn't exist, redirect to /index.html with query parameters preserved
+                char redirect_url[MAX_PATH_LENGTH * 2] = "/index.html";
+
+                // Extract query string if present
+                if (hm->query.len > 0) {
+                    strncat(redirect_url, "?", sizeof(redirect_url) - strlen(redirect_url) - 1);
+                    strncat(redirect_url, hm->query.buf,
+                           MIN(hm->query.len, sizeof(redirect_url) - strlen(redirect_url) - 1));
+                }
+
+                log_debug("Index file not found, redirecting to %s", redirect_url);
+                mg_printf(c, "HTTP/1.1 302 Found\r\n");
+                mg_printf(c, "Location: %s\r\n", redirect_url);
+                mg_printf(c, "Connection: close\r\n");
+                mg_printf(c, "Content-Length: 0\r\n");
+                mg_printf(c, "\r\n");
+            }
             handled = true;
         }
         else if (is_api_request || is_logout_request) {
             // Handle API requests (including special /logout route) with threading
             handled = handle_api_request(c, hm, true);
         } else if (is_direct_hls) {
-            // Dispatch HLS requests to a worker thread
-            log_debug("Dispatching HLS request to worker thread: %s", uri);
-            dispatch_hls_to_thread(c, hm);
+            // For direct HLS requests, use the HLS handler inline
+            log_debug("Handling direct HLS request: %s", uri);
+            mg_handle_direct_hls_request(c, hm);
             handled = true;
         } else if (is_static_asset) {
-            // Dispatch static assets to a worker thread
-            log_debug("Dispatching static asset to worker thread: %s", uri);
-            dispatch_static_file_to_thread(c, hm, server);
+            // For static assets, serve directly (inline to avoid mg_wakeup stack overflow)
+            log_debug("Serving static asset directly: %s", uri);
+            mongoose_server_handle_static_file(c, hm, server);
             handled = true;
         } else {
-            // For other requests, also dispatch to static file worker
-            log_debug("Dispatching unmatched request to static file worker: %s", uri);
-            dispatch_static_file_to_thread(c, hm, server);
-            handled = true;
+            // For other requests, handle directly
+            log_debug("Handling non-API request directly: %s", uri);
+            handled = mg_handle_request_with_threading(c, hm, false);
         }
 
-    // If not handled (shouldn't happen now), dispatch to static file worker
+    // If not handled by API handlers or multithreading, serve static file or return 404
     if (!handled) {
-        log_debug("Request fell through, dispatching to static file worker");
-        dispatch_static_file_to_thread(c, hm, server);
+        // Extract URI for logging
+        char uri_buf[MAX_PATH_LENGTH] = {0};
+        size_t uri_len = hm->uri.len < sizeof(uri_buf) - 1 ? hm->uri.len : sizeof(uri_buf) - 1;
+        memcpy(uri_buf, hm->uri.buf, uri_len);
+        uri_buf[uri_len] = '\0';
+
+        log_debug("Request not handled by API or multithreading, passing to static file handler: %s", uri_buf);
+
+        // Try to serve static file
+        mongoose_server_handle_static_file(c, hm, server);
     }
     } else if (ev == MG_EV_CLOSE) {
         // Connection closed
