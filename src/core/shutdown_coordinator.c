@@ -270,7 +270,6 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
                 // If this is a WebSocket component, try to force close it
                 if (strstr(g_coordinator.components[i].name, "websocket") != NULL) {
                     log_warn("Forcing close of WebSocket component: %s", g_coordinator.components[i].name);
-                    // The context pointer might be a mg_connection, but we can't safely use it
                     // Just mark it as stopped and let the cleanup continue
                 }
                 
