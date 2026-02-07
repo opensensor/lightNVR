@@ -1,0 +1,668 @@
+#define _XOPEN_SOURCE
+#define _GNU_SOURCE
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <sqlite3.h>
+#include <cjson/cJSON.h>
+
+#include "web/api_handlers_users.h"
+#include "web/httpd_utils.h"
+#include "web/request_response.h"
+#include "core/logger.h"
+#include "database/db_auth.h"
+#include "database/db_core.h"
+
+/**
+ * @brief Convert a user_t struct to a cJSON object
+ *
+ * @param user User struct
+ * @param include_api_key Whether to include the API key in the response
+ * @return cJSON* JSON object representing the user
+ */
+static cJSON *user_to_json(const user_t *user, int include_api_key) {
+    cJSON *json = cJSON_CreateObject();
+
+    cJSON_AddNumberToObject(json, "id", user->id);
+    cJSON_AddStringToObject(json, "username", user->username);
+    cJSON_AddStringToObject(json, "email", user->email);
+    cJSON_AddNumberToObject(json, "role", user->role);
+    cJSON_AddStringToObject(json, "role_name", db_auth_get_role_name(user->role));
+
+    if (include_api_key && user->api_key[0] != '\0') {
+        cJSON_AddStringToObject(json, "api_key", user->api_key);
+    }
+
+    cJSON_AddNumberToObject(json, "created_at", user->created_at);
+    cJSON_AddNumberToObject(json, "updated_at", user->updated_at);
+    cJSON_AddNumberToObject(json, "last_login", user->last_login);
+    cJSON_AddBoolToObject(json, "is_active", user->is_active);
+
+    return json;
+}
+
+/**
+ * @brief Check if the user has permission to view users
+ *
+ * @param req HTTP request
+ * @param res HTTP response (error will be set if not permitted)
+ * @return 1 if the user has permission, 0 otherwise (error response already set)
+ */
+static int check_view_users_permission(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (httpd_get_authenticated_user(req, &user)) {
+        // Only admin and regular users can view users, viewers cannot
+        if (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER) {
+            return 1;
+        }
+        // User is authenticated but doesn't have permission
+        log_warn("Access denied: User '%s' (role: %s) cannot view users",
+                 user.username, db_auth_get_role_name(user.role));
+        http_response_set_json_error(res, 403, "Forbidden: Insufficient privileges to view users");
+        return 0;
+    }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted to view users");
+    http_response_set_json_error(res, 401, "Unauthorized: Authentication required");
+    return 0;
+}
+
+/**
+ * @brief Check if the user has permission to generate API key
+ *
+ * @param req HTTP request
+ * @param res HTTP response (error will be set if not permitted)
+ * @param target_user_id ID of the user for whom the API key is being generated
+ * @return 1 if the user has permission, 0 otherwise (error response already set)
+ */
+static int check_generate_api_key_permission(const http_request_t *req, http_response_t *res, int64_t target_user_id) {
+    user_t user;
+    if (httpd_get_authenticated_user(req, &user)) {
+        // Admins can generate API keys for any user
+        if (user.role == USER_ROLE_ADMIN) {
+            return 1;
+        }
+
+        // Regular users can only generate API keys for themselves
+        if (user.role == USER_ROLE_USER && user.id == target_user_id) {
+            return 1;
+        }
+
+        // User doesn't have permission
+        log_warn("Access denied: User '%s' (role: %s) cannot generate API key for user ID %lld",
+                 user.username, db_auth_get_role_name(user.role), (long long)target_user_id);
+        http_response_set_json_error(res, 403, "Forbidden: You can only generate API keys for yourself unless you are an admin");
+        return 0;
+    }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted to generate API key");
+    http_response_set_json_error(res, 401, "Unauthorized: Authentication required");
+    return 0;
+}
+
+/**
+ * @brief Check if the user has permission to delete a user
+ *
+ * @param req HTTP request
+ * @param res HTTP response (error will be set if not permitted)
+ * @param target_user_id ID of the user being deleted
+ * @return 1 if the user has permission, 0 otherwise (error response already set)
+ */
+static int check_delete_user_permission(const http_request_t *req, http_response_t *res, int64_t target_user_id) {
+    user_t user;
+    if (httpd_get_authenticated_user(req, &user)) {
+        // Only admins can delete users
+        if (user.role == USER_ROLE_ADMIN) {
+            // Admins cannot delete themselves
+            if (user.id != target_user_id) {
+                return 1;
+            }
+            log_warn("Access denied: Admin '%s' attempted to delete themselves", user.username);
+            http_response_set_json_error(res, 403, "Forbidden: You cannot delete yourself");
+            return 0;
+        }
+        // User doesn't have permission
+        log_warn("Access denied: User '%s' (role: %s) cannot delete users",
+                 user.username, db_auth_get_role_name(user.role));
+        http_response_set_json_error(res, 403, "Forbidden: Only admins can delete users");
+        return 0;
+    }
+    // User is not authenticated
+    log_warn("Access denied: Unauthenticated request attempted to delete user");
+    http_response_set_json_error(res, 401, "Unauthorized: Authentication required");
+    return 0;
+}
+
+/**
+ * @brief Backend-agnostic handler for GET /api/auth/users
+ */
+void handle_users_list(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/auth/users request");
+
+    // Check if user has admin role
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set by httpd_check_admin_privileges
+    }
+
+    // Get database handle
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        http_response_set_json_error(res, 500, "Database not initialized");
+        return;
+    }
+
+    // Query all users
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "SELECT id, username, email, role, api_key, created_at, "
+                               "updated_at, last_login, is_active "
+                               "FROM users ORDER BY id;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        http_response_set_json_error(res, 500, "Failed to prepare statement");
+        return;
+    }
+
+    // Create JSON response
+    cJSON *response = cJSON_CreateObject();
+    cJSON *users_array = cJSON_CreateArray();
+
+    // Iterate through the results
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        user_t user;
+
+        user.id = sqlite3_column_int64(stmt, 0);
+        strncpy(user.username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user.username) - 1);
+        user.username[sizeof(user.username) - 1] = '\0';
+
+        const char *email = (const char *)sqlite3_column_text(stmt, 2);
+        if (email) {
+            strncpy(user.email, email, sizeof(user.email) - 1);
+            user.email[sizeof(user.email) - 1] = '\0';
+        } else {
+            user.email[0] = '\0';
+        }
+
+        user.role = (user_role_t)sqlite3_column_int(stmt, 3);
+
+        const char *api_key = (const char *)sqlite3_column_text(stmt, 4);
+        if (api_key) {
+            strncpy(user.api_key, api_key, sizeof(user.api_key) - 1);
+            user.api_key[sizeof(user.api_key) - 1] = '\0';
+        } else {
+            user.api_key[0] = '\0';
+        }
+
+        user.created_at = sqlite3_column_int64(stmt, 5);
+        user.updated_at = sqlite3_column_int64(stmt, 6);
+        user.last_login = sqlite3_column_int64(stmt, 7);
+        user.is_active = sqlite3_column_int(stmt, 8) != 0;
+
+        // Add user to array
+        cJSON_AddItemToArray(users_array, user_to_json(&user, 1));
+    }
+
+    sqlite3_finalize(stmt);
+
+    cJSON_AddItemToObject(response, "users", users_array);
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Successfully handled GET /api/auth/users request");
+}
+
+/**
+ * @brief Backend-agnostic handler for GET /api/auth/users/:id
+ */
+void handle_users_get(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/auth/users/:id request");
+
+    // Check if user has admin role
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set by httpd_check_admin_privileges
+    }
+
+    // Extract user ID from URL
+    char user_id_str[32];
+    if (http_request_extract_path_param(req, "/api/auth/users/", user_id_str, sizeof(user_id_str)) != 0) {
+        log_error("Failed to extract user ID from URL");
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    // Convert user ID to integer
+    int64_t user_id = strtoll(user_id_str, NULL, 10);
+    if (user_id <= 0) {
+        log_error("Invalid user ID: %s", user_id_str);
+        http_response_set_json_error(res, 400, "Invalid user ID");
+        return;
+    }
+
+    // Get database handle
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        http_response_set_json_error(res, 500, "Database not initialized");
+        return;
+    }
+
+    // Query user by ID
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "SELECT id, username, email, role, api_key, created_at, "
+                               "updated_at, last_login, is_active "
+                               "FROM users WHERE id = ?;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        http_response_set_json_error(res, 500, "Failed to prepare statement");
+        return;
+    }
+
+    sqlite3_bind_int64(stmt, 1, user_id);
+
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        log_error("User not found: %lld", (long long)user_id);
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+
+    // Create user object
+    user_t user;
+    user.id = sqlite3_column_int64(stmt, 0);
+    strncpy(user.username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user.username) - 1);
+    user.username[sizeof(user.username) - 1] = '\0';
+
+    const char *email = (const char *)sqlite3_column_text(stmt, 2);
+    if (email) {
+        strncpy(user.email, email, sizeof(user.email) - 1);
+        user.email[sizeof(user.email) - 1] = '\0';
+    } else {
+        user.email[0] = '\0';
+    }
+
+    user.role = (user_role_t)sqlite3_column_int(stmt, 3);
+
+    const char *api_key = (const char *)sqlite3_column_text(stmt, 4);
+    if (api_key) {
+        strncpy(user.api_key, api_key, sizeof(user.api_key) - 1);
+        user.api_key[sizeof(user.api_key) - 1] = '\0';
+    } else {
+        user.api_key[0] = '\0';
+    }
+
+    user.created_at = sqlite3_column_int64(stmt, 5);
+    user.updated_at = sqlite3_column_int64(stmt, 6);
+    user.last_login = sqlite3_column_int64(stmt, 7);
+    user.is_active = sqlite3_column_int(stmt, 8) != 0;
+
+    sqlite3_finalize(stmt);
+
+    // Convert user to JSON
+    cJSON *user_json = user_to_json(&user, 1);
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(user_json);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(user_json);
+
+    log_info("Successfully handled GET /api/auth/users/:id request");
+}
+
+/**
+ * @brief Backend-agnostic handler for POST /api/auth/users
+ */
+void handle_users_create(const http_request_t *req, http_response_t *res) {
+    log_info("Handling POST /api/auth/users request");
+
+    // Check if user has admin role
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set by httpd_check_admin_privileges
+    }
+
+    // Parse JSON from request body
+    cJSON *json_req = httpd_parse_json_body(req);
+    if (!json_req) {
+        log_error("Failed to parse user JSON from request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
+        return;
+    }
+
+    // Extract fields
+    cJSON *username_json = cJSON_GetObjectItem(json_req, "username");
+    cJSON *password_json = cJSON_GetObjectItem(json_req, "password");
+    cJSON *email_json = cJSON_GetObjectItem(json_req, "email");
+    cJSON *role_json = cJSON_GetObjectItem(json_req, "role");
+    cJSON *is_active_json = cJSON_GetObjectItem(json_req, "is_active");
+
+    // Validate required fields
+    if (!username_json || !cJSON_IsString(username_json) ||
+        !password_json || !cJSON_IsString(password_json)) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "Missing required fields: username and password");
+        return;
+    }
+
+    // Make a copy of the username to use after the JSON object is freed
+    char username_copy[64] = {0};
+    const char *username = username_json->valuestring;
+    strncpy(username_copy, username, sizeof(username_copy) - 1);
+
+    const char *password = password_json->valuestring;
+    const char *email = (email_json && cJSON_IsString(email_json)) ? email_json->valuestring : NULL;
+    int role = (role_json && cJSON_IsNumber(role_json)) ? role_json->valueint : USER_ROLE_USER;
+    int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : 1;
+
+    // Validate username
+    if (strlen(username) < 3 || strlen(username) > 32) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "Username must be between 3 and 32 characters");
+        return;
+    }
+
+    // Validate password
+    if (strlen(password) < 8) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "Password must be at least 8 characters");
+        return;
+    }
+
+    // Validate role
+    if (role < 0 || role > 3) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "Invalid role");
+        return;
+    }
+
+    // Create the user
+    int64_t user_id;
+    int rc = db_auth_create_user(username, password, email, role, is_active, &user_id);
+
+    cJSON_Delete(json_req);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "Failed to create user");
+        return;
+    }
+
+    // Get the created user
+    user_t user;
+    rc = db_auth_get_user_by_id(user_id, &user);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "User created but failed to retrieve");
+        return;
+    }
+
+    // Create JSON response
+    cJSON *response = user_to_json(&user, 0);
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Successfully created user: %s", username_copy);
+}
+
+/**
+ * @brief Backend-agnostic handler for PUT /api/auth/users/:id
+ */
+void handle_users_update(const http_request_t *req, http_response_t *res) {
+    log_info("Handling PUT /api/auth/users/:id request");
+
+    // Check if user has admin role
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set by httpd_check_admin_privileges
+    }
+
+    // Extract user ID from URL
+    char id_str[16] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract user ID from URL");
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    int64_t user_id = strtoll(id_str, NULL, 10);
+
+    // Check if the user exists
+    user_t user;
+    int rc = db_auth_get_user_by_id(user_id, &user);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+
+    // Parse JSON request
+    cJSON *json_req = httpd_parse_json_body(req);
+    if (!json_req) {
+        http_response_set_json_error(res, 400, "Invalid JSON");
+        return;
+    }
+
+    // Extract fields
+    cJSON *password_json = cJSON_GetObjectItem(json_req, "password");
+    cJSON *email_json = cJSON_GetObjectItem(json_req, "email");
+    cJSON *role_json = cJSON_GetObjectItem(json_req, "role");
+    cJSON *is_active_json = cJSON_GetObjectItem(json_req, "is_active");
+
+    // Update password if provided and not empty
+    if (password_json && cJSON_IsString(password_json)) {
+        const char *password = password_json->valuestring;
+
+        // Only update if password is not empty
+        if (strlen(password) > 0) {
+            // Validate password length
+            if (strlen(password) < 8) {
+                cJSON_Delete(json_req);
+                http_response_set_json_error(res, 400, "Password must be at least 8 characters");
+                return;
+            }
+
+            rc = db_auth_change_password(user_id, password);
+            if (rc != 0) {
+                cJSON_Delete(json_req);
+                http_response_set_json_error(res, 500, "Failed to update password");
+                return;
+            }
+        }
+    }
+
+    // Update other fields
+    const char *email = (email_json && cJSON_IsString(email_json)) ? email_json->valuestring : NULL;
+    int role = (role_json && cJSON_IsNumber(role_json)) ? role_json->valueint : -1;
+    int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : -1;
+
+    // Validate role
+    if (role >= 0 && (role < 0 || role > 3)) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "Invalid role");
+        return;
+    }
+
+    rc = db_auth_update_user(user_id, email, role, is_active);
+
+    cJSON_Delete(json_req);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "Failed to update user");
+        return;
+    }
+
+    // Get the updated user
+    rc = db_auth_get_user_by_id(user_id, &user);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "User updated but failed to retrieve");
+        return;
+    }
+
+    // Create JSON response
+    cJSON *response = user_to_json(&user, 0);
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Successfully updated user: %s (ID: %lld)", user.username, (long long)user_id);
+}
+
+/**
+ * @brief Backend-agnostic handler for DELETE /api/auth/users/:id
+ */
+void handle_users_delete(const http_request_t *req, http_response_t *res) {
+    log_info("Handling DELETE /api/auth/users/:id request");
+
+    // Extract user ID from URL
+    char id_str[16] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract user ID from URL");
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    int64_t user_id = strtoll(id_str, NULL, 10);
+
+    // Check if the user has permission to delete this user (includes self-delete check)
+    if (!check_delete_user_permission(req, res, user_id)) {
+        return;  // Error response already set by check_delete_user_permission
+    }
+
+    // Check if the user exists
+    user_t user;
+    int rc = db_auth_get_user_by_id(user_id, &user);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+
+    // Don't allow deleting the last admin user
+    if (user.role == USER_ROLE_ADMIN) {
+        sqlite3 *db = get_db_handle();
+        if (!db) {
+            http_response_set_json_error(res, 500, "Database not initialized");
+            return;
+        }
+
+        // Count admin users
+        sqlite3_stmt *stmt;
+        rc = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM users WHERE role = 0;", -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            http_response_set_json_error(res, 500, "Failed to prepare statement");
+            return;
+        }
+
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            int admin_count = sqlite3_column_int(stmt, 0);
+            sqlite3_finalize(stmt);
+
+            if (admin_count <= 1) {
+                http_response_set_json_error(res, 400, "Cannot delete the last admin user");
+                return;
+            }
+        } else {
+            sqlite3_finalize(stmt);
+            http_response_set_json_error(res, 500, "Failed to count admin users");
+            return;
+        }
+    }
+
+    // Delete the user
+    rc = db_auth_delete_user(user_id);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "Failed to delete user");
+        return;
+    }
+
+    // Create JSON response
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", 1);
+    cJSON_AddStringToObject(response, "message", "User deleted successfully");
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Successfully deleted user ID: %lld", (long long)user_id);
+}
+
+/**
+ * @brief Backend-agnostic handler for POST /api/auth/users/:id/api-key
+ */
+void handle_users_generate_api_key(const http_request_t *req, http_response_t *res) {
+    log_info("Handling POST /api/auth/users/:id/api-key request");
+
+    // Extract user ID from URL
+    char id_str[16] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract user ID from URL");
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    int64_t user_id = strtoll(id_str, NULL, 10);
+
+    // Check if the user has permission to generate API key for this user
+    if (!check_generate_api_key_permission(req, res, user_id)) {
+        return;  // Error response already set by check_generate_api_key_permission
+    }
+
+    // Check if the user exists
+    user_t user;
+    int rc = db_auth_get_user_by_id(user_id, &user);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+
+    // Generate a new API key
+    char api_key[64] = {0};
+    rc = db_auth_generate_api_key(user_id, api_key, sizeof(api_key));
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "Failed to generate API key");
+        return;
+    }
+
+    // Create JSON response
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", 1);
+    cJSON_AddStringToObject(response, "api_key", api_key);
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Successfully generated API key for user ID: %lld", (long long)user_id);
+}
+

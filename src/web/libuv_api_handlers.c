@@ -22,6 +22,7 @@
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
 #include "web/api_handlers_onvif.h"
+#include "web/api_handlers_users.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -122,6 +123,14 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/auth/verify", "GET", handle_auth_verify);
     http_server_register_handler(server, "/logout", "GET", handle_auth_logout);  // Simple GET logout route
 
+    // User Management API (backend-agnostic handlers)
+    http_server_register_handler(server, "/api/auth/users", "GET", handle_users_list);
+    http_server_register_handler(server, "/api/auth/users", "POST", handle_users_create);
+    http_server_register_handler(server, "/api/auth/users/#", "GET", handle_users_get);
+    http_server_register_handler(server, "/api/auth/users/#", "PUT", handle_users_update);
+    http_server_register_handler(server, "/api/auth/users/#", "DELETE", handle_users_delete);
+    http_server_register_handler(server, "/api/auth/users/#/api-key", "POST", handle_users_generate_api_key);
+
     // ONVIF API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/onvif/discovery/status", "GET", handle_get_onvif_discovery_status);
     http_server_register_handler(server, "/api/onvif/devices", "GET", handle_get_discovered_onvif_devices);
@@ -153,18 +162,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // mg_connection and mg_http_message types. They need to be refactored to use
     // http_request_t and http_response_t.
 
-    // TODO: Port remaining user management API handlers to backend-agnostic:
-    // - GET /api/auth/users
-    // - GET /api/auth/users/:id
-    // - POST /api/auth/users
-    // - PUT /api/auth/users/:id
-    // - DELETE /api/auth/users/:id
-    // - POST /api/auth/users/:id/api-key
-    //
-    // These handlers are in src/web/api_handlers_users.c and use Mongoose-specific types.
-    // They need to be refactored to use http_request_t and http_response_t.
-
-    log_info("Successfully registered %d API handlers", 58);  // Update count as we add more
+    log_info("Successfully registered %d API handlers", 64);  // Updated: added 6 user management handlers
 
     return 0;
 }
