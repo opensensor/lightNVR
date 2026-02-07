@@ -413,6 +413,24 @@ void handle_put_recording_retention(const http_request_t *req, http_response_t *
 void handle_get_recordings(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Handler for POST /api/auth/login
+ * User login with username and password
+ */
+void handle_auth_login(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Handler for POST /api/auth/logout and GET /logout
+ * User logout and session invalidation
+ */
+void handle_auth_logout(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Handler for GET /api/auth/verify
+ * Verify authentication and return user info
+ */
+void handle_auth_verify(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief Handler for GET /api/recordings/protected
  */
 void handle_get_protected_recordings(const http_request_t *req, http_response_t *res);

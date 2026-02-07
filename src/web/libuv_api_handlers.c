@@ -115,6 +115,12 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/motion/cleanup", "POST", handle_post_motion_cleanup);
     http_server_register_handler(server, "/api/motion/storage", "GET", handle_get_motion_storage);
 
+    // Auth API (backend-agnostic handlers)
+    http_server_register_handler(server, "/api/auth/login", "POST", handle_auth_login);
+    http_server_register_handler(server, "/api/auth/logout", "POST", handle_auth_logout);
+    http_server_register_handler(server, "/api/auth/verify", "GET", handle_auth_verify);
+    http_server_register_handler(server, "/logout", "GET", handle_auth_logout);  // Simple GET logout route
+
     // Recordings API (backend-agnostic handlers)
     // Note: More specific routes must come before wildcard routes
     http_server_register_handler(server, "/api/recordings/play/#", "GET", handle_recordings_playback);
@@ -138,11 +144,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // mg_connection and mg_http_message types. They need to be refactored to use
     // http_request_t and http_response_t.
 
-    // TODO: Port auth/users API handlers to backend-agnostic:
-    // CRITICAL - Login/logout won't work without these:
-    // - POST /api/auth/login - REQUIRED for login
-    // - POST /api/auth/logout (also GET /logout) - REQUIRED for logout
-    // - GET /api/auth/verify - REQUIRED for auth verification
+    // TODO: Port remaining user management API handlers to backend-agnostic:
     // - GET /api/auth/users
     // - GET /api/auth/users/:id
     // - POST /api/auth/users
@@ -150,11 +152,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // - DELETE /api/auth/users/:id
     // - POST /api/auth/users/:id/api-key
     //
-    // These handlers are in src/web/api_handlers_auth.c and src/web/api_handlers_users.c
-    // and use Mongoose-specific types. They need to be refactored to use http_request_t
-    // and http_response_t.
+    // These handlers are in src/web/api_handlers_users.c and use Mongoose-specific types.
+    // They need to be refactored to use http_request_t and http_response_t.
 
-    log_info("Successfully registered %d API handlers", 48);  // Update count as we add more
+    log_info("Successfully registered %d API handlers", 52);  // Update count as we add more
 
     return 0;
 }
