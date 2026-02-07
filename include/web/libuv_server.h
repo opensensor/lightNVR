@@ -48,6 +48,15 @@ typedef struct libuv_server {
 } libuv_server_t;
 
 /**
+ * @brief Action to take after a write completes
+ */
+typedef enum {
+    WRITE_ACTION_NONE,      // No special action (e.g., intermediate file chunk)
+    WRITE_ACTION_KEEP_ALIVE,// Reset connection for next request (keep-alive)
+    WRITE_ACTION_CLOSE,     // Close connection after write completes
+} write_complete_action_t;
+
+/**
  * @brief Connection state for each client
  */
 typedef struct libuv_connection {
@@ -130,14 +139,28 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
 
 /**
  * @brief Send an HTTP response on a libuv connection
- * 
+ *
  * Serializes http_response_t to wire format and writes to the connection.
- * 
+ *
  * @param conn Connection to send response on
  * @param response HTTP response to send
  * @return int 0 on success, -1 on error
  */
 int libuv_send_response(libuv_connection_t *conn, const http_response_t *response);
+
+/**
+ * @brief Send an HTTP response with a post-write action
+ *
+ * Same as libuv_send_response but allows specifying what to do after the
+ * write completes (keep-alive reset or close).
+ *
+ * @param conn Connection to send response on
+ * @param response HTTP response to send
+ * @param action Action to take after write completes
+ * @return int 0 on success, -1 on error
+ */
+int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
+                           write_complete_action_t action);
 
 /**
  * @brief Close a connection gracefully

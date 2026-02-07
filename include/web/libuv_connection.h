@@ -59,6 +59,7 @@ typedef struct libuv_write_ctx {
     uv_buf_t buf;                       // Buffer being written
     libuv_connection_t *conn;           // Connection
     bool free_buffer;                   // Whether to free buf.base on completion
+    write_complete_action_t action;     // What to do after write completes
 } libuv_write_ctx_t;
 
 /**
@@ -113,15 +114,28 @@ void libuv_write_cb(uv_write_t *req, int status);
 
 /**
  * @brief Send raw data on connection
- * 
+ *
  * @param conn Connection
  * @param data Data to send
  * @param len Length of data
  * @param free_after_send Whether to free data after sending
  * @return int 0 on success, -1 on error
  */
-int libuv_connection_send(libuv_connection_t *conn, char *data, size_t len, 
+int libuv_connection_send(libuv_connection_t *conn, char *data, size_t len,
                           bool free_after_send);
+
+/**
+ * @brief Send raw data on connection with post-write action
+ *
+ * @param conn Connection
+ * @param data Data to send
+ * @param len Length of data
+ * @param free_after_send Whether to free data after sending
+ * @param action Action to take after write completes
+ * @return int 0 on success, -1 on error
+ */
+int libuv_connection_send_ex(libuv_connection_t *conn, char *data, size_t len,
+                             bool free_after_send, write_complete_action_t action);
 
 /**
  * @brief Parse Range header for byte range requests

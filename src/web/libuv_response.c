@@ -46,17 +46,36 @@ static const char *get_status_phrase(int status_code) {
  */
 void libuv_write_cb(uv_write_t *req, int status) {
     libuv_write_ctx_t *ctx = (libuv_write_ctx_t *)req;
-    
+    libuv_connection_t *conn = ctx->conn;
+    write_complete_action_t action = ctx->action;
+
     if (status < 0) {
         log_error("libuv_write_cb: Write error: %s", uv_strerror(status));
+        // On write error, always close the connection
+        action = WRITE_ACTION_CLOSE;
     }
-    
+
     // Free the buffer if requested
     if (ctx->free_buffer && ctx->buf.base) {
         safe_free(ctx->buf.base);
     }
-    
+
     safe_free(ctx);
+
+    // Perform post-write action
+    if (conn) {
+        switch (action) {
+            case WRITE_ACTION_KEEP_ALIVE:
+                libuv_connection_reset(conn);
+                break;
+            case WRITE_ACTION_CLOSE:
+                libuv_connection_close(conn);
+                break;
+            case WRITE_ACTION_NONE:
+            default:
+                break;
+        }
+    }
 }
 
 /**
@@ -91,10 +110,58 @@ int libuv_connection_send(libuv_connection_t *conn, char *data, size_t len,
     ctx->conn = conn;
     ctx->buf = uv_buf_init(data, len);
     ctx->free_buffer = free_after_send;
+    ctx->action = WRITE_ACTION_NONE;
 
     int r = uv_write(&ctx->req, (uv_stream_t *)&conn->handle, &ctx->buf, 1, libuv_write_cb);
     if (r != 0) {
         log_error("libuv_connection_send: Write failed: %s", uv_strerror(r));
+        if (free_after_send) {
+            safe_free(data);
+        }
+        safe_free(ctx);
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * @brief Send raw data on connection with post-write action
+ */
+int libuv_connection_send_ex(libuv_connection_t *conn, char *data, size_t len,
+                             bool free_after_send, write_complete_action_t action) {
+    if (!conn || !data || len == 0) {
+        if (free_after_send && data) {
+            safe_free(data);
+        }
+        return -1;
+    }
+
+    // Check if connection is closing
+    if (uv_is_closing((uv_handle_t *)&conn->handle)) {
+        log_debug("libuv_connection_send_ex: Connection is closing, discarding data");
+        if (free_after_send) {
+            safe_free(data);
+        }
+        return -1;
+    }
+
+    libuv_write_ctx_t *ctx = safe_malloc(sizeof(libuv_write_ctx_t));
+    if (!ctx) {
+        if (free_after_send) {
+            safe_free(data);
+        }
+        return -1;
+    }
+
+    ctx->conn = conn;
+    ctx->buf = uv_buf_init(data, len);
+    ctx->free_buffer = free_after_send;
+    ctx->action = action;
+
+    int r = uv_write(&ctx->req, (uv_stream_t *)&conn->handle, &ctx->buf, 1, libuv_write_cb);
+    if (r != 0) {
+        log_error("libuv_connection_send_ex: Write failed: %s", uv_strerror(r));
         if (free_after_send) {
             safe_free(data);
         }
@@ -175,6 +242,79 @@ int libuv_send_response(libuv_connection_t *conn, const http_response_t *respons
     
     // Send the response (buffer will be freed after send)
     return libuv_connection_send(conn, buffer, offset, true);
+}
+
+/**
+ * @brief Send an HTTP response with a post-write action
+ */
+int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
+                           write_complete_action_t action) {
+    if (!conn || !response) {
+        return -1;
+    }
+
+    // Calculate required buffer size
+    size_t headers_size = 256;  // Base for status line
+    for (int i = 0; i < response->num_headers; i++) {
+        headers_size += strlen(response->headers[i].name) +
+                        strlen(response->headers[i].value) + 4;  // ": " + "\r\n"
+    }
+    if (response->content_type[0]) {
+        headers_size += 64;  // Content-Type header
+    }
+    headers_size += 64;  // Content-Length header
+    headers_size += 4;   // Final "\r\n"
+
+    size_t total_size = headers_size + response->body_length;
+
+    char *buffer = safe_malloc(total_size);
+    if (!buffer) {
+        log_error("libuv_send_response_ex: Failed to allocate response buffer");
+        return -1;
+    }
+
+    // Build response
+    int offset = 0;
+
+    // Status line
+    offset += snprintf(buffer + offset, total_size - offset,
+                       "HTTP/1.1 %d %s\r\n",
+                       response->status_code,
+                       get_status_phrase(response->status_code));
+
+    // Content-Type
+    if (response->content_type[0]) {
+        offset += snprintf(buffer + offset, total_size - offset,
+                           "Content-Type: %s\r\n", response->content_type);
+    }
+
+    // Content-Length
+    offset += snprintf(buffer + offset, total_size - offset,
+                       "Content-Length: %zu\r\n", response->body_length);
+
+    // Custom headers
+    for (int i = 0; i < response->num_headers; i++) {
+        offset += snprintf(buffer + offset, total_size - offset,
+                           "%s: %s\r\n",
+                           response->headers[i].name,
+                           response->headers[i].value);
+    }
+
+    // End of headers
+    offset += snprintf(buffer + offset, total_size - offset, "\r\n");
+
+    // Body
+    if (response->body && response->body_length > 0) {
+        memcpy(buffer + offset, response->body, response->body_length);
+        offset += response->body_length;
+    }
+
+    log_debug("libuv_send_response_ex: Sending %d %s (%zu bytes, action=%d)",
+              response->status_code, get_status_phrase(response->status_code),
+              response->body_length, action);
+
+    // Send the response with the specified post-write action
+    return libuv_connection_send_ex(conn, buffer, offset, true, action);
 }
 
 #endif /* HTTP_BACKEND_LIBUV */

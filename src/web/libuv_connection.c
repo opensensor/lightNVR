@@ -220,11 +220,10 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         log_error("libuv_read_cb: Parse error: %s %s",
                   llhttp_errno_name(err), llhttp_get_error_reason(&conn->parser));
 
-        // Send 400 Bad Request for actual parse errors
+        // Send 400 Bad Request for actual parse errors, then close
         conn->response.status_code = 400;
         http_response_set_json_error(&conn->response, 400, "Bad Request");
-        libuv_send_response(conn, &conn->response);
-        libuv_connection_close(conn);
+        libuv_send_response_ex(conn, &conn->response, WRITE_ACTION_CLOSE);
         return;
     }
 
@@ -438,6 +437,14 @@ static int on_message_complete(llhttp_t *parser) {
         }
     }
 
+    // Determine post-response action: keep-alive reset or close.
+    // This decision is deferred to the write completion callback to avoid
+    // closing/resetting the connection before the async write finishes.
+    write_complete_action_t action =
+        (conn->keep_alive && llhttp_should_keep_alive(parser))
+            ? WRITE_ACTION_KEEP_ALIVE
+            : WRITE_ACTION_CLOSE;
+
     // Set user_data to point to connection (needed for file serving)
     conn->request.user_data = conn;
 
@@ -449,11 +456,11 @@ static int on_message_complete(llhttp_t *parser) {
         if (conn->async_response_pending) {
             // Handler will manage response and connection lifecycle
             log_debug("on_message_complete: Async response pending, skipping response send");
-            goto skip_keepalive;
+            return 0;
         }
 
-        // Send response
-        libuv_send_response(conn, &conn->response);
+        // Send response — write callback will handle keep-alive/close
+        libuv_send_response_ex(conn, &conn->response, action);
     } else {
         // No handler matched - try to serve static file
         // Build file path
@@ -471,8 +478,8 @@ static int on_message_complete(llhttp_t *parser) {
                 if (stat(file_path, &st) != 0) {
                     log_debug("Directory index not found: %s", file_path);
                     http_response_set_json_error(&conn->response, 404, "Directory index not found");
-                    libuv_send_response(conn, &conn->response);
-                    goto handle_keepalive;
+                    libuv_send_response_ex(conn, &conn->response, action);
+                    return 0;
                 }
             }
 
@@ -483,30 +490,20 @@ static int on_message_complete(llhttp_t *parser) {
             if (libuv_serve_file(conn, file_path, NULL, NULL) == 0) {
                 // File serving started successfully - don't send response here
                 // The file serve callbacks will handle the response
-                goto skip_keepalive;
+                return 0;
             } else {
                 log_error("Failed to serve file: %s", file_path);
                 http_response_set_json_error(&conn->response, 500, "Failed to serve file");
-                libuv_send_response(conn, &conn->response);
+                libuv_send_response_ex(conn, &conn->response, action);
             }
         } else {
             // File not found
             log_debug("Static file not found: %s", file_path);
             http_response_set_json_error(&conn->response, 404, "Not Found");
-            libuv_send_response(conn, &conn->response);
+            libuv_send_response_ex(conn, &conn->response, action);
         }
     }
 
-handle_keepalive:
-    // Handle keep-alive
-    if (conn->keep_alive && llhttp_should_keep_alive(parser)) {
-        libuv_connection_reset(conn);
-    } else {
-        libuv_connection_close(conn);
-    }
-
-skip_keepalive:
-    // File serving is async, keep-alive will be handled in file serve callbacks
     return 0;
 }
 
