@@ -147,14 +147,7 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
                         }
                     }
 
-                    // Fall back to config-based authentication
-                    if (strcmp(username, g_config.web_username) == 0 &&
-                        strcmp(password, g_config.web_password) == 0) {
-                        // Authentication successful with config credentials - assume admin role
-                        log_info("Authentication successful with config credentials (from cookie)");
-                        send_verify_success(c, username, USER_ROLE_ADMIN);
-                        return;
-                    }
+                    // Legacy config-based fallback removed — database auth only.
                 }
             }
         }
@@ -178,16 +171,7 @@ void mg_handle_auth_verify(struct mg_connection *c, struct mg_http_message *hm) 
     int rc = db_auth_authenticate(username, password, &user_id);
 
     if (rc != 0) {
-        // Fall back to config-based authentication for backward compatibility
-        if (strcmp(username, g_config.web_username) == 0 &&
-            strcmp(password, g_config.web_password) == 0) {
-            // Authentication successful with config credentials - assume admin role
-            log_info("Authentication successful with config credentials (from Basic Auth)");
-            send_verify_success(c, username, USER_ROLE_ADMIN);
-            return;
-        }
-
-        // Authentication failed
+        // Authentication failed — no legacy config fallback
         log_warn("Authentication failed for user: %s", username);
         mg_send_json_error(c, 401, "Unauthorized");
         return;
@@ -370,96 +354,7 @@ void mg_handle_auth_login(struct mg_connection *c, struct mg_http_message *hm) {
     int rc = db_auth_authenticate(username, password, &user_id);
     
     if (rc != 0) {
-        // Fall back to config-based authentication for backward compatibility
-        if (strcmp(username, g_config.web_username) == 0 &&
-            strcmp(password, g_config.web_password) == 0) {
-            // Login successful with config credentials
-            log_info("Login successful for user: %s (using config credentials)", username);
-
-            // Calculate session timeout from config
-            int auth_timeout_seconds = g_config.auth_timeout_hours * 3600;
-
-            // Create Basic Auth header value
-            char auth_credentials[128];
-            snprintf(auth_credentials, sizeof(auth_credentials), "%s:%s", username, password);
-
-            // Base64 encode the credentials
-            char encoded_auth[256];
-            mg_base64_encode((unsigned char *)auth_credentials, strlen(auth_credentials), encoded_auth, sizeof(encoded_auth));
-
-            // Default redirect to index.html
-            const char *redirect_url = "/index.html";
-
-            // Check if this is a form submission or an API request
-            struct mg_str *content_type = mg_http_get_header(hm, "Content-Type");
-            struct mg_str *requested_with = mg_http_get_header(hm, "X-Requested-With");
-
-            // Check if content_type contains "application/json"
-            bool is_json = false;
-            if (content_type) {
-                const char *json_str = "application/json";
-                size_t json_len = strlen(json_str);
-
-                if (content_type->len >= json_len) {
-                    for (size_t i = 0; i <= content_type->len - json_len; i++) {
-                        if (strncmp(content_type->buf + i, json_str, json_len) == 0) {
-                            is_json = true;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            bool is_api_request = is_json || requested_with != NULL;
-
-            if (is_api_request) {
-                // For API requests, return a JSON success response
-                cJSON *response = cJSON_CreateObject();
-                cJSON_AddBoolToObject(response, "success", 1);
-                cJSON_AddStringToObject(response, "redirect", redirect_url);
-
-                // Send JSON response with auth cookie (using configured timeout)
-                mg_printf(c, "HTTP/1.1 200 OK\r\n");
-                mg_printf(c, "Content-Type: application/json\r\n");
-                mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
-                mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", encoded_auth, auth_timeout_seconds);
-                mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
-                mg_printf(c, "Pragma: no-cache\r\n");
-                mg_printf(c, "Expires: 0\r\n");
-                mg_printf(c, "Connection: close\r\n");
-
-                char *json_str = cJSON_PrintUnformatted(response);
-                mg_printf(c, "Content-Length: %d\r\n\r\n", (int)strlen(json_str));
-                mg_printf(c, "%s", json_str);
-                
-                cJSON_Delete(response);
-                free(json_str);
-                
-                // Ensure the connection is closed properly
-                c->is_draining = 1;
-            } else {
-                // For form submissions, send a redirect response
-                mg_printf(c, "HTTP/1.1 302 Found\r\n");
-                mg_printf(c, "Location: %s\r\n", redirect_url);
-                mg_printf(c, "Authorization: Basic %s\r\n", encoded_auth);
-                // Set a cookie with the auth token to help maintain session across pages (using configured timeout)
-                mg_printf(c, "Set-Cookie: auth=%s; Path=/; Max-Age=%d; SameSite=Lax\r\n", encoded_auth, auth_timeout_seconds);
-                // Add Cache-Control headers to prevent caching
-                mg_printf(c, "Cache-Control: no-cache, no-store, must-revalidate\r\n");
-                mg_printf(c, "Pragma: no-cache\r\n");
-                mg_printf(c, "Expires: 0\r\n");
-                mg_printf(c, "Connection: close\r\n");
-                mg_printf(c, "Content-Length: 0\r\n");
-                mg_printf(c, "\r\n");
-
-                // Ensure the connection is closed properly
-                c->is_draining = 1;
-            }
-            
-            return;
-        }
-        
-        // Login failed
+        // Login failed — no legacy config fallback
         log_warn("Login failed for user: %s", username);
         
         if (is_form) {

@@ -174,18 +174,9 @@ int mongoose_server_basic_auth_check(struct mg_http_message *hm, http_server_t *
                 }
             }
             
-            // If database authentication fails, check against server config (legacy)
-            if (strcmp(user, server->config.username) == 0 && 
-                strcmp(pass, server->config.password) == 0) {
-                return 0; // Authentication successful with legacy credentials
-            }
-            
-            // Also check against global config (for API login compatibility)
-            extern config_t g_config;
-            if (strcmp(user, g_config.web_username) == 0 && 
-                strcmp(pass, g_config.web_password) == 0) {
-                return 0; // Authentication successful with global config credentials
-            }
+            // Legacy config-based fallbacks removed — database auth is the
+            // sole authority.  Config credentials only seed the initial admin
+            // user via db_auth_init().
         }
     }
 
