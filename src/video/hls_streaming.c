@@ -45,211 +45,86 @@ void init_hls_streaming_backend(void) {
 }
 
 /**
- * Cleanup HLS streaming backend with improved robustness
+ * Cleanup HLS streaming backend - optimized for fast shutdown
  */
 void cleanup_hls_streaming_backend(void) {
-    log_info("Cleaning up HLS streaming backend...");
+    log_info("Cleaning up HLS streaming backend (optimized)...");
 
-    // Create a local copy of all stream names that need to be stopped
-    // CRITICAL FIX: Use a more robust approach to track unique stream names
-    char stream_names[MAX_STREAMS][MAX_STREAM_NAME];
-    int stream_count = 0;
-    bool stream_already_added[MAX_STREAMS] = {false};
+    // Step 1: Stop the watchdog FIRST to prevent any stream restarts during shutdown
+    stop_hls_watchdog();
 
-    // Collect all unique stream names first with mutex protection
+    // Step 2: Mark ALL contexts as not running in a single pass (with mutex held)
     pthread_mutex_lock(&unified_contexts_mutex);
+    int stream_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
-        if (unified_contexts[i] && unified_contexts[i]->stream_name[0] != '\0') {
-            // Check if this stream name is already in our list
-            bool already_added = false;
-            for (int j = 0; j < stream_count; j++) {
-                if (strcmp(stream_names[j], unified_contexts[i]->stream_name) == 0) {
-                    already_added = true;
-                    log_warn("Found duplicate HLS thread for stream %s during shutdown",
-                             unified_contexts[i]->stream_name);
-                    break;
+        if (unified_contexts[i] != NULL) {
+            // Mark as not running to signal threads to exit
+            atomic_store(&unified_contexts[i]->running, 0);
+
+            // Also update thread state to stopping
+            atomic_store(&unified_contexts[i]->thread_state, HLS_THREAD_STOPPING);
+
+            stream_count++;
+
+            // Log the stream being stopped
+            if (unified_contexts[i]->stream_name[0] != '\0') {
+                log_info("Signaled HLS stream to stop: %s", unified_contexts[i]->stream_name);
+
+                // Mark as stopping in stream state system
+                stream_state_manager_t *state = get_stream_state_by_name(unified_contexts[i]->stream_name);
+                if (state) {
+                    set_stream_callbacks_enabled(state, false);
+                    if (state->state != STREAM_STATE_STOPPING && state->state != STREAM_STATE_INACTIVE) {
+                        state->state = STREAM_STATE_STOPPING;
+                    }
                 }
             }
-
-            // Only add unique stream names to our list
-            if (!already_added && stream_count < MAX_STREAMS) {
-                strncpy(stream_names[stream_count], unified_contexts[i]->stream_name, MAX_STREAM_NAME - 1);
-                stream_names[stream_count][MAX_STREAM_NAME - 1] = '\0';
-                stream_already_added[stream_count] = true;
-                stream_count++;
-            }
-
-            // Mark as not running to ensure threads exit even if stop_hls_stream fails
-            atomic_store(&unified_contexts[i]->running, 0);
         }
     }
     pthread_mutex_unlock(&unified_contexts_mutex);
 
-    // Log how many unique streams we need to stop
-    log_info("Found %d active unique HLS streams to stop during shutdown", stream_count);
+    log_info("Signaled %d HLS streams to stop", stream_count);
 
-    // First, mark all streams as stopping to prevent new packet processing
-    for (int i = 0; i < stream_count; i++) {
-        log_info("Marking HLS stream as stopping: %s", stream_names[i]);
-
-        // Get the stream state manager
-        stream_state_manager_t *state = get_stream_state_by_name(stream_names[i]);
-        if (state) {
-            // Disable callbacks to prevent new packets from being processed
-            set_stream_callbacks_enabled(state, false);
-            log_info("Disabled callbacks for stream %s during HLS shutdown", stream_names[i]);
-
-            // Update the state to STOPPING
-            if (state->state != STREAM_STATE_STOPPING &&
-                state->state != STREAM_STATE_INACTIVE) {
-                state->state = STREAM_STATE_STOPPING;
-                log_info("Updated stream %s state to STOPPING", stream_names[i]);
-            }
-        } else {
-            log_warn("Could not find stream state for %s during HLS shutdown", stream_names[i]);
-        }
-
-        // Mark the stream as stopping in our tracking system
-        mark_stream_stopping(stream_names[i]);
+    // Step 3: Brief wait to allow threads to begin shutdown (reduced from 1000ms)
+    if (stream_count > 0) {
+        usleep(100000); // 100ms - just enough for threads to notice the flag
     }
 
-    // Add a small delay to allow in-progress operations to complete
-    usleep(1000000); // 1000ms
-
-    // Now stop each stream one by one with increased delays between stops
-    for (int i = 0; i < stream_count; i++) {
-        log_info("Stopping HLS stream: %s (%d of %d)", stream_names[i], i+1, stream_count);
-
-        // Try to stop the stream with multiple attempts if needed
-        int max_attempts = 3;
-        bool success = false;
-
-        for (int attempt = 1; attempt <= max_attempts && !success; attempt++) {
-            // Get the stream state manager again to ensure we have the latest state
-            stream_state_manager_t *state = get_stream_state_by_name(stream_names[i]);
-            if (state) {
-                // Disable callbacks again to be extra sure
-                set_stream_callbacks_enabled(state, false);
-                log_info("Disabled callbacks for stream '%s'", stream_names[i]);
-            }
-
-            log_info("Attempting to stop HLS stream: %s", stream_names[i]);
-            int result = stop_hls_stream(stream_names[i]);
-            if (result == 0) {
-                log_info("Successfully stopped HLS stream %s on attempt %d", stream_names[i], attempt);
-                success = true;
-                break;
-            } else {
-                // Check if the stream is already stopped
-                bool already_stopped = true;
-                int contexts_found = 0;
-                pthread_mutex_lock(&unified_contexts_mutex);
-                for (int j = 0; j < MAX_STREAMS; j++) {
-                    if (unified_contexts[j] && unified_contexts[j]->stream_name[0] != '\0' &&
-                        strcmp(unified_contexts[j]->stream_name, stream_names[i]) == 0) {
-                        already_stopped = false;
-                        contexts_found++;
-                    }
-                }
-
-                // CRITICAL FIX: If we found multiple contexts for the same stream, log a warning
-                if (contexts_found > 1) {
-                    log_warn("Found %d HLS contexts for stream %s during shutdown",
-                             contexts_found, stream_names[i]);
-                }
-                pthread_mutex_unlock(&unified_contexts_mutex);
-
-                if (already_stopped) {
-                    log_warn("HLS stream %s is already stopped", stream_names[i]);
-                    success = true;
-                    break;
-                } else if (attempt < max_attempts) {
-                    log_warn("Failed to stop HLS stream %s on attempt %d, retrying...", stream_names[i], attempt);
-                    usleep(1000000); // 1000ms delay before retry
-                } else {
-                    log_error("Failed to stop HLS stream %s after %d attempts", stream_names[i], max_attempts);
-
-                    // Force cleanup of this stream's context
-                    pthread_mutex_lock(&unified_contexts_mutex);
-                    for (int j = 0; j < MAX_STREAMS; j++) {
-                        // CRITICAL FIX: Add additional safety checks to prevent segfault
-                        if (unified_contexts[j] && unified_contexts[j]->stream_name[0] != '\0' &&
-                            strcmp(unified_contexts[j]->stream_name, stream_names[i]) == 0) {
-
-                            // Mark as not running
-                            atomic_store(&unified_contexts[j]->running, 0);
-
-                            // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
-                            __sync_synchronize();
-
-                            // Free the context
-                            log_warn("Forcing cleanup of HLS context for stream %s", stream_names[i]);
-
-                            // CRITICAL FIX: Mark the context as freed before actually freeing it
-                            extern void mark_context_as_freed(void *ctx);
-                            mark_context_as_freed(unified_contexts[j]);
-
-                            // CRITICAL FIX: Use safe_free to free the context
-                            extern void *safe_free(void *ptr);
-                            safe_free(unified_contexts[j]);
-                            unified_contexts[j] = NULL;
-                            break;
-                        }
-                    }
-                    pthread_mutex_unlock(&unified_contexts_mutex);
-                }
-            }
-        }
-
-        // Add a longer delay between stopping streams to avoid resource contention
-        usleep(1000000); // 1000ms
-    }
-
-    // Clean up the HLS contexts with additional logging
-    log_info("All HLS streams stopped, cleaning up contexts...");
-    cleanup_hls_contexts();
-
-    // Final verification that all contexts are cleaned up with mutex protection
+    // Step 4: Force cleanup of all remaining contexts
+    // Don't wait for threads - they will clean up on their own, but we need to proceed
     pthread_mutex_lock(&unified_contexts_mutex);
-    bool any_remaining = false;
+    int cleaned_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (unified_contexts[i] != NULL) {
-            any_remaining = true;
-
-            // CRITICAL FIX: Create a local copy of the stream name to avoid accessing potentially invalid memory
             char stream_name_copy[MAX_STREAM_NAME] = "unknown";
-
-            // CRITICAL FIX: Add safety check before accessing stream_name to prevent segfault
-            if (unified_contexts[i] && unified_contexts[i]->stream_name[0] != '\0') {
+            if (unified_contexts[i]->stream_name[0] != '\0') {
                 strncpy(stream_name_copy, unified_contexts[i]->stream_name, MAX_STREAM_NAME - 1);
                 stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
             }
 
-            log_warn("HLS context for stream %s still exists after cleanup", stream_name_copy);
+            log_info("Force cleanup of HLS context for stream %s", stream_name_copy);
 
-            // Force cleanup of remaining HLS context
-            log_info("Cleaning up remaining HLS context for stream %s", stream_name_copy);
+            // Ensure running flag is cleared
+            atomic_store(&unified_contexts[i]->running, 0);
 
-            // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+            // Memory barrier before cleanup
             __sync_synchronize();
 
-            // Free the context
-
-            // CRITICAL FIX: Mark the context as freed before actually freeing it
-            extern void mark_context_as_freed(void *ctx);
+            // Mark as freed and clean up
             mark_context_as_freed(unified_contexts[i]);
-
-            // CRITICAL FIX: Use safe_free to free the context
-            extern void *safe_free(void *ptr);
             safe_free(unified_contexts[i]);
             unified_contexts[i] = NULL;
+            cleaned_count++;
         }
     }
     pthread_mutex_unlock(&unified_contexts_mutex);
 
-    if (!any_remaining) {
-        log_info("All HLS contexts successfully cleaned up");
+    if (cleaned_count > 0) {
+        log_info("Force cleaned %d remaining HLS contexts", cleaned_count);
     }
+
+    // Step 5: Clean up the legacy HLS contexts
+    cleanup_hls_contexts();
 
     log_info("HLS streaming backend cleaned up");
 }

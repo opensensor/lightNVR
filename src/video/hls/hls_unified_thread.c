@@ -49,7 +49,6 @@ static void ffmpeg_buffer_cleanup(void);
 
 // Forward declarations for HLS watchdog functions
 static void start_hls_watchdog(void);
-static void stop_hls_watchdog(void);
 
 // MEMORY LEAK FIX: Global variable to track FFmpeg memory usage
 static int ffmpeg_memory_cleanup_registered = 0;
@@ -3346,11 +3345,12 @@ static void start_hls_watchdog(void) {
 
 /**
  * Stop the HLS watchdog thread
+ * This function is public so it can be called before cleanup to prevent restarts
  */
-static void stop_hls_watchdog(void) {
+void stop_hls_watchdog(void) {
     // Check if the watchdog is running
     if (!atomic_load(&watchdog_running)) {
-        log_warn("HLS watchdog thread is not running");
+        log_debug("HLS watchdog thread is not running");
         return;
     }
 
