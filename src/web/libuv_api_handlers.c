@@ -158,7 +158,13 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/recordings/#", "DELETE", handle_delete_recording);
     http_server_register_handler(server, "/api/recordings", "GET", handle_get_recordings);
 
-    log_info("Successfully registered %d API handlers", 70);  // Updated: added 6 recording handlers (get, delete, batch delete, batch progress, file check, file delete)
+    // Timeline API (backend-agnostic handlers)
+    http_server_register_handler(server, "/api/timeline/segments", "GET", handle_get_timeline_segments);
+    // TODO: Add remaining timeline handlers:
+    // - GET /api/timeline/manifest
+    // - GET /api/timeline/play
+
+    log_info("Successfully registered %d API handlers", 71);  // Updated: added timeline segments handler
 
     return 0;
 }
