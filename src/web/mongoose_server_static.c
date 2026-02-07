@@ -126,11 +126,11 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
     }
     
     // Debug log to check URI
-    log_info("Processing request for URI: %s, is_static_asset: %d", uri, is_static_asset);
-    
+    log_debug("Processing request for URI: %s, is_static_asset: %d", uri, is_static_asset);
+
     // Always allow login page without authentication
     if (strcmp(uri, "/login") == 0 || strcmp(uri, "/login.html") == 0) {
-        log_info("Login page requested, bypassing authentication");
+        log_debug("Login page requested, bypassing authentication");
         // Continue processing without authentication check
     }
     // Skip authentication for static assets
@@ -155,23 +155,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         config_t *global_config = &g_config;
         
         // Check for authentication
-        log_info("Processing HLS request: %s", uri);
-        
-        // Log all headers for debugging
-        for (int i = 0; i < MG_MAX_HTTP_HEADERS; i++) {
-            if (hm->headers[i].name.len == 0) break;
-            log_info("HLS request header: %.*s: %.*s", 
-                    (int)hm->headers[i].name.len, hm->headers[i].name.buf,
-                    (int)hm->headers[i].value.len, hm->headers[i].value.buf);
-        }
-        
+        log_debug("Processing HLS request: %s", uri);
+
         // Check authentication using the common auth function
         if (server->config.auth_enabled && mongoose_server_basic_auth_check(hm, server) != 0) {
-            log_info("Authentication required for HLS request but authentication failed");
+            log_debug("Authentication required for HLS request but authentication failed");
             mg_printf(c, "HTTP/1.1 401 Unauthorized\r\n");
             mg_printf(c, "Content-Type: application/json\r\n");
             mg_printf(c, "Content-Length: 26\r\n");
-            mg_printf(c, "Connection: close\r\n");
             mg_printf(c, "\r\n");
             mg_printf(c, "{\"error\": \"Unauthorized\"}\n");
             return;
@@ -205,7 +196,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         char go2rtc_hls_url[URL_BUFFER_SIZE];
         if (go2rtc_integration_get_hls_url(decoded_stream_name, go2rtc_hls_url, sizeof(go2rtc_hls_url))) {
             // Stream is using go2rtc for HLS, but we'll serve the files directly
-            log_info("Stream %s is using go2rtc for HLS, but serving files directly from filesystem", decoded_stream_name);
+            log_debug("Stream %s is using go2rtc for HLS, but serving files directly from filesystem", decoded_stream_name);
             // No redirection needed as go2rtc writes HLS segments to our HLS directory
         }
         #endif
@@ -220,14 +211,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         if (global_config->storage_path_hls[0] != '\0') {
             snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
                     global_config->storage_path_hls, decoded_stream_name, file_name);
-            log_info("Using HLS-specific storage path: %s", global_config->storage_path_hls);
+            log_debug("Using HLS-specific storage path: %s", global_config->storage_path_hls);
         } else {
-            snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s", 
+            snprintf(hls_file_path, sizeof(hls_file_path), "%s/hls/%s/%s",
                     global_config->storage_path, decoded_stream_name, file_name);
-            log_info("Using default storage path for HLS: %s", global_config->storage_path);
+            log_debug("Using default storage path for HLS: %s", global_config->storage_path);
         }
-        
-        log_info("Serving HLS file directly: %s", hls_file_path);
+
+        log_debug("Serving HLS file directly: %s", hls_file_path);
         
         // Check if file exists
         struct stat st;
@@ -280,7 +271,6 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             snprintf(headers, sizeof(headers),
                 "%s"
                 "%s"  // Dynamic cache control based on file type
-                "Connection: close\r\n"
                 "Access-Control-Allow-Origin: *\r\n"
                 "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
                 "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n",
@@ -295,7 +285,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             // File doesn't exist - let the client know
             // We don't need to create dummy files since FFmpeg integration 
             // is responsible for creating the actual HLS files
-            log_info("HLS file not found: %s (waiting for FFmpeg to create it)", hls_file_path);
+            log_debug("HLS file not found: %s (waiting for FFmpeg to create it)", hls_file_path);
             
             // Return a 404 with a message that indicates the file is being generated
             mg_http_reply(c, 404, "", "{\"error\": \"HLS file not found or still being generated by FFmpeg\"}\n");
@@ -305,7 +295,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
 
     // Special handling for login page - redirect /login to /login.html
     if (strcmp(uri, "/login") == 0) {
-        log_info("Redirecting /login to /login.html");
+        log_debug("Redirecting /login to /login.html");
         mg_printf(c, "HTTP/1.1 302 Found\r\n");
         mg_printf(c, "Location: /login.html\r\n");
         mg_printf(c, "Connection: close\r\n");
@@ -316,7 +306,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
 
     // Special handling for logout - redirect to login page
     if (strcmp(uri, "/logout") == 0) {
-        log_info("Redirecting /logout to /login.html");
+        log_debug("Redirecting /logout to /login.html");
         mg_printf(c, "HTTP/1.1 302 Found\r\n");
         mg_printf(c, "Location: /login.html?logout=1\r\n");
         mg_printf(c, "Set-Cookie: session=; Path=/; Max-Age=0\r\n");  // Clear session cookie
@@ -332,14 +322,14 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         config_t *global_config = &g_config;
         if (global_config->webrtc_disabled) {
             // WebRTC is disabled, serve hls.html directly
-            log_info("WebRTC is disabled, serving hls.html instead of index.html");
+            log_debug("WebRTC is disabled, serving hls.html instead of index.html");
 
             // Use hls.html path instead
             char index_path[MAX_PATH_LENGTH * 2];
             snprintf(index_path, sizeof(index_path), "%s/hls.html", server->config.web_root);
 
             // Log the path we're trying to serve
-            log_info("Serving hls.html: %s", index_path);
+            log_debug("Serving hls.html: %s", index_path);
 
             // Try to serve gzip-compressed version first
             if (try_serve_gzip_file(c, hm, index_path, "text/html", "Connection: close\r\n")) {
@@ -361,13 +351,13 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
         char index_path[MAX_PATH_LENGTH * 2];
 
         // Add debug logging to help diagnose the issue
-        log_info("Root path requested, web_root: %s", server->config.web_root);
+        log_debug("Root path requested, web_root: %s", server->config.web_root);
 
         // Use a direct path to index.html
         snprintf(index_path, sizeof(index_path), "%s/index.html", server->config.web_root);
 
         // Log the path we're trying to serve
-        log_info("Serving root path with index file: %s", index_path);
+        log_debug("Serving root path with index file: %s", index_path);
 
         // Check if index.html exists
         struct stat st;
@@ -388,7 +378,7 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 .extra_headers = "Connection: close\r\n"
             };
 
-            log_info("Serving index file for root path using mg_http_serve_file: %s", index_path);
+            log_debug("Serving index file for root path using mg_http_serve_file: %s", index_path);
             mg_http_serve_file(c, hm, index_path, &opts);
             return;
         } else {
@@ -422,13 +412,22 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
             // Serve the file without any locks
             // This is a critical optimization for static content
 
-            // Common extra headers for static assets
-            const char *common_extra_headers =
-                "Cache-Control: no-store\r\n"
-                "Connection: close\r\n"
-                "Access-Control-Allow-Origin: *\r\n"
-                "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
-                "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
+            // Use long-term caching for content-hashed assets (Vite /assets/ files)
+            // These filenames change when content changes, so they're safe to cache forever.
+            // Other files get no-cache (cache but always revalidate).
+            bool is_immutable_asset = (strstr(uri, "/assets/") != NULL);
+
+            const char *common_extra_headers = is_immutable_asset
+                ? "Cache-Control: public, max-age=31536000, immutable\r\n"
+                  "Connection: close\r\n"
+                  "Access-Control-Allow-Origin: *\r\n"
+                  "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                  "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n"
+                : "Cache-Control: no-cache\r\n"
+                  "Connection: close\r\n"
+                  "Access-Control-Allow-Origin: *\r\n"
+                  "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
+                  "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
 
             // Add special handling for JavaScript files to improve Firefox compatibility
             if (strstr(file_path, ".js") != NULL) {
@@ -440,18 +439,15 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 // Fall back to uncompressed file (only if it exists)
                 if (gz_only) {
                     // Only .gz exists but client doesn't accept gzip - return 404
-                    log_info("Client doesn't accept gzip and only .gz file exists: %s", file_path);
+                    log_debug("Client doesn't accept gzip and only .gz file exists: %s", file_path);
                     mg_http_reply(c, 404, "", "404 Not Found\n");
                     return;
                 }
 
-                const char js_headers[] =
-                    "Content-Type: application/javascript\r\n"
-                    "Cache-Control: no-store\r\n"
-                    "Connection: close\r\n"
-                    "Access-Control-Allow-Origin: *\r\n"
-                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
-                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
+                // Build JS headers using the smart cache control from common_extra_headers
+                char js_headers[1024];
+                snprintf(js_headers, sizeof(js_headers),
+                    "Content-Type: application/javascript\r\n%s", common_extra_headers);
 
                 struct mg_http_serve_opts js_opts = {
                     .mime_types = "",
@@ -472,18 +468,15 @@ void mongoose_server_handle_static_file(struct mg_connection *c, struct mg_http_
                 // Fall back to uncompressed file (only if it exists)
                 if (gz_only) {
                     // Only .gz exists but client doesn't accept gzip - return 404
-                    log_info("Client doesn't accept gzip and only .gz file exists: %s", file_path);
+                    log_debug("Client doesn't accept gzip and only .gz file exists: %s", file_path);
                     mg_http_reply(c, 404, "", "404 Not Found\n");
                     return;
                 }
 
-                const char css_headers[] =
-                    "Content-Type: text/css\r\n"
-                    "Cache-Control: no-store\r\n"
-                    "Connection: close\r\n"
-                    "Access-Control-Allow-Origin: *\r\n"
-                    "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
-                    "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n";
+                // Build CSS headers using the smart cache control from common_extra_headers
+                char css_headers[1024];
+                snprintf(css_headers, sizeof(css_headers),
+                    "Content-Type: text/css\r\n%s", common_extra_headers);
 
                 struct mg_http_serve_opts css_opts = {
                     .mime_types = "",
