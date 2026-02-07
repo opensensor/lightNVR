@@ -160,11 +160,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
 
     // Timeline API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/timeline/segments", "GET", handle_get_timeline_segments);
-    // TODO: Add remaining timeline handlers:
-    // - GET /api/timeline/manifest
-    // - GET /api/timeline/play
+    http_server_register_handler(server, "/api/timeline/manifest", "GET", handle_timeline_manifest);
+    http_server_register_handler(server, "/api/timeline/play", "GET", handle_timeline_playback);
 
-    log_info("Successfully registered %d API handlers", 71);  // Updated: added timeline segments handler
+    log_info("Successfully registered %d API handlers", 73);  // Updated: added all 3 timeline handlers
 
     return 0;
 }

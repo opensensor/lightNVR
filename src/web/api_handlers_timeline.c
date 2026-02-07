@@ -323,8 +323,202 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
     log_info("Successfully handled GET /api/timeline/segments request");
 }
 
+/**
+ * @brief Backend-agnostic handler for GET /api/timeline/manifest
+ */
+void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/timeline/manifest request");
 
+    // Extract parameters
+    char stream_name[MAX_STREAM_NAME] = {0};
+    char start_time_str[64] = {0};
+    char end_time_str[64] = {0};
 
+    // Extract stream parameter
+    if (http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name)) < 0) {
+        log_error("Missing required parameter: stream");
+        http_response_set_json_error(res, 400, "Missing required parameter: stream");
+        return;
+    }
+
+    // Extract start and end parameters (optional)
+    http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
+    http_request_get_query_param(req, "end", end_time_str, sizeof(end_time_str));
+
+    // Parse time strings to time_t
+    time_t start_time = 0;
+    time_t end_time = 0;
+
+    if (start_time_str[0] != '\0') {
+        start_time = parse_iso8601_time(start_time_str);
+        if (start_time == 0) {
+            log_error("Failed to parse start time: %s", start_time_str);
+        }
+    } else {
+        // Default to 24 hours ago
+        start_time = time(NULL) - (24 * 60 * 60);
+    }
+
+    if (end_time_str[0] != '\0') {
+        end_time = parse_iso8601_time(end_time_str);
+        if (end_time == 0) {
+            log_error("Failed to parse end time: %s", end_time_str);
+        }
+        // For date-only format, set to end of day
+        if (strlen(end_time_str) == 10) {  // YYYY-MM-DD format
+            end_time += (23 * 3600 + 59 * 60 + 59);  // Add 23:59:59
+        }
+    } else {
+        // Default to now
+        end_time = time(NULL);
+    }
+
+    // Get timeline segments
+    timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
+    if (!segments) {
+        log_error("Failed to allocate memory for timeline segments");
+        http_response_set_json_error(res, 500, "Failed to allocate memory for timeline segments");
+        return;
+    }
+
+    int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
+
+    if (count <= 0) {
+        log_error("No timeline segments found for stream %s", stream_name);
+        free(segments);
+        http_response_set_json_error(res, 404, "No recordings found for the specified time range");
+        return;
+    }
+
+    // Create manifest
+    char manifest_path[MAX_PATH_LENGTH];
+    if (create_timeline_manifest(segments, count, start_time, manifest_path) != 0) {
+        log_error("Failed to create timeline manifest");
+        free(segments);
+        http_response_set_json_error(res, 500, "Failed to create timeline manifest");
+        return;
+    }
+
+    // Free segments
+    free(segments);
+
+    // Serve the manifest file
+    const char *extra_headers = "Cache-Control: no-cache\r\n";
+    http_serve_file(req, res, manifest_path, "application/vnd.apple.mpegurl", extra_headers);
+
+    log_info("Successfully handled GET /api/timeline/manifest request");
+}
+
+/**
+ * @brief Backend-agnostic handler for GET /api/timeline/play
+ */
+void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/timeline/play request");
+
+    // Extract parameters
+    char stream_name[MAX_STREAM_NAME] = {0};
+    char start_time_str[64] = {0};
+
+    // Extract stream parameter
+    if (http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name)) < 0) {
+        log_error("Missing required parameter: stream");
+        http_response_set_json_error(res, 400, "Missing required parameter: stream");
+        return;
+    }
+
+    // Extract start parameter
+    http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
+
+    // Parse start time
+    time_t start_time = 0;
+    if (start_time_str[0] != '\0') {
+        // Try parsing as a timestamp first
+        char *endptr;
+        long timestamp = strtol(start_time_str, &endptr, 10);
+        if (*endptr == '\0' && timestamp > 0) {
+            // It's a valid timestamp
+            start_time = (time_t)timestamp;
+        } else {
+            // Try parsing as ISO 8601
+            start_time = parse_iso8601_time(start_time_str);
+            if (start_time == 0) {
+                log_error("Failed to parse start time: %s", start_time_str);
+                http_response_set_json_error(res, 400, "Invalid start time format");
+                return;
+            }
+        }
+    } else {
+        // Default to now
+        start_time = time(NULL);
+    }
+
+    // Find the recording that contains or is closest to the start time
+    timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
+    if (!segments) {
+        log_error("Failed to allocate memory for timeline segments");
+        http_response_set_json_error(res, 500, "Failed to allocate memory");
+        return;
+    }
+
+    // Get segments around the start time (1 hour before and after)
+    time_t search_start = start_time - 3600;
+    time_t search_end = start_time + 3600;
+
+    int count = get_timeline_segments(stream_name, search_start, search_end, segments, MAX_TIMELINE_SEGMENTS);
+
+    if (count <= 0) {
+        log_error("No recordings found for stream %s near time %ld", stream_name, (long)start_time);
+        free(segments);
+        http_response_set_json_error(res, 404, "No recordings found for the specified time");
+        return;
+    }
+
+    // Find the segment that contains the start time, or the closest one
+    int64_t recording_id = 0;
+    int64_t min_distance = INT64_MAX;
+
+    for (int i = 0; i < count; i++) {
+        if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
+            // Found exact match
+            recording_id = segments[i].id;
+            break;
+        }
+
+        // Calculate distance to this segment
+        int64_t distance;
+        if (start_time < segments[i].start_time) {
+            distance = segments[i].start_time - start_time;
+        } else {
+            distance = start_time - segments[i].end_time;
+        }
+
+        if (distance < min_distance) {
+            min_distance = distance;
+            recording_id = segments[i].id;
+        }
+    }
+
+    free(segments);
+
+    if (recording_id == 0) {
+        log_error("Failed to find recording for stream %s", stream_name);
+        http_response_set_json_error(res, 404, "No recording found");
+        return;
+    }
+
+    // Redirect to the recording playback endpoint
+    char redirect_url[256];
+    snprintf(redirect_url, sizeof(redirect_url), "/api/recordings/play/%llu", (unsigned long long)recording_id);
+
+    log_info("Redirecting to recording playback: %s", redirect_url);
+
+    // Set redirect response
+    res->status_code = 302;
+    http_response_add_header(res, "Location", redirect_url);
+    http_response_add_header(res, "Content-Length", "0");
+
+    log_info("Successfully handled GET /api/timeline/play request");
+}
 
 /**
  * Create a playback manifest for a sequence of recordings
