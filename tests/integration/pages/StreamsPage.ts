@@ -32,19 +32,20 @@ export class StreamsPage extends BasePage {
     return this.page.locator('button').filter({ hasText: /refresh/i }).first();
   }
 
-  // Modal locators - StreamConfigModal is a fixed overlay
+  // Modal locators - StreamConfigModal is a fixed overlay with unique ID
   get addStreamModal(): Locator {
-    // The modal is a fixed overlay containing the stream form
-    // Look for the visible modal overlay that contains the stream-name field
-    return this.page.locator('.fixed.inset-0, div[class*="fixed"][class*="inset-0"]').filter({ has: this.page.locator('#stream-name') }).first();
+    // The modal has a unique ID 'stream-config-modal'
+    return this.page.locator('#stream-config-modal');
   }
 
   get streamNameInput(): Locator {
-    return this.page.locator('#stream-name');
+    // Scope to the stream config modal to avoid conflicts with other modals
+    return this.addStreamModal.locator('#stream-name');
   }
 
   get streamUrlInput(): Locator {
-    return this.page.locator('#stream-url');
+    // Scope to the stream config modal to avoid conflicts with other modals
+    return this.addStreamModal.locator('#stream-url');
   }
 
   get saveButton(): Locator {
@@ -125,7 +126,8 @@ export class StreamsPage extends BasePage {
     await this.streamUrlInput.fill(config.url);
 
     if (config.enabled !== undefined) {
-      const enabledCheckbox = this.page.locator('#stream-enabled, input[name="enabled"]').first();
+      // Scope to the modal to avoid conflicts with other modals
+      const enabledCheckbox = this.addStreamModal.locator('#stream-enabled, input[name="enabled"]').first();
       if (config.enabled) {
         await enabledCheckbox.check({ force: true });
       } else {
