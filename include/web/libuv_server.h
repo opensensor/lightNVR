@@ -1,12 +1,9 @@
 /**
  * @file libuv_server.h
  * @brief HTTP server implementation using libuv + llhttp
- * 
- * This provides an alternative HTTP backend to Mongoose, using libuv for
- * async I/O and llhttp for HTTP parsing. It implements the same
- * http_server_handle_t interface for drop-in replacement.
- * 
- * Enable with: cmake -DHTTP_BACKEND=libuv
+ *
+ * Uses libuv for async I/O and llhttp for HTTP parsing.
+ * Implements the http_server_handle_t interface.
  */
 
 #ifndef LIBUV_SERVER_H
