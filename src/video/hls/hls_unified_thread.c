@@ -2164,8 +2164,17 @@ void *hls_unified_thread_func(void *arg) {
     // CRITICAL FIX: Add final safety check before marking thread as exited
     // This prevents segmentation faults if the context has been freed during cleanup
     if (ctx_for_exit && !is_context_already_freed(ctx_for_exit)) {
+        // CRITICAL FIX: Set thread_state to STOPPED so cleanup_hls_streaming_backend knows we've exited
+        // This was missing - we were only setting the local variable but not the atomic field
+        atomic_store(&ctx_for_exit->thread_state, HLS_THREAD_STOPPED);
+
+        // Memory barrier to ensure the state is visible to other threads
+        __sync_synchronize();
+
         // Mark thread as exited to ensure proper cleanup
         mark_thread_exited(ctx_for_exit);
+
+        log_info("Thread for stream %s marked as STOPPED", stream_name_buf);
     } else {
         log_info("Context for stream %s is no longer valid, skipping final thread exit marking", stream_name_buf);
     }
