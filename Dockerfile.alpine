@@ -8,6 +8,7 @@ RUN apk update && apk add --no-cache \
     mbedtls2-dev \
     cjson-dev \
     mosquitto-dev \
+    libuv-dev llhttp-dev \
     bash
 
 # Fetch external dependencies
