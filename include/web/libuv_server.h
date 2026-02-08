@@ -24,9 +24,9 @@ typedef struct libuv_server {
     uv_tcp_t listener;                  // TCP listener handle
     uv_async_t stop_async;              // Async handle to wake up event loop for stop
     http_server_config_t config;        // Server configuration (copied)
-    bool running;                       // Server running flag
+    volatile bool running;              // Server running flag (volatile for cross-thread visibility)
     bool owns_loop;                     // Whether we own the event loop
-    bool shutting_down;                 // Server is shutting down
+    volatile bool shutting_down;        // Server is shutting down (volatile for cross-thread visibility)
 
     // Handler registry (same structure as http_server_t)
     struct {

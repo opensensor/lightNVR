@@ -250,27 +250,51 @@ void libuv_server_stop(http_server_handle_t handle) {
     server->running = false;
     server->shutting_down = true;  // Signal shutdown to all callbacks
 
-    // Send async signal to wake up the event loop thread immediately
-    // This is critical because uv_run(UV_RUN_ONCE) can block indefinitely
-    // waiting for I/O, and we need to wake it up so it can check server->running
-    log_info("libuv_server_stop: Sending async stop signal to event loop");
-    uv_async_send(&server->stop_async);
+    // CRITICAL FIX: We must wait for the event loop thread to exit FIRST
+    // before trying to manipulate the loop from the main thread.
+    // Running uv_run() from multiple threads is not safe.
+    if (server->thread_running) {
+        log_info("libuv_server_stop: Signaling event loop thread to stop");
+
+        // Send async signal to wake up the event loop thread
+        // This is critical because uv_run(UV_RUN_ONCE) can block indefinitely
+        // waiting for I/O, and we need to wake it up so it can check server->running
+        uv_async_send(&server->stop_async);
+
+        // Also stop the loop to ensure uv_run returns
+        uv_stop(server->loop);
+
+        // Wait for thread with timeout - keep sending signals periodically
+        log_info("libuv_server_stop: Waiting for server thread to exit");
+        const int max_wait_ms = 5000;  // 5 second maximum wait
+        const int check_interval_ms = 100;  // Check every 100ms
+        int elapsed_ms = 0;
+
+        while (elapsed_ms < max_wait_ms && server->thread_running) {
+            // Keep sending async signals and stop requests
+            uv_async_send(&server->stop_async);
+            uv_stop(server->loop);
+
+            usleep(check_interval_ms * 1000);
+            elapsed_ms += check_interval_ms;
+        }
+
+        // Now join the thread - hopefully it has exited
+        uv_thread_join(&server->thread);
+        server->thread_running = false;
+        log_info("libuv_server_stop: Server thread exited after %d ms", elapsed_ms);
+    }
+
+    // Now that the event loop thread has stopped, we can safely manipulate the loop
 
     // Close the listener to stop accepting new connections
     if (!uv_is_closing((uv_handle_t *)&server->listener)) {
         uv_close((uv_handle_t *)&server->listener, NULL);
     }
 
-    // Close the async handle since we're shutting down
+    // Close the async handle since we're done with it
     if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
         uv_close((uv_handle_t *)&server->stop_async, NULL);
-    }
-
-    // Give pending operations a chance to complete
-    log_info("libuv_server_stop: Waiting for pending operations");
-    for (int i = 0; i < 10; i++) {
-        uv_run(server->loop, UV_RUN_NOWAIT);
-        usleep(50000);  // 50ms
     }
 
     // Walk all handles and close them
@@ -278,11 +302,9 @@ void libuv_server_stop(http_server_handle_t handle) {
     uv_walk(server->loop, close_walk_cb, NULL);
 
     // Run the loop to process close callbacks with a timeout
-    // CRITICAL FIX: Use UV_RUN_NOWAIT with a timeout instead of UV_RUN_DEFAULT
-    // which can block indefinitely if any handle fails to close
     log_info("libuv_server_stop: Processing close callbacks (with timeout)");
 
-    const int max_wait_ms = 5000;  // 5 second maximum wait for close callbacks
+    const int max_wait_ms = 3000;  // 3 second maximum wait for close callbacks
     const int check_interval_ms = 50;  // Check every 50ms
     int elapsed_ms = 0;
 
@@ -313,24 +335,6 @@ void libuv_server_stop(http_server_handle_t handle) {
         uv_walk(server->loop, count_handles_cb, &handle_count);
         log_warn("libuv_server_stop: Timeout waiting for handles to close, %d handles still active",
                  handle_count);
-        // Force close any remaining handles
-        uv_walk(server->loop, close_walk_cb, NULL);
-        // Give them one more quick iteration to process
-        for (int i = 0; i < 5; i++) {
-            uv_run(server->loop, UV_RUN_NOWAIT);
-            usleep(10000);  // 10ms
-        }
-    }
-
-    // Stop the event loop - this will cause uv_run to return
-    uv_stop(server->loop);
-
-    // Wait for thread to finish if we started one
-    if (server->thread_running) {
-        log_info("libuv_server_stop: Waiting for server thread to exit");
-        uv_thread_join(&server->thread);
-        server->thread_running = false;
-        log_info("libuv_server_stop: Server thread exited");
     }
 
     log_info("libuv_server_stop: Server stopped");
