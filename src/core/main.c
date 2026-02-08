@@ -1099,6 +1099,10 @@ int main(int argc, char *argv[]) {
 cleanup:
     log_info("Starting cleanup process...");
 
+    // Cancel any pending alarm from signal_handler to prevent interference with cleanup
+    // alarm(0) cancels any previously set alarm - this is async-signal-safe
+    alarm(0);
+
     // Block most signals during cleanup to prevent interruptions
     // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
     sigset_t block_mask, old_mask;
