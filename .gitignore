@@ -84,6 +84,8 @@ Makefile
 
 # External Dependencies
 /external
+nvr-provisioning/
+demetered/
 
 # node modules
 node_modules/

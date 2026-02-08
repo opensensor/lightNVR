@@ -143,17 +143,28 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
     return null;
   }
 
-  // Don't validate if no credentials exist (user not logged in)
+  // If no credentials exist, redirect to login immediately
+  // This handles the case where user directly navigates to a protected page
   if (!hasAuthCredentials()) {
-    console.debug('Skipping session validation setup - no credentials found');
+    console.debug('No credentials found on protected page, redirecting to login');
+    redirectToLogin('no_credentials');
     return null;
   }
 
   console.log(`Setting up session validation with ${intervalMs}ms interval`);
 
-  // Setup periodic validation only - don't validate immediately
-  // The global 401 handler in fetch-utils.js will catch expired sessions
-  // when the first API call is made
+  // Validate immediately on page load
+  validateSession().then(session => {
+    if (!session.valid) {
+      console.warn('Initial session validation failed, redirecting to login');
+      clearAuthState();
+      redirectToLogin('session_expired');
+    } else {
+      console.debug('Initial session validation passed for user:', session.username);
+    }
+  });
+
+  // Setup periodic validation
   const intervalId = setInterval(async () => {
     // Double-check credentials still exist before validating
     if (!hasAuthCredentials()) {
