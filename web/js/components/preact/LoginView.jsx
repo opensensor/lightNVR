@@ -14,7 +14,6 @@ export function LoginView() {
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const redirectTimerRef = useRef(null);
 
   // Check URL for error, auth_required, or logout parameter
   useEffect(() => {
@@ -38,14 +37,7 @@ export function LoginView() {
   // Request controller for cancelling requests
   const requestControllerRef = useRef(null);
 
-  // Cleanup function for any timers
-  useEffect(() => {
-    return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
-      }
-    };
-  }, []);
+
 
   // Function to check if browser might be blocking redirects
   const checkBrowserRedirectSupport = () => {
@@ -106,34 +98,13 @@ export function LoginView() {
         // Successful login
         console.log('Login successful, proceeding to redirect');
 
-        // Try multiple redirect approaches
-        try {
-          // Get redirect URL from query parameter if it exists
-          const urlParams = new URLSearchParams(window.location.search);
-          const redirectUrl = urlParams.get('redirect');
+        // Get redirect URL from query parameter if it exists
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectUrl = urlParams.get('redirect');
+        const targetUrl = redirectUrl || '/index.html';
 
-          // Add timestamp to prevent caching issues
-          const targetUrl = redirectUrl
-              ? redirectUrl
-              : `/index.html`;
-
-
-          // Set a fallback timer in case the redirect doesn't happen immediately
-          redirectTimerRef.current = setTimeout(() => {
-            console.log('Fallback: trying window.location.href');
-            window.location.href = targetUrl;
-
-            // If that also doesn't work, try replace
-            redirectTimerRef.current = setTimeout(() => {
-              console.log('Fallback: trying window.location.replace');
-              window.location.replace(targetUrl);
-            }, 500);
-          }, 500);
-        } catch (redirectError) {
-          console.error('Redirect error:', redirectError);
-          // Last resort: try a different approach
-          window.location.replace('index.html');
-        }
+        // Redirect immediately
+        window.location.href = targetUrl;
       } else {
         // Failed login
         setIsLoggingIn(false);

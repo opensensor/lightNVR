@@ -1152,6 +1152,30 @@ cleanup:
         sleep(15);
         log_error("Cleanup process phase 2 timed out after 15 seconds, forcing exit");
         kill(getppid(), SIGKILL);  // Force kill the parent process
+
+        // If restart was requested, handle it here since the parent was killed
+        if (restart_requested && saved_argv != NULL) {
+            log_info("Restart was requested, re-executing LightNVR after forced cleanup...");
+
+            // Give the system a moment to release resources
+            usleep(1000000);  // 1 second
+
+            // Get the executable path
+            char exe_path[MAX_PATH_LENGTH];
+            ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+            if (len > 0) {
+                exe_path[len] = '\0';
+
+                // Re-exec the program with the same arguments
+                execv(exe_path, saved_argv);
+
+                // If execv returns, it failed
+                log_error("Failed to restart after forced cleanup: %s", strerror(errno));
+            } else {
+                log_error("Failed to get executable path for restart: %s", strerror(errno));
+            }
+        }
+
         exit(EXIT_FAILURE);
     } else if (cleanup_pid > 0) {
         // Parent process - continue with cleanup
