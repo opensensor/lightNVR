@@ -35,7 +35,7 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
         return;
     }
 
-    log_debug("Handling GET /api/detection/results/%s request", stream_name);
+    log_info("Handling GET /api/detection/results/%s request", stream_name);
 
     // Check if stream exists
     stream_handle_t stream = get_stream_by_name(stream_name);
@@ -53,14 +53,14 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
     char start_str[32] = {0};
     if (http_request_get_query_param(req, "start", start_str, sizeof(start_str)) == 0 && start_str[0]) {
         start_time = (time_t)strtoll(start_str, NULL, 10);
-        log_debug("Using start_time filter: %lld", (long long)start_time);
+        log_info("Using start_time filter: %lld (str='%s')", (long long)start_time, start_str);
     }
 
     // Extract end time parameter
     char end_str[32] = {0};
     if (http_request_get_query_param(req, "end", end_str, sizeof(end_str)) == 0 && end_str[0]) {
         end_time = (time_t)strtoll(end_str, NULL, 10);
-        log_debug("Using end_time filter: %lld", (long long)end_time);
+        log_info("Using end_time filter: %lld (str='%s')", (long long)end_time, end_str);
     }
     
     // If no time range specified, use default MAX_DETECTION_AGE
@@ -153,5 +153,6 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
     free(json_str);
     cJSON_Delete(response);
     
-    log_debug("Successfully handled GET /api/detection/results/%s request", stream_name);
+    log_info("Successfully handled GET /api/detection/results/%s request, returned %d detections",
+             stream_name, result.count);
 }

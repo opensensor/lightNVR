@@ -253,10 +253,10 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
     
     if (start_time > 0 && end_time > 0) {
         // Time range filter
-        log_debug("Getting detections for stream %s between %lld and %lld",
-                stream_name, (long long)start_time, (long long)end_time);
-        
-        snprintf(sql, sizeof(sql), 
+        log_info("Getting detections for stream %s between %lld and %lld (MAX_DETECTIONS=%d)",
+                stream_name, (long long)start_time, (long long)end_time, MAX_DETECTIONS);
+
+        snprintf(sql, sizeof(sql),
                 "SELECT label, confidence, x, y, width, height "
                 "FROM detections "
                 "WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? "
@@ -403,8 +403,9 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
 
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
-    
-    log_debug("Found %d detections in database for stream %s", count, stream_name);
+
+    log_info("Found %d detections in database for stream %s (start=%lld, end=%lld)",
+             count, stream_name, (long long)start_time, (long long)end_time);
     return count;
 }
 
