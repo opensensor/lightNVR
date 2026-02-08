@@ -70,6 +70,13 @@ void init_recordings_system(void);
 // Global flag for graceful shutdown
 volatile bool running = true;
 
+// Global flag for restart request (set by API handler)
+volatile bool restart_requested = false;
+
+// Store original argc/argv for restart functionality
+static int saved_argc = 0;
+static char **saved_argv = NULL;
+
 // Global flag for daemon mode (made extern so web_server.c can access it)
 bool daemon_mode = false;
 
@@ -429,8 +436,23 @@ static int daemonize(const char *pid_file) {
 // Function to check and ensure recording is active for streams that have recording enabled
 static void check_and_ensure_services(void);
 
+// Function to request a restart (called from API handler)
+void request_restart(void) {
+    restart_requested = true;
+    running = false;
+}
+
+// Function to check if restart was requested
+bool is_restart_requested(void) {
+    return restart_requested;
+}
+
 int main(int argc, char *argv[]) {
     int pid_fd = -1;
+
+    // Save argc/argv for potential restart
+    saved_argc = argc;
+    saved_argv = argv;
 
     // Print banner
     printf("LightNVR v%s - Lightweight NVR\n", LIGHTNVR_VERSION_STRING);
@@ -1465,6 +1487,35 @@ cleanup:
     }
 
     log_info("Cleanup complete, shutting down");
+
+    // Check if restart was requested
+    if (restart_requested && saved_argv != NULL) {
+        log_info("Restart requested, re-executing LightNVR...");
+
+        // Shutdown logging before re-exec
+        shutdown_logger();
+
+        // Get the executable path
+        char exe_path[MAX_PATH_LENGTH];
+        ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+        if (len > 0) {
+            exe_path[len] = '\0';
+
+            // Give the system a moment to release resources
+            usleep(500000);  // 500ms
+
+            // Re-exec the program with the same arguments
+            execv(exe_path, saved_argv);
+
+            // If execv returns, it failed
+            fprintf(stderr, "Failed to restart: %s\n", strerror(errno));
+        } else {
+            fprintf(stderr, "Failed to get executable path for restart: %s\n", strerror(errno));
+        }
+
+        // If we get here, restart failed
+        return EXIT_FAILURE;
+    }
 
     // Shutdown logging
     shutdown_logger();

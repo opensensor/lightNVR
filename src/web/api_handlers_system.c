@@ -633,6 +633,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     log_info("Successfully handled GET /api/system/info request");
 }
 
+// External function from main.c to request a restart
+extern void request_restart(void);
+
 /**
  * @brief Direct handler for POST /api/system/restart
  */
@@ -669,9 +672,9 @@ void handle_post_system_restart(const http_request_t *req, http_response_t *res)
     // Log restart
     log_info("System restart requested via API");
 
-    // Schedule restart
-    extern volatile bool running;
-    running = false;
+    // Request restart - this sets restart_requested flag and running to false
+    // After cleanup, main() will re-exec the program
+    request_restart();
 
     log_info("Successfully handled POST /api/system/restart request");
 }
