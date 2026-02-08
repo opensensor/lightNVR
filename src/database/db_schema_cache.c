@@ -46,23 +46,7 @@ void init_schema_cache(void) {
 
         column_cache_size = 0;
 
-        // Run schema migrations once at startup
-        if (init_schema_management() != 0) {
-            log_error("Failed to initialize schema management");
-            free(column_cache);
-            column_cache = NULL;
-            pthread_mutex_unlock(&column_cache_mutex);
-            return;
-        }
-
-        if (run_schema_migrations() != 0) {
-            log_error("Failed to run schema migrations");
-            free(column_cache);
-            column_cache = NULL;
-            pthread_mutex_unlock(&column_cache_mutex);
-            return;
-        }
-
+        // Note: Schema migrations are run in init_database() before this function is called
         // Pre-cache common column checks directly using column_exists
         // These are the columns that are frequently checked in the codebase
         bool detection_exists = column_exists("streams", "detection_based_recording");

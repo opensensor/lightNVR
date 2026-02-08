@@ -140,13 +140,31 @@ int db_auth_generate_api_key(int64_t user_id, char *api_key, size_t api_key_size
 
 /**
  * @brief Authenticate a user with username and password
- * 
+ *
  * @param username Username
  * @param password Password
  * @param user_id Pointer to store the user ID (optional, can be NULL)
  * @return 0 on success, non-zero on failure
  */
 int db_auth_authenticate(const char *username, const char *password, int64_t *user_id);
+
+/**
+ * @brief Verify a password for a specific user ID
+ *
+ * @param user_id User ID
+ * @param password Password to verify
+ * @return 0 on success, non-zero on failure
+ */
+int db_auth_verify_password(int64_t user_id, const char *password);
+
+/**
+ * @brief Set the password change lock status for a user
+ *
+ * @param user_id User ID
+ * @param locked Whether password changes should be locked
+ * @return 0 on success, non-zero on failure
+ */
+int db_auth_set_password_lock(int64_t user_id, bool locked);
 
 /**
  * @brief Create a new session for a user

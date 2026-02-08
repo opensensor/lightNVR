@@ -41,6 +41,10 @@ static const char *LEGACY_VERSION_MAP[] = {
     "0013",    // v13 - add_retention_policy
     "0014",    // v14 - add_ptz_support
     "0015",    // v15 - add_buffer_strategy
+    "0016",    // v16 - add_onvif_credentials
+    "0017",    // v17 - add_recording_id_to_detections
+    "0018",    // v18 - add_session_tracking
+    "0019",    // v19 - add_password_change_locked
 };
 #define LEGACY_VERSION_COUNT (sizeof(LEGACY_VERSION_MAP) / sizeof(LEGACY_VERSION_MAP[0]))
 

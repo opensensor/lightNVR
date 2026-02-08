@@ -39,6 +39,7 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
     cJSON_AddNumberToObject(json, "updated_at", user->updated_at);
     cJSON_AddNumberToObject(json, "last_login", user->last_login);
     cJSON_AddBoolToObject(json, "is_active", user->is_active);
+    cJSON_AddBoolToObject(json, "password_change_locked", user->password_change_locked);
 
     return json;
 }
@@ -157,7 +158,7 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db,
                                "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active "
+                               "updated_at, last_login, is_active, password_change_locked "
                                "FROM users ORDER BY id;",
                                -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -199,6 +200,7 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
         user.updated_at = sqlite3_column_int64(stmt, 6);
         user.last_login = sqlite3_column_int64(stmt, 7);
         user.is_active = sqlite3_column_int(stmt, 8) != 0;
+        user.password_change_locked = sqlite3_column_int(stmt, 9) != 0;
 
         // Add user to array
         cJSON_AddItemToArray(users_array, user_to_json(&user, 1));
@@ -257,7 +259,7 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db,
                                "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active "
+                               "updated_at, last_login, is_active, password_change_locked "
                                "FROM users WHERE id = ?;",
                                -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -302,6 +304,7 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
     user.updated_at = sqlite3_column_int64(stmt, 6);
     user.last_login = sqlite3_column_int64(stmt, 7);
     user.is_active = sqlite3_column_int(stmt, 8) != 0;
+    user.password_change_locked = sqlite3_column_int(stmt, 9) != 0;
 
     sqlite3_finalize(stmt);
 
@@ -475,7 +478,12 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
             }
 
             rc = db_auth_change_password(user_id, password);
-            if (rc != 0) {
+            if (rc == -2) {
+                // Password changes are locked for this user
+                cJSON_Delete(json_req);
+                http_response_set_json_error(res, 403, "Password changes are locked for this user");
+                return;
+            } else if (rc != 0) {
                 cJSON_Delete(json_req);
                 http_response_set_json_error(res, 500, "Failed to update password");
                 return;
@@ -664,5 +672,200 @@ void handle_users_generate_api_key(const http_request_t *req, http_response_t *r
     cJSON_Delete(response);
 
     log_info("Successfully generated API key for user ID: %lld", (long long)user_id);
+}
+
+/**
+ * @brief Backend-agnostic handler for PUT /api/auth/users/:id/password
+ */
+void handle_users_change_password(const http_request_t *req, http_response_t *res) {
+    log_info("Handling PUT /api/auth/users/:id/password request");
+
+    // Get the current user from session
+    user_t current_user;
+    if (!httpd_get_authenticated_user(req, &current_user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
+    // Extract user ID from URL
+    char id_str[16] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract user ID from URL");
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    int64_t target_user_id = strtoll(id_str, NULL, 10);
+
+    // Check if the target user exists
+    user_t target_user;
+    int rc = db_auth_get_user_by_id(target_user_id, &target_user);
+    if (rc != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+
+    // Check permissions:
+    // - Admins can change any user's password
+    // - Non-admins can only change their own password
+    bool is_admin = (current_user.role == USER_ROLE_ADMIN);
+    bool is_own_password = (current_user.id == target_user_id);
+
+    if (!is_admin && !is_own_password) {
+        http_response_set_json_error(res, 403, "You can only change your own password");
+        return;
+    }
+
+    // Parse JSON request
+    cJSON *json_req = httpd_parse_json_body(req);
+    if (!json_req) {
+        http_response_set_json_error(res, 400, "Invalid JSON");
+        return;
+    }
+
+    // Extract fields
+    cJSON *old_password_json = cJSON_GetObjectItem(json_req, "old_password");
+    cJSON *new_password_json = cJSON_GetObjectItem(json_req, "new_password");
+
+    if (!new_password_json || !cJSON_IsString(new_password_json)) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "New password is required");
+        return;
+    }
+
+    const char *new_password = new_password_json->valuestring;
+
+    // Validate new password length
+    if (strlen(new_password) < 8) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "Password must be at least 8 characters");
+        return;
+    }
+
+    // Non-admins must provide old password
+    if (!is_admin) {
+        if (!old_password_json || !cJSON_IsString(old_password_json)) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "Current password is required");
+            return;
+        }
+
+        const char *old_password = old_password_json->valuestring;
+
+        // Verify old password
+        rc = db_auth_verify_password(target_user_id, old_password);
+        if (rc != 0) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 401, "Current password is incorrect");
+            return;
+        }
+    }
+
+    // Change the password
+    rc = db_auth_change_password(target_user_id, new_password);
+    if (rc == -2) {
+        // Password changes are locked for this user
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 403, "Password changes are locked for this user");
+        return;
+    } else if (rc != 0) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 500, "Failed to change password");
+        return;
+    }
+
+    cJSON_Delete(json_req);
+
+    // Create JSON response
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Successfully changed password for user ID: %lld", (long long)target_user_id);
+}
+
+/**
+ * @brief Backend-agnostic handler for PUT /api/auth/users/:id/password-lock
+ */
+void handle_users_password_lock(const http_request_t *req, http_response_t *res) {
+    log_info("Handling PUT /api/auth/users/:id/password-lock request");
+
+    // Check if user has admin role
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set by httpd_check_admin_privileges
+    }
+
+    // Extract user ID from URL
+    char id_str[16] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract user ID from URL");
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    int64_t user_id = strtoll(id_str, NULL, 10);
+
+    // Check if the user exists
+    user_t user;
+    int rc = db_auth_get_user_by_id(user_id, &user);
+    if (rc != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+
+    // Parse JSON request
+    cJSON *json_req = httpd_parse_json_body(req);
+    if (!json_req) {
+        http_response_set_json_error(res, 400, "Invalid JSON");
+        return;
+    }
+
+    // Extract locked field
+    cJSON *locked_json = cJSON_GetObjectItem(json_req, "locked");
+    if (!locked_json || !cJSON_IsBool(locked_json)) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "Locked field is required and must be a boolean");
+        return;
+    }
+
+    bool locked = cJSON_IsTrue(locked_json);
+
+    // Set the password lock status
+    rc = db_auth_set_password_lock(user_id, locked);
+
+    cJSON_Delete(json_req);
+
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "Failed to update password lock status");
+        return;
+    }
+
+    // Get the updated user
+    rc = db_auth_get_user_by_id(user_id, &user);
+    if (rc != 0) {
+        http_response_set_json_error(res, 500, "Password lock updated but failed to retrieve user");
+        return;
+    }
+
+    // Create JSON response
+    cJSON *response = user_to_json(&user, 0);
+
+    // Send response
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    // Clean up
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Successfully updated password lock status for user: %s (ID: %lld, locked: %d)",
+             user.username, (long long)user_id, locked);
 }
 

@@ -451,27 +451,35 @@ int db_auth_change_password(int64_t user_id, const char *new_password) {
         log_error("New password is required");
         return -1;
     }
-    
+
     sqlite3 *db = get_db_handle();
     if (!db) {
         log_error("Database not initialized");
         return -1;
     }
-    
-    // Check if the user exists
+
+    // Check if the user exists and if password changes are locked
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db, "SELECT id FROM users WHERE id = ?;", -1, &stmt, NULL);
+    int rc = sqlite3_prepare_v2(db, "SELECT id, password_change_locked FROM users WHERE id = ?;", -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
     }
-    
+
     sqlite3_bind_int64(stmt, 1, user_id);
-    
+
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         log_error("User not found: %lld", (long long)user_id);
         sqlite3_finalize(stmt);
         return -1;
+    }
+
+    // Check if password changes are locked for this user
+    bool password_locked = sqlite3_column_int(stmt, 1) != 0;
+    if (password_locked) {
+        log_warn("Password changes are locked for user: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -2; // Special error code for locked password
     }
     
     sqlite3_finalize(stmt);
@@ -626,27 +634,27 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db,
                                "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active "
+                               "updated_at, last_login, is_active, password_change_locked "
                                "FROM users WHERE id = ?;",
                                -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
     }
-    
+
     sqlite3_bind_int64(stmt, 1, user_id);
-    
+
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         log_error("User not found: %lld", (long long)user_id);
         sqlite3_finalize(stmt);
         return -1;
     }
-    
+
     // Fill the user structure
     user->id = sqlite3_column_int64(stmt, 0);
     strncpy(user->username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user->username) - 1);
     user->username[sizeof(user->username) - 1] = '\0';
-    
+
     const char *email = (const char *)sqlite3_column_text(stmt, 2);
     if (email) {
         strncpy(user->email, email, sizeof(user->email) - 1);
@@ -654,9 +662,9 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
     } else {
         user->email[0] = '\0';
     }
-    
+
     user->role = (user_role_t)sqlite3_column_int(stmt, 3);
-    
+
     const char *api_key = (const char *)sqlite3_column_text(stmt, 4);
     if (api_key) {
         strncpy(user->api_key, api_key, sizeof(user->api_key) - 1);
@@ -664,14 +672,15 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
     } else {
         user->api_key[0] = '\0';
     }
-    
+
     user->created_at = sqlite3_column_int64(stmt, 5);
     user->updated_at = sqlite3_column_int64(stmt, 6);
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
-    
+    user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+
     sqlite3_finalize(stmt);
-    
+
     return 0;
 }
 
@@ -694,27 +703,27 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db,
                                "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active "
+                               "updated_at, last_login, is_active, password_change_locked "
                                "FROM users WHERE username = ?;",
                                -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
     }
-    
+
     sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
-    
+
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         log_debug("User not found: %s", username);
         sqlite3_finalize(stmt);
         return -1;
     }
-    
+
     // Fill the user structure
     user->id = sqlite3_column_int64(stmt, 0);
     strncpy(user->username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user->username) - 1);
     user->username[sizeof(user->username) - 1] = '\0';
-    
+
     const char *email = (const char *)sqlite3_column_text(stmt, 2);
     if (email) {
         strncpy(user->email, email, sizeof(user->email) - 1);
@@ -722,9 +731,9 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
     } else {
         user->email[0] = '\0';
     }
-    
+
     user->role = (user_role_t)sqlite3_column_int(stmt, 3);
-    
+
     const char *api_key = (const char *)sqlite3_column_text(stmt, 4);
     if (api_key) {
         strncpy(user->api_key, api_key, sizeof(user->api_key) - 1);
@@ -732,14 +741,15 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
     } else {
         user->api_key[0] = '\0';
     }
-    
+
     user->created_at = sqlite3_column_int64(stmt, 5);
     user->updated_at = sqlite3_column_int64(stmt, 6);
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
-    
+    user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+
     sqlite3_finalize(stmt);
-    
+
     return 0;
 }
 
@@ -762,27 +772,27 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db,
                                "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active "
+                               "updated_at, last_login, is_active, password_change_locked "
                                "FROM users WHERE api_key = ?;",
                                -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
     }
-    
+
     sqlite3_bind_text(stmt, 1, api_key, -1, SQLITE_STATIC);
-    
+
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         log_debug("User not found for API key");
         sqlite3_finalize(stmt);
         return -1;
     }
-    
+
     // Fill the user structure
     user->id = sqlite3_column_int64(stmt, 0);
     strncpy(user->username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user->username) - 1);
     user->username[sizeof(user->username) - 1] = '\0';
-    
+
     const char *email = (const char *)sqlite3_column_text(stmt, 2);
     if (email) {
         strncpy(user->email, email, sizeof(user->email) - 1);
@@ -790,9 +800,9 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
     } else {
         user->email[0] = '\0';
     }
-    
+
     user->role = (user_role_t)sqlite3_column_int(stmt, 3);
-    
+
     const char *key = (const char *)sqlite3_column_text(stmt, 4);
     if (key) {
         strncpy(user->api_key, key, sizeof(user->api_key) - 1);
@@ -800,14 +810,15 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
     } else {
         user->api_key[0] = '\0';
     }
-    
+
     user->created_at = sqlite3_column_int64(stmt, 5);
     user->updated_at = sqlite3_column_int64(stmt, 6);
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
-    
+    user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+
     sqlite3_finalize(stmt);
-    
+
     return 0;
 }
 
@@ -990,6 +1001,132 @@ int db_auth_authenticate(const char *username, const char *password, int64_t *us
     sqlite3_finalize(stmt);
     
     log_info("Authentication successful for user: %s (ID: %lld)", username, (long long)id);
+    return 0;
+}
+
+/**
+ * Verify a password for a specific user ID
+ */
+int db_auth_verify_password(int64_t user_id, const char *password) {
+    if (!password) {
+        log_error("Password is required");
+        return -1;
+    }
+
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    // Query the user
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "SELECT password_hash, salt, is_active FROM users WHERE id = ?;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, user_id);
+
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        log_warn("Password verification failed: User not found: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    // Check if the user is active
+    int is_active = sqlite3_column_int(stmt, 2);
+    if (!is_active) {
+        log_warn("Password verification failed: User is inactive: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    // Get the password hash and salt
+    const char *hash_hex = (const char *)sqlite3_column_text(stmt, 0);
+    const char *salt_hex = (const char *)sqlite3_column_text(stmt, 1);
+
+    if (!hash_hex || !salt_hex) {
+        log_error("Password verification failed: Invalid password hash or salt for user: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    // Convert salt from hex to binary
+    unsigned char salt[SALT_LENGTH];
+    if (hex_to_bin(salt_hex, salt, SALT_LENGTH) != 0) {
+        log_error("Password verification failed: Failed to convert salt from hex for user: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    // Hash the provided password
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    if (hash_password(password, salt, SALT_LENGTH, hash, SHA256_DIGEST_LENGTH) != 0) {
+        log_error("Password verification failed: Failed to hash password for user: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    // Convert hash to hex
+    char computed_hash_hex[SHA256_DIGEST_LENGTH * 2 + 1];
+    if (bin_to_hex(hash, SHA256_DIGEST_LENGTH, computed_hash_hex, sizeof(computed_hash_hex)) != 0) {
+        log_error("Password verification failed: Failed to convert hash to hex for user: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    // Compare the hashes
+    if (strcmp(hash_hex, computed_hash_hex) != 0) {
+        log_warn("Password verification failed: Invalid password for user: %lld", (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    sqlite3_finalize(stmt);
+
+    log_debug("Password verification successful for user: %lld", (long long)user_id);
+    return 0;
+}
+
+/**
+ * Set the password change lock status for a user
+ */
+int db_auth_set_password_lock(int64_t user_id, bool locked) {
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    // Update the password_change_locked field
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "UPDATE users SET password_change_locked = ?, updated_at = ? WHERE id = ?;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    time_t now = time(NULL);
+    sqlite3_bind_int(stmt, 1, locked ? 1 : 0);
+    sqlite3_bind_int64(stmt, 2, now);
+    sqlite3_bind_int64(stmt, 3, user_id);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to update password lock status: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    sqlite3_finalize(stmt);
+
+    log_info("Password lock status updated for user: %lld (locked: %d)", (long long)user_id, locked);
     return 0;
 }
 

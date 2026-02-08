@@ -544,15 +544,9 @@ int main(int argc, char *argv[]) {
     }
     
     // Initialize schema cache
+    // Note: Schema migrations are run in init_database() above
     init_schema_cache();
-    
-    // Run schema migrations
-    if (run_schema_migrations() != 0) {
-        log_error("Failed to run schema migrations");
-        shutdown_database();
-        return 1;
-    }
-    
+
     printf("Scanning for recordings in %s\n", mp4_path);
     
     // Scan the MP4 directory

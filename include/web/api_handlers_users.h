@@ -62,4 +62,22 @@ void handle_users_delete(const http_request_t *req, http_response_t *res);
  */
 void handle_users_generate_api_key(const http_request_t *req, http_response_t *res);
 
+/**
+ * @brief Backend-agnostic handler for PUT /api/auth/users/:id/password
+ * Change a user's password (requires old password for non-admins)
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_users_change_password(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Backend-agnostic handler for PUT /api/auth/users/:id/password-lock
+ * Lock or unlock password changes for a user (admin only)
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_users_password_lock(const http_request_t *req, http_response_t *res);
+
 #endif /* API_HANDLERS_USERS_H */

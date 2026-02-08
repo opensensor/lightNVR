@@ -136,6 +136,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/auth/users/#", "PUT", handle_users_update);
     http_server_register_handler(server, "/api/auth/users/#", "DELETE", handle_users_delete);
     http_server_register_handler(server, "/api/auth/users/#/api-key", "POST", handle_users_generate_api_key);
+    http_server_register_handler(server, "/api/auth/users/#/password", "PUT", handle_users_change_password);
+    http_server_register_handler(server, "/api/auth/users/#/password-lock", "PUT", handle_users_password_lock);
 
     // ONVIF API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/onvif/discovery/status", "GET", handle_get_onvif_discovery_status);
