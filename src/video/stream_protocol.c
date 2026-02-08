@@ -504,11 +504,6 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     // If we got here, the open was successful, so assign the local context to the output parameter
     *input_ctx = local_ctx;
 
-    // CRITICAL FIX: Set up interrupt callback so blocking operations can be interrupted during shutdown
-    // This allows av_read_frame() and other blocking calls to return when shutdown is initiated
-    local_ctx->interrupt_callback.callback = ffmpeg_interrupt_callback;
-    local_ctx->interrupt_callback.opaque = NULL;
-
     // Track the AVFormatContext to detect memory leaks
     TRACK_AVFORMAT_CTX(local_ctx);
 
