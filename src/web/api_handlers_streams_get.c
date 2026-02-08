@@ -8,6 +8,7 @@
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
@@ -17,14 +18,28 @@
 #include "database/database_manager.h"
 
 #include "database/db_motion_config.h"
+
 /**
  * @brief Backend-agnostic handler for GET /api/streams
  */
 void handle_get_streams(const http_request_t *req, http_response_t *res) {
-    (void)req;
-    log_info("Handling GET /api/streams request");
+	log_info("Handling GET /api/streams request");
 
-    // Get all stream configurations from database
+	// When web authentication is enabled, require a valid authenticated user
+	// for access to the streams list. This ensures that the live view and
+	// other pages backed by /api/streams behave as protected resources and
+	// unauthenticated users are redirected to the login page by the frontend
+	// when a 401 is returned.
+	if (g_config.web_auth_enabled) {
+		user_t user;
+		if (!httpd_get_authenticated_user(req, &user)) {
+			log_error("Authentication failed for GET /api/streams request");
+			http_response_set_json_error(res, 401, "Unauthorized");
+			return;
+		}
+	}
+
+	// Get all stream configurations from database
     stream_config_t db_streams[MAX_STREAMS];
     int count = get_all_stream_configs(db_streams, MAX_STREAMS);
 
