@@ -28,6 +28,8 @@ async function checkServerHealth(): Promise<{ healthy: boolean; error?: string }
 }
 
 test.describe('Streams Page @ui @streams', () => {
+  // Track streams created during tests for cleanup
+  const createdStreams: string[] = [];
 
   test.beforeEach(async ({ page }) => {
     // Verify server is healthy before each test
@@ -44,6 +46,30 @@ test.describe('Streams Page @ui @streams', () => {
     }
 
     await login(page, USERS.admin);
+  });
+
+  test.afterEach(async () => {
+    // Clean up any streams created during the test
+    if (createdStreams.length > 0) {
+      console.log(`Cleaning up ${createdStreams.length} test streams...`);
+      for (const streamName of createdStreams) {
+        try {
+          const response = await fetch(`${CONFIG.LIGHTNVR_URL}/api/streams/${encodeURIComponent(streamName)}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': getAuthHeader(USERS.admin) },
+          });
+          if (response.ok) {
+            console.log(`Deleted test stream: ${streamName}`);
+          } else {
+            console.warn(`Failed to delete test stream ${streamName}: ${response.status}`);
+          }
+        } catch (e) {
+          console.warn(`Error deleting test stream ${streamName}:`, e);
+        }
+      }
+      // Clear the array for next test
+      createdStreams.length = 0;
+    }
   });
 
   test.describe('Page Load', () => {
@@ -116,21 +142,24 @@ test.describe('Streams Page @ui @streams', () => {
     test('should add a new stream via UI', async ({ page }) => {
       const streamsPage = new StreamsPage(page);
       await streamsPage.goto({ waitForNetworkIdle: true });
-      
+
       const testStreamName = `ui_test_stream_${Date.now()}`;
-      
+
       await streamsPage.addStream({
         name: testStreamName,
         url: 'rtsp://localhost:18554/test_pattern',
         enabled: true
       });
-      
+
+      // Track this stream for cleanup
+      createdStreams.push(testStreamName);
+
       await sleep(2000);
-      
+
       // Verify stream appears in list
       const streamExists = await streamsPage.streamExists(testStreamName);
       expect(streamExists).toBeTruthy();
-      
+
       await page.screenshot({ path: 'test-results/streams-add-new.png' });
     });
 

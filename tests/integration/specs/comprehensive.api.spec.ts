@@ -67,6 +67,16 @@ test.describe('LightNVR API Comprehensive Tests @api', () => {
   test.describe('Streams API', () => {
     const testStreamName = `api_test_stream_${Date.now()}`;
 
+    // Ensure cleanup even if DELETE test fails
+    test.afterAll(async () => {
+      try {
+        await request.delete(`/api/streams/${testStreamName}`);
+        console.log(`Cleaned up test stream: ${testStreamName}`);
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    });
+
     test('GET /api/streams returns stream list', async () => {
       const response = await request.get('/api/streams');
       expect(response.ok()).toBeTruthy();
