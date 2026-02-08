@@ -5,12 +5,15 @@
  * The implementation uses a unified thread approach for better efficiency and reliability.
  */
 
+#define _GNU_SOURCE  // Required for pthread_timedjoin_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <errno.h>
+#include <time.h>
 
 #include "core/logger.h"
 #include "video/hls_streaming.h"
@@ -53,11 +56,17 @@ void cleanup_hls_streaming_backend(void) {
     // Step 1: Stop the watchdog FIRST to prevent any stream restarts during shutdown
     stop_hls_watchdog();
 
-    // Step 2: Mark ALL contexts as not running in a single pass (with mutex held)
+    // Step 2: Collect thread handles and mark ALL contexts as not running
+    pthread_t threads_to_join[MAX_STREAMS];
+    int thread_count = 0;
+
     pthread_mutex_lock(&unified_contexts_mutex);
     int stream_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (unified_contexts[i] != NULL) {
+            // Save thread handle for joining later
+            threads_to_join[thread_count++] = unified_contexts[i]->thread;
+
             // Mark as not running to signal threads to exit
             atomic_store(&unified_contexts[i]->running, 0);
 
@@ -85,13 +94,33 @@ void cleanup_hls_streaming_backend(void) {
 
     log_info("Signaled %d HLS streams to stop", stream_count);
 
-    // Step 3: Brief wait to allow threads to begin shutdown (reduced from 1000ms)
-    if (stream_count > 0) {
-        usleep(100000); // 100ms - just enough for threads to notice the flag
+    // Step 3: Wait for threads to exit (with timeout)
+    // CRITICAL FIX: Must join threads BEFORE freeing contexts to prevent use-after-free
+    if (thread_count > 0) {
+        log_info("Waiting for %d HLS threads to exit...", thread_count);
+
+        for (int i = 0; i < thread_count; i++) {
+            if (threads_to_join[i] != 0) {
+                // Use pthread_timedjoin_np if available, otherwise use regular join with alarm
+                struct timespec timeout;
+                clock_gettime(CLOCK_REALTIME, &timeout);
+                timeout.tv_sec += 2;  // 2 second timeout per thread
+
+                int join_result = pthread_timedjoin_np(threads_to_join[i], NULL, &timeout);
+                if (join_result == 0) {
+                    log_info("HLS thread %d/%d exited cleanly", i + 1, thread_count);
+                } else if (join_result == ETIMEDOUT) {
+                    log_warn("HLS thread %d/%d did not exit within timeout, detaching", i + 1, thread_count);
+                    pthread_detach(threads_to_join[i]);
+                } else {
+                    log_warn("Failed to join HLS thread %d/%d: error %d", i + 1, thread_count, join_result);
+                }
+            }
+        }
+        log_info("All HLS threads have been processed");
     }
 
-    // Step 4: Force cleanup of all remaining contexts
-    // Don't wait for threads - they will clean up on their own, but we need to proceed
+    // Step 4: Now safe to cleanup contexts since threads have exited
     pthread_mutex_lock(&unified_contexts_mutex);
     int cleaned_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
@@ -102,10 +131,7 @@ void cleanup_hls_streaming_backend(void) {
                 stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
             }
 
-            log_info("Force cleanup of HLS context for stream %s", stream_name_copy);
-
-            // Ensure running flag is cleared
-            atomic_store(&unified_contexts[i]->running, 0);
+            log_info("Cleaning up HLS context for stream %s", stream_name_copy);
 
             // Memory barrier before cleanup
             __sync_synchronize();
@@ -120,7 +146,7 @@ void cleanup_hls_streaming_backend(void) {
     pthread_mutex_unlock(&unified_contexts_mutex);
 
     if (cleaned_count > 0) {
-        log_info("Force cleaned %d remaining HLS contexts", cleaned_count);
+        log_info("Cleaned up %d HLS contexts", cleaned_count);
     }
 
     // Step 5: Clean up the legacy HLS contexts
