@@ -1,5 +1,6 @@
 #include "video/stream_protocol.h"
 #include "core/logger.h"
+#include "core/shutdown_coordinator.h"
 #include "video/ffmpeg_utils.h"
 #include "video/ffmpeg_leak_detector.h"
 #include <string.h>
@@ -15,6 +16,21 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/time.h>
+
+/**
+ * Interrupt callback for FFmpeg operations
+ * This allows blocking FFmpeg operations (like av_read_frame) to be interrupted during shutdown
+ * Returns 1 to interrupt, 0 to continue
+ */
+static int ffmpeg_interrupt_callback(void *opaque) {
+    (void)opaque;  // Unused
+
+    // Check if shutdown has been initiated
+    if (is_shutdown_initiated()) {
+        return 1;  // Interrupt the operation
+    }
+    return 0;  // Continue normally
+}
 
 /**
  * Check if a URL is a multicast address
