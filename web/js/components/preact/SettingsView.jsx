@@ -48,7 +48,12 @@ export function SettingsView() {
     mqttTlsEnabled: false,
     mqttKeepalive: '60',
     mqttQos: '1',
-    mqttRetain: false
+    mqttRetain: false,
+    // TURN server settings for WebRTC relay
+    turnEnabled: false,
+    turnServerUrl: '',
+    turnUsername: '',
+    turnPassword: ''
   });
 
   // Fetch user role on mount
@@ -154,7 +159,12 @@ export function SettingsView() {
         mqttTlsEnabled: settingsData.mqtt_tls_enabled || false,
         mqttKeepalive: settingsData.mqtt_keepalive?.toString() || '60',
         mqttQos: settingsData.mqtt_qos?.toString() || '1',
-        mqttRetain: settingsData.mqtt_retain || false
+        mqttRetain: settingsData.mqtt_retain || false,
+        // TURN server settings for WebRTC relay
+        turnEnabled: settingsData.turn_enabled || false,
+        turnServerUrl: settingsData.turn_server_url || '',
+        turnUsername: settingsData.turn_username || '',
+        turnPassword: settingsData.turn_password || ''
       };
       
       // Update state with loaded settings
@@ -200,7 +210,12 @@ export function SettingsView() {
       mqtt_tls_enabled: settings.mqttTlsEnabled,
       mqtt_keepalive: parseInt(settings.mqttKeepalive, 10),
       mqtt_qos: parseInt(settings.mqttQos, 10),
-      mqtt_retain: settings.mqttRetain
+      mqtt_retain: settings.mqttRetain,
+      // TURN server settings for WebRTC relay
+      turn_enabled: settings.turnEnabled,
+      turn_server_url: settings.turnServerUrl,
+      turn_username: settings.turnUsername,
+      turn_password: settings.turnPassword
     };
     
     // Use mutation to save settings
@@ -790,6 +805,77 @@ export function SettingsView() {
                 disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground ml-2">Broker stores last message for new subscribers</span>
+            </div>
+          </div>
+          </div>
+
+          {/* TURN Server Settings */}
+          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">WebRTC TURN Server</h3>
+            <p class="text-sm text-muted-foreground mb-4">
+              Configure a TURN relay server for WebRTC when direct peer-to-peer connections fail (e.g., behind restrictive NAT/firewall).
+            </p>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-turn-enabled" class="font-medium">Enable TURN Relay</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-turn-enabled"
+                name="turnEnabled"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.turnEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Use TURN server for WebRTC relay when direct connection fails</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-turn-server-url" class="font-medium">TURN Server URL</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-turn-server-url"
+                name="turnServerUrl"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.turnServerUrl}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="turn:turn.example.com:3478"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">
+                Format: turn:hostname:port or turn:hostname:port?transport=tcp
+              </span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-turn-username" class="font-medium">Username</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-turn-username"
+                name="turnUsername"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.turnUsername}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="(optional)"
+              />
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-turn-password" class="font-medium">Password</label>
+            <div class="col-span-2">
+              <input
+                type="password"
+                id="setting-turn-password"
+                name="turnPassword"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.turnPassword}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="(optional)"
+              />
             </div>
           </div>
           </div>

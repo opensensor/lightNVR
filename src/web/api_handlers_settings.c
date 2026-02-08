@@ -83,6 +83,13 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "mqtt_qos", g_config.mqtt_qos);
     cJSON_AddBoolToObject(settings, "mqtt_retain", g_config.mqtt_retain);
 
+    // TURN server settings for WebRTC relay
+    cJSON_AddBoolToObject(settings, "turn_enabled", g_config.turn_enabled);
+    cJSON_AddStringToObject(settings, "turn_server_url", g_config.turn_server_url);
+    cJSON_AddStringToObject(settings, "turn_username", g_config.turn_username);
+    // Don't include the password for security reasons
+    cJSON_AddStringToObject(settings, "turn_password", g_config.turn_password[0] ? "********" : "");
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(settings);
     if (!json_str) {
@@ -403,6 +410,41 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.mqtt_retain = cJSON_IsTrue(mqtt_retain);
         settings_changed = true;
         log_info("Updated mqtt_retain: %s", g_config.mqtt_retain ? "true" : "false");
+    }
+
+    // TURN server settings for WebRTC relay
+    cJSON *turn_enabled = cJSON_GetObjectItem(settings, "turn_enabled");
+    if (turn_enabled && cJSON_IsBool(turn_enabled)) {
+        g_config.turn_enabled = cJSON_IsTrue(turn_enabled);
+        settings_changed = true;
+        log_info("Updated turn_enabled: %s", g_config.turn_enabled ? "true" : "false");
+    }
+
+    cJSON *turn_server_url = cJSON_GetObjectItem(settings, "turn_server_url");
+    if (turn_server_url && cJSON_IsString(turn_server_url)) {
+        strncpy(g_config.turn_server_url, turn_server_url->valuestring, sizeof(g_config.turn_server_url) - 1);
+        g_config.turn_server_url[sizeof(g_config.turn_server_url) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated turn_server_url: %s", g_config.turn_server_url);
+    }
+
+    cJSON *turn_username = cJSON_GetObjectItem(settings, "turn_username");
+    if (turn_username && cJSON_IsString(turn_username)) {
+        strncpy(g_config.turn_username, turn_username->valuestring, sizeof(g_config.turn_username) - 1);
+        g_config.turn_username[sizeof(g_config.turn_username) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated turn_username: %s", g_config.turn_username);
+    }
+
+    cJSON *turn_password = cJSON_GetObjectItem(settings, "turn_password");
+    if (turn_password && cJSON_IsString(turn_password)) {
+        // Only update if not the masked value
+        if (strcmp(turn_password->valuestring, "********") != 0) {
+            strncpy(g_config.turn_password, turn_password->valuestring, sizeof(g_config.turn_password) - 1);
+            g_config.turn_password[sizeof(g_config.turn_password) - 1] = '\0';
+            settings_changed = true;
+            log_info("Updated turn_password");
+        }
     }
 
     // Database path
