@@ -200,38 +200,84 @@ int libuv_send_response(libuv_connection_t *conn, const http_response_t *respons
         return -1;
     }
     
-    // Build response
-    int offset = 0;
-    
+    // Build response with proper overflow checking
+    size_t offset = 0;
+
     // Status line
-    offset += snprintf(buffer + offset, total_size - offset, 
-                       "HTTP/1.1 %d %s\r\n",
-                       response->status_code, 
-                       get_status_phrase(response->status_code));
-    
+    {
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "HTTP/1.1 %d %s\r\n",
+                               response->status_code,
+                               get_status_phrase(response->status_code));
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response: Failed to write status line");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
+    }
+
     // Content-Type
     if (response->content_type[0]) {
-        offset += snprintf(buffer + offset, total_size - offset,
-                           "Content-Type: %s\r\n", response->content_type);
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "Content-Type: %s\r\n", response->content_type);
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response: Failed to write Content-Type header");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
     }
-    
+
     // Content-Length
-    offset += snprintf(buffer + offset, total_size - offset,
-                       "Content-Length: %zu\r\n", response->body_length);
-    
+    {
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "Content-Length: %zu\r\n", response->body_length);
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response: Failed to write Content-Length header");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
+    }
+
     // Custom headers
     for (int i = 0; i < response->num_headers; i++) {
-        offset += snprintf(buffer + offset, total_size - offset,
-                           "%s: %s\r\n",
-                           response->headers[i].name,
-                           response->headers[i].value);
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "%s: %s\r\n",
+                               response->headers[i].name,
+                               response->headers[i].value);
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response: Failed to write custom header");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
     }
-    
+
     // End of headers
-    offset += snprintf(buffer + offset, total_size - offset, "\r\n");
-    
+    {
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining, "\r\n");
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response: Failed to write end-of-headers");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
+    }
+
     // Body
     if (response->body && response->body_length > 0) {
+        if (response->body_length > total_size - offset) {
+            log_error("libuv_send_response: Body does not fit into allocated buffer");
+            safe_free(buffer);
+            return -1;
+        }
         memcpy(buffer + offset, response->body, response->body_length);
         offset += response->body_length;
     }
@@ -273,38 +319,84 @@ int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *resp
         return -1;
     }
 
-    // Build response
-    int offset = 0;
+    // Build response with proper overflow checking
+    size_t offset = 0;
 
     // Status line
-    offset += snprintf(buffer + offset, total_size - offset,
-                       "HTTP/1.1 %d %s\r\n",
-                       response->status_code,
-                       get_status_phrase(response->status_code));
+    {
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "HTTP/1.1 %d %s\r\n",
+                               response->status_code,
+                               get_status_phrase(response->status_code));
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response_ex: Failed to write status line");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
+    }
 
     // Content-Type
     if (response->content_type[0]) {
-        offset += snprintf(buffer + offset, total_size - offset,
-                           "Content-Type: %s\r\n", response->content_type);
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "Content-Type: %s\r\n", response->content_type);
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response_ex: Failed to write Content-Type header");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
     }
 
     // Content-Length
-    offset += snprintf(buffer + offset, total_size - offset,
-                       "Content-Length: %zu\r\n", response->body_length);
+    {
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "Content-Length: %zu\r\n", response->body_length);
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response_ex: Failed to write Content-Length header");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
+    }
 
     // Custom headers
     for (int i = 0; i < response->num_headers; i++) {
-        offset += snprintf(buffer + offset, total_size - offset,
-                           "%s: %s\r\n",
-                           response->headers[i].name,
-                           response->headers[i].value);
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining,
+                               "%s: %s\r\n",
+                               response->headers[i].name,
+                               response->headers[i].value);
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response_ex: Failed to write custom header");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
     }
 
     // End of headers
-    offset += snprintf(buffer + offset, total_size - offset, "\r\n");
+    {
+        size_t remaining = total_size - offset;
+        int written = snprintf(buffer + offset, remaining, "\r\n");
+        if (written < 0 || (size_t)written >= remaining) {
+            log_error("libuv_send_response_ex: Failed to write end-of-headers");
+            safe_free(buffer);
+            return -1;
+        }
+        offset += (size_t)written;
+    }
 
     // Body
     if (response->body && response->body_length > 0) {
+        if (response->body_length > total_size - offset) {
+            log_error("libuv_send_response_ex: Body does not fit into allocated buffer");
+            safe_free(buffer);
+            return -1;
+        }
         memcpy(buffer + offset, response->body, response->body_length);
         offset += response->body_length;
     }

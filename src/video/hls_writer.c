@@ -949,9 +949,8 @@ void hls_writer_close(hls_writer_t *writer) {
         log_info("Released mutex for HLS writer for stream %s", stream_name);
     }
 
-    // Add a delay to ensure any in-progress operations complete
-    // Increased for better reliability with go2rtc integration
-    usleep(500000); // 500ms - increased for more safety with go2rtc
+    // Brief wait for any in-progress operations to complete
+    usleep(50000); // 50ms (reduced from 500ms for faster shutdown)
 
     // Write trailer if the context is valid with enhanced safety checks
     if (local_output_ctx) {

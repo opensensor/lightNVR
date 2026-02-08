@@ -8,7 +8,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include <pthread.h>
 
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
@@ -17,67 +16,9 @@
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 
-// Active request tracking to prevent duplicate requests
-#define MAX_ACTIVE_REQUESTS 100
-
-typedef struct {
-    uint64_t id;
-    bool active;
-} active_request_t;
-
-static active_request_t active_requests[MAX_ACTIVE_REQUESTS];
-static pthread_mutex_t active_requests_mutex = PTHREAD_MUTEX_INITIALIZER;
-static bool active_requests_initialized = false;
-
-static void init_active_requests(void) {
-    pthread_mutex_lock(&active_requests_mutex);
-    if (!active_requests_initialized) {
-        memset(active_requests, 0, sizeof(active_requests));
-        active_requests_initialized = true;
-    }
-    pthread_mutex_unlock(&active_requests_mutex);
-}
-
-static bool is_request_active(uint64_t id) {
-    pthread_mutex_lock(&active_requests_mutex);
-    for (int i = 0; i < MAX_ACTIVE_REQUESTS; i++) {
-        if (active_requests[i].active && active_requests[i].id == id) {
-            pthread_mutex_unlock(&active_requests_mutex);
-            return true;
-        }
-    }
-    pthread_mutex_unlock(&active_requests_mutex);
-    return false;
-}
-
-static bool mark_request_active(uint64_t id) {
-    pthread_mutex_lock(&active_requests_mutex);
-    for (int i = 0; i < MAX_ACTIVE_REQUESTS; i++) {
-        if (!active_requests[i].active) {
-            active_requests[i].id = id;
-            active_requests[i].active = true;
-            pthread_mutex_unlock(&active_requests_mutex);
-            return true;
-        }
-    }
-    pthread_mutex_unlock(&active_requests_mutex);
-    return false;
-}
-
-static void mark_request_inactive(uint64_t id) {
-    pthread_mutex_lock(&active_requests_mutex);
-    for (int i = 0; i < MAX_ACTIVE_REQUESTS; i++) {
-        if (active_requests[i].active && active_requests[i].id == id) {
-            active_requests[i].active = false;
-            break;
-        }
-    }
-    pthread_mutex_unlock(&active_requests_mutex);
-}
-
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/play/:id
- * 
+ *
  * Serves a recording file for playback with range request support for seeking.
  */
 void handle_recordings_playback(const http_request_t *req, http_response_t *res) {
@@ -85,9 +26,6 @@ void handle_recordings_playback(const http_request_t *req, http_response_t *res)
         log_error("Invalid parameters for handle_recordings_playback");
         return;
     }
-
-    // Initialize active requests tracking
-    init_active_requests();
 
     // Check authentication if enabled
     if (g_config.web_auth_enabled) {

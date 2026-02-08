@@ -166,57 +166,9 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // HLS Streaming (backend-agnostic handler)
     http_server_register_handler(server, "/hls/", "GET", handle_direct_hls_request);
 
-    log_info("Successfully registered %d API handlers", 74);  // Updated: added HLS handler
+    log_info("Successfully registered API handlers");
 
     return 0;
-}
-
-// Root path handler removed - static file serving will handle "/" by serving index.html
-
-/**
- * @brief Handler for serving static files from web_root
- */
-static void handle_static_file(const http_request_t *req, http_response_t *res) {
-    // Get the server from user_data
-    libuv_server_t *server = (libuv_server_t *)req->user_data;
-    if (!server) {
-        log_error("handle_static_file: No server in request user_data");
-        http_response_set_json_error(res, 500, "Internal server error");
-        return;
-    }
-
-    // Build file path
-    char file_path[1024];
-    snprintf(file_path, sizeof(file_path), "%s%s",
-             server->config.web_root, req->path);
-
-    // Check if file exists
-    struct stat st;
-    if (stat(file_path, &st) != 0) {
-        log_debug("Static file not found: %s", file_path);
-        http_response_set_json_error(res, 404, "File not found");
-        return;
-    }
-
-    // If it's a directory, try to serve index.html
-    if (S_ISDIR(st.st_mode)) {
-        snprintf(file_path, sizeof(file_path), "%s%s/index.html",
-                 server->config.web_root, req->path);
-        if (stat(file_path, &st) != 0) {
-            log_debug("Directory index not found: %s", file_path);
-            http_response_set_json_error(res, 404, "Directory index not found");
-            return;
-        }
-    }
-
-    // Get MIME type
-    const char *mime_type = libuv_get_mime_type(file_path);
-
-    // Get connection from response user_data (this is a bit of a hack)
-    // We need to refactor this to pass the connection properly
-    // For now, we'll just set an error
-    log_error("handle_static_file: Static file serving not yet fully implemented");
-    http_response_set_json_error(res, 501, "Static file serving not yet implemented");
 }
 
 /**

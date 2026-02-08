@@ -2841,8 +2841,8 @@ int stop_hls_unified_stream(const char *stream_name) {
             // Mark the context as freed before actually freeing it
             mark_context_as_freed(extra_ctx);
 
-            // Free the context
-            av_free(extra_ctx);
+            // Free the context (use hls_guarded_free to match hls_guarded_malloc allocation)
+            hls_guarded_free(extra_ctx);
 
             log_info("Cleaned up additional HLS context for stream %s", stream_name);
         }
