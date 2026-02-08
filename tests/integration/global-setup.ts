@@ -89,12 +89,39 @@ async function setupTestDirectories(): Promise<void> {
 
 async function startLightNVR(): Promise<void> {
   console.log('Starting lightNVR...');
-  
+
   // Check if binary exists
   if (!existsSync(LIGHTNVR_BIN)) {
     throw new Error(`lightNVR binary not found at ${LIGHTNVR_BIN}. Run ./scripts/build.sh first.`);
   }
-  
+  console.log(`lightNVR binary found at: ${LIGHTNVR_BIN}`);
+
+  // Check if config exists
+  if (!existsSync(LIGHTNVR_CONFIG)) {
+    throw new Error(`lightNVR config not found at ${LIGHTNVR_CONFIG}`);
+  }
+  console.log(`lightNVR config found at: ${LIGHTNVR_CONFIG}`);
+
+  // Check if go2rtc binary exists (lightNVR will try to start it)
+  const go2rtcPath = path.join(PROJECT_ROOT, 'go2rtc', 'go2rtc');
+  if (!existsSync(go2rtcPath)) {
+    throw new Error(`go2rtc binary not found at ${go2rtcPath}. Build go2rtc first.`);
+  }
+  console.log(`go2rtc binary found at: ${go2rtcPath}`);
+
+  // Check if web dist exists
+  const webDistPath = path.join(PROJECT_ROOT, 'web', 'dist');
+  if (!existsSync(webDistPath)) {
+    throw new Error(`web/dist not found at ${webDistPath}. Build frontend first.`);
+  }
+  console.log(`web/dist found at: ${webDistPath}`);
+
+  // Log test directories for verification
+  console.log(`Test directories: ${TEST_DIR}`);
+  console.log(`  - exists: ${existsSync(TEST_DIR)}`);
+  console.log(`  - recordings: ${existsSync(TEST_DIR + '/recordings')}`);
+  console.log(`  - go2rtc: ${existsSync(TEST_DIR + '/go2rtc')}`);
+
   // Check if already running
   try {
     const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/system`, {
@@ -107,19 +134,18 @@ async function startLightNVR(): Promise<void> {
   } catch (e) {
     // Not running, start it
   }
-  
+
   // Remove any stale PID file before starting
   const pidFile = `${TEST_DIR}/lightnvr.pid`;
   if (existsSync(pidFile)) {
     rmSync(pidFile);
   }
 
-  // Use 'inherit' for stdio to prevent buffer issues that can cause the process to hang
-  // With detached: true and pipe, if stdout/stderr buffers fill up and aren't consumed,
-  // the child process can block. Using 'inherit' or 'ignore' avoids this issue.
+  // Use 'inherit' for stdio - lightNVR writes to its own log file at /tmp/lightnvr-test/lightnvr.log
+  // Using 'pipe' with unref() causes SIGPIPE issues when parent moves on
   lightnvrProcess = spawn(LIGHTNVR_BIN, ['-c', LIGHTNVR_CONFIG], {
     cwd: PROJECT_ROOT,
-    stdio: ['ignore', 'inherit', 'inherit'],  // inherit stdout/stderr for debugging
+    stdio: ['ignore', 'inherit', 'inherit'],
     detached: true,
   });
 
@@ -131,7 +157,7 @@ async function startLightNVR(): Promise<void> {
     console.error(`lightNVR process error: ${err.message}`);
   });
 
-  // Log if the process exits unexpectedly
+  // Log if the process exits unexpectedly during startup
   lightnvrProcess.on('exit', (code, signal) => {
     if (code !== null) {
       console.log(`lightNVR process exited with code ${code}`);
@@ -155,18 +181,30 @@ async function startLightNVR(): Promise<void> {
 
   if (!ready) {
     // Check if the process is still running
-    if (lightnvrProcess && !lightnvrProcess.killed) {
-      console.error('lightNVR process is still running but not responding');
-    } else {
-      console.error('lightNVR process has exited');
-    }
+    const isRunning = lightnvrProcess && !lightnvrProcess.killed && lightnvrProcess.exitCode === null;
+    console.error(`lightNVR process status: running=${isRunning}, killed=${lightnvrProcess?.killed}, exitCode=${lightnvrProcess?.exitCode}`);
 
-    // Try to read logs
-    const logPath = '/tmp/lightnvr-test/lightnvr.log';
+    // Try to read main log file (lightNVR writes to this)
+    const logPath = `${TEST_DIR}/lightnvr.log`;
     if (existsSync(logPath)) {
       const logs = readFileSync(logPath, 'utf8');
-      const lastLines = logs.split('\n').slice(-30).join('\n');
-      console.error('Last 30 lines of lightNVR log:\n' + lastLines);
+      const lastLines = logs.split('\n').slice(-50).join('\n');
+      console.error('=== Last 50 lines of lightNVR log ===\n' + lastLines);
+    } else {
+      console.error('No log file found at ' + logPath);
+    }
+
+    // List what's in the test directory
+    const { readdirSync, statSync } = require('fs');
+    try {
+      console.error('=== Contents of ' + TEST_DIR + ' ===');
+      const files = readdirSync(TEST_DIR);
+      for (const f of files) {
+        const stat = statSync(`${TEST_DIR}/${f}`);
+        console.error(`  ${f} (${stat.isDirectory() ? 'dir' : stat.size + ' bytes'})`);
+      }
+    } catch (e) {
+      console.error('Failed to list test directory: ' + e);
     }
 
     throw new Error('lightNVR failed to start within 45 seconds');
