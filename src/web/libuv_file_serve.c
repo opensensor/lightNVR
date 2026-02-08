@@ -212,12 +212,20 @@ static void on_file_open(uv_fs_t *req) {
 
         // Send 404 response
         http_response_set_json_error(&conn->response, 404, "File Not Found");
-        libuv_send_response(conn, &conn->response);
+
+        // Determine post-response action based on keep-alive
+        extern void libuv_send_response_ex(libuv_connection_t *conn, http_response_t *response,
+                                          write_complete_action_t action);
+        write_complete_action_t action =
+            (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
+                ? WRITE_ACTION_KEEP_ALIVE
+                : WRITE_ACTION_CLOSE;
+
+        libuv_send_response_ex(conn, &conn->response, action);
         file_serve_cleanup(ctx);
 
-        // Close connection after error
-        extern void libuv_connection_close(libuv_connection_t *conn);
-        libuv_connection_close(conn);
+        // Clear async response flag
+        conn->async_response_pending = false;
         return;
     }
 
@@ -243,7 +251,21 @@ static void on_file_stat(uv_fs_t *req) {
     if (req->result < 0) {
         log_error("on_file_stat: Failed to stat file: %s", uv_strerror(req->result));
         http_response_set_json_error(&conn->response, 500, "Failed to stat file");
-        libuv_send_response(conn, &conn->response);
+
+        // Determine post-response action based on keep-alive
+        extern void libuv_send_response_ex(libuv_connection_t *conn, http_response_t *response,
+                                          write_complete_action_t action);
+        write_complete_action_t action =
+            (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
+                ? WRITE_ACTION_KEEP_ALIVE
+                : WRITE_ACTION_CLOSE;
+
+        libuv_send_response_ex(conn, &conn->response, action);
+
+        // Clear async flag before closing file
+        conn->async_response_pending = false;
+
+        // Close the file descriptor
         uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -259,7 +281,21 @@ static void on_file_stat(uv_fs_t *req) {
             // Invalid range - send 416
             http_response_set_json_error(&conn->response, 416,
                                          "Requested Range Not Satisfiable");
-            libuv_send_response(conn, &conn->response);
+
+            // Determine post-response action based on keep-alive
+            extern void libuv_send_response_ex(libuv_connection_t *conn, http_response_t *response,
+                                              write_complete_action_t action);
+            write_complete_action_t action =
+                (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
+                    ? WRITE_ACTION_KEEP_ALIVE
+                    : WRITE_ACTION_CLOSE;
+
+            libuv_send_response_ex(conn, &conn->response, action);
+
+            // Clear async flag before closing file
+            conn->async_response_pending = false;
+
+            // Close the file descriptor
             uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
             return;
         }
@@ -442,25 +478,42 @@ static void on_file_close(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
     libuv_connection_t *conn = ctx->conn;
 
+    // Check if this is a successful file serve or an error case
+    // If async_response_pending is false, the error handler already managed the connection
+    bool should_manage_connection = conn->async_response_pending;
+
     uv_fs_req_cleanup(req);
     file_serve_cleanup(ctx);
 
     // Clear async response flag
     conn->async_response_pending = false;
 
-    // Check if server is shutting down
-    if (conn->server->shutting_down) {
-        log_debug("on_file_close: Server shutting down, skipping connection close");
+    // If error handler already managed connection, don't do it again
+    if (!should_manage_connection) {
+        log_debug("on_file_close: Connection already managed by error handler");
         return;
     }
 
-    // Close the connection after serving the file
-    // File transfer is complete, close the connection
-    extern void libuv_connection_close(libuv_connection_t *conn);
+    // Check if server is shutting down
+    if (conn->server->shutting_down) {
+        log_debug("on_file_close: Server shutting down, skipping connection management");
+        return;
+    }
 
-    // Only close if not already closing
+    // Respect keep-alive: reset connection for reuse or close it
+    extern void libuv_connection_close(libuv_connection_t *conn);
+    extern void libuv_connection_reset(libuv_connection_t *conn);
+
     if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
-        libuv_connection_close(conn);
+        if (conn->keep_alive && llhttp_should_keep_alive(&conn->parser)) {
+            // Keep connection alive for next request
+            log_debug("on_file_close: Keeping connection alive for reuse");
+            libuv_connection_reset(conn);
+        } else {
+            // Close connection
+            log_debug("on_file_close: Closing connection (keep_alive=%d)", conn->keep_alive);
+            libuv_connection_close(conn);
+        }
     }
 }
 
