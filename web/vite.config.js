@@ -177,6 +177,41 @@ export default defineConfig({
         }
       }
     },
+    // Custom plugin to copy img files
+    {
+      name: 'copy-img-files',
+      async writeBundle() {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        try {
+          // Create dist/img directory if it doesn't exist
+          await fs.mkdir('dist/img', { recursive: true });
+
+          // Check if img directory exists
+          try {
+            await fs.access('img');
+          } catch {
+            console.log('No img directory found, skipping');
+            return;
+          }
+
+          // Read all files from web/img
+          const imgFiles = await fs.readdir('img');
+
+          // Copy each image file to dist/img
+          for (const file of imgFiles) {
+            await fs.copyFile(
+                path.join('img', file),
+                path.join('dist/img', file)
+            );
+            console.log(`Copied ${file} to dist/img/`);
+          }
+        } catch (error) {
+          console.error('Error copying img files:', error);
+        }
+      }
+    },
     // Gzip compression for static assets - generates .gz files alongside originals
     viteCompression({
       verbose: true,
