@@ -9,11 +9,10 @@
 #include <string.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
-#include "web/mongoose_server_auth.h"
-#include "web/http_server.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
-#include "mongoose.h"
+#include "core/config.h"
 #include "database/db_recordings_sync.h"
 
 /**
@@ -21,15 +20,15 @@
  * 
  * Triggers a manual synchronization of recording file sizes with the database
  */
-void mg_handle_post_recordings_sync(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_recordings_sync(const http_request_t *req, http_response_t *res) {
     log_info("Processing POST /api/recordings/sync request");
     
     // Check authentication
-    http_server_t *server = (http_server_t *)c->fn_data;
-    if (server && server->config.auth_enabled) {
-        if (mongoose_server_basic_auth_check(hm, server) != 0) {
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (!httpd_get_authenticated_user(req, &user)) {
             log_error("Authentication failed for recordings sync request");
-            mg_send_json_error(c, 401, "Unauthorized");
+            http_response_set_json_error(res, 401, "Unauthorized");
             return;
         }
     }
@@ -40,7 +39,7 @@ void mg_handle_post_recordings_sync(struct mg_connection *c, struct mg_http_mess
     
     if (result < 0) {
         log_error("Recording sync failed");
-        mg_send_json_error(c, 500, "Recording sync failed");
+        http_response_set_json_error(res, 500, "Recording sync failed");
         return;
     }
     
@@ -50,7 +49,7 @@ void mg_handle_post_recordings_sync(struct mg_connection *c, struct mg_http_mess
             "{\"success\":true,\"message\":\"Recording sync complete\",\"updated\":%d}",
             result);
     
-    mg_send_json_response(c, 200, response);
+    http_response_set_json(res, 200, response);
     
     log_info("Recording sync complete: %d recordings updated", result);
 }

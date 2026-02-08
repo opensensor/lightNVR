@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
     libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev \
-    libmosquitto-dev && \
+    libmosquitto-dev libuv1-dev libllhttp-dev && \
     # Try to install Node.js from NodeSource (for amd64/arm64)
     # For armv7/armhf, NodeSource may not have packages, so we fall back to Debian's nodejs
     mkdir -p /etc/apt/keyrings && \
@@ -135,7 +135,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libavcodec61 libavformat61 libavutil59 libswscale8 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
-    libmosquitto1 && \
+    libmosquitto1 libuv1t64 libllhttp9.2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure

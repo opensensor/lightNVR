@@ -57,11 +57,11 @@ void init_recordings_system(void);
 #include "database/db_recordings_sync.h"
 #include <sqlite3.h>
 #include "web/http_server.h"
-#include "web/mongoose_server.h"
+#include "web/libuv_server.h"
+#include "web/libuv_api_handlers.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_health.h"
 #include "web/batch_delete_progress.h"
-#include "mongoose.h"
 
 // Include necessary headers for signal handling
 #include <signal.h>
@@ -941,7 +941,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Initialize Mongoose web server with direct handlers
+    // Initialize web server with direct handlers
     http_server_config_t server_config = {
         .port = config.web_port,
         .web_root = config.web_root,
@@ -963,26 +963,44 @@ int main(int argc, char *argv[]) {
         strncpy(server_config.password, config.web_password, sizeof(server_config.password) - 1);
     }
 
-    // Use the direct mongoose server implementation
+    // Initialize HTTP server (libuv + llhttp)
     log_info("Initializing web server on port %d (daemon_mode: %s)",
              config.web_port, daemon_mode ? "true" : "false");
 
-    http_server = mongoose_server_init(&server_config);
+    http_server = libuv_server_init(&server_config);
     if (!http_server) {
-        log_error("Failed to initialize Mongoose web server");
+        log_error("Failed to initialize libuv web server");
         goto cleanup;
     }
-    log_info("Web server initialized successfully");
+    log_info("libuv web server initialized successfully");
+
+    // Register all API handlers
+    if (register_all_libuv_handlers(http_server) != 0) {
+        log_error("Failed to register API handlers");
+        http_server_destroy(http_server);
+        http_server = NULL;
+        goto cleanup;
+    }
+    log_info("API handlers registered successfully");
+
+    // Register static file handler
+    if (register_static_file_handler(http_server) != 0) {
+        log_error("Failed to register static file handler");
+        http_server_destroy(http_server);
+        http_server = NULL;
+        goto cleanup;
+    }
+    log_info("Static file handler registered successfully");
 
     log_info("Starting web server...");
     if (http_server_start(http_server) != 0) {
-        log_error("Failed to start Mongoose web server on port %d", config.web_port);
+        log_error("Failed to start libuv web server on port %d", config.web_port);
         http_server_destroy(http_server);
         http_server = NULL;  // Prevent double-free in cleanup
         goto cleanup;
     }
 
-    log_info("Mongoose web server started successfully on port %d", config.web_port);
+    log_info("libuv web server started successfully on port %d", config.web_port);
 
     // Initialize and start health check system for web server self-healing
     init_health_check_system();
@@ -1081,6 +1099,10 @@ int main(int argc, char *argv[]) {
 cleanup:
     log_info("Starting cleanup process...");
 
+    // Cancel any pending alarm from signal_handler to prevent interference with cleanup
+    // alarm(0) cancels any previously set alarm - this is async-signal-safe
+    alarm(0);
+
     // Block most signals during cleanup to prevent interruptions
     // But keep SIGUSR1, SIGALRM, and SIGKILL unblocked for emergency shutdown
     sigset_t block_mask, old_mask;
@@ -1129,8 +1151,8 @@ cleanup:
         // No need to register them again during shutdown
         log_info("Starting shutdown sequence for all components...");
 
-        // Wait a moment for callbacks to clear and any in-progress operations to complete
-        usleep(1000000);  // 1000ms (increased from 500ms)
+        // Brief wait for callbacks to clear and any in-progress operations to complete
+        usleep(250000);  // 250ms (reduced from 1000ms)
 
         // Stop all detection stream readers first
         log_info("Stopping all detection stream readers...");
@@ -1224,8 +1246,8 @@ cleanup:
         log_info("Cleaning up detection stream system...");
         shutdown_detection_stream_system();
 
-        // Wait for detection streams to stop
-        usleep(1000000);  // 1000ms
+        // Brief wait for detection streams to stop
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Clean up all HLS writers first to ensure proper FFmpeg resource cleanup
         log_info("Cleaning up all HLS writers...");
@@ -1235,8 +1257,8 @@ cleanup:
         log_info("Cleaning up HLS streaming backend...");
         cleanup_hls_streaming_backend();
 
-        // Wait for HLS streaming to clean up
-        usleep(1000000);  // 1000ms
+        // Brief wait for HLS streaming cleanup
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Clean up ONVIF motion recording system before MP4 backend
         log_info("Cleaning up ONVIF motion recording system...");
@@ -1246,8 +1268,8 @@ cleanup:
         log_info("Cleaning up MP4 recording backend...");
         cleanup_mp4_recording_backend();
 
-        // Wait for MP4 recording to clean up
-        usleep(1000000);  // 1000ms
+        // Brief wait for MP4 recording cleanup
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Clean up FFmpeg resources
         log_info("Cleaning up transcoding backend...");
@@ -1366,8 +1388,8 @@ cleanup:
             }
         }
 
-        // Wait a moment
-        usleep(1000000);  // 1 second
+        // Brief wait before cleanup
+        usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Close all MP4 writers first
         close_all_mp4_writers();

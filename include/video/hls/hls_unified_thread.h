@@ -104,6 +104,12 @@ void *hls_unified_thread_func(void *arg);
 int get_hls_watchdog_restart_count(void);
 
 /**
+ * Stop the HLS watchdog thread
+ * Call this before cleanup to prevent stream restarts during shutdown
+ */
+void stop_hls_watchdog(void);
+
+/**
  * Initialize the HLS unified thread system
  * This function initializes the HLS unified thread system and starts the watchdog
  */

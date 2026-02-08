@@ -25,6 +25,22 @@ void *safe_malloc(size_t size);
 void *safe_realloc(void *ptr, size_t size);
 
 /**
+ * Safe calloc that allocates zeroed memory
+ *
+ * @param nmemb Number of elements
+ * @param size Size of each element
+ * @return Pointer to allocated zeroed memory or NULL on failure
+ */
+void *safe_calloc(size_t nmemb, size_t size);
+
+/**
+ * Safe free that handles NULL pointers
+ *
+ * @param ptr Pointer to memory to free (can be NULL)
+ */
+void safe_free(void *ptr);
+
+/**
  * Safe string duplication
  *
  * @param str String to duplicate

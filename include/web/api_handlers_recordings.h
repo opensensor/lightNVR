@@ -4,7 +4,6 @@
 #include <sys/types.h>  /* for off_t */
 #include <time.h>       /* for time_t */
 #include "database/database_manager.h"  /* for recording_metadata_t */
-#include "mongoose.h"  /* for mongoose-specific handlers */
 
 /**
  * Get the total count of recordings matching given filters
@@ -43,27 +42,6 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
 
 /**
- * Serve an MP4 file with proper headers for download
- */
-void serve_mp4_file(struct mg_connection *c, const char *file_path, const char *filename);
-
-/**
- * Serve a file for download with proper headers to force browser download
- */
-void serve_file_for_download(struct mg_connection *c, const char *file_path, const char *filename, off_t file_size);
-
-/**
- * Serve the direct file download
- */
-void serve_direct_download(struct mg_connection *c, uint64_t id, recording_metadata_t *metadata);
-
-/**
- * Serve a file for download with proper headers
- */
-void serve_download_file(struct mg_connection *c, const char *file_path, const char *content_type,
-                       const char *stream_name, time_t timestamp);
-
-/**
  * Schedule a file for deletion after it has been served
  */
 void schedule_file_deletion(const char *file_path);
@@ -73,64 +51,67 @@ void schedule_file_deletion(const char *file_path);
  */
 void remove_temp_file_callback(void *data);
 
-/* Mongoose-specific handlers */
+/* Recording Handlers */
+#include "web/request_response.h"
 
 /**
- * Worker function for GET request for recordings list
- * 
- * This function is called by the multithreading system to handle recordings requests.
+ * @brief Backend-agnostic handler for GET /api/recordings/:id
+ *
+ * Gets detailed information about a single recording.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_get_recordings_worker(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_recording(const http_request_t *req, http_response_t *res);
 
 /**
- * Handle GET request for recordings list
- * 
- * This handler uses the multithreading pattern to handle the request in a worker thread.
+ * @brief Backend-agnostic handler for DELETE /api/recordings/:id
+ *
+ * Deletes a single recording from the database and filesystem.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_get_recordings(struct mg_connection *c, struct mg_http_message *hm);
+void handle_delete_recording(const http_request_t *req, http_response_t *res);
 
 /**
- * Worker function for GET request for a specific recording
- * 
- * This function is called by the multithreading system to handle recording detail requests.
+ * @brief Backend-agnostic handler for POST /api/recordings/batch-delete
+ *
+ * Initiates a batch delete operation and returns a job ID for progress tracking.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_get_recording_worker(struct mg_connection *c, struct mg_http_message *hm);
+void handle_batch_delete_recordings(const http_request_t *req, http_response_t *res);
 
 /**
- * Handle GET request for a specific recording
- * 
- * This handler uses the multithreading pattern to handle the request in a worker thread.
+ * @brief Backend-agnostic handler for GET /api/recordings/batch-delete/progress/:job_id
+ *
+ * Returns the progress status of a batch delete operation.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_get_recording(struct mg_connection *c, struct mg_http_message *hm);
+void handle_batch_delete_progress(const http_request_t *req, http_response_t *res);
 
 /**
- * Handle DELETE request to remove a recording
+ * @brief Backend-agnostic handler for GET /api/recordings/files/check
+ *
+ * Checks if a recording file exists and returns its metadata.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_delete_recording(struct mg_connection *c, struct mg_http_message *hm);
+void handle_check_recording_file(const http_request_t *req, http_response_t *res);
 
 /**
- * Handle POST request to batch delete recordings
+ * @brief Backend-agnostic handler for DELETE /api/recordings/files
+ *
+ * Deletes a recording file from the filesystem.
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_batch_delete_recordings(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * Handle GET request to play a recording
- */
-void mg_handle_play_recording(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * Handle GET request to download a recording
- */
-void mg_handle_download_recording(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * Handle GET request to check if a recording file exists
- */
-void mg_handle_check_recording_file(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * Handle DELETE request to delete a recording file
- */
-void mg_handle_delete_recording_file(struct mg_connection *c, struct mg_http_message *hm);
+void handle_delete_recording_file(const http_request_t *req, http_response_t *res);
 
 #endif /* API_HANDLERS_RECORDINGS_H */

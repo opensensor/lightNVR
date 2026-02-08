@@ -1,3 +1,8 @@
+/**
+ * @file api_handlers_timeline.c
+ * @brief Backend-agnostic API handlers for timeline operations
+ */
+
 #define _XOPEN_SOURCE
 #define _GNU_SOURCE
 
@@ -10,20 +15,16 @@
 #include <dirent.h>
 #include <time.h>
 #include <pthread.h>
+#include <cjson/cJSON.h>
 
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
-#include "mongoose.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
-
-// Forward declarations for Mongoose API handlers
-void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm);
-void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm);
-void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm);
 
 // Maximum number of segments to return in a single request
 #define MAX_TIMELINE_SEGMENTS 1000
@@ -79,166 +80,136 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
 }
 
 /**
- * @brief Handler for GET /api/timeline/segments
+ * @brief Helper function to parse ISO 8601 time string to time_t
  */
-void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling GET /api/timeline/segments request");
-    
-    // Parse query parameters
-    char query_string[512] = {0};
-    if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
-        memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
-        query_string[hm->query.len] = '\0';
-        log_info("Query string: %s", query_string);
+static time_t parse_iso8601_time(const char *time_str) {
+    if (!time_str || time_str[0] == '\0') {
+        return 0;
     }
-    
+
+    // URL-decode the time string (replace %3A with :)
+    char decoded_time[64] = {0};
+    strncpy(decoded_time, time_str, sizeof(decoded_time) - 1);
+
+    // Replace %3A with :
+    char *pos = decoded_time;
+    while ((pos = strstr(pos, "%3A")) != NULL) {
+        *pos = ':';
+        memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
+    }
+
+    log_info("Parsing time string (decoded): %s", decoded_time);
+
+    struct tm tm = {0};
+    // Try different time formats
+    if (strptime(decoded_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
+        strptime(decoded_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
+        strptime(decoded_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
+        strptime(decoded_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
+        // Convert to UTC timestamp - assume input is already in UTC
+        tm.tm_isdst = 0; // No DST for UTC
+        time_t result = timegm(&tm);
+        log_info("Parsed time: %ld", (long)result);
+        return result;
+    } else if (strptime(decoded_time, "%Y-%m-%d", &tm) != NULL) {
+        // Handle date-only format (YYYY-MM-DD)
+        // Set time to 00:00:00
+        tm.tm_hour = 0;
+        tm.tm_min = 0;
+        tm.tm_sec = 0;
+        tm.tm_isdst = 0; // No DST for UTC
+        time_t result = timegm(&tm);
+        log_info("Parsed date-only time: %ld", (long)result);
+        return result;
+    } else {
+        log_error("Failed to parse time string: %s", decoded_time);
+        return 0;
+    }
+}
+
+/**
+ * @brief Backend-agnostic handler for GET /api/timeline/segments
+ */
+void handle_get_timeline_segments(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/timeline/segments request");
+
     // Extract parameters
     char stream_name[MAX_STREAM_NAME] = {0};
     char start_time_str[64] = {0};
     char end_time_str[64] = {0};
-    
-    // Parse query string without modifying it
+
     // Extract stream parameter
-    char stream_param[MAX_STREAM_NAME] = {0};
-    mg_http_get_var(&hm->query, "stream", stream_param, sizeof(stream_param));
-    if (stream_param[0] != '\0') {
-        strncpy(stream_name, stream_param, sizeof(stream_name) - 1);
-    }
-    
-    // Extract start parameter
-    mg_http_get_var(&hm->query, "start", start_time_str, sizeof(start_time_str));
-    
-    // Extract end parameter
-    mg_http_get_var(&hm->query, "end", end_time_str, sizeof(end_time_str));
-    
-    // Check required parameters
-    if (stream_name[0] == '\0') {
+    if (http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name)) < 0) {
         log_error("Missing required parameter: stream");
-        mg_send_json_error(c, 400, "Missing required parameter: stream");
+        http_response_set_json_error(res, 400, "Missing required parameter: stream");
         return;
     }
-    
+
+    // Extract start and end parameters (optional)
+    http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
+    http_request_get_query_param(req, "end", end_time_str, sizeof(end_time_str));
+
     // Parse time strings to time_t
     time_t start_time = 0;
     time_t end_time = 0;
-    
-    if (start_time_str[0] != '\0') {
-        // URL-decode the time string (replace %3A with :)
-        char decoded_start_time[64] = {0};
-        strncpy(decoded_start_time, start_time_str, sizeof(decoded_start_time) - 1);
-        
-        // Replace %3A with :
-        char *pos = decoded_start_time;
-        while ((pos = strstr(pos, "%3A")) != NULL) {
-            *pos = ':';
-            memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
-        }
-        
-        log_info("Parsing start time string (decoded): %s", decoded_start_time);
-        
-        struct tm tm = {0};
-        // Try different time formats
-        if (strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-            strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-            strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-            strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
 
-            // Convert to UTC timestamp - assume input is already in UTC
-            tm.tm_isdst = 0; // No DST for UTC
-            start_time = timegm(&tm);
-            log_info("Parsed start time: %ld", (long)start_time);
-        } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
-            // Handle date-only format (YYYY-MM-DD)
-            // Set time to 00:00:00
-            tm.tm_hour = 0;
-            tm.tm_min = 0;
-            tm.tm_sec = 0;
-            tm.tm_isdst = 0; // No DST for UTC
-            start_time = timegm(&tm);
-            log_info("Parsed date-only start time: %ld", (long)start_time);
-        } else {
-            log_error("Failed to parse start time string: %s", decoded_start_time);
+    if (start_time_str[0] != '\0') {
+        start_time = parse_iso8601_time(start_time_str);
+        if (start_time == 0) {
+            log_error("Failed to parse start time: %s", start_time_str);
         }
     } else {
         // Default to 24 hours ago
         start_time = time(NULL) - (24 * 60 * 60);
     }
-    
-    if (end_time_str[0] != '\0') {
-        // URL-decode the time string (replace %3A with :)
-        char decoded_end_time[64] = {0};
-        strncpy(decoded_end_time, end_time_str, sizeof(decoded_end_time) - 1);
-        
-        // Replace %3A with :
-        char *pos = decoded_end_time;
-        while ((pos = strstr(pos, "%3A")) != NULL) {
-            *pos = ':';
-            memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
-        }
-        
-        log_info("Parsing end time string (decoded): %s", decoded_end_time);
-        
-        struct tm tm = {0};
-        // Try different time formats
-        if (strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-            strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-            strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-            strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
 
-            // Convert to UTC timestamp - assume input is already in UTC
-            tm.tm_isdst = 0; // No DST for UTC
-            end_time = timegm(&tm);
-            log_info("Parsed end time: %ld", (long)end_time);
-        } else if (strptime(decoded_end_time, "%Y-%m-%d", &tm) != NULL) {
-            // Handle date-only format (YYYY-MM-DD)
-            // Set time to 23:59:59 for the end of the day
-            tm.tm_hour = 23;
-            tm.tm_min = 59;
-            tm.tm_sec = 59;
-            tm.tm_isdst = 0; // No DST for UTC
-            end_time = timegm(&tm);
-            log_info("Parsed date-only end time: %ld", (long)end_time);
-        } else {
-            log_error("Failed to parse end time string: %s", decoded_end_time);
+    if (end_time_str[0] != '\0') {
+        end_time = parse_iso8601_time(end_time_str);
+        if (end_time == 0) {
+            log_error("Failed to parse end time: %s", end_time_str);
+        }
+        // For date-only format, set to end of day
+        if (strlen(end_time_str) == 10) {  // YYYY-MM-DD format
+            end_time += (23 * 3600 + 59 * 60 + 59);  // Add 23:59:59
         }
     } else {
         // Default to now
         end_time = time(NULL);
     }
-    
+
     // Get timeline segments
     timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
     if (!segments) {
         log_error("Failed to allocate memory for timeline segments");
-        mg_send_json_error(c, 500, "Failed to allocate memory for timeline segments");
+        http_response_set_json_error(res, 500, "Failed to allocate memory for timeline segments");
         return;
     }
     
     int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
-    
+
     if (count < 0) {
         log_error("Failed to get timeline segments");
         free(segments);
-        mg_send_json_error(c, 500, "Failed to get timeline segments");
+        http_response_set_json_error(res, 500, "Failed to get timeline segments");
         return;
     }
-    
+
     // Create response object
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         log_error("Failed to create response JSON object");
         free(segments);
-        mg_send_json_error(c, 500, "Failed to create response JSON");
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
-    
+
     // Create segments array
     cJSON *segments_array = cJSON_CreateArray();
     if (!segments_array) {
         log_error("Failed to create segments JSON array");
         free(segments);
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to create segments JSON");
+        http_response_set_json_error(res, 500, "Failed to create segments JSON");
         return;
     }
     
@@ -333,25 +304,221 @@ void mg_handle_get_timeline_segments(struct mg_connection *c, struct mg_http_mes
     
     // Free segments
     free(segments);
-    
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(response);
     if (!json_str) {
         log_error("Failed to convert response JSON to string");
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to convert response JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert response JSON to string");
         return;
     }
-    
+
     // Send response
-    mg_send_json_response(c, 200, json_str);
-    
+    http_response_set_json(res, 200, json_str);
+
     free(json_str);
     cJSON_Delete(response);
-    
+
     log_info("Successfully handled GET /api/timeline/segments request");
 }
 
+/**
+ * @brief Backend-agnostic handler for GET /api/timeline/manifest
+ */
+void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/timeline/manifest request");
+
+    // Extract parameters
+    char stream_name[MAX_STREAM_NAME] = {0};
+    char start_time_str[64] = {0};
+    char end_time_str[64] = {0};
+
+    // Extract stream parameter
+    if (http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name)) < 0) {
+        log_error("Missing required parameter: stream");
+        http_response_set_json_error(res, 400, "Missing required parameter: stream");
+        return;
+    }
+
+    // Extract start and end parameters (optional)
+    http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
+    http_request_get_query_param(req, "end", end_time_str, sizeof(end_time_str));
+
+    // Parse time strings to time_t
+    time_t start_time = 0;
+    time_t end_time = 0;
+
+    if (start_time_str[0] != '\0') {
+        start_time = parse_iso8601_time(start_time_str);
+        if (start_time == 0) {
+            log_error("Failed to parse start time: %s", start_time_str);
+        }
+    } else {
+        // Default to 24 hours ago
+        start_time = time(NULL) - (24 * 60 * 60);
+    }
+
+    if (end_time_str[0] != '\0') {
+        end_time = parse_iso8601_time(end_time_str);
+        if (end_time == 0) {
+            log_error("Failed to parse end time: %s", end_time_str);
+        }
+        // For date-only format, set to end of day
+        if (strlen(end_time_str) == 10) {  // YYYY-MM-DD format
+            end_time += (23 * 3600 + 59 * 60 + 59);  // Add 23:59:59
+        }
+    } else {
+        // Default to now
+        end_time = time(NULL);
+    }
+
+    // Get timeline segments
+    timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
+    if (!segments) {
+        log_error("Failed to allocate memory for timeline segments");
+        http_response_set_json_error(res, 500, "Failed to allocate memory for timeline segments");
+        return;
+    }
+
+    int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
+
+    if (count <= 0) {
+        log_error("No timeline segments found for stream %s", stream_name);
+        free(segments);
+        http_response_set_json_error(res, 404, "No recordings found for the specified time range");
+        return;
+    }
+
+    // Create manifest
+    char manifest_path[MAX_PATH_LENGTH];
+    if (create_timeline_manifest(segments, count, start_time, manifest_path) != 0) {
+        log_error("Failed to create timeline manifest");
+        free(segments);
+        http_response_set_json_error(res, 500, "Failed to create timeline manifest");
+        return;
+    }
+
+    // Free segments
+    free(segments);
+
+    // Serve the manifest file
+    const char *extra_headers = "Cache-Control: no-cache\r\n";
+    http_serve_file(req, res, manifest_path, "application/vnd.apple.mpegurl", extra_headers);
+
+    log_info("Successfully handled GET /api/timeline/manifest request");
+}
+
+/**
+ * @brief Backend-agnostic handler for GET /api/timeline/play
+ */
+void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/timeline/play request");
+
+    // Extract parameters
+    char stream_name[MAX_STREAM_NAME] = {0};
+    char start_time_str[64] = {0};
+
+    // Extract stream parameter
+    if (http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name)) < 0) {
+        log_error("Missing required parameter: stream");
+        http_response_set_json_error(res, 400, "Missing required parameter: stream");
+        return;
+    }
+
+    // Extract start parameter
+    http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
+
+    // Parse start time
+    time_t start_time = 0;
+    if (start_time_str[0] != '\0') {
+        // Try parsing as a timestamp first
+        char *endptr;
+        long timestamp = strtol(start_time_str, &endptr, 10);
+        if (*endptr == '\0' && timestamp > 0) {
+            // It's a valid timestamp
+            start_time = (time_t)timestamp;
+        } else {
+            // Try parsing as ISO 8601
+            start_time = parse_iso8601_time(start_time_str);
+            if (start_time == 0) {
+                log_error("Failed to parse start time: %s", start_time_str);
+                http_response_set_json_error(res, 400, "Invalid start time format");
+                return;
+            }
+        }
+    } else {
+        // Default to now
+        start_time = time(NULL);
+    }
+
+    // Find the recording that contains or is closest to the start time
+    timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
+    if (!segments) {
+        log_error("Failed to allocate memory for timeline segments");
+        http_response_set_json_error(res, 500, "Failed to allocate memory");
+        return;
+    }
+
+    // Get segments around the start time (1 hour before and after)
+    time_t search_start = start_time - 3600;
+    time_t search_end = start_time + 3600;
+
+    int count = get_timeline_segments(stream_name, search_start, search_end, segments, MAX_TIMELINE_SEGMENTS);
+
+    if (count <= 0) {
+        log_error("No recordings found for stream %s near time %ld", stream_name, (long)start_time);
+        free(segments);
+        http_response_set_json_error(res, 404, "No recordings found for the specified time");
+        return;
+    }
+
+    // Find the segment that contains the start time, or the closest one
+    int64_t recording_id = 0;
+    int64_t min_distance = INT64_MAX;
+
+    for (int i = 0; i < count; i++) {
+        if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
+            // Found exact match
+            recording_id = segments[i].id;
+            break;
+        }
+
+        // Calculate distance to this segment
+        int64_t distance;
+        if (start_time < segments[i].start_time) {
+            distance = segments[i].start_time - start_time;
+        } else {
+            distance = start_time - segments[i].end_time;
+        }
+
+        if (distance < min_distance) {
+            min_distance = distance;
+            recording_id = segments[i].id;
+        }
+    }
+
+    free(segments);
+
+    if (recording_id == 0) {
+        log_error("Failed to find recording for stream %s", stream_name);
+        http_response_set_json_error(res, 404, "No recording found");
+        return;
+    }
+
+    // Redirect to the recording playback endpoint
+    char redirect_url[256];
+    snprintf(redirect_url, sizeof(redirect_url), "/api/recordings/play/%llu", (unsigned long long)recording_id);
+
+    log_info("Redirecting to recording playback: %s", redirect_url);
+
+    // Set redirect response
+    res->status_code = 302;
+    http_response_add_header(res, "Location", redirect_url);
+    http_response_add_header(res, "Content-Length", "0");
+
+    log_info("Successfully handled GET /api/timeline/play request");
+}
 
 /**
  * Create a playback manifest for a sequence of recordings
@@ -458,331 +625,4 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
     log_info("Created timeline manifest: %s", manifest_filename);
     
     return 0;
-}
-
-/**
- * @brief Handler for GET /api/timeline/manifest
- */
-void mg_handle_timeline_manifest(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling GET /api/timeline/manifest request");
-    
-    // Parse query parameters
-    char query_string[512] = {0};
-    if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
-        memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
-        query_string[hm->query.len] = '\0';
-        log_info("Query string: %s", query_string);
-    }
-    
-    // Extract parameters
-    char stream_name[MAX_STREAM_NAME] = {0};
-    char start_time_str[64] = {0};
-    char end_time_str[64] = {0};
-    
-    // Parse query string without modifying it
-    // Extract stream parameter
-    char stream_param[MAX_STREAM_NAME] = {0};
-    mg_http_get_var(&hm->query, "stream", stream_param, sizeof(stream_param));
-    if (stream_param[0] != '\0') {
-        strncpy(stream_name, stream_param, sizeof(stream_name) - 1);
-    }
-    
-    // Extract start parameter
-    mg_http_get_var(&hm->query, "start", start_time_str, sizeof(start_time_str));
-    
-    // Extract end parameter
-    mg_http_get_var(&hm->query, "end", end_time_str, sizeof(end_time_str));
-    
-    // Check required parameters
-    if (stream_name[0] == '\0') {
-        log_error("Missing required parameter: stream");
-        mg_send_json_error(c, 400, "Missing required parameter: stream");
-        return;
-    }
-    
-    // Parse time strings to time_t
-    time_t start_time = 0;
-    time_t end_time = 0;
-    
-    if (start_time_str[0] != '\0') {
-        // URL-decode the time string (replace %3A with :)
-        char decoded_start_time[64] = {0};
-        strncpy(decoded_start_time, start_time_str, sizeof(decoded_start_time) - 1);
-        
-        // Replace %3A with :
-        char *pos = decoded_start_time;
-        while ((pos = strstr(pos, "%3A")) != NULL) {
-            *pos = ':';
-            memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
-        }
-        
-        log_info("Parsing start time string (decoded): %s", decoded_start_time);
-        
-        struct tm tm = {0};
-        // Try different time formats
-        if (strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-            strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-            strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-            strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-
-            // Convert to UTC timestamp - assume input is already in UTC
-            tm.tm_isdst = 0; // No DST for UTC
-            start_time = timegm(&tm);
-            log_info("Parsed start time: %ld", (long)start_time);
-        } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
-            // Handle date-only format (YYYY-MM-DD)
-            // Set time to 00:00:00
-            tm.tm_hour = 0;
-            tm.tm_min = 0;
-            tm.tm_sec = 0;
-            tm.tm_isdst = 0; // No DST for UTC
-            start_time = timegm(&tm);
-            log_info("Parsed date-only start time: %ld", (long)start_time);
-        } else {
-            log_error("Failed to parse start time string: %s", decoded_start_time);
-        }
-    } else {
-        // Default to 24 hours ago
-        start_time = time(NULL) - (24 * 60 * 60);
-    }
-
-    if (end_time_str[0] != '\0') {
-        // URL-decode the time string (replace %3A with :)
-        char decoded_end_time[64] = {0};
-        strncpy(decoded_end_time, end_time_str, sizeof(decoded_end_time) - 1);
-
-        // Replace %3A with :
-        char *pos = decoded_end_time;
-        while ((pos = strstr(pos, "%3A")) != NULL) {
-            *pos = ':';
-            memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
-        }
-
-        log_info("Parsing end time string (decoded): %s", decoded_end_time);
-
-        struct tm tm = {0};
-        // Try different time formats
-        if (strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-            strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-            strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-            strptime(decoded_end_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-
-            // Convert to UTC timestamp - assume input is already in UTC
-            tm.tm_isdst = 0; // No DST for UTC
-            end_time = timegm(&tm);
-            log_info("Parsed end time: %ld", (long)end_time);
-        } else if (strptime(decoded_end_time, "%Y-%m-%d", &tm) != NULL) {
-            // Handle date-only format (YYYY-MM-DD)
-            // Set time to 23:59:59 for the end of the day
-            tm.tm_hour = 23;
-            tm.tm_min = 59;
-            tm.tm_sec = 59;
-            tm.tm_isdst = 0; // No DST for UTC
-            end_time = timegm(&tm);
-            log_info("Parsed date-only end time: %ld", (long)end_time);
-        } else {
-            log_error("Failed to parse end time string: %s", decoded_end_time);
-        }
-    } else {
-        // Default to now
-        end_time = time(NULL);
-    }
-    
-    // Get timeline segments
-    timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
-    if (!segments) {
-        log_error("Failed to allocate memory for timeline segments");
-        mg_send_json_error(c, 500, "Failed to allocate memory for timeline segments");
-        return;
-    }
-    
-    int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
-    
-    if (count <= 0) {
-        log_error("No timeline segments found for stream %s", stream_name);
-        free(segments);
-        mg_send_json_error(c, 404, "No recordings found for the specified time range");
-        return;
-    }
-    
-    // Create manifest
-    char manifest_path[MAX_PATH_LENGTH];
-    if (create_timeline_manifest(segments, count, start_time, manifest_path) != 0) {
-        log_error("Failed to create timeline manifest");
-        free(segments);
-        mg_send_json_error(c, 500, "Failed to create timeline manifest");
-        return;
-    }
-    
-    // Free segments
-    free(segments);
-    
-    // Use Mongoose's built-in file serving capabilities
-    // This is more stable and handles all the HTTP headers properly
-    struct mg_http_serve_opts opts = {
-        .mime_types = "m3u8=application/vnd.apple.mpegurl",
-        .extra_headers = "Connection: close\r\nCache-Control: no-cache\r\n"
-    };
-    
-    log_info("Serving manifest file using mg_http_serve_file: %s", manifest_path);
-    mg_http_serve_file(c, hm, manifest_path, &opts);
-    
-    // Schedule manifest file for deletion after a while
-    // In a real implementation, you might want to keep it around for a bit
-    // and implement a cleanup mechanism
-    
-    log_info("Successfully handled GET /api/timeline/manifest request");
-}
-
-
-/**
- * @brief Handler for GET /api/timeline/play
- */
-void mg_handle_timeline_playback(struct mg_connection *c, struct mg_http_message *hm) {
-    log_info("Handling GET /api/timeline/play request");
-    
-    // Parse query parameters
-    char query_string[512] = {0};
-    if (hm->query.len > 0 && hm->query.len < sizeof(query_string)) {
-        memcpy(query_string, mg_str_get_ptr(&hm->query), hm->query.len);
-        query_string[hm->query.len] = '\0';
-        log_info("Query string: %s", query_string);
-    }
-    
-    // Extract parameters
-    char stream_name[MAX_STREAM_NAME] = {0};
-    char start_time_str[64] = {0};
-    
-    // Parse query string without modifying it
-    // Extract stream parameter
-    char stream_param[MAX_STREAM_NAME] = {0};
-    mg_http_get_var(&hm->query, "stream", stream_param, sizeof(stream_param));
-    if (stream_param[0] != '\0') {
-        strncpy(stream_name, stream_param, sizeof(stream_name) - 1);
-    }
-    
-    // Extract start parameter
-    mg_http_get_var(&hm->query, "start", start_time_str, sizeof(start_time_str));
-    
-    // Check required parameters
-    if (stream_name[0] == '\0') {
-        log_error("Missing required parameter: stream");
-        mg_send_json_error(c, 400, "Missing required parameter: stream");
-        return;
-    }
-    
-    // Parse start time
-    time_t start_time = 0;
-    if (start_time_str[0] != '\0') {
-        // Try parsing as a timestamp first
-        char *endptr;
-        start_time = strtol(start_time_str, &endptr, 10);
-        
-        // If not a valid number, try parsing as a date string
-        if (*endptr != '\0') {
-            // URL-decode the time string (replace %3A with :)
-            char decoded_start_time[64] = {0};
-            strncpy(decoded_start_time, start_time_str, sizeof(decoded_start_time) - 1);
-            
-            // Replace %3A with :
-            char *pos = decoded_start_time;
-            while ((pos = strstr(pos, "%3A")) != NULL) {
-                *pos = ':';
-                memmove(pos + 1, pos + 3, strlen(pos + 3) + 1);
-            }
-            
-            log_info("Parsing start time string (decoded): %s", decoded_start_time);
-
-            struct tm tm = {0};
-            // Try different time formats
-            if (strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S", &tm) != NULL ||
-                strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000Z", &tm) != NULL ||
-                strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%S.000", &tm) != NULL ||
-                strptime(decoded_start_time, "%Y-%m-%dT%H:%M:%SZ", &tm) != NULL) {
-
-                // Convert to UTC timestamp - assume input is already in UTC
-                tm.tm_isdst = 0; // No DST for UTC
-                start_time = timegm(&tm);
-                log_info("Parsed start time: %ld", (long)start_time);
-            } else if (strptime(decoded_start_time, "%Y-%m-%d", &tm) != NULL) {
-                // Handle date-only format (YYYY-MM-DD)
-                // Set time to 00:00:00
-                tm.tm_hour = 0;
-                tm.tm_min = 0;
-                tm.tm_sec = 0;
-                tm.tm_isdst = 0; // No DST for UTC
-                start_time = timegm(&tm);
-                log_info("Parsed date-only start time: %ld", (long)start_time);
-            } else {
-                log_error("Failed to parse start time string: %s", decoded_start_time);
-                mg_send_json_error(c, 400, "Invalid start time format");
-                return;
-            }
-        }
-    } else {
-        // Default to 24 hours ago
-        start_time = time(NULL) - (24 * 60 * 60);
-    }
-    
-    // Get timeline segments
-    timeline_segment_t *segments = (timeline_segment_t *)malloc(MAX_TIMELINE_SEGMENTS * sizeof(timeline_segment_t));
-    if (!segments) {
-        log_error("Failed to allocate memory for timeline segments");
-        mg_send_json_error(c, 500, "Failed to allocate memory for timeline segments");
-        return;
-    }
-    
-    // Get segments for the next 24 hours from start time
-    time_t end_time = start_time + (24 * 60 * 60);
-    int count = get_timeline_segments(stream_name, start_time, end_time, segments, MAX_TIMELINE_SEGMENTS);
-    
-    if (count <= 0) {
-        log_error("No timeline segments found for stream %s", stream_name);
-        free(segments);
-        mg_send_json_error(c, 404, "No recordings found for the specified time range");
-        return;
-    }
-    
-    // Find the segment that contains the start time
-    int start_segment_index = -1;
-    for (int i = 0; i < count; i++) {
-        if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
-            start_segment_index = i;
-            break;
-        }
-    }
-    
-    // If no segment contains the start time, use the first segment after the start time
-    if (start_segment_index == -1) {
-        for (int i = 0; i < count; i++) {
-            if (start_time < segments[i].start_time) {
-                start_segment_index = i;
-                break;
-            }
-        }
-    }
-    
-    // If still no segment found, use the first segment
-    if (start_segment_index == -1 && count > 0) {
-        start_segment_index = 0;
-    }
-    
-    // Get the recording ID for the segment
-    uint64_t recording_id = segments[start_segment_index].id;
-    
-    // Free segments
-    free(segments);
-    
-    // Redirect to the recording playback endpoint
-    char redirect_url[256];
-    snprintf(redirect_url, sizeof(redirect_url), "/api/recordings/play/%llu", (unsigned long long)recording_id);
-    
-    log_info("Redirecting to recording playback: %s", redirect_url);
-    
-    // Send redirect response
-    mg_printf(c, "HTTP/1.1 302 Found\r\n");
-    mg_printf(c, "Connection: close\r\n");
-    mg_printf(c, "Location: %s\r\n", redirect_url);
-    mg_printf(c, "Content-Length: 0\r\n");
-    mg_printf(c, "\r\n");
 }

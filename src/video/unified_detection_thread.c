@@ -47,6 +47,7 @@
 #include "video/mp4_recording.h"
 #include "video/streams.h"
 #include "video/go2rtc/go2rtc_stream.h"
+#include "video/go2rtc/go2rtc_snapshot.h"
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 
@@ -147,16 +148,41 @@ void shutdown_unified_detection_system(void) {
     log_info("Shutting down unified detection system");
 
     // First pass: Signal all threads to stop (without holding the lock for long)
+    int already_stopped_count = 0;
+    int threads_to_stop = 0;
     pthread_mutex_lock(&contexts_mutex);
     for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
         if (detection_contexts[i]) {
             unified_detection_ctx_t *ctx = detection_contexts[i];
+
+            // Check current state BEFORE modifying
+            unified_detection_state_t current_state = atomic_load(&ctx->state);
+
+            // If thread has already stopped, don't reset its state
+            if (current_state == UDT_STATE_STOPPED) {
+                already_stopped_count++;
+                log_info("Unified detection thread %s already stopped (state=%d)",
+                         ctx->stream_name, current_state);
+                continue;
+            }
+
             atomic_store(&ctx->running, 0);
-            atomic_store(&ctx->state, UDT_STATE_STOPPING);
-            log_info("Signaled unified detection thread %s to stop", ctx->stream_name);
+
+            // Only update state to stopping if not already stopping or stopped
+            if (current_state != UDT_STATE_STOPPING && current_state != UDT_STATE_STOPPED) {
+                atomic_store(&ctx->state, UDT_STATE_STOPPING);
+            }
+
+            threads_to_stop++;
+            log_info("Signaled unified detection thread %s to stop (was state=%d)",
+                     ctx->stream_name, current_state);
         }
     }
     pthread_mutex_unlock(&contexts_mutex);
+
+    if (already_stopped_count > 0) {
+        log_info("Found %d unified detection threads already stopped", already_stopped_count);
+    }
 
     // Wait for all threads to reach STOPPED state (up to 5 seconds total)
     int max_wait_iterations = 50;  // 50 * 100ms = 5 seconds
@@ -791,6 +817,15 @@ static void *unified_detection_thread_func(void *arg) {
         log_info("[%s] Closing active recording before thread exit", stream_name);
         udt_stop_recording(ctx);
     }
+
+    // Disconnect from stream to free FFmpeg decoder_ctx and input_ctx
+    // This handles the case where the thread exits the loop while still connected
+    // (e.g., during shutdown while in BUFFERING/RECORDING state)
+    disconnect_from_stream(ctx);
+
+    // Clean up thread-local CURL handle used by go2rtc_get_snapshot()
+    // This must be called from the same thread that created the handle
+    go2rtc_snapshot_cleanup_thread();
 
     // Cleanup
     av_packet_free(&pkt);

@@ -4,26 +4,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "web/http_server.h"
 #include "video/streams.h"
 
-
-void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_message *hm) {
-    if (!c || !hm) {
-        log_error("Invalid parameters in mg_handle_direct_hls_request");
+/**
+ * @brief Backend-agnostic handler for direct HLS requests
+ * Endpoint: /hls/{stream_name}/{file}
+ */
+void handle_direct_hls_request(const http_request_t *req, http_response_t *res) {
+    if (!req || !res) {
+        log_error("Invalid parameters in handle_direct_hls_request");
         return;
     }
 
     log_info("HLS API: Handling direct HLS request");
 
     // Extract URI
-    char uri[MAX_PATH_LENGTH];
-    size_t uri_len = hm->uri.len < sizeof(uri) - 1 ? hm->uri.len : sizeof(uri) - 1;
-    memcpy(uri, hm->uri.buf, uri_len);
-    uri[uri_len] = '\0';
+    const char *uri = req->path;
+    size_t uri_len = strlen(uri);
 
     // Extract stream name from URI
     // URI format: /hls/{stream_name}/{file}
@@ -33,7 +35,7 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     // Validate URI format
     if (uri_len < 6 || strncmp(uri, "/hls/", 5) != 0) {
         log_error("Invalid HLS URI format: %s", uri);
-        mg_http_reply(c, 400, "", "{\"error\": \"Invalid HLS path\"}\n");
+        http_response_set_json_error(res, 400, "Invalid HLS path");
         return;
     }
 
@@ -42,7 +44,7 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
 
     if (!file_part) {
         log_error("Failed to extract stream name from URI: %s", uri);
-        mg_http_reply(c, 400, "", "{\"error\": \"Invalid HLS path\"}\n");
+        http_response_set_json_error(res, 400, "Invalid HLS path");
         return;
     }
 
@@ -50,7 +52,7 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     size_t name_len = file_part - stream_start;
     if (name_len == 0) {
         log_error("Empty stream name in URI: %s", uri);
-        mg_http_reply(c, 400, "", "{\"error\": \"Invalid HLS path - empty stream name\"}\n");
+        http_response_set_json_error(res, 400, "Invalid HLS path - empty stream name");
         return;
     }
 
@@ -61,13 +63,13 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     stream_name[name_len] = '\0';
 
     // URL decode the stream name
-    mg_url_decode(stream_name, strlen(stream_name), decoded_stream_name, sizeof(decoded_stream_name), 0);
+    url_decode(stream_name, decoded_stream_name, sizeof(decoded_stream_name));
 
     // Extract file name (everything after the stream name)
     const char *file_name = file_part + 1; // Skip "/"
     if (!file_name || *file_name == '\0') {
         log_error("Empty file name in URI: %s", uri);
-        mg_http_reply(c, 400, "", "{\"error\": \"Invalid HLS path - empty file name\"}\n");
+        http_response_set_json_error(res, 400, "Invalid HLS path - empty file name");
         return;
     }
 
@@ -75,7 +77,7 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     config_t *global_config = get_streaming_config();
     if (!global_config) {
         log_error("Failed to get streaming configuration");
-        mg_http_reply(c, 500, "", "{\"error\": \"Internal server error\"}\n");
+        http_response_set_json_error(res, 500, "Internal server error");
         return;
     }
 
@@ -110,54 +112,33 @@ void mg_handle_direct_hls_request(struct mg_connection *c, struct mg_http_messag
     struct stat st;
     if (stat(hls_file_path, &st) == 0 && S_ISREG(st.st_mode)) {
         // Determine content type based on file extension
-        const char *content_type_header = "Content-Type: application/octet-stream\r\n";
+        const char *content_type = "application/octet-stream";
         if (strstr(file_name, ".m3u8")) {
-            content_type_header = "Content-Type: application/vnd.apple.mpegurl\r\n";
+            content_type = "application/vnd.apple.mpegurl";
         } else if (strstr(file_name, ".ts")) {
-            content_type_header = "Content-Type: video/mp2t\r\n";
+            content_type = "video/mp2t";
         } else if (strstr(file_name, ".m4s")) {
-            content_type_header = "Content-Type: video/iso.segment\r\n";
+            content_type = "video/iso.segment";
         } else if (strstr(file_name, "init.mp4")) {
-            content_type_header = "Content-Type: video/mp4\r\n";
+            content_type = "video/mp4";
         }
 
-        // Use more mobile-friendly cache headers with longer cache times
-        char headers[512];
-
-        // Different cache settings for different file types
-        const char* cache_control;
-        if (strstr(file_name, ".m3u8")) {
-            // For playlist files, use a shorter cache time to ensure updates are seen
-            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
-        } else if (strstr(file_name, ".ts") || strstr(file_name, ".m4s")) {
-            // For media segments, use a longer cache time to improve mobile performance
-            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
-        } else if (strstr(file_name, "init.mp4")) {
-            // For initialization segments, use a longer cache time
-            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
-        } else {
-            // Default cache time
-            cache_control = "Cache-Control: no-cache, no-store, must-revalidate\r\n";
-        }
-
-        snprintf(headers, sizeof(headers),
-            "%s"
-            "%s"  // Dynamic cache control based on file type
+        // Build extra headers with cache control and CORS
+        char extra_headers[512];
+        snprintf(extra_headers, sizeof(extra_headers),
+            "Cache-Control: no-cache, no-store, must-revalidate\r\n"
             "Connection: close\r\n"
             "Access-Control-Allow-Origin: *\r\n"
             "Access-Control-Allow-Methods: GET, OPTIONS\r\n"
-            "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n",
-            content_type_header, cache_control);
+            "Access-Control-Allow-Headers: Origin, Content-Type, Accept, Authorization\r\n");
 
-        mg_http_serve_file(c, hm, hls_file_path, &(struct mg_http_serve_opts){
-            .mime_types = "",
-            .extra_headers = headers
-        });
+        // Serve the file using backend-agnostic function
+        http_serve_file(req, res, hls_file_path, content_type, extra_headers);
     } else {
         // File doesn't exist - let the client know
         log_info("HLS file not found: %s (waiting for FFmpeg to create it)", hls_file_path);
 
         // Return a 404 with a message that indicates the file is being generated
-        mg_http_reply(c, 404, "", "{\"error\": \"HLS file not found or still being generated by FFmpeg\"}\n");
+        http_response_set_json_error(res, 404, "HLS file not found or still being generated by FFmpeg");
     }
 }

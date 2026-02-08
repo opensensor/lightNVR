@@ -10,6 +10,7 @@
 #include <sys/sysinfo.h>
 #include <sys/statvfs.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <ifaddrs.h>
@@ -28,7 +29,6 @@
 #include "database/db_recordings.h"
 #include "storage/storage_manager_streams.h"
 #include "storage/storage_manager_streams_cache.h"
-#include "mongoose.h"
 
 // External function from api_handlers_system_go2rtc.c
 extern bool get_go2rtc_memory_usage(unsigned long long *memory_usage);
@@ -100,21 +100,21 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
 }
 
 // Forward declarations from api_handlers_system_logs.c
-extern void mg_handle_get_system_logs(struct mg_connection *c, struct mg_http_message *hm);
-extern void mg_handle_post_system_logs_clear(struct mg_connection *c, struct mg_http_message *hm);
+extern void handle_get_system_logs(const http_request_t *req, http_response_t *res);
+extern void handle_post_system_logs_clear(const http_request_t *req, http_response_t *res);
 extern int get_system_logs(char ***logs, int *count);
 
 /**
  * @brief Direct handler for GET /api/system/info
  */
-void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/system/info request");
 
     // Create JSON object
     cJSON *info = cJSON_CreateObject();
     if (!info) {
         log_error("Failed to create system info JSON object");
-        mg_send_json_error(c, 500, "Failed to create system info JSON");
+        http_response_set_json_error(res, 500, "Failed to create system info JSON");
         return;
     }
 
@@ -619,12 +619,12 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
     if (!json_str) {
         log_error("Failed to convert system info JSON to string");
         cJSON_Delete(info);
-        mg_send_json_error(c, 500, "Failed to convert system info JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert system info JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
@@ -636,14 +636,14 @@ void mg_handle_get_system_info(struct mg_connection *c, struct mg_http_message *
 /**
  * @brief Direct handler for POST /api/system/restart
  */
-void mg_handle_post_system_restart(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_system_restart(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/restart request");
 
     // Create success response using cJSON
     cJSON *success = cJSON_CreateObject();
     if (!success) {
         log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
+        http_response_set_json_error(res, 500, "Failed to create success JSON");
         return;
     }
 
@@ -655,19 +655,16 @@ void mg_handle_post_system_restart(struct mg_connection *c, struct mg_http_messa
     if (!json_str) {
         log_error("Failed to convert success JSON to string");
         cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
     cJSON_Delete(success);
-
-    // Flush response
-    c->is_resp = 0;
 
     // Log restart
     log_info("System restart requested via API");
@@ -682,14 +679,14 @@ void mg_handle_post_system_restart(struct mg_connection *c, struct mg_http_messa
 /**
  * @brief Direct handler for POST /api/system/shutdown
  */
-void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_system_shutdown(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/shutdown request");
 
     // Create success response using cJSON
     cJSON *success = cJSON_CreateObject();
     if (!success) {
         log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
+        http_response_set_json_error(res, 500, "Failed to create success JSON");
         return;
     }
 
@@ -701,19 +698,16 @@ void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_mess
     if (!json_str) {
         log_error("Failed to convert success JSON to string");
         cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
     cJSON_Delete(success);
-
-    // Flush response
-    c->is_resp = 0;
 
     // Log shutdown
     log_info("System shutdown requested via API");
@@ -744,7 +738,7 @@ void mg_handle_post_system_shutdown(struct mg_connection *c, struct mg_http_mess
 /**
  * @brief Direct handler for POST /api/system/backup
  */
-void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_post_system_backup(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/backup request");
 
     // Create a timestamp for the backup filename
@@ -776,7 +770,7 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
         cJSON *error = cJSON_CreateObject();
         if (!error) {
             log_error("Failed to create error JSON object");
-            mg_send_json_error(c, 500, "Failed to create error JSON");
+            http_response_set_json_error(res, 500, "Failed to create error JSON");
             return;
         }
 
@@ -792,12 +786,12 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
         if (!json_str) {
             log_error("Failed to convert error JSON to string");
             cJSON_Delete(error);
-            mg_send_json_error(c, 500, "Failed to convert error JSON to string");
+            http_response_set_json_error(res, 500, "Failed to convert error JSON to string");
             return;
         }
 
         // Send response
-        mg_send_json_error(c, 500, json_str);
+        http_response_set_json_error(res, 500, json_str);
 
         // Clean up
         free(json_str);
@@ -810,7 +804,7 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     if (!backup) {
         log_error("Failed to create backup JSON object");
         fclose(backup_file);
-        mg_send_json_error(c, 500, "Failed to create backup JSON");
+        http_response_set_json_error(res, 500, "Failed to create backup JSON");
         return;
     }
 
@@ -824,7 +818,7 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
         log_error("Failed to create config JSON object");
         cJSON_Delete(backup);
         fclose(backup_file);
-        mg_send_json_error(c, 500, "Failed to create config JSON");
+        http_response_set_json_error(res, 500, "Failed to create config JSON");
         return;
     }
 
@@ -845,7 +839,7 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
         cJSON_Delete(config);
         cJSON_Delete(backup);
         fclose(backup_file);
-        mg_send_json_error(c, 500, "Failed to create streams JSON");
+        http_response_set_json_error(res, 500, "Failed to create streams JSON");
         return;
     }
 
@@ -885,7 +879,7 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
         log_error("Failed to convert backup JSON to string");
         cJSON_Delete(backup);
         fclose(backup_file);
-        mg_send_json_error(c, 500, "Failed to convert backup JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert backup JSON to string");
         return;
     }
 
@@ -903,7 +897,7 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     cJSON *success = cJSON_CreateObject();
     if (!success) {
         log_error("Failed to create success JSON object");
-        mg_send_json_error(c, 500, "Failed to create success JSON");
+        http_response_set_json_error(res, 500, "Failed to create success JSON");
         return;
     }
 
@@ -921,12 +915,12 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
     if (!json_str) {
         log_error("Failed to convert success JSON to string");
         cJSON_Delete(success);
-        mg_send_json_error(c, 500, "Failed to convert success JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
@@ -938,14 +932,14 @@ void mg_handle_post_system_backup(struct mg_connection *c, struct mg_http_messag
 /**
  * @brief Direct handler for GET /api/system/status
  */
-void mg_handle_get_system_status(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_system_status(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/system/status request");
 
     // Create status response using cJSON
     cJSON *status = cJSON_CreateObject();
     if (!status) {
         log_error("Failed to create status JSON object");
-        mg_send_json_error(c, 500, "Failed to create status JSON");
+        http_response_set_json_error(res, 500, "Failed to create status JSON");
         return;
     }
 
@@ -957,12 +951,12 @@ void mg_handle_get_system_status(struct mg_connection *c, struct mg_http_message
     if (!json_str) {
         log_error("Failed to convert status JSON to string");
         cJSON_Delete(status);
-        mg_send_json_error(c, 500, "Failed to convert status JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert status JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);

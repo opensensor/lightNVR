@@ -42,6 +42,11 @@ int init_shutdown_coordinator(void) {
 
 // Shutdown and cleanup the coordinator
 void shutdown_coordinator_cleanup(void) {
+    // Check if already destroyed to prevent double-cleanup
+    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+        return;  // Already cleaned up
+    }
+
     // Mark coordinator as destroyed BEFORE destroying mutex
     // This prevents signal handlers from trying to use the mutex
     atomic_store(&g_coordinator.coordinator_destroyed, true);
@@ -270,7 +275,6 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
                 // If this is a WebSocket component, try to force close it
                 if (strstr(g_coordinator.components[i].name, "websocket") != NULL) {
                     log_warn("Forcing close of WebSocket component: %s", g_coordinator.components[i].name);
-                    // The context pointer might be a mg_connection, but we can't safely use it
                     // Just mark it as stopped and let the cleanup continue
                 }
                 

@@ -2,13 +2,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <unistd.h>
 #include "core/logger.h"
 #include "video/stream_state.h"
 #include "video/hls/hls_context.h"
 
 // Forward declarations for memory management functions
 extern void mark_context_as_freed(void *ctx);
-extern void *safe_free(void *ptr);
+extern void safe_free(void *ptr);
 
 // Include the unified thread header
 #include "video/hls/hls_unified_thread.h"
@@ -192,44 +193,47 @@ void cleanup_hls_contexts(void) {
     // Lock the contexts mutex to prevent race conditions
     pthread_mutex_lock(&hls_contexts_mutex);
 
-    // Check if there are any contexts left
-    bool contexts_remaining = false;
+    // Check if there are any contexts left and mark them as not running
+    int context_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (streaming_contexts[i] != NULL) {
-            contexts_remaining = true;
-            break;
+            context_count++;
+            // Mark as not running to signal threads to exit
+            atomic_store(&streaming_contexts[i]->running, 0);
         }
     }
+    pthread_mutex_unlock(&hls_contexts_mutex);
 
-    // If there are contexts left, log a warning
-    if (contexts_remaining) {
-        log_warn("Found remaining HLS contexts during cleanup - these should have been cleaned up by cleanup_hls_streaming_backend");
+    // If there are contexts left, wait for threads to exit first
+    // Note: Legacy HLS threads may also be detached, so we use a polling approach
+    if (context_count > 0) {
+        log_warn("Found %d remaining HLS contexts during cleanup - waiting for threads to exit", context_count);
 
-        // Clean up any remaining contexts
+        // Wait with timeout for threads to notice the running=0 flag and exit
+        const int max_wait_ms = 3000;  // 3 second total timeout
+        const int poll_interval_ms = 100;  // Check every 100ms
+        usleep(max_wait_ms * 1000);  // Simple wait - legacy contexts don't have thread_state
+
+        log_info("Waited %d ms for legacy HLS threads to exit", max_wait_ms);
+
+        // Now safe to free the contexts
+        pthread_mutex_lock(&hls_contexts_mutex);
         for (int i = 0; i < MAX_STREAMS; i++) {
             if (streaming_contexts[i]) {
-                // Mark as not running to ensure threads exit
-                atomic_store(&streaming_contexts[i]->running, 0);
-
                 // Log that we're cleaning up this context
                 log_info("Cleaning up remaining HLS context for stream %s",
                         streaming_contexts[i]->config.name);
 
-                // Free the context
-
-                // CRITICAL FIX: Mark the context as freed before actually freeing it
-                extern void mark_context_as_freed(void *ctx);
+                // Mark the context as freed before actually freeing it
                 mark_context_as_freed(streaming_contexts[i]);
 
-                // CRITICAL FIX: Use safe_free to free the context
-                extern void *safe_free(void *ptr);
+                // Use safe_free to free the context
                 safe_free(streaming_contexts[i]);
                 streaming_contexts[i] = NULL;
             }
         }
+        pthread_mutex_unlock(&hls_contexts_mutex);
     }
-
-    pthread_mutex_unlock(&hls_contexts_mutex);
 
     // Lock the stopping mutex to reset the stopping streams array
     pthread_mutex_lock(&stopping_mutex);

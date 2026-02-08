@@ -7,21 +7,21 @@
 #include <ctype.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
-#include "mongoose.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
 
 #include "database/db_motion_config.h"
 /**
- * @brief Direct handler for GET /api/streams
+ * @brief Backend-agnostic handler for GET /api/streams
  */
-void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_streams(const http_request_t *req, http_response_t *res) {
+    (void)req;
     log_info("Handling GET /api/streams request");
 
     // Get all stream configurations from database
@@ -30,7 +30,7 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
 
     if (count < 0) {
         log_error("Failed to get stream configurations from database");
-        mg_send_json_error(c, 500, "Failed to get stream configurations");
+        http_response_set_json_error(res, 500, "Failed to get stream configurations");
         return;
     }
 
@@ -38,7 +38,7 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
     cJSON *streams_array = cJSON_CreateArray();
     if (!streams_array) {
         log_error("Failed to create streams JSON array");
-        mg_send_json_error(c, 500, "Failed to create streams JSON");
+        http_response_set_json_error(res, 500, "Failed to create streams JSON");
         return;
     }
 
@@ -48,7 +48,7 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
         if (!stream_obj) {
             log_error("Failed to create stream JSON object");
             cJSON_Delete(streams_array);
-            mg_send_json_error(c, 500, "Failed to create stream JSON");
+            http_response_set_json_error(res, 500, "Failed to create stream JSON");
             return;
         }
 
@@ -129,12 +129,12 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
     if (!json_str) {
         log_error("Failed to convert streams JSON to string");
         cJSON_Delete(streams_array);
-        mg_send_json_error(c, 500, "Failed to convert streams JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert streams JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
@@ -144,14 +144,14 @@ void mg_handle_get_streams(struct mg_connection *c, struct mg_http_message *hm) 
 }
 
 /**
- * @brief Direct handler for GET /api/streams/:id
+ * @brief Backend-agnostic handler for GET /api/streams/:id
  */
-void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_stream(const http_request_t *req, http_response_t *res) {
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
-    if (mg_extract_path_param(hm, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
+    if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
         log_error("Failed to extract stream ID from URL");
-        mg_send_json_error(c, 400, "Invalid request path");
+        http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
 
@@ -159,13 +159,13 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
 
     // URL-decode the stream identifier
     char decoded_id[MAX_STREAM_NAME];
-    mg_url_decode(stream_id, strlen(stream_id), decoded_id, sizeof(decoded_id), 0);
+    url_decode(stream_id, decoded_id, sizeof(decoded_id));
 
     // Find the stream by name
     stream_handle_t stream = get_stream_by_name(decoded_id);
     if (!stream) {
         log_error("Stream not found: %s", decoded_id);
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     }
 
@@ -173,7 +173,7 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     stream_config_t config;
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get stream configuration for: %s", decoded_id);
-        mg_send_json_error(c, 500, "Failed to get stream configuration");
+        http_response_set_json_error(res, 500, "Failed to get stream configuration");
         return;
     }
 
@@ -181,7 +181,7 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     cJSON *stream_obj = cJSON_CreateObject();
     if (!stream_obj) {
         log_error("Failed to create stream JSON object");
-        mg_send_json_error(c, 500, "Failed to create stream JSON");
+        http_response_set_json_error(res, 500, "Failed to create stream JSON");
         return;
     }
 
@@ -255,12 +255,12 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
     if (!json_str) {
         log_error("Failed to convert stream JSON to string");
         cJSON_Delete(stream_obj);
-        mg_send_json_error(c, 500, "Failed to convert stream JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert stream JSON to string");
         return;
     }
 
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
 
     // Clean up
     free(json_str);
@@ -270,21 +270,21 @@ void mg_handle_get_stream(struct mg_connection *c, struct mg_http_message *hm) {
 }
 
 /**
- * @brief Direct handler for GET /api/streams/:id/full
+ * @brief Backend-agnostic handler for GET /api/streams/:id/full
  * Returns both stream config and motion recording config in one response
  */
-void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
-    if (mg_extract_path_param(hm, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
+    if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
         log_error("Failed to extract stream ID from URL");
-        mg_send_json_error(c, 400, "Invalid request path");
+        http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
 
     // URL-decode the stream identifier
     char decoded_id[MAX_STREAM_NAME];
-    mg_url_decode(stream_id, strlen(stream_id), decoded_id, sizeof(decoded_id), 0);
+    url_decode(stream_id, decoded_id, sizeof(decoded_id));
 
     // If the router matched '/api/streams/#/full', decoded_id may include the trailing segment
     // (e.g., "Cam01/full"). Trim anything after the first '/'.
@@ -299,7 +299,7 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     stream_handle_t stream = get_stream_by_name(decoded_id);
     if (!stream) {
         log_error("Stream not found: %s", decoded_id);
-        mg_send_json_error(c, 404, "Stream not found");
+        http_response_set_json_error(res, 404, "Stream not found");
         return;
     }
 
@@ -307,15 +307,15 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     stream_config_t config;
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get stream configuration for: %s", decoded_id);
-        mg_send_json_error(c, 500, "Failed to get stream configuration");
+        http_response_set_json_error(res, 500, "Failed to get stream configuration");
         return;
     }
 
-    // Build stream JSON object (same as mg_handle_get_stream)
+    // Build stream JSON object (same as handle_get_stream)
     cJSON *stream_obj = cJSON_CreateObject();
     if (!stream_obj) {
         log_error("Failed to create stream JSON object");
-        mg_send_json_error(c, 500, "Failed to create stream JSON");
+        http_response_set_json_error(res, 500, "Failed to create stream JSON");
         return;
     }
 
@@ -372,7 +372,7 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         cJSON_Delete(stream_obj);
-        mg_send_json_error(c, 500, "Failed to create JSON response");
+        http_response_set_json_error(res, 500, "Failed to create JSON response");
         return;
     }
     cJSON_AddItemToObject(response, "stream", stream_obj);
@@ -400,11 +400,11 @@ void mg_handle_get_stream_full(struct mg_connection *c, struct mg_http_message *
     char *json_str = cJSON_PrintUnformatted(response);
     if (!json_str) {
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to serialize JSON");
+        http_response_set_json_error(res, 500, "Failed to serialize JSON");
         return;
     }
 
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     free(json_str);
     cJSON_Delete(response);
 }

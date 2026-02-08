@@ -7,13 +7,13 @@
 #include <ctype.h>
 
 #include "web/api_handlers.h"
-#include "web/mongoose_adapter.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
-#include "mongoose.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
 #include "video/ffmpeg_utils.h"
@@ -132,25 +132,25 @@ cleanup:
 /**
  * @brief Direct handler for POST /api/streams/test
  */
-void mg_handle_test_stream(struct mg_connection *c, struct mg_http_message *hm) {
+void handle_test_stream(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/streams/test request");
-    
+
     // Parse JSON from request body
-    cJSON *test_json = mg_parse_json_body(hm);
+    cJSON *test_json = httpd_parse_json_body(req);
     if (!test_json) {
         log_error("Failed to parse test JSON from request body");
-        mg_send_json_error(c, 400, "Invalid JSON in request body");
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
         return;
     }
-    
+
     // Extract URL and protocol
     cJSON *url = cJSON_GetObjectItem(test_json, "url");
     cJSON *protocol = cJSON_GetObjectItem(test_json, "protocol");
-    
+
     if (!url || !cJSON_IsString(url) || !protocol || !cJSON_IsNumber(protocol)) {
         log_error("Missing required fields in test request");
         cJSON_Delete(test_json);
-        mg_send_json_error(c, 400, "Missing required fields (url, protocol)");
+        http_response_set_json_error(res, 400, "Missing required fields (url, protocol)");
         return;
     }
     
@@ -165,7 +165,7 @@ void mg_handle_test_stream(struct mg_connection *c, struct mg_http_message *hm) 
     if (!response) {
         log_error("Failed to create response JSON object");
         cJSON_Delete(test_json);
-        mg_send_json_error(c, 500, "Failed to create response JSON");
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
     
@@ -204,12 +204,12 @@ void mg_handle_test_stream(struct mg_connection *c, struct mg_http_message *hm) 
         log_error("Failed to convert response JSON to string");
         cJSON_Delete(test_json);
         cJSON_Delete(response);
-        mg_send_json_error(c, 500, "Failed to convert response JSON to string");
+        http_response_set_json_error(res, 500, "Failed to convert response JSON to string");
         return;
     }
-    
+
     // Send response
-    mg_send_json_response(c, 200, json_str);
+    http_response_set_json(res, 200, json_str);
     
     // Clean up
     free(json_str);

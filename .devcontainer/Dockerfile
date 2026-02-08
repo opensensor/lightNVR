@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y \
     libcjson-dev \
     libwolfssl-dev \
     libssl-dev \
+    libuv1-dev \
+    libllhttp-dev \
     file \
     systemd \
     && apt-get clean

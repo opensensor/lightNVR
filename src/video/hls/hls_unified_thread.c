@@ -49,7 +49,6 @@ static void ffmpeg_buffer_cleanup(void);
 
 // Forward declarations for HLS watchdog functions
 static void start_hls_watchdog(void);
-static void stop_hls_watchdog(void);
 
 // MEMORY LEAK FIX: Global variable to track FFmpeg memory usage
 static int ffmpeg_memory_cleanup_registered = 0;
@@ -165,8 +164,8 @@ static pthread_mutex_t pending_deletions_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define WATCHDOG_MAX_RESTART_ATTEMPTS 5  // Maximum number of restart attempts
 #define WATCHDOG_RESTART_COOLDOWN_SEC 300  // 5 minutes between restart attempts
 
-// Function to allocate memory with guard bytes
-static void *safe_malloc(size_t size) {
+// Function to allocate memory with guard bytes (HLS-specific with guard pattern)
+static void *hls_guarded_malloc(size_t size) {
     // Allocate extra space for guard bytes
     size_t total_size = size + (2 * MEMORY_GUARD_SIZE);
     unsigned char *mem = malloc(total_size);
@@ -184,8 +183,9 @@ static void *safe_malloc(size_t size) {
     return mem + MEMORY_GUARD_SIZE;
 }
 
-// Function to free memory allocated with safe_malloc
-void *safe_free(void *ptr) {
+// Function to free memory allocated with hls_guarded_malloc
+// NOTE: This function must be non-static so it can be called from hls_streaming.c for cleanup
+void *hls_guarded_free(void *ptr) {
     if (!ptr) {
         return NULL;
     }
@@ -2079,7 +2079,7 @@ void *hls_unified_thread_func(void *arg) {
                 clear_context_pending_deletion(ctx_to_free);
 
                 // Free the context with additional protection
-                safe_free(ctx_to_free);
+                hls_guarded_free(ctx_to_free);
 
                 // Cancel the alarm and restore signal handler
                 alarm(0);
@@ -2165,8 +2165,17 @@ void *hls_unified_thread_func(void *arg) {
     // CRITICAL FIX: Add final safety check before marking thread as exited
     // This prevents segmentation faults if the context has been freed during cleanup
     if (ctx_for_exit && !is_context_already_freed(ctx_for_exit)) {
+        // CRITICAL FIX: Set thread_state to STOPPED so cleanup_hls_streaming_backend knows we've exited
+        // This was missing - we were only setting the local variable but not the atomic field
+        atomic_store(&ctx_for_exit->thread_state, HLS_THREAD_STOPPED);
+
+        // Memory barrier to ensure the state is visible to other threads
+        __sync_synchronize();
+
         // Mark thread as exited to ensure proper cleanup
         mark_thread_exited(ctx_for_exit);
+
+        log_info("Thread for stream %s marked as STOPPED", stream_name_buf);
     } else {
         log_info("Context for stream %s is no longer valid, skipping final thread exit marking", stream_name_buf);
     }
@@ -2313,7 +2322,7 @@ int start_hls_unified_stream(const char *stream_name) {
     clear_stream_hls_segments(stream_name);
 
     // Create context with memory guards
-    hls_unified_thread_ctx_t *ctx = safe_malloc(sizeof(hls_unified_thread_ctx_t));
+    hls_unified_thread_ctx_t *ctx = hls_guarded_malloc(sizeof(hls_unified_thread_ctx_t));
     if (!ctx) {
         log_error("Memory allocation failed for unified HLS context");
         return -1;
@@ -2405,14 +2414,14 @@ int start_hls_unified_stream(const char *stream_name) {
         // Create the final directory
         if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
             log_error("Failed to create output directory: %s (error: %s)", temp_path, strerror(errno));
-            safe_free(ctx);
+            hls_guarded_free(ctx);
             return -1;
         }
 
         // Verify the directory was created
         if (stat(ctx->output_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
             log_error("Failed to verify output directory: %s", ctx->output_path);
-            safe_free(ctx);
+            hls_guarded_free(ctx);
             return -1;
         }
     }
@@ -2446,7 +2455,7 @@ int start_hls_unified_stream(const char *stream_name) {
     FILE *test = fopen(test_file, "w");
     if (!test) {
         log_error("Directory is not writable: %s (error: %s)", ctx->output_path, strerror(errno));
-        free(ctx);
+        hls_guarded_free(ctx);
         return -1;
     }
     fclose(test);
@@ -2473,7 +2482,7 @@ int start_hls_unified_stream(const char *stream_name) {
 
     if (thread_result != 0) {
         log_error("Failed to create unified HLS thread for %s", stream_name);
-        safe_free(ctx);
+        hls_guarded_free(ctx);
         return -1;
     }
 
@@ -2803,7 +2812,7 @@ int stop_hls_unified_stream(const char *stream_name) {
                     clear_context_pending_deletion(ctx_to_free);
 
                     // Free the context with additional protection
-                    safe_free(ctx_to_free);
+                    hls_guarded_free(ctx_to_free);
 
                     // Cancel the alarm and restore signal handler
                     alarm(0);
@@ -2842,8 +2851,8 @@ int stop_hls_unified_stream(const char *stream_name) {
             // Mark the context as freed before actually freeing it
             mark_context_as_freed(extra_ctx);
 
-            // Free the context
-            safe_free(extra_ctx);
+            // Free the context (use hls_guarded_free to match hls_guarded_malloc allocation)
+            hls_guarded_free(extra_ctx);
 
             log_info("Cleaned up additional HLS context for stream %s", stream_name);
         }
@@ -3346,11 +3355,12 @@ static void start_hls_watchdog(void) {
 
 /**
  * Stop the HLS watchdog thread
+ * This function is public so it can be called before cleanup to prevent restarts
  */
-static void stop_hls_watchdog(void) {
+void stop_hls_watchdog(void) {
     // Check if the watchdog is running
     if (!atomic_load(&watchdog_running)) {
-        log_warn("HLS watchdog thread is not running");
+        log_debug("HLS watchdog thread is not running");
         return;
     }
 

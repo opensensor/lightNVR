@@ -12,6 +12,9 @@ ENABLE_GO2RTC=1
 # Default SOD linking mode
 SOD_DYNAMIC=0
 
+# HTTP backend
+HTTP_BACKEND="libuv"
+
 # Default go2rtc settings
 GO2RTC_BINARY_PATH="/usr/local/bin/go2rtc"
 GO2RTC_CONFIG_DIR="/etc/lightnvr/go2rtc"
@@ -77,6 +80,14 @@ while [[ $# -gt 0 ]]; do
             GO2RTC_API_PORT="${key#*=}"
             shift
             ;;
+        --http-backend=*)
+            HTTP_BACKEND="${key#*=}"
+            shift
+            ;;
+        --with-libuv)
+            HTTP_BACKEND="libuv"
+            shift
+            ;;
         --help)
             echo "Usage: $0 [options]"
             echo "Options:"
@@ -94,6 +105,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --go2rtc-binary=PATH  Set go2rtc binary path (default: /usr/local/bin/go2rtc)"
             echo "  --go2rtc-config-dir=DIR  Set go2rtc config directory (default: /etc/lightnvr/go2rtc)"
             echo "  --go2rtc-api-port=PORT  Set go2rtc API port (default: 1984)"
+            echo "  --http-backend=BACKEND  Set HTTP backend (default: libuv)"
+            echo "  --with-libuv       Use libuv + llhttp HTTP backend (default)"
             echo "  --help             Show this help message"
             exit 0
             ;;
@@ -166,6 +179,11 @@ else
     GO2RTC_OPTION="-DENABLE_GO2RTC=OFF"
     echo "Building without go2rtc integration"
 fi
+
+# Configure HTTP backend
+HTTP_BACKEND_OPTION="-DHTTP_BACKEND=$HTTP_BACKEND"
+echo "Building with HTTP backend: $HTTP_BACKEND"
+echo "  Using libuv + llhttp (event-driven async I/O)"
 
 # Create a temporary CMake module to find the custom FFmpeg
 mkdir -p cmake/modules
@@ -251,7 +269,7 @@ cd "$BUILD_DIR"
 
 # Use our custom module path
 CMAKE_MODULE_PATH="$(pwd)/../../cmake/modules"
-cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $GO2RTC_OPTION $FFMPEG_CMAKE_OPTIONS \
+cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $GO2RTC_OPTION $HTTP_BACKEND_OPTION $FFMPEG_CMAKE_OPTIONS \
       -DCMAKE_MODULE_PATH="$CMAKE_MODULE_PATH" ../..
 
 # Return to project root

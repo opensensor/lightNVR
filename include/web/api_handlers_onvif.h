@@ -1,59 +1,55 @@
 #ifndef API_HANDLERS_ONVIF_H
 #define API_HANDLERS_ONVIF_H
 
-#include "../../external/mongoose/mongoose.h"
+#include "web/request_response.h"
+
+// Backend-agnostic handlers (for libuv)
+/**
+ * @brief Backend-agnostic handler for GET /api/onvif/discovery/status
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_get_onvif_discovery_status(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Handle GET request for ONVIF discovery status
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/onvif/devices
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_get_onvif_discovery_status(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_discovered_onvif_devices(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Handle GET request for discovered ONVIF devices
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for POST /api/onvif/discovery/discover
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_get_discovered_onvif_devices(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_discover_onvif_devices(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Handle POST request to manually discover ONVIF devices
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for GET /api/onvif/device/profiles
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_post_discover_onvif_devices(struct mg_connection *c, struct mg_http_message *hm);
+void handle_get_onvif_device_profiles(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Handle GET request for ONVIF device profiles
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for POST /api/onvif/device/add
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_get_onvif_device_profiles(struct mg_connection *c, struct mg_http_message *hm);
+void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_response_t *res);
 
 /**
- * @brief Handle POST request to add ONVIF device as stream
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
+ * @brief Backend-agnostic handler for POST /api/onvif/device/test
+ *
+ * @param req HTTP request
+ * @param res HTTP response
  */
-void mg_handle_post_add_onvif_device_as_stream(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * @brief Handle POST request to test ONVIF connection
- * 
- * @param c Mongoose connection
- * @param hm Mongoose HTTP message
- */
-void mg_handle_post_test_onvif_connection(struct mg_connection *c, struct mg_http_message *hm);
-
-/**
- * @brief Register all ONVIF API handlers
- */
-void register_onvif_api_handlers(void);
+void handle_post_test_onvif_connection(const http_request_t *req, http_response_t *res);
 
 #endif /* API_HANDLERS_ONVIF_H */

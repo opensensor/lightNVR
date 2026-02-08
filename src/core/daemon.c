@@ -144,53 +144,61 @@ int cleanup_daemon(void) {
     return 0;
 }
 
+// Async-signal-safe write helper for daemon signal handler
+static void daemon_signal_safe_write(const char *msg) {
+    // write() is async-signal-safe
+    if (msg) {
+        size_t len = 0;
+        while (msg[len] != '\0') len++;
+        write(STDERR_FILENO, msg, len);
+    }
+}
+
 // Signal handler for daemon
+// IMPORTANT: This handler must be async-signal-safe - no mutex operations!
+// Only use: write(), _exit(), alarm(), close(), shutdown(), atomic operations on sig_atomic_t
 static void daemon_signal_handler(int sig) {
     switch (sig) {
     case SIGTERM:
     case SIGINT:
-        log_info("Received signal %d, shutting down daemon...", sig);
+        // Use write() instead of log_info() - it's async-signal-safe
+        daemon_signal_safe_write("[DAEMON] Received shutdown signal, initiating shutdown...\n");
 
         // Set global flag to stop main loop
+        // This is safe because running is declared as volatile bool
         running = false;
 
         // Also signal the web server to shut down
         extern int web_server_socket;
         if (web_server_socket >= 0) {
-            // First try to shutdown the socket
-            if (shutdown(web_server_socket, SHUT_RDWR) != 0) {
-                log_warn("Failed to shutdown server socket: %s", strerror(errno));
-            }
-            
-            // Then close it
-            if (close(web_server_socket) != 0) {
-                log_warn("Failed to close server socket: %s", strerror(errno));
-            }
-            
+            // shutdown() and close() are async-signal-safe
+            shutdown(web_server_socket, SHUT_RDWR);
+            close(web_server_socket);
             web_server_socket = -1; // Update the global reference
         }
-        
+
         // Set an alarm to force exit after 30 seconds if normal shutdown fails
+        // alarm() is async-signal-safe
         alarm(30);
         break;
 
     case SIGHUP:
-        // Reload configuration
-        log_info("Received SIGHUP, reloading configuration...");
-        // TODO: Implement configuration reload
+        // Just write a message, don't try to reload config in signal handler
+        // Config reload is NOT async-signal-safe
+        daemon_signal_safe_write("[DAEMON] Received SIGHUP signal\n");
         break;
-        
+
     case SIGALRM:
         // Handle the alarm signal (fallback for forced exit)
-        log_warn("Alarm triggered - forcing daemon exit");
-        
+        daemon_signal_safe_write("[DAEMON] Alarm triggered - forcing exit\n");
+
         // Force kill any child processes before exiting
-        log_warn("Sending SIGKILL to all child processes");
+        // kill() is async-signal-safe
         kill(0, SIGKILL); // Send SIGKILL to all processes in the process group
-        
+
         // Force exit without calling atexit handlers
-        log_warn("Forcing immediate exit");
-        _exit(EXIT_SUCCESS); // Use _exit instead of exit to avoid calling atexit handlers
+        // _exit() is async-signal-safe
+        _exit(EXIT_SUCCESS);
         break;
 
     default:

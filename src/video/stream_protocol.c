@@ -1,5 +1,6 @@
 #include "video/stream_protocol.h"
 #include "core/logger.h"
+#include "core/shutdown_coordinator.h"
 #include "video/ffmpeg_utils.h"
 #include "video/ffmpeg_leak_detector.h"
 #include <string.h>
@@ -15,6 +16,21 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/time.h>
+
+/**
+ * Interrupt callback for FFmpeg operations
+ * This allows blocking FFmpeg operations (like av_read_frame) to be interrupted during shutdown
+ * Returns 1 to interrupt, 0 to continue
+ */
+static int ffmpeg_interrupt_callback(void *opaque) {
+    (void)opaque;  // Unused
+
+    // Check if shutdown has been initiated
+    if (is_shutdown_initiated()) {
+        return 1;  // Interrupt the operation
+    }
+    return 0;  // Continue normally
+}
 
 /**
  * Check if a URL is a multicast address
@@ -428,9 +444,18 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     av_dict_set(&input_options, "analyzeduration", "10000000", 0); // 10 seconds (increased from default)
     av_dict_set(&input_options, "probesize", "10000000", 0); // 10MB (increased from default 5MB)
 
-    // CRITICAL FIX: Ensure local_ctx is NULL before calling avformat_open_input
-    // This prevents potential double-free issues if avformat_open_input fails
-    local_ctx = NULL;
+    // CRITICAL FIX: Allocate context first and set interrupt callback BEFORE opening
+    // This allows avformat_open_input itself to be interrupted during shutdown
+    local_ctx = avformat_alloc_context();
+    if (!local_ctx) {
+        log_error("Failed to allocate AVFormatContext for %s", local_url);
+        av_dict_free(&input_options);
+        return AVERROR(ENOMEM);
+    }
+
+    // Set up interrupt callback so blocking operations can be interrupted during shutdown
+    local_ctx->interrupt_callback.callback = ffmpeg_interrupt_callback;
+    local_ctx->interrupt_callback.opaque = NULL;
 
     // Open the input stream
     ret = avformat_open_input(&local_ctx, local_url, NULL, &input_options);

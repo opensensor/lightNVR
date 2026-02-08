@@ -40,6 +40,27 @@ void *safe_realloc(void *ptr, size_t size) {
     return new_ptr;
 }
 
+// Safe calloc - allocate zeroed memory
+void *safe_calloc(size_t nmemb, size_t size) {
+    if (nmemb == 0 || size == 0) {
+        return NULL;
+    }
+
+    void *ptr = calloc(nmemb, size);
+    if (!ptr) {
+        log_error("Memory calloc failed for %zu x %zu bytes", nmemb, size);
+    }
+
+    return ptr;
+}
+
+// Safe free - handles NULL pointers
+void safe_free(void *ptr) {
+    if (ptr) {
+        free(ptr);
+    }
+}
+
 // Safe string duplication
 char *safe_strdup(const char *str) {
     if (!str) {

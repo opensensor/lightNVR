@@ -138,4 +138,11 @@ void disable_syslog(void);
  */
 int is_syslog_enabled(void);
 
+/**
+ * Check if logger is available for use
+ *
+ * @return 1 if logger is available, 0 if shutting down or not initialized
+ */
+int is_logger_available(void);
+
 #endif // LIGHTNVR_LOGGER_H
