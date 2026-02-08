@@ -31,9 +31,9 @@ export class LoginPage extends BasePage {
   }
 
   /**
-   * Login with credentials
+   * Login with credentials (fills form and clicks submit, does not wait for navigation)
    */
-  async login(
+  async fillAndSubmit(
     username: string = USERS.admin.username,
     password: string = USERS.admin.password
   ): Promise<void> {
@@ -44,14 +44,33 @@ export class LoginPage extends BasePage {
   }
 
   /**
+   * Login with credentials - deprecated, use loginExpectSuccess for navigation
+   */
+  async login(
+    username: string = USERS.admin.username,
+    password: string = USERS.admin.password
+  ): Promise<void> {
+    await this.fillAndSubmit(username, password);
+  }
+
+  /**
    * Login and expect success (redirect to index)
+   * Uses Promise.all to avoid race condition with window.location.href redirect
    */
   async loginExpectSuccess(
     username: string = USERS.admin.username,
     password: string = USERS.admin.password
   ): Promise<void> {
-    await this.login(username, password);
-    await this.page.waitForURL('**/index.html', { timeout: CONFIG.DEFAULT_TIMEOUT });
+    await this.goto();
+    await this.usernameInput.fill(username);
+    await this.passwordInput.fill(password);
+
+    // Use Promise.all to start waiting for navigation BEFORE clicking
+    // This is critical because window.location.href redirects can happen very quickly
+    await Promise.all([
+      this.page.waitForURL('**/index.html', { timeout: CONFIG.DEFAULT_TIMEOUT }),
+      this.submitButton.click(),
+    ]);
   }
 
   /**

@@ -7,12 +7,15 @@
 import { test as base, expect, Page, APIRequestContext } from '@playwright/test';
 
 // Configuration
+// Use longer timeouts in CI environments
+const isCI = !!process.env.CI;
 export const CONFIG = {
   LIGHTNVR_URL: process.env.LIGHTNVR_URL || 'http://localhost:18080',
   GO2RTC_URL: process.env.GO2RTC_URL || 'http://localhost:11984',
   GO2RTC_RTSP_PORT: process.env.GO2RTC_RTSP_PORT || '18554',
-  DEFAULT_TIMEOUT: 10000,
-  COMPONENT_RENDER_DELAY: 1500,
+  DEFAULT_TIMEOUT: isCI ? 30000 : 10000,  // 30s in CI, 10s locally
+  NAVIGATION_TIMEOUT: isCI ? 30000 : 15000,  // Timeout for page navigations
+  COMPONENT_RENDER_DELAY: isCI ? 2500 : 1500,  // More time for components in CI
 };
 
 // User credentials for different roles
@@ -46,26 +49,44 @@ export function getAuthHeader(user: { username: string; password: string }): str
 export async function login(page: Page, user: { username: string; password: string } = USERS.admin): Promise<void> {
   console.log(`Logging in as ${user.username}...`);
   try {
-    await page.goto('/login.html', { waitUntil: 'networkidle', timeout: CONFIG.DEFAULT_TIMEOUT });
+    // Use domcontentloaded instead of networkidle for faster initial load
+    await page.goto('/login.html', { waitUntil: 'domcontentloaded', timeout: CONFIG.NAVIGATION_TIMEOUT });
 
-    // Wait for login form
-    await page.waitForSelector('input[name="username"], input[type="text"]', { timeout: 5000 });
+    // Wait for login form to be visible and interactive
+    const usernameInput = page.locator('input[name="username"], input#username, input[type="text"]').first();
+    await usernameInput.waitFor({ state: 'visible', timeout: CONFIG.DEFAULT_TIMEOUT });
 
     // Fill credentials
-    const usernameInput = page.locator('input[name="username"], input[type="text"]').first();
     await usernameInput.fill(user.username);
 
-    const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
+    const passwordInput = page.locator('input[name="password"], input#password, input[type="password"]').first();
+    await passwordInput.waitFor({ state: 'visible', timeout: 5000 });
     await passwordInput.fill(user.password);
 
     // Submit
     const submitButton = page.locator('button[type="submit"], button').filter({ hasText: /login|sign in/i }).first();
-    await submitButton.click();
+    await submitButton.waitFor({ state: 'visible', timeout: 5000 });
 
-    // Wait for redirect
-    await page.waitForURL('**/index.html', { timeout: CONFIG.DEFAULT_TIMEOUT });
+    // Use Promise.all to start waiting for navigation BEFORE clicking
+    // This is critical because window.location.href redirects can happen very quickly
+    // and we need the listener attached before the redirect starts
+    await Promise.all([
+      page.waitForURL('**/index.html', { timeout: CONFIG.NAVIGATION_TIMEOUT, waitUntil: 'commit' }),
+      submitButton.click(),
+    ]);
+
+    // Wait a bit for the page to stabilize
+    await sleep(CONFIG.COMPONENT_RENDER_DELAY);
+
     console.log(`Login successful as ${user.username}`);
   } catch (error) {
+    // Take a screenshot on failure for debugging
+    try {
+      await page.screenshot({ path: `test-results/login-failure-${user.username}-${Date.now()}.png` });
+      console.error(`Current URL: ${page.url()}`);
+    } catch (e) {
+      // Ignore screenshot errors
+    }
     console.error(`Login failed for ${user.username}:`, (error as Error).message);
     throw error;
   }
@@ -112,15 +133,21 @@ export async function logout(page: Page): Promise<void> {
 
     // Check if desktop logout is visible
     if (await desktopLogoutLink.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await desktopLogoutLink.click();
-      await page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT });
+      // Use Promise.all to start waiting before click to avoid race condition
+      await Promise.all([
+        page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT }),
+        desktopLogoutLink.click(),
+      ]);
       console.log('Logout successful (desktop)');
     } else if (await mobileMenuButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       // Open mobile menu and click logout
       await mobileMenuButton.click();
       await sleep(500);
-      await mobileLogoutLink.click();
-      await page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT });
+      // Use Promise.all to start waiting before click to avoid race condition
+      await Promise.all([
+        page.waitForURL('**/login.html**', { timeout: CONFIG.DEFAULT_TIMEOUT }),
+        mobileLogoutLink.click(),
+      ]);
       console.log('Logout successful (mobile)');
     } else {
       // Fallback: navigate directly to logout endpoint
