@@ -135,7 +135,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libavcodec61 libavformat61 libavutil59 libswscale8 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
-    libmosquitto1 libuv1 libllhttp9.2 && \
+    libmosquitto1 libuv1t64 libllhttp9.2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure
