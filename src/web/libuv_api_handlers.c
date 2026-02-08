@@ -164,7 +164,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/timeline/play", "GET", handle_timeline_playback);
 
     // HLS Streaming (backend-agnostic handler)
-    http_server_register_handler(server, "/hls/", "GET", handle_direct_hls_request);
+    // Pattern uses # for single-segment wildcards: /hls/{stream_name}/{filename}
+    http_server_register_handler(server, "/hls/#/#", "GET", handle_direct_hls_request);
 
     log_info("Successfully registered API handlers");
 
