@@ -324,6 +324,27 @@ const char *sanitize_for_logging(const char *str, size_t max_len) {
 
 // Log a message at the specified level with va_list
 void log_message_v(log_level_t level, const char *format, va_list args) {
+    // CRITICAL: Check if logger is shutting down or destroyed
+    // If so, just write to console without mutex to avoid use-after-destroy
+    if (logger.shutdown) {
+        // Logger is shutting down or destroyed - use fallback console logging only
+        // This is safe because we don't use the mutex
+        char message[4096];
+        vsnprintf(message, sizeof(message), format, args);
+
+        time_t now;
+        struct tm *tm_info;
+        char timestamp[32];
+        time(&now);
+        tm_info = localtime(&now);
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+
+        FILE *console = (level == LOG_LEVEL_ERROR) ? stderr : stdout;
+        fprintf(console, "[%s] [%s] %s\n", timestamp, log_level_strings[level], message);
+        fflush(console);
+        return;
+    }
+
     // Only log messages at or below the configured log level
     // For example, if log_level is INFO (2), we log ERROR (0), WARN (1), and INFO (2), but not DEBUG (3)
     if (level > logger.log_level) {
@@ -348,6 +369,14 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     // Format the log message
     char message[4096];
     vsnprintf(message, sizeof(message), format, args);
+
+    // Double-check shutdown flag before acquiring mutex
+    if (logger.shutdown) {
+        FILE *console = (level == LOG_LEVEL_ERROR) ? stderr : stdout;
+        fprintf(console, "[%s] [%s] %s\n", timestamp, log_level_strings[level], message);
+        fflush(console);
+        return;
+    }
 
     pthread_mutex_lock(&logger.mutex);
 
