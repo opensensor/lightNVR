@@ -285,13 +285,15 @@ void libuv_server_stop(http_server_handle_t handle) {
         }
     }
 
-    // Stop the event loop
+    // Stop the event loop - this will cause uv_run to return
     uv_stop(server->loop);
 
     // Wait for thread to finish if we started one
     if (server->thread_running) {
+        log_info("libuv_server_stop: Waiting for server thread to exit");
         uv_thread_join(&server->thread);
         server->thread_running = false;
+        log_info("libuv_server_stop: Server thread exited");
     }
 
     log_info("libuv_server_stop: Server stopped");
