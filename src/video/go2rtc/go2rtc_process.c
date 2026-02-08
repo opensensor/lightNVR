@@ -535,6 +535,11 @@ static bool is_go2rtc_process(pid_t pid) {
  */
 static bool kill_all_go2rtc_processes(void) {
     bool success = true;
+    pid_t pids_to_kill[64];  // Track PIDs we've sent signals to
+    int num_pids = 0;
+
+    // Reap any existing zombie children first
+    reap_zombie_children();
 
     // First kill any s6-supervise processes related to go2rtc
     FILE *fp = popen("pgrep -f 's6-supervise go2rtc'", "r");
@@ -553,8 +558,9 @@ static bool kill_all_go2rtc_processes(void) {
 
                 // Send SIGTERM first
                 if (kill(pid, SIGTERM) != 0) {
-                    log_warn("Failed to send SIGTERM to s6-supervise process %d: %s", pid, strerror(errno));
-                    success = false;
+                    if (errno != ESRCH) {  // ESRCH means process doesn't exist (already dead)
+                        log_warn("Failed to send SIGTERM to s6-supervise process %d: %s", pid, strerror(errno));
+                    }
                 }
             }
         }
@@ -563,14 +569,15 @@ static bool kill_all_go2rtc_processes(void) {
 
         // If we found s6 processes, wait a moment for them to terminate
         if (found_s6) {
-            sleep(2); // Increased wait time
+            sleep(2);
+            reap_zombie_children();  // Reap any that became zombies
         }
     }
 
     // Also kill any s6-supervise processes related to go2rtc-healthcheck and go2rtc-log
     fp = popen("pgrep -f 's6-supervise go2rtc-'", "r");
     if (fp) {
-        char line[32]; // Enough for a PID
+        char line[32];
         bool found_s6 = false;
 
         while (fgets(line, sizeof(line), fp)) {
@@ -579,19 +586,19 @@ static bool kill_all_go2rtc_processes(void) {
                 found_s6 = true;
                 log_info("Killing s6-supervise process with PID: %d", pid);
 
-                // Send SIGTERM first
                 if (kill(pid, SIGTERM) != 0) {
-                    log_warn("Failed to send SIGTERM to s6-supervise process %d: %s", pid, strerror(errno));
-                    success = false;
+                    if (errno != ESRCH) {
+                        log_warn("Failed to send SIGTERM to s6-supervise process %d: %s", pid, strerror(errno));
+                    }
                 }
             }
         }
 
         pclose(fp);
 
-        // If we found s6 processes, wait a moment for them to terminate
         if (found_s6) {
-            sleep(2); // Increased wait time
+            sleep(2);
+            reap_zombie_children();
         }
     }
 
@@ -601,21 +608,22 @@ static bool kill_all_go2rtc_processes(void) {
         log_error("Failed to execute ps command for go2rtc");
         success = false;
     } else {
-        char line[32]; // Enough for a PID
-        bool found_processes = false;
+        char line[32];
+        num_pids = 0;
 
-        while (fgets(line, sizeof(line), fp)) {
+        while (fgets(line, sizeof(line), fp) && num_pids < 64) {
             pid_t pid = atoi(line);
             if (pid > 0) {
-                // Verify this is actually a go2rtc process
+                // Verify this is actually a go2rtc process (not zombie)
                 if (is_go2rtc_process(pid)) {
-                    found_processes = true;
+                    pids_to_kill[num_pids++] = pid;
                     log_info("Killing go2rtc process with PID: %d", pid);
 
                     // Send SIGTERM first
                     if (kill(pid, SIGTERM) != 0) {
-                        log_warn("Failed to send SIGTERM to go2rtc process %d: %s", pid, strerror(errno));
-                        success = false;
+                        if (errno != ESRCH) {
+                            log_warn("Failed to send SIGTERM to go2rtc process %d: %s", pid, strerror(errno));
+                        }
                     }
                 }
             }
@@ -623,68 +631,85 @@ static bool kill_all_go2rtc_processes(void) {
 
         pclose(fp);
 
-        // Wait a moment for processes to terminate
-        if (found_processes) {
-            sleep(3); // Increased wait time
+        // Wait for processes to terminate with proper reaping
+        if (num_pids > 0) {
+            log_info("Waiting for %d go2rtc processes to terminate...", num_pids);
+
+            // Wait up to 3 seconds for graceful termination
+            bool all_terminated = true;
+            for (int i = 0; i < num_pids; i++) {
+                if (!wait_for_process_termination(pids_to_kill[i], 3000)) {
+                    all_terminated = false;
+                }
+            }
+
+            // Reap any zombies that might have been created
+            reap_zombie_children();
 
             // Check if any processes are still running and force kill them
-            fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
-            if (!fp) {
-                log_error("Failed to execute second ps command");
-                success = false;
-            } else {
-                while (fgets(line, sizeof(line), fp)) {
-                    pid_t pid = atoi(line);
-                    if (pid > 0 && is_go2rtc_process(pid)) {
-                        log_warn("go2rtc process %d still running, sending SIGKILL", pid);
-                        if (kill(pid, SIGKILL) != 0) {
-                            log_error("Failed to send SIGKILL to go2rtc process %d: %s", pid, strerror(errno));
-                            success = false;
-                        }
-                    }
-                }
-
-                pclose(fp);
-
-                // Wait again and check one more time
-                sleep(1);
+            if (!all_terminated) {
                 fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
-                if (fp) {
-                    bool still_running = false;
+                if (!fp) {
+                    log_error("Failed to execute second ps command");
+                    success = false;
+                } else {
                     while (fgets(line, sizeof(line), fp)) {
                         pid_t pid = atoi(line);
                         if (pid > 0 && is_go2rtc_process(pid)) {
-                            still_running = true;
-                            log_error("go2rtc process %d still running after SIGKILL", pid);
-
-                            // Try one more extreme measure - use kill -9
-                            char kill_cmd[64];
-                            snprintf(kill_cmd, sizeof(kill_cmd), "kill -9 %d 2>/dev/null", pid);
-                            system(kill_cmd);
+                            log_warn("go2rtc process %d still running, sending SIGKILL", pid);
+                            if (kill(pid, SIGKILL) != 0) {
+                                if (errno != ESRCH) {
+                                    log_error("Failed to send SIGKILL to go2rtc process %d: %s", pid, strerror(errno));
+                                }
+                            }
                         }
                     }
                     pclose(fp);
 
-                    if (still_running) {
-                        // Check one final time after kill -9
-                        sleep(1);
-                        fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
-                        if (fp) {
-                            still_running = false;
-                            while (fgets(line, sizeof(line), fp)) {
-                                pid_t pid = atoi(line);
-                                if (pid > 0 && is_go2rtc_process(pid)) {
-                                    still_running = true;
-                                    log_error("go2rtc process %d still running after kill -9", pid);
-                                }
-                            }
-                            pclose(fp);
+                    // Wait for SIGKILL to take effect and reap
+                    usleep(500000);  // 500ms
+                    reap_zombie_children();
+                }
+            }
 
-                            if (still_running) {
-                                log_error("Some go2rtc processes could not be killed");
+            // Final verification - check one more time
+            fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+            if (fp) {
+                bool still_running = false;
+                while (fgets(line, sizeof(line), fp)) {
+                    pid_t pid = atoi(line);
+                    if (pid > 0 && is_go2rtc_process(pid)) {
+                        // Double-check it's not a zombie
+                        if (!is_zombie_process(pid)) {
+                            still_running = true;
+                            log_error("go2rtc process %d still running after SIGKILL", pid);
+
+                            // Try killing the process group as last resort
+                            pid_t pgid = getpgid(pid);
+                            if (pgid > 0 && pgid != getpgrp()) {
+                                log_info("Killing process group %d", pgid);
+                                killpg(pgid, SIGKILL);
+                            }
+                        }
+                    }
+                }
+                pclose(fp);
+
+                if (still_running) {
+                    // Final reap and check
+                    usleep(500000);
+                    reap_zombie_children();
+
+                    fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
+                    if (fp) {
+                        while (fgets(line, sizeof(line), fp)) {
+                            pid_t pid = atoi(line);
+                            if (pid > 0 && is_go2rtc_process(pid) && !is_zombie_process(pid)) {
+                                log_error("go2rtc process %d could not be killed", pid);
                                 success = false;
                             }
                         }
+                        pclose(fp);
                     }
                 }
             }
