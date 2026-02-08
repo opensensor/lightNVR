@@ -97,4 +97,5 @@ web/dist/
 # Playwright test artifacts
 playwright-report/
 test-results/
+stress_test_results*/
 /data
