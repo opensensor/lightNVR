@@ -8,6 +8,30 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useSnapshotManager } from './SnapshotManager.jsx';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+
+// Initialize dayjs plugins
+dayjs.extend(utc);
+dayjs.extend(customParseFormat);
+
+/**
+ * Parse recording timestamp to Unix seconds
+ * Handles the "YYYY-MM-DD HH:mm:ss UTC" format returned by the API
+ * @param {string} timeStr - Timestamp string from API
+ * @returns {number} Unix timestamp in seconds, or 0 if parsing fails
+ */
+const parseRecordingTimestamp = (timeStr) => {
+  if (!timeStr) return 0;
+  // Try parsing with the expected format first
+  let parsed = dayjs.utc(timeStr, 'YYYY-MM-DD HH:mm:ss [UTC]');
+  if (!parsed.isValid()) {
+    // Fallback to auto-detection
+    parsed = dayjs.utc(timeStr);
+  }
+  return parsed.isValid() ? parsed.unix() : 0;
+};
 
 // Create contexts for modals
 export const ModalContext = createContext({
@@ -265,16 +289,34 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
         // If we have recording data, fetch detections
         if (data && data.stream && data.start_time && data.end_time) {
-          const startTime = Math.floor(new Date(data.start_time).getTime() / 1000);
-          const endTime = Math.floor(new Date(data.end_time).getTime() / 1000);
+          const startTime = parseRecordingTimestamp(data.start_time);
+          const endTime = parseRecordingTimestamp(data.end_time);
 
-          const detectionsResponse = await fetch(
-            `/api/detection/results/${data.stream}?start=${startTime}&end=${endTime}`
-          );
+          console.log('[VideoModal] Detection fetch debug:', {
+            stream: data.stream,
+            start_time_raw: data.start_time,
+            end_time_raw: data.end_time,
+            startTime_parsed: startTime,
+            endTime_parsed: endTime,
+            detection_labels: data.detection_labels,
+            has_detection: data.has_detection
+          });
+
+          if (startTime === 0 || endTime === 0) {
+            console.error('Failed to parse recording timestamps:', data.start_time, data.end_time);
+            setDetectionStatus('Error: Invalid recording timestamps');
+            return;
+          }
+
+          const detectionsUrl = `/api/detection/results/${data.stream}?start=${startTime}&end=${endTime}`;
+          console.log('[VideoModal] Fetching detections from:', detectionsUrl);
+
+          const detectionsResponse = await fetch(detectionsUrl);
 
           if (!detectionsResponse.ok) throw new Error('Failed to fetch detections');
 
           const detectionsData = await detectionsResponse.json();
+          console.log('[VideoModal] Detections response:', detectionsData);
           const fetchedDetections = detectionsData.detections || [];
           setDetections(fetchedDetections);
 
@@ -328,8 +370,12 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       return;
     }
 
-    // Convert recording start time to seconds
-    const recordingStartTime = Math.floor(new Date(recordingData.start_time).getTime() / 1000);
+    // Convert recording start time to seconds using dayjs
+    const recordingStartTime = parseRecordingTimestamp(recordingData.start_time);
+    if (recordingStartTime === 0) {
+      console.error('Failed to parse recording start time:', recordingData.start_time);
+      return;
+    }
 
     // Calculate current timestamp in the video
     const currentTimestamp = recordingStartTime + Math.floor(currentTime);

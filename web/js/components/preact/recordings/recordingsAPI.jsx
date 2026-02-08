@@ -11,6 +11,30 @@ import {
   useQueryClient,
   usePostMutation,
 } from '../../../query-client.js';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+
+// Initialize dayjs plugins
+dayjs.extend(utc);
+dayjs.extend(customParseFormat);
+
+/**
+ * Parse recording timestamp to Unix seconds
+ * Handles the "YYYY-MM-DD HH:mm:ss UTC" format returned by the API
+ * @param {string} timeStr - Timestamp string from API
+ * @returns {number} Unix timestamp in seconds, or 0 if parsing fails
+ */
+const parseRecordingTimestamp = (timeStr) => {
+  if (!timeStr) return 0;
+  // Try parsing with the expected format first
+  let parsed = dayjs.utc(timeStr, 'YYYY-MM-DD HH:mm:ss [UTC]');
+  if (!parsed.isValid()) {
+    // Fallback to auto-detection
+    parsed = dayjs.utc(timeStr);
+  }
+  return parsed.isValid() ? parsed.unix() : 0;
+};
 
 /**
  * RecordingsAPI - Handles all API calls related to recordings
@@ -664,9 +688,14 @@ export const recordingsAPI = {
     }
 
     try {
-      // Convert timestamps to seconds
-      const startTime = Math.floor(new Date(recording.start_time).getTime() / 1000);
-      const endTime = Math.floor(new Date(recording.end_time).getTime() / 1000);
+      // Convert timestamps to seconds using dayjs
+      const startTime = parseRecordingTimestamp(recording.start_time);
+      const endTime = parseRecordingTimestamp(recording.end_time);
+
+      if (startTime === 0 || endTime === 0) {
+        console.error('Failed to parse recording timestamps');
+        return false;
+      }
 
       // Query the detections API to check if there are any detections in this time range
       const params = new URLSearchParams({
@@ -698,9 +727,14 @@ export const recordingsAPI = {
     }
 
     try {
-      // Convert timestamps to seconds
-      const startTime = Math.floor(new Date(recording.start_time).getTime() / 1000);
-      const endTime = Math.floor(new Date(recording.end_time).getTime() / 1000);
+      // Convert timestamps to seconds using dayjs
+      const startTime = parseRecordingTimestamp(recording.start_time);
+      const endTime = parseRecordingTimestamp(recording.end_time);
+
+      if (startTime === 0 || endTime === 0) {
+        console.error('Failed to parse recording timestamps');
+        return [];
+      }
 
       // Query the detections API to get detections in this time range
       const params = new URLSearchParams({
@@ -766,7 +800,12 @@ export const recordingsAPI = {
     const downloadUrl = `/api/recordings/download/${recording.id}`;
     const link = document.createElement('a');
     link.href = downloadUrl;
-    link.download = `${recording.stream}_${new Date(recording.start_time).toISOString().replace(/[:.]/g, '-')}.mp4`;
+    // Use dayjs to parse and format the timestamp for the filename
+    const timestamp = dayjs.utc(recording.start_time, 'YYYY-MM-DD HH:mm:ss [UTC]');
+    const formattedTime = timestamp.isValid()
+      ? timestamp.format('YYYY-MM-DDTHH-mm-ss')
+      : 'unknown';
+    link.download = `${recording.stream}_${formattedTime}.mp4`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

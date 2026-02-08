@@ -37,14 +37,6 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
 
     log_info("Handling GET /api/detection/results/%s request", stream_name);
 
-    // Check if stream exists
-    stream_handle_t stream = get_stream_by_name(stream_name);
-    if (!stream) {
-        log_error("Stream not found: %s", stream_name);
-        http_response_set_json_error(res, 404, "Stream not found");
-        return;
-    }
-
     // Parse query parameters for time range
     time_t start_time = 0;
     time_t end_time = 0;
@@ -62,12 +54,20 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
         end_time = (time_t)strtoll(end_str, NULL, 10);
         log_info("Using end_time filter: %lld (str='%s')", (long long)end_time, end_str);
     }
-    
+
     // If no time range specified, use default MAX_DETECTION_AGE
     uint64_t max_age = MAX_DETECTION_AGE;
     if (start_time > 0 || end_time > 0) {
         // Custom time range specified, don't use max_age
         max_age = 0;
+    } else {
+        // For live detection queries (no time range), require stream to exist
+        stream_handle_t stream = get_stream_by_name(stream_name);
+        if (!stream) {
+            log_error("Stream not found: %s", stream_name);
+            http_response_set_json_error(res, 404, "Stream not found");
+            return;
+        }
     }
     
     // Get detection results for the stream

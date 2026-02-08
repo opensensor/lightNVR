@@ -550,39 +550,19 @@ int get_detection_timestamps(const char *stream_name, detection_result_t *result
     }
     
     // Execute query and fetch results
+    // Both get_detections_from_db_time_range and this function use the same
+    // ORDER BY timestamp DESC, so results are in the same order - just assign directly
     int count = 0;
     while (sqlite3_step(stmt) == SQLITE_ROW && count < result->count) {
-        // Get timestamp
+        // Get timestamp and assign directly by index
+        // The queries return results in the same order, so index matching works
         timestamps[count] = (time_t)sqlite3_column_int64(stmt, 0);
-        
-        // Get detection data to match with result
-        const char *label = (const char *)sqlite3_column_text(stmt, 1);
-        float confidence = (float)sqlite3_column_double(stmt, 2);
-        float x = (float)sqlite3_column_double(stmt, 3);
-        float y = (float)sqlite3_column_double(stmt, 4);
-        float width = (float)sqlite3_column_double(stmt, 5);
-        float height = (float)sqlite3_column_double(stmt, 6);
-        
-        // Find matching detection in result
-        for (int i = 0; i < result->count; i++) {
-            if (strcmp(result->detections[i].label, label) == 0 &&
-                fabs(result->detections[i].confidence - confidence) < 0.001 &&
-                fabs(result->detections[i].x - x) < 0.001 &&
-                fabs(result->detections[i].y - y) < 0.001 &&
-                fabs(result->detections[i].width - width) < 0.001 &&
-                fabs(result->detections[i].height - height) < 0.001) {
-                // Found matching detection, store timestamp
-                timestamps[i] = timestamps[count];
-                break;
-            }
-        }
-        
         count++;
     }
-    
+
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
-    
+
     return 0;
 }
 

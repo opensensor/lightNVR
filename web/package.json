@@ -16,6 +16,7 @@
   "dependencies": {
     "@preact-signals/query": "^2.1.1",
     "@preact/compat": "^17.x",
+    "dayjs": "^1.11.19",
     "hls.js": "^1.6.0",
     "htm": "^3.1.1",
     "preact": "^10.28.2",
