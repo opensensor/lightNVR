@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <sys/prctl.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -380,6 +381,101 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
 }
 
 /**
+ * @brief Check if a process is a zombie
+ *
+ * @param pid Process ID to check
+ * @return true if the process is a zombie, false otherwise
+ */
+static bool is_zombie_process(pid_t pid) {
+    char stat_path[64];
+    snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
+
+    FILE *fp = fopen(stat_path, "r");
+    if (!fp) {
+        return false;  // Process doesn't exist
+    }
+
+    // Read the stat file - format: pid (comm) state ...
+    char line[512];
+    if (fgets(line, sizeof(line), fp)) {
+        fclose(fp);
+
+        // Find the closing paren of the command name, then the state is next
+        char *close_paren = strrchr(line, ')');
+        if (close_paren && close_paren[1] == ' ') {
+            char state = close_paren[2];
+            if (state == 'Z') {
+                return true;  // Zombie state
+            }
+        }
+    } else {
+        fclose(fp);
+    }
+
+    return false;
+}
+
+/**
+ * @brief Reap zombie child processes
+ *
+ * This function calls waitpid with WNOHANG to reap any zombie children
+ * without blocking.
+ */
+static void reap_zombie_children(void) {
+    int status;
+    pid_t pid;
+
+    // Reap all zombie children with WNOHANG (non-blocking)
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        if (WIFEXITED(status)) {
+            log_debug("Reaped zombie child process %d (exit code %d)", pid, WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            log_debug("Reaped zombie child process %d (killed by signal %d)", pid, WTERMSIG(status));
+        } else {
+            log_debug("Reaped zombie child process %d", pid);
+        }
+    }
+}
+
+/**
+ * @brief Wait for a specific process to terminate
+ *
+ * @param pid Process ID to wait for
+ * @param timeout_ms Maximum time to wait in milliseconds
+ * @return true if process terminated, false if timeout
+ */
+static bool wait_for_process_termination(pid_t pid, int timeout_ms) {
+    int elapsed = 0;
+    int interval = 50;  // 50ms check interval
+
+    while (elapsed < timeout_ms) {
+        // First try to reap if it's our child
+        int status;
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid) {
+            // Successfully reaped the process
+            log_debug("Process %d successfully reaped", pid);
+            return true;
+        } else if (result == -1 && errno == ECHILD) {
+            // Not our child, check if it still exists
+            if (kill(pid, 0) != 0) {
+                return true;  // Process no longer exists
+            }
+            // Check if it's a zombie (might be child of another process)
+            if (is_zombie_process(pid)) {
+                log_debug("Process %d is zombie (not our child)", pid);
+                return true;  // Consider it terminated even if we can't reap it
+            }
+        }
+
+        usleep(interval * 1000);
+        elapsed += interval;
+    }
+
+    return false;
+}
+
+/**
  * @brief Check if a process is actually a go2rtc process
  *
  * @param pid Process ID to check
@@ -391,6 +487,12 @@ static bool is_go2rtc_process(pid_t pid) {
 
     // First check if the process exists
     if (kill(pid, 0) != 0) {
+        return false;
+    }
+
+    // Check if it's a zombie - zombies don't count as running processes
+    if (is_zombie_process(pid)) {
+        log_debug("Process %d is a zombie, not counting as go2rtc", pid);
         return false;
     }
 
