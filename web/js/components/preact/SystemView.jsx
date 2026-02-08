@@ -84,7 +84,6 @@ export function SystemView() {
   const [logCount, setLogCount] = useState(100);
   const [pollingInterval, setPollingInterval] = useState(5000); // Default to 5 seconds
   const [isRestarting, setIsRestarting] = useState(false);
-  const [isShuttingDown, setIsShuttingDown] = useState(false);
   const [hasData, setHasData] = useState(false);
 
   // User role state for permission-based UI
@@ -197,29 +196,6 @@ export function SystemView() {
     }
   });
 
-  // Shutdown system mutation
-  const shutdownSystemMutation = useMutation({
-    mutationFn: async () => {
-      return await fetchJSON('/api/system/shutdown', {
-        method: 'POST',
-        timeout: 30000, // 30 second timeout for system shutdown
-        retries: 0      // No retries for system shutdown
-      });
-    },
-    onMutate: () => {
-      setIsShuttingDown(true);
-      showStatusMessage('Shutting down system...');
-    },
-    onSuccess: () => {
-      showStatusMessage('System is shutting down. You will need to manually restart it.');
-    },
-    onError: (error) => {
-      console.error('Error shutting down system:', error);
-      showStatusMessage(`Error shutting down system: ${error.message}`);
-      setIsShuttingDown(false);
-    }
-  });
-
   // Update systemInfo state when data is loaded
   useEffect(() => {
     if (systemInfoData) {
@@ -245,20 +221,11 @@ export function SystemView() {
 
   // Restart system function
   const restartSystem = () => {
-    if (!confirm('Are you sure you want to restart the system?')) {
+    if (!confirm('Are you sure you want to restart lightNVR?')) {
       return;
     }
 
     restartSystemMutation.mutate();
-  };
-
-  // Shutdown system function
-  const shutdownSystem = () => {
-    if (!confirm('Are you sure you want to shut down the system?')) {
-      return;
-    }
-
-    shutdownSystemMutation.mutate();
   };
 
   // Component initialization
@@ -270,9 +237,7 @@ export function SystemView() {
     <section id="system-page" className="page">
       <SystemControls
         restartSystem={restartSystem}
-        shutdownSystem={shutdownSystem}
         isRestarting={isRestarting}
-        isShuttingDown={isShuttingDown}
         canControlSystem={canControlSystem}
       />
 

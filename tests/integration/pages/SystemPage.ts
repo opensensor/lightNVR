@@ -47,10 +47,6 @@ export class SystemPage extends BasePage {
     return this.page.locator('button').filter({ hasText: /restart/i }).first();
   }
 
-  get shutdownButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /shutdown|stop/i }).first();
-  }
-
   get refreshButton(): Locator {
     return this.page.locator('button').filter({ hasText: /refresh/i }).first();
   }
