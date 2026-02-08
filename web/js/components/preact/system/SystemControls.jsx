@@ -42,7 +42,8 @@ export function SystemControls({ onRestartConfirm, isRestarting, canControlSyste
           {canControlSystem && (
             <button
               id="restart-btn"
-              className="btn-warning focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-warning focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ '--tw-ring-color': 'hsl(var(--warning))' }}
               onClick={handleRestartClick}
               disabled={isRestarting}
             >

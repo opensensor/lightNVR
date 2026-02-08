@@ -128,7 +128,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
                 Cancel
               </button>
               <button
-                className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500"
+                className="btn-warning focus:outline-none focus:ring-2 focus:ring-offset-2"
                 onClick={onConfirm}
               >
                 Restart

@@ -50,8 +50,8 @@ export const COLOR_THEMES = {
   },
   retro80s: {
     name: 'Retro 80s',
-    light: { hue: 15, saturation: 55 },
-    dark: { hue: 15, saturation: 45 },
+    light: { hue: 18, saturation: 58 },
+    dark: { hue: 18, saturation: 48 },
     icon: '📼'
   }
 };
