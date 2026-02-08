@@ -46,7 +46,8 @@ RUN apk update && apk add --no-cache \
     libcurl \
     mbedtls2 \
     cjson \
-    mosquitto-libs
+    mosquitto-libs \
+    libuv llhttp
 
 # Create necessary directories in runtime
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
