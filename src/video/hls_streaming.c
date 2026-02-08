@@ -56,17 +56,11 @@ void cleanup_hls_streaming_backend(void) {
     // Step 1: Stop the watchdog FIRST to prevent any stream restarts during shutdown
     stop_hls_watchdog();
 
-    // Step 2: Collect thread handles and mark ALL contexts as not running
-    pthread_t threads_to_join[MAX_STREAMS];
-    int thread_count = 0;
-
+    // Step 2: Mark ALL contexts as not running in a single pass (with mutex held)
     pthread_mutex_lock(&unified_contexts_mutex);
     int stream_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (unified_contexts[i] != NULL) {
-            // Save thread handle for joining later
-            threads_to_join[thread_count++] = unified_contexts[i]->thread;
-
             // Mark as not running to signal threads to exit
             atomic_store(&unified_contexts[i]->running, 0);
 
@@ -94,30 +88,46 @@ void cleanup_hls_streaming_backend(void) {
 
     log_info("Signaled %d HLS streams to stop", stream_count);
 
-    // Step 3: Wait for threads to exit (with timeout)
-    // CRITICAL FIX: Must join threads BEFORE freeing contexts to prevent use-after-free
-    if (thread_count > 0) {
-        log_info("Waiting for %d HLS threads to exit...", thread_count);
+    // Step 3: Wait for threads to exit by polling thread_state (threads are detached)
+    // CRITICAL FIX: Must wait for threads to exit BEFORE freeing contexts to prevent use-after-free
+    if (stream_count > 0) {
+        log_info("Waiting for %d HLS threads to exit (detached threads)...", stream_count);
 
-        for (int i = 0; i < thread_count; i++) {
-            if (threads_to_join[i] != 0) {
-                // Use pthread_timedjoin_np if available, otherwise use regular join with alarm
-                struct timespec timeout;
-                clock_gettime(CLOCK_REALTIME, &timeout);
-                timeout.tv_sec += 2;  // 2 second timeout per thread
+        const int max_wait_ms = 5000;  // 5 second total timeout
+        const int poll_interval_ms = 50;  // Check every 50ms
+        int elapsed_ms = 0;
 
-                int join_result = pthread_timedjoin_np(threads_to_join[i], NULL, &timeout);
-                if (join_result == 0) {
-                    log_info("HLS thread %d/%d exited cleanly", i + 1, thread_count);
-                } else if (join_result == ETIMEDOUT) {
-                    log_warn("HLS thread %d/%d did not exit within timeout, detaching", i + 1, thread_count);
-                    pthread_detach(threads_to_join[i]);
-                } else {
-                    log_warn("Failed to join HLS thread %d/%d: error %d", i + 1, thread_count, join_result);
+        while (elapsed_ms < max_wait_ms) {
+            int threads_still_running = 0;
+
+            pthread_mutex_lock(&unified_contexts_mutex);
+            for (int i = 0; i < MAX_STREAMS; i++) {
+                if (unified_contexts[i] != NULL) {
+                    int state = atomic_load(&unified_contexts[i]->thread_state);
+                    if (state != HLS_THREAD_STOPPED) {
+                        threads_still_running++;
+                    }
                 }
             }
+            pthread_mutex_unlock(&unified_contexts_mutex);
+
+            if (threads_still_running == 0) {
+                log_info("All HLS threads have exited after %d ms", elapsed_ms);
+                break;
+            }
+
+            if (elapsed_ms % 1000 == 0 && elapsed_ms > 0) {
+                log_info("Still waiting for %d HLS threads to exit (%d ms elapsed)",
+                        threads_still_running, elapsed_ms);
+            }
+
+            usleep(poll_interval_ms * 1000);
+            elapsed_ms += poll_interval_ms;
         }
-        log_info("All HLS threads have been processed");
+
+        if (elapsed_ms >= max_wait_ms) {
+            log_warn("Timeout waiting for HLS threads to exit after %d ms, proceeding with cleanup", max_wait_ms);
+        }
     }
 
     // Step 4: Now safe to cleanup contexts since threads have exited
