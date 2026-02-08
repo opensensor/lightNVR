@@ -144,23 +144,29 @@ int get_all_stream_storage_usage(stream_storage_info_t **stream_info) {
     }
     
     closedir(dir);
-    
+
+    // If no streams found, return early
+    if (stream_count == 0) {
+        *stream_info = NULL;
+        return 0;
+    }
+
     // Allocate memory for stream info array
     *stream_info = (stream_storage_info_t *)malloc(stream_count * sizeof(stream_storage_info_t));
     if (!*stream_info) {
         log_error("Failed to allocate memory for stream storage info");
         return -1;
     }
-    
+
     // Get stream storage usage
     int actual_count = get_stream_storage_usage(storage_path, *stream_info, stream_count);
-    
+
     // If no streams found, free memory
     if (actual_count <= 0) {
         free(*stream_info);
         *stream_info = NULL;
     }
-    
+
     return actual_count;
 }
 

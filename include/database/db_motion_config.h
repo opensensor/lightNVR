@@ -7,18 +7,12 @@
 
 /**
  * Motion Recording Configuration Database Module
- * 
+ *
  * This module handles database operations for motion recording configuration,
  * including per-camera settings, buffer configuration, and retention policies.
+ *
+ * Note: Tables are created via SQL migration 0020_add_motion_recording_config.sql
  */
-
-/**
- * Initialize the motion recording configuration table
- * Creates the table if it doesn't exist
- * 
- * @return 0 on success, non-zero on failure
- */
-int init_motion_config_table(void);
 
 /**
  * Save motion recording configuration for a stream
