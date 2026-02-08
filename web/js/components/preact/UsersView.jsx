@@ -33,7 +33,8 @@ export function UsersView() {
     password: '',
     email: '',
     role: 1,
-    is_active: true
+    is_active: true,
+    password_change_locked: false
   });
 
   /**
@@ -74,7 +75,8 @@ export function UsersView() {
       password: '',
       email: '',
       role: 1,
-      is_active: true
+      is_active: true,
+      password_change_locked: false
     });
     setActiveModal('add');
   }, []);
@@ -287,7 +289,8 @@ export function UsersView() {
       password: '', // Don't include the password in the form
       email: user.email || '',
       role: user.role,
-      is_active: user.is_active
+      is_active: user.is_active,
+      password_change_locked: user.password_change_locked || false
     });
     setActiveModal('edit');
   }, []);

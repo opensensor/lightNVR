@@ -44,6 +44,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
             <th className="py-3 px-6 text-left font-semibold">Email</th>
             <th className="py-3 px-6 text-left font-semibold">Role</th>
             <th className="py-3 px-6 text-left font-semibold">Status</th>
+            <th className="py-3 px-6 text-left font-semibold">Password</th>
             <th className="py-3 px-6 text-left font-semibold">Last Login</th>
             <th className="py-3 px-6 text-left font-semibold">Actions</th>
           </tr>
@@ -58,6 +59,11 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
               <td className="py-3 px-6 border-b border-border">
                 <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${user.is_active ? 'badge-success' : 'badge-danger'}`}>
                   {user.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+              <td className="py-3 px-6 border-b border-border">
+                <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${user.password_change_locked ? 'badge-warning' : 'badge-info'}`} title={user.password_change_locked ? 'Password changes are locked' : 'Password changes are allowed'}>
+                  {user.password_change_locked ? '🔒 Locked' : '🔓 Unlocked'}
                 </span>
               </td>
               <td className="py-3 px-6 border-b border-border">{user.last_login ? new Date(user.last_login * 1000).toLocaleString() : 'Never'}</td>

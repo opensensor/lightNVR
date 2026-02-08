@@ -94,7 +94,7 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
             </select>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-4">
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -105,6 +105,22 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
               />
               <span className="text-sm font-bold">Active</span>
             </label>
+          </div>
+
+          <div className="mb-6">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                name="password_change_locked"
+                checked={formData.password_change_locked}
+                onChange={handleInputChange}
+                className="mr-2"
+              />
+              <span className="text-sm font-bold">Lock Password Changes</span>
+            </label>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-6">
+              When locked, this user cannot change their own password
+            </p>
           </div>
 
           <div className="flex justify-end mt-6">
