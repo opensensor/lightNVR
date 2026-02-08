@@ -23,6 +23,8 @@ static struct {
     pthread_mutex_t mutex;
     int syslog_enabled;
     char syslog_ident[64];
+    volatile int shutdown;  // Flag to indicate logger is shut down (1) or shutting down (2)
+    volatile int initialized;  // Flag to indicate logger is initialized
 } logger = {
     .log_file = NULL,
     .log_level = LOG_LEVEL_INFO,
@@ -30,6 +32,8 @@ static struct {
     .log_filename = "",
     .syslog_enabled = 0,
     .syslog_ident = "",
+    .shutdown = 0,
+    .initialized = 0,
 };
 
 // Log level strings
@@ -42,6 +46,14 @@ static const char *log_level_strings[] = {
 
 // Initialize the logging system
 int init_logger(void) {
+    // Check if already initialized
+    if (logger.initialized) {
+        return 0;
+    }
+
+    // Reset shutdown flag
+    logger.shutdown = 0;
+
     // Initialize mutex
     if (pthread_mutex_init(&logger.mutex, NULL) != 0) {
         fprintf(stderr, "Failed to initialize logger mutex\n");
@@ -61,11 +73,34 @@ int init_logger(void) {
         init_json_logger(json_log_filename);
     }
 
+    // Mark as initialized
+    logger.initialized = 1;
+
     return 0;
+}
+
+// Check if logger is available for use
+int is_logger_available(void) {
+    return logger.initialized && !logger.shutdown;
 }
 
 // Shutdown the logging system
 void shutdown_logger(void) {
+    // Check if already shutdown or not initialized
+    if (logger.shutdown || !logger.initialized) {
+        return;
+    }
+
+    // Mark as shutting down BEFORE acquiring mutex
+    // This prevents new log calls from trying to acquire the mutex
+    logger.shutdown = 1;
+
+    // Memory barrier to ensure shutdown flag is visible
+    __sync_synchronize();
+
+    // Small delay to allow in-flight log operations to complete
+    usleep(10000);  // 10ms
+
     pthread_mutex_lock(&logger.mutex);
 
     if (logger.log_file != NULL && logger.log_file != stdout && logger.log_file != stderr) {
@@ -80,6 +115,14 @@ void shutdown_logger(void) {
     }
 
     pthread_mutex_unlock(&logger.mutex);
+
+    // Mark as fully shutdown before destroying mutex
+    logger.shutdown = 2;
+    logger.initialized = 0;
+
+    // Memory barrier
+    __sync_synchronize();
+
     pthread_mutex_destroy(&logger.mutex);
 
     // Shutdown JSON logger if the function is available
