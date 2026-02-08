@@ -42,6 +42,11 @@ int init_shutdown_coordinator(void) {
 
 // Shutdown and cleanup the coordinator
 void shutdown_coordinator_cleanup(void) {
+    // Check if already destroyed to prevent double-cleanup
+    if (atomic_load(&g_coordinator.coordinator_destroyed)) {
+        return;  // Already cleaned up
+    }
+
     // Mark coordinator as destroyed BEFORE destroying mutex
     // This prevents signal handlers from trying to use the mutex
     atomic_store(&g_coordinator.coordinator_destroyed, true);
