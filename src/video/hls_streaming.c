@@ -26,7 +26,7 @@ extern hls_unified_thread_ctx_t *unified_contexts[MAX_STREAMS];
 
 // Forward declarations for memory management functions
 extern void mark_context_as_freed(void *ctx);
-extern void safe_free(void *ptr);
+extern void *hls_guarded_free(void *ptr);  // Must use this instead of safe_free for HLS contexts
 
 /**
  * Initialize HLS streaming backend
@@ -171,7 +171,10 @@ void cleanup_hls_streaming_backend(void) {
 
                 // Mark as freed and clean up
                 mark_context_as_freed(unified_contexts[i]);
-                safe_free(unified_contexts[i]);
+                // CRITICAL FIX: Must use hls_guarded_free instead of safe_free because
+                // HLS contexts are allocated with hls_guarded_malloc which adds guard bytes.
+                // Using safe_free would try to free at wrong offset, causing a crash.
+                hls_guarded_free(unified_contexts[i]);
                 unified_contexts[i] = NULL;
                 cleaned_count++;
             } else {

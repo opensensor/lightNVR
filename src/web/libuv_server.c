@@ -170,8 +170,16 @@ static void server_thread_func(void *arg) {
     log_info("libuv_server: Event loop thread started");
 
     // Run the event loop until stopped
+    // CRITICAL FIX: Use UV_RUN_ONCE instead of UV_RUN_DEFAULT so we can check
+    // the running flag periodically. UV_RUN_DEFAULT blocks indefinitely until
+    // there are no more active handles, which prevents the thread from exiting
+    // when server->running is set to false.
     while (server->running) {
-        uv_run(server->loop, UV_RUN_DEFAULT);
+        int result = uv_run(server->loop, UV_RUN_ONCE);
+        // If uv_run returns 0, there are no more active handles
+        if (result == 0) {
+            break;
+        }
     }
 
     log_info("libuv_server: Event loop thread exiting");

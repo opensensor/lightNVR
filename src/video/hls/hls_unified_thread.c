@@ -184,7 +184,8 @@ static void *hls_guarded_malloc(size_t size) {
 }
 
 // Function to free memory allocated with hls_guarded_malloc
-static void *hls_guarded_free(void *ptr) {
+// NOTE: This function must be non-static so it can be called from hls_streaming.c for cleanup
+void *hls_guarded_free(void *ptr) {
     if (!ptr) {
         return NULL;
     }
@@ -2454,7 +2455,7 @@ int start_hls_unified_stream(const char *stream_name) {
     FILE *test = fopen(test_file, "w");
     if (!test) {
         log_error("Directory is not writable: %s (error: %s)", ctx->output_path, strerror(errno));
-        free(ctx);
+        hls_guarded_free(ctx);
         return -1;
     }
     fclose(test);
