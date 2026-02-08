@@ -28,7 +28,7 @@ extern hls_unified_thread_ctx_t *unified_contexts[MAX_STREAMS];
 
 // Forward declarations for memory management functions
 extern void mark_context_as_freed(void *ctx);
-extern void *safe_free(void *ptr);
+extern void safe_free(void *ptr);
 
 /**
  * Initialize HLS streaming backend
