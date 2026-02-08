@@ -99,3 +99,13 @@ playwright-report/
 test-results/
 stress_test_results*/
 /data
+
+# Local development directories
+frigate/
+prudynt-t/
+digitalocean-llm-setup/
+k8s/
+lightnvr-buildroot/
+*.ico
+*.png
+lightnvr-provisioning-prd.docx.md
