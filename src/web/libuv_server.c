@@ -196,19 +196,24 @@ static void server_thread_func(void *arg) {
     log_info("libuv_server: Event loop thread started");
 
     // Run the event loop until stopped
-    // CRITICAL FIX: Use UV_RUN_ONCE instead of UV_RUN_DEFAULT so we can check
-    // the running flag periodically. UV_RUN_DEFAULT blocks indefinitely until
-    // there are no more active handles, which prevents the thread from exiting
-    // when server->running is set to false.
-    while (server->running) {
-        int result = uv_run(server->loop, UV_RUN_ONCE);
-        // If uv_run returns 0, there are no more active handles
-        if (result == 0) {
-            break;
-        }
-    }
+    // Use UV_RUN_DEFAULT which blocks until there are no more active handles
+    // or until uv_stop() is called. The stop_async handle ensures we can wake
+    // up the loop from another thread to signal shutdown.
+    //
+    // The event loop will keep running as long as:
+    // 1. The TCP listener is active (accepting connections)
+    // 2. The stop_async handle is active (for cross-thread signaling)
+    // 3. Any client connections are active
+    //
+    // When libuv_server_stop() is called:
+    // 1. server->running is set to false
+    // 2. uv_async_send() wakes up the loop
+    // 3. uv_stop() causes uv_run() to return
+    // 4. This thread exits
+    uv_run(server->loop, UV_RUN_DEFAULT);
 
-    log_info("libuv_server: Event loop thread exiting");
+    log_info("libuv_server: Event loop thread exiting (running=%s)",
+             server->running ? "true" : "false");
 }
 
 /**
