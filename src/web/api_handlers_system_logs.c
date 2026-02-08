@@ -216,7 +216,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Extract log level from query parameters
     char level_buf[16] = {0};
-    if (http_request_get_query_param(req, "level", level_buf, sizeof(level_buf)) == 0 && level_buf[0]) {
+    if (http_request_get_query_param(req, "level", level_buf, sizeof(level_buf)) > 0 && level_buf[0]) {
         strncpy(level, level_buf, sizeof(level) - 1);
         level[sizeof(level) - 1] = '\0';
     }

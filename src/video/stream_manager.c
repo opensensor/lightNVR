@@ -512,16 +512,9 @@ int remove_stream(stream_handle_t handle) {
     strncpy(stream_name, s->config.name, MAX_STREAM_NAME - 1);
     stream_name[MAX_STREAM_NAME - 1] = '\0';
 
-    // Unregister stream from go2rtc using the centralized function
-    #ifdef USE_GO2RTC
-    go2rtc_integration_unregister_stream(stream_name);
-    #endif
-
-    // Delete the stream from the database
-    if (delete_stream_config(stream_name) != 0) {
-        log_error("Failed to delete stream configuration from database for stream %s", stream_name);
-        // Continue anyway to clean up the local state
-    }
+    // Note: Database deletion and go2rtc unregistration are handled by the caller
+    // (handle_delete_stream) which calls delete_stream_config_internal() and
+    // go2rtc_integration_unregister_stream() after remove_stream() returns.
 
     // Clear the stream slot
     pthread_mutex_lock(&s->mutex);

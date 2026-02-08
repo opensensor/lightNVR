@@ -1178,7 +1178,7 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     // Check if permanent delete is requested
     bool permanent_delete = false;
     char permanent_param[16] = {0};
-    if (http_request_get_query_param(req, "permanent", permanent_param, sizeof(permanent_param)) == 0) {
+    if (http_request_get_query_param(req, "permanent", permanent_param, sizeof(permanent_param)) > 0) {
         if (strcmp(permanent_param, "true") == 0) {
             permanent_delete = true;
             log_info("Permanent delete requested for stream: %s", decoded_id);

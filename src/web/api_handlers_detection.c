@@ -43,14 +43,14 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
 
     // Extract start time parameter
     char start_str[32] = {0};
-    if (http_request_get_query_param(req, "start", start_str, sizeof(start_str)) == 0 && start_str[0]) {
+    if (http_request_get_query_param(req, "start", start_str, sizeof(start_str)) > 0 && start_str[0]) {
         start_time = (time_t)strtoll(start_str, NULL, 10);
         log_info("Using start_time filter: %lld (str='%s')", (long long)start_time, start_str);
     }
 
     // Extract end time parameter
     char end_str[32] = {0};
-    if (http_request_get_query_param(req, "end", end_str, sizeof(end_str)) == 0 && end_str[0]) {
+    if (http_request_get_query_param(req, "end", end_str, sizeof(end_str)) > 0 && end_str[0]) {
         end_time = (time_t)strtoll(end_str, NULL, 10);
         log_info("Using end_time filter: %lld (str='%s')", (long long)end_time, end_str);
     }
