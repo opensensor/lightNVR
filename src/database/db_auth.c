@@ -15,6 +15,7 @@
 
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_schema_cache.h"  // For cached_column_exists
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -1025,27 +1026,54 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
     
     // Get current timestamp
     time_t now = time(NULL);
-    
+
     // Calculate expiry time (use config value as default if not specified)
-    int default_expiry = g_config.auth_timeout_hours > 0 ? g_config.auth_timeout_hours * 3600 : DEFAULT_SESSION_EXPIRY;
+    int default_expiry = g_config.auth_timeout_hours > 0
+                             ? g_config.auth_timeout_hours * 3600
+                             : DEFAULT_SESSION_EXPIRY;
     time_t expires_at = now + (expiry_seconds > 0 ? expiry_seconds : default_expiry);
-    
-    // Insert the session
-    rc = sqlite3_prepare_v2(db,
-                           "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent) "
-                           "VALUES (?, ?, ?, ?, ?, ?);",
-                           -1, &stmt, NULL);
+
+    // Some deployments may not yet have the optional ip_address/user_agent columns
+    // (e.g., databases created before the 0018_add_session_tracking migration).
+    // Use cached_column_exists to build a compatible INSERT that only references
+    // columns that actually exist, so login still works on older schemas.
+    bool has_ip_column = cached_column_exists("sessions", "ip_address");
+    bool has_ua_column = cached_column_exists("sessions", "user_agent");
+
+    const char *sql = NULL;
+    if (has_ip_column && has_ua_column) {
+        sql = "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent) "
+              "VALUES (?, ?, ?, ?, ?, ?);";
+    } else if (has_ip_column && !has_ua_column) {
+        sql = "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address) "
+              "VALUES (?, ?, ?, ?, ?);";
+    } else if (!has_ip_column && has_ua_column) {
+        sql = "INSERT INTO sessions (user_id, token, created_at, expires_at, user_agent) "
+              "VALUES (?, ?, ?, ?, ?);";
+    } else {
+        sql = "INSERT INTO sessions (user_id, token, created_at, expires_at) "
+              "VALUES (?, ?, ?, ?);";
+    }
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
-        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        log_error("Failed to prepare session insert statement: %s", sqlite3_errmsg(db));
         return -1;
     }
-    
-    sqlite3_bind_int64(stmt, 1, user_id);
-    sqlite3_bind_text(stmt, 2, token, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 3, now);
-    sqlite3_bind_int64(stmt, 4, expires_at);
-    sqlite3_bind_text(stmt, 5, ip_address ? ip_address : "", -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 6, user_agent ? user_agent : "", -1, SQLITE_STATIC);
+
+    int param_index = 1;
+    sqlite3_bind_int64(stmt, param_index++, user_id);
+    sqlite3_bind_text(stmt, param_index++, token, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, param_index++, now);
+    sqlite3_bind_int64(stmt, param_index++, expires_at);
+
+    if (has_ip_column) {
+        sqlite3_bind_text(stmt, param_index++, ip_address ? ip_address : "", -1, SQLITE_STATIC);
+    }
+
+    if (has_ua_column) {
+        sqlite3_bind_text(stmt, param_index++, user_agent ? user_agent : "", -1, SQLITE_STATIC);
+    }
     
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
