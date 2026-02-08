@@ -124,13 +124,15 @@ void cleanup_hls_streaming_backend(void) {
         }
 
         if (elapsed_ms >= max_wait_ms) {
-            log_warn("Timeout waiting for HLS threads to exit after %d ms, proceeding with cleanup", max_wait_ms);
+            log_warn("Timeout waiting for HLS threads to exit after %d ms", max_wait_ms);
         }
     }
 
-    // Step 4: Now safe to cleanup contexts since threads have exited
+    // Step 4: Only cleanup contexts where threads have actually exited
+    // CRITICAL: Do NOT free contexts where threads are still running - this causes use-after-free crashes
     pthread_mutex_lock(&unified_contexts_mutex);
     int cleaned_count = 0;
+    int skipped_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (unified_contexts[i] != NULL) {
             char stream_name_copy[MAX_STREAM_NAME] = "unknown";
@@ -139,22 +141,36 @@ void cleanup_hls_streaming_backend(void) {
                 stream_name_copy[MAX_STREAM_NAME - 1] = '\0';
             }
 
-            log_info("Cleaning up HLS context for stream %s", stream_name_copy);
+            // Check if thread has actually stopped
+            int thread_state = atomic_load(&unified_contexts[i]->thread_state);
+            if (thread_state == HLS_THREAD_STOPPED) {
+                log_info("Cleaning up HLS context for stream %s (thread stopped)", stream_name_copy);
 
-            // Memory barrier before cleanup
-            __sync_synchronize();
+                // Memory barrier before cleanup
+                __sync_synchronize();
 
-            // Mark as freed and clean up
-            mark_context_as_freed(unified_contexts[i]);
-            safe_free(unified_contexts[i]);
-            unified_contexts[i] = NULL;
-            cleaned_count++;
+                // Mark as freed and clean up
+                mark_context_as_freed(unified_contexts[i]);
+                safe_free(unified_contexts[i]);
+                unified_contexts[i] = NULL;
+                cleaned_count++;
+            } else {
+                // Thread is still running - DO NOT free the context to prevent crash
+                // This is a memory leak, but it's better than crashing
+                log_warn("Skipping cleanup of HLS context for stream %s - thread still in state %d (would cause crash)",
+                        stream_name_copy, thread_state);
+                skipped_count++;
+                // Leave unified_contexts[i] as-is so thread can still access it
+            }
         }
     }
     pthread_mutex_unlock(&unified_contexts_mutex);
 
     if (cleaned_count > 0) {
         log_info("Cleaned up %d HLS contexts", cleaned_count);
+    }
+    if (skipped_count > 0) {
+        log_warn("Skipped cleanup of %d HLS contexts (threads still running - minor memory leak to prevent crash)", skipped_count);
     }
 
     // Step 5: Clean up the legacy HLS contexts
