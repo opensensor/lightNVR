@@ -25,6 +25,7 @@ static void on_file_open(uv_fs_t *req);
 static void on_file_stat(uv_fs_t *req);
 static void on_file_read(uv_fs_t *req);
 static void on_file_close(uv_fs_t *req);
+static void on_chunk_write_complete(uv_write_t *req, int status);
 static void file_serve_cleanup(file_serve_ctx_t *ctx);
 static void send_file_chunk(file_serve_ctx_t *ctx);
 
@@ -272,6 +273,8 @@ static void on_file_stat(uv_fs_t *req) {
     }
 
     // Send headers
+    // Note: We don't send Connection: close as it causes issues with HTTP/2 proxies
+    // The connection will be closed after all data is sent based on keep-alive settings
     char headers[1024];
     int len;
 
@@ -282,7 +285,6 @@ static void on_file_stat(uv_fs_t *req) {
             "Content-Length: %zu\r\n"
             "Content-Range: bytes %zu-%zu/%zu\r\n"
             "Accept-Ranges: bytes\r\n"
-            "Connection: close\r\n"
             "\r\n",
             ctx->content_type, ctx->remaining,
             ctx->range_start, ctx->range_end, ctx->file_size);
@@ -292,7 +294,6 @@ static void on_file_stat(uv_fs_t *req) {
             "Content-Type: %s\r\n"
             "Content-Length: %zu\r\n"
             "Accept-Ranges: bytes\r\n"
-            "Connection: close\r\n"
             "\r\n",
             ctx->content_type, ctx->file_size);
     }
@@ -333,6 +334,42 @@ static void send_file_chunk(file_serve_ctx_t *ctx) {
 }
 
 /**
+ * @brief Context for chunked file write
+ */
+typedef struct {
+    uv_write_t req;           // Write request (must be first)
+    uv_buf_t buf;             // Buffer being written
+    file_serve_ctx_t *ctx;    // Parent file serve context
+    bool free_buffer;         // Whether to free buffer on completion
+} file_chunk_write_ctx_t;
+
+/**
+ * @brief Callback when a file chunk write completes
+ *
+ * This is the key fix for ERR_HTTP2_PROTOCOL_ERROR - we must wait for
+ * each write to complete before starting the next read/write cycle.
+ */
+static void on_chunk_write_complete(uv_write_t *req, int status) {
+    file_chunk_write_ctx_t *write_ctx = (file_chunk_write_ctx_t *)req;
+    file_serve_ctx_t *ctx = write_ctx->ctx;
+
+    // Free the send buffer
+    if (write_ctx->free_buffer && write_ctx->buf.base) {
+        safe_free(write_ctx->buf.base);
+    }
+    safe_free(write_ctx);
+
+    if (status < 0) {
+        log_error("on_chunk_write_complete: Write error: %s", uv_strerror(status));
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
+    // Now that the write is complete, continue with next chunk
+    send_file_chunk(ctx);
+}
+
+/**
  * @brief File read callback
  */
 static void on_file_read(uv_fs_t *req) {
@@ -361,14 +398,41 @@ static void on_file_read(uv_fs_t *req) {
     }
     memcpy(send_buf, ctx->buffer, bytes_read);
 
-    // Send this chunk
-    libuv_connection_send(ctx->conn, send_buf, bytes_read, true);
-
+    // Update position tracking BEFORE sending
     ctx->offset += bytes_read;
     ctx->remaining -= bytes_read;
 
-    // Continue with next chunk
-    send_file_chunk(ctx);
+    // Allocate write context
+    file_chunk_write_ctx_t *write_ctx = safe_malloc(sizeof(file_chunk_write_ctx_t));
+    if (!write_ctx) {
+        safe_free(send_buf);
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
+    write_ctx->ctx = ctx;
+    write_ctx->buf = uv_buf_init(send_buf, bytes_read);
+    write_ctx->free_buffer = true;
+
+    // Check if connection is closing
+    if (uv_is_closing((uv_handle_t *)&ctx->conn->handle)) {
+        log_debug("on_file_read: Connection is closing, aborting file send");
+        safe_free(send_buf);
+        safe_free(write_ctx);
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
+
+    // Send this chunk and wait for completion before sending next
+    int r = uv_write(&write_ctx->req, (uv_stream_t *)&ctx->conn->handle,
+                     &write_ctx->buf, 1, on_chunk_write_complete);
+    if (r != 0) {
+        log_error("on_file_read: Write failed: %s", uv_strerror(r));
+        safe_free(send_buf);
+        safe_free(write_ctx);
+        uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+    }
+    // Note: on_chunk_write_complete will call send_file_chunk() when write is done
 }
 
 /**
@@ -391,7 +455,7 @@ static void on_file_close(uv_fs_t *req) {
     }
 
     // Close the connection after serving the file
-    // We use Connection: close header, so we must close the connection
+    // File transfer is complete, close the connection
     extern void libuv_connection_close(libuv_connection_t *conn);
 
     // Only close if not already closing
