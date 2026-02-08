@@ -5,15 +5,13 @@
  * The implementation uses a unified thread approach for better efficiency and reliability.
  */
 
-#define _GNU_SOURCE  // Required for pthread_timedjoin_np
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <pthread.h>
-#include <errno.h>
-#include <time.h>
+#include <stdatomic.h>
 
 #include "core/logger.h"
 #include "video/hls_streaming.h"
