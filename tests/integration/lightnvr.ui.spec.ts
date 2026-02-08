@@ -14,13 +14,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Use longer timeouts in CI environments
+const isCI = !!process.env.CI;
+const NAVIGATION_TIMEOUT = isCI ? 30000 : 15000;
+
 /**
  * Login through the web form (adapted from capture-screenshots.js)
  */
 async function login(page: Page): Promise<void> {
   console.log('Logging in...');
   try {
-    await page.goto('/login.html', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('/login.html', { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT });
 
     // Wait for login form
     await page.waitForSelector('input[name="username"], input[type="text"]', { timeout: 5000 });
@@ -32,12 +36,13 @@ async function login(page: Page): Promise<void> {
     const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
     await passwordInput.fill(AUTH_PASS);
 
-    // Submit
+    // Submit - use Promise.all to start waiting for navigation BEFORE clicking
+    // This is critical because window.location.href redirects can happen very quickly
     const submitButton = page.locator('button[type="submit"], button').filter({ hasText: /login|sign in/i }).first();
-    await submitButton.click();
-
-    // Wait for redirect
-    await page.waitForURL('**/index.html', { timeout: 10000 });
+    await Promise.all([
+      page.waitForURL('**/index.html', { timeout: NAVIGATION_TIMEOUT, waitUntil: 'commit' }),
+      submitButton.click(),
+    ]);
     console.log('Login successful');
   } catch (error) {
     console.error('Login failed:', (error as Error).message);
@@ -50,16 +55,17 @@ async function login(page: Page): Promise<void> {
  */
 async function navigateTo(page: Page, path: string, options?: { waitForNetworkIdle?: boolean }): Promise<void> {
   const waitUntil = options?.waitForNetworkIdle ? 'networkidle' : 'domcontentloaded';
+  const componentDelay = isCI ? 2500 : 1500;
 
   try {
-    await page.goto(path, { waitUntil, timeout: 10000 });
-    await sleep(1500); // Wait for Preact components to render
+    await page.goto(path, { waitUntil, timeout: NAVIGATION_TIMEOUT });
+    await sleep(componentDelay); // Wait for Preact components to render
 
     // If we got redirected to login, perform login and retry
     if (page.url().includes('login')) {
       await login(page);
-      await page.goto(path, { waitUntil, timeout: 10000 });
-      await sleep(1500);
+      await page.goto(path, { waitUntil, timeout: NAVIGATION_TIMEOUT });
+      await sleep(componentDelay);
     }
   } catch (error) {
     console.error(`Navigation to ${path} failed:`, (error as Error).message);
@@ -69,7 +75,7 @@ async function navigateTo(page: Page, path: string, options?: { waitForNetworkId
 
 test.describe('LightNVR Login', () => {
   test('should display login page', async ({ page }) => {
-    await page.goto('/login.html', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('/login.html', { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT });
     await expect(page).toHaveTitle(/LightNVR/i);
 
     // Should see login form elements
