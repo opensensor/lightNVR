@@ -1139,32 +1139,67 @@ cleanup:
 
     if (cleanup_pid == 0) {
         // Child process - watchdog timer
+
+        // CRITICAL FIX: Create a new process group immediately so we won't be killed
+        // by the parent's kill(0, SIGKILL) which kills all processes in the same group
+        if (setpgid(0, 0) != 0) {
+            // If setpgid fails, log but continue - we'll try our best
+            // Note: can't use log_error here safely, use stderr
+            fprintf(stderr, "Watchdog: Failed to create new process group: %s\n", strerror(errno));
+        }
+
+        // Reset signal handlers to default to avoid inheriting any problematic dispositions
+        struct sigaction sa_default;
+        memset(&sa_default, 0, sizeof(sa_default));
+        sa_default.sa_handler = SIG_DFL;
+        sigaction(SIGTERM, &sa_default, NULL);
+        sigaction(SIGINT, &sa_default, NULL);
+        sigaction(SIGALRM, &sa_default, NULL);
+        sigaction(SIGUSR1, &sa_default, NULL);
+
         // Unblock all signals in the child so it can log properly
         sigset_t empty_mask;
         sigemptyset(&empty_mask);
         pthread_sigmask(SIG_SETMASK, &empty_mask, NULL);
 
+        // Save the parent PID before it gets killed
+        pid_t parent_pid = getppid();
+
         sleep(30);  // 30 seconds for first phase timeout
         log_error("Cleanup process phase 1 timed out after 30 seconds");
-        kill(getppid(), SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
+        kill(parent_pid, SIGUSR1);  // Send USR1 to parent to trigger emergency cleanup
 
         // Wait another 15 seconds for emergency cleanup
         sleep(15);
         log_error("Cleanup process phase 2 timed out after 15 seconds, forcing exit");
-        kill(getppid(), SIGKILL);  // Force kill the parent process
+        kill(parent_pid, SIGKILL);  // Force kill the parent process
 
         // If restart was requested, handle it here since the parent was killed
         if (restart_requested && saved_argv != NULL) {
             log_info("Restart was requested, re-executing LightNVR after forced cleanup...");
 
             // Give the system a moment to release resources
-            usleep(1000000);  // 1 second
+            // The parent is now dead, wait for it to fully exit
+            usleep(2000000);  // 2 seconds
+
+            // Wait for the parent process to fully terminate
+            // The parent PID may have been reused, so check if it's still the same process
+            // by waiting a bit more to ensure resources are released
+            for (int i = 0; i < 10; i++) {
+                if (kill(parent_pid, 0) != 0) {
+                    // Parent is gone
+                    break;
+                }
+                usleep(500000);  // 500ms
+            }
 
             // Get the executable path
             char exe_path[MAX_PATH_LENGTH];
             ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
             if (len > 0) {
                 exe_path[len] = '\0';
+
+                log_info("Executing: %s", exe_path);
 
                 // Re-exec the program with the same arguments
                 execv(exe_path, saved_argv);
