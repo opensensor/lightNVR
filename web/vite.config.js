@@ -6,6 +6,7 @@ import { resolve } from 'path';
 import legacy from '@vitejs/plugin-legacy';
 import preact from '@preact/preset-vite';
 import viteCompression from 'vite-plugin-compression';
+import themeInjectPlugin from './vite-plugin-theme-inject.js';
 
 // Custom plugin to remove "use client" directives
 const removeUseClientDirective = () => {
@@ -114,6 +115,8 @@ export default defineConfig({
     preact(),
     // Custom plugin to remove "use client" directives
     removeUseClientDirective(),
+    // Theme injection plugin - reads COLOR_THEMES from theme-init.js and injects into HTML
+    themeInjectPlugin(),
     // Add legacy browser support with explicit targets
     legacy({
       targets: ['defaults', 'not IE 11'],
