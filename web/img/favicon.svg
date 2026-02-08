@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <!-- Gradient for the lens glow effect -->
+    <radialGradient id="lensGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="70%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </radialGradient>
+    <!-- Light rays gradient -->
+    <linearGradient id="rayGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle - camera body -->
+  <circle cx="32" cy="32" r="30" fill="#1e293b"/>
+  
+  <!-- Outer lens ring -->
+  <circle cx="32" cy="32" r="24" fill="none" stroke="#475569" stroke-width="3"/>
+  
+  <!-- Camera lens with gradient -->
+  <circle cx="32" cy="32" r="18" fill="url(#lensGlow)"/>
+  
+  <!-- Inner lens detail -->
+  <circle cx="32" cy="32" r="10" fill="#1e3a5f"/>
+  
+  <!-- Light/recording indicator dot -->
+  <circle cx="32" cy="32" r="5" fill="#ef4444">
+    <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- Light rays emanating from top-right (representing "light" in lightNVR) -->
+  <g fill="url(#rayGradient)" opacity="0.9">
+    <polygon points="52,8 56,12 48,16 50,10"/>
+    <polygon points="56,16 60,22 52,22 54,16"/>
+    <polygon points="48,6 52,4 54,10 48,10"/>
+  </g>
+  
+  <!-- Subtle highlight on lens -->
+  <ellipse cx="26" cy="26" rx="6" ry="4" fill="white" opacity="0.3" transform="rotate(-45 26 26)"/>
+</svg>
+
