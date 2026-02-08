@@ -194,6 +194,16 @@ static void close_walk_cb(uv_handle_t *handle, void *arg) {
 }
 
 /**
+ * @brief Count active handles callback
+ */
+static void count_handles_cb(uv_handle_t *handle, void *arg) {
+    int *count = (int *)arg;
+    if (!uv_is_closing(handle)) {
+        (*count)++;
+    }
+}
+
+/**
  * @brief Stop the HTTP server
  */
 void libuv_server_stop(http_server_handle_t handle) {
@@ -222,9 +232,50 @@ void libuv_server_stop(http_server_handle_t handle) {
     log_info("libuv_server_stop: Closing all active handles");
     uv_walk(server->loop, close_walk_cb, NULL);
 
-    // Run the loop to process all close callbacks
-    log_info("libuv_server_stop: Processing close callbacks");
-    uv_run(server->loop, UV_RUN_DEFAULT);
+    // Run the loop to process close callbacks with a timeout
+    // CRITICAL FIX: Use UV_RUN_NOWAIT with a timeout instead of UV_RUN_DEFAULT
+    // which can block indefinitely if any handle fails to close
+    log_info("libuv_server_stop: Processing close callbacks (with timeout)");
+
+    const int max_wait_ms = 5000;  // 5 second maximum wait for close callbacks
+    const int check_interval_ms = 50;  // Check every 50ms
+    int elapsed_ms = 0;
+
+    while (elapsed_ms < max_wait_ms) {
+        // Run one iteration of the event loop
+        int active = uv_run(server->loop, UV_RUN_NOWAIT);
+
+        // If no more active handles, we're done
+        if (active == 0) {
+            log_info("libuv_server_stop: All handles closed after %d ms", elapsed_ms);
+            break;
+        }
+
+        // Count remaining active handles for logging
+        if (elapsed_ms > 0 && elapsed_ms % 1000 == 0) {
+            int handle_count = 0;
+            uv_walk(server->loop, count_handles_cb, &handle_count);
+            log_info("libuv_server_stop: Still waiting for %d handles after %d ms",
+                     handle_count, elapsed_ms);
+        }
+
+        usleep(check_interval_ms * 1000);
+        elapsed_ms += check_interval_ms;
+    }
+
+    if (elapsed_ms >= max_wait_ms) {
+        int handle_count = 0;
+        uv_walk(server->loop, count_handles_cb, &handle_count);
+        log_warn("libuv_server_stop: Timeout waiting for handles to close, %d handles still active",
+                 handle_count);
+        // Force close any remaining handles
+        uv_walk(server->loop, close_walk_cb, NULL);
+        // Give them one more quick iteration to process
+        for (int i = 0; i < 5; i++) {
+            uv_run(server->loop, UV_RUN_NOWAIT);
+            usleep(10000);  // 10ms
+        }
+    }
 
     // Stop the event loop
     uv_stop(server->loop);

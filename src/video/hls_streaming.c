@@ -57,19 +57,36 @@ void cleanup_hls_streaming_backend(void) {
     // Step 2: Mark ALL contexts as not running in a single pass (with mutex held)
     pthread_mutex_lock(&unified_contexts_mutex);
     int stream_count = 0;
+    int already_stopped_count = 0;
     for (int i = 0; i < MAX_STREAMS; i++) {
         if (unified_contexts[i] != NULL) {
+            // Check current thread state BEFORE modifying
+            int current_state = atomic_load(&unified_contexts[i]->thread_state);
+
+            // If thread has already stopped, don't reset its state
+            if (current_state == HLS_THREAD_STOPPED) {
+                already_stopped_count++;
+                if (unified_contexts[i]->stream_name[0] != '\0') {
+                    log_info("HLS stream %s already stopped (state=%d)",
+                             unified_contexts[i]->stream_name, current_state);
+                }
+                continue;  // Skip to next context - thread already exited
+            }
+
             // Mark as not running to signal threads to exit
             atomic_store(&unified_contexts[i]->running, 0);
 
-            // Also update thread state to stopping
-            atomic_store(&unified_contexts[i]->thread_state, HLS_THREAD_STOPPING);
+            // Only update thread state to stopping if not already stopping or stopped
+            if (current_state != HLS_THREAD_STOPPING && current_state != HLS_THREAD_STOPPED) {
+                atomic_store(&unified_contexts[i]->thread_state, HLS_THREAD_STOPPING);
+            }
 
             stream_count++;
 
             // Log the stream being stopped
             if (unified_contexts[i]->stream_name[0] != '\0') {
-                log_info("Signaled HLS stream to stop: %s", unified_contexts[i]->stream_name);
+                log_info("Signaled HLS stream to stop: %s (was state=%d)",
+                         unified_contexts[i]->stream_name, current_state);
 
                 // Mark as stopping in stream state system
                 stream_state_manager_t *state = get_stream_state_by_name(unified_contexts[i]->stream_name);
@@ -84,6 +101,9 @@ void cleanup_hls_streaming_backend(void) {
     }
     pthread_mutex_unlock(&unified_contexts_mutex);
 
+    if (already_stopped_count > 0) {
+        log_info("Found %d HLS streams already stopped", already_stopped_count);
+    }
     log_info("Signaled %d HLS streams to stop", stream_count);
 
     // Step 3: Wait for threads to exit by polling thread_state (threads are detached)
