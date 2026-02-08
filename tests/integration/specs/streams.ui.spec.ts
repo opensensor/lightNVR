@@ -7,11 +7,42 @@
 
 import { test, expect } from '@playwright/test';
 import { StreamsPage } from '../pages/StreamsPage';
-import { CONFIG, USERS, login, sleep } from '../fixtures/test-fixtures';
+import { CONFIG, USERS, login, sleep, getAuthHeader } from '../fixtures/test-fixtures';
+
+/**
+ * Check if the lightNVR server is responsive
+ */
+async function checkServerHealth(): Promise<{ healthy: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${CONFIG.LIGHTNVR_URL}/api/system`, {
+      headers: { 'Authorization': getAuthHeader(USERS.admin) },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.ok || response.status === 401) {
+      return { healthy: true };
+    }
+    return { healthy: false, error: `Server returned status ${response.status}` };
+  } catch (e) {
+    return { healthy: false, error: (e as Error).message };
+  }
+}
 
 test.describe('Streams Page @ui @streams', () => {
-  
+
   test.beforeEach(async ({ page }) => {
+    // Verify server is healthy before each test
+    const health = await checkServerHealth();
+    if (!health.healthy) {
+      console.error(`Server health check failed: ${health.error}`);
+      // Take a diagnostic screenshot even before the test starts
+      try {
+        await page.screenshot({ path: `test-results/server-unhealthy-${Date.now()}.png` });
+      } catch (e) {
+        // Ignore screenshot errors
+      }
+      throw new Error(`lightNVR server is not responding: ${health.error}`);
+    }
+
     await login(page, USERS.admin);
   });
 

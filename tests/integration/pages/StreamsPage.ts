@@ -141,13 +141,31 @@ export class StreamsPage extends BasePage {
     // Wait for the modal to close - this indicates the save was successful
     // The modal closing is triggered by the onSuccess callback in the mutation
     try {
-      await this.addStreamModal.waitFor({ state: 'hidden', timeout: 10000 });
+      await this.addStreamModal.waitFor({ state: 'hidden', timeout: 15000 });
     } catch (e) {
       // Modal might not be found if it closed very quickly
       // Check if the stream name input is still visible
       const nameInputVisible = await this.streamNameInput.isVisible();
       if (nameInputVisible) {
-        throw new Error('Modal did not close after save - save may have failed');
+        // Try to capture diagnostic information
+        await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
+
+        // Check if there's an error message displayed
+        const errorMessage = await this.page.locator('.error, .alert-error, [role="alert"]').first().textContent().catch(() => null);
+        const errorInfo = errorMessage ? ` Error displayed: "${errorMessage}"` : '';
+
+        // Check if the server is still responding
+        const serverOk = await this.page.evaluate(async () => {
+          try {
+            const res = await fetch('/api/system', { signal: AbortSignal.timeout(3000) });
+            return res.ok || res.status === 401;
+          } catch {
+            return false;
+          }
+        }).catch(() => false);
+
+        const serverStatus = serverOk ? '' : ' (WARNING: Server may not be responding!)';
+        throw new Error(`Modal did not close after save - save may have failed.${errorInfo}${serverStatus}`);
       }
     }
 

@@ -95,14 +95,22 @@ test.describe('Authentication @ui @auth', () => {
     test('should redirect to login when accessing protected page after logout', async ({ page }) => {
       // Login first
       await login(page, USERS.admin);
-      
+
       // Logout
       await logout(page);
-      
+
       // Try to access protected page
       await page.goto('/index.html', { waitUntil: 'domcontentloaded' });
-      await sleep(1000);
-      
+
+      // Wait for the JavaScript-based redirect to login page
+      // This happens after the page makes an API call and receives a 401
+      try {
+        await page.waitForURL('**/login.html**', { timeout: 10000 });
+      } catch (e) {
+        await page.screenshot({ path: 'test-results/auth-redirect-after-logout-failed.png' });
+        throw new Error(`Expected redirect to login after logout, but URL is: ${page.url()}`);
+      }
+
       // Should be redirected to login
       expect(page.url()).toContain('login');
       await page.screenshot({ path: 'test-results/auth-protected-after-logout.png' });
@@ -131,14 +139,26 @@ test.describe('Authentication @ui @auth', () => {
 
     test('should redirect unauthenticated access to login', async ({ page }) => {
       // Try to access protected pages without login
+      // The redirect happens via JavaScript after the page loads and makes an API call
+      // that returns 401, so we need to wait for the redirect to complete
       const protectedPages = ['/index.html', '/streams.html', '/recordings.html', '/settings.html'];
-      
+
       for (const pagePath of protectedPages) {
         await page.goto(pagePath, { waitUntil: 'domcontentloaded' });
-        await sleep(1000);
+
+        // Wait for the JavaScript-based redirect to login page
+        // This happens after the page makes an API call and receives a 401
+        try {
+          await page.waitForURL('**/login.html**', { timeout: 10000 });
+        } catch (e) {
+          // If redirect didn't happen within timeout, take screenshot and fail with useful info
+          await page.screenshot({ path: `test-results/auth-redirect-failed-${pagePath.replace(/\//g, '_')}.png` });
+          throw new Error(`Expected redirect to login from ${pagePath}, but URL is: ${page.url()}`);
+        }
+
         expect(page.url()).toContain('login');
       }
-      
+
       await page.screenshot({ path: 'test-results/auth-unauthenticated-redirect.png' });
     });
   });
