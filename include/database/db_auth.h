@@ -33,6 +33,7 @@ typedef struct {
     int64_t updated_at;      /**< Last update timestamp */
     int64_t last_login;      /**< Last login timestamp */
     bool is_active;          /**< Whether the user is active */
+    bool password_change_locked; /**< Whether password changes are locked (for demo accounts) */
 } user_t;
 
 /**

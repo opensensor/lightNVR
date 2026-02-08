@@ -187,32 +187,41 @@ static int hex_to_bin(const char *hex, unsigned char *data, size_t data_length) 
  */
 int db_auth_init(void) {
     log_info("Initializing authentication system");
-    
+
     // Check if the default admin user exists
     user_t user;
     int rc = db_auth_get_user_by_username("admin", &user);
-    
+
     if (rc == 0) {
         log_info("Default admin user already exists");
         return 0;
     }
-    
+
     // Create the default admin user
-    log_info("Creating default admin user");
-    
-    // Use the configured admin password or a default
-    const char *password = g_config.web_password;
-    if (!password || strlen(password) == 0) {
-        password = "admin";
+    log_info("Creating default admin user with secure random password");
+
+    // Generate a secure random password (32 hex characters = 128 bits of entropy)
+    char random_password[65]; // 64 hex chars + null terminator
+    if (generate_random_string(random_password, 32) != 0) {
+        log_error("Failed to generate random password for admin user");
+        return -1;
     }
-    
-    rc = db_auth_create_user("admin", password, NULL, USER_ROLE_ADMIN, true, NULL);
+
+    rc = db_auth_create_user("admin", random_password, NULL, USER_ROLE_ADMIN, true, NULL);
     if (rc != 0) {
         log_error("Failed to create default admin user");
         return -1;
     }
-    
-    log_info("Default admin user created successfully");
+
+    log_info("********************************************************");
+    log_info("********************************************************");
+    log_info("***    Default admin user created successfully       ***");
+    log_info("***    Username: admin                               ***");
+    log_info("***    Password: %-32s   ***", random_password);
+    log_info("***    PLEASE CHANGE THIS PASSWORD IMMEDIATELY!      ***");
+    log_info("********************************************************");
+    log_info("********************************************************");
+
     return 0;
 }
 

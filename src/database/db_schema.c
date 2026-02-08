@@ -560,6 +560,7 @@ static int migration_v4_to_v5(void) {
         "updated_at INTEGER NOT NULL,"  // Unix timestamp
         "last_login INTEGER,"           // Unix timestamp of last login
         "is_active INTEGER DEFAULT 1,"  // Whether the user is active
+        "password_change_locked INTEGER DEFAULT 0,"  // Whether password changes are locked
         "api_key TEXT"                  // API key for programmatic access
         ");";
 
@@ -568,6 +569,21 @@ static int migration_v4_to_v5(void) {
         log_error("Failed to create users table: %s", err_msg);
         sqlite3_free(err_msg);
         return -1;
+    }
+
+    // Add password_change_locked column to existing users table if it doesn't exist
+    const char *add_password_change_locked =
+        "ALTER TABLE users ADD COLUMN password_change_locked INTEGER DEFAULT 0;";
+
+    // This will fail if the column already exists, which is fine
+    sqlite3_exec(db, add_password_change_locked, NULL, NULL, &err_msg);
+    if (err_msg) {
+        // Only log if it's not a "duplicate column" error
+        if (strstr(err_msg, "duplicate column") == NULL) {
+            log_warn("Note: %s", err_msg);
+        }
+        sqlite3_free(err_msg);
+        err_msg = NULL;
     }
 
     // Create indexes for faster lookups

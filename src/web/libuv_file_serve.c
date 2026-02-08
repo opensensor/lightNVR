@@ -214,13 +214,13 @@ static void on_file_open(uv_fs_t *req) {
         http_response_set_json_error(&conn->response, 404, "File Not Found");
 
         // Determine post-response action based on keep-alive
-        extern void libuv_send_response_ex(libuv_connection_t *conn, http_response_t *response,
-                                          write_complete_action_t action);
         write_complete_action_t action =
             (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
                 ? WRITE_ACTION_KEEP_ALIVE
                 : WRITE_ACTION_CLOSE;
 
+        extern int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
+                                          write_complete_action_t action);
         libuv_send_response_ex(conn, &conn->response, action);
         file_serve_cleanup(ctx);
 
@@ -253,13 +253,13 @@ static void on_file_stat(uv_fs_t *req) {
         http_response_set_json_error(&conn->response, 500, "Failed to stat file");
 
         // Determine post-response action based on keep-alive
-        extern void libuv_send_response_ex(libuv_connection_t *conn, http_response_t *response,
-                                          write_complete_action_t action);
         write_complete_action_t action =
             (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
                 ? WRITE_ACTION_KEEP_ALIVE
                 : WRITE_ACTION_CLOSE;
 
+        extern int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
+                                          write_complete_action_t action);
         libuv_send_response_ex(conn, &conn->response, action);
 
         // Clear async flag before closing file
@@ -283,13 +283,13 @@ static void on_file_stat(uv_fs_t *req) {
                                          "Requested Range Not Satisfiable");
 
             // Determine post-response action based on keep-alive
-            extern void libuv_send_response_ex(libuv_connection_t *conn, http_response_t *response,
-                                              write_complete_action_t action);
             write_complete_action_t action =
                 (conn->keep_alive && llhttp_should_keep_alive(&conn->parser))
                     ? WRITE_ACTION_KEEP_ALIVE
                     : WRITE_ACTION_CLOSE;
 
+            extern int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
+                                              write_complete_action_t action);
             libuv_send_response_ex(conn, &conn->response, action);
 
             // Clear async flag before closing file

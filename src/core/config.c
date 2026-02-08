@@ -67,7 +67,8 @@ void load_default_config(config_t *config) {
     snprintf(config->web_root, MAX_PATH_LENGTH, "/var/lib/lightnvr/www");
     config->web_auth_enabled = true;
     snprintf(config->web_username, 32, "admin");
-    snprintf(config->web_password, 32, "admin"); // Default password, should be changed
+    // No default password - will be generated randomly on first run
+    config->web_password[0] = '\0';
     config->webrtc_disabled = false; // WebRTC is enabled by default
     config->auth_timeout_hours = 24; // Default session timeout: 24 hours
     
