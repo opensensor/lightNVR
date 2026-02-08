@@ -219,12 +219,8 @@ export function SystemView() {
     clearLogsMutation.mutate();
   };
 
-  // Restart system function
-  const restartSystem = () => {
-    if (!confirm('Are you sure you want to restart lightNVR?')) {
-      return;
-    }
-
+  // Restart system function (called when user confirms in modal)
+  const handleRestartConfirm = () => {
     restartSystemMutation.mutate();
   };
 
@@ -236,7 +232,7 @@ export function SystemView() {
   return (
     <section id="system-page" className="page">
       <SystemControls
-        restartSystem={restartSystem}
+        onRestartConfirm={handleRestartConfirm}
         isRestarting={isRestarting}
         canControlSystem={canControlSystem}
       />

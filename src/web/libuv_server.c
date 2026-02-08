@@ -23,6 +23,19 @@
 // Forward declarations
 static void on_connection(uv_stream_t *server, int status);
 static void server_thread_func(void *arg);
+static void stop_async_cb(uv_async_t *handle);
+
+/**
+ * @brief Async callback to wake up the event loop for shutdown
+ * This is called when uv_async_send() is invoked from another thread
+ */
+static void stop_async_cb(uv_async_t *handle) {
+    libuv_server_t *server = (libuv_server_t *)handle->data;
+    if (server) {
+        log_debug("stop_async_cb: Received stop signal, stopping event loop");
+        uv_stop(server->loop);
+    }
+}
 
 /**
  * @brief Initialize libuv server with configuration
@@ -73,10 +86,23 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
         safe_free(server);
         return NULL;
     }
-    
+
     // Store server pointer in handle data for callback access
     server->listener.data = server;
-    
+
+    // Initialize async handle for cross-thread stop signaling
+    if (uv_async_init(server->loop, &server->stop_async, stop_async_cb) != 0) {
+        log_error("libuv_server_init: Failed to initialize async handle");
+        uv_close((uv_handle_t *)&server->listener, NULL);
+        if (server->owns_loop) {
+            uv_loop_close(server->loop);
+            safe_free(server->loop);
+        }
+        safe_free(server);
+        return NULL;
+    }
+    server->stop_async.data = server;
+
     // Initialize handler registry
     server->handlers = safe_calloc(INITIAL_HANDLER_CAPACITY, sizeof(*server->handlers));
     if (!server->handlers) {
@@ -224,9 +250,20 @@ void libuv_server_stop(http_server_handle_t handle) {
     server->running = false;
     server->shutting_down = true;  // Signal shutdown to all callbacks
 
+    // Send async signal to wake up the event loop thread immediately
+    // This is critical because uv_run(UV_RUN_ONCE) can block indefinitely
+    // waiting for I/O, and we need to wake it up so it can check server->running
+    log_info("libuv_server_stop: Sending async stop signal to event loop");
+    uv_async_send(&server->stop_async);
+
     // Close the listener to stop accepting new connections
     if (!uv_is_closing((uv_handle_t *)&server->listener)) {
         uv_close((uv_handle_t *)&server->listener, NULL);
+    }
+
+    // Close the async handle since we're shutting down
+    if (!uv_is_closing((uv_handle_t *)&server->stop_async)) {
+        uv_close((uv_handle_t *)&server->stop_async, NULL);
     }
 
     // Give pending operations a chance to complete

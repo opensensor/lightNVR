@@ -22,6 +22,7 @@
 typedef struct libuv_server {
     uv_loop_t *loop;                    // Event loop (owned or shared)
     uv_tcp_t listener;                  // TCP listener handle
+    uv_async_t stop_async;              // Async handle to wake up event loop for stop
     http_server_config_t config;        // Server configuration (copied)
     bool running;                       // Server running flag
     bool owns_loop;                     // Whether we own the event loop
