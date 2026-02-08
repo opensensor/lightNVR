@@ -159,6 +159,12 @@ typedef struct {
     char go2rtc_external_ip[64];          // Optional: External IP for NAT (empty = auto-detect)
     char go2rtc_ice_servers[512];         // Optional: Custom ICE servers (comma-separated)
 
+    // TURN server settings for WebRTC relay (exposed to browser)
+    bool turn_enabled;                    // Enable TURN relay (default: false)
+    char turn_server_url[256];            // TURN server URL (e.g., turn:turn.example.com:3478)
+    char turn_username[64];               // TURN username
+    char turn_password[64];               // TURN password/credential
+
     // MQTT settings for detection event streaming
     bool mqtt_enabled;                    // Enable MQTT event publishing (default: false)
     char mqtt_broker_host[256];           // MQTT broker hostname or IP

@@ -113,15 +113,28 @@ export function WebRTCVideoCell({
         go2rtcBaseUrl = `http://${window.location.hostname}:1984`;
       }
 
+      // Fetch ICE server configuration from API (includes TURN if configured)
+      let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+      try {
+        const iceResponse = await fetch('/api/ice-servers');
+        if (iceResponse.ok) {
+          const iceConfig = await iceResponse.json();
+          if (iceConfig.ice_servers && iceConfig.ice_servers.length > 0) {
+            iceServers = iceConfig.ice_servers;
+            console.log(`Using ${iceServers.length} ICE servers from config`);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch ICE servers config, using defaults:', err);
+      }
+
       // Create a new RTCPeerConnection
       const pc = new RTCPeerConnection({
       iceTransportPolicy: 'all',
       bundlePolicy: 'balanced',
       rtcpMuxPolicy: 'require',
       iceCandidatePoolSize: 0,
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-      ]
+      iceServers: iceServers
     });
 
     peerConnectionRef.current = pc;

@@ -108,6 +108,12 @@ void load_default_config(config_t *config) {
     config->go2rtc_external_ip[0] = '\0';  // Empty by default (auto-detect)
     config->go2rtc_ice_servers[0] = '\0';  // Empty by default (use STUN server)
 
+    // TURN server settings for WebRTC relay (exposed to browser)
+    config->turn_enabled = false;  // Disabled by default
+    config->turn_server_url[0] = '\0';  // Empty by default
+    config->turn_username[0] = '\0';  // Empty by default
+    config->turn_password[0] = '\0';  // Empty by default
+
     // ONVIF discovery settings
     config->onvif_discovery_enabled = false;  // Disabled by default
     config->onvif_discovery_interval = 300;   // 5 minutes between scans
@@ -505,6 +511,17 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "ice_servers") == 0) {
             strncpy(config->go2rtc_ice_servers, value, sizeof(config->go2rtc_ice_servers) - 1);
             config->go2rtc_ice_servers[sizeof(config->go2rtc_ice_servers) - 1] = '\0';
+        } else if (strcmp(name, "turn_enabled") == 0) {
+            config->turn_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "turn_server_url") == 0) {
+            strncpy(config->turn_server_url, value, sizeof(config->turn_server_url) - 1);
+            config->turn_server_url[sizeof(config->turn_server_url) - 1] = '\0';
+        } else if (strcmp(name, "turn_username") == 0) {
+            strncpy(config->turn_username, value, sizeof(config->turn_username) - 1);
+            config->turn_username[sizeof(config->turn_username) - 1] = '\0';
+        } else if (strcmp(name, "turn_password") == 0) {
+            strncpy(config->turn_password, value, sizeof(config->turn_password) - 1);
+            config->turn_password[sizeof(config->turn_password) - 1] = '\0';
         }
     }
     // ONVIF settings
@@ -1101,7 +1118,18 @@ int save_config(const config_t *config, const char *path) {
     if (config->go2rtc_ice_servers[0] != '\0') {
         fprintf(file, "ice_servers = %s\n", config->go2rtc_ice_servers);
     }
-    
+    // TURN server settings
+    fprintf(file, "turn_enabled = %s\n", config->turn_enabled ? "true" : "false");
+    if (config->turn_server_url[0] != '\0') {
+        fprintf(file, "turn_server_url = %s\n", config->turn_server_url);
+    }
+    if (config->turn_username[0] != '\0') {
+        fprintf(file, "turn_username = %s\n", config->turn_username);
+    }
+    if (config->turn_password[0] != '\0') {
+        fprintf(file, "turn_password = %s\n", config->turn_password);
+    }
+
     // Write stream-specific settings
     for (int i = 0; i < config->max_streams; i++) {
         if (strlen(config->streams[i].name) > 0 && 

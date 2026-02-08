@@ -25,6 +25,7 @@
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_users.h"
+#include "web/api_handlers_ice_servers.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -93,6 +94,9 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Settings API
     http_server_register_handler(server, "/api/settings", "GET", handle_get_settings);
     http_server_register_handler(server, "/api/settings", "POST", handle_post_settings);
+
+    // ICE Servers API (WebRTC TURN/STUN configuration)
+    http_server_register_handler(server, "/api/ice-servers", "GET", handle_get_ice_servers);
 
     // System API
     http_server_register_handler(server, "/api/system", "GET", handle_get_system_info);
