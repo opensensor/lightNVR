@@ -114,23 +114,35 @@ async function startLightNVR(): Promise<void> {
     rmSync(pidFile);
   }
 
+  // Use 'inherit' for stdio to prevent buffer issues that can cause the process to hang
+  // With detached: true and pipe, if stdout/stderr buffers fill up and aren't consumed,
+  // the child process can block. Using 'inherit' or 'ignore' avoids this issue.
   lightnvrProcess = spawn(LIGHTNVR_BIN, ['-c', LIGHTNVR_CONFIG], {
     cwd: PROJECT_ROOT,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'inherit', 'inherit'],  // inherit stdout/stderr for debugging
     detached: true,
+  });
+
+  // Unref the process so the parent can exit without waiting for this child
+  lightnvrProcess.unref();
+
+  // Handle process errors
+  lightnvrProcess.on('error', (err) => {
+    console.error(`lightNVR process error: ${err.message}`);
+  });
+
+  // Log if the process exits unexpectedly
+  lightnvrProcess.on('exit', (code, signal) => {
+    if (code !== null) {
+      console.log(`lightNVR process exited with code ${code}`);
+    } else if (signal !== null) {
+      console.log(`lightNVR process was killed with signal ${signal}`);
+    }
   });
 
   // Store PID in a separate file for teardown (not the same as lightNVR's PID file)
   writeFileSync(`${TEST_DIR}/test-lightnvr.pid`, String(lightnvrProcess.pid));
-  
-  // Log output for debugging
-  lightnvrProcess.stdout?.on('data', (data) => {
-    if (process.env.DEBUG) console.log(`[lightnvr] ${data}`);
-  });
-  lightnvrProcess.stderr?.on('data', (data) => {
-    if (process.env.DEBUG) console.error(`[lightnvr] ${data}`);
-  });
-  
+
   console.log(`lightNVR started with PID: ${lightnvrProcess.pid}`);
   
   // Wait for lightNVR to be ready (with auth)

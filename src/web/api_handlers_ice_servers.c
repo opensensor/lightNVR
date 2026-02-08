@@ -45,9 +45,19 @@ void handle_get_ice_servers(const http_request_t *req, http_response_t *res) {
             cJSON *urls = cJSON_CreateArray();
             if (urls) {
                 // Use configured STUN server or default
-                const char *stun_server = g_config.go2rtc_stun_server[0] ? 
-                    g_config.go2rtc_stun_server : "stun:stun.l.google.com:19302";
-                cJSON_AddItemToArray(urls, cJSON_CreateString(stun_server));
+                // The config stores just hostname:port, so we need to add the stun: prefix
+                char stun_url[300];
+                const char *stun_host = g_config.go2rtc_stun_server[0] ?
+                    g_config.go2rtc_stun_server : "stun.l.google.com:19302";
+
+                // Check if it already has a stun: prefix
+                if (strncmp(stun_host, "stun:", 5) == 0) {
+                    snprintf(stun_url, sizeof(stun_url), "%s", stun_host);
+                } else {
+                    snprintf(stun_url, sizeof(stun_url), "stun:%s", stun_host);
+                }
+
+                cJSON_AddItemToArray(urls, cJSON_CreateString(stun_url));
                 cJSON_AddItemToObject(stun, "urls", urls);
                 cJSON_AddItemToArray(ice_servers, stun);
             } else {
@@ -56,28 +66,29 @@ void handle_get_ice_servers(const http_request_t *req, http_response_t *res) {
         }
     }
     
-    // Add TURN server if enabled and configured
-    if (g_config.turn_enabled && g_config.turn_server_url[0]) {
+    // Add TURN server if enabled and configured with credentials
+    // TURN requires both username AND credential to be present
+    if (g_config.turn_enabled && g_config.turn_server_url[0] &&
+        g_config.turn_username[0] && g_config.turn_password[0]) {
         cJSON *turn = cJSON_CreateObject();
         if (turn) {
             cJSON *urls = cJSON_CreateArray();
             if (urls) {
                 cJSON_AddItemToArray(urls, cJSON_CreateString(g_config.turn_server_url));
                 cJSON_AddItemToObject(turn, "urls", urls);
-                
-                // Add credentials if configured
-                if (g_config.turn_username[0]) {
-                    cJSON_AddStringToObject(turn, "username", g_config.turn_username);
-                }
-                if (g_config.turn_password[0]) {
-                    cJSON_AddStringToObject(turn, "credential", g_config.turn_password);
-                }
-                
+
+                // Add credentials (both required for TURN)
+                cJSON_AddStringToObject(turn, "username", g_config.turn_username);
+                cJSON_AddStringToObject(turn, "credential", g_config.turn_password);
+
                 cJSON_AddItemToArray(ice_servers, turn);
             } else {
                 cJSON_Delete(turn);
             }
         }
+    } else if (g_config.turn_enabled && g_config.turn_server_url[0]) {
+        // TURN is enabled but missing credentials - log a warning
+        log_warn("TURN server configured but missing username or password - TURN will not be used");
     }
     
     cJSON_AddItemToObject(response, "ice_servers", ice_servers);
