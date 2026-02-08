@@ -40,21 +40,27 @@ streams:
 
   # Standard test pattern with timestamp counter
   # Good for verifying basic stream connectivity and frame timing
-  test_pattern: ffmpeg:virtual?video&size=720#video=h264
+  test_pattern:
+    - ffmpeg:virtual?video&size=720#video=h264
 
   # SMPTE color bars - standard broadcast test pattern
   # Good for verifying color accuracy and basic video pipeline
-  test_colorbars: ffmpeg:virtual?video=smptebars&size=720#video=h264
+  test_colorbars:
+    - ffmpeg:virtual?video=smptebars&size=720#video=h264
 
   # Solid color streams - minimal CPU usage
   # Good for basic connectivity tests and low-resource environments
-  test_red: ffmpeg:virtual?video=color&color=red&size=640x480#video=h264
+  test_red:
+    - rtsp://localhost:18554/test_red#transport=tcp#timeout=30
+    - ffmpeg:test_red#video=copy#audio=aac
+    - ffmpeg:test_red#audio=opus
   test_blue: ffmpeg:virtual?video=color&color=blue&size=640x480#video=h264
   test_green: ffmpeg:virtual?video=color&color=green&size=640x480#video=h264
 
   # Mandelbrot fractal zoom - animated pattern
   # Good for testing motion detection (continuous motion)
-  test_mandelbrot: ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264
+  test_mandelbrot:
+    - ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264
 
   # More elaborate test pattern (testsrc2)
   # Good for higher resolution testing
@@ -85,4 +91,10 @@ streams:
   #   http://localhost:11984/api/streams
   #
   # ==========================================================================
+  ui_test_stream_1770566410611:
+    - rtsp://localhost:18554/test_pattern#transport=tcp#timeout=30
+    - ffmpeg:ui_test_stream_1770566410611#video=copy#audio=aac
+    - ffmpeg:ui_test_stream_1770566410611#audio=opus
 
+preload:
+  ui_test_stream_1770566410611: audio=&video=
