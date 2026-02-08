@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lightnvr
+  namespace: lightnvr
+  labels:
+    app: lightnvr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lightnvr
+  strategy:
+    type: Recreate  # Required for RWO PVC
+  template:
+    metadata:
+      labels:
+        app: lightnvr
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: doks.digitalocean.com/node-pool
+                    operator: NotIn
+                    values:
+                      - ocr-xbig
+      containers:
+        # Main lightNVR container
+        - name: lightnvr
+          image: ghcr.io/opensensor/lightnvr:latest
+          ports:
+            - containerPort: 8080
+              name: web
+            - containerPort: 1984
+              name: go2rtc-api
+            - containerPort: 8554
+              name: rtsp
+            - containerPort: 8555
+              name: webrtc-tcp
+            - containerPort: 8555
+              protocol: UDP
+              name: webrtc-udp
+          env:
+            - name: TZ
+              value: "America/New_York"
+            - name: GO2RTC_CONFIG_PERSIST
+              value: "true"
+            - name: LIGHTNVR_AUTO_INIT
+              value: "true"
+            - name: LIGHTNVR_WEB_ROOT
+              value: "/var/lib/lightnvr/www"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/lightnvr/data
+            - name: config
+              mountPath: /etc/lightnvr
+            - name: go2rtc-config
+              mountPath: /etc/lightnvr/go2rtc/go2rtc.yaml
+              subPath: go2rtc.yaml
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+        # WireGuard sidecar — lightweight Alpine with wireguard-tools
+        # Does NOT use linuxserver image (which strips the default route)
+        - name: wireguard
+          image: alpine:3.19
+          command:
+            - sh
+            - -c
+            - |
+              apk add --no-cache wireguard-tools iptables ip6tables &&
+              mkdir -p /etc/wireguard &&
+              cp /wg-secret/wg0.conf /etc/wireguard/wg0.conf &&
+              chmod 600 /etc/wireguard/wg0.conf &&
+              # Bring down wg0 if it exists from a previous run
+              wg-quick down wg0 2>/dev/null || true &&
+              wg-quick up wg0 &&
+              echo "WireGuard tunnel is UP" &&
+              # Get the pod's eth0 IP address for DNAT (BusyBox compatible)
+              ETH0_IP=$(ip -4 addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d'/' -f1) &&
+              echo "Pod eth0 IP: $ETH0_IP" &&
+              # Add DNAT rule to redirect WebRTC UDP traffic from WireGuard IP to eth0 IP
+              # This is needed because go2rtc binds UDP to eth0, not wg0
+              iptables -t nat -A PREROUTING -i wg0 -p udp --dport 8555 -j DNAT --to-destination $ETH0_IP:8555 &&
+              iptables -t nat -A PREROUTING -i wg0 -p tcp --dport 8555 -j DNAT --to-destination $ETH0_IP:8555 &&
+              # Add SNAT/MASQUERADE so response traffic goes back through wg0
+              # This ensures the source IP is changed to the WireGuard IP (10.6.0.4) for local delivery
+              iptables -t nat -A POSTROUTING -o eth0 -p udp --dport 8555 -j MASQUERADE &&
+              iptables -t nat -A POSTROUTING -o eth0 -p tcp --dport 8555 -j MASQUERADE &&
+              echo "Added iptables DNAT and SNAT rules for port 8555 from wg0 to $ETH0_IP" &&
+              # Keep container running and log status every 60s
+              while true; do
+                wg show wg0 2>/dev/null || echo "wg0 interface not found";
+                sleep 60;
+              done
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          volumeMounts:
+            - name: wg-config
+              mountPath: /wg-secret
+              readOnly: true
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lightnvr-data
+        - name: config
+          persistentVolumeClaim:
+            claimName: lightnvr-config
+        - name: go2rtc-config
+          configMap:
+            name: go2rtc-config
+        - name: wg-config
+          secret:
+            secretName: wireguard-config
+            optional: true
+

@@ -141,6 +141,10 @@ async function startLightNVR(): Promise<void> {
     rmSync(pidFile);
   }
 
+  // Log the exact command we're running
+  console.log(`Starting lightNVR with command: ${LIGHTNVR_BIN} -c ${LIGHTNVR_CONFIG}`);
+  console.log(`Working directory: ${PROJECT_ROOT}`);
+
   // Use 'inherit' for stdio - lightNVR writes to its own log file at /tmp/lightnvr-test/lightnvr.log
   // Using 'pipe' with unref() causes SIGPIPE issues when parent moves on
   lightnvrProcess = spawn(LIGHTNVR_BIN, ['-c', LIGHTNVR_CONFIG], {
@@ -152,17 +156,26 @@ async function startLightNVR(): Promise<void> {
   // Unref the process so the parent can exit without waiting for this child
   lightnvrProcess.unref();
 
+  // Track if process exited during startup
+  let processExitedDuringStartup = false;
+  let exitCode: number | null = null;
+  let exitSignal: string | null = null;
+
   // Handle process errors
   lightnvrProcess.on('error', (err) => {
     console.error(`lightNVR process error: ${err.message}`);
+    console.error(`Error stack: ${err.stack}`);
   });
 
   // Log if the process exits unexpectedly during startup
   lightnvrProcess.on('exit', (code, signal) => {
+    processExitedDuringStartup = true;
+    exitCode = code;
+    exitSignal = signal;
     if (code !== null) {
-      console.log(`lightNVR process exited with code ${code}`);
+      console.error(`lightNVR process exited with code ${code}`);
     } else if (signal !== null) {
-      console.log(`lightNVR process was killed with signal ${signal}`);
+      console.error(`lightNVR process was killed with signal ${signal}`);
     }
   });
 
@@ -170,6 +183,26 @@ async function startLightNVR(): Promise<void> {
   writeFileSync(`${TEST_DIR}/test-lightnvr.pid`, String(lightnvrProcess.pid));
 
   console.log(`lightNVR started with PID: ${lightnvrProcess.pid}`);
+
+  // Give the process a moment to start before checking if it's still alive
+  await sleep(2000);
+
+  // Check if process exited immediately
+  if (processExitedDuringStartup) {
+    console.error(`lightNVR process exited immediately after spawn!`);
+    console.error(`Exit code: ${exitCode}, Signal: ${exitSignal}`);
+
+    // Try to read any logs that might have been written
+    const logPath = `${TEST_DIR}/lightnvr.log`;
+    if (existsSync(logPath)) {
+      const logs = readFileSync(logPath, 'utf8');
+      console.error('=== lightNVR log ===\n' + logs);
+    } else {
+      console.error('No log file was created at ' + logPath);
+    }
+
+    throw new Error(`lightNVR process exited immediately with code ${exitCode}`);
+  }
   
   // Wait for lightNVR to be ready (with auth)
   const authHeader = 'Basic ' + Buffer.from('admin:admin').toString('base64');

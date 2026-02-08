@@ -1,0 +1,107 @@
+# ConfigMap to expose TCP services through nginx-ingress
+# This tells nginx-ingress to forward port 3478 to coturn
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcp-services
+  namespace: ingress-nginx
+data:
+  # Format: "<external-port>": "<namespace>/<service>:<port>"
+  "3478": "lightnvr/coturn:3478"
+---
+# UDP services for TURN relay ports
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udp-services
+  namespace: ingress-nginx
+data:
+  # TURN UDP port
+  "3478": "lightnvr/coturn:3478"
+  # Relay ports (49152-49172)
+  "49152": "lightnvr/coturn:49152"
+  "49153": "lightnvr/coturn:49153"
+  "49154": "lightnvr/coturn:49154"
+  "49155": "lightnvr/coturn:49155"
+  "49156": "lightnvr/coturn:49156"
+  "49157": "lightnvr/coturn:49157"
+  "49158": "lightnvr/coturn:49158"
+  "49159": "lightnvr/coturn:49159"
+  "49160": "lightnvr/coturn:49160"
+  "49161": "lightnvr/coturn:49161"
+  "49162": "lightnvr/coturn:49162"
+  "49163": "lightnvr/coturn:49163"
+  "49164": "lightnvr/coturn:49164"
+  "49165": "lightnvr/coturn:49165"
+  "49166": "lightnvr/coturn:49166"
+  "49167": "lightnvr/coturn:49167"
+  "49168": "lightnvr/coturn:49168"
+  "49169": "lightnvr/coturn:49169"
+  "49170": "lightnvr/coturn:49170"
+  "49171": "lightnvr/coturn:49171"
+  "49172": "lightnvr/coturn:49172"
+---
+# UDP services for TURN relay ports
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udp-services
+  namespace: ingress-nginx
+data:
+  # TURN UDP listening port
+  "3478": "lightnvr/coturn:3478"
+  # Relay ports (20 ports for concurrent streams)
+  "49152": "lightnvr/coturn:49152"
+  "49153": "lightnvr/coturn:49153"
+  "49154": "lightnvr/coturn:49154"
+  "49155": "lightnvr/coturn:49155"
+  "49156": "lightnvr/coturn:49156"
+  "49157": "lightnvr/coturn:49157"
+  "49158": "lightnvr/coturn:49158"
+  "49159": "lightnvr/coturn:49159"
+  "49160": "lightnvr/coturn:49160"
+  "49161": "lightnvr/coturn:49161"
+  "49162": "lightnvr/coturn:49162"
+  "49163": "lightnvr/coturn:49163"
+  "49164": "lightnvr/coturn:49164"
+  "49165": "lightnvr/coturn:49165"
+  "49166": "lightnvr/coturn:49166"
+  "49167": "lightnvr/coturn:49167"
+  "49168": "lightnvr/coturn:49168"
+  "49169": "lightnvr/coturn:49169"
+  "49170": "lightnvr/coturn:49170"
+  "49171": "lightnvr/coturn:49171"
+  "49172": "lightnvr/coturn:49172"
+---
+# UDP services for TURN relay ports
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: udp-services
+  namespace: ingress-nginx
+data:
+  # TURN UDP listening port
+  "3478": "lightnvr/coturn:3478"
+  # Relay ports (20 ports for concurrent streams)
+  "49152": "lightnvr/coturn:49152"
+  "49153": "lightnvr/coturn:49153"
+  "49154": "lightnvr/coturn:49154"
+  "49155": "lightnvr/coturn:49155"
+  "49156": "lightnvr/coturn:49156"
+  "49157": "lightnvr/coturn:49157"
+  "49158": "lightnvr/coturn:49158"
+  "49159": "lightnvr/coturn:49159"
+  "49160": "lightnvr/coturn:49160"
+  "49161": "lightnvr/coturn:49161"
+  "49162": "lightnvr/coturn:49162"
+  "49163": "lightnvr/coturn:49163"
+  "49164": "lightnvr/coturn:49164"
+  "49165": "lightnvr/coturn:49165"
+  "49166": "lightnvr/coturn:49166"
+  "49167": "lightnvr/coturn:49167"
+  "49168": "lightnvr/coturn:49168"
+  "49169": "lightnvr/coturn:49169"
+  "49170": "lightnvr/coturn:49170"
+  "49171": "lightnvr/coturn:49171"
+  "49172": "lightnvr/coturn:49172"
+

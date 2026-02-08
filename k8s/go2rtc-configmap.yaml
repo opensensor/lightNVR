@@ -1,0 +1,38 @@
+# go2rtc configuration for WebRTC behind WireGuard VPN
+# Uses TURN relay to bypass UDP port forwarding limitations
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: go2rtc-config
+  namespace: lightnvr
+data:
+  go2rtc.yaml: |
+    # go2rtc configuration file
+    # Configured for WireGuard VPN tunnel with TURN relay
+    api:
+      listen: :1984
+
+    rtsp:
+      listen: :8554
+
+    webrtc:
+      # Bind to all interfaces
+      listen: ":8555"
+      # Force relay-only - no host candidates since direct connection won't work
+      filters:
+        networks: [udp4, tcp4]
+        candidates: []
+      # Use TURN server for relay
+      ice_servers:
+        # TURN server only - force relay
+        - urls:
+            - "turn:coturn.lightnvr.svc.cluster.local:3478?transport=tcp"
+          username: "lightnvr"
+          credential: "lightnvr-turn-2024"
+
+    log:
+      level: trace
+
+    streams:
+      # Streams will be added dynamically by LightNVR
+

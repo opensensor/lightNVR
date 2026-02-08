@@ -95,6 +95,64 @@ jobs:
           rm -rf playwright-report test-results
           mkdir -p playwright-report test-results
 
+          # Pre-flight checks before running tests
+          echo "=== Pre-flight checks ==="
+          echo "Checking if lightNVR binary exists..."
+          ls -la build/bin/lightnvr || echo "lightNVR binary NOT found"
+          echo ""
+          echo "Checking if go2rtc binary exists..."
+          ls -la go2rtc/go2rtc || echo "go2rtc binary NOT found"
+          echo ""
+          echo "Checking if web/dist exists..."
+          ls -la web/dist/ | head -5 || echo "web/dist NOT found"
+          echo ""
+          echo "Checking if config file exists..."
+          ls -la config/lightnvr-test.ini || echo "Config file NOT found"
+          echo ""
+
+          # Try to manually start lightNVR to see if it works
+          echo "=== Attempting manual lightNVR start for diagnostics ==="
+          mkdir -p /tmp/lightnvr-test/recordings /tmp/lightnvr-test/go2rtc
+          timeout 10 ./build/bin/lightnvr -c config/lightnvr-test.ini &
+          MANUAL_PID=$!
+          echo "Started lightNVR manually with PID: $MANUAL_PID"
+          sleep 5
+
+          # Check if it's still running
+          if kill -0 $MANUAL_PID 2>/dev/null; then
+            echo "lightNVR is running (PID: $MANUAL_PID)"
+            # Check if it's listening on port 18080
+            if curl -s -u admin:admin http://localhost:18080/api/system > /dev/null 2>&1; then
+              echo "lightNVR is responding on port 18080"
+            else
+              echo "lightNVR is NOT responding on port 18080"
+              netstat -tlpn | grep 18080 || echo "Port 18080 is not listening"
+            fi
+          else
+            echo "lightNVR process exited"
+            wait $MANUAL_PID
+            echo "Exit code: $?"
+          fi
+
+          # Check logs
+          if [ -f /tmp/lightnvr-test/lightnvr.log ]; then
+            echo "=== lightNVR log (last 50 lines) ==="
+            tail -50 /tmp/lightnvr-test/lightnvr.log
+          else
+            echo "No log file at /tmp/lightnvr-test/lightnvr.log"
+          fi
+
+          # Kill the manual instance
+          kill $MANUAL_PID 2>/dev/null || true
+          sleep 2
+          kill -9 $MANUAL_PID 2>/dev/null || true
+
+          # Clean up for actual test run
+          rm -rf /tmp/lightnvr-test
+
+          echo ""
+          echo "=== Running Playwright tests ==="
+
           # Run Playwright tests with output capture
           # global-setup.ts starts lightNVR which internally starts go2rtc
           # global-setup.ts then registers test streams via API
