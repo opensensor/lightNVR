@@ -21,6 +21,7 @@
 #include "database/db_auth.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
+#include "video/mp4_recording.h"
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
@@ -50,10 +51,21 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
         go2rtc_integration_cleanup();
 
         if (go2rtc_process_is_running()) {
+            // Stop HLS streams that were routed through go2rtc
             for (int i = 0; i < stream_count; i++) {
                 if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
                     all_streams[i].streaming_enabled) {
                     stop_hls_stream(all_streams[i].name);
+                }
+            }
+
+            // Stop MP4 recordings that were using go2rtc RTSP URLs
+            // They will be restarted below with direct camera URLs
+            for (int i = 0; i < stream_count; i++) {
+                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                    all_streams[i].record) {
+                    log_info("Stopping MP4 recording for %s before go2rtc shutdown", all_streams[i].name);
+                    stop_mp4_recording(all_streams[i].name);
                 }
             }
 
@@ -69,6 +81,17 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
         // stale state, and go2rtc_integration_full_start() skips the init step.
         go2rtc_stream_cleanup();
 
+        // Restart MP4 recordings with direct camera URLs (go2rtc is now disabled)
+        for (int i = 0; i < stream_count; i++) {
+            if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                all_streams[i].record) {
+                log_info("Restarting MP4 recording for %s with direct camera URL", all_streams[i].name);
+                if (start_mp4_recording(all_streams[i].name) != 0) {
+                    log_warn("Failed to restart MP4 recording for stream %s", all_streams[i].name);
+                }
+            }
+        }
+
         // Start native HLS threads
         for (int i = 0; i < stream_count; i++) {
             if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
@@ -79,7 +102,7 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
             }
         }
 
-        log_info("go2rtc settings worker: go2rtc disabled, native HLS started");
+        log_info("go2rtc settings worker: go2rtc disabled, native HLS and recordings restarted");
     } else {
         // go2rtc is being ENABLED (or config changed) — restart go2rtc
         log_info("go2rtc settings worker: enabling go2rtc...");
@@ -89,6 +112,15 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
             if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
                 all_streams[i].streaming_enabled) {
                 stop_hls_stream(all_streams[i].name);
+            }
+        }
+
+        // Stop MP4 recordings so they can be restarted with go2rtc RTSP URLs
+        for (int i = 0; i < stream_count; i++) {
+            if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                all_streams[i].record) {
+                log_info("Stopping MP4 recording for %s before go2rtc startup", all_streams[i].name);
+                stop_mp4_recording(all_streams[i].name);
             }
         }
 
@@ -103,7 +135,29 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
         // Full go2rtc startup: init, start, register streams
         if (!go2rtc_integration_full_start()) {
             log_error("Failed to start go2rtc integration");
+
+            // go2rtc failed to start — restart recordings with direct URLs as fallback
+            for (int i = 0; i < stream_count; i++) {
+                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                    all_streams[i].record) {
+                    log_info("Restarting MP4 recording for %s with direct URL (go2rtc failed)", all_streams[i].name);
+                    if (start_mp4_recording(all_streams[i].name) != 0) {
+                        log_warn("Failed to restart MP4 recording for stream %s", all_streams[i].name);
+                    }
+                }
+            }
         } else {
+            // Restart MP4 recordings routed through go2rtc
+            for (int i = 0; i < stream_count; i++) {
+                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                    all_streams[i].record) {
+                    log_info("Restarting MP4 recording for %s via go2rtc", all_streams[i].name);
+                    if (go2rtc_integration_start_recording(all_streams[i].name) != 0) {
+                        log_warn("Failed to restart MP4 recording for stream %s via go2rtc", all_streams[i].name);
+                    }
+                }
+            }
+
             // Start HLS streams routed through go2rtc
             for (int i = 0; i < stream_count; i++) {
                 if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
@@ -113,7 +167,7 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
                     }
                 }
             }
-            log_info("go2rtc settings worker: go2rtc enabled and streams registered");
+            log_info("go2rtc settings worker: go2rtc enabled, streams and recordings restarted");
         }
     }
 
