@@ -1173,12 +1173,17 @@ int main(int argc, char *argv[]) {
             last_service_check_time = now;
         }
 
-        // Process events, monitor system health, etc.
-        sleep(1);
-
         // Check if restart was requested and log it
         if (restart_requested) {
-            log_info("Main loop detected restart_requested=true, running=%d - should exit loop now", running);
+            log_info("Main loop detected restart_requested=true, running=%d - exiting loop immediately", running);
+            break;  // Exit the loop immediately without sleeping
+        }
+
+        // Process events, monitor system health, etc.
+        // Use shorter sleep intervals to allow faster response to restart/shutdown requests
+        // Sleep for 100ms at a time, checking running flag between sleeps
+        for (int i = 0; i < 10 && running; i++) {
+            usleep(100000);  // 100ms
         }
     }
 
