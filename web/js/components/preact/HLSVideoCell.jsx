@@ -10,7 +10,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { PTZControls } from './PTZControls.jsx';
-import { getGo2rtcBaseUrl, isGo2rtcAvailable } from '../../utils/settings-utils.js';
+import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import Hls from 'hls.js';
 
 /**
@@ -113,6 +113,11 @@ export function HLSVideoCell({
       let hlsStreamUrl;
       let usingGo2rtc = false;
 
+      // Check if go2rtc is enabled in runtime settings.
+      // When enabled, we NEVER fall back to ffmpeg HLS - it's go2rtc or nothing.
+      const go2rtcEnabled = await isGo2rtcEnabled();
+      if (!isMounted) return;
+
       // Determine which HLS source to use based on current mode
       if (hlsMode === 'go2rtc') {
         // Check if go2rtc is actually available before trying to use it
@@ -147,9 +152,15 @@ export function HLSVideoCell({
           }
 
           if (!isMounted) return;
+        } else if (go2rtcEnabled) {
+          // go2rtc is enabled but not responding - do NOT fall back to ffmpeg HLS
+          console.error(`[HLS ${stream.name}] go2rtc is enabled but not responding - no fallback to ffmpeg HLS`);
+          setError('go2rtc is enabled but not responding. Check go2rtc service status. Click Retry to try again.');
+          setIsLoading(false);
+          return;
         } else {
-          // go2rtc is not available - fall back to native HLS immediately
-          console.warn(`[HLS ${stream.name}] go2rtc is not available, falling back to native lightNVR HLS`);
+          // go2rtc is not enabled - use native lightNVR HLS
+          console.warn(`[HLS ${stream.name}] go2rtc is not available, using native lightNVR HLS`);
           hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8`;
           usingGo2rtc = false;
           setHlsMode('native');
@@ -379,9 +390,17 @@ export function HLSVideoCell({
                 }
                 if (isMounted) {
                   if (usingGo2rtc) {
-                    console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} attempts, falling back to native lightNVR HLS`);
-                    fatalErrorCountRef.current = 0;
-                    setHlsMode('native');
+                    if (go2rtcEnabled) {
+                      // go2rtc is enabled - do NOT fall back to ffmpeg HLS
+                      console.error(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} network error attempts - no fallback (go2rtc enabled)`);
+                      setError('go2rtc HLS stream failed (network error). Click Retry to try again.');
+                      setIsLoading(false);
+                      setIsPlaying(false);
+                    } else {
+                      console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} attempts, falling back to native lightNVR HLS`);
+                      fatalErrorCountRef.current = 0;
+                      setHlsMode('native');
+                    }
                   } else {
                     setError(data.details || 'HLS network error - stream unavailable');
                     setIsLoading(false);
@@ -436,9 +455,16 @@ export function HLSVideoCell({
                 }
                 if (isMounted) {
                   if (usingGo2rtc) {
-                    console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} media error recoveries, falling back to native lightNVR HLS`);
-                    fatalErrorCountRef.current = 0;
-                    setHlsMode('native');
+                    if (go2rtcEnabled) {
+                      console.error(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} media error attempts - no fallback (go2rtc enabled)`);
+                      setError('go2rtc HLS stream failed (media error). Click Retry to try again.');
+                      setIsLoading(false);
+                      setIsPlaying(false);
+                    } else {
+                      console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} media error recoveries, falling back to native lightNVR HLS`);
+                      fatalErrorCountRef.current = 0;
+                      setHlsMode('native');
+                    }
                   } else {
                     setError(data.details || 'HLS media error - stream unavailable');
                     setIsLoading(false);
@@ -456,11 +482,17 @@ export function HLSVideoCell({
                 hlsPlayerRef.current = null;
               }
               if (isMounted) {
-                // If we were using go2rtc, fall back to native HLS
                 if (usingGo2rtc) {
-                  console.warn(`[HLS ${stream.name}] go2rtc HLS failed, falling back to native lightNVR HLS`);
-                  fatalErrorCountRef.current = 0;
-                  setHlsMode('native');
+                  if (go2rtcEnabled) {
+                    console.error(`[HLS ${stream.name}] go2rtc HLS unrecoverable error - no fallback (go2rtc enabled)`);
+                    setError('go2rtc HLS stream failed. Click Retry to try again.');
+                    setIsLoading(false);
+                    setIsPlaying(false);
+                  } else {
+                    console.warn(`[HLS ${stream.name}] go2rtc HLS failed, falling back to native lightNVR HLS`);
+                    fatalErrorCountRef.current = 0;
+                    setHlsMode('native');
+                  }
                 } else {
                   setError(data.details || 'HLS playback error');
                   setIsLoading(false);
@@ -486,10 +518,16 @@ export function HLSVideoCell({
 
         nativeErrorHandler = function() {
           if (!isMounted) return;
-          // If we were using go2rtc, fall back to native HLS
           if (usingGo2rtc) {
-            console.warn(`[HLS ${stream.name}] go2rtc HLS failed (native player), falling back to native lightNVR HLS`);
-            setHlsMode('native');
+            if (go2rtcEnabled) {
+              console.error(`[HLS ${stream.name}] go2rtc HLS failed (native player) - no fallback (go2rtc enabled)`);
+              setError('go2rtc HLS stream failed. Click Retry to try again.');
+              setIsLoading(false);
+              setIsPlaying(false);
+            } else {
+              console.warn(`[HLS ${stream.name}] go2rtc HLS failed (native player), falling back to native lightNVR HLS`);
+              setHlsMode('native');
+            }
           } else {
             setError('HLS stream failed to load');
             setIsLoading(false);
