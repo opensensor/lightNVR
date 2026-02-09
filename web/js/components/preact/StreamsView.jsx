@@ -295,6 +295,7 @@ export function StreamsView() {
     },
     onError: (error) => {
       showStatusMessage(`Error deleting stream: ${error.message}`, 'error', 5000);
+      closeDeleteModal();
     }
   });
 
@@ -320,6 +321,7 @@ export function StreamsView() {
     },
     onError: (error) => {
       showStatusMessage(`Error disabling stream: ${error.message}`, 'error', 5000);
+      closeDeleteModal();
     }
   });
 
@@ -989,6 +991,8 @@ export function StreamsView() {
             onClose={closeDeleteModal}
             onDisable={disableStream}
             onDelete={deleteStream}
+            isDeleting={deleteStreamMutation.isPending}
+            isDisabling={disableStreamMutation.isPending}
         />
       )}
 

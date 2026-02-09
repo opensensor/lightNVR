@@ -13,38 +13,47 @@ import { useState } from 'preact/hooks';
  * @param {Function} props.onClose Function to call when the modal is closed
  * @param {Function} props.onDisable Function to call when the disable button is clicked
  * @param {Function} props.onDelete Function to call when the delete button is clicked
+ * @param {boolean} props.isDeleting Whether a delete operation is in progress
+ * @param {boolean} props.isDisabling Whether a disable operation is in progress
  * @returns {JSX.Element} StreamDeleteModal component
  */
-export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, onDelete }) {
+export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, onDelete, isDeleting = false, isDisabling = false }) {
   const [isConfirmDelete, setIsConfirmDelete] = useState(false);
+  const isLoading = isDeleting || isDisabling;
 
   // Show delete confirmation step
   const showDeleteConfirmation = () => {
     setIsConfirmDelete(true);
   };
 
-  // Handle disable stream
+  // Handle disable stream - don't close modal, let parent handle it via onSuccess/onError
   const handleDisable = () => {
     onDisable(streamId);
-    onClose();
   };
 
-  // Handle delete stream
+  // Handle delete stream - don't close modal, let parent handle it via onSuccess/onError
   const handleDelete = () => {
     onDelete(streamId);
-    onClose();
   };
 
   return (
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
       <div class="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
         <div class="flex justify-between items-center p-4 border-b border-border">
-          <h3 class="text-lg font-medium">{isConfirmDelete ? 'Confirm Permanent Deletion' : 'Stream Actions'}</h3>
-          <button type="button" class="text-2xl cursor-pointer border-none bg-transparent" onClick={onClose}>×</button>
+          <h3 class="text-lg font-medium">{isLoading ? (isDeleting ? 'Deleting Stream...' : 'Disabling Stream...') : isConfirmDelete ? 'Confirm Permanent Deletion' : 'Stream Actions'}</h3>
+          {!isLoading && <button type="button" class="text-2xl cursor-pointer border-none bg-transparent" onClick={onClose}>×</button>}
         </div>
 
         <div class="p-6">
-          {!isConfirmDelete ? (
+          {isLoading ? (
+            <div class="flex flex-col items-center justify-center py-8">
+              <div class="inline-block animate-spin rounded-full border-4 border-input border-t-primary w-10 h-10 mb-4"></div>
+              <p class="text-muted-foreground">
+                {isDeleting ? 'Permanently deleting stream...' : 'Disabling stream...'}
+              </p>
+              <p class="text-sm text-muted-foreground mt-2">This may take a few seconds.</p>
+            </div>
+          ) : !isConfirmDelete ? (
             <div class="mb-6">
               <h4 class="text-lg font-medium mb-2">What would you like to do with "{streamName}"?</h4>
               <p class="text-muted-foreground mb-4">
@@ -68,8 +77,9 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
                     <li>Can be re-enabled later</li>
                   </ul>
                   <button
-                    class="w-full px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                    class="w-full px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handleDisable}
+                    disabled={isLoading}
                   >
                     Disable Stream
                   </button>
@@ -87,8 +97,9 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
                     <li>Cannot be recovered</li>
                   </ul>
                   <button
-                    class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                    class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={showDeleteConfirmation}
+                    disabled={isLoading}
                   >
                     Delete Stream
                   </button>
@@ -110,14 +121,16 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
 
             <div class="flex justify-center space-x-3">
               <button
-                class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={() => setIsConfirmDelete(false)}
+                disabled={isLoading}
               >
                 Cancel
               </button>
               <button
-                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleDelete}
+                disabled={isLoading}
               >
                 Yes, Delete Permanently
               </button>
