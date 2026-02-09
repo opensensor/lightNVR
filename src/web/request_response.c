@@ -242,5 +242,28 @@ int http_serve_file(const http_request_t *req, http_response_t *res,
         log_error("http_serve_file: No connection in request user_data");
         return -1;
     }
+
+    // If handler is running on a thread pool worker, defer file serving
+    // to the event loop thread (libuv_serve_file uses uv_fs_* which must
+    // be called from the loop thread)
+    if (conn->handler_on_worker) {
+        conn->deferred_file_serve = true;
+        strncpy(conn->deferred_file_path, file_path, sizeof(conn->deferred_file_path) - 1);
+        conn->deferred_file_path[sizeof(conn->deferred_file_path) - 1] = '\0';
+        if (content_type) {
+            strncpy(conn->deferred_content_type, content_type, sizeof(conn->deferred_content_type) - 1);
+            conn->deferred_content_type[sizeof(conn->deferred_content_type) - 1] = '\0';
+        } else {
+            conn->deferred_content_type[0] = '\0';
+        }
+        if (extra_headers) {
+            strncpy(conn->deferred_extra_headers, extra_headers, sizeof(conn->deferred_extra_headers) - 1);
+            conn->deferred_extra_headers[sizeof(conn->deferred_extra_headers) - 1] = '\0';
+        } else {
+            conn->deferred_extra_headers[0] = '\0';
+        }
+        return 0;
+    }
+
     return libuv_serve_file(conn, file_path, content_type, extra_headers);
 }

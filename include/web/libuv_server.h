@@ -87,6 +87,13 @@ typedef struct libuv_connection {
 
     // Async response handling
     bool async_response_pending;        // Async file serving or streaming in progress
+
+    // Thread pool offloading (uv_queue_work)
+    bool handler_on_worker;             // Handler is running on a thread pool worker
+    bool deferred_file_serve;           // File serving deferred until back on loop thread
+    char deferred_file_path[1024];      // Deferred file path to serve
+    char deferred_content_type[128];    // Deferred content type (empty = auto-detect)
+    char deferred_extra_headers[512];   // Deferred extra headers (empty = none)
 } libuv_connection_t;
 
 /**
