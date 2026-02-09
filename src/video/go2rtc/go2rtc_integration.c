@@ -950,8 +950,12 @@ bool go2rtc_integration_full_start(void) {
         log_warn("Failed to register all streams with go2rtc");
         // Continue anyway
     } else {
+        // Poll briefly for streams to settle (up to 3 seconds, checking every 250ms)
         log_info("Waiting for streams to be fully registered with go2rtc...");
-        sleep(3);
+        for (int i = 0; i < 12; i++) {
+            usleep(250000); // 250ms
+            if (go2rtc_stream_is_ready()) break;
+        }
         log_info("Streams registered with go2rtc");
     }
 
@@ -998,12 +1002,18 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
             return false;
         }
 
-        // Wait longer for the stream to be fully registered
-        log_info("Waiting for stream %s to be fully registered with go2rtc", stream_name);
-        sleep(5); // Increased from 3 to 5 seconds
+        // Poll for stream registration (up to 5 seconds, checking every 500ms)
+        log_info("Polling for stream %s to be fully registered with go2rtc", stream_name);
+        bool confirmed = false;
+        for (int i = 0; i < 10; i++) {
+            usleep(500000); // 500ms
+            if (is_stream_registered_with_go2rtc(stream_name)) {
+                confirmed = true;
+                break;
+            }
+        }
 
-        // Check again if the stream is registered
-        if (!is_stream_registered_with_go2rtc(stream_name)) {
+        if (!confirmed) {
             log_error("Stream %s still not registered with go2rtc after registration attempt", stream_name);
             return false;
         }
@@ -1483,12 +1493,18 @@ bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size) {
             return false;
         }
 
-        // Wait longer for the stream to be fully registered
-        log_info("Waiting for stream %s to be fully registered with go2rtc", stream_name);
-        sleep(5);
+        // Poll for stream registration (up to 5 seconds, checking every 500ms)
+        log_info("Polling for stream %s to be fully registered with go2rtc", stream_name);
+        bool confirmed = false;
+        for (int i = 0; i < 10; i++) {
+            usleep(500000); // 500ms
+            if (is_stream_registered_with_go2rtc(stream_name)) {
+                confirmed = true;
+                break;
+            }
+        }
 
-        // Check again if the stream is registered
-        if (!is_stream_registered_with_go2rtc(stream_name)) {
+        if (!confirmed) {
             log_error("Stream %s still not registered with go2rtc after registration attempt", stream_name);
             return false;
         }

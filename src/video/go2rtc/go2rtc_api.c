@@ -18,7 +18,7 @@
 #include <curl/curl.h>
 #include <ctype.h>
 #include <cjson/cJSON.h>
-#include <pthread.h>
+
 
 // API client configuration
 static char *g_api_host = NULL;
@@ -253,18 +253,15 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
         return false;
     }
 
-    // Lock mutex for thread-safe access to global response buffer
-    pthread_mutex_lock(&g_api_mutex);
+    // Per-request response buffer (no global mutex needed)
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
 
-    // Reset response buffer
-    g_response_size = 0;
-    g_response_buffer[0] = '\0';
-    
     // Format the URL for the API endpoint with query parameters (simple method)
     // This is the method that works according to user feedback
     // URL encode the stream_url to handle special characters
     char encoded_url[URL_BUFFER_SIZE * 3] = {0}; // Extra space for URL encoding
-    
+
     // Simple URL encoding for special characters
     const char *p = stream_url;
     char *q = encoded_url;
@@ -280,38 +277,36 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
         p++;
     }
     *q = '\0';
-    
-    snprintf(url, sizeof(url), "http://%s:%d/api/streams?src=%s&name=%s", 
+
+    snprintf(url, sizeof(url), "http://%s:%d/api/streams?src=%s&name=%s",
             g_api_host, g_api_port, encoded_url, stream_id);
-    
+
     log_info("Adding stream with URL: %s", url);
-    
+
     // Set CURL options for PUT request
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
-    
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+
     // Perform the request
     res = curl_easy_perform(curl);
-    
+
     // Check for errors
     if (res != CURLE_OK) {
         log_error("CURL request failed: %s", curl_easy_strerror(res));
     } else {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        
+
         if (http_code == 200) {
             log_info("Added stream to go2rtc: %s -> %s", stream_id, stream_url);
-            log_info("Response: %s", g_response_buffer);
+            log_info("Response: %s", resp.buffer);
             success = true;
         } else {
-            log_error("Failed to add stream to go2rtc (status %ld): %s", http_code, g_response_buffer);
+            log_error("Failed to add stream to go2rtc (status %ld): %s", http_code, resp.buffer);
         }
     }
-
-    // Unlock mutex before cleanup
-    pthread_mutex_unlock(&g_api_mutex);
 
     // Clean up
     curl_easy_cleanup(curl);
@@ -341,12 +336,9 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
         return false;
     }
 
-    // Lock mutex for thread-safe access to global response buffer
-    pthread_mutex_lock(&g_api_mutex);
-
-    // Reset response buffer
-    g_response_size = 0;
-    g_response_buffer[0] = '\0';
+    // Per-request response buffer (no global mutex needed)
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
 
     // Build URL with multiple src parameters
     // Format: http://host:port/api/streams?src=url1&src=url2&name=stream_id
@@ -354,7 +346,6 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     char *url = malloc(URL_BUFFER_SIZE * (num_sources + 1));
     if (!url) {
         log_error("Failed to allocate memory for URL");
-        pthread_mutex_unlock(&g_api_mutex);
         curl_easy_cleanup(curl);
         return false;
     }
@@ -397,7 +388,8 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     // Set CURL options for PUT request
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -411,15 +403,12 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
 
         if (http_code == 200) {
             log_info("Added stream to go2rtc with %d sources: %s", num_sources, stream_id);
-            log_info("Response: %s", g_response_buffer);
+            log_info("Response: %s", resp.buffer);
             success = true;
         } else {
-            log_error("Failed to add stream to go2rtc (status %ld): %s", http_code, g_response_buffer);
+            log_error("Failed to add stream to go2rtc (status %ld): %s", http_code, resp.buffer);
         }
     }
-
-    // Unlock mutex before cleanup
-    pthread_mutex_unlock(&g_api_mutex);
 
     // Clean up
     free(url);
@@ -451,79 +440,74 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
         return false;
     }
 
-    // Lock mutex for thread-safe access to global response buffer
-    pthread_mutex_lock(&g_api_mutex);
+    // Per-request response buffer (no global mutex needed)
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
 
-    // Reset response buffer
-    g_response_size = 0;
-    g_response_buffer[0] = '\0';
-    
     // Format the URL for the API endpoint with the src parameter
     snprintf(url, sizeof(url), "http://%s:%d/api/streams?src=%s", g_api_host, g_api_port, stream_id);
-    
+
     // Log the URL for debugging
     log_info("DELETE URL: %s", url);
-    
+
     // Set CURL options for DELETE request
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
-    
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+
     // Perform the request
     res = curl_easy_perform(curl);
-    
+
     // Check for errors
     if (res != CURLE_OK) {
         log_error("CURL request failed: %s", curl_easy_strerror(res));
     } else {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        
+
         if (http_code == 200) {
             log_info("Removed stream from go2rtc: %s", stream_id);
-            log_info("Response: %s", g_response_buffer);
+            log_info("Response: %s", resp.buffer);
             success = true;
         } else {
-            log_error("Failed to remove stream from go2rtc (status %ld): %s", http_code, g_response_buffer);
-            
+            log_error("Failed to remove stream from go2rtc (status %ld): %s", http_code, resp.buffer);
+
             // Try the old method as a fallback
             log_info("Trying old method as fallback");
-            
-            // Reset response buffer
-            g_response_size = 0;
-            g_response_buffer[0] = '\0';
-            
+
+            // Reset response buffer for retry
+            resp.size = 0;
+            resp.buffer[0] = '\0';
+
             // Format the URL for the old API endpoint
             snprintf(url, sizeof(url), "http://%s:%d/api/streams/%s", g_api_host, g_api_port, stream_id);
-            
+
             log_info("Fallback DELETE URL: %s", url);
-            
+
             // Set CURL options for DELETE request
             curl_easy_setopt(curl, CURLOPT_URL, url);
-            
+
             // Perform the request
             res = curl_easy_perform(curl);
-            
+
             // Check for errors
             if (res != CURLE_OK) {
                 log_error("CURL fallback request failed: %s", curl_easy_strerror(res));
             } else {
                 curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                
+
                 if (http_code == 200) {
                     log_info("Removed stream from go2rtc using old method: %s", stream_id);
-                    log_info("Response: %s", g_response_buffer);
+                    log_info("Response: %s", resp.buffer);
                     success = true;
                 } else {
-                    log_error("Failed to remove stream from go2rtc using old method (status %ld): %s", 
-                              http_code, g_response_buffer);
+                    log_error("Failed to remove stream from go2rtc using old method (status %ld): %s",
+                              http_code, resp.buffer);
                 }
             }
         }
     }
-
-    // Unlock mutex before cleanup
-    pthread_mutex_unlock(&g_api_mutex);
 
     // Clean up
     curl_easy_cleanup(curl);
@@ -659,19 +643,17 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
         return false;
     }
 
-    // Lock mutex for thread-safe access to global response buffer
-    pthread_mutex_lock(&g_api_mutex);
-
-    // Reset response buffer
-    g_response_size = 0;
-    g_response_buffer[0] = '\0';
+    // Per-request response buffer (no global mutex needed)
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
 
     // Format the URL for the API endpoint
     snprintf(url, sizeof(url), "http://%s:%d/api", g_api_host, g_api_port);
 
     // Set CURL options for GET request
     curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -684,10 +666,10 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
         if (http_code == 200) {
-            log_info("Got go2rtc server info: %s", g_response_buffer);
-            
+            log_info("Got go2rtc server info: %s", resp.buffer);
+
             // Parse JSON response
-            cJSON *json = cJSON_Parse(g_response_buffer);
+            cJSON *json = cJSON_Parse(resp.buffer);
             if (json) {
                 // Extract RTSP port if requested
                 if (rtsp_port) {
@@ -713,19 +695,16 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
                         *rtsp_port = 8554; // Default RTSP port
                     }
                 }
-                
+
                 cJSON_Delete(json);
                 success = true;
             } else {
-                log_error("Failed to parse server info JSON: %s", g_response_buffer);
+                log_error("Failed to parse server info JSON: %s", resp.buffer);
             }
         } else {
-            log_error("Failed to get go2rtc server info (status %ld): %s", http_code, g_response_buffer);
+            log_error("Failed to get go2rtc server info (status %ld): %s", http_code, resp.buffer);
         }
     }
-
-    // Unlock mutex before cleanup
-    pthread_mutex_unlock(&g_api_mutex);
 
     // Clean up
     curl_easy_cleanup(curl);
@@ -756,12 +735,9 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
         return false;
     }
 
-    // Lock mutex for thread-safe access to the global response buffer
-    pthread_mutex_lock(&g_api_mutex);
-
-    // Reset response buffer
-    memset(g_response_buffer, 0, sizeof(g_response_buffer));
-    g_response_size = 0;
+    // Per-request response buffer (no global mutex needed)
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
 
     // Build the preload URL: PUT /api/preload?src={stream_id}&video&audio
     // This tells go2rtc to keep a persistent consumer connected to the stream
@@ -773,7 +749,8 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
     // Set CURL options for PUT request
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, StaticWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -789,12 +766,9 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
             log_info("Successfully preloaded stream in go2rtc: %s", stream_id);
             success = true;
         } else {
-            log_error("Failed to preload stream in go2rtc (status %ld): %s", http_code, g_response_buffer);
+            log_error("Failed to preload stream in go2rtc (status %ld): %s", http_code, resp.buffer);
         }
     }
-
-    // Unlock mutex before cleanup
-    pthread_mutex_unlock(&g_api_mutex);
 
     // Clean up
     curl_easy_cleanup(curl);
