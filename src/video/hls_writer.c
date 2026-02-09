@@ -350,8 +350,15 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
 
     av_dict_free(&options);
 
+    // Initialize DTS tracker for monotonic timestamp enforcement
+    writer->dts_tracker.initialized = 0;
+    writer->dts_tracker.first_dts = 0;
+    writer->dts_tracker.last_dts = 0;
+    writer->dts_tracker.time_base = out_stream->time_base;
+    writer->dts_jump_count = 0;
+
     // Let FFmpeg handle manifest file creation
-    log_info("Initialized HLS writer for stream %s", writer->stream_name);
+    log_info("Initialized HLS writer for stream %s with DTS tracking", writer->stream_name);
     writer->initialized = 1;
     return 0;
 }
@@ -602,8 +609,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         log_debug("Using original packet for non-H264 stream %s", writer->stream_name);
     }
 
-    // SIMPLIFIED TIMESTAMP HANDLING: Trust go2rtc to provide clean timestamps
-    // go2rtc handles RTSP stream normalization, so we only need minimal fixes
+    // ENHANCED TIMESTAMP HANDLING: Ensure monotonically increasing DTS for HLS muxer
+    // The HLS muxer requires strictly monotonic DTS values to avoid errors
 
     // Only fix if both PTS and DTS are invalid (rare edge case)
     if (out_pkt_ptr->pts == AV_NOPTS_VALUE && out_pkt_ptr->dts == AV_NOPTS_VALUE) {
@@ -636,10 +643,9 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     av_packet_rescale_ts(out_pkt_ptr, input_stream->time_base,
                         writer->output_ctx->streams[0]->time_base);
 
-    // CRITICAL FIX: Ensure PTS >= DTS with a small buffer to prevent ghosting artifacts
-    // This is essential for HLS format compliance and prevents visual artifacts
+    // CRITICAL FIX: Ensure PTS >= DTS after rescaling
     if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
-        log_debug("Fixing HLS packet with PTS < DTS: PTS=%lld, DTS=%lld",
+        log_debug("Fixing HLS packet with PTS < DTS after rescaling: PTS=%lld, DTS=%lld",
                  (long long)out_pkt_ptr->pts, (long long)out_pkt_ptr->dts);
         out_pkt_ptr->pts = out_pkt_ptr->dts;
     }
@@ -650,6 +656,43 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
         if (pts_dts_diff > 90000 * 10) {
             out_pkt_ptr->pts = out_pkt_ptr->dts + 90000 * 5; // 5 seconds max difference
         }
+    }
+
+    // CRITICAL FIX: Enforce monotonically increasing DTS
+    // The HLS muxer requires DTS to be strictly increasing
+    if (!writer->dts_tracker.initialized) {
+        // First packet - initialize the tracker
+        writer->dts_tracker.first_dts = out_pkt_ptr->dts;
+        writer->dts_tracker.last_dts = out_pkt_ptr->dts;
+        writer->dts_tracker.time_base = writer->output_ctx->streams[0]->time_base;
+        writer->dts_tracker.initialized = 1;
+        log_debug("Initialized DTS tracker for stream %s: first_dts=%lld",
+                 writer->stream_name, (long long)out_pkt_ptr->dts);
+    } else {
+        // Check if DTS is monotonically increasing
+        if (out_pkt_ptr->dts <= writer->dts_tracker.last_dts) {
+            // DTS is not increasing - fix it
+            int64_t old_dts = out_pkt_ptr->dts;
+            out_pkt_ptr->dts = writer->dts_tracker.last_dts + 1;
+
+            // Also adjust PTS to maintain the relationship
+            if (out_pkt_ptr->pts < out_pkt_ptr->dts) {
+                out_pkt_ptr->pts = out_pkt_ptr->dts;
+            }
+
+            log_debug("Fixed non-monotonic DTS for stream %s: old_dts=%lld, new_dts=%lld, last_dts=%lld",
+                     writer->stream_name, (long long)old_dts, (long long)out_pkt_ptr->dts,
+                     (long long)writer->dts_tracker.last_dts);
+
+            writer->dts_jump_count++;
+            if (writer->dts_jump_count % 10 == 0) {
+                log_warn("Stream %s has had %d DTS corrections - stream may have timestamp issues",
+                        writer->stream_name, writer->dts_jump_count);
+            }
+        }
+
+        // Update last DTS
+        writer->dts_tracker.last_dts = out_pkt_ptr->dts;
     }
 
     // Log key frames for diagnostics
