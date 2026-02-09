@@ -1627,6 +1627,13 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
         return false;
     }
 
+    // Check if stream is already registered with go2rtc
+    // This prevents re-registering streams that were pre-registered (e.g., in tests)
+    if (is_stream_registered_with_go2rtc(stream_name)) {
+        log_info("Stream %s is already registered with go2rtc, skipping re-registration", stream_name);
+        return true;
+    }
+
     // Look up the stream config
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
