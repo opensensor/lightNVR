@@ -88,7 +88,8 @@ function getDefaultSettings() {
     go2rtc_enabled: true,
     go2rtc_api_port: 1984,
     webrtc_disabled: false,
-    web_port: 8080
+    web_port: 8080,
+    web_auth_enabled: true // Default to auth enabled for safety
   };
 }
 
