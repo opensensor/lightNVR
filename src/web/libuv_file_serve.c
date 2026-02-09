@@ -142,8 +142,14 @@ int libuv_serve_file(libuv_connection_t *conn, const char *path,
     if (content_type) {
         strncpy(ctx->content_type, content_type, sizeof(ctx->content_type) - 1);
     } else {
-        strncpy(ctx->content_type, libuv_get_mime_type(path), 
+        strncpy(ctx->content_type, libuv_get_mime_type(path),
                 sizeof(ctx->content_type) - 1);
+    }
+
+    // Store extra headers (CORS, Cache-Control, etc.)
+    if (extra_headers) {
+        strncpy(ctx->extra_headers, extra_headers, sizeof(ctx->extra_headers) - 1);
+        ctx->extra_headers[sizeof(ctx->extra_headers) - 1] = '\0';
     }
     
     // Check for Range header
@@ -311,7 +317,7 @@ static void on_file_stat(uv_fs_t *req) {
     // Send headers
     // Note: We don't send Connection: close as it causes issues with HTTP/2 proxies
     // The connection will be closed after all data is sent based on keep-alive settings
-    char headers[1024];
+    char headers[2048];
     int len;
 
     if (ctx->has_range) {
@@ -321,17 +327,21 @@ static void on_file_stat(uv_fs_t *req) {
             "Content-Length: %zu\r\n"
             "Content-Range: bytes %zu-%zu/%zu\r\n"
             "Accept-Ranges: bytes\r\n"
+            "%s"
             "\r\n",
             ctx->content_type, ctx->remaining,
-            ctx->range_start, ctx->range_end, ctx->file_size);
+            ctx->range_start, ctx->range_end, ctx->file_size,
+            ctx->extra_headers[0] ? ctx->extra_headers : "");
     } else {
         len = snprintf(headers, sizeof(headers),
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: %s\r\n"
             "Content-Length: %zu\r\n"
             "Accept-Ranges: bytes\r\n"
+            "%s"
             "\r\n",
-            ctx->content_type, ctx->file_size);
+            ctx->content_type, ctx->file_size,
+            ctx->extra_headers[0] ? ctx->extra_headers : "");
     }
 
     char *header_buf = safe_malloc(len);

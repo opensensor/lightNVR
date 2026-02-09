@@ -49,6 +49,7 @@ typedef struct file_serve_ctx {
     // Response state
     bool headers_sent;                  // Headers already sent
     char content_type[128];             // MIME type
+    char extra_headers[512];            // Additional headers (CORS, Cache-Control, etc.)
 } file_serve_ctx_t;
 
 /**

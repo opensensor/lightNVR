@@ -52,6 +52,8 @@ export function HLSVideoCell({
   const hlsPlayerRef = useRef(null);
   const detectionOverlayRef = useRef(null);
   const initAttemptedRef = useRef(false);
+  const fatalErrorCountRef = useRef(0);  // Track consecutive fatal error recovery attempts
+  const recoveringRef = useRef(false);   // True when we're in the middle of error recovery (prevents counter reset)
 
   /**
    * Refresh the stream's go2rtc registration
@@ -168,62 +170,102 @@ export function HLSVideoCell({
 
       // Check if HLS.js is supported
       if (Hls.isSupported()) {
-        console.log(`Using HLS.js for stream ${stream.name}`);
-        const hls = new Hls({
-          // Buffer management - optimized for go2rtc's dynamic HLS
-          // Larger buffers = more stability, less flickering
-          maxBufferLength: 30,            // Maximum buffer length in seconds
-          maxMaxBufferLength: 60,         // Maximum maximum buffer length
-          backBufferLength: 30,           // Increased back buffer for smoother playback
+        console.log(`Using HLS.js for stream ${stream.name} (mode: ${usingGo2rtc ? 'go2rtc' : 'native'})`);
 
-          // Live stream settings - tuned for stability over low latency
-          liveSyncDurationCount: 4,       // Slightly behind live edge for stability
-          liveMaxLatencyDurationCount: 15, // More tolerance before seeking to live
-          liveDurationInfinity: true,     // Treat as infinite live stream
-          lowLatencyMode: false,          // Disable low latency for stability
+        // Use different HLS.js configs for go2rtc vs native HLS
+        // go2rtc: dynamic in-memory segments, infinite stream
+        // native: FFmpeg file-based segments with sliding window playlist (6 segments)
+        const hlsConfig = usingGo2rtc ? {
+          // === go2rtc mode: dynamic HLS with in-memory segments ===
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          backBufferLength: 30,
+          liveSyncDurationCount: 4,
+          liveMaxLatencyDurationCount: 15,
+          liveDurationInfinity: true,
+          lowLatencyMode: false,
+          highBufferWatchdogPeriod: 5,
+          fragLoadingTimeOut: 30000,
+          manifestLoadingTimeOut: 20000,
+          levelLoadingTimeOut: 20000,
+          startLevel: -1,
+          abrEwmaDefaultEstimate: 500000,
+          abrBandWidthFactor: 0.7,
+          abrBandWidthUpFactor: 0.5,
+          enableWorker: true,
+          debug: false,
+          maxBufferHole: 1.0,
+          maxFragLookUpTolerance: 0.5,
+          nudgeMaxRetry: 10,
+          nudgeOffset: 0.2,
+          appendErrorMaxRetry: 10,
+          manifestLoadingMaxRetry: 6,
+          manifestLoadingRetryDelay: 1500,
+          levelLoadingMaxRetry: 6,
+          levelLoadingRetryDelay: 1500,
+          fragLoadingMaxRetry: 10,
+          fragLoadingRetryDelay: 1000,
+          maxStarvationDelay: 4,
+          maxLoadingDelay: 4,
+          startFragPrefetch: true
+        } : {
+          // === Native mode: FFmpeg file-based HLS with sliding window playlist ===
+          // Keep buffers modest - playlist only has ~6 segments worth of data
+          maxBufferLength: 15,
+          maxMaxBufferLength: 30,
+          backBufferLength: 10,
 
-          // Buffer health monitoring - less aggressive checking
-          highBufferWatchdogPeriod: 5,    // Check buffer health every 5 seconds (was 3)
+          // Live sync: stay 3 segments behind live edge for stability
+          // This gives FFmpeg time to fully write segments before we request them
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 10,
+          liveDurationInfinity: true,
+          lowLatencyMode: false,
 
-          // Loading timeouts - generous to handle network hiccups
-          fragLoadingTimeOut: 30000,      // Fragment loading timeout
-          manifestLoadingTimeOut: 20000,  // Manifest loading timeout
-          levelLoadingTimeOut: 20000,     // Level loading timeout
+          // Buffer health - check periodically but don't be too aggressive
+          highBufferWatchdogPeriod: 3,
 
-          // Quality settings
-          startLevel: -1,                 // Auto-select quality
-          abrEwmaDefaultEstimate: 500000, // Conservative bandwidth estimate
-          abrBandWidthFactor: 0.7,        // Conservative bandwidth factor
-          abrBandWidthUpFactor: 0.5,      // Conservative quality increase
+          // Loading timeouts - generous since segments are being written to disk in real-time
+          fragLoadingTimeOut: 20000,
+          manifestLoadingTimeOut: 15000,
+          levelLoadingTimeOut: 15000,
+
+          // Quality - single level for native HLS (no ABR)
+          startLevel: 0,
 
           // Worker and debugging
-          enableWorker: true,             // Use web worker for better performance
-          debug: false,                   // Disable debug logging
+          enableWorker: true,
+          debug: false,
 
-          // Buffer flushing - more tolerant of gaps and holes
-          maxBufferHole: 1.0,             // Increased hole tolerance (was 0.5)
-          maxFragLookUpTolerance: 0.5,    // Increased lookup tolerance (was 0.25)
-          nudgeMaxRetry: 10,              // More retry attempts (was 5)
-          nudgeOffset: 0.2,               // Larger nudge offset for recovery
+          // Buffer gaps/holes - be tolerant since FFmpeg may produce slight gaps
+          maxBufferHole: 1.5,
+          maxFragLookUpTolerance: 0.5,
+          nudgeMaxRetry: 10,
+          nudgeOffset: 0.3,
 
-          // Append error handling - more retries for better recovery
-          appendErrorMaxRetry: 10,        // More retries on append errors (was 5)
+          // Append errors - retry generously
+          appendErrorMaxRetry: 10,
 
-          // Manifest refresh - more retries for network resilience
-          manifestLoadingMaxRetry: 6,     // More retries for initial manifest
-          manifestLoadingRetryDelay: 1500, // Longer delay between manifest retries
-          levelLoadingMaxRetry: 6,        // Retry level loading
-          levelLoadingRetryDelay: 1500,   // Delay between level retries
-          fragLoadingMaxRetry: 10,        // More retries for fragments (init.mp4 may take time)
-          fragLoadingRetryDelay: 1000,    // Delay between fragment retries
+          // Manifest polling - more aggressive for native HLS since the playlist changes
+          // every time FFmpeg writes a new segment (~2-5 seconds)
+          manifestLoadingMaxRetry: 10,
+          manifestLoadingRetryDelay: 1000,
+          levelLoadingMaxRetry: 10,
+          levelLoadingRetryDelay: 1000,
 
-          // Stall recovery - let HLS.js handle stalls gracefully
-          maxStarvationDelay: 4,          // Max delay before starvation recovery
-          maxLoadingDelay: 4,             // Max loading delay before giving up
+          // Fragment loading - retry generously since segments may still be writing
+          fragLoadingMaxRetry: 15,
+          fragLoadingRetryDelay: 500,
 
-          // Start playback even with minimal buffer
-          startFragPrefetch: true         // Prefetch next fragment for smoother playback
-        });
+          // Stall recovery - be patient with native HLS
+          maxStarvationDelay: 6,
+          maxLoadingDelay: 6,
+
+          // Prefetch next fragment for smoother playback
+          startFragPrefetch: true
+        };
+
+        const hls = new Hls(hlsConfig);
 
         // Store hls instance IMMEDIATELY after creation for cleanup
         hlsPlayerRef.current = hls;
@@ -233,6 +275,14 @@ export function HLSVideoCell({
 
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
+          // DON'T reset the fatal error counter here - recoverMediaError() triggers
+          // a manifest reload which fires MANIFEST_PARSED, creating an infinite loop:
+          // bufferAppendError → recoverMediaError → MANIFEST_PARSED → reset counter → bufferAppendError (always "attempt 1")
+          // Instead, we reset the counter only after genuinely successful sustained playback (in FRAG_BUFFERED)
+          if (!recoveringRef.current) {
+            // Only reset on initial load, not during recovery
+            fatalErrorCountRef.current = 0;
+          }
           setIsLoading(false);
           setIsPlaying(true);
 
@@ -241,6 +291,19 @@ export function HLSVideoCell({
               console.warn('Auto-play prevented:', error);
               // We'll handle this with the play button overlay
             });
+          }
+        });
+
+        // Reset fatal error counter after genuinely successful sustained playback
+        // FRAG_BUFFERED fires when a fragment has been successfully appended to the buffer
+        // This is the real signal that playback is healthy again after recovery
+        hls.on(Hls.Events.FRAG_BUFFERED, function() {
+          if (!isMounted) return;
+          if (recoveringRef.current) {
+            // Recovery succeeded - a fragment was successfully buffered after error recovery
+            console.log(`[HLS ${stream.name}] Recovery successful - fragment buffered, resetting error counter`);
+            recoveringRef.current = false;
+            fatalErrorCountRef.current = 0;
           }
         });
 
@@ -286,30 +349,108 @@ export function HLSVideoCell({
           // Fatal errors require intervention
           console.error(`HLS fatal error: ${data.type}, details: ${data.details}`);
 
+          // Track consecutive fatal error recovery attempts
+          // Native mode needs more patience - FFmpeg may take 10-30s to start producing segments
+          // go2rtc mode can give up faster since it's always ready
+          const MAX_FATAL_RECOVERY_ATTEMPTS = usingGo2rtc ? 3 : 10;
+          const RECOVERY_DELAY = usingGo2rtc ? 1000 : 2000;
+          fatalErrorCountRef.current++;
+          const attemptNum = fatalErrorCountRef.current;
+
           switch(data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              // For network errors, try to restart loading
-              console.error('Fatal network error encountered, trying to recover');
-              // Add a small delay before restarting to avoid rapid retries
-              setTimeout(() => {
-                if (isMounted && hlsPlayerRef.current) {
-                  hlsPlayerRef.current.startLoad();
+              if (attemptNum <= MAX_FATAL_RECOVERY_ATTEMPTS) {
+                // For network errors, try to restart loading (with limit)
+                console.error(`Fatal network error encountered (attempt ${attemptNum}/${MAX_FATAL_RECOVERY_ATTEMPTS}), trying to recover`);
+                // Mark as recovering so MANIFEST_PARSED doesn't reset the counter
+                recoveringRef.current = true;
+                setTimeout(() => {
+                  if (isMounted && hlsPlayerRef.current) {
+                    hlsPlayerRef.current.startLoad();
+                  }
+                }, RECOVERY_DELAY);
+              } else {
+                // Exhausted recovery attempts
+                console.error(`Fatal network error: exhausted ${MAX_FATAL_RECOVERY_ATTEMPTS} recovery attempts, giving up`);
+                recoveringRef.current = false;
+                if (hlsPlayerRef.current) {
+                  hlsPlayerRef.current.destroy();
+                  hlsPlayerRef.current = null;
                 }
-              }, 1000);
+                if (isMounted) {
+                  if (usingGo2rtc) {
+                    console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} attempts, falling back to native lightNVR HLS`);
+                    fatalErrorCountRef.current = 0;
+                    setHlsMode('native');
+                  } else {
+                    setError(data.details || 'HLS network error - stream unavailable');
+                    setIsLoading(false);
+                    setIsPlaying(false);
+                  }
+                }
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              // For fatal media errors, we need to recover
-              console.error('Fatal media error encountered, trying to recover');
-              // Use a delay to avoid flicker from rapid recovery attempts
-              setTimeout(() => {
-                if (isMounted && hlsPlayerRef.current) {
-                  hlsPlayerRef.current.recoverMediaError();
+              if (attemptNum <= MAX_FATAL_RECOVERY_ATTEMPTS) {
+                console.error(`Fatal media error encountered (attempt ${attemptNum}/${MAX_FATAL_RECOVERY_ATTEMPTS}), trying to recover - detail: ${data.details}`);
+                // Mark as recovering so MANIFEST_PARSED doesn't reset the counter
+                recoveringRef.current = true;
+
+                if (data.details === 'bufferAppendError') {
+                  // bufferAppendError is common with multiple simultaneous HLS players
+                  // competing for MediaSource buffer space. Use escalating recovery:
+                  // - First 3 attempts: just recoverMediaError (lightweight)
+                  // - After that: destroy and fully reinitialize with a delay
+                  if (attemptNum <= 3) {
+                    setTimeout(() => {
+                      if (isMounted && hlsPlayerRef.current) {
+                        hlsPlayerRef.current.recoverMediaError();
+                      }
+                    }, 1000 * attemptNum); // Increasing delay: 1s, 2s, 3s
+                  } else {
+                    // More aggressive: swap media source (detach + reattach)
+                    console.warn(`[HLS ${stream.name}] bufferAppendError attempt ${attemptNum}, swapping media source`);
+                    setTimeout(() => {
+                      if (isMounted && hlsPlayerRef.current && videoRef.current) {
+                        hlsPlayerRef.current.detachMedia();
+                        hlsPlayerRef.current.attachMedia(videoRef.current);
+                        // HLS.js will re-trigger MANIFEST_PARSED and start loading again
+                      }
+                    }, 2000);
+                  }
+                } else {
+                  // For other fatal media errors, use standard recovery with a delay
+                  setTimeout(() => {
+                    if (isMounted && hlsPlayerRef.current) {
+                      hlsPlayerRef.current.recoverMediaError();
+                    }
+                  }, 500);
                 }
-              }, 500);
+              } else {
+                // Exhausted recovery attempts - stop the infinite loop
+                console.error(`Fatal media error: exhausted ${MAX_FATAL_RECOVERY_ATTEMPTS} recovery attempts, giving up`);
+                recoveringRef.current = false;
+                if (hlsPlayerRef.current) {
+                  hlsPlayerRef.current.destroy();
+                  hlsPlayerRef.current = null;
+                }
+                if (isMounted) {
+                  if (usingGo2rtc) {
+                    console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} media error recoveries, falling back to native lightNVR HLS`);
+                    fatalErrorCountRef.current = 0;
+                    setHlsMode('native');
+                  } else {
+                    setError(data.details || 'HLS media error - stream unavailable');
+                    setIsLoading(false);
+                    setIsPlaying(false);
+                  }
+                }
+              }
               break;
             default:
               // Cannot recover from other fatal errors
               console.error('Unrecoverable HLS error, destroying player');
+              recoveringRef.current = false;
               if (hlsPlayerRef.current) {
                 hlsPlayerRef.current.destroy();
                 hlsPlayerRef.current = null;
@@ -318,6 +459,7 @@ export function HLSVideoCell({
                 // If we were using go2rtc, fall back to native HLS
                 if (usingGo2rtc) {
                   console.warn(`[HLS ${stream.name}] go2rtc HLS failed, falling back to native lightNVR HLS`);
+                  fatalErrorCountRef.current = 0;
                   setHlsMode('native');
                 } else {
                   setError(data.details || 'HLS playback error');
@@ -413,6 +555,7 @@ export function HLSVideoCell({
       }
 
       // Destroy HLS.js instance
+      recoveringRef.current = false;
       if (hlsPlayerRef.current) {
         hlsPlayerRef.current.destroy();
         hlsPlayerRef.current = null;
@@ -454,6 +597,8 @@ export function HLSVideoCell({
     }
 
     // Reset state
+    fatalErrorCountRef.current = 0;  // Reset fatal error counter on manual retry
+    recoveringRef.current = false;
     setError(null);
     setIsLoading(true);
     setIsPlaying(false);

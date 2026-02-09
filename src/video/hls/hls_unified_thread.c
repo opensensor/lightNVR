@@ -959,8 +959,9 @@ void *hls_unified_thread_func(void *arg) {
         // The old writer will be cleaned up during shutdown
     }
 
-    // Create HLS writer with 5-second segments
-    ctx->writer = hls_writer_create(ctx->output_path, stream_name, 5);
+    // Create HLS writer using configured segment duration
+    int seg_duration = ctx->segment_duration > 0 ? ctx->segment_duration : 2;
+    ctx->writer = hls_writer_create(ctx->output_path, stream_name, seg_duration);
     if (!ctx->writer) {
         log_error("Failed to create HLS writer for %s", stream_name);
 
@@ -1703,8 +1704,9 @@ void *hls_unified_thread_func(void *arg) {
                         log_info("Successfully closed old HLS writer for stream %s", stream_name);
                     }
 
-                    // Create new HLS writer with fresh timestamp state
-                    ctx->writer = hls_writer_create(ctx->output_path, stream_name, 5);
+                    // Create new HLS writer with fresh timestamp state using configured segment duration
+                    int reconnect_seg_duration = ctx->segment_duration > 0 ? ctx->segment_duration : 2;
+                    ctx->writer = hls_writer_create(ctx->output_path, stream_name, reconnect_seg_duration);
                     if (!ctx->writer) {
                         log_error("Failed to create new HLS writer for %s after reconnection", stream_name);
                         // Stay in reconnecting state to try again

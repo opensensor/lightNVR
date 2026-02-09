@@ -225,7 +225,9 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // delete_segments: Automatically delete old segments
     // independent_segments: Make each segment independently decodable
     // program_date_time: Add timestamps for better seeking
-    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time", 0);
+    // temp_file: Write playlist to a temp file first, then atomically rename to prevent
+    //            the HTTP server from reading a partially-written m3u8 playlist (race condition fix)
+    av_dict_set(&options, "hls_flags", "delete_segments+independent_segments+program_date_time+temp_file", 0);
 
     // CRITICAL FIX: Force keyframes at segment boundaries to prevent bufferAppendError in HLS.js
     // This ensures each segment starts with a keyframe (I-frame), making them independently decodable
@@ -237,8 +239,9 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     // Set start number
     av_dict_set(&options, "start_number", "0", 0);
 
-    // Disable flushing to avoid race conditions
-    av_dict_set(&options, "flush_packets", "0", 0);
+    // Enable flushing to ensure segments are fully written to disk before the playlist references them
+    // Without this, the OS may buffer segment data and the HTTP server could serve incomplete segments
+    av_dict_set(&options, "flush_packets", "1", 0);
 
     // Add additional options to prevent segmentation faults
     av_dict_set(&options, "avoid_negative_ts", "make_non_negative", 0);
@@ -252,7 +255,7 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     log_info("HLS writer options for stream %s (optimized for stability and compatibility):", writer->stream_name);
     log_info("  hls_time: %s", hls_time);
     log_info("  hls_list_size: 6");
-    log_info("  hls_flags: delete_segments+independent_segments+program_date_time");
+    log_info("  hls_flags: delete_segments+independent_segments+program_date_time+temp_file");
     log_info("  hls_segment_type: mpegts");
     log_info("  force_key_frames: %s", force_key_frames);
     log_info("  start_number: 0");
