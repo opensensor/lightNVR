@@ -63,6 +63,9 @@ COPY --from=builder /lib/libsod.so.1.1.9 /lib/libsod.so.1.1.9
 COPY --from=builder /lib/libsod.so.1.1.9 /lib/libsod.so.1
 COPY --from=builder /lib/libsod.so.1 /lib/libsod.so
 
+# Copy database migrations
+COPY --from=builder /opt/db/migrations/ /usr/share/lightnvr/migrations/
+
 # Expose required ports
 EXPOSE 8080
 
