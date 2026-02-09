@@ -149,7 +149,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         {step === 'status' && !totpEnabled && (
           <div>
             <p className="mb-4 text-sm text-muted-foreground">
-              Two-factor authentication adds an extra layer of security. 
+              Two-factor authentication adds an extra layer of security.
               You'll need an authenticator app like Google Authenticator or Authy.
             </p>
             <button className="btn-primary w-full" onClick={handleSetup}>
@@ -157,4 +157,73 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
             </button>
           </div>
         )}
+
+        {step === 'status' && totpEnabled && (
+          <div>
+            <div className="mb-4 p-3 rounded-lg badge-success">
+              ✓ Two-factor authentication is enabled
+            </div>
+            <button className="btn-danger w-full" onClick={handleDisable}>
+              Disable Two-Factor Authentication
+            </button>
+          </div>
+        )}
+
+        {step === 'setup' && (
+          <div>
+            <p className="mb-3 text-sm">
+              Scan this QR code with your authenticator app:
+            </p>
+            <div className="flex justify-center mb-3 bg-white p-2 rounded">
+              <canvas ref={canvasRef}></canvas>
+            </div>
+            <div className="mb-4">
+              <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
+              <code className="block p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono break-all select-all">
+                {secret}
+              </code>
+            </div>
+            <form onSubmit={handleVerify}>
+              <label className="block text-sm font-medium mb-1">Enter verification code:</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-xl tracking-widest mb-3"
+                placeholder="000000"
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                maxLength="6"
+                autoFocus
+                required
+              />
+              <button
+                type="submit"
+                className="btn-primary w-full"
+                disabled={verifyCode.length !== 6}
+              >
+                Verify & Enable
+              </button>
+            </form>
+          </div>
+        )}
+
+        {step === 'enabled' && (
+          <div>
+            <div className="mb-4 p-3 rounded-lg badge-success">
+              ✓ Two-factor authentication has been enabled successfully!
+            </div>
+            <p className="mb-4 text-sm text-muted-foreground">
+              You will now be required to enter a verification code from your authenticator app each time you log in.
+            </p>
+          </div>
+        )}
+
+        <div className="flex justify-end mt-4">
+          <button className="btn-secondary" onClick={onClose}>
+            {step === 'enabled' ? 'Done' : 'Close'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
