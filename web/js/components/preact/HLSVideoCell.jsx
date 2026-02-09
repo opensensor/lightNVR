@@ -176,9 +176,6 @@ export function HLSVideoCell({
       if (Hls.isSupported()) {
         console.log(`Using HLS.js for stream ${stream.name} (mode: ${usingGo2rtc ? 'go2rtc' : 'native'})`);
 
-        // Use different HLS.js configs for go2rtc vs native HLS
-        // go2rtc: dynamic in-memory segments, infinite stream
-        // native: FFmpeg file-based segments with sliding window playlist (6 segments)
         // go2rtc mode: use default HLS.js config (matching go2rtc's own reference implementation)
         // Native mode: minimal config tuned for FFmpeg file-based segments
         const hlsConfig = usingGo2rtc ? {} : {
@@ -211,12 +208,7 @@ export function HLSVideoCell({
 
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
-          // DON'T reset the fatal error counter here - recoverMediaError() triggers
-          // a manifest reload which fires MANIFEST_PARSED, creating an infinite loop:
-          // bufferAppendError → recoverMediaError → MANIFEST_PARSED → reset counter → bufferAppendError (always "attempt 1")
-          // Instead, we reset the counter only after genuinely successful sustained playback (in FRAG_BUFFERED)
           if (!recoveringRef.current) {
-            // Only reset on initial load, not during recovery
             fatalErrorCountRef.current = 0;
           }
           setIsLoading(false);
@@ -225,19 +217,15 @@ export function HLSVideoCell({
           if (videoRef.current) {
             videoRef.current.play().catch(error => {
               console.warn('Auto-play prevented:', error);
-              // We'll handle this with the play button overlay
             });
           }
         });
 
-        // Reset fatal error counter after genuinely successful sustained playback
-        // FRAG_BUFFERED fires when a fragment has been successfully appended to the buffer
-        // This is the real signal that playback is healthy again after recovery
+        // Reset fatal error counter after successful fragment buffering (real recovery signal)
         hls.on(Hls.Events.FRAG_BUFFERED, function() {
           if (!isMounted) return;
           if (recoveringRef.current) {
-            // Recovery succeeded - a fragment was successfully buffered after error recovery
-            console.log(`[HLS ${stream.name}] Recovery successful - fragment buffered, resetting error counter`);
+            console.log(`[HLS ${stream.name}] Recovery successful - fragment buffered`);
             recoveringRef.current = false;
             fatalErrorCountRef.current = 0;
           }
@@ -246,185 +234,79 @@ export function HLSVideoCell({
         hls.on(Hls.Events.ERROR, function(event, data) {
           if (!isMounted) return;
 
-          // Handle non-fatal errors - be very conservative to avoid flickering
+          // Non-fatal errors: HLS.js handles these automatically, don't intervene
           if (!data.fatal) {
-            // These errors are normal during live streaming and HLS.js handles them automatically
-            // Do NOT call recoverMediaError() as it causes black flicker
-            const ignoredErrors = [
-              'bufferStalledError',      // Normal buffering event
-              'bufferNudgeOnStall',      // HLS.js internal recovery
-              'bufferSeekOverHole',      // Gap in buffer, HLS.js handles it
-              'fragParsingError',        // Occasional parsing issues
-              'internalException',       // Internal HLS.js recovery
-              'bufferAppendError',       // Temporary append issues
-              'fragLoadError',           // Fragment load errors - HLS.js retries automatically
-              'levelLoadError',          // Level load errors - HLS.js retries automatically
-              'manifestLoadError'        // Manifest load errors - HLS.js retries automatically
-            ];
-
-            if (ignoredErrors.includes(data.details)) {
-              // Silently ignore - HLS.js handles these automatically
-              return;
-            }
-
-            // Log other non-fatal errors but don't try aggressive recovery
-            console.log(`HLS non-fatal error: ${data.type}, details: ${data.details}`);
-
-            // For network errors, HLS.js will retry automatically - don't intervene
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-              // Network errors often resolve themselves, just log them
-              console.log('Non-fatal network error, HLS.js will retry automatically');
-            }
-            // For media errors, only log - don't call recoverMediaError() as it causes flicker
-            else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-              console.log('Non-fatal media error, monitoring...', data.details);
-            }
             return;
           }
 
           // Fatal errors require intervention
-          console.error(`HLS fatal error: ${data.type}, details: ${data.details}`);
+          console.error(`[HLS ${stream.name}] Fatal error: ${data.type}, details: ${data.details}`);
 
-          // Track consecutive fatal error recovery attempts
-          // Native mode needs more patience - FFmpeg may take 10-30s to start producing segments
-          // go2rtc mode can give up faster since it's always ready
-          const MAX_FATAL_RECOVERY_ATTEMPTS = usingGo2rtc ? 3 : 10;
-          const RECOVERY_DELAY = usingGo2rtc ? 1000 : 2000;
+          const MAX_RECOVERY = usingGo2rtc ? 3 : 8;
           fatalErrorCountRef.current++;
           const attemptNum = fatalErrorCountRef.current;
 
-          switch(data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              if (attemptNum <= MAX_FATAL_RECOVERY_ATTEMPTS) {
-                // For network errors, try to restart loading (with limit)
-                console.error(`Fatal network error encountered (attempt ${attemptNum}/${MAX_FATAL_RECOVERY_ATTEMPTS}), trying to recover`);
-                // Mark as recovering so MANIFEST_PARSED doesn't reset the counter
-                recoveringRef.current = true;
-                setTimeout(() => {
-                  if (isMounted && hlsPlayerRef.current) {
-                    hlsPlayerRef.current.startLoad();
-                  }
-                }, RECOVERY_DELAY);
+          if (attemptNum > MAX_RECOVERY) {
+            // Exhausted recovery attempts - give up
+            console.error(`[HLS ${stream.name}] Exhausted ${MAX_RECOVERY} recovery attempts`);
+            recoveringRef.current = false;
+            if (hlsPlayerRef.current) {
+              hlsPlayerRef.current.destroy();
+              hlsPlayerRef.current = null;
+            }
+            if (isMounted) {
+              if (usingGo2rtc && !go2rtcEnabled) {
+                // go2rtc was auto-detected but not force-enabled, fall back to native
+                console.warn(`[HLS ${stream.name}] Falling back to native HLS`);
+                fatalErrorCountRef.current = 0;
+                setHlsMode('native');
               } else {
-                // Exhausted recovery attempts
-                console.error(`Fatal network error: exhausted ${MAX_FATAL_RECOVERY_ATTEMPTS} recovery attempts, giving up`);
-                recoveringRef.current = false;
-                if (hlsPlayerRef.current) {
-                  hlsPlayerRef.current.destroy();
-                  hlsPlayerRef.current = null;
-                }
-                if (isMounted) {
-                  if (usingGo2rtc) {
-                    if (go2rtcEnabled) {
-                      // go2rtc is enabled - do NOT fall back to ffmpeg HLS
-                      console.error(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} network error attempts - no fallback (go2rtc enabled)`);
-                      setError('go2rtc HLS stream failed (network error). Click Retry to try again.');
-                      setIsLoading(false);
-                      setIsPlaying(false);
-                    } else {
-                      console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} attempts, falling back to native lightNVR HLS`);
-                      fatalErrorCountRef.current = 0;
-                      setHlsMode('native');
-                    }
-                  } else {
-                    setError(data.details || 'HLS network error - stream unavailable');
-                    setIsLoading(false);
-                    setIsPlaying(false);
-                  }
-                }
+                setError(usingGo2rtc
+                  ? 'go2rtc HLS stream failed. Click Retry to try again.'
+                  : (data.details || 'HLS stream unavailable'));
+                setIsLoading(false);
+                setIsPlaying(false);
               }
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              if (attemptNum <= MAX_FATAL_RECOVERY_ATTEMPTS) {
-                console.error(`Fatal media error encountered (attempt ${attemptNum}/${MAX_FATAL_RECOVERY_ATTEMPTS}), trying to recover - detail: ${data.details}`);
-                // Mark as recovering so MANIFEST_PARSED doesn't reset the counter
-                recoveringRef.current = true;
+            }
+            return;
+          }
 
-                if (data.details === 'bufferAppendError') {
-                  // bufferAppendError is common with multiple simultaneous HLS players
-                  // competing for MediaSource buffer space. Use escalating recovery:
-                  // - First 3 attempts: just recoverMediaError (lightweight)
-                  // - After that: destroy and fully reinitialize with a delay
-                  if (attemptNum <= 3) {
-                    setTimeout(() => {
-                      if (isMounted && hlsPlayerRef.current) {
-                        hlsPlayerRef.current.recoverMediaError();
-                      }
-                    }, 1000 * attemptNum); // Increasing delay: 1s, 2s, 3s
-                  } else {
-                    // More aggressive: swap media source (detach + reattach)
-                    console.warn(`[HLS ${stream.name}] bufferAppendError attempt ${attemptNum}, swapping media source`);
-                    setTimeout(() => {
-                      if (isMounted && hlsPlayerRef.current && videoRef.current) {
-                        hlsPlayerRef.current.detachMedia();
-                        hlsPlayerRef.current.attachMedia(videoRef.current);
-                        // HLS.js will re-trigger MANIFEST_PARSED and start loading again
-                      }
-                    }, 2000);
-                  }
-                } else {
-                  // For other fatal media errors, use standard recovery with a delay
-                  setTimeout(() => {
-                    if (isMounted && hlsPlayerRef.current) {
-                      hlsPlayerRef.current.recoverMediaError();
-                    }
-                  }, 500);
-                }
+          // Attempt recovery based on error type
+          recoveringRef.current = true;
+          const delay = usingGo2rtc ? 1000 : 2000;
+
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            console.warn(`[HLS ${stream.name}] Network error recovery attempt ${attemptNum}/${MAX_RECOVERY}`);
+            setTimeout(() => {
+              if (isMounted && hlsPlayerRef.current) {
+                hlsPlayerRef.current.startLoad();
+              }
+            }, delay);
+          } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            console.warn(`[HLS ${stream.name}] Media error recovery attempt ${attemptNum}/${MAX_RECOVERY}`);
+            setTimeout(() => {
+              if (isMounted && hlsPlayerRef.current) {
+                hlsPlayerRef.current.recoverMediaError();
+              }
+            }, delay);
+          } else {
+            // Unrecoverable error type - destroy immediately
+            console.error(`[HLS ${stream.name}] Unrecoverable error type`);
+            recoveringRef.current = false;
+            if (hlsPlayerRef.current) {
+              hlsPlayerRef.current.destroy();
+              hlsPlayerRef.current = null;
+            }
+            if (isMounted) {
+              if (usingGo2rtc && !go2rtcEnabled) {
+                fatalErrorCountRef.current = 0;
+                setHlsMode('native');
               } else {
-                // Exhausted recovery attempts - stop the infinite loop
-                console.error(`Fatal media error: exhausted ${MAX_FATAL_RECOVERY_ATTEMPTS} recovery attempts, giving up`);
-                recoveringRef.current = false;
-                if (hlsPlayerRef.current) {
-                  hlsPlayerRef.current.destroy();
-                  hlsPlayerRef.current = null;
-                }
-                if (isMounted) {
-                  if (usingGo2rtc) {
-                    if (go2rtcEnabled) {
-                      console.error(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} media error attempts - no fallback (go2rtc enabled)`);
-                      setError('go2rtc HLS stream failed (media error). Click Retry to try again.');
-                      setIsLoading(false);
-                      setIsPlaying(false);
-                    } else {
-                      console.warn(`[HLS ${stream.name}] go2rtc HLS failed after ${MAX_FATAL_RECOVERY_ATTEMPTS} media error recoveries, falling back to native lightNVR HLS`);
-                      fatalErrorCountRef.current = 0;
-                      setHlsMode('native');
-                    }
-                  } else {
-                    setError(data.details || 'HLS media error - stream unavailable');
-                    setIsLoading(false);
-                    setIsPlaying(false);
-                  }
-                }
+                setError(data.details || 'HLS playback error');
+                setIsLoading(false);
+                setIsPlaying(false);
               }
-              break;
-            default:
-              // Cannot recover from other fatal errors
-              console.error('Unrecoverable HLS error, destroying player');
-              recoveringRef.current = false;
-              if (hlsPlayerRef.current) {
-                hlsPlayerRef.current.destroy();
-                hlsPlayerRef.current = null;
-              }
-              if (isMounted) {
-                if (usingGo2rtc) {
-                  if (go2rtcEnabled) {
-                    console.error(`[HLS ${stream.name}] go2rtc HLS unrecoverable error - no fallback (go2rtc enabled)`);
-                    setError('go2rtc HLS stream failed. Click Retry to try again.');
-                    setIsLoading(false);
-                    setIsPlaying(false);
-                  } else {
-                    console.warn(`[HLS ${stream.name}] go2rtc HLS failed, falling back to native lightNVR HLS`);
-                    fatalErrorCountRef.current = 0;
-                    setHlsMode('native');
-                  }
-                } else {
-                  setError(data.details || 'HLS playback error');
-                  setIsLoading(false);
-                  setIsPlaying(false);
-                }
-              }
-              break;
+            }
           }
         });
       }
