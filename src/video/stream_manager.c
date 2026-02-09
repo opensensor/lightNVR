@@ -890,18 +890,10 @@ int set_stream_recording(stream_handle_t handle, bool enable) {
             pthread_mutex_lock(&s->mutex);
             s->config.record = enable;
             s->recording_enabled = enable;
-
-            // Get a copy of the config for database update
-            stream_config_t config_copy;
-            memcpy(&config_copy, &s->config, sizeof(stream_config_t));
-
             pthread_mutex_unlock(&s->mutex);
 
-            // Update the database directly
-            if (update_stream_config(config_copy.name, &config_copy) != 0) {
-                log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
-                // Continue anyway, the feature was set successfully
-            }
+            // Note: Database update is handled by the caller (e.g., put_stream_worker)
+            // to avoid duplicate updates and race conditions
         }
 
         return result;
@@ -986,18 +978,10 @@ int set_stream_streaming_enabled(stream_handle_t handle, bool enabled) {
         if (result == 0) {
             pthread_mutex_lock(&s->mutex);
             s->config.streaming_enabled = enabled;
-
-            // Get a copy of the config for database update
-            stream_config_t config_copy;
-            memcpy(&config_copy, &s->config, sizeof(stream_config_t));
-
             pthread_mutex_unlock(&s->mutex);
 
-            // Update the database directly
-            if (update_stream_config(config_copy.name, &config_copy) != 0) {
-                log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
-                // Continue anyway, the feature was set successfully
-            }
+            // Note: Database update is handled by the caller (e.g., put_stream_worker)
+            // to avoid duplicate updates and race conditions
         }
 
         return result;
