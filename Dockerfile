@@ -161,6 +161,9 @@ COPY --from=builder /lib/libsod.so /lib/libsod.so
 # Copy web assets (copy CONTENTS of dist into /var/lib/lightnvr/www)
 COPY --from=builder /opt/web/dist/ /var/lib/lightnvr/www/
 
+# Copy database migrations
+COPY --from=builder /opt/db/migrations/ /usr/share/lightnvr/migrations/
+
 # Copy entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
