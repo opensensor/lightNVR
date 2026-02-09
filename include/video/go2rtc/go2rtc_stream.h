@@ -66,6 +66,13 @@ bool go2rtc_stream_get_webrtc_url(const char *stream_id, char *buffer, size_t bu
 bool go2rtc_stream_get_rtsp_url(const char *stream_id, char *buffer, size_t buffer_size);
 
 /**
+ * @brief Check if the go2rtc stream module has been initialized
+ *
+ * @return true if initialized, false otherwise
+ */
+bool go2rtc_stream_is_initialized(void);
+
+/**
  * @brief Check if go2rtc is running and ready
  *
  * @return true if go2rtc is running and ready, false otherwise

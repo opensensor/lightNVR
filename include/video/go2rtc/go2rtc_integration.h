@@ -88,6 +88,22 @@ bool go2rtc_integration_register_all_streams(void);
 bool go2rtc_sync_streams_from_database(void);
 
 /**
+ * @brief Full go2rtc startup: init modules, start service, register all streams
+ *
+ * Performs the complete go2rtc startup sequence:
+ * 1. Initialize stream module (process manager + API client) if needed
+ * 2. Start go2rtc service and wait for readiness
+ * 3. Initialize integration module (consumer + health monitor) if needed
+ * 4. Register all existing streams with go2rtc
+ *
+ * Safe to call when modules are already initialized (e.g. re-enable after disable).
+ * Used by both main.c startup and the settings handler when enabling go2rtc.
+ *
+ * @return true if go2rtc is fully started and streams are registered, false on failure
+ */
+bool go2rtc_integration_full_start(void);
+
+/**
  * @brief Clean up the go2rtc integration module
  */
 void go2rtc_integration_cleanup(void);

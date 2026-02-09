@@ -478,6 +478,10 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
     return result;
 }
 
+bool go2rtc_stream_is_initialized(void) {
+    return g_initialized;
+}
+
 bool go2rtc_stream_is_ready(void) {
     // CRITICAL FIX: Add safety checks to prevent memory corruption
     if (!g_initialized) {

@@ -907,6 +907,58 @@ bool go2rtc_integration_init(void) {
     return true;
 }
 
+bool go2rtc_integration_full_start(void) {
+    // Resolve config values with defaults
+    const char *binary_path = g_config.go2rtc_binary_path[0] != '\0'
+                              ? g_config.go2rtc_binary_path : NULL;
+    const char *config_dir  = g_config.go2rtc_config_dir[0] != '\0'
+                              ? g_config.go2rtc_config_dir  : "/tmp/go2rtc";
+    int api_port = g_config.go2rtc_api_port > 0 ? g_config.go2rtc_api_port : 1984;
+
+    log_info("go2rtc full start (binary=%s, config_dir=%s, api_port=%d)",
+             binary_path ? binary_path : "PATH", config_dir, api_port);
+
+    // Step 1: Initialize stream module (process manager + API client) if needed
+    if (!go2rtc_stream_is_initialized()) {
+        if (!go2rtc_stream_init(binary_path, config_dir, api_port)) {
+            log_error("Failed to initialize go2rtc stream module");
+            return false;
+        }
+        log_info("go2rtc stream module initialized");
+    } else {
+        log_info("go2rtc stream module already initialized");
+    }
+
+    // Step 2: Start service (config generation, process start, readiness wait)
+    if (!go2rtc_stream_start_service()) {
+        log_error("Failed to start go2rtc service");
+        return false;
+    }
+    log_info("go2rtc service started and ready");
+
+    // Step 3: Initialize integration module (consumer + health monitor) if needed
+    if (!go2rtc_integration_is_initialized()) {
+        if (!go2rtc_integration_init()) {
+            log_error("Failed to initialize go2rtc integration module");
+            return false;
+        }
+    }
+
+    // Step 4: Register all existing streams
+    log_info("Registering all existing streams with go2rtc");
+    if (!go2rtc_integration_register_all_streams()) {
+        log_warn("Failed to register all streams with go2rtc");
+        // Continue anyway
+    } else {
+        log_info("Waiting for streams to be fully registered with go2rtc...");
+        sleep(3);
+        log_info("Streams registered with go2rtc");
+    }
+
+    log_info("go2rtc full start complete");
+    return true;
+}
+
 /**
  * Ensure go2rtc is ready and the stream is registered
  *

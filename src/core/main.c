@@ -762,84 +762,11 @@ int main(int argc, char *argv[]) {
         log_info("go2rtc is disabled in configuration. HLS will connect directly to camera streams.");
         log_info("WebRTC live view will not be available. Enable go2rtc in settings if needed.");
     } else {
-    log_info("Initializing go2rtc integration...");
-
-    // Use configuration values if provided, otherwise use defaults
-    const char *binary_path = NULL;  // Will use go2rtc from PATH if not specified
-    const char *config_dir = "/tmp/go2rtc";    // Default config directory
-    int api_port = 1984;                               // Default API port
-
-    // Check if custom values are provided in the configuration
-    if (config.go2rtc_binary_path[0] != '\0') {
-        binary_path = config.go2rtc_binary_path;
-        log_info("Using custom go2rtc binary path: %s", binary_path);
-    } else {
-        log_info("go2rtc binary path not specified, will use from PATH or existing service");
-    }
-
-    if (config.go2rtc_config_dir[0] != '\0') {
-        config_dir = config.go2rtc_config_dir;
-        log_info("Using custom go2rtc config directory: %s", config_dir);
-    } else {
-        log_info("Using default go2rtc config directory: %s", config_dir);
-    }
-
-    if (config.go2rtc_api_port > 0) {
-        api_port = config.go2rtc_api_port;
-        log_info("Using custom go2rtc API port: %d", api_port);
-    } else {
-        log_info("Using default go2rtc API port: %d", api_port);
-    }
-
-    if (go2rtc_stream_init(binary_path, config_dir, api_port)) {
-        log_info("go2rtc integration initialized successfully");
-
-        // Start go2rtc service (or use existing service if already running)
-        if (go2rtc_stream_start_service()) {
-            log_info("go2rtc service started successfully or existing service detected");
-
-            // Wait for go2rtc service to be fully ready
-            log_info("Waiting for go2rtc service to be fully ready...");
-            int retries = 10;
-            while (retries > 0 && !go2rtc_stream_is_ready()) {
-                log_info("Waiting for go2rtc service to be ready... (%d retries left)", retries);
-                sleep(1);
-                retries--;
-            }
-
-            if (!go2rtc_stream_is_ready()) {
-                log_error("go2rtc service failed to be ready in time");
-            } else {
-                log_info("go2rtc service is now fully ready");
-            }
-
-            // Initialize go2rtc consumer integration
-            if (go2rtc_integration_init()) {
-                log_info("go2rtc consumer integration initialized successfully");
-
-                // Register all existing streams with go2rtc
-                log_info("Registering all existing streams with go2rtc");
-                if (!go2rtc_integration_register_all_streams()) {
-                    log_warn("Failed to register all streams with go2rtc");
-                    // Continue anyway
-                } else {
-                    // Wait a bit for streams to be fully registered
-                    log_info("Waiting for streams to be fully registered with go2rtc...");
-                    sleep(3);
-                    log_info("Streams should now be fully registered with go2rtc");
-                }
-            } else {
-                log_error("Failed to initialize go2rtc consumer integration");
-            }
-        } else {
-            log_error("Failed to start go2rtc service. LiveView streaming via go2rtc will not be available.");
-            log_error("Ensure go2rtc is installed and accessible. You can configure the go2rtc binary path in settings.");
+        if (!go2rtc_integration_full_start()) {
+            log_error("Failed to start go2rtc integration.");
+            log_error("Ensure go2rtc is installed and accessible (scripts/install_go2rtc.sh).");
+            log_error("LiveView and WebRTC streaming will not be available until go2rtc is properly configured.");
         }
-    } else {
-        log_error("Failed to initialize go2rtc integration. go2rtc binary not found or not executable.");
-        log_error("Install go2rtc using: scripts/install_go2rtc.sh or configure the binary path in the settings page.");
-        log_error("LiveView and WebRTC streaming will not be available until go2rtc is properly configured.");
-    }
     } // end go2rtc_enabled
     #endif
 

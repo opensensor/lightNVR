@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <syslog.h>
+#include <pthread.h>
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
@@ -21,8 +22,97 @@
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/go2rtc/go2rtc_process.h"
+#include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/hls/hls_api.h"
+
+/**
+ * @brief Background task for go2rtc start/stop after settings change.
+ *
+ * The actual go2rtc start/stop involves multiple sleep() calls (5-15+ seconds)
+ * so we run it in a detached thread to avoid blocking the API response.
+ */
+typedef struct {
+    bool becoming_enabled;   // true = user enabled go2rtc, false = user disabled it
+} go2rtc_settings_task_t;
+
+static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
+    if (!task) return;
+
+    stream_config_t all_streams[MAX_STREAMS];
+    int stream_count = get_all_stream_configs(all_streams, MAX_STREAMS);
+
+    if (!task->becoming_enabled) {
+        // go2rtc is being DISABLED — stop health monitor, stop go2rtc, start native HLS
+        log_info("go2rtc settings worker: disabling go2rtc...");
+
+        // Stop the health monitor first so it doesn't restart go2rtc
+        go2rtc_integration_cleanup();
+
+        if (go2rtc_process_is_running()) {
+            for (int i = 0; i < stream_count; i++) {
+                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                    all_streams[i].streaming_enabled) {
+                    stop_hls_stream(all_streams[i].name);
+                }
+            }
+
+            if (!go2rtc_process_stop()) {
+                log_warn("Failed to stop go2rtc process cleanly");
+            }
+            sleep(2);
+        }
+
+        // Start native HLS threads
+        for (int i = 0; i < stream_count; i++) {
+            if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                all_streams[i].streaming_enabled) {
+                if (start_hls_stream(all_streams[i].name) != 0) {
+                    log_warn("Failed to start native HLS for stream %s", all_streams[i].name);
+                }
+            }
+        }
+
+        log_info("go2rtc settings worker: go2rtc disabled, native HLS started");
+    } else {
+        // go2rtc is being ENABLED (or config changed) — restart go2rtc
+        log_info("go2rtc settings worker: enabling go2rtc...");
+
+        // Stop any existing HLS threads first
+        for (int i = 0; i < stream_count; i++) {
+            if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                all_streams[i].streaming_enabled) {
+                stop_hls_stream(all_streams[i].name);
+            }
+        }
+
+        // Stop go2rtc if already running
+        if (go2rtc_process_is_running()) {
+            if (!go2rtc_process_stop()) {
+                log_warn("Failed to stop go2rtc process cleanly, continuing anyway");
+            }
+            sleep(2);
+        }
+
+        // Full go2rtc startup: init, start, register streams
+        if (!go2rtc_integration_full_start()) {
+            log_error("Failed to start go2rtc integration");
+        } else {
+            // Start HLS streams routed through go2rtc
+            for (int i = 0; i < stream_count; i++) {
+                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                    all_streams[i].streaming_enabled) {
+                    if (stream_start_hls(all_streams[i].name) != 0) {
+                        log_warn("Failed to start HLS for stream %s", all_streams[i].name);
+                    }
+                }
+            }
+            log_info("go2rtc settings worker: go2rtc enabled and streams registered");
+        }
+    }
+
+    free(task);
+}
 
 /**
  * @brief Direct handler for GET /api/settings
@@ -179,6 +269,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     // Update settings
     bool settings_changed = false;
     bool go2rtc_config_changed = false;  // Track if go2rtc-related settings changed
+    bool go2rtc_becoming_enabled = false;  // Track transition direction
 
     // Web port
     cJSON *web_port = cJSON_GetObjectItem(settings, "web_port");
@@ -234,6 +325,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         // If webrtc_disabled changed, we need to restart go2rtc
         if (old_webrtc_disabled != g_config.webrtc_disabled) {
             go2rtc_config_changed = true;
+            go2rtc_becoming_enabled = g_config.go2rtc_enabled;  // restart, not a toggle
             log_info("WebRTC disabled setting changed, will restart go2rtc");
         }
     }
@@ -447,7 +539,8 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         // If go2rtc_enabled changed, we need to start/stop go2rtc
         if (old_go2rtc_enabled != g_config.go2rtc_enabled) {
             go2rtc_config_changed = true;
-            log_info("go2rtc_enabled setting changed from %s to %s, will restart go2rtc",
+            go2rtc_becoming_enabled = g_config.go2rtc_enabled;
+            log_info("go2rtc_enabled setting changed from %s to %s",
                     old_go2rtc_enabled ? "true" : "false",
                     g_config.go2rtc_enabled ? "true" : "false");
         }
@@ -1090,115 +1183,29 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                 log_info("Database path after reload: %s", g_config.db_path);
             }
 
-            // If go2rtc-related settings changed, handle start/stop of go2rtc
+            // If go2rtc-related settings changed, spawn background thread
+            // to handle start/stop (avoids blocking the API response for 5-15+ seconds)
             if (go2rtc_config_changed) {
-                stream_config_t all_streams[MAX_STREAMS];
-                int stream_count = get_all_stream_configs(all_streams, MAX_STREAMS);
+                go2rtc_settings_task_t *task = calloc(1, sizeof(go2rtc_settings_task_t));
+                if (task) {
+                    task->becoming_enabled = go2rtc_becoming_enabled;
 
-                if (!g_config.go2rtc_enabled) {
-                    // go2rtc is being DISABLED — stop go2rtc, start native HLS threads
-                    log_info("go2rtc has been disabled, stopping go2rtc process...");
+                    pthread_t thread_id;
+                    pthread_attr_t attr;
+                    pthread_attr_init(&attr);
+                    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-                    if (go2rtc_process_is_running()) {
-                        // First stop all go2rtc-managed HLS streams
-                        for (int i = 0; i < stream_count; i++) {
-                            if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
-                                all_streams[i].streaming_enabled) {
-                                log_info("Stopping go2rtc HLS for stream: %s", all_streams[i].name);
-                                stop_hls_stream(all_streams[i].name);
-                            }
-                        }
-
-                        if (!go2rtc_process_stop()) {
-                            log_warn("Failed to stop go2rtc process cleanly");
-                        } else {
-                            log_info("go2rtc process stopped successfully");
-                        }
-                        sleep(2);
-                    }
-
-                    // Now start native HLS threads for all enabled streaming streams
-                    for (int i = 0; i < stream_count; i++) {
-                        if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
-                            all_streams[i].streaming_enabled) {
-                            log_info("Starting native HLS for stream: %s", all_streams[i].name);
-                            if (start_hls_stream(all_streams[i].name) != 0) {
-                                log_warn("Failed to start native HLS for stream %s", all_streams[i].name);
-                            }
-                        }
-                    }
-
-                    log_info("go2rtc disabled: native HLS threads started for all streaming streams");
-                } else {
-                    // go2rtc is being ENABLED (or other go2rtc config changed) — restart go2rtc
-                    log_info("go2rtc configuration changed, restarting go2rtc process...");
-
-                    // Stop native HLS threads first
-                    for (int i = 0; i < stream_count; i++) {
-                        if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
-                            all_streams[i].streaming_enabled) {
-                            log_info("Stopping native HLS for stream: %s", all_streams[i].name);
-                            stop_hls_stream(all_streams[i].name);
-                        }
-                    }
-
-                    // Stop go2rtc if already running
-                    if (go2rtc_process_is_running()) {
-                        log_info("Stopping go2rtc process...");
-                        if (!go2rtc_process_stop()) {
-                            log_warn("Failed to stop go2rtc process cleanly, continuing anyway");
-                        } else {
-                            log_info("go2rtc process stopped successfully");
-                        }
-                        sleep(2);
-                    }
-
-                    // Regenerate go2rtc configuration with new settings
-                    char config_path[MAX_PATH_LENGTH];
-                    snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", g_config.go2rtc_config_dir);
-
-                    log_info("Regenerating go2rtc configuration at: %s", config_path);
-                    if (!go2rtc_process_generate_config(config_path, g_config.go2rtc_api_port)) {
-                        log_error("Failed to regenerate go2rtc configuration");
+                    if (pthread_create(&thread_id, &attr,
+                                       (void *(*)(void *))go2rtc_settings_worker, task) != 0) {
+                        log_error("Failed to create go2rtc settings worker thread");
+                        free(task);
                     } else {
-                        log_info("go2rtc configuration regenerated successfully");
-
-                        // Start go2rtc process
-                        log_info("Starting go2rtc process with new configuration...");
-                        if (!go2rtc_process_start(g_config.go2rtc_api_port)) {
-                            log_error("Failed to start go2rtc process with new configuration");
-                        } else {
-                            log_info("go2rtc process started successfully with new configuration");
-
-                            // Wait for go2rtc to be ready
-                            log_info("Waiting for go2rtc to be ready...");
-                            sleep(3);
-
-                            // Re-register all active streams with go2rtc
-                            log_info("Re-registering all active streams with go2rtc...");
-                            for (int i = 0; i < stream_count; i++) {
-                                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled) {
-                                    log_info("Re-registering stream with go2rtc: %s", all_streams[i].name);
-                                    if (!go2rtc_integration_reload_stream(all_streams[i].name)) {
-                                        log_warn("Failed to re-register stream %s with go2rtc", all_streams[i].name);
-                                    }
-                                }
-                            }
-
-                            // Start HLS streams via go2rtc for all streaming-enabled streams
-                            for (int i = 0; i < stream_count; i++) {
-                                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
-                                    all_streams[i].streaming_enabled) {
-                                    log_info("Starting go2rtc HLS for stream: %s", all_streams[i].name);
-                                    if (start_hls_stream(all_streams[i].name) != 0) {
-                                        log_warn("Failed to start go2rtc HLS for stream %s", all_streams[i].name);
-                                    }
-                                }
-                            }
-
-                            log_info("go2rtc restart and stream re-registration complete");
-                        }
+                        log_info("go2rtc settings change dispatched to background thread (becoming_%s)",
+                                 go2rtc_becoming_enabled ? "enabled" : "disabled");
                     }
+                    pthread_attr_destroy(&attr);
+                } else {
+                    log_error("Failed to allocate go2rtc settings task");
                 }
             }
         } else {
