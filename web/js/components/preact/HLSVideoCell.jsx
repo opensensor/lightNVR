@@ -10,7 +10,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { PTZControls } from './PTZControls.jsx';
-import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
+import { getGo2rtcBaseUrl, isGo2rtcAvailable } from '../../utils/settings-utils.js';
 import Hls from 'hls.js';
 
 /**
@@ -36,9 +36,12 @@ export function HLSVideoCell({
   const [isPlaying, setIsPlaying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
-  // HLS mode state: 'fmp4' (uses &mp4=flac), 'ts' (no &mp4, H264 only), or 'failed'
-  // Start with fMP4 mode which supports more codecs
-  const [hlsMode, setHlsMode] = useState('fmp4');
+  // HLS source state: 'go2rtc' (go2rtc's dynamic HLS), 'native' (lightNVR FFmpeg-based HLS), or 'failed'
+  // Default to native lightNVR HLS (reliable, always running when streaming enabled)
+  // go2rtc mode is used only when the backend reports go2rtc is available for this stream
+  const [hlsMode, setHlsMode] = useState(() => {
+    return stream && stream.go2rtc_hls_available ? 'go2rtc' : 'native';
+  });
 
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
@@ -105,46 +108,63 @@ export function HLSVideoCell({
 
     // Async initialization function - MUST be defined before doInit to avoid TDZ errors
     const initHls = async () => {
-      // Get go2rtc base URL for HLS streaming
-      let go2rtcBaseUrl;
-      try {
-        go2rtcBaseUrl = await getGo2rtcBaseUrl();
-        console.log(`Using go2rtc base URL for HLS: ${go2rtcBaseUrl}`);
-      } catch (err) {
-        console.warn('Failed to get go2rtc URL from settings, using default port 1984:', err);
-        go2rtcBaseUrl = `http://${window.location.hostname}:1984`;
+      let hlsStreamUrl;
+      let usingGo2rtc = false;
+
+      // Determine which HLS source to use based on current mode
+      if (hlsMode === 'go2rtc') {
+        // Check if go2rtc is actually available before trying to use it
+        const go2rtcReady = await isGo2rtcAvailable();
+        if (!isMounted) return;
+
+        if (go2rtcReady) {
+          // Get go2rtc base URL for HLS streaming
+          let go2rtcBaseUrl;
+          try {
+            go2rtcBaseUrl = await getGo2rtcBaseUrl();
+            console.log(`Using go2rtc base URL for HLS: ${go2rtcBaseUrl}`);
+          } catch (err) {
+            console.warn('Failed to get go2rtc URL from settings, using default port 1984:', err);
+            go2rtcBaseUrl = `http://${window.location.hostname}:1984`;
+          }
+
+          if (!isMounted) return;
+
+          // Build the HLS stream URL using go2rtc's dynamic HLS endpoint
+          // Using &mp4=flac for best codec compatibility (H264/H265 + AAC/PCMA/PCMU/PCM)
+          hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(stream.name)}&mp4=flac`;
+          usingGo2rtc = true;
+          console.log(`[HLS ${stream.name}] Using go2rtc HLS: ${hlsStreamUrl}`);
+
+          // Pre-warm the stream by making a HEAD request to trigger go2rtc to start preparing
+          try {
+            await fetch(hlsStreamUrl, { method: 'HEAD' });
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (e) {
+            console.log(`[HLS ${stream.name}] Pre-warm request completed (may have failed, that's OK)`);
+          }
+
+          if (!isMounted) return;
+        } else {
+          // go2rtc is not available - fall back to native HLS immediately
+          console.warn(`[HLS ${stream.name}] go2rtc is not available, falling back to native lightNVR HLS`);
+          hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8`;
+          usingGo2rtc = false;
+          setHlsMode('native');
+          console.log(`[HLS ${stream.name}] Using native lightNVR HLS: ${hlsStreamUrl}`);
+        }
+      } else if (hlsMode === 'native') {
+        // Use lightNVR's FFmpeg-based HLS endpoint directly
+        hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8`;
+        usingGo2rtc = false;
+        console.log(`[HLS ${stream.name}] Using native lightNVR HLS: ${hlsStreamUrl}`);
+      } else {
+        // Mode is 'failed' - don't attempt anything
+        console.error(`[HLS ${stream.name}] All HLS modes have failed`);
+        setError('HLS streaming unavailable - both go2rtc and native HLS failed');
+        setIsLoading(false);
+        return;
       }
-
-      // Check if component was unmounted during async operation
-      if (!isMounted) return;
-
-      // Build the HLS stream URL using go2rtc's dynamic HLS endpoint
-      // This provides fresh, never-stale video directly from go2rtc
-      //
-      // go2rtc HLS format options:
-      // - No &mp4 param: HLS/TS format (H264 only, most compatible for video)
-      // - &mp4 (empty): HLS/fMP4 legacy (H264/H265 + AAC only - fails with other audio codecs!)
-      // - &mp4=flac: HLS/fMP4 modern (H264/H265 + AAC/PCMA/PCMU/PCM - works with most cameras)
-      // - &mp4=all: HLS/fMP4 extended (adds Opus/MP3 support)
-      //
-      // Using &mp4=flac for best compatibility - supports common camera audio codecs (G711/PCMA/PCMU)
-      // while still using fMP4 format which HLS.js handles well
-      const hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(stream.name)}&mp4=flac`;
-      console.log(`HLS stream URL: ${hlsStreamUrl}`);
-
-      // Pre-warm the stream by making a HEAD request to trigger go2rtc to start preparing
-      // This helps reduce 404 errors on init.mp4 by giving go2rtc a head start
-      try {
-        await fetch(hlsStreamUrl, { method: 'HEAD' });
-        // Small delay to let go2rtc prepare the first segment
-        await new Promise(resolve => setTimeout(resolve, 200));
-      } catch (e) {
-        // Ignore errors - this is just a warm-up request
-        console.log(`[HLS ${stream.name}] Pre-warm request completed (may have failed, that's OK)`);
-      }
-
-      // Check if component was unmounted during pre-warm
-      if (!isMounted) return;
 
       // Check if HLS.js is supported
       if (Hls.isSupported()) {
@@ -295,9 +315,15 @@ export function HLSVideoCell({
                 hlsPlayerRef.current = null;
               }
               if (isMounted) {
-                setError(data.details || 'HLS playback error');
-                setIsLoading(false);
-                setIsPlaying(false);
+                // If we were using go2rtc, fall back to native HLS
+                if (usingGo2rtc) {
+                  console.warn(`[HLS ${stream.name}] go2rtc HLS failed, falling back to native lightNVR HLS`);
+                  setHlsMode('native');
+                } else {
+                  setError(data.details || 'HLS playback error');
+                  setIsLoading(false);
+                  setIsPlaying(false);
+                }
               }
               break;
           }
@@ -318,9 +344,15 @@ export function HLSVideoCell({
 
         nativeErrorHandler = function() {
           if (!isMounted) return;
-          setError('HLS stream failed to load');
-          setIsLoading(false);
-          setIsPlaying(false);
+          // If we were using go2rtc, fall back to native HLS
+          if (usingGo2rtc) {
+            console.warn(`[HLS ${stream.name}] go2rtc HLS failed (native player), falling back to native lightNVR HLS`);
+            setHlsMode('native');
+          } else {
+            setError('HLS stream failed to load');
+            setIsLoading(false);
+            setIsPlaying(false);
+          }
         };
 
         videoRef.current.addEventListener('loadedmetadata', nativeLoadedHandler);
@@ -403,7 +435,7 @@ export function HLSVideoCell({
         videoRef.current.load();
       }
     };
-  }, [stream, retryCount, initDelay]);
+  }, [stream, retryCount, initDelay, hlsMode]);
 
   // Handle retry button click
   const handleRetry = async () => {
@@ -484,10 +516,22 @@ export function HLSVideoCell({
             color: 'white',
             borderRadius: '4px',
             fontSize: '14px',
-            zIndex: 15
+            zIndex: 15,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
           }}
         >
           {stream.name}
+          <span style={{
+            fontSize: '10px',
+            padding: '1px 4px',
+            borderRadius: '3px',
+            backgroundColor: hlsMode === 'go2rtc' ? 'rgba(0, 150, 255, 0.7)' : 'rgba(100, 100, 100, 0.7)',
+            color: 'white'
+          }}>
+            {hlsMode === 'go2rtc' ? 'go2rtc' : 'HLS'}
+          </span>
         </div>
       )}
 

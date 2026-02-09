@@ -18,6 +18,9 @@ export function SettingsView() {
   const [userRole, setUserRole] = useState(null);
   const [settings, setSettings] = useState({
     logLevel: '2',
+    syslogEnabled: false,
+    syslogIdent: 'lightnvr',
+    syslogFacility: 'LOG_USER',
     storagePath: '/var/lib/lightnvr/recordings',
     storagePathHls: '', // New field for HLS storage path
     maxStorage: '0',
@@ -29,14 +32,28 @@ export function SettingsView() {
     username: 'admin',
     password: 'admin',
     webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
+    authTimeoutHours: '24',
     bufferSize: '1024',
     useSwap: true,
     swapSize: '128',
     detectionModelsPath: '',
+    apiDetectionUrl: 'http://localhost:8000/detect',
+    apiDetectionBackend: 'onnx',
     defaultDetectionThreshold: 50,
     defaultPreBuffer: 5,
     defaultPostBuffer: 10,
     bufferStrategy: 'auto',
+    // go2rtc settings
+    go2rtcBinaryPath: '/usr/local/bin/go2rtc',
+    go2rtcConfigDir: '/etc/lightnvr/go2rtc',
+    go2rtcApiPort: '1984',
+    go2rtcRtspPort: '8554',
+    go2rtcWebrtcEnabled: true,
+    go2rtcWebrtcListenPort: '8555',
+    go2rtcStunEnabled: true,
+    go2rtcStunServer: 'stun.l.google.com:19302',
+    go2rtcExternalIp: '',
+    go2rtcIceServers: '',
     // MQTT settings
     mqttEnabled: false,
     mqttBrokerHost: 'localhost',
@@ -55,6 +72,8 @@ export function SettingsView() {
     turnUsername: '',
     turnPassword: '',
     // ONVIF discovery settings
+    onvifDiscoveryEnabled: false,
+    onvifDiscoveryInterval: '300',
     onvifDiscoveryNetwork: 'auto'
   });
 
@@ -131,6 +150,9 @@ export function SettingsView() {
       // Map backend property names to frontend property names
       const mappedData = {
         logLevel: settingsData.log_level?.toString() || '',
+        syslogEnabled: settingsData.syslog_enabled || false,
+        syslogIdent: settingsData.syslog_ident || 'lightnvr',
+        syslogFacility: settingsData.syslog_facility || 'LOG_USER',
         storagePath: settingsData.storage_path || '',
         storagePathHls: settingsData.storage_path_hls || '', // Map the HLS storage path
         maxStorage: settingsData.max_storage_size?.toString() || '',
@@ -142,14 +164,28 @@ export function SettingsView() {
         username: settingsData.web_username || '',
         password: settingsData.web_password || '',
         webrtcDisabled: settingsData.webrtc_disabled || false,
+        authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
         bufferSize: settingsData.buffer_size?.toString() || '',
         useSwap: settingsData.use_swap || false,
         swapSize: settingsData.swap_size?.toString() || '',
         detectionModelsPath: settingsData.models_path || '',
+        apiDetectionUrl: settingsData.api_detection_url || 'http://localhost:8000/detect',
+        apiDetectionBackend: settingsData.api_detection_backend || 'onnx',
         defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
         defaultPreBuffer: settingsData.pre_detection_buffer?.toString() || '5',
         defaultPostBuffer: settingsData.post_detection_buffer?.toString() || '10',
         bufferStrategy: settingsData.buffer_strategy || 'auto',
+        // go2rtc settings
+        go2rtcBinaryPath: settingsData.go2rtc_binary_path || '/usr/local/bin/go2rtc',
+        go2rtcConfigDir: settingsData.go2rtc_config_dir || '/etc/lightnvr/go2rtc',
+        go2rtcApiPort: settingsData.go2rtc_api_port?.toString() || '1984',
+        go2rtcRtspPort: settingsData.go2rtc_rtsp_port?.toString() || '8554',
+        go2rtcWebrtcEnabled: settingsData.go2rtc_webrtc_enabled !== undefined ? settingsData.go2rtc_webrtc_enabled : true,
+        go2rtcWebrtcListenPort: settingsData.go2rtc_webrtc_listen_port?.toString() || '8555',
+        go2rtcStunEnabled: settingsData.go2rtc_stun_enabled !== undefined ? settingsData.go2rtc_stun_enabled : true,
+        go2rtcStunServer: settingsData.go2rtc_stun_server || 'stun.l.google.com:19302',
+        go2rtcExternalIp: settingsData.go2rtc_external_ip || '',
+        go2rtcIceServers: settingsData.go2rtc_ice_servers || '',
         // MQTT settings
         mqttEnabled: settingsData.mqtt_enabled || false,
         mqttBrokerHost: settingsData.mqtt_broker_host || 'localhost',
@@ -168,6 +204,8 @@ export function SettingsView() {
         turnUsername: settingsData.turn_username || '',
         turnPassword: settingsData.turn_password || '',
         // ONVIF discovery settings
+        onvifDiscoveryEnabled: settingsData.onvif_discovery_enabled || false,
+        onvifDiscoveryInterval: settingsData.onvif_discovery_interval?.toString() || '300',
         onvifDiscoveryNetwork: settingsData.onvif_discovery_network || 'auto'
       };
       
@@ -184,6 +222,9 @@ export function SettingsView() {
     // Map frontend property names to backend property names
     const mappedSettings = {
       log_level: parseInt(settings.logLevel, 10),
+      syslog_enabled: settings.syslogEnabled,
+      syslog_ident: settings.syslogIdent,
+      syslog_facility: settings.syslogFacility,
       storage_path: settings.storagePath,
       storage_path_hls: settings.storagePathHls, // Include the HLS storage path
       max_storage_size: parseInt(settings.maxStorage, 10),
@@ -195,14 +236,28 @@ export function SettingsView() {
       web_username: settings.username,
       web_password: settings.password,
       webrtc_disabled: settings.webrtcDisabled,
+      auth_timeout_hours: parseInt(settings.authTimeoutHours, 10),
       buffer_size: parseInt(settings.bufferSize, 10),
       use_swap: settings.useSwap,
       swap_size: parseInt(settings.swapSize, 10),
       models_path: settings.detectionModelsPath,
+      api_detection_url: settings.apiDetectionUrl,
+      api_detection_backend: settings.apiDetectionBackend,
       default_detection_threshold: settings.defaultDetectionThreshold,
       pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
       post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
       buffer_strategy: settings.bufferStrategy,
+      // go2rtc settings
+      go2rtc_binary_path: settings.go2rtcBinaryPath,
+      go2rtc_config_dir: settings.go2rtcConfigDir,
+      go2rtc_api_port: parseInt(settings.go2rtcApiPort, 10),
+      go2rtc_rtsp_port: parseInt(settings.go2rtcRtspPort, 10),
+      go2rtc_webrtc_enabled: settings.go2rtcWebrtcEnabled,
+      go2rtc_webrtc_listen_port: parseInt(settings.go2rtcWebrtcListenPort, 10),
+      go2rtc_stun_enabled: settings.go2rtcStunEnabled,
+      go2rtc_stun_server: settings.go2rtcStunServer,
+      go2rtc_external_ip: settings.go2rtcExternalIp,
+      go2rtc_ice_servers: settings.go2rtcIceServers,
       // MQTT settings
       mqtt_enabled: settings.mqttEnabled,
       mqtt_broker_host: settings.mqttBrokerHost,
@@ -221,6 +276,8 @@ export function SettingsView() {
       turn_username: settings.turnUsername,
       turn_password: settings.turnPassword,
       // ONVIF discovery settings
+      onvif_discovery_enabled: settings.onvifDiscoveryEnabled,
+      onvif_discovery_interval: parseInt(settings.onvifDiscoveryInterval, 10),
       onvif_discovery_network: settings.onvifDiscoveryNetwork
     };
     
@@ -316,6 +373,67 @@ export function SettingsView() {
                 <option value="3">Debug</option>
               </select>
             </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-syslog-enabled" class="font-medium">Enable Syslog</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-syslog-enabled"
+                name="syslogEnabled"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{accentColor: 'hsl(var(--primary))'}}
+                checked={settings.syslogEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint ml-2 text-sm text-muted-foreground">Send log messages to syslog</span>
+            </div>
+          </div>
+          {settings.syslogEnabled && (
+            <>
+            <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+              <label for="setting-syslog-ident" class="font-medium">Syslog Ident</label>
+              <div class="col-span-2">
+                <input
+                  type="text"
+                  id="setting-syslog-ident"
+                  name="syslogIdent"
+                  class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={settings.syslogIdent}
+                  onChange={handleInputChange}
+                  disabled={!canModifySettings}
+                  placeholder="lightnvr"
+                />
+                <span class="hint text-sm text-muted-foreground block mt-1">Identifier prepended to syslog messages</span>
+              </div>
+            </div>
+            <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+              <label for="setting-syslog-facility" class="font-medium">Syslog Facility</label>
+              <div class="col-span-2">
+                <select
+                  id="setting-syslog-facility"
+                  name="syslogFacility"
+                  class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={settings.syslogFacility}
+                  onChange={handleInputChange}
+                  disabled={!canModifySettings}
+                >
+                  <option value="LOG_USER">LOG_USER</option>
+                  <option value="LOG_DAEMON">LOG_DAEMON</option>
+                  <option value="LOG_LOCAL0">LOG_LOCAL0</option>
+                  <option value="LOG_LOCAL1">LOG_LOCAL1</option>
+                  <option value="LOG_LOCAL2">LOG_LOCAL2</option>
+                  <option value="LOG_LOCAL3">LOG_LOCAL3</option>
+                  <option value="LOG_LOCAL4">LOG_LOCAL4</option>
+                  <option value="LOG_LOCAL5">LOG_LOCAL5</option>
+                  <option value="LOG_LOCAL6">LOG_LOCAL6</option>
+                  <option value="LOG_LOCAL7">LOG_LOCAL7</option>
+                </select>
+                <span class="hint text-sm text-muted-foreground block mt-1">Syslog facility for message routing</span>
+              </div>
+            </div>
+            </>
+          )}
           </div>
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Settings</h3>
@@ -475,8 +593,24 @@ export function SettingsView() {
               <span class="hint ml-2 text-sm text-muted-foreground">When enabled, all streams will use HLS instead of WebRTC</span>
             </div>
           </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-auth-timeout" class="font-medium">Auth Session Timeout (hours)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-auth-timeout"
+                name="authTimeoutHours"
+                min="1"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.authTimeoutHours}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">How long authentication sessions remain valid (minimum 1 hour)</span>
+            </div>
           </div>
-          
+          </div>
+
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Memory Optimization</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -554,6 +688,40 @@ export function SettingsView() {
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-api-detection-url" class="font-medium">API Detection URL</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-api-detection-url"
+                name="apiDetectionUrl"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.apiDetectionUrl}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="http://localhost:8000/detect"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">URL of the external object detection API endpoint</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-api-detection-backend" class="font-medium">API Detection Backend</label>
+            <div class="col-span-2">
+              <select
+                id="setting-api-detection-backend"
+                name="apiDetectionBackend"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.apiDetectionBackend}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              >
+                <option value="onnx">ONNX Runtime</option>
+                <option value="tflite">TensorFlow Lite</option>
+                <option value="opencv">OpenCV DNN</option>
+              </select>
+              <span class="hint text-sm text-muted-foreground block mt-1">Inference backend used by the detection API</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-default-detection-threshold" class="font-medium">Default Detection Threshold</label>
             <div class="col-span-2">
               <div class="flex items-center">
@@ -628,6 +796,175 @@ export function SettingsView() {
               <p class="hint text-sm text-muted-foreground mt-1">
                 How pre-detection video is buffered. "Auto" selects the best strategy based on your setup.
               </p>
+            </div>
+          </div>
+          </div>
+
+          {/* go2rtc Settings */}
+          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">go2rtc Integration</h3>
+            <p class="text-sm text-muted-foreground mb-4">
+              go2rtc provides WebRTC and HLS streaming. Changes require a restart to take effect.
+            </p>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-binary-path" class="font-medium">Binary Path</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-go2rtc-binary-path"
+                name="go2rtcBinaryPath"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcBinaryPath}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="/usr/local/bin/go2rtc"
+              />
+              <span class="hint text-sm text-muted-foreground">Path to the go2rtc binary</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-config-dir" class="font-medium">Config Directory</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-go2rtc-config-dir"
+                name="go2rtcConfigDir"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcConfigDir}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="/etc/lightnvr/go2rtc"
+              />
+              <span class="hint text-sm text-muted-foreground">Directory for go2rtc configuration files</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-api-port" class="font-medium">API Port</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-go2rtc-api-port"
+                name="go2rtcApiPort"
+                min="1"
+                max="65535"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcApiPort}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">go2rtc API port (default: 1984)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-rtsp-port" class="font-medium">RTSP Port</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-go2rtc-rtsp-port"
+                name="go2rtcRtspPort"
+                min="1"
+                max="65535"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcRtspPort}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">RTSP listen port (default: 8554)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-webrtc-enabled" class="font-medium">Enable WebRTC</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-go2rtc-webrtc-enabled"
+                name="go2rtcWebrtcEnabled"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.go2rtcWebrtcEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Enable WebRTC streaming via go2rtc</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-webrtc-listen-port" class="font-medium">WebRTC Listen Port</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-go2rtc-webrtc-listen-port"
+                name="go2rtcWebrtcListenPort"
+                min="1"
+                max="65535"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcWebrtcListenPort}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">WebRTC listen port (default: 8555)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-stun-enabled" class="font-medium">Enable STUN</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-go2rtc-stun-enabled"
+                name="go2rtcStunEnabled"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.go2rtcStunEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Enable STUN for NAT traversal (needed for remote WebRTC)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-stun-server" class="font-medium">STUN Server</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-go2rtc-stun-server"
+                name="go2rtcStunServer"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcStunServer}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="stun.l.google.com:19302"
+              />
+              <span class="hint text-sm text-muted-foreground">STUN server address for NAT traversal</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-external-ip" class="font-medium">External IP</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-go2rtc-external-ip"
+                name="go2rtcExternalIp"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcExternalIp}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="Auto-detect"
+              />
+              <span class="hint text-sm text-muted-foreground">Optional: External IP for NAT (leave empty for auto-detect)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-ice-servers" class="font-medium">ICE Servers</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-go2rtc-ice-servers"
+                name="go2rtcIceServers"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.go2rtcIceServers}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="Optional comma-separated ICE servers"
+              />
+              <span class="hint text-sm text-muted-foreground">Optional: Custom ICE servers (comma-separated)</span>
             </div>
           </div>
           </div>
@@ -890,8 +1227,41 @@ export function SettingsView() {
           <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
             <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">ONVIF Discovery</h3>
             <p class="text-sm text-muted-foreground mb-4">
-              Configure the network subnet used for ONVIF camera discovery. Use CIDR notation (e.g., 192.168.1.0/24) or "auto" for automatic detection.
+              Configure ONVIF camera discovery settings. Use CIDR notation (e.g., 192.168.1.0/24) or "auto" for automatic network detection.
             </p>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-onvif-discovery-enabled" class="font-medium">Enable ONVIF Discovery</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-onvif-discovery-enabled"
+                name="onvifDiscoveryEnabled"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{accentColor: 'hsl(var(--primary))'}}
+                checked={settings.onvifDiscoveryEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint ml-2 text-sm text-muted-foreground">Automatically discover ONVIF cameras on the network</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-onvif-discovery-interval" class="font-medium">Discovery Interval (seconds)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-onvif-discovery-interval"
+                name="onvifDiscoveryInterval"
+                min="30"
+                max="3600"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.onvifDiscoveryInterval}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">How often to scan for cameras (30–3600 seconds)</span>
+            </div>
+          </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-onvif-discovery-network" class="font-medium">Discovery Network</label>
             <div class="col-span-2">

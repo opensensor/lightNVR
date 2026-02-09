@@ -112,8 +112,9 @@ export async function enhancedFetch(url, options = {}) {
       console.log(`enhancedFetch response: ${response.status} ${response.statusText} for ${url}`);
 
       // Handle 401 Unauthorized - don't retry, just redirect
+      // Skip redirect if auth is disabled on the server (detected during session validation)
       if (response.status === 401) {
-        if (!skipAuthRedirect) {
+        if (!skipAuthRedirect && !window._authDisabled) {
           handleAuthenticationFailure('Received 401 Unauthorized response');
         }
         throw new HTTPError(401, 'Unauthorized', 'Authentication required');

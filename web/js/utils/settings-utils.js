@@ -91,11 +91,59 @@ function getDefaultSettings() {
   };
 }
 
+// Cache for go2rtc availability check
+let go2rtcAvailableCache = null;
+let go2rtcAvailableCacheTime = 0;
+const GO2RTC_CACHE_TTL = 30000; // 30 second cache TTL for availability check
+
+/**
+ * Check if go2rtc is available and responding
+ * Tries to reach go2rtc's API endpoint with a short timeout
+ * @param {boolean} forceRefresh - Force refresh the cache
+ * @returns {Promise<boolean>} - true if go2rtc is available
+ */
+export async function isGo2rtcAvailable(forceRefresh = false) {
+  const now = Date.now();
+
+  // Return cached result if still valid
+  if (!forceRefresh && go2rtcAvailableCache !== null && (now - go2rtcAvailableCacheTime) < GO2RTC_CACHE_TTL) {
+    return go2rtcAvailableCache;
+  }
+
+  try {
+    const baseUrl = await getGo2rtcBaseUrl();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+    const response = await fetch(`${baseUrl}/api/streams`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const available = response.ok;
+    go2rtcAvailableCache = available;
+    go2rtcAvailableCacheTime = now;
+
+    if (!available) {
+      console.warn(`go2rtc API responded with status ${response.status}`);
+    }
+    return available;
+  } catch (error) {
+    console.warn('go2rtc is not available:', error.message);
+    go2rtcAvailableCache = false;
+    go2rtcAvailableCacheTime = now;
+    return false;
+  }
+}
+
 /**
  * Clear the settings cache
  */
 export function clearSettingsCache() {
   settingsCache = null;
   settingsCacheTime = 0;
+  go2rtcAvailableCache = null;
+  go2rtcAvailableCacheTime = 0;
 }
 

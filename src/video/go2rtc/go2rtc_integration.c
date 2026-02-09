@@ -964,7 +964,7 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
 
 int go2rtc_integration_start_recording(const char *stream_name) {
     if (!g_initialized) {
-        log_error("go2rtc integration module not initialized");
+        log_warn("go2rtc integration module not initialized, cannot start recording");
         return -1;
     }
 
@@ -1025,7 +1025,7 @@ int go2rtc_integration_start_recording(const char *stream_name) {
 
 int go2rtc_integration_stop_recording(const char *stream_name) {
     if (!g_initialized) {
-        log_error("go2rtc integration module not initialized");
+        log_warn("go2rtc integration module not initialized, cannot stop recording");
         return -1;
     }
 
@@ -1060,7 +1060,7 @@ int go2rtc_integration_stop_recording(const char *stream_name) {
 
 int go2rtc_integration_start_hls(const char *stream_name) {
     if (!g_initialized) {
-        log_error("go2rtc integration module not initialized");
+        log_warn("go2rtc integration module not initialized, cannot start HLS");
         return -1;
     }
 
@@ -1120,7 +1120,7 @@ int go2rtc_integration_start_hls(const char *stream_name) {
 
 int go2rtc_integration_stop_hls(const char *stream_name) {
     if (!g_initialized) {
-        log_error("go2rtc integration module not initialized");
+        log_warn("go2rtc integration module not initialized, cannot stop HLS");
         return -1;
     }
 
@@ -1192,7 +1192,7 @@ bool go2rtc_integration_is_using_go2rtc_for_hls(const char *stream_name) {
  */
 bool go2rtc_integration_register_all_streams(void) {
     if (!g_initialized) {
-        log_error("go2rtc integration module not initialized");
+        log_warn("go2rtc integration module not initialized, cannot register streams");
         return false;
     }
 

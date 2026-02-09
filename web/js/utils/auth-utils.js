@@ -55,7 +55,8 @@ export async function validateSession() {
         valid: true,
         username: data.username,
         role: data.role,
-        role_id: data.role_id
+        role_id: data.role_id,
+        auth_enabled: data.auth_enabled
       };
     }
     return { valid: false };
@@ -143,17 +144,13 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
     return null;
   }
 
-  // If no credentials exist, redirect to login immediately
-  // This handles the case where user directly navigates to a protected page
-  if (!hasAuthCredentials()) {
-    console.debug('No credentials found on protected page, redirecting to login');
-    redirectToLogin('no_credentials');
-    return null;
-  }
-
   console.log(`Setting up session validation with ${intervalMs}ms interval`);
 
-  // Validate immediately on page load
+  // Validate immediately on page load by calling the server
+  // This handles both auth-enabled and auth-disabled cases:
+  // - If auth is disabled, /api/auth/verify returns success (no redirect needed)
+  // - If auth is enabled and session is valid, returns success
+  // - If auth is enabled and session is invalid, we redirect to login
   validateSession().then(session => {
     if (!session.valid) {
       console.warn('Initial session validation failed, redirecting to login');
@@ -161,12 +158,23 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
       redirectToLogin('session_expired');
     } else {
       console.debug('Initial session validation passed for user:', session.username);
+      // If auth is disabled on the server, store that fact to avoid unnecessary checks
+      if (session.auth_enabled === false) {
+        console.debug('Authentication is disabled on the server, skipping periodic validation');
+        window._authDisabled = true;
+      }
     }
   });
 
   // Setup periodic validation
   const intervalId = setInterval(async () => {
-    // Double-check credentials still exist before validating
+    // Skip periodic validation if auth is disabled on the server
+    if (window._authDisabled) {
+      console.debug('Session validation skipped - auth disabled on server');
+      return;
+    }
+
+    // Check credentials still exist before validating
     if (!hasAuthCredentials()) {
       console.debug('Session validation skipped - no credentials');
       return;

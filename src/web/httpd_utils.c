@@ -130,6 +130,15 @@ int httpd_get_session_token(const http_request_t *req, char *token, size_t token
 int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
     if (!req || !user) return 0;
 
+    // If authentication is disabled, return a dummy admin user
+    if (!g_config.web_auth_enabled) {
+        memset(user, 0, sizeof(user_t));
+        strncpy(user->username, "admin", sizeof(user->username) - 1);
+        user->role = USER_ROLE_ADMIN;
+        user->is_active = true;
+        return 1;
+    }
+
     // First, check for session token in cookie
     char session_token[64] = {0};
     if (httpd_get_session_token(req, session_token, sizeof(session_token)) == 0) {
@@ -174,6 +183,11 @@ int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
 }
 
 int httpd_check_admin_privileges(const http_request_t *req, http_response_t *res) {
+    // If authentication is disabled, grant admin access to all requests
+    if (!g_config.web_auth_enabled) {
+        return 1;
+    }
+
     user_t user;
     if (httpd_get_authenticated_user(req, &user)) {
         if (user.role == USER_ROLE_ADMIN) {

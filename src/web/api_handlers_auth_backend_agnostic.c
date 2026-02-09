@@ -329,6 +329,22 @@ void handle_auth_logout(const http_request_t *req, http_response_t *res) {
 void handle_auth_verify(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/auth/verify request");
 
+    // If authentication is disabled, return success immediately
+    if (!g_config.web_auth_enabled) {
+        log_info("Authentication is disabled, returning success for verify request");
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "authenticated", true);
+        cJSON_AddStringToObject(response, "username", "admin");
+        cJSON_AddStringToObject(response, "role", "admin");
+        cJSON_AddBoolToObject(response, "auth_enabled", false);
+
+        char *json_str = cJSON_PrintUnformatted(response);
+        http_response_set_json(res, 200, json_str);
+        free(json_str);
+        cJSON_Delete(response);
+        return;
+    }
+
     // First, check for session token in cookie
     const char *cookie_header = http_request_get_header(req, "Cookie");
     if (cookie_header) {

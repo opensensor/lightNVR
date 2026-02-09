@@ -6,6 +6,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <syslog.h>
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
@@ -61,13 +62,51 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(settings, "use_swap", g_config.use_swap);
     cJSON_AddNumberToObject(settings, "swap_size", g_config.swap_size / (1024 * 1024)); // Convert bytes to MB
 
+    // Syslog settings
+    cJSON_AddBoolToObject(settings, "syslog_enabled", g_config.syslog_enabled);
+    cJSON_AddStringToObject(settings, "syslog_ident", g_config.syslog_ident);
+    // Convert facility number to name for the API
+    {
+        const char *facility_name = "LOG_USER";
+        switch (g_config.syslog_facility) {
+            case LOG_USER: facility_name = "LOG_USER"; break;
+            case LOG_DAEMON: facility_name = "LOG_DAEMON"; break;
+            case LOG_LOCAL0: facility_name = "LOG_LOCAL0"; break;
+            case LOG_LOCAL1: facility_name = "LOG_LOCAL1"; break;
+            case LOG_LOCAL2: facility_name = "LOG_LOCAL2"; break;
+            case LOG_LOCAL3: facility_name = "LOG_LOCAL3"; break;
+            case LOG_LOCAL4: facility_name = "LOG_LOCAL4"; break;
+            case LOG_LOCAL5: facility_name = "LOG_LOCAL5"; break;
+            case LOG_LOCAL6: facility_name = "LOG_LOCAL6"; break;
+            case LOG_LOCAL7: facility_name = "LOG_LOCAL7"; break;
+        }
+        cJSON_AddStringToObject(settings, "syslog_facility", facility_name);
+    }
+
+    // API detection settings
+    cJSON_AddStringToObject(settings, "api_detection_url", g_config.api_detection_url);
+    cJSON_AddStringToObject(settings, "api_detection_backend", g_config.api_detection_backend);
+
     // Detection buffer defaults
+    cJSON_AddNumberToObject(settings, "default_detection_threshold", 50); // Global default (per-stream overrides exist)
     cJSON_AddNumberToObject(settings, "pre_detection_buffer", g_config.default_pre_detection_buffer);
     cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
     cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
 
-    // go2rtc settings (needed by frontend for WebRTC connections)
+    // Auth timeout
+    cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
+
+    // go2rtc settings
+    cJSON_AddStringToObject(settings, "go2rtc_binary_path", g_config.go2rtc_binary_path);
+    cJSON_AddStringToObject(settings, "go2rtc_config_dir", g_config.go2rtc_config_dir);
     cJSON_AddNumberToObject(settings, "go2rtc_api_port", g_config.go2rtc_api_port);
+    cJSON_AddNumberToObject(settings, "go2rtc_rtsp_port", g_config.go2rtc_rtsp_port);
+    cJSON_AddBoolToObject(settings, "go2rtc_webrtc_enabled", g_config.go2rtc_webrtc_enabled);
+    cJSON_AddNumberToObject(settings, "go2rtc_webrtc_listen_port", g_config.go2rtc_webrtc_listen_port);
+    cJSON_AddBoolToObject(settings, "go2rtc_stun_enabled", g_config.go2rtc_stun_enabled);
+    cJSON_AddStringToObject(settings, "go2rtc_stun_server", g_config.go2rtc_stun_server);
+    cJSON_AddStringToObject(settings, "go2rtc_external_ip", g_config.go2rtc_external_ip);
+    cJSON_AddStringToObject(settings, "go2rtc_ice_servers", g_config.go2rtc_ice_servers);
 
     // MQTT settings
     cJSON_AddBoolToObject(settings, "mqtt_enabled", g_config.mqtt_enabled);
@@ -91,6 +130,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "turn_password", g_config.turn_password[0] ? "********" : "");
 
     // ONVIF discovery settings
+    cJSON_AddBoolToObject(settings, "onvif_discovery_enabled", g_config.onvif_discovery_enabled);
+    cJSON_AddNumberToObject(settings, "onvif_discovery_interval", g_config.onvif_discovery_interval);
     cJSON_AddStringToObject(settings, "onvif_discovery_network", g_config.onvif_discovery_network);
 
     // Convert to string
@@ -184,7 +225,17 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated webrtc_disabled: %s", g_config.webrtc_disabled ? "true" : "false");
     }
-    
+
+    // Auth timeout hours
+    cJSON *auth_timeout_hours = cJSON_GetObjectItem(settings, "auth_timeout_hours");
+    if (auth_timeout_hours && cJSON_IsNumber(auth_timeout_hours)) {
+        int value = auth_timeout_hours->valueint;
+        if (value < 1) value = 1; // Minimum 1 hour
+        g_config.auth_timeout_hours = value;
+        settings_changed = true;
+        log_info("Updated auth_timeout_hours: %d", g_config.auth_timeout_hours);
+    }
+
     // Storage path
     cJSON *storage_path = cJSON_GetObjectItem(settings, "storage_path");
     if (storage_path && cJSON_IsString(storage_path)) {
@@ -261,7 +312,43 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated log_level: %d", g_config.log_level);
     }
-    
+
+    // Syslog enabled
+    cJSON *syslog_enabled = cJSON_GetObjectItem(settings, "syslog_enabled");
+    if (syslog_enabled && cJSON_IsBool(syslog_enabled)) {
+        g_config.syslog_enabled = cJSON_IsTrue(syslog_enabled);
+        settings_changed = true;
+        log_info("Updated syslog_enabled: %s", g_config.syslog_enabled ? "true" : "false");
+    }
+
+    // Syslog ident
+    cJSON *syslog_ident = cJSON_GetObjectItem(settings, "syslog_ident");
+    if (syslog_ident && cJSON_IsString(syslog_ident)) {
+        strncpy(g_config.syslog_ident, syslog_ident->valuestring, sizeof(g_config.syslog_ident) - 1);
+        g_config.syslog_ident[sizeof(g_config.syslog_ident) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated syslog_ident: %s", g_config.syslog_ident);
+    }
+
+    // Syslog facility
+    cJSON *syslog_facility = cJSON_GetObjectItem(settings, "syslog_facility");
+    if (syslog_facility && cJSON_IsString(syslog_facility)) {
+        const char *val = syslog_facility->valuestring;
+        if (strcmp(val, "LOG_USER") == 0) g_config.syslog_facility = LOG_USER;
+        else if (strcmp(val, "LOG_DAEMON") == 0) g_config.syslog_facility = LOG_DAEMON;
+        else if (strcmp(val, "LOG_LOCAL0") == 0) g_config.syslog_facility = LOG_LOCAL0;
+        else if (strcmp(val, "LOG_LOCAL1") == 0) g_config.syslog_facility = LOG_LOCAL1;
+        else if (strcmp(val, "LOG_LOCAL2") == 0) g_config.syslog_facility = LOG_LOCAL2;
+        else if (strcmp(val, "LOG_LOCAL3") == 0) g_config.syslog_facility = LOG_LOCAL3;
+        else if (strcmp(val, "LOG_LOCAL4") == 0) g_config.syslog_facility = LOG_LOCAL4;
+        else if (strcmp(val, "LOG_LOCAL5") == 0) g_config.syslog_facility = LOG_LOCAL5;
+        else if (strcmp(val, "LOG_LOCAL6") == 0) g_config.syslog_facility = LOG_LOCAL6;
+        else if (strcmp(val, "LOG_LOCAL7") == 0) g_config.syslog_facility = LOG_LOCAL7;
+        else g_config.syslog_facility = LOG_USER;
+        settings_changed = true;
+        log_info("Updated syslog_facility: %d", g_config.syslog_facility);
+    }
+
     // Buffer size
     cJSON *buffer_size = cJSON_GetObjectItem(settings, "buffer_size");
     if (buffer_size && cJSON_IsNumber(buffer_size)) {
@@ -317,6 +404,100 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.default_buffer_strategy[sizeof(g_config.default_buffer_strategy) - 1] = '\0';
         settings_changed = true;
         log_info("Updated default_buffer_strategy: %s", g_config.default_buffer_strategy);
+    }
+
+    // API detection URL
+    cJSON *api_detection_url = cJSON_GetObjectItem(settings, "api_detection_url");
+    if (api_detection_url && cJSON_IsString(api_detection_url)) {
+        strncpy(g_config.api_detection_url, api_detection_url->valuestring, sizeof(g_config.api_detection_url) - 1);
+        g_config.api_detection_url[sizeof(g_config.api_detection_url) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated api_detection_url: %s", g_config.api_detection_url);
+    }
+
+    // API detection backend
+    cJSON *api_detection_backend = cJSON_GetObjectItem(settings, "api_detection_backend");
+    if (api_detection_backend && cJSON_IsString(api_detection_backend)) {
+        strncpy(g_config.api_detection_backend, api_detection_backend->valuestring, sizeof(g_config.api_detection_backend) - 1);
+        g_config.api_detection_backend[sizeof(g_config.api_detection_backend) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated api_detection_backend: %s", g_config.api_detection_backend);
+    }
+
+    // go2rtc settings
+    cJSON *go2rtc_binary_path = cJSON_GetObjectItem(settings, "go2rtc_binary_path");
+    if (go2rtc_binary_path && cJSON_IsString(go2rtc_binary_path)) {
+        strncpy(g_config.go2rtc_binary_path, go2rtc_binary_path->valuestring, sizeof(g_config.go2rtc_binary_path) - 1);
+        g_config.go2rtc_binary_path[sizeof(g_config.go2rtc_binary_path) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated go2rtc_binary_path: %s", g_config.go2rtc_binary_path);
+    }
+
+    cJSON *go2rtc_config_dir = cJSON_GetObjectItem(settings, "go2rtc_config_dir");
+    if (go2rtc_config_dir && cJSON_IsString(go2rtc_config_dir)) {
+        strncpy(g_config.go2rtc_config_dir, go2rtc_config_dir->valuestring, sizeof(g_config.go2rtc_config_dir) - 1);
+        g_config.go2rtc_config_dir[sizeof(g_config.go2rtc_config_dir) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated go2rtc_config_dir: %s", g_config.go2rtc_config_dir);
+    }
+
+    cJSON *go2rtc_api_port = cJSON_GetObjectItem(settings, "go2rtc_api_port");
+    if (go2rtc_api_port && cJSON_IsNumber(go2rtc_api_port)) {
+        g_config.go2rtc_api_port = go2rtc_api_port->valueint;
+        settings_changed = true;
+        log_info("Updated go2rtc_api_port: %d", g_config.go2rtc_api_port);
+    }
+
+    cJSON *go2rtc_rtsp_port = cJSON_GetObjectItem(settings, "go2rtc_rtsp_port");
+    if (go2rtc_rtsp_port && cJSON_IsNumber(go2rtc_rtsp_port)) {
+        g_config.go2rtc_rtsp_port = go2rtc_rtsp_port->valueint;
+        settings_changed = true;
+        log_info("Updated go2rtc_rtsp_port: %d", g_config.go2rtc_rtsp_port);
+    }
+
+    cJSON *go2rtc_webrtc_enabled = cJSON_GetObjectItem(settings, "go2rtc_webrtc_enabled");
+    if (go2rtc_webrtc_enabled && cJSON_IsBool(go2rtc_webrtc_enabled)) {
+        g_config.go2rtc_webrtc_enabled = cJSON_IsTrue(go2rtc_webrtc_enabled);
+        settings_changed = true;
+        log_info("Updated go2rtc_webrtc_enabled: %s", g_config.go2rtc_webrtc_enabled ? "true" : "false");
+    }
+
+    cJSON *go2rtc_webrtc_listen_port = cJSON_GetObjectItem(settings, "go2rtc_webrtc_listen_port");
+    if (go2rtc_webrtc_listen_port && cJSON_IsNumber(go2rtc_webrtc_listen_port)) {
+        g_config.go2rtc_webrtc_listen_port = go2rtc_webrtc_listen_port->valueint;
+        settings_changed = true;
+        log_info("Updated go2rtc_webrtc_listen_port: %d", g_config.go2rtc_webrtc_listen_port);
+    }
+
+    cJSON *go2rtc_stun_enabled = cJSON_GetObjectItem(settings, "go2rtc_stun_enabled");
+    if (go2rtc_stun_enabled && cJSON_IsBool(go2rtc_stun_enabled)) {
+        g_config.go2rtc_stun_enabled = cJSON_IsTrue(go2rtc_stun_enabled);
+        settings_changed = true;
+        log_info("Updated go2rtc_stun_enabled: %s", g_config.go2rtc_stun_enabled ? "true" : "false");
+    }
+
+    cJSON *go2rtc_stun_server = cJSON_GetObjectItem(settings, "go2rtc_stun_server");
+    if (go2rtc_stun_server && cJSON_IsString(go2rtc_stun_server)) {
+        strncpy(g_config.go2rtc_stun_server, go2rtc_stun_server->valuestring, sizeof(g_config.go2rtc_stun_server) - 1);
+        g_config.go2rtc_stun_server[sizeof(g_config.go2rtc_stun_server) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated go2rtc_stun_server: %s", g_config.go2rtc_stun_server);
+    }
+
+    cJSON *go2rtc_external_ip = cJSON_GetObjectItem(settings, "go2rtc_external_ip");
+    if (go2rtc_external_ip && cJSON_IsString(go2rtc_external_ip)) {
+        strncpy(g_config.go2rtc_external_ip, go2rtc_external_ip->valuestring, sizeof(g_config.go2rtc_external_ip) - 1);
+        g_config.go2rtc_external_ip[sizeof(g_config.go2rtc_external_ip) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated go2rtc_external_ip: %s", g_config.go2rtc_external_ip);
+    }
+
+    cJSON *go2rtc_ice_servers = cJSON_GetObjectItem(settings, "go2rtc_ice_servers");
+    if (go2rtc_ice_servers && cJSON_IsString(go2rtc_ice_servers)) {
+        strncpy(g_config.go2rtc_ice_servers, go2rtc_ice_servers->valuestring, sizeof(g_config.go2rtc_ice_servers) - 1);
+        g_config.go2rtc_ice_servers[sizeof(g_config.go2rtc_ice_servers) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated go2rtc_ice_servers: %s", g_config.go2rtc_ice_servers);
     }
 
     // MQTT enabled
@@ -448,6 +629,25 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             settings_changed = true;
             log_info("Updated turn_password");
         }
+    }
+
+    // ONVIF discovery enabled
+    cJSON *onvif_discovery_enabled = cJSON_GetObjectItem(settings, "onvif_discovery_enabled");
+    if (onvif_discovery_enabled && cJSON_IsBool(onvif_discovery_enabled)) {
+        g_config.onvif_discovery_enabled = cJSON_IsTrue(onvif_discovery_enabled);
+        settings_changed = true;
+        log_info("Updated onvif_discovery_enabled: %s", g_config.onvif_discovery_enabled ? "true" : "false");
+    }
+
+    // ONVIF discovery interval
+    cJSON *onvif_discovery_interval = cJSON_GetObjectItem(settings, "onvif_discovery_interval");
+    if (onvif_discovery_interval && cJSON_IsNumber(onvif_discovery_interval)) {
+        int value = onvif_discovery_interval->valueint;
+        if (value < 30) value = 30;
+        if (value > 3600) value = 3600;
+        g_config.onvif_discovery_interval = value;
+        settings_changed = true;
+        log_info("Updated onvif_discovery_interval: %d", g_config.onvif_discovery_interval);
     }
 
     // ONVIF discovery network

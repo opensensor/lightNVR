@@ -18,6 +18,7 @@
 #include "database/database_manager.h"
 
 #include "database/db_motion_config.h"
+#include "video/go2rtc/go2rtc_integration.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/streams
@@ -134,6 +135,10 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
             }
         }
         cJSON_AddStringToObject(stream_obj, "status", status);
+
+        // Add go2rtc HLS availability - tells frontend whether go2rtc is providing HLS for this stream
+        cJSON_AddBoolToObject(stream_obj, "go2rtc_hls_available",
+            go2rtc_integration_is_using_go2rtc_for_hls(db_streams[i].name));
 
         // Add stream to array
         cJSON_AddItemToArray(streams_array, stream_obj);
@@ -265,6 +270,10 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     }
     cJSON_AddStringToObject(stream_obj, "status", status);
 
+    // Add go2rtc HLS availability - tells frontend whether go2rtc is providing HLS for this stream
+    cJSON_AddBoolToObject(stream_obj, "go2rtc_hls_available",
+        go2rtc_integration_is_using_go2rtc_for_hls(config.name));
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(stream_obj);
     if (!json_str) {
@@ -382,6 +391,10 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         default:                     status = "Unknown";  break;
     }
     cJSON_AddStringToObject(stream_obj, "status", status);
+
+    // Add go2rtc HLS availability - tells frontend whether go2rtc is providing HLS for this stream
+    cJSON_AddBoolToObject(stream_obj, "go2rtc_hls_available",
+        go2rtc_integration_is_using_go2rtc_for_hls(config.name));
 
     // Build response wrapper
     cJSON *response = cJSON_CreateObject();

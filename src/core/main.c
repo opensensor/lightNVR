@@ -826,10 +826,13 @@ int main(int argc, char *argv[]) {
                 log_error("Failed to initialize go2rtc consumer integration");
             }
         } else {
-            log_error("Failed to start go2rtc service");
+            log_error("Failed to start go2rtc service. LiveView streaming via go2rtc will not be available.");
+            log_error("Ensure go2rtc is installed and accessible. You can configure the go2rtc binary path in settings.");
         }
     } else {
-        log_error("Failed to initialize go2rtc integration");
+        log_error("Failed to initialize go2rtc integration. go2rtc binary not found or not executable.");
+        log_error("Install go2rtc using: scripts/install_go2rtc.sh or configure the binary path in the settings page.");
+        log_error("LiveView and WebRTC streaming will not be available until go2rtc is properly configured.");
     }
     #endif
 
