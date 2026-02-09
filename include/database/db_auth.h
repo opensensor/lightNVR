@@ -34,6 +34,7 @@ typedef struct {
     int64_t last_login;      /**< Last login timestamp */
     bool is_active;          /**< Whether the user is active */
     bool password_change_locked; /**< Whether password changes are locked (for demo accounts) */
+    bool totp_enabled;       /**< Whether TOTP MFA is enabled */
 } user_t;
 
 /**
@@ -227,5 +228,34 @@ const char *db_auth_get_role_name(user_role_t role);
  * @return Role ID, or -1 if not found
  */
 int db_auth_get_role_id(const char *role_name);
+
+/**
+ * @brief Get TOTP info for a user
+ *
+ * @param user_id User ID
+ * @param secret Buffer to store the base32-encoded TOTP secret
+ * @param secret_size Size of the secret buffer
+ * @param enabled Pointer to store whether TOTP is enabled
+ * @return 0 on success (secret exists), -1 if no secret configured or error
+ */
+int db_auth_get_totp_info(int64_t user_id, char *secret, size_t secret_size, bool *enabled);
+
+/**
+ * @brief Set or clear the TOTP secret for a user
+ *
+ * @param user_id User ID
+ * @param secret Base32-encoded TOTP secret (NULL to clear)
+ * @return 0 on success, non-zero on failure
+ */
+int db_auth_set_totp_secret(int64_t user_id, const char *secret);
+
+/**
+ * @brief Enable or disable TOTP for a user
+ *
+ * @param user_id User ID
+ * @param enabled Whether to enable or disable TOTP
+ * @return 0 on success, non-zero on failure
+ */
+int db_auth_enable_totp(int64_t user_id, bool enabled);
 
 #endif /* LIGHTNVR_DB_AUTH_H */
