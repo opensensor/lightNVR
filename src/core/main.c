@@ -1291,7 +1291,21 @@ cleanup:
         sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
 
-        // Clean up go2rtc integration first (inside watchdog-protected block)
+        // Stop health check system first to prevent it from trying to restart
+        // the web server while we're shutting it down
+        log_info("Shutting down health check system early...");
+        cleanup_health_check_system();
+
+        // Stop the web server FIRST to prevent new HTTP requests during cleanup
+        // This stops the libuv event loop thread and closes all connections
+        log_info("Shutting down web server early to prevent requests during cleanup...");
+        if (http_server) {
+            http_server_stop(http_server);
+            http_server_destroy(http_server);
+            http_server = NULL;
+        }
+
+        // Clean up go2rtc integration (inside watchdog-protected block)
         // This includes stopping the health monitor thread which can block
         #ifdef USE_GO2RTC
         log_info("Cleaning up go2rtc integration...");
@@ -1442,17 +1456,7 @@ cleanup:
         log_info("Shutting down ONVIF discovery module...");
         shutdown_onvif_discovery();
 
-        // Shut down health check system first (before web server)
-        log_info("Shutting down health check system...");
-        cleanup_health_check_system();
-
-        // Now shut down components
-        log_info("Shutting down web server...");
-        if (http_server) {
-            http_server_stop(http_server);
-            http_server_destroy(http_server);
-            http_server = NULL;
-        }
+        // Health check system and web server already stopped early in cleanup sequence
 
         log_info("Shutting down stream manager...");
         shutdown_stream_manager();
@@ -1529,6 +1533,17 @@ cleanup:
     } else {
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
+        // Stop health check system first to prevent it from trying to restart
+        // the web server while we're shutting it down
+        cleanup_health_check_system();
+
+        // Stop the web server FIRST to prevent new HTTP requests during cleanup
+        if (http_server) {
+            http_server_stop(http_server);
+            http_server_destroy(http_server);
+            http_server = NULL;
+        }
+
         // Stop all streams first
         for (int i = 0; i < config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
@@ -1554,15 +1569,7 @@ cleanup:
         // Cleanup MQTT client
         mqtt_cleanup();
 
-        // Cleanup health check system
-        cleanup_health_check_system();
-
-        // Shut down remaining components
-        if (http_server) {
-            http_server_stop(http_server);
-            http_server_destroy(http_server);
-            http_server = NULL;
-        }
+        // Health check system already stopped early
 
         // Cleanup batch delete progress tracking
         batch_delete_progress_cleanup();
