@@ -63,6 +63,12 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
             sleep(2);
         }
 
+        // Fully reset the stream module (process manager + API client) so that
+        // a subsequent re-enable gets a completely fresh go2rtc_stream_init().
+        // Without this, the stream module remains "initialized" with potentially
+        // stale state, and go2rtc_integration_full_start() skips the init step.
+        go2rtc_stream_cleanup();
+
         // Start native HLS threads
         for (int i = 0; i < stream_count; i++) {
             if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&

@@ -25,9 +25,6 @@ static char *g_api_host = NULL;
 static int g_api_port = 0;
 static bool g_initialized = false;
 
-// Mutex for thread-safe access to the global response buffer
-static pthread_mutex_t g_api_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 // Buffer sizes
 #define HTTP_BUFFER_SIZE 4096
 #define URL_BUFFER_SIZE 1024
@@ -205,28 +202,31 @@ static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, voi
     return realsize;
 }
 
-// Static buffer for CURL response
-static char g_response_buffer[HTTP_BUFFER_SIZE];
-static size_t g_response_size = 0;
+// Per-request response buffer helper
+typedef struct {
+    char buffer[HTTP_BUFFER_SIZE];
+    size_t size;
+} response_buffer_t;
 
-// CURL write callback that uses a static buffer
-static size_t StaticWriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+// CURL write callback that uses a per-request stack buffer
+static size_t PerRequestWriteCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
-    
+    response_buffer_t *resp = (response_buffer_t *)userp;
+
     // Check if we have enough space in the buffer
-    if (g_response_size + realsize + 1 > HTTP_BUFFER_SIZE) {
+    if (resp->size + realsize + 1 > HTTP_BUFFER_SIZE) {
         log_warn("CURL response buffer full, truncating");
-        realsize = HTTP_BUFFER_SIZE - g_response_size - 1;
-        if (realsize <= 0) {
+        if (resp->size + 1 >= HTTP_BUFFER_SIZE) {
             return 0; // Buffer is already full
         }
+        realsize = HTTP_BUFFER_SIZE - resp->size - 1;
     }
-    
+
     // Copy data to the buffer
-    memcpy(g_response_buffer + g_response_size, contents, realsize);
-    g_response_size += realsize;
-    g_response_buffer[g_response_size] = 0;
-    
+    memcpy(resp->buffer + resp->size, contents, realsize);
+    resp->size += realsize;
+    resp->buffer[resp->size] = 0;
+
     return realsize;
 }
 

@@ -118,8 +118,17 @@ export function HLSVideoCell({
       const go2rtcEnabled = await isGo2rtcEnabled();
       if (!isMounted) return;
 
-      // Determine which HLS source to use based on current mode
-      if (hlsMode === 'go2rtc') {
+      // If go2rtc is enabled in settings, always use go2rtc mode regardless of initial hlsMode.
+      // This handles the case where stream.go2rtc_hls_available was false (e.g. when toggling
+      // from MSE to HLS) but go2rtc is actually running and available.
+      let effectiveMode = hlsMode;
+      if (go2rtcEnabled && effectiveMode === 'native') {
+        effectiveMode = 'go2rtc';
+        setHlsMode('go2rtc');
+      }
+
+      // Determine which HLS source to use based on effective mode
+      if (effectiveMode === 'go2rtc') {
         // Check if go2rtc is actually available before trying to use it
         const go2rtcReady = await isGo2rtcAvailable();
         if (!isMounted) return;
@@ -159,7 +168,7 @@ export function HLSVideoCell({
           setHlsMode('native');
           console.log(`[HLS ${stream.name}] Using native lightNVR HLS: ${hlsStreamUrl}`);
         }
-      } else if (hlsMode === 'native') {
+      } else if (effectiveMode === 'native') {
         // Use lightNVR's FFmpeg-based HLS endpoint directly
         hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8`;
         usingGo2rtc = false;
