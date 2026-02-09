@@ -11,6 +11,8 @@ import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx
 import { useQuery, useQueryClient } from '../../query-client.js';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { HLSVideoCell } from './HLSVideoCell.jsx';
+import { MSEVideoCell } from './MSEVideoCell.jsx';
+import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 
 /**
  * LiveView component
@@ -36,6 +38,16 @@ export function LiveView({isWebRTCDisabled}) {
     return stored !== null ? stored === 'true' : true;
   });
   const [isLoading, setIsLoading] = useState(true);
+
+  // State for go2rtc availability
+  const [go2rtcAvailable, setGo2rtcAvailable] = useState(false);
+
+  // State for go2rtc mode - determines whether to use MSE or HLS
+  // Initialize from URL param if present
+  const [useMSE, setUseMSE] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('mode') === 'mse';
+  });
 
   // Initialize layout from URL or localStorage if available
   const [layout, setLayout] = useState(() => {
@@ -86,6 +98,27 @@ export function LiveView({isWebRTCDisabled}) {
     // Set up modals for snapshot preview
     setupModals();
     addModalStyles();
+  }, []);
+
+  // Check if go2rtc is enabled (for showing mode toggle)
+  useEffect(() => {
+    const checkGo2rtcMode = async () => {
+      try {
+        const go2rtcEnabled = await isGo2rtcEnabled();
+        console.log(`[LiveView] go2rtc enabled: ${go2rtcEnabled}`);
+        setGo2rtcAvailable(go2rtcEnabled);
+        // If user requested MSE via URL but go2rtc is not enabled, fall back to HLS
+        if (useMSE && !go2rtcEnabled) {
+          console.log('[LiveView] MSE requested but go2rtc not enabled, falling back to HLS');
+          setUseMSE(false);
+        }
+      } catch (error) {
+        console.error('[LiveView] Error checking go2rtc status:', error);
+        setGo2rtcAvailable(false);
+        setUseMSE(false);
+      }
+    };
+    checkGo2rtcMode();
   }, []);
 
   // Fetch streams using preact-query
@@ -352,18 +385,36 @@ export function LiveView({isWebRTCDisabled}) {
 
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center space-x-2">
-          <h2 className="text-xl font-bold mr-4">Live View (HLS)</h2>
+          <h2 className="text-xl font-bold mr-4">Live View ({useMSE ? 'MSE' : 'HLS'})</h2>
           <div className="flex space-x-2">
             {!isWebRTCDisabled && (
             <button
-              id="hls-toggle-btn"
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
-              style={{ position: 'relative', zIndex: 50 }} // Very high z-index to ensure clickability
+              style={{ position: 'relative', zIndex: 50 }}
               onClick={() => {
                 window.location.href = '/index.html';
               }}
             >
               WebRTC View
+            </button>
+                )}
+            {go2rtcAvailable && (
+            <button
+              className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
+              style={{ position: 'relative', zIndex: 50 }}
+              onClick={() => {
+                setUseMSE(!useMSE);
+                // Update URL to reflect mode
+                const url = new URL(window.location);
+                if (!useMSE) {
+                  url.searchParams.set('mode', 'mse');
+                } else {
+                  url.searchParams.delete('mode');
+                }
+                window.history.replaceState({}, '', url);
+              }}
+            >
+              {useMSE ? 'HLS View' : 'MSE View'}
             </button>
                 )}
           </div>
@@ -511,19 +562,25 @@ export function LiveView({isWebRTCDisabled}) {
               <a href="streams.html" className="btn-primary">Configure Streams</a>
             </div>
           ) : (
-            // Render video cells using our self-contained HLSVideoCell component
-            // Pass index for staggered initialization to avoid overwhelming go2rtc
-            streamsToShow.map((stream, index) => (
-              <HLSVideoCell
-                key={stream.name}
-                stream={stream}
-                onToggleFullscreen={toggleStreamFullscreen}
-                streamId={stream.name} // Add explicit streamId prop to prevent re-renders
-                initDelay={index * 500} // Stagger initialization by 500ms per stream
-                showLabels={showLabels}
-                showControls={showControls}
-              />
-            ))
+            // Render video cells using MSEVideoCell (when go2rtc enabled) or HLSVideoCell (fallback)
+            // MSE mode: Lower latency via WebSocket, no stagger delay needed
+            // HLS mode: Stagger initialization to avoid overwhelming the server
+            streamsToShow.map((stream, index) => {
+              const VideoCell = useMSE ? MSEVideoCell : HLSVideoCell;
+              const initDelay = useMSE ? 0 : (index * 500); // No delay for MSE, 500ms stagger for HLS
+
+              return (
+                <VideoCell
+                  key={stream.name}
+                  stream={stream}
+                  onToggleFullscreen={toggleStreamFullscreen}
+                  streamId={stream.name}
+                  initDelay={initDelay}
+                  showLabels={showLabels}
+                  showControls={showControls}
+                />
+              );
+            })
           )}
         </div>
 

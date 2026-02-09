@@ -142,14 +142,7 @@ export function HLSVideoCell({
           hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(stream.name)}&mp4=flac`;
           usingGo2rtc = true;
           console.log(`[HLS ${stream.name}] Using go2rtc HLS: ${hlsStreamUrl}`);
-
-          // Pre-warm the stream by making a HEAD request to trigger go2rtc to start preparing
-          try {
-            await fetch(hlsStreamUrl, { method: 'HEAD' });
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } catch (e) {
-            console.log(`[HLS ${stream.name}] Pre-warm request completed (may have failed, that's OK)`);
-          }
+          console.log(`[HLS ${stream.name}] go2rtc base URL: ${go2rtcBaseUrl}`);
 
           if (!isMounted) return;
         } else if (go2rtcEnabled) {
@@ -186,94 +179,26 @@ export function HLSVideoCell({
         // Use different HLS.js configs for go2rtc vs native HLS
         // go2rtc: dynamic in-memory segments, infinite stream
         // native: FFmpeg file-based segments with sliding window playlist (6 segments)
-        const hlsConfig = usingGo2rtc ? {
-          // === go2rtc mode: dynamic HLS with in-memory segments ===
-          maxBufferLength: 30,
-          maxMaxBufferLength: 60,
-          backBufferLength: 30,
-          liveSyncDurationCount: 4,
-          liveMaxLatencyDurationCount: 15,
-          liveDurationInfinity: true,
-          lowLatencyMode: false,
-          highBufferWatchdogPeriod: 5,
-          fragLoadingTimeOut: 30000,
-          manifestLoadingTimeOut: 20000,
-          levelLoadingTimeOut: 20000,
-          startLevel: -1,
-          abrEwmaDefaultEstimate: 500000,
-          abrBandWidthFactor: 0.7,
-          abrBandWidthUpFactor: 0.5,
-          enableWorker: true,
-          debug: false,
-          maxBufferHole: 1.0,
-          maxFragLookUpTolerance: 0.5,
-          nudgeMaxRetry: 10,
-          nudgeOffset: 0.2,
-          appendErrorMaxRetry: 10,
-          manifestLoadingMaxRetry: 6,
-          manifestLoadingRetryDelay: 1500,
-          levelLoadingMaxRetry: 6,
-          levelLoadingRetryDelay: 1500,
-          fragLoadingMaxRetry: 10,
-          fragLoadingRetryDelay: 1000,
-          maxStarvationDelay: 4,
-          maxLoadingDelay: 4,
-          startFragPrefetch: true
-        } : {
-          // === Native mode: FFmpeg file-based HLS with sliding window playlist ===
-          // Keep buffers modest - playlist only has ~6 segments worth of data
-          maxBufferLength: 15,
-          maxMaxBufferLength: 30,
-          backBufferLength: 10,
-
-          // Live sync: stay 3 segments behind live edge for stability
-          // This gives FFmpeg time to fully write segments before we request them
+        // go2rtc mode: use default HLS.js config (matching go2rtc's own reference implementation)
+        // Native mode: minimal config tuned for FFmpeg file-based segments
+        const hlsConfig = usingGo2rtc ? {} : {
+          // Native mode: FFmpeg file-based HLS with sliding window playlist
           liveSyncDurationCount: 3,
           liveMaxLatencyDurationCount: 10,
           liveDurationInfinity: true,
-          lowLatencyMode: false,
-
-          // Buffer health - check periodically but don't be too aggressive
-          highBufferWatchdogPeriod: 3,
-
-          // Loading timeouts - generous since segments are being written to disk in real-time
+          maxBufferLength: 10,
+          maxMaxBufferLength: 20,
+          backBufferLength: 5,
           fragLoadingTimeOut: 20000,
           manifestLoadingTimeOut: 15000,
-          levelLoadingTimeOut: 15000,
-
-          // Quality - single level for native HLS (no ABR)
-          startLevel: 0,
-
-          // Worker and debugging
-          enableWorker: true,
-          debug: false,
-
-          // Buffer gaps/holes - be tolerant since FFmpeg may produce slight gaps
-          maxBufferHole: 1.5,
-          maxFragLookUpTolerance: 0.5,
-          nudgeMaxRetry: 10,
-          nudgeOffset: 0.3,
-
-          // Append errors - retry generously
-          appendErrorMaxRetry: 10,
-
-          // Manifest polling - more aggressive for native HLS since the playlist changes
-          // every time FFmpeg writes a new segment (~2-5 seconds)
           manifestLoadingMaxRetry: 10,
           manifestLoadingRetryDelay: 1000,
-          levelLoadingMaxRetry: 10,
-          levelLoadingRetryDelay: 1000,
-
-          // Fragment loading - retry generously since segments may still be writing
-          fragLoadingMaxRetry: 15,
+          fragLoadingMaxRetry: 10,
           fragLoadingRetryDelay: 500,
-
-          // Stall recovery - be patient with native HLS
-          maxStarvationDelay: 6,
-          maxLoadingDelay: 6,
-
-          // Prefetch next fragment for smoother playback
-          startFragPrefetch: true
+          enableWorker: true,
+          lowLatencyMode: false,
+          startLevel: 0,
+          debug: false
         };
 
         const hls = new Hls(hlsConfig);

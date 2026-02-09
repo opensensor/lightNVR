@@ -20,6 +20,9 @@
 #include "database/db_auth.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
+#include "video/go2rtc/go2rtc_process.h"
+#include "video/go2rtc/go2rtc_integration.h"
+#include "video/hls/hls_api.h"
 
 /**
  * @brief Direct handler for GET /api/settings
@@ -175,7 +178,8 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
 
     // Update settings
     bool settings_changed = false;
-    
+    bool go2rtc_config_changed = false;  // Track if go2rtc-related settings changed
+
     // Web port
     cJSON *web_port = cJSON_GetObjectItem(settings, "web_port");
     if (web_port && cJSON_IsNumber(web_port)) {
@@ -183,7 +187,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated web_port: %d", g_config.web_port);
     }
-    
+
     // Web root
     cJSON *web_root = cJSON_GetObjectItem(settings, "web_root");
     if (web_root && cJSON_IsString(web_root)) {
@@ -192,7 +196,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated web_root: %s", g_config.web_root);
     }
-    
+
     // Web auth enabled
     cJSON *web_auth_enabled = cJSON_GetObjectItem(settings, "web_auth_enabled");
     if (web_auth_enabled && cJSON_IsBool(web_auth_enabled)) {
@@ -200,7 +204,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated web_auth_enabled: %s", g_config.web_auth_enabled ? "true" : "false");
     }
-    
+
     // Web username
     cJSON *web_username = cJSON_GetObjectItem(settings, "web_username");
     if (web_username && cJSON_IsString(web_username)) {
@@ -209,7 +213,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated web_username: %s", g_config.web_username);
     }
-    
+
     // Web password
     cJSON *web_password = cJSON_GetObjectItem(settings, "web_password");
     if (web_password && cJSON_IsString(web_password) && strcmp(web_password->valuestring, "********") != 0) {
@@ -218,13 +222,20 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated web_password");
     }
-    
-    // WebRTC disabled
+
+    // WebRTC disabled - track old value to detect changes
     cJSON *webrtc_disabled = cJSON_GetObjectItem(settings, "webrtc_disabled");
     if (webrtc_disabled && cJSON_IsBool(webrtc_disabled)) {
+        bool old_webrtc_disabled = g_config.webrtc_disabled;
         g_config.webrtc_disabled = cJSON_IsTrue(webrtc_disabled);
         settings_changed = true;
         log_info("Updated webrtc_disabled: %s", g_config.webrtc_disabled ? "true" : "false");
+
+        // If webrtc_disabled changed, we need to restart go2rtc
+        if (old_webrtc_disabled != g_config.webrtc_disabled) {
+            go2rtc_config_changed = true;
+            log_info("WebRTC disabled setting changed, will restart go2rtc");
+        }
     }
 
     // Auth timeout hours
@@ -428,9 +439,18 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     // go2rtc settings
     cJSON *go2rtc_enabled = cJSON_GetObjectItem(settings, "go2rtc_enabled");
     if (go2rtc_enabled && cJSON_IsBool(go2rtc_enabled)) {
+        bool old_go2rtc_enabled = g_config.go2rtc_enabled;
         g_config.go2rtc_enabled = cJSON_IsTrue(go2rtc_enabled);
         settings_changed = true;
         log_info("Updated go2rtc_enabled: %s", g_config.go2rtc_enabled ? "true" : "false");
+
+        // If go2rtc_enabled changed, we need to start/stop go2rtc
+        if (old_go2rtc_enabled != g_config.go2rtc_enabled) {
+            go2rtc_config_changed = true;
+            log_info("go2rtc_enabled setting changed from %s to %s, will restart go2rtc",
+                    old_go2rtc_enabled ? "true" : "false",
+                    g_config.go2rtc_enabled ? "true" : "false");
+        }
     }
 
     cJSON *go2rtc_binary_path = cJSON_GetObjectItem(settings, "go2rtc_binary_path");
@@ -1058,16 +1078,128 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             }
             
             log_info("Configuration saved successfully");
-            
+
             // Reload the configuration to ensure changes are applied
             log_info("Reloading configuration after save");
             if (reload_config(&g_config) != 0) {
                 log_warn("Failed to reload configuration after save, changes may not be applied until restart");
             } else {
                 log_info("Configuration reloaded successfully");
-                
+
                 // Verify the database path after reload
                 log_info("Database path after reload: %s", g_config.db_path);
+            }
+
+            // If go2rtc-related settings changed, handle start/stop of go2rtc
+            if (go2rtc_config_changed) {
+                stream_config_t all_streams[MAX_STREAMS];
+                int stream_count = get_all_stream_configs(all_streams, MAX_STREAMS);
+
+                if (!g_config.go2rtc_enabled) {
+                    // go2rtc is being DISABLED — stop go2rtc, start native HLS threads
+                    log_info("go2rtc has been disabled, stopping go2rtc process...");
+
+                    if (go2rtc_process_is_running()) {
+                        // First stop all go2rtc-managed HLS streams
+                        for (int i = 0; i < stream_count; i++) {
+                            if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                                all_streams[i].streaming_enabled) {
+                                log_info("Stopping go2rtc HLS for stream: %s", all_streams[i].name);
+                                stop_hls_stream(all_streams[i].name);
+                            }
+                        }
+
+                        if (!go2rtc_process_stop()) {
+                            log_warn("Failed to stop go2rtc process cleanly");
+                        } else {
+                            log_info("go2rtc process stopped successfully");
+                        }
+                        sleep(2);
+                    }
+
+                    // Now start native HLS threads for all enabled streaming streams
+                    for (int i = 0; i < stream_count; i++) {
+                        if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                            all_streams[i].streaming_enabled) {
+                            log_info("Starting native HLS for stream: %s", all_streams[i].name);
+                            if (start_hls_stream(all_streams[i].name) != 0) {
+                                log_warn("Failed to start native HLS for stream %s", all_streams[i].name);
+                            }
+                        }
+                    }
+
+                    log_info("go2rtc disabled: native HLS threads started for all streaming streams");
+                } else {
+                    // go2rtc is being ENABLED (or other go2rtc config changed) — restart go2rtc
+                    log_info("go2rtc configuration changed, restarting go2rtc process...");
+
+                    // Stop native HLS threads first
+                    for (int i = 0; i < stream_count; i++) {
+                        if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                            all_streams[i].streaming_enabled) {
+                            log_info("Stopping native HLS for stream: %s", all_streams[i].name);
+                            stop_hls_stream(all_streams[i].name);
+                        }
+                    }
+
+                    // Stop go2rtc if already running
+                    if (go2rtc_process_is_running()) {
+                        log_info("Stopping go2rtc process...");
+                        if (!go2rtc_process_stop()) {
+                            log_warn("Failed to stop go2rtc process cleanly, continuing anyway");
+                        } else {
+                            log_info("go2rtc process stopped successfully");
+                        }
+                        sleep(2);
+                    }
+
+                    // Regenerate go2rtc configuration with new settings
+                    char config_path[MAX_PATH_LENGTH];
+                    snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", g_config.go2rtc_config_dir);
+
+                    log_info("Regenerating go2rtc configuration at: %s", config_path);
+                    if (!go2rtc_process_generate_config(config_path, g_config.go2rtc_api_port)) {
+                        log_error("Failed to regenerate go2rtc configuration");
+                    } else {
+                        log_info("go2rtc configuration regenerated successfully");
+
+                        // Start go2rtc process
+                        log_info("Starting go2rtc process with new configuration...");
+                        if (!go2rtc_process_start(g_config.go2rtc_api_port)) {
+                            log_error("Failed to start go2rtc process with new configuration");
+                        } else {
+                            log_info("go2rtc process started successfully with new configuration");
+
+                            // Wait for go2rtc to be ready
+                            log_info("Waiting for go2rtc to be ready...");
+                            sleep(3);
+
+                            // Re-register all active streams with go2rtc
+                            log_info("Re-registering all active streams with go2rtc...");
+                            for (int i = 0; i < stream_count; i++) {
+                                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled) {
+                                    log_info("Re-registering stream with go2rtc: %s", all_streams[i].name);
+                                    if (!go2rtc_integration_reload_stream(all_streams[i].name)) {
+                                        log_warn("Failed to re-register stream %s with go2rtc", all_streams[i].name);
+                                    }
+                                }
+                            }
+
+                            // Start HLS streams via go2rtc for all streaming-enabled streams
+                            for (int i = 0; i < stream_count; i++) {
+                                if (all_streams[i].name[0] != '\0' && all_streams[i].enabled &&
+                                    all_streams[i].streaming_enabled) {
+                                    log_info("Starting go2rtc HLS for stream: %s", all_streams[i].name);
+                                    if (start_hls_stream(all_streams[i].name) != 0) {
+                                        log_warn("Failed to start go2rtc HLS for stream %s", all_streams[i].name);
+                                    }
+                                }
+                            }
+
+                            log_info("go2rtc restart and stream re-registration complete");
+                        }
+                    }
+                }
             }
         } else {
             log_info("No settings changed");

@@ -10,6 +10,7 @@ import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx
 import { useQuery, useQueryClient } from '../../query-client.js';
 import { WebRTCVideoCell } from './WebRTCVideoCell.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
+import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 
 /**
  * WebRTCView component
@@ -35,6 +36,9 @@ export function WebRTCView() {
     return stored !== null ? stored === 'true' : true;
   });
   const [isLoading, setIsLoading] = useState(true);
+
+  // State for go2rtc availability (to show MSE View button)
+  const [go2rtcAvailable, setGo2rtcAvailable] = useState(false);
 
   // Initialize layout from URL or localStorage if available
   const [layout, setLayout] = useState(() => {
@@ -85,6 +89,19 @@ export function WebRTCView() {
     // Set up modals for snapshot preview
     setupModals();
     addModalStyles();
+  }, []);
+
+  // Check if go2rtc is enabled (for showing MSE View button)
+  useEffect(() => {
+    const checkGo2rtc = async () => {
+      try {
+        const enabled = await isGo2rtcEnabled();
+        setGo2rtcAvailable(enabled);
+      } catch (error) {
+        console.error('[WebRTCView] Error checking go2rtc status:', error);
+      }
+    };
+    checkGo2rtc();
   }, []);
 
   // Fetch streams using preact-query
@@ -391,15 +408,25 @@ export function WebRTCView() {
           <h2 className="text-xl font-bold mr-4">Live View (WebRTC)</h2>
           <div className="flex space-x-2">
             <button
-              id="hls-toggle-btn"
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
-              style={{ position: 'relative', zIndex: 50 }} // Very high z-index to ensure clickability
+              style={{ position: 'relative', zIndex: 50 }}
               onClick={() => {
                 window.location.href = '/hls.html';
               }}
             >
               HLS View
             </button>
+            {go2rtcAvailable && (
+            <button
+              className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
+              style={{ position: 'relative', zIndex: 50 }}
+              onClick={() => {
+                window.location.href = '/hls.html?mode=mse';
+              }}
+            >
+              MSE View
+            </button>
+                )}
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
