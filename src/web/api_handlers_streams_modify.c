@@ -1155,7 +1155,91 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
 }
 
 /**
+ * @brief Structure for DELETE stream background task
+ */
+typedef struct {
+    stream_handle_t stream;                    // Stream handle
+    char decoded_id[MAX_STREAM_NAME];          // Decoded stream ID
+    bool permanent_delete;                     // Whether to permanently delete
+} delete_stream_task_t;
+
+/**
+ * @brief Worker function for DELETE stream
+ *
+ * This function performs the actual stream deletion work in a background thread.
+ * It handles stopping the stream, detection threads, removing from memory,
+ * database deletion, and go2rtc unregistration.
+ */
+static void delete_stream_worker(delete_stream_task_t *task) {
+    if (!task) {
+        log_error("Invalid DELETE stream task");
+        return;
+    }
+
+    log_info("Processing DELETE /api/streams/%s in worker thread", task->decoded_id);
+
+    // Stop stream if it's running
+    stream_status_t status = get_stream_status(task->stream);
+    if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
+        if (stop_stream(task->stream) != 0) {
+            log_error("Failed to stop stream: %s", task->decoded_id);
+            // Continue anyway
+        }
+
+        // Wait for stream to stop
+        int timeout = 30; // 3 seconds
+        while (get_stream_status(task->stream) != STREAM_STATUS_STOPPED && timeout > 0) {
+            usleep(100000); // 100ms
+            timeout--;
+        }
+    }
+
+    // Stop any unified detection thread for this stream
+    if (is_unified_detection_running(task->decoded_id)) {
+        log_info("Stopping unified detection thread for stream %s", task->decoded_id);
+        if (stop_unified_detection_thread(task->decoded_id) != 0) {
+            log_warn("Failed to stop unified detection thread for stream %s", task->decoded_id);
+            // Continue anyway
+        } else {
+            log_info("Successfully stopped unified detection thread for stream %s", task->decoded_id);
+        }
+    }
+
+    // Delete stream from memory
+    if (remove_stream(task->stream) != 0) {
+        log_error("Failed to delete stream from memory: %s", task->decoded_id);
+        free(task);
+        return;
+    }
+
+    // Delete the stream from the database (permanently or just disable)
+    if (delete_stream_config_internal(task->decoded_id, task->permanent_delete) != 0) {
+        log_error("Failed to %s stream configuration in database for %s",
+                task->permanent_delete ? "permanently delete" : "disable",
+                task->decoded_id);
+        free(task);
+        return;
+    }
+
+    // Unregister stream from go2rtc
+    if (!go2rtc_integration_unregister_stream(task->decoded_id)) {
+        log_warn("Failed to unregister stream %s from go2rtc", task->decoded_id);
+        // Continue anyway - stream is deleted from database
+    }
+
+    log_info("Successfully %s stream in worker thread: %s",
+            task->permanent_delete ? "permanently deleted" : "disabled",
+            task->decoded_id);
+
+    free(task);
+}
+
+/**
  * @brief Direct handler for DELETE /api/streams/:id
+ *
+ * Validates the request and spawns a background thread to perform the
+ * blocking deletion work. Returns 202 Accepted immediately so the
+ * event loop is not blocked.
  */
 void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     // Extract stream ID from URL
@@ -1190,88 +1274,60 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Stop stream if it's running
-    stream_status_t status = get_stream_status(stream);
-    if (status == STREAM_STATUS_RUNNING || status == STREAM_STATUS_STARTING) {
-        if (stop_stream(stream) != 0) {
-            log_error("Failed to stop stream: %s", decoded_id);
-            // Continue anyway
-        }
-
-        // Wait for stream to stop
-        int timeout = 30; // 3 seconds
-        while (get_stream_status(stream) != STREAM_STATUS_STOPPED && timeout > 0) {
-            usleep(100000); // 100ms
-            timeout--;
-        }
-    }
-
-    // Stop any unified detection thread for this stream
-    if (is_unified_detection_running(decoded_id)) {
-        log_info("Stopping unified detection thread for stream %s", decoded_id);
-        if (stop_unified_detection_thread(decoded_id) != 0) {
-            log_warn("Failed to stop unified detection thread for stream %s", decoded_id);
-            // Continue anyway
-        } else {
-            log_info("Successfully stopped unified detection thread for stream %s", decoded_id);
-        }
-    }
-
-    // Delete stream from memory
-    if (remove_stream(stream) != 0) {
-        log_error("Failed to delete stream: %s", decoded_id);
-        http_response_set_json_error(res, 500, "Failed to delete stream");
+    // Allocate task for the background worker
+    delete_stream_task_t *task = calloc(1, sizeof(delete_stream_task_t));
+    if (!task) {
+        log_error("Failed to allocate delete stream task");
+        http_response_set_json_error(res, 500, "Failed to allocate delete task");
         return;
     }
 
-    // Delete the stream from the database (permanently or just disable)
-    if (delete_stream_config_internal(decoded_id, permanent_delete) != 0) {
-        log_error("Failed to %s stream configuration in database",
-                permanent_delete ? "permanently delete" : "disable");
-        http_response_set_json_error(res, 500, permanent_delete ?
-                "Failed to permanently delete stream configuration" :
-                "Failed to disable stream configuration");
+    task->stream = stream;
+    strncpy(task->decoded_id, decoded_id, sizeof(task->decoded_id) - 1);
+    task->permanent_delete = permanent_delete;
+
+    // Send 202 Accepted response immediately so we don't block the event loop
+    cJSON *response_json = cJSON_CreateObject();
+    if (!response_json) {
+        log_error("Failed to create response JSON object");
+        free(task);
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
 
-    // Unregister stream from go2rtc
-    if (!go2rtc_integration_unregister_stream(decoded_id)) {
-        log_warn("Failed to unregister stream %s from go2rtc", decoded_id);
-        // Continue anyway - stream is deleted from database
-    }
+    cJSON_AddBoolToObject(response_json, "success", true);
+    cJSON_AddBoolToObject(response_json, "permanent", permanent_delete);
+    cJSON_AddStringToObject(response_json, "status", "accepted");
 
-    log_info("%s stream in database: %s",
-            permanent_delete ? "Permanently deleted" : "Disabled",
-            decoded_id);
+    char *json_str = cJSON_PrintUnformatted(response_json);
+    cJSON_Delete(response_json);
 
-    // Create success response using cJSON
-    cJSON *success = cJSON_CreateObject();
-    if (!success) {
-        log_error("Failed to create success JSON object");
-        http_response_set_json_error(res, 500, "Failed to create success JSON");
-        return;
-    }
-
-    cJSON_AddBoolToObject(success, "success", true);
-    cJSON_AddBoolToObject(success, "permanent", permanent_delete);
-
-    // Convert to string
-    char *json_str = cJSON_PrintUnformatted(success);
     if (!json_str) {
-        log_error("Failed to convert success JSON to string");
-        cJSON_Delete(success);
-        http_response_set_json_error(res, 500, "Failed to convert success JSON to string");
+        log_error("Failed to convert response JSON to string");
+        free(task);
+        http_response_set_json_error(res, 500, "Failed to convert response JSON to string");
         return;
     }
 
-    // Send response
-    http_response_set_json(res, 200, json_str);
-
-    // Clean up
+    http_response_set_json(res, 202, json_str);
     free(json_str);
-    cJSON_Delete(success);
 
-    log_info("Successfully %s stream: %s", permanent_delete ? "permanently deleted" : "disabled", decoded_id);
+    // Spawn background thread to perform the actual deletion work
+    // This prevents blocking the web server event loop
+    pthread_t thread_id;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    if (pthread_create(&thread_id, &attr, (void *(*)(void *))delete_stream_worker, task) != 0) {
+        log_error("Failed to create worker thread for DELETE stream");
+        free(task);
+        // Response already sent, just log the error
+    } else {
+        log_info("DELETE stream task started in worker thread for: %s", decoded_id);
+    }
+
+    pthread_attr_destroy(&attr);
 }
 
 /**
