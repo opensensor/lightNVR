@@ -717,8 +717,15 @@ static void *unified_detection_thread_func(void *arg) {
                     ctx->reconnect_attempt++;
                     atomic_fetch_add(&ctx->consecutive_failures, 1);
 
-                    // Exponential backoff
-                    usleep(reconnect_delay_ms * 1000);
+                    // Exponential backoff with shutdown check every 500ms
+                    {
+                        int remaining_ms = reconnect_delay_ms;
+                        while (remaining_ms > 0 && atomic_load(&ctx->running) && !is_shutdown_initiated()) {
+                            int sleep_ms = remaining_ms > 500 ? 500 : remaining_ms;
+                            usleep(sleep_ms * 1000);
+                            remaining_ms -= sleep_ms;
+                        }
+                    }
                     reconnect_delay_ms = reconnect_delay_ms * 2;
                     if (reconnect_delay_ms > MAX_RECONNECT_DELAY_MS) {
                         reconnect_delay_ms = MAX_RECONNECT_DELAY_MS;
