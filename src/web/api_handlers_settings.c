@@ -697,7 +697,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             if (g_config.streams[i].name[0] != '\0') {
                 // Explicitly stop HLS streaming for all streams, even if they're not enabled
                 log_info("Explicitly stopping HLS streaming for stream: %s", g_config.streams[i].name);
-                stop_hls_stream(g_config.streams[i].name);
+                stream_stop_hls(g_config.streams[i].name);
                 
                 // Only add enabled streams to the active list
                 if (g_config.streams[i].enabled) {
@@ -813,7 +813,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                                 usleep(500000); // 500ms
                             }
                             
-                            if (start_hls_stream(active_streams[i]) == 0) {
+                            if (stream_start_hls(active_streams[i]) == 0) {
                                 log_info("HLS streaming started for stream: %s", active_streams[i]);
                                 hls_started = true;
                             } else {
@@ -865,7 +865,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                                         usleep(500000); // 500ms
                                     }
                                     
-                                    if (start_hls_stream(active_streams[i]) == 0) {
+                                    if (stream_start_hls(active_streams[i]) == 0) {
                                         log_info("HLS streaming started for stream: %s", active_streams[i]);
                                         hls_started = true;
                                     } else {
@@ -915,15 +915,15 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                     log_info("Force restarting HLS streaming for stream: %s", active_streams[i]);
                     
                     // First stop the HLS stream
-                    if (stop_hls_stream(active_streams[i]) != 0) {
+                    if (stream_stop_hls(active_streams[i]) != 0) {
                         log_warn("Failed to stop HLS stream for restart: %s", active_streams[i]);
                     }
-                    
+
                     // Wait a bit to ensure the stream is fully stopped
                     usleep(500000); // 500ms
-                    
+
                     // Start the HLS stream again
-                    if (start_hls_stream(active_streams[i]) == 0) {
+                    if (stream_start_hls(active_streams[i]) == 0) {
                         log_info("HLS streaming force restarted for stream: %s", active_streams[i]);
                     } else {
                         log_warn("Failed to force restart HLS streaming for stream: %s", active_streams[i]);
@@ -975,7 +975,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                                         usleep(500000); // 500ms
                                     }
                                     
-                                    if (start_hls_stream(db_streams[i].name) == 0) {
+                                    if (stream_start_hls(db_streams[i].name) == 0) {
                                         log_info("HLS streaming started for database stream: %s", db_streams[i].name);
                                         hls_started = true;
                                     } else {
@@ -1011,15 +1011,15 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                     log_info("Force restarting HLS for database stream: %s", db_streams[i].name);
                     
                     // First stop the HLS stream
-                    if (stop_hls_stream(db_streams[i].name) != 0) {
+                    if (stream_stop_hls(db_streams[i].name) != 0) {
                         log_warn("Failed to stop HLS stream for restart: %s", db_streams[i].name);
                     }
-                    
+
                     // Wait a bit to ensure the stream is fully stopped
                     usleep(500000); // 500ms
-                    
+
                     // Start the HLS stream again
-                    if (start_hls_stream(db_streams[i].name) == 0) {
+                    if (stream_start_hls(db_streams[i].name) == 0) {
                         log_info("HLS streaming force restarted for database stream: %s", db_streams[i].name);
                     } else {
                         log_warn("Failed to force restart HLS streaming for database stream: %s", db_streams[i].name);

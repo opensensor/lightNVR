@@ -1720,20 +1720,12 @@ static void check_and_ensure_services(void) {
             }
         }
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].streaming_enabled) {
-            #ifdef USE_GO2RTC
-            // First ensure HLS streaming is active (required for MP4 recording)
-            if (go2rtc_integration_start_hls(config.streams[i].name) != 0) {
+            // Ensure HLS streaming is active (required for MP4 recording)
+            // stream_start_hls routes through go2rtc when available at runtime
+            if (stream_start_hls(config.streams[i].name) != 0) {
                 log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
                 // Continue anyway, as the HLS streaming might already be running
             }
-
-            #else
-            // First ensure HLS streaming is active (required for MP4 recording)
-            if (start_hls_stream(config.streams[i].name) != 0) {
-                log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
-                // Continue anyway, as the HLS streaming might already be running
-            }
-            #endif
         }
         // Handle detection-based recording - MOVED TO END OF SETUP
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].detection_based_recording) {

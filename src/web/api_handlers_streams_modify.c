@@ -280,7 +280,7 @@ static void put_stream_worker(put_stream_task_t *task) {
             // Force restart the HLS stream thread if streaming is enabled and URL/protocol changed
             if ((url_changed || protocol_changed) && task->config.streaming_enabled) {
                 log_info("Force restarting HLS stream thread for %s after go2rtc update", task->config.name);
-                if (restart_hls_stream(task->config.name) != 0) {
+                if (stream_restart_hls(task->config.name) != 0) {
                     log_warn("Failed to force restart HLS stream for %s", task->config.name);
                 } else {
                     log_info("Successfully force restarted HLS stream for %s", task->config.name);

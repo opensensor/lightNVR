@@ -14,6 +14,7 @@
 #include "video/mp4_recording.h"
 #include "video/detection.h"
 #include "video/stream_transcoding.h"
+#include "video/streams.h"
 
 /**
  * BUGFIX: Modified stop_stream_with_state to always stop HLS streaming and MP4 recording
@@ -417,10 +418,10 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
             if (strcmp(feature, "streaming") == 0) {
                 if (enabled) {
                     // Start HLS streaming
-                    start_hls_stream(state->name);
+                    stream_start_hls(state->name);
                 } else {
                     // Stop HLS streaming
-                    stop_hls_stream(state->name);
+                    stream_stop_hls(state->name);
                 }
             } else if (strcmp(feature, "recording") == 0) {
                 if (enabled) {
@@ -488,7 +489,7 @@ int start_stream_with_state(stream_state_manager_t *state) {
 
     // Start HLS streaming if enabled
     if (streaming_enabled) {
-        int hls_result = start_hls_stream(state->name);
+        int hls_result = stream_start_hls(state->name);
         if (hls_result != 0) {
             log_error("Failed to start HLS stream '%s'", state->name);
         } else {
@@ -581,7 +582,7 @@ int stop_stream_with_state(stream_state_manager_t *state, bool wait_for_completi
 
     // Always attempt to stop HLS stream regardless of streaming_enabled flag
     // This ensures we clean up any HLS streams that might be running
-    int result = stop_hls_stream(stream_name);
+    int result = stream_stop_hls(stream_name);
     if (result != 0) {
         log_warn("Failed to stop HLS stream '%s'", stream_name);
         // Continue anyway

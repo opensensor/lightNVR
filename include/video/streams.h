@@ -51,13 +51,21 @@ void serve_video_file(http_response_t *response, const char *file_path, const ch
                      const char *filename, const http_request_t *request);
 int stop_transcode_stream(const char *stream_name);
 
-// HLS streaming functions
+// HLS streaming functions (raw — call ffmpeg HLS directly)
 int start_hls_stream(const char *stream_name);
 int stop_hls_stream(const char *stream_name);
+int restart_hls_stream(const char *stream_name);
 void handle_hls_manifest(const http_request_t *request, http_response_t *response);
 void handle_hls_segment(const http_request_t *request, http_response_t *response);
 void cleanup_hls_directories(void);
 hls_writer_t *get_stream_hls_writer(stream_handle_t stream);
+
+// go2rtc-aware HLS wrappers — use these instead of the raw functions above.
+// When go2rtc is compiled in and available at runtime, these use go2rtc native HLS.
+// Otherwise they fall back to the raw ffmpeg-based functions.
+int stream_start_hls(const char *stream_name);
+int stream_stop_hls(const char *stream_name);
+int stream_restart_hls(const char *stream_name);
 
 // WebRTC functions (placeholders)
 void handle_webrtc_offer(const http_request_t *request, http_response_t *response);

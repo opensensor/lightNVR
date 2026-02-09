@@ -17,25 +17,8 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #endif
 
-// Helper functions to abstract go2rtc vs direct HLS management.
-// The compile-time guard is isolated here; the runtime decision
-// (whether go2rtc is actually initialized and available) happens
-// inside the go2rtc_integration functions themselves.
-static int stream_start_hls(const char *stream_name) {
-#ifdef USE_GO2RTC
-    return go2rtc_integration_start_hls(stream_name);
-#else
-    return start_hls_stream(stream_name);
-#endif
-}
-
-static int stream_stop_hls(const char *stream_name) {
-#ifdef USE_GO2RTC
-    return go2rtc_integration_stop_hls(stream_name);
-#else
-    return stop_hls_stream(stream_name);
-#endif
-}
+// stream_start_hls / stream_stop_hls / stream_restart_hls are now
+// public functions declared in streams.h and implemented in streams.c.
 
 // Stream structure
 typedef struct {

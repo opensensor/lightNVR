@@ -93,6 +93,45 @@ config_t* get_streaming_config(void) {
 }
 
 /**
+ * go2rtc-aware HLS wrapper — start HLS for a stream.
+ * When go2rtc is compiled in and available at runtime, uses go2rtc native HLS.
+ * Otherwise falls back to the raw ffmpeg-based start_hls_stream().
+ */
+int stream_start_hls(const char *stream_name) {
+#ifdef USE_GO2RTC
+    return go2rtc_integration_start_hls(stream_name);
+#else
+    return start_hls_stream(stream_name);
+#endif
+}
+
+/**
+ * go2rtc-aware HLS wrapper — stop HLS for a stream.
+ */
+int stream_stop_hls(const char *stream_name) {
+#ifdef USE_GO2RTC
+    return go2rtc_integration_stop_hls(stream_name);
+#else
+    return stop_hls_stream(stream_name);
+#endif
+}
+
+/**
+ * go2rtc-aware HLS wrapper — restart HLS for a stream.
+ * When using go2rtc native HLS, stops and re-starts via go2rtc integration.
+ * Otherwise falls back to the raw ffmpeg restart_hls_stream().
+ */
+int stream_restart_hls(const char *stream_name) {
+#ifdef USE_GO2RTC
+    // Stop then start via go2rtc integration
+    go2rtc_integration_stop_hls(stream_name);
+    return go2rtc_integration_start_hls(stream_name);
+#else
+    return restart_hls_stream(stream_name);
+#endif
+}
+
+/**
  * Update to stop_transcode_stream to handle decoupled MP4 recording
  */
 int stop_transcode_stream(const char *stream_name) {
@@ -102,30 +141,23 @@ int stop_transcode_stream(const char *stream_name) {
 
     int result = 0;
 
-    #ifdef USE_GO2RTC
-    // First stop the HLS stream using go2rtc integration if available
-    result = go2rtc_integration_stop_hls(stream_name);
-    if (result != 0) {
-        log_warn("Failed to stop HLS stream using go2rtc integration: %s", stream_name);
-        // Continue anyway
-    }
-
-    // Also stop any separate MP4 recording for this stream using go2rtc integration if available
-    if (go2rtc_integration_stop_recording(stream_name) != 0) {
-        log_warn("Failed to stop MP4 recording using go2rtc integration: %s", stream_name);
-        // Continue anyway
-    }
-    #else
-    // First stop the HLS stream
-    result = stop_hls_stream(stream_name);
+    // Use the go2rtc-aware wrapper to stop HLS
+    result = stream_stop_hls(stream_name);
     if (result != 0) {
         log_warn("Failed to stop HLS stream: %s", stream_name);
         // Continue anyway
     }
 
+#ifdef USE_GO2RTC
+    // Also stop any separate MP4 recording for this stream using go2rtc integration if available
+    if (go2rtc_integration_stop_recording(stream_name) != 0) {
+        log_warn("Failed to stop MP4 recording using go2rtc integration: %s", stream_name);
+        // Continue anyway
+    }
+#else
     // Also stop any separate MP4 recording for this stream
     unregister_mp4_writer_for_stream(stream_name);
-    #endif
+#endif
 
     return result;
 }
