@@ -1224,6 +1224,12 @@ void *hls_unified_thread_func(void *arg) {
                     break;
                 }
 
+                // Set per-stream running flag as interrupt callback opaque data
+                // This allows av_read_frame to be interrupted when stopping individual streams
+                if (input_ctx) {
+                    input_ctx->interrupt_callback.opaque = (void *)&ctx->running;
+                }
+
                 // Find video stream
                 video_stream_idx = find_video_stream_index(input_ctx);
                 if (video_stream_idx == -1) {
@@ -1608,6 +1614,12 @@ void *hls_unified_thread_func(void *arg) {
 
                     // Stay in reconnecting state
                     break;
+                }
+
+                // Set per-stream running flag as interrupt callback opaque data
+                // This allows av_read_frame to be interrupted when stopping individual streams
+                if (input_ctx) {
+                    input_ctx->interrupt_callback.opaque = (void *)&ctx->running;
                 }
 
                 // Find video stream
