@@ -80,6 +80,9 @@ static char **saved_argv = NULL;
 // Global flag for daemon mode (made extern so web_server.c can access it)
 bool daemon_mode = false;
 
+// Global flag for container mode (detected at startup)
+static bool container_mode = false;
+
 // Declare a global variable to store the web server socket
 int web_server_socket = -1;
 
@@ -436,6 +439,51 @@ static int daemonize(const char *pid_file) {
 // Function to check and ensure recording is active for streams that have recording enabled
 static void check_and_ensure_services(void);
 
+// Function to detect if we're running in a container
+// Checks for common container indicators
+static bool detect_container_mode(void) {
+    // Check for /.dockerenv file (Docker)
+    if (access("/.dockerenv", F_OK) == 0) {
+        log_info("Detected Docker container (/.dockerenv exists)");
+        return true;
+    }
+
+    // Check for container environment variable (Kubernetes, Docker)
+    if (getenv("KUBERNETES_SERVICE_HOST") != NULL) {
+        log_info("Detected Kubernetes container (KUBERNETES_SERVICE_HOST set)");
+        return true;
+    }
+
+    // Check cgroup for container indicators
+    FILE *cgroup = fopen("/proc/1/cgroup", "r");
+    if (cgroup) {
+        char line[256];
+        bool in_container = false;
+        while (fgets(line, sizeof(line), cgroup)) {
+            // Look for docker, kubepods, or containerd in cgroup path
+            if (strstr(line, "docker") || strstr(line, "kubepods") ||
+                strstr(line, "containerd") || strstr(line, "lxc")) {
+                in_container = true;
+                break;
+            }
+        }
+        fclose(cgroup);
+        if (in_container) {
+            log_info("Detected container environment (cgroup indicators)");
+            return true;
+        }
+    }
+
+    // Check if PID 1 is not init/systemd (common in containers)
+    // In containers, PID 1 is usually the entrypoint script or application
+    if (getpid() == 1) {
+        log_info("Running as PID 1 - likely in a container");
+        return true;
+    }
+
+    return false;
+}
+
 // Function to request a restart (called from API handler)
 void request_restart(void) {
     restart_requested = true;
@@ -521,6 +569,14 @@ int main(int argc, char *argv[]) {
     memcpy(&g_config, &config, sizeof(config_t));
 
     log_info("LightNVR v%s starting up", LIGHTNVR_VERSION_STRING);
+
+    // Detect if we're running in a container
+    container_mode = detect_container_mode();
+    if (container_mode) {
+        log_info("Container mode detected - restart will exit and rely on container orchestrator");
+    } else {
+        log_info("Native mode detected - restart will use execv()");
+    }
 
     // Initialize libcurl globally (MUST be done once at startup, before any threads)
     if (curl_init_global() != 0) {
@@ -1175,39 +1231,45 @@ cleanup:
         kill(parent_pid, SIGKILL);  // Force kill the parent process
 
         // If restart was requested, handle it here since the parent was killed
-        if (restart_requested && saved_argv != NULL) {
-            log_info("Restart was requested, re-executing LightNVR after forced cleanup...");
+        if (restart_requested) {
+            if (container_mode) {
+                // In container mode, just exit cleanly
+                log_info("Restart requested in container mode after forced cleanup - exiting for orchestrator restart");
+                exit(EXIT_SUCCESS);
+            } else if (saved_argv != NULL) {
+                log_info("Restart was requested, re-executing LightNVR after forced cleanup...");
 
-            // Give the system a moment to release resources
-            // The parent is now dead, wait for it to fully exit
-            usleep(2000000);  // 2 seconds
+                // Give the system a moment to release resources
+                // The parent is now dead, wait for it to fully exit
+                usleep(2000000);  // 2 seconds
 
-            // Wait for the parent process to fully terminate
-            // The parent PID may have been reused, so check if it's still the same process
-            // by waiting a bit more to ensure resources are released
-            for (int i = 0; i < 10; i++) {
-                if (kill(parent_pid, 0) != 0) {
-                    // Parent is gone
-                    break;
+                // Wait for the parent process to fully terminate
+                // The parent PID may have been reused, so check if it's still the same process
+                // by waiting a bit more to ensure resources are released
+                for (int i = 0; i < 10; i++) {
+                    if (kill(parent_pid, 0) != 0) {
+                        // Parent is gone
+                        break;
+                    }
+                    usleep(500000);  // 500ms
                 }
-                usleep(500000);  // 500ms
-            }
 
-            // Get the executable path
-            char exe_path[MAX_PATH_LENGTH];
-            ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-            if (len > 0) {
-                exe_path[len] = '\0';
+                // Get the executable path
+                char exe_path[MAX_PATH_LENGTH];
+                ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+                if (len > 0) {
+                    exe_path[len] = '\0';
 
-                log_info("Executing: %s", exe_path);
+                    log_info("Executing: %s", exe_path);
 
-                // Re-exec the program with the same arguments
-                execv(exe_path, saved_argv);
+                    // Re-exec the program with the same arguments
+                    execv(exe_path, saved_argv);
 
-                // If execv returns, it failed
-                log_error("Failed to restart after forced cleanup: %s", strerror(errno));
-            } else {
-                log_error("Failed to get executable path for restart: %s", strerror(errno));
+                    // If execv returns, it failed
+                    log_error("Failed to restart after forced cleanup: %s", strerror(errno));
+                } else {
+                    log_error("Failed to get executable path for restart: %s", strerror(errno));
+                }
             }
         }
 
@@ -1548,32 +1610,45 @@ cleanup:
     log_info("Cleanup complete, shutting down");
 
     // Check if restart was requested
-    if (restart_requested && saved_argv != NULL) {
-        log_info("Restart requested, re-executing LightNVR...");
+    if (restart_requested) {
+        if (container_mode) {
+            // In container mode, just exit cleanly with success code
+            // The container orchestrator (Docker/Kubernetes) will restart the container
+            log_info("Restart requested in container mode - exiting cleanly for orchestrator restart");
+            shutdown_logger();
 
-        // Shutdown logging before re-exec
-        shutdown_logger();
+            // Exit with code 0 so the container orchestrator restarts us
+            // Note: In Kubernetes, the pod will be restarted by the deployment controller
+            // In Docker with --restart policy, Docker will restart the container
+            return EXIT_SUCCESS;
+        } else if (saved_argv != NULL) {
+            // In native mode, use execv to restart the process
+            log_info("Restart requested in native mode, re-executing LightNVR...");
 
-        // Get the executable path
-        char exe_path[MAX_PATH_LENGTH];
-        ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-        if (len > 0) {
-            exe_path[len] = '\0';
+            // Shutdown logging before re-exec
+            shutdown_logger();
 
-            // Give the system a moment to release resources
-            usleep(500000);  // 500ms
+            // Get the executable path
+            char exe_path[MAX_PATH_LENGTH];
+            ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+            if (len > 0) {
+                exe_path[len] = '\0';
 
-            // Re-exec the program with the same arguments
-            execv(exe_path, saved_argv);
+                // Give the system a moment to release resources
+                usleep(500000);  // 500ms
 
-            // If execv returns, it failed
-            fprintf(stderr, "Failed to restart: %s\n", strerror(errno));
-        } else {
-            fprintf(stderr, "Failed to get executable path for restart: %s\n", strerror(errno));
+                // Re-exec the program with the same arguments
+                execv(exe_path, saved_argv);
+
+                // If execv returns, it failed
+                fprintf(stderr, "Failed to restart: %s\n", strerror(errno));
+            } else {
+                fprintf(stderr, "Failed to get executable path for restart: %s\n", strerror(errno));
+            }
+
+            // If we get here, restart failed
+            return EXIT_FAILURE;
         }
-
-        // If we get here, restart failed
-        return EXIT_FAILURE;
     }
 
     // Shutdown logging
