@@ -84,8 +84,8 @@ config_t* get_streaming_config(void) {
     }
     
     // Log the storage path for debugging
-    log_info("get_streaming_config: Using storage path: %s", db_config.storage_path);
-    log_info("get_streaming_config: Using database path: %s", db_config.db_path);
+    log_debug("get_streaming_config: Using storage path: %s", db_config.storage_path);
+    log_debug("get_streaming_config: Using database path: %s", db_config.db_path);
     
     pthread_mutex_unlock(&config_mutex);
     

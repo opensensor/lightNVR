@@ -801,13 +801,13 @@ int load_config(config_t *config) {
     
     // If no custom config or failed to load, try default paths
     if (!loaded) {
-        // Try to load from config file - ONLY use INI format
+        // Try to load from config file - INI format only
         const char *config_paths[] = {
             "./lightnvr.ini", // Current directory INI format
             "/etc/lightnvr/lightnvr.ini", // System directory INI format
             NULL
         };
-        
+
         for (int i = 0; config_paths[i] != NULL && !loaded; i++) {
             if (access(config_paths[i], R_OK) == 0) {
                 if (load_config_from_file(config_paths[i], config) == 0) {
@@ -819,43 +819,7 @@ int load_config(config_t *config) {
             }
         }
     }
-    
-    // If no INI config file was found, check for old format and convert if found
-    if (!loaded) {
-        const char *old_config_paths[] = {
-            "./lightnvr.conf", // Old format
-            "/etc/lightnvr/lightnvr.conf", // Old format
-            NULL
-        };
-        
-        for (int i = 0; old_config_paths[i] != NULL; i++) {
-            if (access(old_config_paths[i], R_OK) == 0) {
-                log_warn("Found old format configuration file: %s", old_config_paths[i]);
-                log_info("Converting to INI format...");
-                
-                // Load the old format config
-                if (load_config_from_file(old_config_paths[i], config) == 0) {
-                    // Save in INI format
-                    const char *ini_path = "./lightnvr.ini";
-                    
-                    // Check if /etc/lightnvr exists and is writable
-                    struct stat st;
-                    if (stat("/etc/lightnvr", &st) == 0 && S_ISDIR(st.st_mode) && access("/etc/lightnvr", W_OK) == 0) {
-                        ini_path = "/etc/lightnvr/lightnvr.ini";
-                    }
-                    
-                    if (save_config(config, ini_path) == 0) {
-                        log_info("Successfully converted configuration to INI format: %s", ini_path);
-                        loaded = 1;
-                        break;
-                    } else {
-                        log_error("Failed to save converted configuration to INI format");
-                    }
-                }
-            }
-        }
-    }
-    
+
     if (!loaded) {
         log_warn("No configuration file found, using defaults");
     }

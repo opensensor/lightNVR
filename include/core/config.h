@@ -185,8 +185,8 @@ typedef struct {
  * Searches in this order:
  * 1. ./lightnvr.ini
  * 2. /etc/lightnvr/lightnvr.ini
- * 3. If not found, looks for old format and converts it
- * 
+ * 3. If not found, uses defaults
+ *
  * @param config Pointer to config structure to fill
  * @return 0 on success, non-zero on failure
  */

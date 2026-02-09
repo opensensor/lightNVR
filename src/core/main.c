@@ -1624,51 +1624,57 @@ static void check_and_ensure_services(void) {
         mark_server_for_restart();
     }
 
-    for (int i = 0; i < config.max_streams; i++) {
-        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].record) {
+    // Read current stream configurations from the database instead of using the
+    // stale global config, which is only populated at startup. This ensures that
+    // runtime changes (e.g., toggling recording via the web UI) are respected
+    // by the maintenance loop.
+    config_t *current_config = get_streaming_config();
+
+    for (int i = 0; i < current_config->max_streams; i++) {
+        if (current_config->streams[i].name[0] != '\0' && current_config->streams[i].enabled && current_config->streams[i].record) {
             // Check if MP4 recording is active for this stream
-            int recording_state = get_recording_state(config.streams[i].name);
+            int recording_state = get_recording_state(current_config->streams[i].name);
 
             if (recording_state == 0) {
                 // Recording is not active, start it
-                log_info("Ensuring MP4 recording is active for stream: %s", config.streams[i].name);
+                log_info("Ensuring MP4 recording is active for stream: %s", current_config->streams[i].name);
 
                 // Start MP4 recording (go2rtc integration handles runtime fallback)
                 #ifdef USE_GO2RTC
-                int rec_result = go2rtc_integration_start_recording(config.streams[i].name);
+                int rec_result = go2rtc_integration_start_recording(current_config->streams[i].name);
                 #else
-                int rec_result = start_mp4_recording(config.streams[i].name);
+                int rec_result = start_mp4_recording(current_config->streams[i].name);
                 #endif
                 if (rec_result != 0) {
-                    log_warn("Failed to start MP4 recording for stream: %s", config.streams[i].name);
+                    log_warn("Failed to start MP4 recording for stream: %s", current_config->streams[i].name);
                 } else {
-                    log_info("Successfully started MP4 recording for stream: %s", config.streams[i].name);
+                    log_info("Successfully started MP4 recording for stream: %s", current_config->streams[i].name);
                 }
             }
         }
-        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].streaming_enabled) {
+        if (current_config->streams[i].name[0] != '\0' && current_config->streams[i].enabled && current_config->streams[i].streaming_enabled) {
             // Ensure HLS streaming is active (required for MP4 recording)
             // stream_start_hls routes through go2rtc when available at runtime
-            if (stream_start_hls(config.streams[i].name) != 0) {
-                log_warn("Failed to start HLS streaming for stream: %s", config.streams[i].name);
+            if (stream_start_hls(current_config->streams[i].name) != 0) {
+                log_warn("Failed to start HLS streaming for stream: %s", current_config->streams[i].name);
                 // Continue anyway, as the HLS streaming might already be running
             }
         }
         // Handle detection-based recording - MOVED TO END OF SETUP
-        if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].detection_based_recording) {
+        if (current_config->streams[i].name[0] != '\0' && current_config->streams[i].enabled && current_config->streams[i].detection_based_recording) {
             // If continuous recording is also enabled, run detection in annotation-only mode
-            bool annotation_only = config.streams[i].record;
+            bool annotation_only = current_config->streams[i].record;
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",
-                     config.streams[i].name, annotation_only ? "true" : "false");
-            if (start_unified_detection_thread(config.streams[i].name,
-                                              config.streams[i].detection_model,
-                                              config.streams[i].detection_threshold,
-                                              config.streams[i].pre_detection_buffer,
-                                              config.streams[i].post_detection_buffer,
+                     current_config->streams[i].name, annotation_only ? "true" : "false");
+            if (start_unified_detection_thread(current_config->streams[i].name,
+                                              current_config->streams[i].detection_model,
+                                              current_config->streams[i].detection_threshold,
+                                              current_config->streams[i].pre_detection_buffer,
+                                              current_config->streams[i].post_detection_buffer,
                                               annotation_only) != 0) {
-                log_warn("Failed to start detection-based recording for stream: %s", config.streams[i].name);
+                log_warn("Failed to start detection-based recording for stream: %s", current_config->streams[i].name);
             } else {
-                log_info("Successfully started detection-based recording for stream: %s", config.streams[i].name);
+                log_info("Successfully started detection-based recording for stream: %s", current_config->streams[i].name);
             }
         }
     }
