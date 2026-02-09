@@ -156,7 +156,15 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             thread_ctx->retry_count = 0;
 
             // Wait a moment for the upstream to be ready (go2rtc may still be initializing streams)
-            sleep(3);
+            // Check for shutdown every 500ms during the wait
+            for (int wait_i = 0; wait_i < 6; wait_i++) {
+                if (is_shutdown_initiated() || thread_ctx->shutdown_requested) {
+                    log_info("Shutdown detected during force reconnect wait for %s, exiting", stream_name);
+                    thread_ctx->running = 0;
+                    goto thread_cleanup;
+                }
+                av_usleep(500000);  // 500ms
+            }
 
             log_info("Force reconnect: will attempt fresh connection for stream %s", stream_name);
         }
@@ -414,8 +422,15 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             log_info("Waiting %d seconds before retrying segment recording for %s (retry #%d)",
                     backoff_seconds, stream_name, thread_ctx->retry_count);
 
-            // Wait before trying again
-            av_usleep(backoff_seconds * 1000000);  // Convert to microseconds
+            // Wait before trying again, but check for shutdown every 500ms
+            for (int wait_i = 0; wait_i < backoff_seconds * 2; wait_i++) {
+                if (is_shutdown_initiated() || thread_ctx->shutdown_requested) {
+                    log_info("Shutdown detected during retry backoff for %s, exiting", stream_name);
+                    thread_ctx->running = 0;
+                    goto thread_cleanup;
+                }
+                av_usleep(500000);  // 500ms
+            }
 
             // Continue the loop to retry
             continue;
@@ -445,6 +460,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         }
     }
 
+thread_cleanup:
     // MEMORY LEAK FIX: Aggressive cleanup of all FFmpeg resources
     log_info("Performing aggressive cleanup of all FFmpeg resources for stream %s", stream_name);
 
