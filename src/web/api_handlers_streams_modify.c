@@ -562,6 +562,7 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     }
 
     // Create stream in memory from the database configuration
+    // This also registers the stream with go2rtc via go2rtc_integration_register_stream()
     stream_handle_t stream = add_stream(&config);
     if (!stream) {
         log_error("Failed to create stream: %s", config.name);
@@ -571,12 +572,8 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Sync streams to go2rtc - this ensures the new stream is registered
-    // even if the inline registration in add_stream() failed
-    if (!go2rtc_sync_streams_from_database()) {
-        log_warn("Failed to sync streams to go2rtc after adding stream %s", config.name);
-        // Continue anyway - stream is created in database
-    }
+    // Note: Stream is already registered with go2rtc by add_stream()
+    // No need to call go2rtc_sync_streams_from_database() which would sync ALL streams
 
     // Start stream if enabled
     if (config.enabled) {
