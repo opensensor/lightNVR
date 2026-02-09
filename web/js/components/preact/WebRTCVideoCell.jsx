@@ -1224,7 +1224,8 @@ export function WebRTCVideoCell({
             color: 'white',
             zIndex: 10,
             textAlign: 'center',
-            pointerEvents: 'auto'
+            pointerEvents: 'auto',
+            transform: 'none'
           }}
         >
           <div

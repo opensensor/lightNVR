@@ -20,7 +20,8 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
   const modalRef = useRef(null);
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [reconnectStatus, setReconnectStatus] = useState('');
-  const maxReconnectAttempts = 30; // Try for up to 60 seconds (2s intervals)
+  const [serverDown, setServerDown] = useState(false);
+  const maxReconnectAttempts = 60; // Try for up to 2 minutes (2s intervals)
 
   // Handle escape key (only when not restarting)
   useEffect(() => {
@@ -39,25 +40,49 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
     if (!isRestarting) {
       setReconnectAttempts(0);
       setReconnectStatus('');
+      setServerDown(false);
       return;
     }
 
-    // Wait a bit before starting to check
-    const initialDelay = setTimeout(() => {
-      setReconnectStatus('Waiting for server to restart...');
-    }, 2000);
+    setReconnectStatus('Initiating restart...');
 
-    // Start checking after 5 seconds
-    const checkInterval = setInterval(async () => {
-      setReconnectAttempts(prev => {
-        const newAttempts = prev + 1;
-        if (newAttempts >= maxReconnectAttempts) {
-          setReconnectStatus('Server is taking longer than expected. Please refresh manually.');
-          clearInterval(checkInterval);
-          return newAttempts;
+    // First, detect when the server goes down
+    const detectShutdown = setInterval(async () => {
+      try {
+        const response = await fetch('/api/system/status', {
+          method: 'GET',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(1000)
+        });
+
+        if (!response.ok) {
+          // Server is shutting down
+          setServerDown(true);
+          setReconnectStatus('Server is shutting down...');
+          clearInterval(detectShutdown);
         }
-        return newAttempts;
-      });
+      } catch (error) {
+        // Server is down or unreachable
+        setServerDown(true);
+        setReconnectStatus('Server is shutting down...');
+        clearInterval(detectShutdown);
+      }
+    }, 500); // Check every 500ms for shutdown
+
+    // Start checking for server to come back online
+    const checkInterval = setInterval(async () => {
+      // Only start counting attempts after server is confirmed down
+      if (serverDown) {
+        setReconnectAttempts(prev => {
+          const newAttempts = prev + 1;
+          if (newAttempts >= maxReconnectAttempts) {
+            setReconnectStatus('Server is taking longer than expected. Please refresh manually.');
+            clearInterval(checkInterval);
+            return newAttempts;
+          }
+          return newAttempts;
+        });
+      }
 
       try {
         const response = await fetch('/api/system/status', {
@@ -65,25 +90,31 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
           cache: 'no-store',
           signal: AbortSignal.timeout(2000)
         });
-        
+
         if (response.ok) {
           setReconnectStatus('Server is back online! Reloading...');
+          clearInterval(detectShutdown);
           clearInterval(checkInterval);
           setTimeout(() => {
             window.location.reload();
           }, 1000);
+        } else if (serverDown) {
+          // Server is down, waiting for it to come back
+          setReconnectStatus(`Waiting for server to restart... (${reconnectAttempts}s)`);
         }
       } catch (error) {
-        // Server not ready yet, continue waiting
-        setReconnectStatus(`Reconnecting... (attempt ${reconnectAttempts + 1})`);
+        if (serverDown) {
+          // Server is down, waiting for it to come back
+          setReconnectStatus(`Waiting for server to restart... (${reconnectAttempts * 2}s)`);
+        }
       }
-    }, 2000);
+    }, 2000); // Check every 2 seconds
 
     return () => {
-      clearTimeout(initialDelay);
+      clearInterval(detectShutdown);
       clearInterval(checkInterval);
     };
-  }, [isRestarting]);
+  }, [isRestarting, serverDown, reconnectAttempts]);
 
   // Handle background click (only when not restarting)
   const handleBackgroundClick = (e) => {
@@ -146,9 +177,15 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
               </div>
 
               <h3 className="text-lg font-semibold mb-2">Restarting LightNVR</h3>
-              <p className="text-sm text-muted-foreground text-center mb-4">
+              <p className="text-sm text-muted-foreground text-center mb-2">
                 {reconnectStatus || 'Initiating restart...'}
               </p>
+
+              {!serverDown && (
+                <p className="text-xs text-muted-foreground/70 text-center mb-4">
+                  This may take 1-2 minutes
+                </p>
+              )}
 
               {reconnectAttempts >= maxReconnectAttempts && (
                 <button

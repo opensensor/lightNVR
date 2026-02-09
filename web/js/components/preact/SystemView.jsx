@@ -184,15 +184,17 @@ export function SystemView() {
     },
     onSuccess: () => {
       showStatusMessage('System is restarting. Please wait...');
-      // Wait for system to restart
-      setTimeout(() => {
-        window.location.reload();
-      }, 10000);
+      // Don't auto-reload here - let the RestartModal handle reconnection detection
     },
     onError: (error) => {
       console.error('Error restarting system:', error);
-      showStatusMessage(`Error restarting system: ${error.message}`);
-      setIsRestarting(false);
+      // Only show error and reset state if it's not a network error
+      // (network errors are expected during restart)
+      if (error.message && !error.message.includes('fetch') && !error.message.includes('network')) {
+        showStatusMessage(`Error restarting system: ${error.message}`);
+        setIsRestarting(false);
+      }
+      // Otherwise, the restart was likely initiated successfully and the server is shutting down
     }
   });
 

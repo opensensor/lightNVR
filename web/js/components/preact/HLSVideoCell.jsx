@@ -851,7 +851,8 @@ export function HLSVideoCell({
             backgroundColor: 'rgba(0, 0, 0, 0.7)',
             color: 'white',
             zIndex: 5,
-            textAlign: 'center'
+            textAlign: 'center',
+            transform: 'none'
           }}
         >
           <div
