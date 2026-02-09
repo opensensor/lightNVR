@@ -14,6 +14,7 @@
 #include "core/logger.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_schema_cache.h"
 
 /**
  * @brief Convert a user_t struct to a cJSON object
@@ -40,6 +41,7 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
     cJSON_AddNumberToObject(json, "last_login", user->last_login);
     cJSON_AddBoolToObject(json, "is_active", user->is_active);
     cJSON_AddBoolToObject(json, "password_change_locked", user->password_change_locked);
+    cJSON_AddBoolToObject(json, "totp_enabled", user->totp_enabled);
 
     return json;
 }
@@ -154,13 +156,25 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    // Check if TOTP column exists for backward compatibility
+    bool has_totp = cached_column_exists("users", "totp_enabled");
+
     // Query all users
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-                               "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active, password_change_locked "
-                               "FROM users ORDER BY id;",
-                               -1, &stmt, NULL);
+    int rc;
+    if (has_totp) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
+                                "FROM users ORDER BY id;",
+                                -1, &stmt, NULL);
+    } else {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked "
+                                "FROM users ORDER BY id;",
+                                -1, &stmt, NULL);
+    }
     if (rc != SQLITE_OK) {
         http_response_set_json_error(res, 500, "Failed to prepare statement");
         return;
@@ -173,6 +187,7 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
     // Iterate through the results
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         user_t user;
+        memset(&user, 0, sizeof(user));
 
         user.id = sqlite3_column_int64(stmt, 0);
         strncpy(user.username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user.username) - 1);
@@ -201,6 +216,7 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
         user.last_login = sqlite3_column_int64(stmt, 7);
         user.is_active = sqlite3_column_int(stmt, 8) != 0;
         user.password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+        user.totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
 
         // Add user to array
         cJSON_AddItemToArray(users_array, user_to_json(&user, 1));
@@ -255,13 +271,25 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    // Check if TOTP column exists for backward compatibility
+    bool has_totp = cached_column_exists("users", "totp_enabled");
+
     // Query user by ID
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-                               "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active, password_change_locked "
-                               "FROM users WHERE id = ?;",
-                               -1, &stmt, NULL);
+    int rc;
+    if (has_totp) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
+                                "FROM users WHERE id = ?;",
+                                -1, &stmt, NULL);
+    } else {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked "
+                                "FROM users WHERE id = ?;",
+                                -1, &stmt, NULL);
+    }
     if (rc != SQLITE_OK) {
         http_response_set_json_error(res, 500, "Failed to prepare statement");
         return;
@@ -278,6 +306,7 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
 
     // Create user object
     user_t user;
+    memset(&user, 0, sizeof(user));
     user.id = sqlite3_column_int64(stmt, 0);
     strncpy(user.username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user.username) - 1);
     user.username[sizeof(user.username) - 1] = '\0';
@@ -305,6 +334,7 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
     user.last_login = sqlite3_column_int64(stmt, 7);
     user.is_active = sqlite3_column_int(stmt, 8) != 0;
     user.password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+    user.totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
 
     sqlite3_finalize(stmt);
 

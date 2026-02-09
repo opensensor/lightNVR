@@ -195,6 +195,35 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     // Login successful
     log_info("Login successful for user: %s (ID: %lld)", username, (long long)user_id);
 
+    // Check if user has TOTP enabled (only for API/JSON requests)
+    if (!is_form) {
+        char totp_secret[64] = {0};
+        bool totp_enabled = false;
+        if (db_auth_get_totp_info(user_id, totp_secret, sizeof(totp_secret), &totp_enabled) == 0 && totp_enabled) {
+            // Create a short-lived pending MFA session (5 minutes)
+            char totp_token[33];
+            rc = db_auth_create_session(user_id, NULL, NULL, 300, totp_token, sizeof(totp_token));
+            if (rc != 0) {
+                log_error("Failed to create pending MFA session for user: %s", username);
+                http_response_set_json_error(res, 500, "Failed to create MFA session");
+                return;
+            }
+
+            // Return TOTP required response (NO Set-Cookie header)
+            cJSON *response = cJSON_CreateObject();
+            cJSON_AddBoolToObject(response, "totp_required", true);
+            cJSON_AddStringToObject(response, "totp_token", totp_token);
+
+            char *json_str = cJSON_PrintUnformatted(response);
+            http_response_set_json(res, 200, json_str);
+            free(json_str);
+            cJSON_Delete(response);
+
+            log_info("TOTP verification required for user: %s", username);
+            return;
+        }
+    }
+
     // Create a session token using configured timeout
     int session_timeout_seconds = g_config.auth_timeout_hours * 3600;
     char token[33];
