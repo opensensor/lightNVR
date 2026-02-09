@@ -48,6 +48,9 @@ typedef struct {
     bool has_detection_model;                  // Whether detection_model was provided
     bool has_detection_threshold;              // Whether detection_threshold was provided
     bool has_detection_interval;               // Whether detection_interval was provided
+    bool has_record;                           // Whether record flag was provided
+    bool has_streaming_enabled;                // Whether streaming_enabled flag was provided
+    bool non_dynamic_config_changed;           // Whether non-dynamic fields changed
 } put_stream_task_t;
 
 /**
@@ -211,13 +214,17 @@ static void put_stream_worker(put_stream_task_t *task) {
     }
 
     // Restart stream if configuration changed and either:
-    // 1. Critical parameters requiring restart were changed (URL, protocol)
-    // 2. The stream is currently running
-    if (task->config_changed && (task->requires_restart || task->is_running)) {
-        log_info("Restarting stream %s (requires_restart=%s, is_running=%s)",
+    // 1. Critical parameters requiring restart were changed (URL, protocol, record_audio)
+    // 2. The stream is currently running AND non-dynamic parameters changed
+    // Note: record and streaming_enabled can be toggled dynamically without restart
+    // Note: retention and PTZ settings are metadata only and don't require restart
+
+    if (task->config_changed && (task->requires_restart || (task->is_running && task->non_dynamic_config_changed))) {
+        log_info("Restarting stream %s (requires_restart=%s, is_running=%s, non_dynamic_changed=%s)",
                 task->config.name,
                 task->requires_restart ? "true" : "false",
-                task->is_running ? "true" : "false");
+                task->is_running ? "true" : "false",
+                task->non_dynamic_config_changed ? "true" : "false");
 
         bool url_changed = strcmp(task->original_url, task->config.url) != 0;
         bool protocol_changed = task->original_protocol != task->config.protocol;
@@ -688,6 +695,9 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     // Update configuration with provided values
     bool config_changed = false;
     bool requires_restart = false;  // Flag for changes that require stream restart
+    bool has_record = false;  // Track if record flag was provided
+    bool has_streaming_enabled = false;  // Track if streaming_enabled flag was provided
+    bool non_dynamic_config_changed = false;  // Track if non-dynamic fields changed
 
     // Save original values for comparison
     char original_url[MAX_URL_LENGTH];
@@ -711,54 +721,65 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     if (enabled && cJSON_IsBool(enabled)) {
         config.enabled = cJSON_IsTrue(enabled);
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *streaming_enabled = cJSON_GetObjectItem(stream_json, "streaming_enabled");
     if (streaming_enabled && cJSON_IsBool(streaming_enabled)) {
         config.streaming_enabled = cJSON_IsTrue(streaming_enabled);
         config_changed = true;
+        has_streaming_enabled = true;
+        // streaming_enabled can be toggled dynamically, don't set non_dynamic_config_changed
     }
 
     cJSON *width = cJSON_GetObjectItem(stream_json, "width");
     if (width && cJSON_IsNumber(width)) {
         config.width = width->valueint;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *height = cJSON_GetObjectItem(stream_json, "height");
     if (height && cJSON_IsNumber(height)) {
         config.height = height->valueint;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *fps = cJSON_GetObjectItem(stream_json, "fps");
     if (fps && cJSON_IsNumber(fps)) {
         config.fps = fps->valueint;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *codec = cJSON_GetObjectItem(stream_json, "codec");
     if (codec && cJSON_IsString(codec)) {
         strncpy(config.codec, codec->valuestring, sizeof(config.codec) - 1);
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *priority = cJSON_GetObjectItem(stream_json, "priority");
     if (priority && cJSON_IsNumber(priority)) {
         config.priority = priority->valueint;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *record = cJSON_GetObjectItem(stream_json, "record");
     if (record && cJSON_IsBool(record)) {
         config.record = cJSON_IsTrue(record);
         config_changed = true;
+        has_record = true;
+        // record can be toggled dynamically, don't set non_dynamic_config_changed
     }
 
     cJSON *segment_duration = cJSON_GetObjectItem(stream_json, "segment_duration");
     if (segment_duration && cJSON_IsNumber(segment_duration)) {
         config.segment_duration = segment_duration->valueint;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *detection_based_recording_json = cJSON_GetObjectItem(stream_json, "detection_based_recording");
@@ -771,6 +792,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         has_detection_based_recording = true;
         config.detection_based_recording = detection_based_recording_value;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *detection_model_json = cJSON_GetObjectItem(stream_json, "detection_model");
@@ -781,6 +803,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         has_detection_model = true;
         strncpy(config.detection_model, detection_model_value, sizeof(config.detection_model) - 1);
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *detection_threshold_json = cJSON_GetObjectItem(stream_json, "detection_threshold");
@@ -792,6 +815,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         has_detection_threshold = true;
         config.detection_threshold = detection_threshold_value;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *detection_interval_json = cJSON_GetObjectItem(stream_json, "detection_interval");
@@ -802,18 +826,21 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         has_detection_interval = true;
         config.detection_interval = detection_interval_value;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *pre_detection_buffer = cJSON_GetObjectItem(stream_json, "pre_detection_buffer");
     if (pre_detection_buffer && cJSON_IsNumber(pre_detection_buffer)) {
         config.pre_detection_buffer = pre_detection_buffer->valueint;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *post_detection_buffer = cJSON_GetObjectItem(stream_json, "post_detection_buffer");
     if (post_detection_buffer && cJSON_IsNumber(post_detection_buffer)) {
         config.post_detection_buffer = post_detection_buffer->valueint;
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     cJSON *record_audio = cJSON_GetObjectItem(stream_json, "record_audio");
@@ -822,6 +849,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         config.record_audio = cJSON_IsTrue(record_audio);
         if (original_record_audio != config.record_audio) {
             config_changed = true;
+            non_dynamic_config_changed = true;
             requires_restart = true;  // Audio recording changes require restart
             log_info("Audio recording changed from %s to %s - restart required",
                     original_record_audio ? "enabled" : "disabled",
@@ -835,19 +863,21 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         config.backchannel_enabled = cJSON_IsTrue(backchannel_enabled);
         if (original_backchannel != config.backchannel_enabled) {
             config_changed = true;
+            non_dynamic_config_changed = true;
             log_info("Backchannel audio changed from %s to %s",
                     original_backchannel ? "enabled" : "disabled",
                     config.backchannel_enabled ? "enabled" : "disabled");
         }
     }
 
-    // Parse retention policy settings
+    // Parse retention policy settings - these are metadata only, don't require restart
     cJSON *retention_days = cJSON_GetObjectItem(stream_json, "retention_days");
     if (retention_days && cJSON_IsNumber(retention_days)) {
         int new_retention = retention_days->valueint;
         if (config.retention_days != new_retention) {
             config.retention_days = new_retention;
             config_changed = true;
+            // Retention is metadata only, doesn't require restart
             log_info("Retention days changed to %d for stream %s", new_retention, config.name);
         }
     }
@@ -858,6 +888,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.detection_retention_days != new_detection_retention) {
             config.detection_retention_days = new_detection_retention;
             config_changed = true;
+            // Retention is metadata only, doesn't require restart
             log_info("Detection retention days changed to %d for stream %s", new_detection_retention, config.name);
         }
     }
@@ -868,17 +899,19 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.max_storage_mb != new_max_storage) {
             config.max_storage_mb = new_max_storage;
             config_changed = true;
+            // Storage limit is metadata only, doesn't require restart
             log_info("Max storage MB changed to %d for stream %s", new_max_storage, config.name);
         }
     }
 
-    // Parse PTZ settings
+    // Parse PTZ settings - these are metadata only, don't require restart
     cJSON *ptz_enabled = cJSON_GetObjectItem(stream_json, "ptz_enabled");
     if (ptz_enabled && cJSON_IsBool(ptz_enabled)) {
         bool new_ptz_enabled = cJSON_IsTrue(ptz_enabled);
         if (config.ptz_enabled != new_ptz_enabled) {
             config.ptz_enabled = new_ptz_enabled;
             config_changed = true;
+            // PTZ is metadata only, doesn't require restart
             log_info("PTZ %s for stream %s",
                     config.ptz_enabled ? "enabled" : "disabled", config.name);
         }
@@ -890,6 +923,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.ptz_max_x != new_ptz_max_x) {
             config.ptz_max_x = new_ptz_max_x;
             config_changed = true;
+            // PTZ is metadata only, doesn't require restart
         }
     }
 
@@ -899,6 +933,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.ptz_max_y != new_ptz_max_y) {
             config.ptz_max_y = new_ptz_max_y;
             config_changed = true;
+            // PTZ is metadata only, doesn't require restart
         }
     }
 
@@ -908,6 +943,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.ptz_max_z != new_ptz_max_z) {
             config.ptz_max_z = new_ptz_max_z;
             config_changed = true;
+            // PTZ is metadata only, doesn't require restart
         }
     }
 
@@ -917,6 +953,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.ptz_has_home != new_ptz_has_home) {
             config.ptz_has_home = new_ptz_has_home;
             config_changed = true;
+            // PTZ is metadata only, doesn't require restart
         }
     }
 
@@ -926,6 +963,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.protocol != new_protocol) {
             config.protocol = new_protocol;
             config_changed = true;
+            non_dynamic_config_changed = true;
             requires_restart = true;  // Protocol changes always require restart
             log_info("Protocol changed from %d to %d - restart required",
                     original_protocol, config.protocol);
@@ -949,6 +987,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
                 original_is_onvif ? "true" : "false",
                 config.is_onvif ? "true" : "false");
         config_changed = true;
+        non_dynamic_config_changed = true;
     }
 
     // If ONVIF flag is set, test the connection
@@ -1094,6 +1133,9 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     task->has_detection_model = has_detection_model;
     task->has_detection_threshold = has_detection_threshold;
     task->has_detection_interval = has_detection_interval;
+    task->has_record = has_record;
+    task->has_streaming_enabled = has_streaming_enabled;
+    task->non_dynamic_config_changed = non_dynamic_config_changed;
 
     log_info("Detection settings before update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
              config.detection_model, config.detection_threshold, config.detection_interval,
