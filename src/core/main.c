@@ -486,8 +486,10 @@ static bool detect_container_mode(void) {
 
 // Function to request a restart (called from API handler)
 void request_restart(void) {
+    log_info("request_restart() called - setting restart_requested=true and running=false");
     restart_requested = true;
     running = false;
+    log_info("request_restart() completed - restart_requested=%d, running=%d", restart_requested, running);
 }
 
 // Function to check if restart was requested
@@ -1139,7 +1141,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (now - last_log_time > 60) {
-            log_debug("Daemon is still running...");
+            log_debug("Daemon is still running... (running=%d, restart_requested=%d)", running, restart_requested);
             last_log_time = now;
         }
 
@@ -1173,9 +1175,14 @@ int main(int argc, char *argv[]) {
 
         // Process events, monitor system health, etc.
         sleep(1);
+
+        // Check if restart was requested and log it
+        if (restart_requested) {
+            log_info("Main loop detected restart_requested=true, running=%d - should exit loop now", running);
+        }
     }
 
-    log_info("Shutting down LightNVR...");
+    log_info("Shutting down LightNVR... (running=%d, restart_requested=%d)", running, restart_requested);
 
     // CRITICAL: Stop the web server IMMEDIATELY to prevent serving requests during shutdown
     // This must happen before any cleanup operations to ensure no new requests are processed
