@@ -78,13 +78,12 @@ int get_stream_storage_usage(const char *storage_path, stream_storage_info_t *st
                     snprintf(find_cmd, sizeof(find_cmd), "find %s -type f -name \"*.mp4\" | wc -l", stream_path);
                     FILE *fp_count = popen(find_cmd, "r");
                     if (fp_count) {
-                        if (fscanf(fp_count, "%d", &stream_info[stream_count].recording_count) == 1) {
-                            if (stream_info[stream_count].recording_count > 0) {
-                                stream_count++;
-                            }
-                        }
+                        fscanf(fp_count, "%d", &stream_info[stream_count].recording_count);
                         pclose(fp_count);
                     }
+                    // Include stream even if it has no MP4 files yet (might have HLS segments)
+                    // This prevents cache refresh failures in test environments
+                    stream_count++;
                 }
                 pclose(fp);
             }

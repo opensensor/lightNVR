@@ -153,27 +153,68 @@ int libuv_server_start(http_server_handle_t handle) {
     if (!server) {
         return -1;
     }
-    
+
+    // Check if handles are closed (happens after restart)
+    // If they're closed, we need to reinitialize them
+    bool need_reinit = uv_is_closing((uv_handle_t *)&server->listener) ||
+                       uv_is_closing((uv_handle_t *)&server->stop_async);
+
+    if (need_reinit) {
+        log_info("libuv_server_start: Handles are closed, reinitializing");
+
+        // Wait for all closes to complete
+        int wait_count = 0;
+        while ((uv_is_closing((uv_handle_t *)&server->listener) ||
+                uv_is_closing((uv_handle_t *)&server->stop_async)) &&
+               wait_count < 100) {
+            uv_run(server->loop, UV_RUN_NOWAIT);
+            usleep(10000); // 10ms
+            wait_count++;
+        }
+
+        if (uv_is_closing((uv_handle_t *)&server->listener) ||
+            uv_is_closing((uv_handle_t *)&server->stop_async)) {
+            log_error("libuv_server_start: Handles still closing after timeout");
+            return -1;
+        }
+
+        // Reinitialize the TCP listener
+        if (uv_tcp_init(server->loop, &server->listener) != 0) {
+            log_error("libuv_server_start: Failed to reinitialize TCP handle");
+            return -1;
+        }
+        server->listener.data = server;
+
+        // Reinitialize the async handle for stop signaling
+        if (uv_async_init(server->loop, &server->stop_async, stop_async_cb) != 0) {
+            log_error("libuv_server_start: Failed to reinitialize async handle");
+            return -1;
+        }
+        server->stop_async.data = server;
+
+        log_info("libuv_server_start: Handles reinitialized successfully");
+    }
+
     // Bind to address
     struct sockaddr_in addr;
     uv_ip4_addr("0.0.0.0", server->config.port, &addr);
-    
+
     int r = uv_tcp_bind(&server->listener, (const struct sockaddr *)&addr, 0);
     if (r != 0) {
         log_error("libuv_server_start: Bind failed: %s", uv_strerror(r));
         return -1;
     }
-    
+
     // Start listening
     r = uv_listen((uv_stream_t *)&server->listener, 128, on_connection);
     if (r != 0) {
         log_error("libuv_server_start: Listen failed: %s", uv_strerror(r));
         return -1;
     }
-    
+
     server->running = true;
     log_info("libuv_server_start: Listening on port %d", server->config.port);
-    
+
     // Start event loop in separate thread if we own it
     if (server->owns_loop) {
         r = uv_thread_create(&server->thread, server_thread_func, server);

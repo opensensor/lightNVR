@@ -102,9 +102,15 @@ static int refresh_cache(void) {
     stream_storage_info_t *stream_info = NULL;
     int stream_count = get_all_stream_storage_usage(&stream_info);
 
-    if (stream_count <= 0 || !stream_info) {
-        log_warn("No stream storage usage information available for cache refresh");
+    // Check for actual error (negative return value)
+    if (stream_count < 0) {
+        log_error("Failed to get stream storage usage for cache refresh");
         return -1;
+    }
+
+    // Having 0 streams is valid (e.g., during startup or in test environments)
+    if (stream_count == 0) {
+        log_debug("No streams found for cache refresh (this is normal during startup)");
     }
 
     pthread_mutex_lock(&cache.mutex);
@@ -114,7 +120,7 @@ static int refresh_cache(void) {
         free(cache.stream_info);
     }
 
-    // Update cache with new data
+    // Update cache with new data (even if stream_count is 0)
     cache.stream_info = stream_info;
     cache.stream_count = stream_count;
     cache.last_update = time(NULL);
@@ -151,11 +157,18 @@ int get_cached_stream_storage_usage(stream_storage_info_t **stream_info, int for
 
     pthread_mutex_lock(&cache.mutex);
 
-    // Check if cache is valid
-    if (!cache.stream_info || cache.stream_count <= 0) {
+    // If no streams in cache, return 0 (this is valid, not an error)
+    if (cache.stream_count == 0) {
         pthread_mutex_unlock(&cache.mutex);
-        log_warn("No cached stream storage usage information available");
+        log_debug("No streams in cache (this is normal during startup or when no streams are configured)");
         return 0;
+    }
+
+    // Check if cache data is invalid
+    if (!cache.stream_info) {
+        pthread_mutex_unlock(&cache.mutex);
+        log_error("Cache stream_count is %d but stream_info is NULL - cache is corrupted", cache.stream_count);
+        return -1;
     }
 
     // Allocate memory for stream info array
@@ -212,22 +225,27 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
     stream_storage_info_t *stream_info = NULL;
     int stream_count = get_cached_stream_storage_usage(&stream_info, force_refresh);
 
-    if (stream_count <= 0 || !stream_info) {
-        log_warn("No cached stream storage usage information available");
-
+    // Check for actual error (negative return value)
+    if (stream_count < 0) {
+        log_error("Failed to get cached stream storage usage");
         // Try to get the information directly without caching
         log_info("Attempting to get stream storage usage directly");
         stream_info = NULL;
         stream_count = get_all_stream_storage_usage(&stream_info);
 
-        if (stream_count <= 0 || !stream_info) {
-            log_warn("No stream storage usage information available");
+        if (stream_count < 0) {
+            log_error("Failed to get stream storage usage directly");
             // Still add the empty array to the JSON object
             cJSON_AddItemToObject(json_obj, "streamStorage", stream_storage_array);
             return 0;
         }
+    }
 
-        log_info("Successfully retrieved %d streams directly", stream_count);
+    // If stream_count is 0, that's valid - just add empty array
+    if (stream_count == 0) {
+        log_debug("No streams found (this is normal during startup or when no streams are configured)");
+        cJSON_AddItemToObject(json_obj, "streamStorage", stream_storage_array);
+        return 0;
     }
 
     // Add stream storage info to array
