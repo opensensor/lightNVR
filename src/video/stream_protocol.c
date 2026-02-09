@@ -20,15 +20,28 @@
 /**
  * Interrupt callback for FFmpeg operations
  * This allows blocking FFmpeg operations (like av_read_frame) to be interrupted during shutdown
+ * or when a specific stream is being stopped.
+ *
+ * The opaque parameter can be:
+ * - NULL: Only check global shutdown (backward compatible for ONVIF etc.)
+ * - A pointer to an atomic_int "running" flag: Also check per-stream stop condition
+ *
  * Returns 1 to interrupt, 0 to continue
  */
 static int ffmpeg_interrupt_callback(void *opaque) {
-    (void)opaque;  // Unused
-
-    // Check if shutdown has been initiated
+    // Check if global shutdown has been initiated
     if (is_shutdown_initiated()) {
         return 1;  // Interrupt the operation
     }
+
+    // If a per-stream running flag was provided, check it too
+    if (opaque != NULL) {
+        atomic_int *running = (atomic_int *)opaque;
+        if (!atomic_load(running)) {
+            return 1;  // Per-stream stop requested, interrupt the operation
+        }
+    }
+
     return 0;  // Continue normally
 }
 

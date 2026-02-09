@@ -735,6 +735,44 @@ static int calculate_reconnect_delay(int attempt) {
 }
 
 /**
+ * Interruptible sleep that checks shutdown/stop conditions every 100ms.
+ * This replaces blocking av_usleep() calls that could delay shutdown by up to 30 seconds.
+ *
+ * @param total_ms Total milliseconds to sleep
+ * @param ctx The HLS unified thread context
+ * @param state The stream state manager (can be NULL)
+ * @param stream_name The stream name for logging
+ * @return 0 if sleep completed normally, 1 if interrupted by shutdown/stop condition
+ */
+static int interruptible_sleep_ms(int total_ms, hls_unified_thread_ctx_t *ctx,
+                                   stream_state_manager_t *state, const char *stream_name) {
+    const int interval_ms = 100;  // Check every 100ms
+    int elapsed = 0;
+
+    while (elapsed < total_ms) {
+        int sleep_ms = (total_ms - elapsed < interval_ms) ? (total_ms - elapsed) : interval_ms;
+        av_usleep(sleep_ms * 1000);
+        elapsed += sleep_ms;
+
+        // Check shutdown/stop conditions
+        if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) ||
+            !atomic_load(&ctx->running) || is_shutdown_initiated() ||
+            (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
+            log_info("Interruptible sleep for %s interrupted after %d/%d ms due to %s",
+                    stream_name, elapsed, total_ms,
+                    is_context_already_freed(ctx) ? "context already freed" :
+                    is_context_pending_deletion(ctx) ? "context pending deletion" :
+                    !atomic_load(&ctx->running) ? "running flag cleared" :
+                    is_shutdown_initiated() ? "system shutdown" :
+                    (state && is_stream_state_stopping(state)) ? "stream state STOPPING" :
+                    "callbacks disabled");
+            return 1;  // Interrupted
+        }
+    }
+    return 0;  // Completed normally
+}
+
+/**
  * Check RTSP connection by sending an OPTIONS request
  *
  * @param rtsp_url The RTSP URL to check
@@ -1066,21 +1104,8 @@ void *hls_unified_thread_func(void *arg) {
                         log_info("Will retry connection to stream %s in %d ms (attempt %d)",
                                 stream_name, reconnect_delay_ms, reconnect_attempt + 1);
 
-                        // Sleep before retrying
-                        av_usleep(reconnect_delay_ms * 1000);
-
-                        // CRITICAL FIX: Check for shutdown conditions before continuing
-                        if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) ||
-                            !atomic_load(&ctx->running) || is_shutdown_initiated() ||
-                            (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
-                            log_info("Unified HLS thread for %s stopping during connection attempt due to %s",
-                                    stream_name,
-                                    is_context_already_freed(ctx) ? "context already freed" :
-                                    is_context_pending_deletion(ctx) ? "context pending deletion" :
-                                    !atomic_load(&ctx->running) ? "running flag cleared" :
-                                    is_shutdown_initiated() ? "system shutdown" :
-                                    is_stream_state_stopping(state) ? "stream state STOPPING" :
-                                    "callbacks disabled");
+                        // Interruptible sleep before retrying (checks shutdown every 100ms)
+                        if (interruptible_sleep_ms(reconnect_delay_ms, ctx, state, stream_name)) {
                             thread_state = HLS_THREAD_STOPPING;
                             break;
                         }
@@ -1189,8 +1214,11 @@ void *hls_unified_thread_func(void *arg) {
                     log_info("Will retry connection to stream %s in %d ms (attempt %d)",
                             stream_name, reconnect_delay_ms, reconnect_attempt + 1);
 
-                    // Sleep before retrying
-                    av_usleep(reconnect_delay_ms * 1000);
+                    // Interruptible sleep before retrying (checks shutdown every 100ms)
+                    if (interruptible_sleep_ms(reconnect_delay_ms, ctx, state, stream_name)) {
+                        thread_state = HLS_THREAD_STOPPING;
+                        break;
+                    }
 
                     // Stay in CONNECTING state and try again
                     break;
@@ -1221,21 +1249,8 @@ void *hls_unified_thread_func(void *arg) {
                     log_info("Will retry connection to stream %s in %d ms (attempt %d)",
                             stream_name, reconnect_delay_ms, reconnect_attempt + 1);
 
-                    // Sleep before retrying
-                    av_usleep(reconnect_delay_ms * 1000);
-
-                    // CRITICAL FIX: Check for shutdown conditions before continuing
-                    if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) ||
-                        !atomic_load(&ctx->running) || is_shutdown_initiated() ||
-                        (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
-                        log_info("Unified HLS thread for %s stopping during connection attempt due to %s",
-                                stream_name,
-                                is_context_already_freed(ctx) ? "context already freed" :
-                                is_context_pending_deletion(ctx) ? "context pending deletion" :
-                                !atomic_load(&ctx->running) ? "running flag cleared" :
-                                is_shutdown_initiated() ? "system shutdown" :
-                                is_stream_state_stopping(state) ? "stream state STOPPING" :
-                                "callbacks disabled");
+                    // Interruptible sleep before retrying (checks shutdown every 100ms)
+                    if (interruptible_sleep_ms(reconnect_delay_ms, ctx, state, stream_name)) {
                         thread_state = HLS_THREAD_STOPPING;
                         break;
                     }
@@ -1299,21 +1314,8 @@ void *hls_unified_thread_func(void *arg) {
                         log_info("Will retry connection to stream %s in %d ms (attempt %d)",
                                 stream_name, reconnect_delay_ms, reconnect_attempt + 1);
 
-                        // Sleep before retrying
-                        av_usleep(reconnect_delay_ms * 1000);
-
-                        // CRITICAL FIX: Check for shutdown conditions before continuing
-                        if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx) ||
-                            !atomic_load(&ctx->running) || is_shutdown_initiated() ||
-                            (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
-                            log_info("Unified HLS thread for %s stopping during connection attempt due to %s",
-                                    stream_name,
-                                    is_context_already_freed(ctx) ? "context already freed" :
-                                    is_context_pending_deletion(ctx) ? "context pending deletion" :
-                                    !atomic_load(&ctx->running) ? "running flag cleared" :
-                                    is_shutdown_initiated() ? "system shutdown" :
-                                    is_stream_state_stopping(state) ? "stream state STOPPING" :
-                                    "callbacks disabled");
+                        // Interruptible sleep before retrying (checks shutdown every 100ms)
+                        if (interruptible_sleep_ms(reconnect_delay_ms, ctx, state, stream_name)) {
                             thread_state = HLS_THREAD_STOPPING;
                             break;
                         }
@@ -1515,27 +1517,9 @@ void *hls_unified_thread_func(void *arg) {
                 // Calculate reconnection delay with exponential backoff
                 reconnect_delay_ms = calculate_reconnect_delay(reconnect_attempt);
 
-                // Sleep before reconnecting
+                // Interruptible sleep before reconnecting (checks shutdown every 100ms)
                 log_info("Waiting %d ms before reconnecting to stream %s", reconnect_delay_ms, stream_name);
-                av_usleep(reconnect_delay_ms * 1000);
-
-                // Check if we should stop during the sleep
-                // CRITICAL FIX: Check if context is still valid before accessing
-                if (is_context_already_freed(ctx) || is_context_pending_deletion(ctx)) {
-                    log_warn("Context for stream %s is no longer valid, exiting thread", stream_name);
-                    thread_state = HLS_THREAD_STOPPING;
-                    break;
-                }
-
-                // CRITICAL FIX: Check for shutdown conditions
-                if (!atomic_load(&ctx->running) || is_shutdown_initiated() ||
-                    (state && (is_stream_state_stopping(state) || !are_stream_callbacks_enabled(state)))) {
-                    log_info("Unified HLS thread for %s stopping during reconnection due to %s",
-                            stream_name,
-                            !atomic_load(&ctx->running) ? "running flag cleared" :
-                            is_shutdown_initiated() ? "system shutdown" :
-                            is_stream_state_stopping(state) ? "stream state STOPPING" :
-                            "callbacks disabled");
+                if (interruptible_sleep_ms(reconnect_delay_ms, ctx, state, stream_name)) {
                     thread_state = HLS_THREAD_STOPPING;
                     break;
                 }
