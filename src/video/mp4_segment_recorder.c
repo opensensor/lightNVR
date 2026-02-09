@@ -39,6 +39,17 @@
 // The input context and segment info are now per-stream, passed as parameters
 
 /**
+ * Interrupt callback for FFmpeg operations
+ * This allows us to interrupt blocking FFmpeg calls (like av_read_frame) during shutdown
+ */
+static int interrupt_callback(void *ctx) {
+    (void)ctx;  // Unused parameter
+
+    // Return 1 to interrupt the operation if shutdown has been initiated
+    return is_shutdown_initiated() ? 1 : 0;
+}
+
+/**
  * Initialize the MP4 segment recorder
  * This function should be called during program startup
  */
@@ -147,7 +158,23 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         // Clear the pointer to prevent double free
         *input_ctx_ptr = NULL;
         log_debug("Using existing input context");
+
+        // BUGFIX: Set interrupt callback on existing context to allow shutdown interruption
+        input_ctx->interrupt_callback.callback = interrupt_callback;
+        input_ctx->interrupt_callback.opaque = NULL;
     } else {
+        // BUGFIX: Allocate input context first so we can set the interrupt callback
+        // This allows us to interrupt blocking operations like av_read_frame during shutdown
+        input_ctx = avformat_alloc_context();
+        if (!input_ctx) {
+            log_error("Failed to allocate input context");
+            ret = -1;
+            goto cleanup;
+        }
+
+        // Set interrupt callback to allow interrupting blocking operations during shutdown
+        input_ctx->interrupt_callback.callback = interrupt_callback;
+        input_ctx->interrupt_callback.opaque = NULL;
 
         // Set up RTSP options for low latency
         av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
@@ -164,7 +191,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             log_error("Failed to open input: %d (%s)", ret, error_buf);
 
             // Ensure input_ctx is NULL after a failed open
-            input_ctx = NULL;
+            if (input_ctx) {
+                avformat_free_context(input_ctx);
+                input_ctx = NULL;
+            }
 
             // Don't quit, just return an error code so the caller can retry
             goto cleanup;
