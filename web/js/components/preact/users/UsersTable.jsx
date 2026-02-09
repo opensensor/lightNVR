@@ -12,9 +12,10 @@ import { USER_ROLES } from './UserRoles.js';
  * @param {Function} props.onEdit - Function to handle edit action
  * @param {Function} props.onDelete - Function to handle delete action
  * @param {Function} props.onApiKey - Function to handle API key action
+ * @param {Function} props.onMfa - Function to handle MFA setup action
  * @returns {JSX.Element} Users table
  */
-export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
+export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   // Create direct handlers for each button
   const handleEdit = (user, e) => {
     e.preventDefault();
@@ -34,6 +35,12 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
     onApiKey(user);
   };
 
+  const handleMfa = (user, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onMfa(user);
+  };
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse">
@@ -45,6 +52,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
             <th className="py-3 px-6 text-left font-semibold">Role</th>
             <th className="py-3 px-6 text-left font-semibold">Status</th>
             <th className="py-3 px-6 text-left font-semibold">Password</th>
+            <th className="py-3 px-6 text-left font-semibold">MFA</th>
             <th className="py-3 px-6 text-left font-semibold">Last Login</th>
             <th className="py-3 px-6 text-left font-semibold">Actions</th>
           </tr>
@@ -64,6 +72,11 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
               <td className="py-3 px-6 border-b border-border">
                 <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${user.password_change_locked ? 'badge-warning' : 'badge-info'}`} title={user.password_change_locked ? 'Password changes are locked' : 'Password changes are allowed'}>
                   {user.password_change_locked ? '🔒 Locked' : '🔓 Unlocked'}
+                </span>
+              </td>
+              <td className="py-3 px-6 border-b border-border">
+                <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${user.totp_enabled ? 'badge-success' : 'badge-info'}`}>
+                  {user.totp_enabled ? '🔐 Enabled' : '— Disabled'}
                 </span>
               </td>
               <td className="py-3 px-6 border-b border-border">{user.last_login ? new Date(user.last_login * 1000).toLocaleString() : 'Never'}</td>
@@ -94,6 +107,15 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey }) {
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </button>
+                  <button
+                    className="p-1 text-gray-600 hover:text-gray-800 rounded hover:bg-gray-100 transition-colors"
+                    onClick={(e) => handleMfa(user, e)}
+                    title="Manage MFA"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </button>
                 </div>

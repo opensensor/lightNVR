@@ -14,6 +14,7 @@ import { AddUserModal } from './users/AddUserModal.jsx';
 import { EditUserModal } from './users/EditUserModal.jsx';
 import { DeleteUserModal } from './users/DeleteUserModal.jsx';
 import { ApiKeyModal } from './users/ApiKeyModal.jsx';
+import { TotpSetupModal } from './users/TotpSetupModal.jsx';
 
 /**
  * UsersView component
@@ -21,7 +22,7 @@ import { ApiKeyModal } from './users/ApiKeyModal.jsx';
  */
 export function UsersView() {
   // State for modal visibility
-  const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', or null
+  const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', 'totp', or null
 
   // State for selected user and API key
   const [selectedUser, setSelectedUser] = useState(null);
@@ -312,6 +313,15 @@ export function UsersView() {
     setSelectedUser(user);
     setApiKey('');
     setActiveModal('apiKey');
+  }, []);
+
+  /**
+   * Open the TOTP MFA modal for a user
+   * @param {Object} user - User to configure TOTP for
+   */
+  const openTotpModal = useCallback((user) => {
+    setSelectedUser(user);
+    setActiveModal('totp');
   }, []);
 
   /**
