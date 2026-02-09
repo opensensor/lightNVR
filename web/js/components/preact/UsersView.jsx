@@ -446,6 +446,7 @@ export function UsersView() {
         onEdit={openEditModal}
         onDelete={openDeleteModal}
         onApiKey={openApiKeyModal}
+        onMfa={openTotpModal}
       />
 
       {activeModal === 'add' && (
@@ -482,6 +483,15 @@ export function UsersView() {
           handleGenerateApiKey={handleGenerateApiKey}
           copyApiKey={copyApiKey}
           onClose={closeModal}
+        />
+      )}
+
+      {activeModal === 'totp' && (
+        <TotpSetupModal
+          user={selectedUser}
+          onClose={closeModal}
+          onSuccess={refetchUsers}
+          getAuthHeaders={getAuthHeaders}
         />
       )}
     </div>
