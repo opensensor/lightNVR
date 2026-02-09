@@ -273,6 +273,8 @@ async function waitForGo2rtc(): Promise<void> {
   console.log('go2rtc is ready');
 }
 
+
+
 async function registerTestStreamsWithGo2rtc(): Promise<void> {
   console.log('Registering test streams with go2rtc...');
 
@@ -300,7 +302,7 @@ async function addStreamsToLightNVR(): Promise<void> {
 
   for (const stream of TEST_STREAMS) {
     try {
-      // Stream URL points to go2rtc RTSP endpoint
+      // Use go2rtc's RTSP endpoint - the streams are already registered with go2rtc
       const streamUrl = `rtsp://localhost:${GO2RTC_RTSP_PORT}/${stream.name}`;
 
       const streamConfig = {
@@ -354,12 +356,14 @@ async function globalSetup(): Promise<void> {
   await startLightNVR();
   await waitForGo2rtc();
 
-  // Order matters here:
-  // 1. First add streams to lightNVR (which syncs RTSP URLs to go2rtc)
-  // 2. Then re-register virtual sources with go2rtc (overwriting the RTSP URLs)
-  await addStreamsToLightNVR();
-  await sleep(2000); // Wait for lightNVR's sync to complete
+  // Register virtual streams with go2rtc first
   await registerTestStreamsWithGo2rtc();
+
+  // Add streams to lightNVR using go2rtc RTSP endpoints
+  await addStreamsToLightNVR();
+
+  // Give streams time to initialize
+  await sleep(3000);
 
   console.log('\n✓ Test environment ready\n');
 }
