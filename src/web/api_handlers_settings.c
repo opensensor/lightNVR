@@ -19,7 +19,7 @@
 #include "database/db_streams.h"
 #include "database/db_auth.h"
 #include "video/stream_manager.h"
-#include "video/hls_streaming.h"
+#include "video/streams.h"
 
 /**
  * @brief Direct handler for GET /api/settings

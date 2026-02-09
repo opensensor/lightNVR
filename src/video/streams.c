@@ -93,16 +93,29 @@ config_t* get_streaming_config(void) {
 }
 
 /**
+ * Check at runtime whether go2rtc should be used for HLS.
+ * Requires both compile-time support AND the runtime config flag.
+ */
+static bool should_use_go2rtc(void) {
+#ifdef USE_GO2RTC
+    return g_config.go2rtc_enabled;
+#else
+    return false;
+#endif
+}
+
+/**
  * go2rtc-aware HLS wrapper — start HLS for a stream.
- * When go2rtc is compiled in and available at runtime, uses go2rtc native HLS.
+ * When go2rtc is enabled at runtime, uses go2rtc native HLS.
  * Otherwise falls back to the raw ffmpeg-based start_hls_stream().
  */
 int stream_start_hls(const char *stream_name) {
 #ifdef USE_GO2RTC
-    return go2rtc_integration_start_hls(stream_name);
-#else
-    return start_hls_stream(stream_name);
+    if (should_use_go2rtc()) {
+        return go2rtc_integration_start_hls(stream_name);
+    }
 #endif
+    return start_hls_stream(stream_name);
 }
 
 /**
@@ -110,25 +123,26 @@ int stream_start_hls(const char *stream_name) {
  */
 int stream_stop_hls(const char *stream_name) {
 #ifdef USE_GO2RTC
-    return go2rtc_integration_stop_hls(stream_name);
-#else
-    return stop_hls_stream(stream_name);
+    if (should_use_go2rtc()) {
+        return go2rtc_integration_stop_hls(stream_name);
+    }
 #endif
+    return stop_hls_stream(stream_name);
 }
 
 /**
  * go2rtc-aware HLS wrapper — restart HLS for a stream.
- * When using go2rtc native HLS, stops and re-starts via go2rtc integration.
+ * When go2rtc is enabled at runtime, stops and re-starts via go2rtc integration.
  * Otherwise falls back to the raw ffmpeg restart_hls_stream().
  */
 int stream_restart_hls(const char *stream_name) {
 #ifdef USE_GO2RTC
-    // Stop then start via go2rtc integration
-    go2rtc_integration_stop_hls(stream_name);
-    return go2rtc_integration_start_hls(stream_name);
-#else
-    return restart_hls_stream(stream_name);
+    if (should_use_go2rtc()) {
+        go2rtc_integration_stop_hls(stream_name);
+        return go2rtc_integration_start_hls(stream_name);
+    }
 #endif
+    return restart_hls_stream(stream_name);
 }
 
 /**
@@ -149,10 +163,14 @@ int stop_transcode_stream(const char *stream_name) {
     }
 
 #ifdef USE_GO2RTC
-    // Also stop any separate MP4 recording for this stream using go2rtc integration if available
-    if (go2rtc_integration_stop_recording(stream_name) != 0) {
-        log_warn("Failed to stop MP4 recording using go2rtc integration: %s", stream_name);
-        // Continue anyway
+    if (should_use_go2rtc()) {
+        // Stop MP4 recording via go2rtc integration
+        if (go2rtc_integration_stop_recording(stream_name) != 0) {
+            log_warn("Failed to stop MP4 recording using go2rtc integration: %s", stream_name);
+            // Continue anyway
+        }
+    } else {
+        unregister_mp4_writer_for_stream(stream_name);
     }
 #else
     // Also stop any separate MP4 recording for this stream
