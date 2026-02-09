@@ -1177,6 +1177,19 @@ int main(int argc, char *argv[]) {
 
     log_info("Shutting down LightNVR...");
 
+    // CRITICAL: Stop the web server IMMEDIATELY to prevent serving requests during shutdown
+    // This must happen before any cleanup operations to ensure no new requests are processed
+    log_info("Stopping web server to prevent requests during shutdown...");
+    if (http_server) {
+        http_server_stop(http_server);
+        http_server_destroy(http_server);
+        http_server = NULL;
+    }
+
+    // Stop health check system to prevent it from trying to restart the web server
+    log_info("Stopping health check system...");
+    cleanup_health_check_system();
+
     // Now that we're in the main thread (not signal handler), we can safely
     // call initiate_shutdown() which uses mutexes and logging
     initiate_shutdown();
@@ -1291,19 +1304,8 @@ cleanup:
         sa_usr1.sa_handler = alarm_handler;  // Reuse the alarm handler for USR1
         sigaction(SIGUSR1, &sa_usr1, NULL);
 
-        // Stop health check system first to prevent it from trying to restart
-        // the web server while we're shutting it down
-        log_info("Shutting down health check system early...");
-        cleanup_health_check_system();
-
-        // Stop the web server FIRST to prevent new HTTP requests during cleanup
-        // This stops the libuv event loop thread and closes all connections
-        log_info("Shutting down web server early to prevent requests during cleanup...");
-        if (http_server) {
-            http_server_stop(http_server);
-            http_server_destroy(http_server);
-            http_server = NULL;
-        }
+        // Note: Web server and health check system were already stopped before the fork
+        // to prevent serving requests during shutdown
 
         // Clean up go2rtc integration (inside watchdog-protected block)
         // This includes stopping the health monitor thread which can block
@@ -1533,16 +1535,9 @@ cleanup:
     } else {
         // Fork failed
         log_error("Failed to create watchdog process for cleanup timeout");
-        // Stop health check system first to prevent it from trying to restart
-        // the web server while we're shutting it down
-        cleanup_health_check_system();
 
-        // Stop the web server FIRST to prevent new HTTP requests during cleanup
-        if (http_server) {
-            http_server_stop(http_server);
-            http_server_destroy(http_server);
-            http_server = NULL;
-        }
+        // Note: Health check system and web server were already stopped before the fork attempt
+        // to prevent serving requests during shutdown
 
         // Stop all streams first
         for (int i = 0; i < config.max_streams; i++) {
