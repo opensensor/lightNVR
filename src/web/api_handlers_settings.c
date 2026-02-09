@@ -90,6 +90,9 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     // Don't include the password for security reasons
     cJSON_AddStringToObject(settings, "turn_password", g_config.turn_password[0] ? "********" : "");
 
+    // ONVIF discovery settings
+    cJSON_AddStringToObject(settings, "onvif_discovery_network", g_config.onvif_discovery_network);
+
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(settings);
     if (!json_str) {
@@ -445,6 +448,15 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             settings_changed = true;
             log_info("Updated turn_password");
         }
+    }
+
+    // ONVIF discovery network
+    cJSON *onvif_discovery_network = cJSON_GetObjectItem(settings, "onvif_discovery_network");
+    if (onvif_discovery_network && cJSON_IsString(onvif_discovery_network)) {
+        strncpy(g_config.onvif_discovery_network, onvif_discovery_network->valuestring, sizeof(g_config.onvif_discovery_network) - 1);
+        g_config.onvif_discovery_network[sizeof(g_config.onvif_discovery_network) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated onvif_discovery_network: %s", g_config.onvif_discovery_network);
     }
 
     // Database path

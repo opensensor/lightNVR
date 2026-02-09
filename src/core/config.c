@@ -1131,6 +1131,12 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "turn_password = %s\n", config->turn_password);
     }
 
+    // Write ONVIF settings
+    fprintf(file, "\n[onvif]\n");
+    fprintf(file, "discovery_enabled = %s\n", config->onvif_discovery_enabled ? "true" : "false");
+    fprintf(file, "discovery_interval = %d\n", config->onvif_discovery_interval);
+    fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
+
     // Write stream-specific settings
     for (int i = 0; i < config->max_streams; i++) {
         if (strlen(config->streams[i].name) > 0 && 

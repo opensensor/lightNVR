@@ -53,7 +53,9 @@ export function SettingsView() {
     turnEnabled: false,
     turnServerUrl: '',
     turnUsername: '',
-    turnPassword: ''
+    turnPassword: '',
+    // ONVIF discovery settings
+    onvifDiscoveryNetwork: 'auto'
   });
 
   // Fetch user role on mount
@@ -164,7 +166,9 @@ export function SettingsView() {
         turnEnabled: settingsData.turn_enabled || false,
         turnServerUrl: settingsData.turn_server_url || '',
         turnUsername: settingsData.turn_username || '',
-        turnPassword: settingsData.turn_password || ''
+        turnPassword: settingsData.turn_password || '',
+        // ONVIF discovery settings
+        onvifDiscoveryNetwork: settingsData.onvif_discovery_network || 'auto'
       };
       
       // Update state with loaded settings
@@ -215,7 +219,9 @@ export function SettingsView() {
       turn_enabled: settings.turnEnabled,
       turn_server_url: settings.turnServerUrl,
       turn_username: settings.turnUsername,
-      turn_password: settings.turnPassword
+      turn_password: settings.turnPassword,
+      // ONVIF discovery settings
+      onvif_discovery_network: settings.onvifDiscoveryNetwork
     };
     
     // Use mutation to save settings
@@ -876,6 +882,32 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="(optional)"
               />
+            </div>
+          </div>
+          </div>
+
+          {/* ONVIF Discovery Settings */}
+          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">ONVIF Discovery</h3>
+            <p class="text-sm text-muted-foreground mb-4">
+              Configure the network subnet used for ONVIF camera discovery. Use CIDR notation (e.g., 192.168.1.0/24) or "auto" for automatic detection.
+            </p>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-onvif-discovery-network" class="font-medium">Discovery Network</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-onvif-discovery-network"
+                name="onvifDiscoveryNetwork"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.onvifDiscoveryNetwork}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="auto"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">
+                Examples: 192.168.1.0/24, 10.0.0.0/16, auto
+              </span>
             </div>
           </div>
           </div>

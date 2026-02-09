@@ -66,6 +66,7 @@ export function StreamsView() {
   const [onvifCredentials, setOnvifCredentials] = useState({ username: '', password: '' });
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
+  const [onvifNetworkOverride, setOnvifNetworkOverride] = useState('auto');
 
   // Accordion expanded state for StreamConfigModal sections
   const [expandedSections, setExpandedSections] = useState({
@@ -611,12 +612,24 @@ export function StreamsView() {
   };
 
   // Open ONVIF discovery modal
-  const openOnvifModal = () => {
+  const openOnvifModal = async () => {
     setDiscoveredDevices([]);
     setDeviceProfiles([]);
     setSelectedDevice(null);
     setSelectedProfile(null);
     setCustomStreamName('');
+    // Fetch the configured default network from settings
+    try {
+      const settings = await fetchJSON('/api/settings', { timeout: 5000 });
+      if (settings && settings.onvif_discovery_network) {
+        setOnvifNetworkOverride(settings.onvif_discovery_network);
+      } else {
+        setOnvifNetworkOverride('auto');
+      }
+    } catch (e) {
+      console.warn('Could not fetch ONVIF discovery network setting, using auto', e);
+      setOnvifNetworkOverride('auto');
+    }
     setOnvifModalVisible(true);
   };
 
@@ -830,7 +843,7 @@ export function StreamsView() {
 
   // Start ONVIF discovery
   const startOnvifDiscovery = () => {
-    onvifDiscoveryMutation.mutate({});
+    onvifDiscoveryMutation.mutate({ network: onvifNetworkOverride || 'auto' });
   };
 
   // Get ONVIF device profiles
@@ -887,7 +900,7 @@ export function StreamsView() {
               <button
                   id="discover-onvif-btn"
                   className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                  onClick={() => setOnvifModalVisible(true)}
+                  onClick={openOnvifModal}
               >
                 Discover ONVIF Cameras
               </button>
@@ -1357,6 +1370,25 @@ export function StreamsView() {
               <span className="text-2xl cursor-pointer" onClick={() => setOnvifModalVisible(false)}>×</span>
             </div>
             <div className="p-4">
+              <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <label htmlFor="onvif-network-override" className="text-sm font-medium whitespace-nowrap">
+                    Discovery Network
+                  </label>
+                  <input
+                    type="text"
+                    id="onvif-network-override"
+                    className="p-2 border border-input rounded bg-background text-foreground w-full max-w-xs text-sm"
+                    value={onvifNetworkOverride}
+                    onChange={(e) => setOnvifNetworkOverride(e.target.value)}
+                    disabled={isDiscovering}
+                    placeholder="auto"
+                  />
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    CIDR (e.g. 192.168.1.0/24) or "auto"
+                  </span>
+                </div>
+              </div>
               <div className="mb-4 flex justify-between items-center">
                 <h4 className="text-md font-medium">Discovered Devices</h4>
                 <button
