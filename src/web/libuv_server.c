@@ -32,7 +32,16 @@ static void stop_async_cb(uv_async_t *handle);
 static void stop_async_cb(uv_async_t *handle) {
     libuv_server_t *server = (libuv_server_t *)handle->data;
     if (server) {
-        log_debug("stop_async_cb: Received stop signal, stopping event loop");
+        log_debug("stop_async_cb: Received stop signal, closing listener and stopping event loop");
+
+        // BUGFIX: Close the listener handle to allow uv_run() to exit quickly
+        // Without this, uv_run(UV_RUN_DEFAULT) will keep running until all handles are closed,
+        // which causes the 5-second timeout delay during shutdown
+        if (!uv_is_closing((uv_handle_t *)&server->listener)) {
+            uv_close((uv_handle_t *)&server->listener, NULL);
+        }
+
+        // Stop the event loop - this will cause uv_run() to return after handles are closed
         uv_stop(server->loop);
     }
 }

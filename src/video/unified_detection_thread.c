@@ -370,6 +370,10 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->record_audio = config.record_audio;
     ctx->annotation_only = annotation_only;
 
+    // BUGFIX: Initialize last_detection_check_time to current time to prevent huge elapsed time on first detection
+    // Without this, the first detection would show elapsed time = now - 0 = huge number (e.g., 1770658294 seconds)
+    ctx->last_detection_check_time = time(NULL);
+
     if (annotation_only) {
         log_info("[%s] Detection running in annotation-only mode (no separate MP4 files)", stream_name);
     }
