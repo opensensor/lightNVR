@@ -16,6 +16,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <stdatomic.h>
 
 /**
  * Interrupt callback for FFmpeg operations
