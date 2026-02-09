@@ -85,6 +85,7 @@ export async function getGo2rtcBaseUrl() {
  */
 function getDefaultSettings() {
   return {
+    go2rtc_enabled: true,
     go2rtc_api_port: 1984,
     webrtc_disabled: false,
     web_port: 8080
@@ -135,6 +136,17 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
     go2rtcAvailableCacheTime = now;
     return false;
   }
+}
+
+/**
+ * Check if go2rtc is enabled in settings
+ * This checks the configuration setting (not runtime availability)
+ * @returns {Promise<boolean>} - true if go2rtc is enabled in settings
+ */
+export async function isGo2rtcEnabled() {
+  const settings = await getSettings();
+  // Default to true for backward compatibility
+  return settings.go2rtc_enabled !== undefined ? settings.go2rtc_enabled : true;
 }
 
 /**

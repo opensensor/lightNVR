@@ -97,6 +97,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
 
     // go2rtc settings
+    cJSON_AddBoolToObject(settings, "go2rtc_enabled", g_config.go2rtc_enabled);
     cJSON_AddStringToObject(settings, "go2rtc_binary_path", g_config.go2rtc_binary_path);
     cJSON_AddStringToObject(settings, "go2rtc_config_dir", g_config.go2rtc_config_dir);
     cJSON_AddNumberToObject(settings, "go2rtc_api_port", g_config.go2rtc_api_port);
@@ -425,6 +426,13 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     }
 
     // go2rtc settings
+    cJSON *go2rtc_enabled = cJSON_GetObjectItem(settings, "go2rtc_enabled");
+    if (go2rtc_enabled && cJSON_IsBool(go2rtc_enabled)) {
+        g_config.go2rtc_enabled = cJSON_IsTrue(go2rtc_enabled);
+        settings_changed = true;
+        log_info("Updated go2rtc_enabled: %s", g_config.go2rtc_enabled ? "true" : "false");
+    }
+
     cJSON *go2rtc_binary_path = cJSON_GetObjectItem(settings, "go2rtc_binary_path");
     if (go2rtc_binary_path && cJSON_IsString(go2rtc_binary_path)) {
         strncpy(g_config.go2rtc_binary_path, go2rtc_binary_path->valuestring, sizeof(g_config.go2rtc_binary_path) - 1);

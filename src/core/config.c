@@ -96,6 +96,7 @@ void load_default_config(config_t *config) {
     memset(config->hw_accel_device, 0, 32);
     
     // go2rtc settings
+    config->go2rtc_enabled = true;  // Enable go2rtc by default
     snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "/usr/local/bin/go2rtc");
     snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "/etc/lightnvr/go2rtc");
     config->go2rtc_api_port = 1984;
@@ -487,7 +488,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     }
     // go2rtc settings
     else if (strcmp(section, "go2rtc") == 0) {
-        if (strcmp(name, "binary_path") == 0) {
+        if (strcmp(name, "enabled") == 0) {
+            config->go2rtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "binary_path") == 0) {
             strncpy(config->go2rtc_binary_path, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "config_dir") == 0) {
             strncpy(config->go2rtc_config_dir, value, MAX_PATH_LENGTH - 1);
@@ -1106,6 +1109,7 @@ int save_config(const config_t *config, const char *path) {
     
     // Write go2rtc settings
     fprintf(file, "[go2rtc]\n");
+    fprintf(file, "enabled = %s\n", config->go2rtc_enabled ? "true" : "false");
     fprintf(file, "binary_path = %s\n", config->go2rtc_binary_path);
     fprintf(file, "config_dir = %s\n", config->go2rtc_config_dir);
     fprintf(file, "api_port = %d\n", config->go2rtc_api_port);

@@ -33,10 +33,11 @@ function App() {
                 }
 
                 const settings = await response.json();
-                
-                if (settings.webrtc_disabled) {
-                    console.log('WebRTC is disabled, using HLS view');
+
+                if (settings.webrtc_disabled || settings.go2rtc_enabled === false) {
+                    console.log('WebRTC is disabled' + (settings.go2rtc_enabled === false ? ' (go2rtc disabled)' : '') + ', using HLS view');
                     setIsWebRTCDisabled(true);
+                    document.title = 'HLS View - LightNVR';
                 } else {
                     console.log('WebRTC is enabled, using WebRTC view');
                     setIsWebRTCDisabled(false);

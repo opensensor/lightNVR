@@ -44,6 +44,7 @@ export function SettingsView() {
     defaultPostBuffer: 10,
     bufferStrategy: 'auto',
     // go2rtc settings
+    go2rtcEnabled: true,
     go2rtcBinaryPath: '/usr/local/bin/go2rtc',
     go2rtcConfigDir: '/etc/lightnvr/go2rtc',
     go2rtcApiPort: '1984',
@@ -176,6 +177,7 @@ export function SettingsView() {
         defaultPostBuffer: settingsData.post_detection_buffer?.toString() || '10',
         bufferStrategy: settingsData.buffer_strategy || 'auto',
         // go2rtc settings
+        go2rtcEnabled: settingsData.go2rtc_enabled !== undefined ? settingsData.go2rtc_enabled : true,
         go2rtcBinaryPath: settingsData.go2rtc_binary_path || '/usr/local/bin/go2rtc',
         go2rtcConfigDir: settingsData.go2rtc_config_dir || '/etc/lightnvr/go2rtc',
         go2rtcApiPort: settingsData.go2rtc_api_port?.toString() || '1984',
@@ -248,6 +250,7 @@ export function SettingsView() {
       post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
       buffer_strategy: settings.bufferStrategy,
       // go2rtc settings
+      go2rtc_enabled: settings.go2rtcEnabled,
       go2rtc_binary_path: settings.go2rtcBinaryPath,
       go2rtc_config_dir: settings.go2rtcConfigDir,
       go2rtc_api_port: parseInt(settings.go2rtcApiPort, 10),
@@ -807,6 +810,23 @@ export function SettingsView() {
               go2rtc provides WebRTC and HLS streaming. Changes require a restart to take effect.
             </p>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-enabled" class="font-medium">Enable go2rtc</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-go2rtc-enabled"
+                name="go2rtcEnabled"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.go2rtcEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">When disabled, go2rtc will not be started and HLS will connect directly to camera streams. This saves bandwidth for WiFi cameras but disables WebRTC live view.</span>
+            </div>
+          </div>
+          {settings.go2rtcEnabled && (
+          <>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-go2rtc-binary-path" class="font-medium">Binary Path</label>
             <div class="col-span-2">
               <input
@@ -967,6 +987,8 @@ export function SettingsView() {
               <span class="hint text-sm text-muted-foreground">Optional: Custom ICE servers (comma-separated)</span>
             </div>
           </div>
+          </>
+          )}
           </div>
 
           {/* MQTT Settings */}

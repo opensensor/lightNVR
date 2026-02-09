@@ -146,6 +146,7 @@ typedef struct {
     char hw_accel_device[32];
     
     // go2rtc settings
+    bool go2rtc_enabled;                  // Master toggle to enable/disable go2rtc (default: true)
     char go2rtc_binary_path[MAX_PATH_LENGTH];
     char go2rtc_config_dir[MAX_PATH_LENGTH];
     int go2rtc_api_port;

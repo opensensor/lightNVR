@@ -754,8 +754,12 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    // Initialize go2rtc integration if enabled - MOVED TO BEGINNING OF SETUP
+    // Initialize go2rtc integration if enabled
     #ifdef USE_GO2RTC
+    if (!config.go2rtc_enabled) {
+        log_info("go2rtc is disabled in configuration. HLS will connect directly to camera streams.");
+        log_info("WebRTC live view will not be available. Enable go2rtc in settings if needed.");
+    } else {
     log_info("Initializing go2rtc integration...");
 
     // Use configuration values if provided, otherwise use defaults
@@ -834,6 +838,7 @@ int main(int argc, char *argv[]) {
         log_error("Install go2rtc using: scripts/install_go2rtc.sh or configure the binary path in the settings page.");
         log_error("LiveView and WebRTC streaming will not be available until go2rtc is properly configured.");
     }
+    } // end go2rtc_enabled
     #endif
 
     // Initialize FFmpeg streaming backend
