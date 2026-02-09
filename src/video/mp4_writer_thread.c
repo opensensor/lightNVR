@@ -592,11 +592,15 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
     // Signal thread to stop
     atomic_store(&writer->thread_ctx->shutdown_requested, 1);
 
-    // Wait for thread to finish
-    if (writer->thread_ctx->running) {
-        pthread_join(writer->thread_ctx->thread, NULL);
-        writer->thread_ctx->running = 0;
-    }
+    // BUGFIX: Always join the thread, regardless of the running flag
+    // The thread might have already set running=0 before we get here, but we still need to join it
+    // to clean up thread resources. pthread_join is safe to call even if the thread has already exited.
+    log_debug("Joining recording thread for %s (running=%d)",
+             writer->stream_name ? writer->stream_name : "unknown",
+             writer->thread_ctx->running);
+
+    pthread_join(writer->thread_ctx->thread, NULL);
+    writer->thread_ctx->running = 0;
 
     // CRITICAL: Only free resources after thread has completely stopped
     if (writer->thread_ctx->rtsp_url[0] != '\0') {
