@@ -14,6 +14,9 @@ export function LoginView() {
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+  const [totpToken, setTotpToken] = useState('');
 
   // Check URL for error, auth_required, or logout parameter
   useEffect(() => {
@@ -95,7 +98,18 @@ export function LoginView() {
       });
 
       if (response.ok) {
-        // Successful login
+        const data = await response.json();
+
+        // Check if TOTP verification is required
+        if (data.totp_required && data.totp_token) {
+          setTotpRequired(true);
+          setTotpToken(data.totp_token);
+          setIsLoggingIn(false);
+          setErrorMessage('');
+          return;
+        }
+
+        // Successful login (no TOTP required)
         console.log('Login successful, proceeding to redirect');
 
         // Get redirect URL from query parameter if it exists
@@ -117,6 +131,55 @@ export function LoginView() {
       setIsLoggingIn(false);
       setErrorMessage('An error occurred during login. Please try again.');
       localStorage.removeItem('auth');
+    }
+  };
+
+  // Handle TOTP code submission
+  const handleTotpSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!totpCode || totpCode.length !== 6) {
+      setErrorMessage('Please enter a 6-digit verification code');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setErrorMessage('');
+
+    try {
+      const response = await fetch('/api/auth/login/totp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ totp_token: totpToken, code: totpCode }),
+      });
+
+      if (response.ok) {
+        console.log('TOTP verification successful, proceeding to redirect');
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirectUrl = urlParams.get('redirect');
+        const targetUrl = redirectUrl || '/index.html';
+
+        window.location.href = targetUrl;
+      } else {
+        const data = await response.json();
+        setIsLoggingIn(false);
+
+        if (response.status === 401 && data.error && data.error.includes('expired')) {
+          // Token expired, go back to password step
+          setTotpRequired(false);
+          setTotpToken('');
+          setTotpCode('');
+          setErrorMessage('MFA session expired. Please login again.');
+        } else {
+          setErrorMessage(data.error || 'Invalid verification code');
+          setTotpCode('');
+        }
+      }
+    } catch (error) {
+      console.error('TOTP verification error:', error);
+      setIsLoggingIn(false);
+      setErrorMessage('An error occurred during verification. Please try again.');
     }
   };
 

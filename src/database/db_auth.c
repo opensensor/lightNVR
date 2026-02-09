@@ -630,13 +630,25 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
         return -1;
     }
 
+    // Check if TOTP column exists for backward compatibility
+    bool has_totp = cached_column_exists("users", "totp_enabled");
+
     // Query the user
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-                               "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active, password_change_locked "
-                               "FROM users WHERE id = ?;",
-                               -1, &stmt, NULL);
+    int rc;
+    if (has_totp) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
+                                "FROM users WHERE id = ?;",
+                                -1, &stmt, NULL);
+    } else {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked "
+                                "FROM users WHERE id = ?;",
+                                -1, &stmt, NULL);
+    }
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -678,6 +690,7 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+    user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
 
     sqlite3_finalize(stmt);
 
@@ -699,13 +712,25 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
         return -1;
     }
 
+    // Check if TOTP column exists for backward compatibility
+    bool has_totp = cached_column_exists("users", "totp_enabled");
+
     // Query the user
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-                               "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active, password_change_locked "
-                               "FROM users WHERE username = ?;",
-                               -1, &stmt, NULL);
+    int rc;
+    if (has_totp) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
+                                "FROM users WHERE username = ?;",
+                                -1, &stmt, NULL);
+    } else {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked "
+                                "FROM users WHERE username = ?;",
+                                -1, &stmt, NULL);
+    }
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -747,6 +772,7 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+    user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
 
     sqlite3_finalize(stmt);
 
@@ -768,13 +794,25 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
         return -1;
     }
 
+    // Check if TOTP column exists for backward compatibility
+    bool has_totp = cached_column_exists("users", "totp_enabled");
+
     // Query the user
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-                               "SELECT id, username, email, role, api_key, created_at, "
-                               "updated_at, last_login, is_active, password_change_locked "
-                               "FROM users WHERE api_key = ?;",
-                               -1, &stmt, NULL);
+    int rc;
+    if (has_totp) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
+                                "FROM users WHERE api_key = ?;",
+                                -1, &stmt, NULL);
+    } else {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked "
+                                "FROM users WHERE api_key = ?;",
+                                -1, &stmt, NULL);
+    }
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -816,6 +854,7 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+    user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
 
     sqlite3_finalize(stmt);
 

@@ -25,6 +25,7 @@
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_users.h"
+#include "web/api_handlers_totp.h"
 #include "web/api_handlers_ice_servers.h"
 #include "core/logger.h"
 #include "core/config.h"
@@ -138,6 +139,13 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/auth/users/#/api-key", "POST", handle_users_generate_api_key);
     http_server_register_handler(server, "/api/auth/users/#/password", "PUT", handle_users_change_password);
     http_server_register_handler(server, "/api/auth/users/#/password-lock", "PUT", handle_users_password_lock);
+
+    // TOTP MFA API (backend-agnostic handlers)
+    http_server_register_handler(server, "/api/auth/users/#/totp/setup", "POST", handle_totp_setup);
+    http_server_register_handler(server, "/api/auth/users/#/totp/verify", "POST", handle_totp_verify);
+    http_server_register_handler(server, "/api/auth/users/#/totp/disable", "POST", handle_totp_disable);
+    http_server_register_handler(server, "/api/auth/users/#/totp/status", "GET", handle_totp_status);
+    http_server_register_handler(server, "/api/auth/login/totp", "POST", handle_auth_login_totp);
 
     // ONVIF API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/onvif/discovery/status", "GET", handle_get_onvif_discovery_status);

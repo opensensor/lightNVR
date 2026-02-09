@@ -40,6 +40,7 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
     cJSON_AddNumberToObject(json, "last_login", user->last_login);
     cJSON_AddBoolToObject(json, "is_active", user->is_active);
     cJSON_AddBoolToObject(json, "password_change_locked", user->password_change_locked);
+    cJSON_AddBoolToObject(json, "totp_enabled", user->totp_enabled);
 
     return json;
 }
