@@ -22,6 +22,7 @@
 #include "video/ffmpeg_utils.h"
 #include "database/db_detections.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
+#include "video/go2rtc/go2rtc_integration.h"
 
 // Global variables
 static bool initialized = false;
@@ -173,15 +174,19 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
-    // NEW APPROACH: Use go2rtc to get a JPEG snapshot directly
+    // Use go2rtc to get a JPEG snapshot directly if go2rtc is initialized
     // This eliminates the need for ffmpeg conversion and all the associated logs
     unsigned char *jpeg_data = NULL;
     size_t jpeg_size = 0;
 
-    if (stream_name && go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
+    if (stream_name && go2rtc_integration_is_initialized() && go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
         log_info("API Detection: Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
     } else {
-        log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to cached JPEG encoding");
+        if (!go2rtc_integration_is_initialized()) {
+            log_debug("API Detection: go2rtc not initialized, using cached JPEG encoding");
+        } else {
+            log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to cached JPEG encoding");
+        }
 
         // FALLBACK: Use cached JPEG encoder to encode raw frame to JPEG in memory
         // This reuses the expensive AVCodecContext instead of recreating it every time
@@ -632,9 +637,14 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         return -1;
     }
 
-    // Try to get snapshot from go2rtc
+    // Try to get snapshot from go2rtc (only if go2rtc is initialized)
     unsigned char *jpeg_data = NULL;
     size_t jpeg_size = 0;
+
+    if (!go2rtc_integration_is_initialized()) {
+        log_debug("API Detection (snapshot): go2rtc not initialized, skipping snapshot for stream %s", stream_name);
+        return -2;  // Special return code: go2rtc not available, caller should fall back
+    }
 
     if (!go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
         log_warn("API Detection (snapshot): Failed to get snapshot from go2rtc for stream %s", stream_name);
