@@ -20,6 +20,7 @@
     "hls.js": "^1.6.0",
     "htm": "^3.1.1",
     "preact": "^10.28.2",
+    "qrcode": "^1.5.4",
     "tailwindcss": "^3.3.3",
     "webrtc-adapter": "^9.0.3"
   },

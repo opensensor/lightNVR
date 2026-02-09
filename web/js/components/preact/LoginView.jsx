@@ -215,50 +215,101 @@ export function LoginView() {
           </div>
         )}
 
-        <form id="login-form" className="space-y-6" action="/api/auth/login" method="POST" onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="username" className="block text-sm font-medium mb-1">Username</label>
-            <input
-                type="text"
-                id="username"
-                name="username"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                placeholder="Enter your username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoComplete="username"
-            />
-          </div>
-          <div className="form-group">
-            <label htmlFor="password" className="block text-sm font-medium mb-1">Password</label>
-            <input
-                type="password"
-                id="password"
-                name="password"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-            />
-          </div>
-          <div className="form-group">
-            <button
-                type="submit"
-                className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isLoggingIn}
-            >
-              {isLoggingIn ? 'Signing in...' : 'Sign In'}
-            </button>
-          </div>
-        </form>
+        {!totpRequired ? (
+          <form id="login-form" className="space-y-6" action="/api/auth/login" method="POST" onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="username" className="block text-sm font-medium mb-1">Username</label>
+              <input
+                  type="text"
+                  id="username"
+                  name="username"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  placeholder="Enter your username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoComplete="username"
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="password" className="block text-sm font-medium mb-1">Password</label>
+              <input
+                  type="password"
+                  id="password"
+                  name="password"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+              />
+            </div>
+            <div className="form-group">
+              <button
+                  type="submit"
+                  className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isLoggingIn}
+              >
+                {isLoggingIn ? 'Signing in...' : 'Sign In'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form id="totp-form" className="space-y-6" onSubmit={handleTotpSubmit}>
+            <div className="text-center mb-4">
+              <p className="text-sm text-muted-foreground">
+                Enter the 6-digit code from your authenticator app
+              </p>
+            </div>
+            <div className="form-group">
+              <label htmlFor="totp-code" className="block text-sm font-medium mb-1">Verification Code</label>
+              <input
+                  type="text"
+                  id="totp-code"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-2xl tracking-widest"
+                  placeholder="000000"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                  maxLength="6"
+                  pattern="[0-9]{6}"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  required
+              />
+            </div>
+            <div className="form-group">
+              <button
+                  type="submit"
+                  className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isLoggingIn || totpCode.length !== 6}
+              >
+                {isLoggingIn ? 'Verifying...' : 'Verify'}
+              </button>
+            </div>
+            <div className="form-group text-center">
+              <button
+                  type="button"
+                  className="text-sm text-muted-foreground hover:underline"
+                  onClick={() => {
+                    setTotpRequired(false);
+                    setTotpToken('');
+                    setTotpCode('');
+                    setErrorMessage('');
+                  }}
+              >
+                ← Back to login
+              </button>
+            </div>
+          </form>
+        )}
 
-        <div className="mt-6 text-center text-sm text-muted-foreground">
-          <p>Default credentials: admin / admin</p>
-          <p className="mt-2">You can change this password in Users after login</p>
-        </div>
+        {!totpRequired && (
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            <p>Default credentials: admin / admin</p>
+            <p className="mt-2">You can change this password in Users after login</p>
+          </div>
+        )}
       </div>
     </section>
   );
