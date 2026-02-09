@@ -6,6 +6,7 @@
 import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import {VERSION} from '../../version.js';
+import { getSettings } from '../../utils/settings-utils.js';
 
 /**
  * Header component
@@ -19,8 +20,9 @@ export function Header({ version = VERSION }) {
   const activeNav = headerContainer?.dataset?.activeNav || '';
   const [username, setUsername] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
 
-  // Get the current username from localStorage
+  // Get the current username from localStorage and check if auth is enabled
   useEffect(() => {
     const auth = localStorage.getItem('auth');
     if (auth) {
@@ -37,6 +39,19 @@ export function Header({ version = VERSION }) {
     } else {
       setUsername('User');
     }
+
+    // Fetch settings to check if auth is enabled
+    async function checkAuthEnabled() {
+      try {
+        const settings = await getSettings();
+        setAuthEnabled(settings.web_auth_enabled !== false);
+      } catch (error) {
+        console.error('Error fetching auth settings:', error);
+        // Default to true on error to avoid hiding logout button unnecessarily
+        setAuthEnabled(true);
+      }
+    }
+    checkAuthEnabled();
   }, []);
 
 
@@ -134,18 +149,20 @@ export function Header({ version = VERSION }) {
           {/* User Menu (Desktop) */}
           <div className="user-menu hidden md:flex items-center">
             <span className="mr-2">{username}</span>
-            <a
-              href="/logout"
-              className="logout-link no-underline px-3 py-1 rounded transition-colors"
-              style={{
-                color: 'hsl(var(--card-foreground))',
-                backgroundColor: 'transparent'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-            >
-              Logout
-            </a>
+            {authEnabled && (
+              <a
+                href="/logout"
+                className="logout-link no-underline px-3 py-1 rounded transition-colors"
+                style={{
+                  color: 'hsl(var(--card-foreground))',
+                  backgroundColor: 'transparent'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                Logout
+              </a>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -166,23 +183,25 @@ export function Header({ version = VERSION }) {
             <div className="md:hidden mt-2 border-t pt-2 container mx-auto px-4" style={{borderColor: 'hsl(var(--border))'}}>
               <ul className="list-none m-0 p-0 flex flex-col w-full">
                 {navItems.map(renderNavItem)}
-                <li className="w-full mt-2 pt-2 border-t" style={{borderColor: 'hsl(var(--border))'}}>
-                  <div className="flex justify-between items-center px-4 py-2">
-                    <span>{username}</span>
-                    <a
-                      href="/logout"
-                      className="logout-link no-underline px-3 py-1 rounded transition-colors"
-                      style={{
-                        color: 'hsl(var(--card-foreground))',
-                        backgroundColor: 'transparent'
-                      }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                    >
-                      Logout
-                    </a>
-                  </div>
-                </li>
+                {authEnabled && (
+                  <li className="w-full mt-2 pt-2 border-t" style={{borderColor: 'hsl(var(--border))'}}>
+                    <div className="flex justify-between items-center px-4 py-2">
+                      <span>{username}</span>
+                      <a
+                        href="/logout"
+                        className="logout-link no-underline px-3 py-1 rounded transition-colors"
+                        style={{
+                          color: 'hsl(var(--card-foreground))',
+                          backgroundColor: 'transparent'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        Logout
+                      </a>
+                    </div>
+                  </li>
+                )}
               </ul>
             </div>
         )}
