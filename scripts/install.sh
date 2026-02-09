@@ -369,6 +369,16 @@ else
     echo "The web interface will NOT be available!"
 fi
 
+# Install database migrations
+if [ -d "db/migrations" ]; then
+    echo "Installing database migrations..."
+    mkdir -p "$PREFIX/share/lightnvr/migrations"
+    cp db/migrations/*.sql "$PREFIX/share/lightnvr/migrations/"
+    echo "Database migrations installed to $PREFIX/share/lightnvr/migrations/"
+else
+    echo "⚠ WARNING: Database migrations directory not found, skipping migrations installation"
+fi
+
 # Set permissions
 echo "Setting permissions..."
 chown -R root:root "$PREFIX/bin/lightnvr"
