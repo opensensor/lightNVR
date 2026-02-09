@@ -1706,21 +1706,17 @@ static void check_and_ensure_services(void) {
                 // Recording is not active, start it
                 log_info("Ensuring MP4 recording is active for stream: %s", config.streams[i].name);
 
+                // Start MP4 recording (go2rtc integration handles runtime fallback)
                 #ifdef USE_GO2RTC
-                // Start MP4 recording
-                if (go2rtc_integration_start_recording(config.streams[i].name) != 0) {
-                    log_warn("Failed to start MP4 recording for stream: %s", config.streams[i].name);
-                } else {
-                    log_info("Successfully started MP4 recording for stream: %s (using go2rtc if available)", config.streams[i].name);
-                }
+                int rec_result = go2rtc_integration_start_recording(config.streams[i].name);
                 #else
-                // Start MP4 recording
-                if (start_mp4_recording(config.streams[i].name) != 0) {
+                int rec_result = start_mp4_recording(config.streams[i].name);
+                #endif
+                if (rec_result != 0) {
                     log_warn("Failed to start MP4 recording for stream: %s", config.streams[i].name);
                 } else {
                     log_info("Successfully started MP4 recording for stream: %s", config.streams[i].name);
                 }
-                #endif
             }
         }
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled && config.streams[i].streaming_enabled) {

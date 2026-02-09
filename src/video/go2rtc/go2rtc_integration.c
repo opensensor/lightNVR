@@ -1091,28 +1091,34 @@ int go2rtc_integration_start_hls(const char *stream_name) {
     // Ensure go2rtc is ready and the stream is registered
     bool using_go2rtc = ensure_go2rtc_ready_for_stream(stream_name);
 
-    // If go2rtc is ready and the stream is registered, use go2rtc for HLS streaming
+    // If go2rtc is ready and the stream is registered, use go2rtc's native HLS
+    // No need to spawn ffmpeg HLS threads - go2rtc handles HLS natively via its
+    // /api/stream.m3u8 endpoint. We just need to preload the stream to keep the
+    // producer active for detection snapshots.
     if (using_go2rtc) {
-        log_info("Using go2rtc's RTSP output as input for HLS streaming of stream %s", stream_name);
+        log_info("Using go2rtc native HLS for stream %s (no ffmpeg HLS thread needed)", stream_name);
 
-        // Start HLS streaming using our default implementation
-        // The URL substitution will happen in hls_writer_thread.c
-        int result = start_hls_stream(stream_name);
-
-        // Update tracking if successful
-        if (result == 0) {
-            go2rtc_stream_tracking_t *tracking = add_tracked_stream(stream_name);
-            if (tracking) {
-                tracking->using_go2rtc_for_hls = true;
-            }
-
-            log_info("Started HLS streaming for stream %s using go2rtc's RTSP output", stream_name);
+        // Preload the stream to keep the go2rtc producer active
+        // This is essential for detection-based recording, as it ensures snapshots
+        // are always available even when no WebRTC/HLS viewers are connected.
+        if (!go2rtc_api_preload_stream(stream_name)) {
+            log_warn("Failed to preload stream %s in go2rtc - detection snapshots may be intermittent", stream_name);
+            // Continue anyway - go2rtc HLS will still work for viewers
+        } else {
+            log_info("Preloaded stream %s to keep go2rtc producer active for HLS/detection", stream_name);
         }
 
-        return result;
+        // Update tracking
+        go2rtc_stream_tracking_t *tracking = add_tracked_stream(stream_name);
+        if (tracking) {
+            tracking->using_go2rtc_for_hls = true;
+        }
+
+        log_info("go2rtc native HLS ready for stream %s", stream_name);
+        return 0;
     } else {
-        // Fall back to default HLS streaming
-        log_info("Using default HLS streaming for stream %s", stream_name);
+        // Fall back to ffmpeg-based HLS streaming when go2rtc is not available
+        log_info("go2rtc not available, using ffmpeg HLS fallback for stream %s", stream_name);
         return start_hls_stream(stream_name);
     }
 }
@@ -1132,37 +1138,18 @@ int go2rtc_integration_stop_hls(const char *stream_name) {
     // Check if the stream is using go2rtc for HLS
     go2rtc_stream_tracking_t *tracking = find_tracked_stream(stream_name);
     if (tracking && tracking->using_go2rtc_for_hls) {
-        log_info("Stopping HLS streaming for stream %s using go2rtc", stream_name);
-
-        // Get the stream state manager to ensure proper cleanup
-        stream_state_manager_t *state = get_stream_state_by_name(stream_name);
-
-        // Store a local copy of the HLS writer pointer if it exists
-        hls_writer_t *writer = NULL;
-        if (state && state->hls_ctx) {
-            writer = (hls_writer_t *)state->hls_ctx;
-            // Clear the reference in the state before stopping the stream
-            // This prevents accessing freed memory later
-            state->hls_ctx = NULL;
-        }
-
-        // Stop HLS streaming
-        int result = stop_hls_stream(stream_name);
-        if (result != 0) {
-            log_error("Failed to stop HLS streaming for stream %s", stream_name);
-            return result;
-        }
+        // When using go2rtc native HLS, no ffmpeg HLS thread was created.
+        // We just need to clean up tracking - go2rtc handles HLS natively.
+        log_info("Stopping go2rtc native HLS for stream %s (no ffmpeg thread to stop)", stream_name);
 
         // Update tracking
         tracking->using_go2rtc_for_hls = false;
 
-        // We've already cleared state->hls_ctx, so we don't need to do it again
-
-        log_info("Stopped HLS streaming for stream %s using go2rtc", stream_name);
+        log_info("Stopped go2rtc native HLS for stream %s", stream_name);
         return 0;
     } else {
-        // Fall back to default HLS streaming
-        log_info("Using default method to stop HLS streaming for stream %s", stream_name);
+        // Stream was using ffmpeg-based HLS (go2rtc was not available when it started)
+        log_info("Stopping ffmpeg HLS fallback for stream %s", stream_name);
         return stop_hls_stream(stream_name);
     }
 }

@@ -17,6 +17,26 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #endif
 
+// Helper functions to abstract go2rtc vs direct HLS management.
+// The compile-time guard is isolated here; the runtime decision
+// (whether go2rtc is actually initialized and available) happens
+// inside the go2rtc_integration functions themselves.
+static int stream_start_hls(const char *stream_name) {
+#ifdef USE_GO2RTC
+    return go2rtc_integration_start_hls(stream_name);
+#else
+    return start_hls_stream(stream_name);
+#endif
+}
+
+static int stream_stop_hls(const char *stream_name) {
+#ifdef USE_GO2RTC
+    return go2rtc_integration_stop_hls(stream_name);
+#else
+    return stop_hls_stream(stream_name);
+#endif
+}
+
 // Stream structure
 typedef struct {
     stream_config_t config;
@@ -153,7 +173,7 @@ void shutdown_stream_manager(void) {
 
             // Stop HLS stream if it was enabled (either for streaming or detection keepalive)
             if (streaming_enabled || detection_enabled) {
-                stop_hls_stream(stream_name);
+                stream_stop_hls(stream_name);
                 log_info("Stopped HLS streaming for '%s' during shutdown", stream_name);
             }
 
@@ -608,7 +628,7 @@ int start_stream(stream_handle_t handle) {
     int hls_result = 0;
     bool need_hls = streaming_enabled || detection_enabled;
     if (need_hls) {
-        hls_result = start_hls_stream(stream_name);
+        hls_result = stream_start_hls(stream_name);
         if (hls_result != 0) {
             log_error("Failed to start HLS stream '%s'", stream_name);
         } else {
@@ -715,7 +735,7 @@ int stop_stream(stream_handle_t handle) {
 
     // Stop HLS stream if it was started (either for streaming or detection keepalive)
     if (streaming_enabled || detection_enabled) {
-        int result = stop_hls_stream(stream_name);
+        int result = stream_stop_hls(stream_name);
         if (result != 0) {
             log_warn("Failed to stop HLS stream '%s'", stream_name);
             // Continue anyway
