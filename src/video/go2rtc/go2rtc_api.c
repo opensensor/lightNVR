@@ -56,7 +56,20 @@ static int send_http_request(const char *method, const char *path, const char *d
         log_error("Failed to create socket: %s", strerror(errno));
         return -1;
     }
-    
+
+    // Set socket timeouts to prevent indefinite hangs
+    struct timeval timeout;
+    timeout.tv_sec = 5;  // 5 second timeout
+    timeout.tv_usec = 0;
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        log_warn("Failed to set receive timeout: %s", strerror(errno));
+    }
+
+    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) < 0) {
+        log_warn("Failed to set send timeout: %s", strerror(errno));
+    }
+
     // Resolve hostname
     server = gethostbyname(g_api_host);
     if (server == NULL) {
@@ -64,13 +77,13 @@ static int send_http_request(const char *method, const char *path, const char *d
         close(sockfd);
         return -1;
     }
-    
+
     // Set up server address
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     memcpy(&server_addr.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
     server_addr.sin_port = htons(g_api_port);
-    
+
     // Connect to server
     if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         log_error("Failed to connect to %s:%d: %s", g_api_host, g_api_port, strerror(errno));
