@@ -178,9 +178,27 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
  * @brief Direct handler for GET /api/settings
  */
 void handle_get_settings(const http_request_t *req, http_response_t *res) {
-    (void)req;
     log_info("Handling GET /api/settings request");
-    
+
+    // Check authentication if enabled
+    // In demo mode, allow unauthenticated viewer access to read settings
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (g_config.demo_mode) {
+            if (!httpd_check_viewer_access(req, &user)) {
+                log_error("Authentication failed for GET /api/settings request");
+                http_response_set_json_error(res, 401, "Unauthorized");
+                return;
+            }
+        } else {
+            if (!httpd_get_authenticated_user(req, &user)) {
+                log_error("Authentication failed for GET /api/settings request");
+                http_response_set_json_error(res, 401, "Unauthorized");
+                return;
+            }
+        }
+    }
+
     // Get global configuration
     // Create JSON object
     cJSON *settings = cJSON_CreateObject();
