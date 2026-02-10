@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <stddef.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -16,6 +18,197 @@
 
 // Global configuration variable
 config_t g_config;
+
+// ============================================================================
+// Environment Variable Override Support
+// ============================================================================
+// This allows LIGHTNVR_ prefixed environment variables to override config
+// values that are not already set in the config file. This is particularly
+// useful for container deployments where settings like TURN server credentials
+// can be injected via environment variables.
+//
+// Environment variable naming convention:
+//   LIGHTNVR_<SECTION>_<SETTING>
+// Examples:
+//   LIGHTNVR_TURN_ENABLED=true
+//   LIGHTNVR_TURN_SERVER_URL=turn:example.com:3478
+//   LIGHTNVR_TURN_USERNAME=myuser
+//   LIGHTNVR_TURN_PASSWORD=mypassword
+//   LIGHTNVR_WEB_PORT=8080
+//   LIGHTNVR_GO2RTC_STUN_ENABLED=true
+// ============================================================================
+
+// Configuration field types
+typedef enum {
+    CONFIG_TYPE_BOOL,
+    CONFIG_TYPE_INT,
+    CONFIG_TYPE_STRING
+} config_field_type_t;
+
+// Environment variable to config field mapping entry
+typedef struct {
+    const char *env_name;           // Environment variable name (without LIGHTNVR_ prefix)
+    config_field_type_t type;       // Field type
+    size_t offset;                  // Offset in config_t structure
+    size_t size;                    // Size of string fields (0 for non-strings)
+    const char *default_str_value;  // Default string value to check against (NULL for non-strings or empty check)
+    int default_int_value;          // Default int value to check against
+    bool default_bool_value;        // Default bool value to check against
+} env_config_mapping_t;
+
+// Helper macro to calculate offset in config_t
+#define CONFIG_OFFSET(field) offsetof(config_t, field)
+
+// Environment variable mappings - add new mappings here as needed
+static const env_config_mapping_t env_config_mappings[] = {
+    // TURN server settings (primary use case for provisioning)
+    {"TURN_ENABLED",       CONFIG_TYPE_BOOL,   CONFIG_OFFSET(turn_enabled),       0,   NULL, 0, false},
+    {"TURN_SERVER_URL",    CONFIG_TYPE_STRING, CONFIG_OFFSET(turn_server_url),    256, "",   0, false},
+    {"TURN_USERNAME",      CONFIG_TYPE_STRING, CONFIG_OFFSET(turn_username),      64,  "",   0, false},
+    {"TURN_PASSWORD",      CONFIG_TYPE_STRING, CONFIG_OFFSET(turn_password),      64,  "",   0, false},
+
+    // go2rtc WebRTC settings
+    {"GO2RTC_ENABLED",         CONFIG_TYPE_BOOL,   CONFIG_OFFSET(go2rtc_enabled),           0,   NULL, 0, true},
+    {"GO2RTC_WEBRTC_ENABLED",  CONFIG_TYPE_BOOL,   CONFIG_OFFSET(go2rtc_webrtc_enabled),    0,   NULL, 0, true},
+    {"GO2RTC_STUN_ENABLED",    CONFIG_TYPE_BOOL,   CONFIG_OFFSET(go2rtc_stun_enabled),      0,   NULL, 0, true},
+    {"GO2RTC_STUN_SERVER",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_stun_server),       256, "stun.l.google.com:19302", 0, false},
+    {"GO2RTC_EXTERNAL_IP",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_external_ip),       64,  "",   0, false},
+    {"GO2RTC_ICE_SERVERS",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_ice_servers),       512, "",   0, false},
+    {"GO2RTC_WEBRTC_LISTEN_PORT", CONFIG_TYPE_INT, CONFIG_OFFSET(go2rtc_webrtc_listen_port), 0,  NULL, 8555, false},
+
+    // Web server settings
+    {"WEB_PORT",           CONFIG_TYPE_INT,    CONFIG_OFFSET(web_port),           0,   NULL, 8080, false},
+    {"WEB_AUTH_ENABLED",   CONFIG_TYPE_BOOL,   CONFIG_OFFSET(web_auth_enabled),   0,   NULL, 0, true},
+    {"WEB_USERNAME",       CONFIG_TYPE_STRING, CONFIG_OFFSET(web_username),       32,  "admin", 0, false},
+
+    // General settings
+    {"LOG_LEVEL",          CONFIG_TYPE_INT,    CONFIG_OFFSET(log_level),          0,   NULL, 2, false},
+
+    // Storage settings
+    {"STORAGE_PATH",       CONFIG_TYPE_STRING, CONFIG_OFFSET(storage_path),       MAX_PATH_LENGTH, "/var/lib/lightnvr/recordings", 0, false},
+    {"RETENTION_DAYS",     CONFIG_TYPE_INT,    CONFIG_OFFSET(retention_days),     0,   NULL, 30, false},
+
+    // Database settings
+    {"DB_PATH",            CONFIG_TYPE_STRING, CONFIG_OFFSET(db_path),            MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db", 0, false},
+
+    // Sentinel to mark end of array
+    {NULL, CONFIG_TYPE_BOOL, 0, 0, NULL, 0, false}
+};
+
+// Helper function to parse boolean environment variable value
+static bool parse_env_bool(const char *value) {
+    if (!value) return false;
+    return (strcasecmp(value, "true") == 0 ||
+            strcasecmp(value, "1") == 0 ||
+            strcasecmp(value, "yes") == 0 ||
+            strcasecmp(value, "on") == 0);
+}
+
+// Helper function to check if a string field has the default value
+static bool is_string_default(const char *current, const char *default_val) {
+    if (!default_val || default_val[0] == '\0') {
+        // Default is empty string - check if current is also empty
+        return !current || current[0] == '\0';
+    }
+    // Check if current value matches the default
+    return current && strcmp(current, default_val) == 0;
+}
+
+/**
+ * Apply environment variable overrides to configuration
+ * This function reads LIGHTNVR_ prefixed environment variables and applies
+ * them to config fields that are still at their default values.
+ *
+ * The logic ensures that:
+ * 1. Values explicitly set in the config file are NOT overridden
+ * 2. Values that are still at defaults CAN be overridden by env vars
+ * 3. This allows container deployments to inject settings via env vars
+ *
+ * @param config Pointer to config structure to modify
+ */
+static void apply_env_overrides(config_t *config) {
+    if (!config) return;
+
+    log_info("Checking for LIGHTNVR_ environment variable overrides");
+
+    for (int i = 0; env_config_mappings[i].env_name != NULL; i++) {
+        const env_config_mapping_t *mapping = &env_config_mappings[i];
+
+        // Build the full environment variable name
+        char env_name[128];
+        snprintf(env_name, sizeof(env_name), "LIGHTNVR_%s", mapping->env_name);
+
+        // Get the environment variable value
+        const char *env_value = getenv(env_name);
+        if (!env_value) {
+            continue; // Environment variable not set
+        }
+
+        // Get pointer to the config field
+        void *field_ptr = (char *)config + mapping->offset;
+
+        // Check if the current value is still at default (not set by config file)
+        bool is_default = false;
+
+        switch (mapping->type) {
+            case CONFIG_TYPE_BOOL: {
+                bool *bool_ptr = (bool *)field_ptr;
+                is_default = (*bool_ptr == mapping->default_bool_value);
+                break;
+            }
+            case CONFIG_TYPE_INT: {
+                int *int_ptr = (int *)field_ptr;
+                is_default = (*int_ptr == mapping->default_int_value);
+                break;
+            }
+            case CONFIG_TYPE_STRING: {
+                char *str_ptr = (char *)field_ptr;
+                is_default = is_string_default(str_ptr, mapping->default_str_value);
+                break;
+            }
+        }
+
+        if (!is_default) {
+            log_debug("Config field for %s already set, skipping env override", env_name);
+            continue;
+        }
+
+        // Apply the environment variable value
+        switch (mapping->type) {
+            case CONFIG_TYPE_BOOL: {
+                bool *bool_ptr = (bool *)field_ptr;
+                bool new_value = parse_env_bool(env_value);
+                *bool_ptr = new_value;
+                log_info("Applied env override: %s=%s (bool: %s)",
+                         env_name, env_value, new_value ? "true" : "false");
+                break;
+            }
+            case CONFIG_TYPE_INT: {
+                int *int_ptr = (int *)field_ptr;
+                int new_value = atoi(env_value);
+                *int_ptr = new_value;
+                log_info("Applied env override: %s=%s (int: %d)",
+                         env_name, env_value, new_value);
+                break;
+            }
+            case CONFIG_TYPE_STRING: {
+                char *str_ptr = (char *)field_ptr;
+                strncpy(str_ptr, env_value, mapping->size - 1);
+                str_ptr[mapping->size - 1] = '\0';
+                // Log with masked value for sensitive fields
+                if (strstr(mapping->env_name, "PASSWORD") != NULL ||
+                    strstr(mapping->env_name, "SECRET") != NULL) {
+                    log_info("Applied env override: %s=*** (string, masked)",
+                             env_name);
+                } else {
+                    log_info("Applied env override: %s=%s (string)",
+                             env_name, env_value);
+                }
+                break;
+            }
+        }
+    }
+}
 
 // Default configuration values
 void load_default_config(config_t *config) {
@@ -823,6 +1016,11 @@ int load_config(config_t *config) {
     if (!loaded) {
         log_warn("No configuration file found, using defaults");
     }
+
+    // Apply environment variable overrides
+    // This allows LIGHTNVR_ prefixed env vars to set config values
+    // that are not already set in the config file (useful for container deployments)
+    apply_env_overrides(config);
 
     // Set default web root if not specified
     if (strlen(config->web_root) == 0) {
