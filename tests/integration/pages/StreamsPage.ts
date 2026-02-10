@@ -140,13 +140,14 @@ export class StreamsPage extends BasePage {
 
     // Wait for the modal to close - this indicates the save was successful
     // The modal closing is triggered by the onSuccess callback in the mutation
+    // Note: The modal is unmounted (detached) from DOM, not just hidden
     try {
-      await this.addStreamModal.waitFor({ state: 'hidden', timeout: 15000 });
+      await this.addStreamModal.waitFor({ state: 'detached', timeout: 15000 });
     } catch (e) {
-      // Modal might not be found if it closed very quickly
-      // Check if the stream name input is still visible
-      const nameInputVisible = await this.streamNameInput.isVisible();
-      if (nameInputVisible) {
+      // If modal is still attached, the save likely failed
+      // Check if the modal is still visible
+      const modalVisible = await this.addStreamModal.isVisible().catch(() => false);
+      if (modalVisible) {
         // Try to capture diagnostic information
         await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
 
@@ -167,6 +168,7 @@ export class StreamsPage extends BasePage {
         const serverStatus = serverOk ? '' : ' (WARNING: Server may not be responding!)';
         throw new Error(`Modal did not close after save - save may have failed.${errorInfo}${serverStatus}`);
       }
+      // If modal is not visible, it likely closed successfully but we missed the transition
     }
 
     // Wait for the streams list to be refreshed (React Query refetch)
