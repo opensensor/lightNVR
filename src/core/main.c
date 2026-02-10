@@ -1631,6 +1631,15 @@ static void check_and_ensure_services(void) {
     config_t *current_config = get_streaming_config();
 
     for (int i = 0; i < current_config->max_streams; i++) {
+        // Log the record flag for debugging
+        if (current_config->streams[i].name[0] != '\0') {
+            log_debug("Service check for stream %s: enabled=%d, record=%d, streaming_enabled=%d",
+                     current_config->streams[i].name,
+                     current_config->streams[i].enabled,
+                     current_config->streams[i].record,
+                     current_config->streams[i].streaming_enabled);
+        }
+
         if (current_config->streams[i].name[0] != '\0' && current_config->streams[i].enabled && current_config->streams[i].record) {
             // Check if MP4 recording is active for this stream
             int recording_state = get_recording_state(current_config->streams[i].name);

@@ -114,13 +114,21 @@ static void put_stream_worker(put_stream_task_t *task) {
         task->requires_restart = true;
     }
 
-    // Update other stream properties in memory
-    if (set_stream_recording(task->stream, task->config.record) != 0) {
-        log_warn("Failed to update recording setting for stream %s", task->config.name);
+    // Update other stream properties in memory (only if they were provided in the JSON)
+    if (task->has_record) {
+        log_info("PUT stream worker: About to call set_stream_recording for stream '%s' with value %d (%s)",
+                task->config.name,
+                task->config.record,
+                task->config.record ? "enabled" : "disabled");
+        if (set_stream_recording(task->stream, task->config.record) != 0) {
+            log_warn("Failed to update recording setting for stream %s", task->config.name);
+        }
     }
 
-    if (set_stream_streaming_enabled(task->stream, task->config.streaming_enabled) != 0) {
-        log_warn("Failed to update streaming setting for stream %s", task->config.name);
+    if (task->has_streaming_enabled) {
+        if (set_stream_streaming_enabled(task->stream, task->config.streaming_enabled) != 0) {
+            log_warn("Failed to update streaming setting for stream %s", task->config.name);
+        }
     }
 
     // Handle detection thread management based on detection_based_recording setting
@@ -772,6 +780,9 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         config.record = cJSON_IsTrue(record);
         config_changed = true;
         has_record = true;
+        log_info("PUT stream JSON parsing: record field parsed as %d (%s)",
+                config.record,
+                config.record ? "enabled" : "disabled");
         // record can be toggled dynamically, don't set non_dynamic_config_changed
     }
 

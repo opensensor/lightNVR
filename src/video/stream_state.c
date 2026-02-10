@@ -414,6 +414,8 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
                 feature, enabled ? "enabled" : "disabled", state->name);
 
         // If stream is active, apply the change
+        log_info("Stream '%s' current_state=%d (ACTIVE=%d), checking if we should apply feature change",
+                state->name, current_state, STREAM_STATE_ACTIVE);
         if (current_state == STREAM_STATE_ACTIVE) {
             if (strcmp(feature, "streaming") == 0) {
                 if (enabled) {
@@ -426,9 +428,11 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
             } else if (strcmp(feature, "recording") == 0) {
                 if (enabled) {
                     // Start recording
+                    log_info("Calling start_mp4_recording for stream '%s'", state->name);
                     start_mp4_recording(state->name);
                 } else {
                     // Stop recording
+                    log_info("Calling stop_mp4_recording for stream '%s'", state->name);
                     stop_mp4_recording(state->name);
                 }
             } else if (strcmp(feature, "detection") == 0 || strcmp(feature, "motion_detection") == 0) {
@@ -437,6 +441,8 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
                 stop_stream_with_state(state, false);
                 start_stream_with_state(state);
             }
+        } else {
+            log_info("Stream '%s' is not ACTIVE (state=%d), skipping feature application", state->name, current_state);
         }
     }
 
