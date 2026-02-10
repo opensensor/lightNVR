@@ -408,6 +408,8 @@ export function StreamsView() {
         } catch (err) {
           showStatusMessage(`Motion config save failed: ${err.message}`, 'error', 5000);
         }
+        // Close the modal after successful save
+        closeModal();
         // Ensure both list and details are refreshed after save
         await queryClient.invalidateQueries({ queryKey: ['stream-full', currentStream.name] });
         queryClient.invalidateQueries({ queryKey: ['streams'] });
