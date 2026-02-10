@@ -38,7 +38,7 @@ export function clearAuthState() {
 
 /**
  * Validate current session by making a lightweight API call
- * @returns {Promise<{valid: boolean, username?: string, role?: string, role_id?: number}>} - Session info
+ * @returns {Promise<{valid: boolean, username?: string, role?: string, role_id?: number, demo_mode?: boolean, authenticated?: boolean}>} - Session info
  */
 export async function validateSession() {
   try {
@@ -51,8 +51,18 @@ export async function validateSession() {
 
     if (response.ok) {
       const data = await response.json();
+      // In demo mode, the server returns authenticated: false but demo_mode: true
+      // We treat this as a valid session with viewer-level access
+      const isDemoMode = data.demo_mode === true;
+      const isAuthenticated = data.authenticated === true;
+
+      // Store demo mode state globally for UI components
+      window._demoMode = isDemoMode;
+
       return {
         valid: true,
+        authenticated: isAuthenticated,
+        demo_mode: isDemoMode,
         username: data.username,
         role: data.role,
         role_id: data.role_id,
@@ -65,6 +75,14 @@ export async function validateSession() {
     console.debug('Session validation failed:', error.message);
     return { valid: false };
   }
+}
+
+/**
+ * Check if demo mode is enabled
+ * @returns {boolean} - True if in demo mode
+ */
+export function isDemoMode() {
+  return window._demoMode === true;
 }
 
 /**
@@ -147,8 +165,9 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
   console.log(`Setting up session validation with ${intervalMs}ms interval`);
 
   // Validate immediately on page load by calling the server
-  // This handles both auth-enabled and auth-disabled cases:
+  // This handles auth-enabled, auth-disabled, and demo mode cases:
   // - If auth is disabled, /api/auth/verify returns success (no redirect needed)
+  // - If demo mode is enabled, returns success with demo_mode: true (no redirect needed)
   // - If auth is enabled and session is valid, returns success
   // - If auth is enabled and session is invalid, we redirect to login
   validateSession().then(session => {
@@ -163,6 +182,10 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
         console.debug('Authentication is disabled on the server, skipping periodic validation');
         window._authDisabled = true;
       }
+      // If demo mode is enabled, log it
+      if (session.demo_mode) {
+        console.debug('Demo mode enabled, viewer access granted without authentication');
+      }
     }
   });
 
@@ -174,8 +197,15 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
       return;
     }
 
-    // Check credentials still exist before validating
-    if (!hasAuthCredentials()) {
+    // Skip periodic validation if in demo mode with no credentials
+    // Demo mode users don't need periodic validation - they have persistent viewer access
+    if (window._demoMode && !hasAuthCredentials()) {
+      console.debug('Session validation skipped - demo mode with no credentials');
+      return;
+    }
+
+    // Check credentials still exist before validating (only for authenticated users)
+    if (!hasAuthCredentials() && !window._demoMode) {
       console.debug('Session validation skipped - no credentials');
       return;
     }

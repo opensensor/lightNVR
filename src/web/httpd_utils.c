@@ -203,3 +203,41 @@ int httpd_check_admin_privileges(const http_request_t *req, http_response_t *res
     return 0;
 }
 
+int httpd_is_demo_mode(void) {
+    return g_config.demo_mode ? 1 : 0;
+}
+
+int httpd_check_viewer_access(const http_request_t *req, user_t *user) {
+    if (!user) return 0;
+
+    // First, try to get an authenticated user
+    if (httpd_get_authenticated_user(req, user)) {
+        // User is authenticated - they have at least viewer access
+        return 1;
+    }
+
+    // If authentication is disabled entirely, grant viewer access
+    if (!g_config.web_auth_enabled) {
+        // Create a pseudo-user for unauthenticated access
+        memset(user, 0, sizeof(user_t));
+        strncpy(user->username, "anonymous", sizeof(user->username) - 1);
+        user->role = USER_ROLE_VIEWER;
+        user->is_active = true;
+        return 1;
+    }
+
+    // If demo mode is enabled, grant viewer access to unauthenticated users
+    if (g_config.demo_mode) {
+        // Create a demo viewer pseudo-user
+        memset(user, 0, sizeof(user_t));
+        strncpy(user->username, "demo", sizeof(user->username) - 1);
+        user->role = USER_ROLE_VIEWER;
+        user->is_active = true;
+        log_debug("Demo mode: granting viewer access to unauthenticated user");
+        return 1;
+    }
+
+    // Not authenticated and not in demo mode
+    return 0;
+}
+

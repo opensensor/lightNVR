@@ -80,6 +80,7 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"WEB_PORT",           CONFIG_TYPE_INT,    CONFIG_OFFSET(web_port),           0,   NULL, 8080, false},
     {"WEB_AUTH_ENABLED",   CONFIG_TYPE_BOOL,   CONFIG_OFFSET(web_auth_enabled),   0,   NULL, 0, true},
     {"WEB_USERNAME",       CONFIG_TYPE_STRING, CONFIG_OFFSET(web_username),       32,  "admin", 0, false},
+    {"DEMO_MODE",          CONFIG_TYPE_BOOL,   CONFIG_OFFSET(demo_mode),          0,   NULL, 0, false},
 
     // General settings
     {"LOG_LEVEL",          CONFIG_TYPE_INT,    CONFIG_OFFSET(log_level),          0,   NULL, 2, false},
@@ -264,7 +265,8 @@ void load_default_config(config_t *config) {
     config->web_password[0] = '\0';
     config->webrtc_disabled = false; // WebRTC is enabled by default
     config->auth_timeout_hours = 24; // Default session timeout: 24 hours
-    
+    config->demo_mode = false; // Demo mode disabled by default
+
     // Web optimization settings
     config->web_compression_enabled = true;
     config->web_use_minified_assets = true;
@@ -609,6 +611,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (config->auth_timeout_hours < 1) {
                 config->auth_timeout_hours = 1; // Minimum 1 hour
             }
+        } else if (strcmp(name, "demo_mode") == 0) {
+            config->demo_mode = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
     // Stream settings
@@ -1251,8 +1255,9 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "password = %s  ; IMPORTANT: Change this default password!\n", config->web_password);
     fprintf(file, "webrtc_disabled = %s\n", config->webrtc_disabled ? "true" : "false");
     fprintf(file, "auth_timeout_hours = %d  ; Session timeout in hours (default: 24)\n", config->auth_timeout_hours);
+    fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
     fprintf(file, "\n");
-    
+
     // Write stream settings
     fprintf(file, "[streams]\n");
     fprintf(file, "max_streams = %d\n\n", config->max_streams);
@@ -1382,6 +1387,7 @@ void print_config(const config_t *config) {
     printf("    Web Password: %s\n", "********");
     printf("    WebRTC Disabled: %s\n", config->webrtc_disabled ? "true" : "false");
     printf("    Auth Timeout: %d hours\n", config->auth_timeout_hours);
+    printf("    Demo Mode: %s\n", config->demo_mode ? "true" : "false");
 
     printf("  Stream Settings:\n");
     printf("    Max Streams: %d\n", config->max_streams);

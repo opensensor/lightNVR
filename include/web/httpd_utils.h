@@ -65,5 +65,23 @@ int httpd_check_admin_privileges(const http_request_t *req, http_response_t *res
  */
 int httpd_get_session_token(const http_request_t *req, char *token, size_t token_size);
 
+/**
+ * @brief Check if the request has viewer-level access
+ *
+ * In demo mode, unauthenticated users are granted viewer-level access.
+ * Otherwise, requires authentication with any role.
+ *
+ * @param req HTTP request
+ * @param user Pointer to store the user information (may be a demo user)
+ * @return 1 if user has viewer access, 0 otherwise
+ */
+int httpd_check_viewer_access(const http_request_t *req, user_t *user);
+
+/**
+ * @brief Check if demo mode is enabled
+ * @return 1 if demo mode is enabled, 0 otherwise
+ */
+int httpd_is_demo_mode(void);
+
 #endif /* HTTPD_UTILS_H */
 

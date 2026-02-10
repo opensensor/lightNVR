@@ -407,6 +407,23 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    // If demo mode is enabled, return success with demo viewer role
+    if (g_config.demo_mode) {
+        log_info("Demo mode: returning viewer access for unauthenticated user");
+
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddBoolToObject(response, "authenticated", false);
+        cJSON_AddBoolToObject(response, "demo_mode", true);
+        cJSON_AddStringToObject(response, "username", "demo");
+        cJSON_AddStringToObject(response, "role", "viewer");
+
+        char *json_str = cJSON_PrintUnformatted(response);
+        http_response_set_json(res, 200, json_str);
+        free(json_str);
+        cJSON_Delete(response);
+        return;
+    }
+
     // No valid authentication
     log_debug("Authentication verification failed");
     http_response_set_json_error(res, 401, "Unauthorized");

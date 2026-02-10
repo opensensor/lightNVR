@@ -7,6 +7,7 @@ import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import {VERSION} from '../../version.js';
 import { getSettings } from '../../utils/settings-utils.js';
+import { isDemoMode } from '../../utils/auth-utils.js';
 
 /**
  * Header component
@@ -21,6 +22,7 @@ export function Header({ version = VERSION }) {
   const [username, setUsername] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
+  const [demoMode, setDemoMode] = useState(false); // Demo mode state
 
   // Get the current username from localStorage and check if auth is enabled
   useEffect(() => {
@@ -37,7 +39,13 @@ export function Header({ version = VERSION }) {
         setUsername('User');
       }
     } else {
-      setUsername('User');
+      // Check if we're in demo mode
+      if (isDemoMode()) {
+        setUsername('Demo Viewer');
+        setDemoMode(true);
+      } else {
+        setUsername('User');
+      }
     }
 
     // Fetch settings to check if auth is enabled
@@ -56,6 +64,23 @@ export function Header({ version = VERSION }) {
       }
     }
     checkAuthEnabled();
+
+    // Also check demo mode from global state (set during session validation)
+    const checkDemoMode = () => {
+      if (window._demoMode === true) {
+        setDemoMode(true);
+        if (!localStorage.getItem('auth')) {
+          setUsername('Demo Viewer');
+        }
+      }
+    };
+    // Check initially and also set up a listener for changes
+    checkDemoMode();
+    // Check periodically in case demo mode was set after initial load
+    const intervalId = setInterval(checkDemoMode, 1000);
+    // Clean up after first successful detection
+    setTimeout(() => clearInterval(intervalId), 5000);
+    return () => clearInterval(intervalId);
   }, []);
 
 
@@ -152,20 +177,38 @@ export function Header({ version = VERSION }) {
 
           {/* User Menu (Desktop) */}
           <div className="user-menu hidden md:flex items-center">
+            {demoMode && !localStorage.getItem('auth') && (
+              <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>Demo Mode</span>
+            )}
             <span className="mr-2">{username}</span>
             {authEnabled && (
-              <a
-                href="/logout"
-                className="logout-link no-underline px-3 py-1 rounded transition-colors"
-                style={{
-                  color: 'hsl(var(--card-foreground))',
-                  backgroundColor: 'transparent'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-              >
-                Logout
-              </a>
+              demoMode && !localStorage.getItem('auth') ? (
+                <a
+                  href="/login.html"
+                  className="login-link no-underline px-3 py-1 rounded transition-colors"
+                  style={{
+                    color: 'hsl(var(--primary-foreground))',
+                    backgroundColor: 'hsl(var(--primary))'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary))'}
+                >
+                  Login
+                </a>
+              ) : (
+                <a
+                  href="/logout"
+                  className="logout-link no-underline px-3 py-1 rounded transition-colors"
+                  style={{
+                    color: 'hsl(var(--card-foreground))',
+                    backgroundColor: 'transparent'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  Logout
+                </a>
+              )
             )}
           </div>
 
@@ -190,19 +233,39 @@ export function Header({ version = VERSION }) {
                 {authEnabled && (
                   <li className="w-full mt-2 pt-2 border-t" style={{borderColor: 'hsl(var(--border))'}}>
                     <div className="flex justify-between items-center px-4 py-2">
-                      <span>{username}</span>
-                      <a
-                        href="/logout"
-                        className="logout-link no-underline px-3 py-1 rounded transition-colors"
-                        style={{
-                          color: 'hsl(var(--card-foreground))',
-                          backgroundColor: 'transparent'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        Logout
-                      </a>
+                      <div className="flex items-center">
+                        {demoMode && !localStorage.getItem('auth') && (
+                          <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>Demo</span>
+                        )}
+                        <span>{username}</span>
+                      </div>
+                      {demoMode && !localStorage.getItem('auth') ? (
+                        <a
+                          href="/login.html"
+                          className="login-link no-underline px-3 py-1 rounded transition-colors"
+                          style={{
+                            color: 'hsl(var(--primary-foreground))',
+                            backgroundColor: 'hsl(var(--primary))'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary))'}
+                        >
+                          Login
+                        </a>
+                      ) : (
+                        <a
+                          href="/logout"
+                          className="logout-link no-underline px-3 py-1 rounded transition-colors"
+                          style={{
+                            color: 'hsl(var(--card-foreground))',
+                            backgroundColor: 'transparent'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          Logout
+                        </a>
+                      )}
                     </div>
                   </li>
                 )}

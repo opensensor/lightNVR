@@ -114,6 +114,7 @@ typedef struct {
     char web_password[32]; // Stored as hash in actual implementation
     bool webrtc_disabled;  // Whether WebRTC is disabled (use HLS only)
     int auth_timeout_hours; // Session timeout in hours (default: 24)
+    bool demo_mode;         // Demo mode: allows unauthenticated viewer access while still allowing login
     
     // Web optimization settings
     bool web_compression_enabled;    // Whether to enable gzip compression for text-based responses

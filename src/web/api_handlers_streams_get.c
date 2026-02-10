@@ -26,14 +26,12 @@
 void handle_get_streams(const http_request_t *req, http_response_t *res) {
 	log_info("Handling GET /api/streams request");
 
-	// When web authentication is enabled, require a valid authenticated user
-	// for access to the streams list. This ensures that the live view and
-	// other pages backed by /api/streams behave as protected resources and
-	// unauthenticated users are redirected to the login page by the frontend
-	// when a 401 is returned.
+	// When web authentication is enabled, require viewer-level access.
+	// In demo mode, unauthenticated users get viewer access.
+	// Otherwise, authentication is required.
 	if (g_config.web_auth_enabled) {
 		user_t user;
-		if (!httpd_get_authenticated_user(req, &user)) {
+		if (!httpd_check_viewer_access(req, &user)) {
 			log_error("Authentication failed for GET /api/streams request");
 			http_response_set_json_error(res, 401, "Unauthorized");
 			return;
