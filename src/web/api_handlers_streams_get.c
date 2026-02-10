@@ -26,15 +26,25 @@
 void handle_get_streams(const http_request_t *req, http_response_t *res) {
 	log_info("Handling GET /api/streams request");
 
-	// When web authentication is enabled, require viewer-level access.
-	// In demo mode, unauthenticated users get viewer access.
-	// Otherwise, authentication is required.
+	// When web authentication is enabled, require a valid authenticated user
+	// for access to the streams list. In demo mode, unauthenticated users
+	// get viewer access.
 	if (g_config.web_auth_enabled) {
 		user_t user;
-		if (!httpd_check_viewer_access(req, &user)) {
-			log_error("Authentication failed for GET /api/streams request");
-			http_response_set_json_error(res, 401, "Unauthorized");
-			return;
+		// In demo mode, allow unauthenticated viewer access
+		if (g_config.demo_mode) {
+			if (!httpd_check_viewer_access(req, &user)) {
+				log_error("Authentication failed for GET /api/streams request");
+				http_response_set_json_error(res, 401, "Unauthorized");
+				return;
+			}
+		} else {
+			// Normal mode: require authentication
+			if (!httpd_get_authenticated_user(req, &user)) {
+				log_error("Authentication failed for GET /api/streams request");
+				http_response_set_json_error(res, 401, "Unauthorized");
+				return;
+			}
 		}
 	}
 
