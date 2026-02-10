@@ -135,40 +135,41 @@ export class StreamsPage extends BasePage {
       }
     }
 
-    // Click save and wait for it to complete
+    // Wait for the POST request to complete and modal to close
+    const responsePromise = this.page.waitForResponse(
+      response => response.url().includes('/api/streams') && response.request().method() === 'POST',
+      { timeout: 20000 }
+    );
+
+    // Click save
     await this.saveButton.click({ force: true });
+
+    // Wait for the API response
+    try {
+      const response = await responsePromise;
+      if (!response.ok()) {
+        const body = await response.text().catch(() => 'Unable to read response body');
+        throw new Error(`Stream creation failed with status ${response.status()}: ${body}`);
+      }
+    } catch (e) {
+      // Capture screenshot on failure
+      await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
+      throw new Error(`Failed to create stream: ${e.message}`);
+    }
 
     // Wait for the modal to close - this indicates the save was successful
     // The modal closing is triggered by the onSuccess callback in the mutation
     // Note: The modal is unmounted (detached) from DOM, not just hidden
     try {
-      await this.addStreamModal.waitFor({ state: 'detached', timeout: 15000 });
+      await this.addStreamModal.waitFor({ state: 'detached', timeout: 5000 });
     } catch (e) {
-      // If modal is still attached, the save likely failed
-      // Check if the modal is still visible
+      // Modal might have already closed, check if it's still visible
       const modalVisible = await this.addStreamModal.isVisible().catch(() => false);
       if (modalVisible) {
-        // Try to capture diagnostic information
-        await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
-
-        // Check if there's an error message displayed
-        const errorMessage = await this.page.locator('.error, .alert-error, [role="alert"]').first().textContent().catch(() => null);
-        const errorInfo = errorMessage ? ` Error displayed: "${errorMessage}"` : '';
-
-        // Check if the server is still responding
-        const serverOk = await this.page.evaluate(async () => {
-          try {
-            const res = await fetch('/api/system', { signal: AbortSignal.timeout(3000) });
-            return res.ok || res.status === 401;
-          } catch {
-            return false;
-          }
-        }).catch(() => false);
-
-        const serverStatus = serverOk ? '' : ' (WARNING: Server may not be responding!)';
-        throw new Error(`Modal did not close after save - save may have failed.${errorInfo}${serverStatus}`);
+        await this.page.screenshot({ path: `test-results/stream-modal-stuck-${config.name}.png` });
+        throw new Error(`Modal did not close after successful save - UI may be stuck`);
       }
-      // If modal is not visible, it likely closed successfully but we missed the transition
+      // If modal is not visible, it closed successfully
     }
 
     // Wait for the streams list to be refreshed (React Query refetch)
