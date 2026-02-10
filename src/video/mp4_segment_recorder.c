@@ -640,33 +640,56 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     if (pkt->dts != AV_NOPTS_VALUE) {
                         if (pkt->dts > 0x7fffffff) {
                             log_warn("DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
-                            // Reset to a small value that maintains continuity
-                            pkt->dts = 1000;
+                            // Calculate PTS-DTS difference BEFORE modifying DTS
+                            int64_t pts_dts_diff = 0;
                             if (pkt->pts != AV_NOPTS_VALUE) {
-                                // Maintain PTS-DTS relationship if possible
-                                int64_t pts_dts_diff = pkt->pts - pkt->dts;
-                                if (pts_dts_diff >= 0) {
+                                pts_dts_diff = pkt->pts - pkt->dts;
+                            }
+                            // Reset DTS to a safe value
+                            pkt->dts = 1000;
+                            // Reset PTS to maintain relationship or set to DTS
+                            if (pkt->pts != AV_NOPTS_VALUE) {
+                                if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
+                                    // Only maintain the relationship if the difference is reasonable
                                     pkt->pts = pkt->dts + pts_dts_diff;
                                 } else {
+                                    // Otherwise just set PTS equal to DTS
                                     pkt->pts = pkt->dts;
                                 }
                             } else {
                                 pkt->pts = pkt->dts;
                             }
+                            // Reset the tracking variables to prevent monotonic errors
+                            last_video_dts = pkt->dts;
+                            last_video_pts = pkt->pts;
                         }
 
                         // Additional check to ensure DTS is always within safe range
                         // This handles cases where DTS might be close to the limit
                         if (pkt->dts > 0x70000000) {  // ~75% of max value
                             log_info("DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
-                            // Reset to a small value
-                            pkt->dts = 1000;
+                            // Calculate PTS-DTS difference BEFORE modifying DTS
+                            int64_t pts_dts_diff = 0;
                             if (pkt->pts != AV_NOPTS_VALUE) {
-                                // Maintain PTS-DTS relationship
-                                pkt->pts = pkt->dts + 1;
+                                pts_dts_diff = pkt->pts - pkt->dts;
+                            }
+                            // Reset DTS to a safe value
+                            pkt->dts = 1000;
+                            // Reset PTS to maintain relationship or set to DTS
+                            if (pkt->pts != AV_NOPTS_VALUE) {
+                                if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
+                                    // Only maintain the relationship if the difference is reasonable
+                                    pkt->pts = pkt->dts + pts_dts_diff;
+                                } else {
+                                    // Otherwise just set PTS equal to DTS
+                                    pkt->pts = pkt->dts;
+                                }
                             } else {
                                 pkt->pts = pkt->dts;
                             }
+                            // Reset the tracking variables to prevent monotonic errors
+                            last_video_dts = pkt->dts;
+                            last_video_pts = pkt->pts;
                         }
                     }
 
@@ -933,30 +956,55 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             if (pkt->dts != AV_NOPTS_VALUE) {
                 if (pkt->dts > 0x7fffffff) {
                     log_warn("Audio DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
-                    pkt->dts = 1000;
+                    // Calculate PTS-DTS difference BEFORE modifying DTS
+                    int64_t pts_dts_diff = 0;
                     if (pkt->pts != AV_NOPTS_VALUE) {
-                        // Maintain PTS-DTS relationship if possible
-                        int64_t pts_dts_diff = pkt->pts - pkt->dts;
-                        if (pts_dts_diff >= 0) {
+                        pts_dts_diff = pkt->pts - pkt->dts;
+                    }
+                    // Reset DTS to a safe value
+                    pkt->dts = 1000;
+                    // Reset PTS to maintain relationship or set to DTS
+                    if (pkt->pts != AV_NOPTS_VALUE) {
+                        if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
+                            // Only maintain the relationship if the difference is reasonable
                             pkt->pts = pkt->dts + pts_dts_diff;
                         } else {
+                            // Otherwise just set PTS equal to DTS
                             pkt->pts = pkt->dts;
                         }
                     } else {
                         pkt->pts = pkt->dts;
                     }
+                    // Reset the tracking variables to prevent monotonic errors
+                    last_audio_dts = pkt->dts;
+                    last_audio_pts = pkt->pts;
                 }
 
                 // Additional check to ensure DTS is always within safe range
                 if (pkt->dts > 0x70000000) {  // ~75% of max value
                     log_info("Audio DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
-                    pkt->dts = 1000;
+                    // Calculate PTS-DTS difference BEFORE modifying DTS
+                    int64_t pts_dts_diff = 0;
                     if (pkt->pts != AV_NOPTS_VALUE) {
-                        // Maintain PTS-DTS relationship
-                        pkt->pts = pkt->dts + 1;
+                        pts_dts_diff = pkt->pts - pkt->dts;
+                    }
+                    // Reset DTS to a safe value
+                    pkt->dts = 1000;
+                    // Reset PTS to maintain relationship or set to DTS
+                    if (pkt->pts != AV_NOPTS_VALUE) {
+                        if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
+                            // Only maintain the relationship if the difference is reasonable
+                            pkt->pts = pkt->dts + pts_dts_diff;
+                        } else {
+                            // Otherwise just set PTS equal to DTS
+                            pkt->pts = pkt->dts;
+                        }
                     } else {
                         pkt->pts = pkt->dts;
                     }
+                    // Reset the tracking variables to prevent monotonic errors
+                    last_audio_dts = pkt->dts;
+                    last_audio_pts = pkt->pts;
                 }
             }
 
