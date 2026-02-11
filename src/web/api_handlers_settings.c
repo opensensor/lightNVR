@@ -213,11 +213,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "web_root", g_config.web_root);
     cJSON_AddBoolToObject(settings, "web_auth_enabled", g_config.web_auth_enabled);
     cJSON_AddBoolToObject(settings, "demo_mode", g_config.demo_mode);
-    cJSON_AddStringToObject(settings, "web_username", g_config.web_username);
+    // Note: web_username and web_password removed - user management is now fully database-based
     cJSON_AddBoolToObject(settings, "webrtc_disabled", g_config.webrtc_disabled);
-
-    // Don't include the password for security reasons
-    cJSON_AddStringToObject(settings, "web_password", "********");
     
     cJSON_AddStringToObject(settings, "storage_path", g_config.storage_path);
     cJSON_AddStringToObject(settings, "storage_path_hls", g_config.storage_path_hls);
@@ -383,23 +380,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated demo_mode: %s", g_config.demo_mode ? "true" : "false");
     }
 
-    // Web username
-    cJSON *web_username = cJSON_GetObjectItem(settings, "web_username");
-    if (web_username && cJSON_IsString(web_username)) {
-        strncpy(g_config.web_username, web_username->valuestring, sizeof(g_config.web_username) - 1);
-        g_config.web_username[sizeof(g_config.web_username) - 1] = '\0';
-        settings_changed = true;
-        log_info("Updated web_username: %s", g_config.web_username);
-    }
-
-    // Web password
-    cJSON *web_password = cJSON_GetObjectItem(settings, "web_password");
-    if (web_password && cJSON_IsString(web_password) && strcmp(web_password->valuestring, "********") != 0) {
-        strncpy(g_config.web_password, web_password->valuestring, sizeof(g_config.web_password) - 1);
-        g_config.web_password[sizeof(g_config.web_password) - 1] = '\0';
-        settings_changed = true;
-        log_info("Updated web_password");
-    }
+    // Note: web_username and web_password settings removed - user management is now fully database-based
 
     // WebRTC disabled - track old value to detect changes
     cJSON *webrtc_disabled = cJSON_GetObjectItem(settings, "webrtc_disabled");

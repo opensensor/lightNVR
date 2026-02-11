@@ -30,8 +30,6 @@ export function SettingsView() {
     webPort: '8080',
     authEnabled: true,
     demoMode: false, // Demo mode: allows unauthenticated viewer access
-    username: 'admin',
-    password: 'admin',
     webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
     authTimeoutHours: '24',
     bufferSize: '1024',
@@ -164,8 +162,6 @@ export function SettingsView() {
         webPort: settingsData.web_port?.toString() || '',
         authEnabled: settingsData.web_auth_enabled || false,
         demoMode: settingsData.demo_mode || false,
-        username: settingsData.web_username || '',
-        password: settingsData.web_password || '',
         webrtcDisabled: settingsData.webrtc_disabled || false,
         authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
         bufferSize: settingsData.buffer_size?.toString() || '',
@@ -238,8 +234,6 @@ export function SettingsView() {
       web_port: parseInt(settings.webPort, 10),
       web_auth_enabled: settings.authEnabled,
       demo_mode: settings.demoMode,
-      web_username: settings.username,
-      web_password: settings.password,
       webrtc_disabled: settings.webrtcDisabled,
       auth_timeout_hours: parseInt(settings.authTimeoutHours, 10),
       buffer_size: parseInt(settings.bufferSize, 10),
