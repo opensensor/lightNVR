@@ -124,4 +124,18 @@ int get_all_stream_names(char names[][64], int max_count);
  */
 uint64_t get_stream_storage_usage_db(const char *stream_name);
 
+/**
+ * Update auto-detected video parameters (width, height, fps, codec) for a stream.
+ * Only updates fields that are currently 0 or empty in the database, so manually
+ * configured values are not overwritten.
+ *
+ * @param stream_name Stream name to update
+ * @param width Detected video width
+ * @param height Detected video height
+ * @param fps Detected frames per second
+ * @param codec Detected codec name (e.g. "h264", "hevc")
+ * @return 0 on success, non-zero on failure
+ */
+int update_stream_video_params(const char *stream_name, int width, int height, int fps, const char *codec);
+
 #endif // LIGHTNVR_DB_STREAMS_H

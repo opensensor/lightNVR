@@ -50,6 +50,7 @@
 #include "video/go2rtc/go2rtc_snapshot.h"
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
+#include "database/db_streams.h"
 
 // Reconnection settings
 #define BASE_RECONNECT_DELAY_MS 500
@@ -641,6 +642,33 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
 
     log_info("[%s] Connected successfully (video stream: %d, audio stream: %d)",
              ctx->stream_name, ctx->video_stream_idx, ctx->audio_stream_idx);
+
+    // Auto-detect and persist video parameters (width, height, fps, codec)
+    {
+        AVStream *vs = ctx->input_ctx->streams[ctx->video_stream_idx];
+        AVCodecParameters *cp = vs->codecpar;
+        int det_width = cp->width;
+        int det_height = cp->height;
+        int det_fps = 0;
+        const char *det_codec = NULL;
+
+        if (vs->avg_frame_rate.den > 0) {
+            det_fps = vs->avg_frame_rate.num / vs->avg_frame_rate.den;
+        }
+
+        const AVCodecDescriptor *desc = avcodec_descriptor_get(cp->codec_id);
+        if (desc) {
+            det_codec = desc->name;
+        }
+
+        if (det_width > 0 && det_height > 0) {
+            log_info("[%s] Detected video params: %dx%d @ %d fps, codec=%s",
+                     ctx->stream_name, det_width, det_height, det_fps,
+                     det_codec ? det_codec : "unknown");
+            update_stream_video_params(ctx->stream_name, det_width, det_height,
+                                       det_fps, det_codec);
+        }
+    }
 
     return 0;
 }

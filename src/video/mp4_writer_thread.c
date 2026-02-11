@@ -32,6 +32,7 @@
 #include "video/mp4_segment_recorder.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "database/db_streams.h"
 
 
 // Callback invoked by record_segment when the first keyframe is detected
@@ -103,6 +104,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     thread_ctx->segment_info.segment_index = 0;
     thread_ctx->segment_info.has_audio = false;
     thread_ctx->segment_info.last_frame_was_key = false;
+    thread_ctx->video_params_detected = false;
     pthread_mutex_init(&thread_ctx->context_mutex, NULL);
 
     // Initialize self-management fields
@@ -440,6 +442,38 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 log_info("Successfully recorded segment for %s after %d retries",
                         stream_name, thread_ctx->retry_count);
                 thread_ctx->retry_count = 0;
+            }
+
+            // Auto-detect and persist video parameters once after first successful segment
+            if (!thread_ctx->video_params_detected && thread_ctx->input_ctx) {
+                for (unsigned int i = 0; i < thread_ctx->input_ctx->nb_streams; i++) {
+                    AVStream *vs = thread_ctx->input_ctx->streams[i];
+                    if (vs->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                        int det_width = vs->codecpar->width;
+                        int det_height = vs->codecpar->height;
+                        int det_fps = 0;
+                        const char *det_codec = NULL;
+
+                        if (vs->avg_frame_rate.den > 0) {
+                            det_fps = vs->avg_frame_rate.num / vs->avg_frame_rate.den;
+                        }
+
+                        const AVCodecDescriptor *desc = avcodec_descriptor_get(vs->codecpar->codec_id);
+                        if (desc) {
+                            det_codec = desc->name;
+                        }
+
+                        if (det_width > 0 && det_height > 0) {
+                            log_info("[%s] Recording thread detected video params: %dx%d @ %d fps, codec=%s",
+                                     stream_name, det_width, det_height, det_fps,
+                                     det_codec ? det_codec : "unknown");
+                            update_stream_video_params(stream_name, det_width, det_height,
+                                                       det_fps, det_codec);
+                        }
+                        thread_ctx->video_params_detected = true;
+                        break;
+                    }
+                }
             }
         }
 

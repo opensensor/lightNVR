@@ -401,6 +401,71 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
 }
 
 /**
+ * Update auto-detected video parameters for a stream.
+ * Only updates fields that are currently 0 or empty in the database.
+ */
+int update_stream_video_params(const char *stream_name, int width, int height, int fps, const char *codec) {
+    int rc;
+    sqlite3_stmt *stmt;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!stream_name) {
+        log_error("Stream name is required for video param update");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    // Only overwrite fields that are currently 0 / empty
+    const char *sql =
+        "UPDATE streams SET "
+        "width  = CASE WHEN width  = 0 OR width  IS NULL THEN ? ELSE width  END, "
+        "height = CASE WHEN height = 0 OR height IS NULL THEN ? ELSE height END, "
+        "fps    = CASE WHEN fps    = 0 OR fps    IS NULL THEN ? ELSE fps    END, "
+        "codec  = CASE WHEN codec  = '' OR codec IS NULL THEN ? ELSE codec  END "
+        "WHERE name = ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare video params update: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int(stmt, 1, width);
+    sqlite3_bind_int(stmt, 2, height);
+    sqlite3_bind_int(stmt, 3, fps);
+    sqlite3_bind_text(stmt, 4, codec ? codec : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, stream_name, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to update video params for stream %s: %s", stream_name, sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    int changes = sqlite3_changes(db);
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    if (changes > 0) {
+        log_info("Auto-detected video params for stream %s: %dx%d @ %d fps, codec=%s",
+                 stream_name, width, height, fps, codec ? codec : "unknown");
+    }
+
+    return 0;
+}
+
+/**
  * Delete a stream configuration from the database
  *
  * @param name Stream name to delete

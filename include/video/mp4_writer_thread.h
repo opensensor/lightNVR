@@ -54,6 +54,9 @@ typedef struct {
     struct AVFormatContext *input_ctx;  // Input context for this stream (reused between segments)
     segment_info_t segment_info;        // Segment information for this stream
     pthread_mutex_t context_mutex;      // Mutex to protect input_ctx and segment_info
+
+    // Auto-detection flag: set after video params (width, height, fps, codec) are persisted
+    bool video_params_detected;
 } mp4_writer_thread_t;
 
 // Function declarations
