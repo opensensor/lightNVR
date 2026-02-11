@@ -135,25 +135,46 @@ export class StreamsPage extends BasePage {
       }
     }
 
+    // Wait for the save button to be enabled and visible
+    await this.saveButton.waitFor({ state: 'visible', timeout: 5000 });
+    await sleep(300); // Small delay to ensure form state is updated
+
     // Wait for the POST request to complete and modal to close
+    // Use a more specific URL pattern to match only POST /api/streams (not /api/streams/test or /api/streams/{id})
     const responsePromise = this.page.waitForResponse(
-      response => response.url().includes('/api/streams') && response.request().method() === 'POST',
-      { timeout: 20000 }
+      response => {
+        const url = response.url();
+        const method = response.request().method();
+        // Match POST /api/streams but not POST /api/streams/test or POST /api/streams/{id}
+        const isPostStreams = method === 'POST' && (url.endsWith('/api/streams') || url.match(/\/api\/streams(\?|$)/));
+        return isPostStreams;
+      },
+      { timeout: 30000 } // Increase timeout to 30 seconds for CI environment
     );
 
-    // Click save
-    await this.saveButton.click({ force: true });
+    // Click save - remove force: true to ensure proper event handling
+    await this.saveButton.click();
 
     // Wait for the API response
     try {
+      console.log(`Waiting for POST /api/streams response for stream: ${config.name}`);
       const response = await responsePromise;
+      console.log(`Received response with status: ${response.status()}`);
       if (!response.ok()) {
         const body = await response.text().catch(() => 'Unable to read response body');
         throw new Error(`Stream creation failed with status ${response.status()}: ${body}`);
       }
     } catch (e) {
       // Capture screenshot on failure
+      console.error(`Failed to create stream ${config.name}:`, e);
       await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
+
+      // Also capture console logs
+      const logs = await this.page.evaluate(() => {
+        return (window as any).__testLogs || 'No logs captured';
+      }).catch(() => 'Unable to capture logs');
+      console.log('Browser console logs:', logs);
+
       throw new Error(`Failed to create stream: ${e.message}`);
     }
 
