@@ -130,6 +130,8 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     metadata.start_time = time(NULL);
     metadata.end_time = 0; // Will be updated when recording ends
     metadata.size_bytes = 0; // Will be updated as segments are added
+    // width/height/fps/codec may be 0/empty if not yet auto-detected from the stream.
+    // The rebuild_recordings utility can later probe actual values from the recorded files.
     metadata.width = config.width;
     metadata.height = config.height;
     metadata.fps = config.fps;

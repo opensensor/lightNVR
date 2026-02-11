@@ -277,59 +277,29 @@ export function StreamConfigModal({
                 )}
 
                 <div>
-                  <label htmlFor="stream-width" className="block text-sm font-medium mb-2">Width</label>
-                  <input
-                    type="number"
-                    id="stream-width"
-                    name="width"
-                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                    min="320"
-                    max="3840"
-                    value={currentStream.width}
-                    onChange={onInputChange}
-                  />
+                  <label className="block text-sm font-medium mb-2">Resolution</label>
+                  <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
+                    {currentStream.width > 0 && currentStream.height > 0
+                      ? `${currentStream.width}×${currentStream.height}`
+                      : 'Auto-detected'}
+                  </span>
+                  <span className="text-xs text-muted-foreground mt-1 block">Detected from stream source</span>
                 </div>
 
                 <div>
-                  <label htmlFor="stream-height" className="block text-sm font-medium mb-2">Height</label>
-                  <input
-                    type="number"
-                    id="stream-height"
-                    name="height"
-                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                    min="240"
-                    max="2160"
-                    value={currentStream.height}
-                    onChange={onInputChange}
-                  />
+                  <label className="block text-sm font-medium mb-2">FPS</label>
+                  <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
+                    {currentStream.fps > 0 ? currentStream.fps : 'Auto-detected'}
+                  </span>
+                  <span className="text-xs text-muted-foreground mt-1 block">Detected from stream source</span>
                 </div>
 
                 <div>
-                  <label htmlFor="stream-fps" className="block text-sm font-medium mb-2">FPS</label>
-                  <input
-                    type="number"
-                    id="stream-fps"
-                    name="fps"
-                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                    min="1"
-                    max="60"
-                    value={currentStream.fps}
-                    onChange={onInputChange}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="stream-codec" className="block text-sm font-medium mb-2">Codec</label>
-                  <select
-                    id="stream-codec"
-                    name="codec"
-                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                    value={currentStream.codec}
-                    onChange={onInputChange}
-                  >
-                    <option value="h264">H.264</option>
-                    <option value="h265">H.265 (HEVC)</option>
-                  </select>
+                  <label className="block text-sm font-medium mb-2">Codec</label>
+                  <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
+                    {currentStream.codec ? currentStream.codec.toUpperCase() : 'Auto-detected'}
+                  </span>
+                  <span className="text-xs text-muted-foreground mt-1 block">Detected from stream source</span>
                 </div>
 
                 <div>

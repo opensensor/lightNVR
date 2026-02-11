@@ -342,10 +342,7 @@ export function StreamsView() {
       url: currentStream.url,
       enabled: currentStream.enabled,
       streaming_enabled: currentStream.streamingEnabled,
-      width: parseInt(currentStream.width, 10),
-      height: parseInt(currentStream.height, 10),
-      fps: parseInt(currentStream.fps, 10),
-      codec: currentStream.codec,
+      // Note: width, height, fps, and codec are auto-detected and not sent from the frontend
       protocol: parseInt(currentStream.protocol, 10),
       priority: parseInt(currentStream.priority, 10),
       segment_duration: parseInt(currentStream.segment, 10),
@@ -502,10 +499,10 @@ export function StreamsView() {
       url: '',
       enabled: true,
       streamingEnabled: true,
-      width: 1280,
-      height: 720,
-      fps: 15,
-      codec: 'h264',
+      width: 0,
+      height: 0,
+      fps: 0,
+      codec: '',
       protocol: '0',
       priority: '5',
       segment: 30,
@@ -564,10 +561,11 @@ export function StreamsView() {
 
       setCurrentStream({
         ...stream,
-        // Convert numeric values to strings for form inputs
-        width: stream.width || 1280,
-        height: stream.height || 720,
-        fps: stream.fps || 15,
+        // These are read-only auto-detected values (0/empty means not yet detected)
+        width: stream.width || 0,
+        height: stream.height || 0,
+        fps: stream.fps || 0,
+        codec: stream.codec || '',
         protocol: (stream.protocol != null ? stream.protocol : 0).toString(),
         priority: (stream.priority != null ? stream.priority : 5).toString(),
         segment: stream.segment_duration || 30,
@@ -818,10 +816,8 @@ export function StreamsView() {
       url: selectedProfile.stream_uri, // Use stream_uri instead of url
       enabled: true,
       streaming_enabled: true,
-      width: selectedProfile.width,
-      height: selectedProfile.height,
-      fps: selectedProfile.fps || 15,
-      codec: selectedProfile.encoding === 'H264' ? 'h264' : 'h265',
+      // Note: width, height, fps, and codec are auto-detected from the stream
+      // (ONVIF discovery on the backend will also populate these from the camera profile)
       protocol: '0', // TCP
       priority: '5', // Medium
       segment_duration: 30,
@@ -1109,59 +1105,25 @@ export function StreamsView() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="form-group">
-                    <label for="stream-width" className="block text-sm font-medium mb-1">Width</label>
-                    <input
-                        type="number"
-                        id="stream-width"
-                        name="width"
-                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
-                        min="320"
-                        max="1920"
-                        value={currentStream.width}
-                        onChange={handleInputChange}
-                    />
+                    <label className="block text-sm font-medium mb-1">Resolution</label>
+                    <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
+                      {currentStream.width && currentStream.height && currentStream.width > 0 && currentStream.height > 0
+                        ? `${currentStream.width}×${currentStream.height}`
+                        : 'Auto-detected'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">Detected from stream</span>
                   </div>
                   <div className="form-group">
-                    <label for="stream-height" className="block text-sm font-medium mb-1">Height</label>
-                    <input
-                        type="number"
-                        id="stream-height"
-                        name="height"
-                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
-                        min="240"
-                        max="1080"
-                        value={currentStream.height}
-                        onChange={handleInputChange}
-                    />
+                    <label className="block text-sm font-medium mb-1">FPS / Codec</label>
+                    <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
+                      {currentStream.fps > 0 ? `${currentStream.fps} fps` : 'Auto-detected'}
+                      {' / '}
+                      {currentStream.codec ? currentStream.codec.toUpperCase() : 'Auto-detected'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">Detected from stream</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="form-group">
-                    <label for="stream-fps" className="block text-sm font-medium mb-1">FPS</label>
-                    <input
-                        type="number"
-                        id="stream-fps"
-                        name="fps"
-                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
-                        min="1"
-                        max="30"
-                        value={currentStream.fps}
-                        onChange={handleInputChange}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label for="stream-codec" className="block text-sm font-medium mb-1">Codec</label>
-                    <select
-                        id="stream-codec"
-                        name="codec"
-                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
-                        value={currentStream.codec}
-                        onChange={handleInputChange}
-                    >
-                      <option value="h264">H.264</option>
-                      <option value="h265">H.265</option>
-                    </select>
-                  </div>
                   <div className="form-group">
                     <label for="stream-protocol" className="block text-sm font-medium mb-1">Protocol</label>
                     <select

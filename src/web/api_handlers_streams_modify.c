@@ -355,10 +355,10 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     // Optional fields with defaults
     config.enabled = true;
     config.streaming_enabled = true;
-    config.width = 1280;
-    config.height = 720;
-    config.fps = 30;
-    strncpy(config.codec, "h264", sizeof(config.codec) - 1);
+    config.width = 0;   // Auto-detected from stream
+    config.height = 0;  // Auto-detected from stream
+    config.fps = 0;     // Auto-detected from stream
+    config.codec[0] = '\0'; // Auto-detected from stream
     config.priority = 5;
     config.record = true;
     config.segment_duration = 60;
@@ -381,25 +381,9 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.streaming_enabled = cJSON_IsTrue(streaming_enabled);
     }
 
-    cJSON *width = cJSON_GetObjectItem(stream_json, "width");
-    if (width && cJSON_IsNumber(width)) {
-        config.width = width->valueint;
-    }
-
-    cJSON *height = cJSON_GetObjectItem(stream_json, "height");
-    if (height && cJSON_IsNumber(height)) {
-        config.height = height->valueint;
-    }
-
-    cJSON *fps = cJSON_GetObjectItem(stream_json, "fps");
-    if (fps && cJSON_IsNumber(fps)) {
-        config.fps = fps->valueint;
-    }
-
-    cJSON *codec = cJSON_GetObjectItem(stream_json, "codec");
-    if (codec && cJSON_IsString(codec)) {
-        strncpy(config.codec, codec->valuestring, sizeof(config.codec) - 1);
-    }
+    // Note: width, height, fps, and codec are auto-detected from the stream
+    // and are not accepted from API input. They remain at their defaults (0/empty)
+    // until populated by stream probing or ONVIF discovery.
 
     cJSON *priority = cJSON_GetObjectItem(stream_json, "priority");
     if (priority && cJSON_IsNumber(priority)) {
@@ -740,33 +724,8 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         // streaming_enabled can be toggled dynamically, don't set non_dynamic_config_changed
     }
 
-    cJSON *width = cJSON_GetObjectItem(stream_json, "width");
-    if (width && cJSON_IsNumber(width)) {
-        config.width = width->valueint;
-        config_changed = true;
-        non_dynamic_config_changed = true;
-    }
-
-    cJSON *height = cJSON_GetObjectItem(stream_json, "height");
-    if (height && cJSON_IsNumber(height)) {
-        config.height = height->valueint;
-        config_changed = true;
-        non_dynamic_config_changed = true;
-    }
-
-    cJSON *fps = cJSON_GetObjectItem(stream_json, "fps");
-    if (fps && cJSON_IsNumber(fps)) {
-        config.fps = fps->valueint;
-        config_changed = true;
-        non_dynamic_config_changed = true;
-    }
-
-    cJSON *codec = cJSON_GetObjectItem(stream_json, "codec");
-    if (codec && cJSON_IsString(codec)) {
-        strncpy(config.codec, codec->valuestring, sizeof(config.codec) - 1);
-        config_changed = true;
-        non_dynamic_config_changed = true;
-    }
+    // Note: width, height, fps, and codec are auto-detected from the stream
+    // and are not accepted from API input on update either.
 
     cJSON *priority = cJSON_GetObjectItem(stream_json, "priority");
     if (priority && cJSON_IsNumber(priority)) {
