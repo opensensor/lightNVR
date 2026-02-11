@@ -170,6 +170,7 @@ EOF
 # go2rtc configuration file
 api:
   listen: :1984
+  origin: "*"
 
 rtsp:
   listen: :8554
@@ -190,7 +191,17 @@ streams:
 EOF
         log_info "Default go2rtc configuration created at /etc/lightnvr/go2rtc/go2rtc.yaml"
     fi
-    
+
+    # Ensure existing go2rtc configs have CORS origin set
+    # Without origin: "*", browsers block cross-origin requests from the web UI (:8080) to go2rtc (:1984)
+    if [ -f /etc/lightnvr/go2rtc/go2rtc.yaml ]; then
+        if ! grep -q 'origin:' /etc/lightnvr/go2rtc/go2rtc.yaml 2>/dev/null; then
+            log_warn "go2rtc config missing CORS origin setting - adding origin: \"*\" for browser compatibility"
+            sed -i '/listen: :1984/a\  origin: "*"' /etc/lightnvr/go2rtc/go2rtc.yaml
+            log_info "Added CORS origin to go2rtc configuration"
+        fi
+    fi
+
     # Set up models if needed
     if [ -d /usr/share/lightnvr/models ] && [ -n "$(ls -A /usr/share/lightnvr/models 2>/dev/null)" ]; then
         if [ -z "$(ls -A /var/lib/lightnvr/data/models 2>/dev/null)" ]; then
