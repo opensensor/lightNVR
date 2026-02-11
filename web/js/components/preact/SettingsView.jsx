@@ -569,30 +569,7 @@ export function SettingsView() {
               <span class="hint text-sm text-muted-foreground ml-2">Allow unauthenticated users to view streams (viewer access only)</span>
             </div>
           </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-username" class="font-medium">Username</label>
-            <input
-              type="text"
-              id="setting-username"
-              name="username"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.username}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-password" class="font-medium">Password</label>
-            <input
-              type="password"
-              id="setting-password"
-              name="password"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.password}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
+
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-webrtc-disabled" class="font-medium">Disable WebRTC (Use HLS Only)</label>
             <div class="col-span-2">
