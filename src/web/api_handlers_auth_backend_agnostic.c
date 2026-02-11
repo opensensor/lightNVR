@@ -145,51 +145,20 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     int rc = db_auth_authenticate(username, password, &user_id);
 
     if (rc != 0) {
-        // Try config-based authentication fallback for backward compatibility
-        if (strcmp(username, g_config.web_username) == 0 &&
-            strcmp(password, g_config.web_password) == 0 &&
-            g_config.web_password[0] != '\0') {
-            // Config-based auth successful
-            log_info("Login successful using config-based authentication for user: %s", username);
+        // Login failed - all authentication is now database-based
+        log_warn("Login failed for user: %s", username);
 
-            // Try to get or create a database user for this config user
-            // This allows session-based auth to work with config credentials
-            user_t user;
-            rc = db_auth_get_user_by_username(username, &user);
-            if (rc != 0) {
-                // User doesn't exist in database, create it with the config password
-                log_info("Creating database user for config-based auth: %s", username);
-                rc = db_auth_create_user(username, password, NULL, USER_ROLE_ADMIN, true, NULL);
-                if (rc != 0) {
-                    log_error("Failed to create database user for config auth");
-                    http_response_set_json_error(res, 500, "Failed to create user session");
-                    return;
-                }
-                // Get the newly created user
-                rc = db_auth_get_user_by_username(username, &user);
-                if (rc != 0) {
-                    log_error("Failed to retrieve newly created user");
-                    http_response_set_json_error(res, 500, "Failed to create user session");
-                    return;
-                }
-            }
-            user_id = user.id;
+        if (is_form) {
+            // For form submissions, send redirect to login page with error
+            http_response_add_header(res, "Location", "/login.html?error=1");
+            res->status_code = 302;
+            res->body = NULL;
+            res->body_length = 0;
         } else {
-            // Login failed
-            log_warn("Login failed for user: %s", username);
-
-            if (is_form) {
-                // For form submissions, send redirect to login page with error
-                http_response_add_header(res, "Location", "/login.html?error=1");
-                res->status_code = 302;
-                res->body = NULL;
-                res->body_length = 0;
-            } else {
-                // For API requests, return JSON error
-                http_response_set_json_error(res, 401, "Invalid username or password");
-            }
-            return;
+            // For API requests, return JSON error
+            http_response_set_json_error(res, 401, "Invalid username or password");
         }
+        return;
     }
 
     // Login successful

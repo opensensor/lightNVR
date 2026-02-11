@@ -167,15 +167,7 @@ int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
                 }
             }
 
-            // Fall back to config-based authentication for backward compatibility
-            if (strcmp(username, g_config.web_username) == 0 &&
-                strcmp(password, g_config.web_password) == 0) {
-                memset(user, 0, sizeof(user_t));
-                strncpy(user->username, username, sizeof(user->username) - 1);
-                user->role = USER_ROLE_ADMIN;
-                user->is_active = true;
-                return 1;
-            }
+            // Config-based authentication fallback removed - all auth is now database-based
         }
     }
 
