@@ -248,7 +248,8 @@ void load_default_config(config_t *config) {
     snprintf(config->api_detection_url, MAX_URL_LENGTH, "http://localhost:8000/detect");
     snprintf(config->api_detection_backend, 32, "onnx"); // Default to ONNX backend
 
-    // Global detection buffer defaults
+    // Global detection defaults
+    config->default_detection_threshold = 50;  // 50% confidence threshold
     config->default_pre_detection_buffer = 5;   // 5 seconds before detection
     config->default_post_detection_buffer = 10; // 10 seconds after detection
     snprintf(config->default_buffer_strategy, 32, "auto"); // Auto-select buffer strategy
@@ -571,6 +572,11 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "backend") == 0) {
             strncpy(config->api_detection_backend, value, 31);
             config->api_detection_backend[31] = '\0';
+        } else if (strcmp(name, "detection_threshold") == 0) {
+            config->default_detection_threshold = atoi(value);
+            // Clamp to valid range
+            if (config->default_detection_threshold < 0) config->default_detection_threshold = 0;
+            if (config->default_detection_threshold > 100) config->default_detection_threshold = 100;
         } else if (strcmp(name, "pre_detection_buffer") == 0) {
             config->default_pre_detection_buffer = atoi(value);
             // Clamp to valid range
@@ -1238,6 +1244,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "[api_detection]\n");
     fprintf(file, "url = %s\n", config->api_detection_url);
     fprintf(file, "backend = %s\n", config->api_detection_backend);
+    fprintf(file, "detection_threshold = %d  ; Default confidence threshold (0-100%%)\n", config->default_detection_threshold);
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
     fprintf(file, "post_detection_buffer = %d\n", config->default_post_detection_buffer);
     fprintf(file, "buffer_strategy = %s\n\n", config->default_buffer_strategy);

@@ -321,6 +321,17 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
                 fprintf(config_file, "      - \"stun:stun3.l.google.com:19302\"\n");
                 fprintf(config_file, "      - \"stun:stun4.l.google.com:19302\"\n");
             }
+
+            // Add TURN server if configured
+            if (global_config->turn_enabled && global_config->turn_server_url[0] != '\0') {
+                fprintf(config_file, "    - urls: [\"%s\"]\n", global_config->turn_server_url);
+                if (global_config->turn_username[0] != '\0') {
+                    fprintf(config_file, "      username: \"%s\"\n", global_config->turn_username);
+                }
+                if (global_config->turn_password[0] != '\0') {
+                    fprintf(config_file, "      credential: \"%s\"\n", global_config->turn_password);
+                }
+            }
         }
 
         // Candidates configuration for NAT traversal

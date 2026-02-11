@@ -259,8 +259,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "api_detection_url", g_config.api_detection_url);
     cJSON_AddStringToObject(settings, "api_detection_backend", g_config.api_detection_backend);
 
-    // Detection buffer defaults
-    cJSON_AddNumberToObject(settings, "default_detection_threshold", 50); // Global default (per-stream overrides exist)
+    // Detection defaults
+    cJSON_AddNumberToObject(settings, "default_detection_threshold", g_config.default_detection_threshold);
     cJSON_AddNumberToObject(settings, "pre_detection_buffer", g_config.default_pre_detection_buffer);
     cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
     cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
@@ -564,6 +564,18 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated swap_size: %llu bytes", (unsigned long long)g_config.swap_size);
     }
 
+    // Default detection threshold
+    cJSON *default_detection_threshold = cJSON_GetObjectItem(settings, "default_detection_threshold");
+    if (default_detection_threshold && cJSON_IsNumber(default_detection_threshold)) {
+        int value = default_detection_threshold->valueint;
+        // Clamp to valid range
+        if (value < 0) value = 0;
+        if (value > 100) value = 100;
+        g_config.default_detection_threshold = value;
+        settings_changed = true;
+        log_info("Updated default_detection_threshold: %d%%", g_config.default_detection_threshold);
+    }
+
     // Pre-detection buffer (default for new streams)
     cJSON *pre_detection_buffer = cJSON_GetObjectItem(settings, "pre_detection_buffer");
     if (pre_detection_buffer && cJSON_IsNumber(pre_detection_buffer)) {
@@ -805,37 +817,68 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     }
 
     // TURN server settings for WebRTC relay
+    // Changes to TURN settings require go2rtc restart to regenerate config
     cJSON *turn_enabled = cJSON_GetObjectItem(settings, "turn_enabled");
     if (turn_enabled && cJSON_IsBool(turn_enabled)) {
+        bool old_turn_enabled = g_config.turn_enabled;
         g_config.turn_enabled = cJSON_IsTrue(turn_enabled);
         settings_changed = true;
         log_info("Updated turn_enabled: %s", g_config.turn_enabled ? "true" : "false");
+        if (old_turn_enabled != g_config.turn_enabled && g_config.go2rtc_enabled) {
+            go2rtc_config_changed = true;
+            go2rtc_becoming_enabled = true;  // Restart go2rtc to apply new TURN config
+            log_info("TURN enabled setting changed, will restart go2rtc");
+        }
     }
 
     cJSON *turn_server_url = cJSON_GetObjectItem(settings, "turn_server_url");
     if (turn_server_url && cJSON_IsString(turn_server_url)) {
+        char old_turn_server_url[256];
+        strncpy(old_turn_server_url, g_config.turn_server_url, sizeof(old_turn_server_url) - 1);
+        old_turn_server_url[sizeof(old_turn_server_url) - 1] = '\0';
         strncpy(g_config.turn_server_url, turn_server_url->valuestring, sizeof(g_config.turn_server_url) - 1);
         g_config.turn_server_url[sizeof(g_config.turn_server_url) - 1] = '\0';
         settings_changed = true;
         log_info("Updated turn_server_url: %s", g_config.turn_server_url);
+        if (strcmp(old_turn_server_url, g_config.turn_server_url) != 0 && g_config.go2rtc_enabled && g_config.turn_enabled) {
+            go2rtc_config_changed = true;
+            go2rtc_becoming_enabled = true;  // Restart go2rtc to apply new TURN config
+            log_info("TURN server URL changed, will restart go2rtc");
+        }
     }
 
     cJSON *turn_username = cJSON_GetObjectItem(settings, "turn_username");
     if (turn_username && cJSON_IsString(turn_username)) {
+        char old_turn_username[128];
+        strncpy(old_turn_username, g_config.turn_username, sizeof(old_turn_username) - 1);
+        old_turn_username[sizeof(old_turn_username) - 1] = '\0';
         strncpy(g_config.turn_username, turn_username->valuestring, sizeof(g_config.turn_username) - 1);
         g_config.turn_username[sizeof(g_config.turn_username) - 1] = '\0';
         settings_changed = true;
         log_info("Updated turn_username: %s", g_config.turn_username);
+        if (strcmp(old_turn_username, g_config.turn_username) != 0 && g_config.go2rtc_enabled && g_config.turn_enabled) {
+            go2rtc_config_changed = true;
+            go2rtc_becoming_enabled = true;  // Restart go2rtc to apply new TURN config
+            log_info("TURN username changed, will restart go2rtc");
+        }
     }
 
     cJSON *turn_password = cJSON_GetObjectItem(settings, "turn_password");
     if (turn_password && cJSON_IsString(turn_password)) {
         // Only update if not the masked value
         if (strcmp(turn_password->valuestring, "********") != 0) {
+            char old_turn_password[128];
+            strncpy(old_turn_password, g_config.turn_password, sizeof(old_turn_password) - 1);
+            old_turn_password[sizeof(old_turn_password) - 1] = '\0';
             strncpy(g_config.turn_password, turn_password->valuestring, sizeof(g_config.turn_password) - 1);
             g_config.turn_password[sizeof(g_config.turn_password) - 1] = '\0';
             settings_changed = true;
             log_info("Updated turn_password");
+            if (strcmp(old_turn_password, g_config.turn_password) != 0 && g_config.go2rtc_enabled && g_config.turn_enabled) {
+                go2rtc_config_changed = true;
+                go2rtc_becoming_enabled = true;  // Restart go2rtc to apply new TURN config
+                log_info("TURN password changed, will restart go2rtc");
+            }
         }
     }
 
