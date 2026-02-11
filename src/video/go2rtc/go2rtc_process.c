@@ -291,7 +291,9 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
         }
 
         // ICE servers configuration
-        if (global_config->go2rtc_stun_enabled || global_config->go2rtc_ice_servers[0] != '\0') {
+        // Include ice_servers section if STUN, custom ICE servers, or TURN is enabled
+        if (global_config->go2rtc_stun_enabled || global_config->go2rtc_ice_servers[0] != '\0' ||
+            (global_config->turn_enabled && global_config->turn_server_url[0] != '\0')) {
             fprintf(config_file, "  ice_servers:\n");
 
             // Add custom ICE servers if specified
@@ -323,7 +325,12 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
             }
 
             // Add TURN server if configured
+            log_info("go2rtc config: turn_enabled=%d, turn_server_url='%s', turn_username='%s'",
+                     global_config->turn_enabled,
+                     global_config->turn_server_url,
+                     global_config->turn_username);
             if (global_config->turn_enabled && global_config->turn_server_url[0] != '\0') {
+                log_info("go2rtc config: Adding TURN server to config");
                 fprintf(config_file, "    - urls: [\"%s\"]\n", global_config->turn_server_url);
                 if (global_config->turn_username[0] != '\0') {
                     fprintf(config_file, "      username: \"%s\"\n", global_config->turn_username);
@@ -331,6 +338,10 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
                 if (global_config->turn_password[0] != '\0') {
                     fprintf(config_file, "      credential: \"%s\"\n", global_config->turn_password);
                 }
+            } else {
+                log_info("go2rtc config: TURN server NOT added (enabled=%d, url_empty=%d)",
+                         global_config->turn_enabled,
+                         global_config->turn_server_url[0] == '\0');
             }
         }
 
