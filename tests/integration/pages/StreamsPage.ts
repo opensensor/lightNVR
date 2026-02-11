@@ -122,8 +122,29 @@ export class StreamsPage extends BasePage {
     // Clear and fill the form fields
     await this.streamNameInput.clear();
     await this.streamNameInput.fill(config.name);
+
+    // Wait for name input to be updated
+    await this.page.waitForFunction(
+      (name) => {
+        const input = document.querySelector('#stream-name') as HTMLInputElement;
+        return input && input.value === name;
+      },
+      config.name,
+      { timeout: 5000 }
+    );
+
     await this.streamUrlInput.clear();
     await this.streamUrlInput.fill(config.url);
+
+    // Wait for URL input to be updated
+    await this.page.waitForFunction(
+      (url) => {
+        const input = document.querySelector('#stream-url') as HTMLInputElement;
+        return input && input.value === url;
+      },
+      config.url,
+      { timeout: 5000 }
+    );
 
     if (config.enabled !== undefined) {
       // Scope to the modal to avoid conflicts with other modals
@@ -137,23 +158,61 @@ export class StreamsPage extends BasePage {
 
     // Wait for the save button to be enabled and visible
     await this.saveButton.waitFor({ state: 'visible', timeout: 5000 });
-    await sleep(300); // Small delay to ensure form state is updated
 
-    // Wait for the POST request to complete and modal to close
-    // Use a more specific URL pattern to match only POST /api/streams (not /api/streams/test or /api/streams/{id})
+    // Wait for React state to update - this is critical for the mutation to work
+    await sleep(500);
+
+    // Set up listeners for both request and response
+    const requestPromise = this.page.waitForRequest(
+      request => {
+        const url = request.url();
+        const method = request.method();
+        const isPostStreams = method === 'POST' && (url.endsWith('/api/streams') || url.match(/\/api\/streams(\?|$)/));
+        if (isPostStreams) {
+          console.log(`Detected POST request to: ${url}`);
+        }
+        return isPostStreams;
+      },
+      { timeout: 30000 }
+    );
+
     const responsePromise = this.page.waitForResponse(
       response => {
         const url = response.url();
         const method = response.request().method();
-        // Match POST /api/streams but not POST /api/streams/test or POST /api/streams/{id}
         const isPostStreams = method === 'POST' && (url.endsWith('/api/streams') || url.match(/\/api\/streams(\?|$)/));
+        if (isPostStreams) {
+          console.log(`Detected POST response from: ${url} with status: ${response.status()}`);
+        }
         return isPostStreams;
       },
-      { timeout: 30000 } // Increase timeout to 30 seconds for CI environment
+      { timeout: 30000 }
     );
 
-    // Click save - remove force: true to ensure proper event handling
+    // Ensure button is in viewport and clickable
+    await this.saveButton.scrollIntoViewIfNeeded();
+
+    // Check if button is enabled
+    const isEnabled = await this.saveButton.isEnabled();
+    console.log(`Save button enabled: ${isEnabled}`);
+    if (!isEnabled) {
+      await this.page.screenshot({ path: `test-results/stream-button-disabled-${config.name}.png` });
+      throw new Error('Save button is disabled');
+    }
+
+    // Click save
+    console.log(`Clicking save button for stream: ${config.name}`);
     await this.saveButton.click();
+
+    // Wait for request to be sent first
+    try {
+      await requestPromise;
+      console.log('POST request was sent successfully');
+    } catch (e) {
+      console.error('POST request was never sent:', e.message);
+      await this.page.screenshot({ path: `test-results/stream-no-request-${config.name}.png` });
+      throw new Error(`POST request was never sent: ${e.message}`);
+    }
 
     // Wait for the API response
     try {
