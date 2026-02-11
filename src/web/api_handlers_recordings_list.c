@@ -48,12 +48,21 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     log_debug("Processing GET /api/recordings request");
 
     // Check authentication if enabled
+    // In demo mode, allow unauthenticated viewer access to read recordings
     if (g_config.web_auth_enabled) {
         user_t user;
-        if (!httpd_get_authenticated_user(req, &user)) {
-            log_error("Authentication failed for recordings request");
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
+        if (g_config.demo_mode) {
+            if (!httpd_check_viewer_access(req, &user)) {
+                log_error("Authentication failed for GET /api/recordings request");
+                http_response_set_json_error(res, 401, "Unauthorized");
+                return;
+            }
+        } else {
+            if (!httpd_get_authenticated_user(req, &user)) {
+                log_error("Authentication failed for GET /api/recordings request");
+                http_response_set_json_error(res, 401, "Unauthorized");
+                return;
+            }
         }
     }
 

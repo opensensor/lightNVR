@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { ZoneEditor } from './ZoneEditor.jsx';
+import { obfuscateUrlCredentials } from '../../utils/url-utils.js';
 
 /**
  * Accordion Section Component
@@ -58,7 +59,8 @@ export function StreamConfigModal({
   onTestMotion,
   onSave,
   onClose,
-  onRefreshModels
+  onRefreshModels,
+  hideCredentials = false
 }) {
   const [showZoneEditor, setShowZoneEditor] = useState(false);
   const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
@@ -170,13 +172,17 @@ export function StreamConfigModal({
                     type="text"
                     id="stream-url"
                     name="url"
-                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                    className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
                     placeholder="rtsp://username:password@192.168.1.100:554/stream"
-                    value={currentStream.url}
+                    value={hideCredentials ? obfuscateUrlCredentials(currentStream.url) : currentStream.url}
                     onChange={onInputChange}
                     required
+                    readOnly={hideCredentials}
+                    title={hideCredentials ? 'URL credentials are hidden in demo/viewer mode' : ''}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">RTSP URL for the camera stream</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {hideCredentials ? 'URL credentials hidden for security' : 'RTSP URL for the camera stream'}
+                  </p>
                 </div>
 
                 <div className="flex items-center space-x-6">

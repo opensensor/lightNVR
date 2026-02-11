@@ -9,6 +9,7 @@ import { ContentLoader } from './LoadingIndicator.jsx';
 import { StreamDeleteModal } from './StreamDeleteModal.jsx';
 import { StreamConfigModal } from './StreamConfigModal.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
+import { conditionallyObfuscateUrl } from '../../utils/url-utils.js';
 import {
   useQuery,
   useMutation,
@@ -26,6 +27,8 @@ export function StreamsView() {
 
   // User role state for permission-based UI
   const [userRole, setUserRole] = useState(null);
+  // Demo mode state - credentials should be hidden in demo mode
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   // Fetch user role on mount
   useEffect(() => {
@@ -34,6 +37,7 @@ export function StreamsView() {
         const result = await validateSession();
         if (result.valid && result.role) {
           setUserRole(result.role);
+          setIsDemoMode(result.demo_mode === true);
         } else {
           // Session invalid - set to empty string to indicate fetch completed
           setUserRole('');
@@ -52,6 +56,8 @@ export function StreamsView() {
   // Check if user can modify streams (admin or user role, not viewer)
   // While loading, default to enabled so admin/user doesn't see hidden buttons
   const canModifyStreams = roleLoading || userRole === 'admin' || userRole === 'user';
+  // Check if credentials should be hidden (demo mode or viewer role)
+  const shouldHideCredentials = isDemoMode || userRole === 'viewer';
 
   // State for streams data
   const [modalVisible, setModalVisible] = useState(false);
@@ -946,7 +952,7 @@ export function StreamsView() {
                       {stream.name}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">{stream.url}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{conditionallyObfuscateUrl(stream.url, userRole, isDemoMode)}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{stream.width}x{stream.height}</td>
                   <td className="px-6 py-4 whitespace-nowrap">{stream.fps}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -1025,6 +1031,7 @@ export function StreamsView() {
           onSave={handleSubmit}
           onClose={closeModal}
           onRefreshModels={loadDetectionModels}
+          hideCredentials={shouldHideCredentials}
         />
       )}
 

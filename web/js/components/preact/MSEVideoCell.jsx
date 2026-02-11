@@ -601,7 +601,7 @@ export function MSEVideoCell({
       )}
 
       {/* MSE mode indicator */}
-      {isPlaying && (
+      {showLabels && isPlaying && (
         <div
           className="mode-indicator"
           style={{
