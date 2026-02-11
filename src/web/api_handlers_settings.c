@@ -212,9 +212,10 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "web_port", g_config.web_port);
     cJSON_AddStringToObject(settings, "web_root", g_config.web_root);
     cJSON_AddBoolToObject(settings, "web_auth_enabled", g_config.web_auth_enabled);
+    cJSON_AddBoolToObject(settings, "demo_mode", g_config.demo_mode);
     cJSON_AddStringToObject(settings, "web_username", g_config.web_username);
     cJSON_AddBoolToObject(settings, "webrtc_disabled", g_config.webrtc_disabled);
-    
+
     // Don't include the password for security reasons
     cJSON_AddStringToObject(settings, "web_password", "********");
     
@@ -372,6 +373,14 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.web_auth_enabled = cJSON_IsTrue(web_auth_enabled);
         settings_changed = true;
         log_info("Updated web_auth_enabled: %s", g_config.web_auth_enabled ? "true" : "false");
+    }
+
+    // Demo mode
+    cJSON *demo_mode = cJSON_GetObjectItem(settings, "demo_mode");
+    if (demo_mode && cJSON_IsBool(demo_mode)) {
+        g_config.demo_mode = cJSON_IsTrue(demo_mode);
+        settings_changed = true;
+        log_info("Updated demo_mode: %s", g_config.demo_mode ? "true" : "false");
     }
 
     // Web username

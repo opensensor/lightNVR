@@ -29,6 +29,7 @@ export function SettingsView() {
     dbPath: '/var/lib/lightnvr/lightnvr.db',
     webPort: '8080',
     authEnabled: true,
+    demoMode: false, // Demo mode: allows unauthenticated viewer access
     username: 'admin',
     password: 'admin',
     webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
@@ -162,6 +163,7 @@ export function SettingsView() {
         dbPath: settingsData.db_path || '',
         webPort: settingsData.web_port?.toString() || '',
         authEnabled: settingsData.web_auth_enabled || false,
+        demoMode: settingsData.demo_mode || false,
         username: settingsData.web_username || '',
         password: settingsData.web_password || '',
         webrtcDisabled: settingsData.webrtc_disabled || false,
@@ -235,6 +237,7 @@ export function SettingsView() {
       db_path: settings.dbPath,
       web_port: parseInt(settings.webPort, 10),
       web_auth_enabled: settings.authEnabled,
+      demo_mode: settings.demoMode,
       web_username: settings.username,
       web_password: settings.password,
       webrtc_disabled: settings.webrtcDisabled,
@@ -554,6 +557,22 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-demo-mode" class="font-medium">Demo Mode</label>
+            <div class="col-span-2 flex items-center">
+              <input
+                type="checkbox"
+                id="setting-demo-mode"
+                name="demoMode"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{accentColor: 'hsl(var(--primary))'}}
+                checked={settings.demoMode}
+                onChange={handleInputChange}
+                disabled={!canModifySettings || !settings.authEnabled}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Allow unauthenticated users to view streams (viewer access only)</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
