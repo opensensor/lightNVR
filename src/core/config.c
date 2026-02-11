@@ -1259,7 +1259,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "root = %s\n", config->web_root);
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
     fprintf(file, "username = %s\n", config->web_username);
-    fprintf(file, "password = %s  ; IMPORTANT: Change this default password!\n", config->web_password);
+    // Note: web_password is no longer saved to config - user passwords are managed in the database
     fprintf(file, "webrtc_disabled = %s\n", config->webrtc_disabled ? "true" : "false");
     fprintf(file, "auth_timeout_hours = %d  ; Session timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
