@@ -13,51 +13,7 @@
 #include "database/db_core.h"
 #include "core/logger.h"
 
-/**
- * Initialize zones table
- */
-int init_zones_table(void) {
-    const char *sql =
-        "CREATE TABLE IF NOT EXISTS detection_zones ("
-        "id TEXT PRIMARY KEY,"
-        "stream_name TEXT NOT NULL,"
-        "name TEXT NOT NULL,"
-        "enabled INTEGER DEFAULT 1,"
-        "color TEXT DEFAULT '#3b82f6',"
-        "polygon TEXT NOT NULL,"  // JSON array of points
-        "filter_classes TEXT DEFAULT '',"
-        "min_confidence REAL DEFAULT 0.0,"
-        "created_at INTEGER NOT NULL,"
-        "updated_at INTEGER NOT NULL,"
-        "FOREIGN KEY (stream_name) REFERENCES streams(name) ON DELETE CASCADE"
-        ");";
 
-    sqlite3 *db = get_db_handle();
-    if (!db) {
-        log_error("Database not initialized");
-        return -1;
-    }
-
-    char *err_msg = NULL;
-    int rc = sqlite3_exec(db, sql, NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to create detection_zones table: %s", err_msg);
-        sqlite3_free(err_msg);
-        return -1;
-    }
-
-    // Create index on stream_name for faster lookups
-    const char *index_sql = "CREATE INDEX IF NOT EXISTS idx_zones_stream ON detection_zones(stream_name);";
-    rc = sqlite3_exec(db, index_sql, NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to create index on detection_zones: %s", err_msg);
-        sqlite3_free(err_msg);
-        return -1;
-    }
-
-    log_info("Detection zones table initialized successfully");
-    return 0;
-}
 
 /**
  * Convert polygon points to JSON string

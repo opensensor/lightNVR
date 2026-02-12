@@ -33,12 +33,6 @@ typedef struct {
 } detection_zone_t;
 
 /**
- * Initialize zones table
- * @return 0 on success, -1 on error
- */
-int init_zones_table(void);
-
-/**
  * Save detection zones for a stream
  * @param stream_name Stream name
  * @param zones Array of zones
