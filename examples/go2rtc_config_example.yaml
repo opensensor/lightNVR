@@ -4,12 +4,8 @@
 api:
   listen: :1984
   origin: 'http://localhost:8080'
-  credentials: true
-  allow: 'GET, POST, OPTIONS'
-  headers: 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-  auth:
-    username: admin
-    password: admin
+  username: admin
+  password: admin
 
 rtsp:
   listen: ":8554"

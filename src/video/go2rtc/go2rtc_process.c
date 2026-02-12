@@ -266,14 +266,11 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     // Use wildcard for CORS origin to support both localhost and 127.0.0.1
     // This allows the web interface to access go2rtc API from any local address
     fprintf(config_file, "  origin: '*'\n");
-    fprintf(config_file, "  allow: 'GET, POST, OPTIONS'\n");  // Allow these methods for CORS
-    fprintf(config_file, "  headers: 'Origin, X-Requested-With, Content-Type, Accept, Authorization'\n");  // Allow these headers for CORS
-
     // Add authentication if enabled in the main application
+    // go2rtc expects username/password directly under api:, not nested under auth:
     if (global_config->web_auth_enabled) {
-        fprintf(config_file, "  auth:\n");
-        fprintf(config_file, "    username: %s\n", global_config->web_username);
-        fprintf(config_file, "    password: %s\n", global_config->web_password);
+        fprintf(config_file, "  username: %s\n", global_config->web_username);
+        fprintf(config_file, "  password: %s\n", global_config->web_password);
     }
 
     // RTSP configuration - use configured port or default to 8554

@@ -41,12 +41,29 @@
 /**
  * Interrupt callback for FFmpeg operations
  * This allows us to interrupt blocking FFmpeg calls (like av_read_frame) during shutdown
+ * or when the per-thread shutdown_requested flag is set (e.g., during recording restart).
+ *
+ * The opaque pointer (ctx) is expected to be an atomic_int* pointing to the thread's
+ * shutdown_requested flag. If NULL, only the global shutdown flag is checked.
  */
 static int interrupt_callback(void *ctx) {
-    (void)ctx;  // Unused parameter
+    // Always check the global shutdown flag
+    if (is_shutdown_initiated()) {
+        return 1;
+    }
 
-    // Return 1 to interrupt the operation if shutdown has been initiated
-    return is_shutdown_initiated() ? 1 : 0;
+    // Also check the per-thread shutdown flag if provided
+    // This is critical: without this check, stopping an individual recording thread
+    // (e.g., during dead recording recovery) would block forever because the thread
+    // is stuck in a blocking FFmpeg call that only checks the global shutdown flag.
+    if (ctx) {
+        atomic_int *shutdown_flag = (atomic_int *)ctx;
+        if (atomic_load(shutdown_flag)) {
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 /**
@@ -99,11 +116,13 @@ void mp4_segment_recorder_init(void) {
  * @param has_audio Flag indicating whether to include audio in the recording
  * @param input_ctx_ptr Pointer to the input context for this stream (reused between segments)
  * @param segment_info_ptr Pointer to the segment info for this stream
+ * @param shutdown_flag Optional pointer to per-thread atomic shutdown flag (checked by interrupt callback)
  * @return 0 on success, negative value on error
  */
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
                    AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr,
-                   record_segment_started_cb started_cb, void *cb_ctx) {
+                   record_segment_started_cb started_cb, void *cb_ctx,
+                   atomic_int *shutdown_flag) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
     AVFormatContext *output_ctx = NULL;
@@ -160,8 +179,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         log_debug("Using existing input context");
 
         // BUGFIX: Set interrupt callback on existing context to allow shutdown interruption
+        // Pass the per-thread shutdown flag so individual threads can be interrupted
         input_ctx->interrupt_callback.callback = interrupt_callback;
-        input_ctx->interrupt_callback.opaque = NULL;
+        input_ctx->interrupt_callback.opaque = shutdown_flag;
     } else {
         // BUGFIX: Allocate input context first so we can set the interrupt callback
         // This allows us to interrupt blocking operations like av_read_frame during shutdown
@@ -173,8 +193,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         }
 
         // Set interrupt callback to allow interrupting blocking operations during shutdown
+        // Pass the per-thread shutdown flag so individual threads can be interrupted
         input_ctx->interrupt_callback.callback = interrupt_callback;
-        input_ctx->interrupt_callback.opaque = NULL;
+        input_ctx->interrupt_callback.opaque = shutdown_flag;
 
         // Set up RTSP options for low latency
         av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)

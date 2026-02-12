@@ -8,6 +8,9 @@
  * - Managing thread resources
  */
 
+// Enable GNU extensions for pthread_timedjoin_np
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -243,28 +246,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                         log_info("File size for %s: %llu bytes",
                                 current_path, (unsigned long long)size_bytes);
 
-                        // Get the actual end time based on the video duration
+                        // Use current_time as end_time directly instead of probing
+                        // the MP4 file with avformat_open_input + avformat_find_stream_info.
+                        // The probing was taking ~3-4 seconds of blocking I/O between
+                        // segments, causing consistent gaps in continuous recording.
                         time_t end_time = current_time;
-
-                        // Try to get the actual duration from the MP4 file
-                        recording_metadata_t metadata;
-                        if (get_recording_metadata_by_id(thread_ctx->writer->current_recording_id, &metadata) == 0) {
-                            time_t start_time = metadata.start_time;
-
-                            AVFormatContext *format_ctx = NULL;
-                            if (avformat_open_input(&format_ctx, current_path, NULL, NULL) == 0) {
-                                if (avformat_find_stream_info(format_ctx, NULL) >= 0) {
-                                    if (format_ctx->duration != AV_NOPTS_VALUE) {
-                                        // Duration is in AV_TIME_BASE units (microseconds)
-                                        int64_t duration_seconds = format_ctx->duration / AV_TIME_BASE;
-                                        end_time = start_time + duration_seconds;
-                                        log_info("Calculated end_time from MP4 duration: start=%ld, duration=%ld, end=%ld",
-                                                (long)start_time, (long)duration_seconds, (long)end_time);
-                                    }
-                                }
-                                avformat_close_input(&format_ctx);
-                            }
-                        }
 
                         // Mark the recording as complete with the correct file size and end time
                         update_recording_metadata(thread_ctx->writer->current_recording_id, end_time, size_bytes, true);
@@ -373,10 +359,14 @@ static void *mp4_writer_rtsp_thread(void *arg) {
 
         // BUGFIX: Pass per-stream input context and segment info to record_segment
         // This prevents stream mixing when multiple streams are recording simultaneously
+        // BUGFIX: Pass per-thread shutdown_requested flag so the FFmpeg interrupt callback
+        // can interrupt blocking calls when this specific thread needs to be stopped
+        // (e.g., during dead recording recovery), not just during global shutdown.
         ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
                            segment_duration, thread_ctx->writer->has_audio,
                            &thread_ctx->input_ctx, &thread_ctx->segment_info,
-                           on_segment_started_cb, thread_ctx);
+                           on_segment_started_cb, thread_ctx,
+                           &thread_ctx->shutdown_requested);
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
                 thread_ctx->segment_info.segment_index, thread_ctx->segment_info.has_audio,
@@ -623,17 +613,38 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
         return;
     }
 
-    // Signal thread to stop
+    // Signal thread to stop — the interrupt callback now checks this flag,
+    // so any blocking FFmpeg call (av_read_frame, avformat_open_input) will
+    // be interrupted promptly.
     atomic_store(&writer->thread_ctx->shutdown_requested, 1);
 
-    // BUGFIX: Always join the thread, regardless of the running flag
-    // The thread might have already set running=0 before we get here, but we still need to join it
-    // to clean up thread resources. pthread_join is safe to call even if the thread has already exited.
-    log_debug("Joining recording thread for %s (running=%d)",
-             writer->stream_name ? writer->stream_name : "unknown",
-             writer->thread_ctx->running);
+    const char *sname = writer->stream_name ? writer->stream_name : "unknown";
 
-    pthread_join(writer->thread_ctx->thread, NULL);
+    // Use a timed join to prevent the main thread from blocking forever.
+    // With the interrupt callback fix, the thread should exit quickly once
+    // shutdown_requested is set. The timeout is a safety net.
+    log_info("Joining recording thread for %s (running=%d)", sname, writer->thread_ctx->running);
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += 10;  // 10 second timeout
+
+    int join_ret = pthread_timedjoin_np(writer->thread_ctx->thread, NULL, &ts);
+    if (join_ret == ETIMEDOUT) {
+        log_warn("Recording thread for %s did not exit within 10 seconds, cancelling thread", sname);
+        pthread_cancel(writer->thread_ctx->thread);
+        // Give it a moment to handle cancellation, then detach if still stuck
+        struct timespec ts2;
+        clock_gettime(CLOCK_REALTIME, &ts2);
+        ts2.tv_sec += 3;  // 3 more seconds for cancellation
+        int join_ret2 = pthread_timedjoin_np(writer->thread_ctx->thread, NULL, &ts2);
+        if (join_ret2 == ETIMEDOUT) {
+            log_error("Recording thread for %s still stuck after cancel, detaching to avoid deadlock", sname);
+            pthread_detach(writer->thread_ctx->thread);
+        }
+    } else if (join_ret != 0) {
+        log_warn("pthread_timedjoin_np for %s returned error %d", sname, join_ret);
+    }
     writer->thread_ctx->running = 0;
 
     // CRITICAL: Only free resources after thread has completely stopped
@@ -683,16 +694,16 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
 
     // CRITICAL FIX: Check if the recording is actually producing output
     // A thread can be "running" but stuck or not actually writing packets
-    // If no packets have been written in the last 90 seconds, consider it dead
-    // (90 seconds allows for segment duration of 30 seconds plus some buffer)
+    // If no packets have been written in the last 45 seconds, consider it dead
+    // (45 seconds = segment duration of 30 seconds + 15 second buffer for retries)
     time_t now = time(NULL);
     time_t last_packet = writer->last_packet_time;
 
     // If last_packet_time is 0, the recording just started - give it time to initialize
-    // Allow up to 120 seconds for initial connection and first packet
+    // Allow up to 60 seconds for initial connection and first packet
     if (last_packet == 0) {
         time_t creation_time = writer->creation_time;
-        if (creation_time > 0 && (now - creation_time) > 120) {
+        if (creation_time > 0 && (now - creation_time) > 60) {
             log_warn("MP4 recording for stream %s has been running for %ld seconds but never wrote any packets - considering it dead",
                     writer->stream_name, (long)(now - creation_time));
             return 0;
@@ -703,7 +714,7 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
 
     // Check if packets have been written recently
     long seconds_since_last_packet = (long)(now - last_packet);
-    if (seconds_since_last_packet > 90) {
+    if (seconds_since_last_packet > 45) {
         log_warn("MP4 recording for stream %s hasn't written packets in %ld seconds - considering it dead",
                 writer->stream_name, seconds_since_last_packet);
         return 0;

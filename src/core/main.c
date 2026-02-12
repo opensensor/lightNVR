@@ -1093,9 +1093,10 @@ int main(int argc, char *argv[]) {
             last_ffmpeg_leak_check_time = now;
         }
 
-        // Periodically check and restart failed services every 60 seconds
+        // Periodically check and restart failed services every 30 seconds
         // This ensures self-healing of MP4 recordings, HLS streams, and detection threads
-        if (now - last_service_check_time > 60) {
+        // Reduced from 60s to 30s for faster recovery when cameras come back online
+        if (now - last_service_check_time > 30) {
             check_and_ensure_services();
             last_service_check_time = now;
         }
@@ -1628,10 +1629,12 @@ static void check_and_ensure_services(void) {
     // by the maintenance loop.
     config_t *current_config = get_streaming_config();
 
+    log_info("Running periodic service check (%d max streams)", current_config->max_streams);
+
     for (int i = 0; i < current_config->max_streams; i++) {
         // Log the record flag for debugging
         if (current_config->streams[i].name[0] != '\0') {
-            log_debug("Service check for stream %s: enabled=%d, record=%d, streaming_enabled=%d",
+            log_info("Service check for stream %s: enabled=%d, record=%d, streaming_enabled=%d",
                      current_config->streams[i].name,
                      current_config->streams[i].enabled,
                      current_config->streams[i].record,
@@ -1641,6 +1644,7 @@ static void check_and_ensure_services(void) {
         if (current_config->streams[i].name[0] != '\0' && current_config->streams[i].enabled && current_config->streams[i].record) {
             // Check if MP4 recording is active for this stream
             int recording_state = get_recording_state(current_config->streams[i].name);
+            log_info("Recording state for stream %s: %d (1=active, 0=inactive)", current_config->streams[i].name, recording_state);
 
             if (recording_state == 0) {
                 // Recording is not active, start it

@@ -57,11 +57,13 @@ typedef void (*record_segment_started_cb)(void *user_ctx);
  * @param segment_info_ptr Pointer to the segment info for this stream
  * @param started_cb Optional callback invoked once when the first keyframe is detected
  * @param cb_ctx Opaque context pointer passed to started_cb
+ * @param shutdown_flag Optional pointer to per-thread atomic shutdown flag (checked by interrupt callback)
  * @return 0 on success, negative value on error
  */
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
                    AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr,
-                   record_segment_started_cb started_cb, void *cb_ctx);
+                   record_segment_started_cb started_cb, void *cb_ctx,
+                   atomic_int *shutdown_flag);
 
 /**
  * Initialize the MP4 segment recorder
