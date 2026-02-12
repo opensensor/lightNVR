@@ -1617,12 +1617,10 @@ static void check_and_ensure_services(void) {
         return;
     }
 
-    // Check web server health and mark for restart if needed
-    // The health check thread will handle the actual restart
-    if (!is_web_server_healthy()) {
-        log_warn("Web server is not healthy, marking for restart");
-        mark_server_for_restart();
-    }
+    // Web server health is monitored by the dedicated health check thread
+    // (started via start_health_check_thread), which performs curl-based checks
+    // every 30 seconds and handles restarts after consecutive failures.
+    // We no longer duplicate that check here to avoid false positives.
 
     // Read current stream configurations from the database instead of using the
     // stale global config, which is only populated at startup. This ensures that
