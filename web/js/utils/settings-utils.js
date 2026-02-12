@@ -61,13 +61,15 @@ export async function getGo2rtcApiPort() {
 /**
  * Get the go2rtc base URL for API calls
  *
+ * go2rtc is configured with base_path: /go2rtc, so all its API endpoints
+ * are served under the /go2rtc prefix (e.g., /go2rtc/api/streams).
+ *
  * Over HTTPS: Uses origin + /go2rtc path prefix. The ingress/reverse proxy
- * should route /go2rtc/* directly to go2rtc service (which has base_path: /go2rtc/).
- * This avoids mixed content issues while hitting go2rtc directly (not through lightNVR).
+ * routes /go2rtc/* directly to go2rtc service.
  *
- * Over HTTP: Uses hostname:port to hit go2rtc directly.
+ * Over HTTP: Uses hostname:port + /go2rtc to hit go2rtc directly.
  *
- * @returns {Promise<string>} - go2rtc base URL (e.g., "http://hostname:1984" or "https://hostname/go2rtc")
+ * @returns {Promise<string>} - go2rtc base URL (e.g., "http://hostname:1984/go2rtc" or "https://hostname/go2rtc")
  */
 export async function getGo2rtcBaseUrl() {
   // When served over HTTPS, use the /go2rtc path prefix.
@@ -75,8 +77,9 @@ export async function getGo2rtcBaseUrl() {
   if (window.location.protocol === 'https:') {
     return `${window.location.origin}/go2rtc`;
   }
+  // Over HTTP, hit go2rtc directly on its port with the base_path prefix
   const port = await getGo2rtcApiPort();
-  return `http://${window.location.hostname}:${port}`;
+  return `http://${window.location.hostname}:${port}/go2rtc`;
 }
 
 /**

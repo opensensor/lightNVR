@@ -90,7 +90,7 @@ static bool is_go2rtc_running_as_service(int api_port) {
         }
 
         // Format the URL for the API endpoint
-        snprintf(url, sizeof(url), "http://localhost:%d/api/streams", api_port);
+        snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams", api_port);
 
         // Set curl options
         curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -1115,7 +1115,7 @@ bool go2rtc_process_start(int api_port) {
             }
 
             // Format the URL for the API endpoint
-            snprintf(url, sizeof(url), "http://localhost:%d/api", api_port);
+            snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api", api_port);
 
             // Set curl options
             curl_easy_setopt(curl, CURLOPT_URL, url);

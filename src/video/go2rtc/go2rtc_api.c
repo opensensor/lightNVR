@@ -278,7 +278,7 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     }
     *q = '\0';
 
-    snprintf(url, sizeof(url), "http://%s:%d/api/streams?src=%s&name=%s",
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s&name=%s",
             g_api_host, g_api_port, encoded_url, stream_id);
 
     log_info("Adding stream with URL: %s", url);
@@ -350,7 +350,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
         return false;
     }
 
-    int offset = snprintf(url, URL_BUFFER_SIZE, "http://%s:%d/api/streams?",
+    int offset = snprintf(url, URL_BUFFER_SIZE, "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?",
                           g_api_host, g_api_port);
 
     // Add each source as a src parameter
@@ -445,7 +445,7 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
     resp.buffer[0] = '\0';
 
     // Format the URL for the API endpoint with the src parameter
-    snprintf(url, sizeof(url), "http://%s:%d/api/streams?src=%s", g_api_host, g_api_port, stream_id);
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s", g_api_host, g_api_port, stream_id);
 
     // Log the URL for debugging
     log_info("DELETE URL: %s", url);
@@ -481,7 +481,7 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
             resp.buffer[0] = '\0';
 
             // Format the URL for the old API endpoint
-            snprintf(url, sizeof(url), "http://%s:%d/api/streams/%s", g_api_host, g_api_port, stream_id);
+            snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams/%s", g_api_host, g_api_port, stream_id);
 
             log_info("Fallback DELETE URL: %s", url);
 
@@ -530,18 +530,18 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
     char response[HTTP_BUFFER_SIZE];
     
     // Prepare API path
-    snprintf(path, sizeof(path), "/api/streams");
-    
+    snprintf(path, sizeof(path), GO2RTC_BASE_PATH "/api/streams");
+
     // Send GET request
     int status = send_http_request("GET", path, NULL, response, sizeof(response));
-    
+
     if (status == 200) {
         char *body = extract_response_body(response);
         if (body && strstr(body, stream_id)) {
             return true;
         }
     }
-    
+
     return false;
 }
 
@@ -557,7 +557,7 @@ bool go2rtc_api_get_webrtc_url(const char *stream_id, char *buffer, size_t buffe
     }
     
     // Format the WebRTC URL
-    snprintf(buffer, buffer_size, "http://%s:%d/webrtc/%s", g_api_host, g_api_port, stream_id);
+    snprintf(buffer, buffer_size, "http://%s:%d" GO2RTC_BASE_PATH "/webrtc/%s", g_api_host, g_api_port, stream_id);
     return true;
 }
 
@@ -571,7 +571,7 @@ bool go2rtc_api_update_config(void) {
     char response[HTTP_BUFFER_SIZE];
     
     // Prepare API path
-    snprintf(path, sizeof(path), "/api/config");
+    snprintf(path, sizeof(path), GO2RTC_BASE_PATH "/api/config");
     
     // Send GET request
     int status = send_http_request("GET", path, NULL, response, sizeof(response));
@@ -608,11 +608,11 @@ bool go2rtc_api_get_streams(char *buffer, size_t buffer_size) {
     char response[HTTP_BUFFER_SIZE];
     
     // Prepare API path
-    snprintf(path, sizeof(path), "/api/streams");
-    
+    snprintf(path, sizeof(path), GO2RTC_BASE_PATH "/api/streams");
+
     // Send GET request
     int status = send_http_request("GET", path, NULL, response, sizeof(response));
-    
+
     if (status == 200) {
         char *body = extract_response_body(response);
         if (body) {
@@ -621,7 +621,7 @@ bool go2rtc_api_get_streams(char *buffer, size_t buffer_size) {
             return true;
         }
     }
-    
+
     return false;
 }
 
@@ -648,7 +648,7 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
     resp.buffer[0] = '\0';
 
     // Format the URL for the API endpoint
-    snprintf(url, sizeof(url), "http://%s:%d/api", g_api_host, g_api_port);
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api", g_api_host, g_api_port);
 
     // Set CURL options for GET request
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -739,9 +739,9 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
     response_buffer_t resp = { .size = 0 };
     resp.buffer[0] = '\0';
 
-    // Build the preload URL: PUT /api/preload?src={stream_id}&video&audio
+    // Build the preload URL: PUT /go2rtc/api/preload?src={stream_id}&video&audio
     // This tells go2rtc to keep a persistent consumer connected to the stream
-    snprintf(url, sizeof(url), "http://%s:%d/api/preload?src=%s&video&audio",
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s&video&audio",
             g_api_host, g_api_port, stream_id);
 
     log_info("Preloading stream with URL: %s", url);

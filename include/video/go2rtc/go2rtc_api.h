@@ -10,6 +10,15 @@
 #include <stddef.h>
 
 /**
+ * @brief Base path prefix for go2rtc API endpoints
+ *
+ * This must match the base_path setting in go2rtc.yaml.
+ * go2rtc registers all its API routes under this prefix when base_path is set.
+ * For example, /api/streams becomes /go2rtc/api/streams.
+ */
+#define GO2RTC_BASE_PATH "/go2rtc"
+
+/**
  * @brief Initialize the go2rtc API client
  * 
  * @param api_host Host address of the go2rtc API (e.g., "localhost")

@@ -531,7 +531,7 @@ bool go2rtc_stream_is_ready(void) {
     }
 
     // Format the URL for the API endpoint with safety checks
-    int url_result = snprintf(url, sizeof(url), "http://localhost:%d/api/streams", g_api_port);
+    int url_result = snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams", g_api_port);
     if (url_result < 0 || url_result >= (int)sizeof(url)) {
         log_warn("go2rtc_stream_is_ready: failed to format URL");
         curl_easy_cleanup(curl);

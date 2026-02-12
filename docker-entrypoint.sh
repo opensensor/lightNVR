@@ -171,6 +171,7 @@ EOF
 api:
   listen: :1984
   origin: "*"
+  base_path: /go2rtc
 
 rtsp:
   listen: :8554

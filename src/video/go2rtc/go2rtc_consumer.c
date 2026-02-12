@@ -146,11 +146,13 @@ static bool add_go2rtc_recording_consumer(const char *stream_id, const char *out
              stream_id, output_path, segment_duration);
     
     // Format the URL for the API endpoint
-    snprintf(url, sizeof(url), "http://localhost:1984/api/stream/%s-recording", stream_id);
-    
+    int api_port = go2rtc_stream_get_api_port();
+    if (api_port == 0) api_port = 1984;
+    snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/stream/%s-recording", api_port, stream_id);
+
     log_info("Adding recording consumer for stream %s with URL: %s", stream_id, url);
     log_info("JSON payload: %s", json_payload);
-    
+
     log_info("Adding recording consumer for stream %s with URL: %s", stream_id, url);
     
     // Set CURL options for PUT request
@@ -223,7 +225,9 @@ static bool remove_go2rtc_consumer(const char *stream_id, const char *consumer_t
     // For recording consumers, we need to remove the stream we created
     if (strcmp(consumer_type, "ffmpeg") == 0) {
         // Use the same endpoint format as when we created the stream
-        snprintf(url, sizeof(url), "http://localhost:1984/api/stream/%s-recording", stream_id);
+        int api_port = go2rtc_stream_get_api_port();
+        if (api_port == 0) api_port = 1984;
+        snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/stream/%s-recording", api_port, stream_id);
     } else {
         // For HLS, we don't need to remove anything as we're using direct access
         log_info("No need to remove HLS consumer for stream %s", stream_id);

@@ -116,7 +116,7 @@ if [ ! -f "$CONFIG_DIR/go2rtc.yaml" ]; then
 api:
   listen: :1984
   origin: "*"
-  base_path: /go2rtc/
+  base_path: /go2rtc
 
 webrtc:
   ice_servers:
