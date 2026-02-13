@@ -184,71 +184,100 @@ On traditional syslog systems, logs will appear in `/var/log/syslog` or `/var/lo
 
 ### Storage Settings
 
-```
-# Storage Settings
-storage_path=/var/lib/lightnvr/recordings
-max_storage_size=0  # 0 means unlimited, otherwise bytes
-retention_days=30
-auto_delete_oldest=true
+```ini
+[storage]
+path = /var/lib/lightnvr/data/recordings
+max_size = 0  ; 0 means unlimited, otherwise bytes
+retention_days = 30
+auto_delete_oldest = true
+record_mp4_directly = false
+mp4_path = /var/lib/lightnvr/data/recordings/mp4
+mp4_segment_duration = 900
+mp4_retention_days = 30
 ```
 
-- `storage_path`: Directory where recordings are stored
-- `max_storage_size`: Maximum storage size in bytes (0 means unlimited)
+- `path`: Directory where recordings are stored
+- `max_size`: Maximum storage size in bytes (0 means unlimited)
 - `retention_days`: Number of days to keep recordings
 - `auto_delete_oldest`: Whether to automatically delete the oldest recordings when storage is full
-
-### Models Settings
-
-```
-# Models Settings
-models_path=/var/lib/lightnvr/models
-```
-
-- `models_path`: Directory where detection models are stored
+- `record_mp4_directly`: Enable direct MP4 recording (instead of HLS-to-MP4 conversion)
+- `mp4_path`: Directory for direct MP4 recordings
+- `mp4_segment_duration`: Duration of each MP4 segment in seconds
+- `mp4_retention_days`: Number of days to keep MP4 recordings
 
 ### Database Settings
 
-```
-# Database Settings
-db_path=/var/lib/lightnvr/lightnvr.db
+```ini
+[database]
+path = /var/lib/lightnvr/data/database/lightnvr.db
 ```
 
-- `db_path`: Path to the SQLite database file
+- `path`: Path to the SQLite database file
 
 ### Web Server Settings
 
-```
-# Web Server Settings
-web_port=8080
-web_root=/var/lib/lightnvr/www
-web_auth_enabled=true
-web_username=admin
-web_password=admin  # IMPORTANT: Change this default password!
+```ini
+[web]
+port = 8080
+root = /var/lib/lightnvr/www
+auth_enabled = true
+username = admin
+; password is auto-generated on first run
+auth_timeout_hours = 24
+web_thread_pool_size = 8
 ```
 
-- `web_port`: Port for the web interface
-- `web_root`: Directory containing web interface files
-- `web_auth_enabled`: Whether to enable authentication for the web interface
-- `web_username`: Username for web interface authentication
-- `web_password`: Password for web interface authentication
+- `port`: Port for the web interface
+- `root`: Directory containing web interface files
+- `auth_enabled`: Whether to enable authentication for the web interface
+- `username`: Username for web interface authentication
+- `password`: Password for web interface authentication (auto-generated on first run if not set)
+- `auth_timeout_hours`: Session timeout in hours (default: 24)
+- `web_thread_pool_size`: Number of worker threads for the web server (default: 8)
 
 ### Stream Settings
 
-```
-# Stream Settings
-max_streams=16
+```ini
+[streams]
+max_streams = 16
 ```
 
 - `max_streams`: Maximum number of streams to support
 
+**Note:** Stream configurations are stored in the SQLite database and managed via the API or web UI. They are no longer configured in the INI file.
+
+### Models Settings
+
+```ini
+[models]
+path = /var/lib/lightnvr/data/models
+```
+
+- `path`: Directory where detection models are stored
+
+### API Detection Settings
+
+```ini
+[api_detection]
+url = http://localhost:9001/api/v1/detect
+backend = onnx
+confidence_threshold = 0.35
+filter_classes = car,motorcycle,truck,bus,bicycle
+```
+
+- `url`: URL of the external detection API
+- `backend`: Detection backend to use: `onnx` (YOLOv8 - best accuracy), `tflite`, or `opencv`
+- `confidence_threshold`: Minimum confidence threshold for detections (0.0-1.0)
+- `filter_classes`: Comma-separated list of object classes to detect (empty = all classes)
+
 ### Memory Optimization
 
-```
-# Memory Optimization
-buffer_size=1024  # Buffer size in KB
-use_swap=true
-swap_file=/var/lib/lightnvr/swap
-swap_size=134217728  # 128MB in bytes
+```ini
+[memory]
+buffer_size = 1024  ; Buffer size in KB
+use_swap = true
+swap_file = /var/lib/lightnvr/data/swap
+swap_size = 134217728  ; 128MB in bytes
 ```
 
 - `buffer_size`: Buffer size for video processing in KB
@@ -258,111 +287,83 @@ swap_size=134217728  # 128MB in bytes
 
 ### Hardware Acceleration
 
-```
-# Hardware Acceleration
-hw_accel_enabled=false
-hw_accel_device=
+```ini
+[hardware]
+hw_accel_enabled = false
+hw_accel_device =
 ```
 
 - `hw_accel_enabled`: Whether to enable hardware acceleration
 - `hw_accel_device`: Device to use for hardware acceleration
 
-### Stream Configurations
+### go2rtc Settings
 
-Each stream is configured with a set of parameters:
-
-```
-# Stream 0
-stream.0.name=Front Door
-stream.0.url=rtsp://192.168.1.100:554/stream1
-stream.0.enabled=true
-stream.0.width=1920
-stream.0.height=1080
-stream.0.fps=15
-stream.0.codec=h264
-stream.0.priority=10
-stream.0.record=true
-stream.0.segment_duration=900  # 15 minutes in seconds
+```ini
+[go2rtc]
+webrtc_enabled = true
+webrtc_listen_port = 8555
+stun_enabled = true
+stun_server = stun.l.google.com:19302
+; external_ip =
+; ice_servers =
+; proxy_max_inflight = 12
 ```
 
-- `stream.N.name`: Name of the stream
-- `stream.N.url`: URL of the stream (RTSP or ONVIF)
-- `stream.N.enabled`: Whether the stream is enabled
-- `stream.N.width`: Width of the stream in pixels
-- `stream.N.height`: Height of the stream in pixels
-- `stream.N.fps`: Frame rate of the stream
-- `stream.N.codec`: Codec of the stream (h264 or h265)
-- `stream.N.priority`: Priority of the stream (1-10, higher = more important)
-- `stream.N.record`: Whether to record the stream
-- `stream.N.segment_duration`: Duration of each recording segment in seconds
+- `webrtc_enabled`: Enable WebRTC streaming (default: true)
+- `webrtc_listen_port`: Port for WebRTC connections (default: 8555)
+- `stun_enabled`: Enable STUN for NAT traversal (default: true)
+- `stun_server`: Primary STUN server address
+- `external_ip`: External IP for complex NAT scenarios (leave empty for auto-detection)
+- `ice_servers`: Custom ICE servers, comma-separated (format: `stun:host:port` or `turn:host:port`)
+- `proxy_max_inflight`: Maximum concurrent HLS/snapshot proxy requests (default: 12, range: 1-128)
+
+### MQTT Settings
+
+```ini
+[mqtt]
+enabled = false
+broker_host = localhost
+broker_port = 1883
+; username =
+; password =
+client_id = lightnvr
+topic_prefix = lightnvr
+tls_enabled = false
+keepalive = 60
+qos = 1
+retain = false
+```
+
+- `enabled`: Enable MQTT publishing of detection events (default: false)
+- `broker_host`: MQTT broker hostname or IP address
+- `broker_port`: MQTT broker port (default: 1883, use 8883 for TLS)
+- `username`: MQTT authentication username (optional)
+- `password`: MQTT authentication password (optional)
+- `client_id`: MQTT client ID (default: lightnvr)
+- `topic_prefix`: Topic prefix for detection events. Events are published to `{topic_prefix}/detections/{stream_name}`
+- `tls_enabled`: Enable TLS for MQTT connection (default: false)
+- `keepalive`: MQTT keepalive interval in seconds (default: 60)
+- `qos`: MQTT QoS level: 0 (at most once), 1 (at least once), 2 (exactly once)
+- `retain`: Retain detection messages on the broker (default: false)
+
+See [MQTT_INTEGRATION.md](MQTT_INTEGRATION.md) for detailed MQTT documentation.
+
+### ONVIF Settings
+
+```ini
+[onvif]
+discovery_enabled = false
+discovery_interval = 300
+discovery_network = auto
+```
+
+- `discovery_enabled`: Enable automatic ONVIF camera discovery (default: false)
+- `discovery_interval`: Interval in seconds between discovery scans (30-3600, default: 300)
+- `discovery_network`: Network to scan in CIDR notation, or `auto` for automatic detection. For Docker containers, set `LIGHTNVR_ONVIF_NETWORK` environment variable instead.
 
 ## Example Configuration
 
-Here's a complete example configuration file:
-
-```
-# LightNVR Configuration File
-
-# General Settings
-pid_file=/var/run/lightnvr.pid
-log_file=/var/log/lightnvr.log
-log_level=2  # 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
-
-# Storage Settings
-storage_path=/var/lib/lightnvr/recordings
-max_storage_size=0  # 0 means unlimited, otherwise bytes
-retention_days=30
-auto_delete_oldest=true
-
-# Database Settings
-db_path=/var/lib/lightnvr/lightnvr.db
-
-# Models Settings
-models_path=/var/lib/lightnvr/models
-
-# Web Server Settings
-web_port=8080
-web_root=/var/lib/lightnvr/www
-web_auth_enabled=true
-web_username=admin
-web_password=admin  # IMPORTANT: Change this default password!
-
-# Stream Settings
-max_streams=16
-
-# Memory Optimization
-buffer_size=1024  # Buffer size in KB
-use_swap=true
-swap_file=/var/lib/lightnvr/swap
-swap_size=134217728  # 128MB in bytes
-
-# Hardware Acceleration
-hw_accel_enabled=false
-hw_accel_device=
-
-# Stream Configurations
-stream.0.name=Front Door
-stream.0.url=rtsp://192.168.1.100:554/stream1
-stream.0.enabled=true
-stream.0.width=1920
-stream.0.height=1080
-stream.0.fps=15
-stream.0.codec=h264
-stream.0.priority=10
-stream.0.record=true
-stream.0.segment_duration=900  # 15 minutes in seconds
-
-stream.1.name=Back Yard
-stream.1.url=rtsp://192.168.1.101:554/stream1
-stream.1.enabled=true
-stream.1.width=1280
-stream.1.height=720
-stream.1.fps=10
-stream.1.codec=h264
-stream.1.priority=5
-stream.1.record=true
-stream.1.segment_duration=900  # 15 minutes in seconds
-```
+See `config/lightnvr.ini` in the repository for a complete, annotated example configuration file. The example includes all available sections and settings with descriptive comments.
 
 ## Command Line Options
 
@@ -378,32 +379,22 @@ LightNVR supports the following command line options:
 The Ingenic A1 SoC has limited memory (256MB), so it's important to optimize memory usage:
 
 1. Set appropriate buffer sizes:
-   ```
-   buffer_size=512  # 512KB buffer size
+   ```ini
+   [memory]
+   buffer_size = 512  ; 512KB buffer size
    ```
 
 2. Enable swap file for additional memory:
-   ```
-   use_swap=true
-   swap_file=/var/lib/lightnvr/swap
-   swap_size=134217728  # 128MB in bytes
-   ```
-
-3. Limit the number of streams and their resolution/frame rate:
-   ```
-   max_streams=8
-   
-   stream.0.width=1280
-   stream.0.height=720
-   stream.0.fps=10
+   ```ini
+   [memory]
+   use_swap = true
+   swap_file = /var/lib/lightnvr/data/swap
+   swap_size = 134217728  ; 128MB in bytes
    ```
 
-4. Set stream priorities to ensure important streams get resources:
-   ```
-   stream.0.priority=10  # High priority
-   stream.1.priority=5   # Medium priority
-   stream.2.priority=1   # Low priority
-   ```
+3. Limit the number of streams via `[streams]` section and configure lower resolution/fps via the web UI.
+
+4. Use stream priorities (1-10, higher = more important) to ensure critical streams get resources when memory is constrained.
 
 ## Troubleshooting
 
