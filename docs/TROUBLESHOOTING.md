@@ -265,9 +265,6 @@ If you see a blank page with the title "WebRTC View - LightNVR" but no content:
 
 **Quick Fix:**
 ```bash
-# Diagnose the issue
-sudo bash scripts/diagnose_web_issue.sh
-
 # Install/reinstall web assets
 sudo bash scripts/install_web_assets.sh
 

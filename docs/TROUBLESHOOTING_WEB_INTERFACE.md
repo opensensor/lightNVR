@@ -14,12 +14,7 @@ The web assets (HTML, CSS, JavaScript files) were not installed to the web root 
 
 ### Quick Diagnosis
 
-Run the diagnostic script:
-```bash
-sudo bash scripts/diagnose_web_issue.sh
-```
-
-This will check:
+Check the following:
 - Service status
 - Configuration file
 - Web root directory existence
@@ -247,9 +242,6 @@ If none of these solutions work:
 
 1. Collect diagnostic information:
 ```bash
-# Run diagnostic
-sudo bash scripts/diagnose_web_issue.sh > diagnostic_output.txt
-
 # Collect logs
 sudo journalctl -u lightnvr -n 100 --no-pager > service_logs.txt
 sudo tail -n 100 /var/log/lightnvr/lightnvr.log > app_logs.txt 2>/dev/null || true
@@ -259,7 +251,6 @@ sudo tail -n 100 /var/log/lightnvr/lightnvr.log > app_logs.txt 2>/dev/null || tr
 ```
 
 2. Create an issue on GitHub with:
-   - Output from diagnostic script
    - Service logs
    - Application logs
    - Browser console errors (if any)
@@ -284,11 +275,6 @@ sudo bash scripts/install.sh
 ```
 The install script will automatically detect and install prebuilt assets.
 
-3. **Verify installation**:
-```bash
-sudo bash scripts/diagnose_web_issue.sh
-```
-
-4. **Keep backups**:
+3. **Keep backups**:
 The install_web_assets.sh script automatically creates backups before overwriting files.
 

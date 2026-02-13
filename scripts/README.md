@@ -1,319 +1,134 @@
 # LightNVR Scripts
 
-This directory contains various scripts for building, installing, and maintaining LightNVR.
-
-## Installation Scripts
-
-### `install.sh`
-Main installation script for LightNVR.
-
-**Usage:**
-```bash
-sudo bash scripts/install.sh
-```
-
-**What it does:**
-- Installs the LightNVR binary
-- Installs SOD library (if enabled)
-- Creates necessary directories
-- Installs configuration files
-- Installs web assets (if available)
-- Sets up systemd service
-
-**Important:** Make sure to build web assets before running this script:
-```bash
-cd web
-npm install
-npm run build
-cd ..
-sudo bash scripts/install.sh
-```
-
-### `install_web_assets.sh`
-Dedicated script for installing or reinstalling web interface assets.
-
-**Usage:**
-```bash
-sudo bash scripts/install_web_assets.sh
-```
-
-**What it does:**
-- Checks for prebuilt web assets in `web/dist/`
-- Builds assets if needed (requires Node.js/npm)
-- Installs assets to `/var/lib/lightnvr/www/`
-- Sets proper permissions
-- Verifies installation
-
-**When to use:**
-- After a fresh installation if web interface shows blank page
-- After updating web interface code
-- To fix web interface issues
-
-### `install_go2rtc.sh`
-Installs the go2rtc binary for WebRTC streaming.
-
-**Usage:**
-```bash
-sudo bash scripts/install_go2rtc.sh
-```
-
-## Diagnostic Scripts
-
-### `diagnose_web_issue.sh`
-Diagnoses common web interface issues.
-
-**Usage:**
-```bash
-sudo bash scripts/diagnose_web_issue.sh
-```
-
-**What it checks:**
-- LightNVR service status
-- Configuration file
-- Web root directory existence and permissions
-- Critical web files (index.html, etc.)
-- Assets directory
-- Recent logs for errors
-
-**Output:**
-- Detailed diagnostic report
-- Recommendations for fixing issues
-
-**When to use:**
-- Web interface shows blank page
-- Getting 404 errors
-- Web interface not loading properly
+Scripts for building, installing, testing, and maintaining LightNVR.
 
 ## Build Scripts
 
 ### `build.sh`
-Main build script for LightNVR.
+Main build script for LightNVR (C backend).
 
-**Usage:**
 ```bash
-bash scripts/build.sh
+bash scripts/build.sh [options]
 ```
 
-**Options:**
-- `--clean`: Clean build directory before building
-- `--release`: Build in release mode (default is debug)
-- `--install`: Install after building
+**Options:** `--release`, `--debug`, `--clean`, `--no-sod`, `--sod-dynamic`, `--no-go2rtc`, `--no-tests`
 
 ### `build_web_vite.sh`
-Builds web assets using Vite.
+Builds web frontend assets using Vite.
 
-**Usage:**
 ```bash
-bash scripts/build_web_vite.sh
+bash scripts/build_web_vite.sh [-m|--with-maps]
 ```
 
-**What it does:**
-- Extracts version from CMakeLists.txt
-- Installs npm dependencies if needed
-- Builds web assets with Vite
-- Outputs to `web/dist/`
+Extracts version from CMakeLists.txt, installs npm deps, and runs Vite build to `web/dist/`.
 
-**Requirements:**
-- Node.js and npm installed
+## Installation Scripts
 
-### `build_and_update_web_vite.sh`
-Builds web assets and updates HTML files.
+### `install.sh`
+Main installation script. Installs binary, config, web assets, and systemd service.
 
-**Usage:**
 ```bash
-bash scripts/build_and_update_web_vite.sh
+sudo bash scripts/install.sh [--prefix=DIR] [--config-dir=DIR] [--data-dir=DIR]
 ```
 
-**What it does:**
-- Runs `build_web_vite.sh`
-- Runs `update_html_for_vite.sh`
-- Ensures all assets are properly linked
+### `install_go2rtc.sh`
+Downloads and installs go2rtc binary (opensensor fork with memory leak fixes).
 
-## Utility Scripts
-
-### `optimize_web_assets.sh`
-Optimizes web assets for production.
-
-**Usage:**
 ```bash
-bash scripts/optimize_web_assets.sh
+sudo bash scripts/install_go2rtc.sh [-d DIR] [-c DIR] [-v VERSION]
 ```
 
-### `update_html_for_vite.sh`
-Updates HTML files for Vite build system.
+### `install_web_assets.sh`
+Builds (if needed) and installs web interface files to the web root.
 
-**Usage:**
 ```bash
-bash scripts/update_html_for_vite.sh
+sudo bash scripts/install_web_assets.sh [-m|--with-maps]
 ```
+
+## Version & Release Scripts
 
 ### `extract_version.sh` / `extract_version.js`
-Extracts version information from CMakeLists.txt.
-
-**Usage:**
-```bash
-bash scripts/extract_version.sh
-# or
-node scripts/extract_version.js
-```
+Extracts version from CMakeLists.txt and generates `web/js/version.js`. The shell version is used by CMake; the JS version is used by `build_web_vite.sh`.
 
 ### `bump-version.sh`
-Bumps version number in project files.
+Bumps version number across all project files.
 
-**Usage:**
 ```bash
-bash scripts/bump-version.sh [major|minor|patch]
+bash scripts/bump-version.sh <new_version>   # e.g. 0.13.0
 ```
 
 ### `release.sh`
-Creates a release package.
+Automates the release process (bump, build, tag, push).
 
-**Usage:**
 ```bash
-bash scripts/release.sh
+bash scripts/release.sh <new_version> [--no-push]
 ```
+
+## Screenshot & Demo Capture
+
+Playwright-based automation for capturing documentation media. See each script's `--help` for options.
+
+| Script | Purpose |
+|--------|---------|
+| `capture-screenshots.js` | Captures screenshots of all major UI pages |
+| `capture-demos.js` | Records video demonstrations of key features |
+| `capture-detection-demos.js` | Captures detection-focused screenshots (zones, overlays) |
+| `setup-demo-streams.js` | Configures demo camera streams from `demo-cameras.json` |
+| `update-documentation-media.sh` | Orchestrates the full capture pipeline |
+| `test-screenshot-capture.sh` | Quick test wrapper for screenshot capture |
+| `demo-cameras.json` | Demo camera configuration data |
+
+**Quick start:**
+```bash
+npm install --save-dev playwright && npx playwright install chromium
+node scripts/capture-screenshots.js --url http://localhost:8080
+```
+
+## Testing Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `run-integration-tests.sh` | Runs integration tests with go2rtc test streams |
+| `run-playwright.sh` | Runs Playwright UI tests |
+| `start-test-lightnvr.sh` | Starts lightNVR with test configuration |
+| `test-streams.sh` | Manages test RTSP streams via go2rtc |
 
 ## Common Workflows
 
 ### Fresh Installation
 
 ```bash
-# 1. Build the application
 bash scripts/build.sh --release
-
-# 2. Build web assets
-cd web
-npm install
-npm run build
-cd ..
-
-# 3. Install everything
+bash scripts/build_web_vite.sh
 sudo bash scripts/install.sh
-
-# 4. Install go2rtc
 sudo bash scripts/install_go2rtc.sh
-
-# 5. Start service
 sudo systemctl start lightnvr
 sudo systemctl enable lightnvr
-```
-
-### Fixing Blank Web Page
-
-```bash
-# 1. Diagnose the issue
-sudo bash scripts/diagnose_web_issue.sh
-
-# 2. Install/reinstall web assets
-sudo bash scripts/install_web_assets.sh
-
-# 3. Restart service
-sudo systemctl restart lightnvr
 ```
 
 ### Updating Web Interface Only
 
 ```bash
-# 1. Make your changes to web files
-
-# 2. Build web assets
-cd web
-npm run build
-cd ..
-
-# 3. Install web assets
+bash scripts/build_web_vite.sh
 sudo bash scripts/install_web_assets.sh
-
-# 4. Restart service
 sudo systemctl restart lightnvr
 ```
 
 ### Updating Application Only
 
 ```bash
-# 1. Make your changes to source code
-
-# 2. Build
 bash scripts/build.sh --release
-
-# 3. Stop service
 sudo systemctl stop lightnvr
-
-# 4. Install binary
 sudo cp build/bin/lightnvr /usr/local/bin/
-
-# 5. Start service
 sudo systemctl start lightnvr
 ```
 
-## Troubleshooting
+## Dependencies
 
-### Web interface shows blank page
-Run the diagnostic script:
-```bash
-sudo bash scripts/diagnose_web_issue.sh
-```
+**Building C backend:** GCC/Clang, CMake, libsqlite3-dev, libuv1-dev
 
-Then follow the recommendations, or see [TROUBLESHOOTING_WEB_INTERFACE.md](../docs/TROUBLESHOOTING_WEB_INTERFACE.md)
+**Building web frontend:** Node.js (v14+), npm (v6+)
 
-### Build fails
-Check that you have all dependencies installed:
-```bash
-# Debian/Ubuntu
-sudo apt-get install build-essential cmake libsqlite3-dev
+**Screenshot capture:** Node.js, Playwright, Chromium
 
-# For web assets
-sudo apt-get install nodejs npm
-```
-
-### Installation fails
-Make sure you're running as root:
-```bash
-sudo bash scripts/install.sh
-```
-
-Check that the build completed successfully before installing.
-
-## Script Dependencies
-
-### System Requirements
-- **For building C/C++ code:**
-  - GCC or Clang
-  - CMake
-  - SQLite3 development libraries
-
-- **For building web assets:**
-  - Node.js (v14 or later)
-  - npm (v6 or later)
-
-- **For installation:**
-  - Root/sudo access
-  - systemd (for service management)
-
-### Installing Dependencies
-
-**Debian/Ubuntu:**
-```bash
-sudo apt-get update
-sudo apt-get install -y build-essential cmake libsqlite3-dev nodejs npm
-```
-
-**Fedora/RHEL:**
-```bash
-sudo dnf install -y gcc gcc-c++ cmake sqlite-devel nodejs npm
-```
-
-**Arch Linux:**
-```bash
-sudo pacman -S base-devel cmake sqlite nodejs npm
-```
-
-## Contributing
-
-When adding new scripts:
-1. Make them executable: `chmod +x scripts/your_script.sh`
-2. Add proper error handling (`set -e`)
-3. Add usage information in comments
-4. Update this README
-5. Test on a clean system if possible
-
+**Installation:** Root/sudo access, systemd
