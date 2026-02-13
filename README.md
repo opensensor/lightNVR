@@ -232,27 +232,19 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 2. **Configure**:
    ```bash
    # Edit the configuration file
-   sudo nano /etc/lightnvr/lightnvr.conf
+   sudo nano /etc/lightnvr/lightnvr.ini
    ```
 
 3. **Start the service**:
    ```bash
    sudo systemctl start lightnvr
+   sudo systemctl enable lightnvr
    ```
 
-4. **Verify the service is running**:
-   ```bash
-   sudo systemctl status lightnvr
-   # Check that port 8080 is open
-   netstat -tlnp | grep :8080
-   ```
-
-5. **Access the web interface**:
+4. **Access the web interface**:
    Open a web browser and navigate to `http://your-device-ip:8080`
 
-   Default credentials:
-   - Username: `admin`
-   - Password: `admin`
+   Default username: `admin` (password is auto-generated on first run — check the service logs with `journalctl -u lightnvr`)
 
 6. **(Optional) Set up object detection**:
 
