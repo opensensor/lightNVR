@@ -312,11 +312,13 @@ If you're having trouble with authentication:
    sudo nano /etc/lightnvr/lightnvr.ini
    ```
 
-   Update these lines:
-   ```
-   web_auth_enabled=true
-   web_username=admin
-   web_password=admin
+   Update these lines in the `[web]` section:
+   ```ini
+   [web]
+   auth_enabled = true
+   username = admin
+   ; Remove or comment out the password line to have it auto-generated on next restart
+   ; password =
    ```
 
 2. Restart the service:
