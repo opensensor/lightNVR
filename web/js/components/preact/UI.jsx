@@ -849,17 +849,7 @@ export function ModalProvider({ children }) {
   );
 }
 
-// Export functions for backward compatibility
-export function setupModals() {
-  console.warn('setupModals() is deprecated. Use <ModalProvider> component instead.');
-  // This function is kept for backward compatibility
-}
-
-export function addModalStyles() {
-  console.warn('addModalStyles() is deprecated. Modal styles are now included in components.css');
-  // This function is kept for backward compatibility
-}
-
+// Export function for backward compatibility
 export function showVideoModal(videoUrl, title, downloadUrl) {
   console.warn('Direct showVideoModal() is deprecated. Use ModalContext.showVideoModal instead.');
 

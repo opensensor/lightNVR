@@ -4,7 +4,6 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
-import { setupModals, addModalStyles } from './UI.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';
@@ -83,13 +82,6 @@ export function WebRTCView() {
 
   // Get query client for fetching and invalidating queries
   const queryClient = useQueryClient();
-
-  // Set up event listeners and UI components
-  useEffect(() => {
-    // Set up modals for snapshot preview
-    setupModals();
-    addModalStyles();
-  }, []);
 
   // Check if go2rtc is enabled (for showing MSE View button)
   useEffect(() => {

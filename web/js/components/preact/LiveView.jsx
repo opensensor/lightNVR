@@ -6,7 +6,6 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
-import { setupModals, addModalStyles } from './UI.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
@@ -92,13 +91,6 @@ export function LiveView({isWebRTCDisabled}) {
 
   // Get query client for fetching and invalidating queries
   const queryClient = useQueryClient();
-
-  // Set up event listeners and UI components
-  useEffect(() => {
-    // Set up modals for snapshot preview
-    setupModals();
-    addModalStyles();
-  }, []);
 
   // Check if go2rtc is enabled (for showing mode toggle)
   useEffect(() => {
