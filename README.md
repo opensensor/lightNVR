@@ -246,7 +246,7 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 
    Default username: `admin` (password is auto-generated on first run — check the service logs with `journalctl -u lightnvr`)
 
-6. **(Optional) Set up object detection**:
+5. **(Optional) Set up object detection**:
 
    For advanced object detection with zone filtering, integrate with [light-object-detect](https://github.com/opensensor/light-object-detect):
 
@@ -309,7 +309,7 @@ The container will automatically:
 - Set up web assets with working defaults
 - Configure go2rtc with WebRTC/STUN support
 
-Access the web UI at `http://localhost:8080` (default credentials: admin/admin)
+Access the web UI at `http://localhost:8080` (default username: `admin`, password is auto-generated on first run — check logs)
 
 #### Using Docker Run
 
@@ -391,40 +391,44 @@ The configuration files will persist across container restarts and updates.
 - [Installation Guide](docs/INSTALLATION.md)
 - [Build Instructions](docs/BUILD.md)
 - [Configuration Guide](docs/CONFIGURATION.md)
+- [Docker Deployment](docs/DOCKER.md)
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
 
 ### Features & Integration
-- **[Zone Configuration](docs/ZONE_CONFIGURATION.md)** - Configure detection zones with visual polygon editor
+- **[Zone Configuration](docs/ZONE_CONFIGURATION.md)** - Visual polygon-based detection zones
 - [API Documentation](docs/API.md)
-- [SOD Integration](docs/SOD_INTEGRATION.md)
-- [SOD Unified Detection](docs/SOD_UNIFIED_DETECTION.md)
+- [go2rtc Integration](docs/GO2RTC_INTEGRATION.md)
+- [MQTT Integration](docs/MQTT_INTEGRATION.md)
 - [ONVIF Detection](docs/ONVIF_DETECTION.md)
 - [ONVIF Motion Recording](docs/ONVIF_MOTION_RECORDING.md)
 - [Motion Buffer System](docs/MOTION_BUFFER.md)
+- [SOD Integration](docs/SOD_INTEGRATION.md)
 
 ### Architecture & Development
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [Frontend Architecture](docs/FRONTEND.md)
-- [Release Process](docs/RELEASE_PROCESS.md) - For maintainers creating releases
+- [State Management](docs/STATE_MANAGEMENT.md)
+- [Release Process](docs/RELEASE_PROCESS.md)
 
 ## Project Structure
 
-- `src/` - Source code
+- `src/` - C source code
   - `core/` - Core system components
   - `video/` - Video processing and stream handling
   - `storage/` - Storage management
-  - `web/` - Web interface and API handlers
-  - `database/` - Database operations
+  - `web/` - HTTP server and API handlers
+  - `database/` - Database operations and migrations
   - `utils/` - Utility functions
 - `include/` - Header files
-- `scripts/` - Build and utility scripts
-- `config/` - Configuration files
-- `docs/` - Documentation
-- `tests/` - Test suite
-- `web/` - Web interface files
+- `web/` - Web frontend (Vite + Preact + Tailwind CSS)
+  - `js/` - Preact components and pages
   - `css/` - Tailwind CSS stylesheets
-  - `js/` - JavaScript and Preact components
   - `*.html` - HTML entry points
+- `db/migrations/` - SQLite schema migrations
+- `scripts/` - Build, install, and utility scripts
+- `config/` - Configuration templates
+- `docs/` - Documentation
+- `tests/` - Integration and Playwright tests
 
 ## Memory Optimization
 
