@@ -37,7 +37,7 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
-    libmicrohttpd-dev \
+    libuv1-dev \
     libcurl4-openssl-dev \
     libssl-dev
 ```
@@ -52,7 +52,7 @@ sudo dnf install -y \
     pkgconfig \
     sqlite-devel \
     ffmpeg-devel \
-    libmicrohttpd-devel \
+    libuv-devel \
     libcurl-devel \
     openssl-devel
 ```
@@ -86,7 +86,7 @@ If the LightNVR service won't start:
 
 3. Verify that the configuration file exists and is valid:
    ```bash
-   sudo cat /etc/lightnvr/lightnvr.conf
+   sudo cat /etc/lightnvr/lightnvr.ini
    ```
 
 4. Check permissions on directories:
@@ -233,7 +233,7 @@ If recordings aren't being created:
 1. Check if the stream is properly connected
 2. Verify that recording is enabled for the stream:
    ```bash
-   grep "record" /etc/lightnvr/lightnvr.conf
+   grep "record" /etc/lightnvr/lightnvr.ini
    ```
 
 3. Check permissions on the recordings directory:
@@ -309,7 +309,7 @@ If you're having trouble with authentication:
 
 1. Reset the username and password in the configuration file:
    ```bash
-   sudo nano /etc/lightnvr/lightnvr.conf
+   sudo nano /etc/lightnvr/lightnvr.ini
    ```
 
    Update these lines:

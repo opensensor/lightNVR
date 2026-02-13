@@ -217,13 +217,14 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libuv1-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \
     curl \
     wget
 ```
 
-**Note**: `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions).
+**Note**: `libuv1-dev` is required for the HTTP server. `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions). `llhttp` is downloaded and built automatically by CMake if not found.
 
 ### Fedora/RHEL/CentOS
 
@@ -239,13 +240,14 @@ sudo dnf install -y \
     git \
     sqlite-devel \
     ffmpeg-devel \
+    libuv-devel \
     libcurl-devel \
     mbedtls-devel \
     curl \
     wget
 ```
 
-**Note**: `mbedtls-devel` is **required** for ONVIF support and authentication system (cryptographic functions).
+**Note**: `libuv-devel` is required for the HTTP server. `mbedtls-devel` is **required** for ONVIF support and authentication system (cryptographic functions).
 
 ### Arch Linux
 
@@ -258,12 +260,13 @@ sudo pacman -S \
     git \
     sqlite \
     ffmpeg \
+    libuv \
     curl \
     wget \
     mbedtls
 ```
 
-**Note**: `mbedtls` is **required** for ONVIF support and authentication system (cryptographic functions).
+**Note**: `libuv` is required for the HTTP server. `mbedtls` is **required** for ONVIF support and authentication system (cryptographic functions).
 
 ### Ingenic A1
 
@@ -307,7 +310,7 @@ cd lightnvr
 ```bash
 # Copy the binary and configuration files to the device
 scp build/Ingenic/bin/lightnvr root@ingenic-device:/usr/local/bin/
-scp config/lightnvr.conf.default root@ingenic-device:/etc/lightnvr/lightnvr.conf
+scp config/lightnvr.ini root@ingenic-device:/etc/lightnvr/lightnvr.ini
 
 # Create necessary directories on the device
 ssh root@ingenic-device "mkdir -p /var/lib/lightnvr/recordings /var/lib/lightnvr/www /var/log/lightnvr"
@@ -334,13 +337,14 @@ sudo apt-get install -y \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libuv1-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev \
     curl \
     wget
 ```
 
-**Note**: `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions).
+**Note**: `libuv1-dev` is required for the HTTP server. `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions).
 
 #### 2. Build and Install
 
@@ -365,7 +369,7 @@ After installing LightNVR, follow these steps to complete the setup:
 Edit the configuration file:
 
 ```bash
-sudo nano /etc/lightnvr/lightnvr.conf
+sudo nano /etc/lightnvr/lightnvr.ini
 ```
 
 At minimum, you should:

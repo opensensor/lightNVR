@@ -31,7 +31,7 @@ docker-compose logs -f
 
 # Access the web UI
 # http://localhost:8080
-# Default credentials: admin/admin
+# Default username: admin (password is auto-generated on first run - check logs)
 ```
 
 ### Using Docker Run
