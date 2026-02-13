@@ -107,6 +107,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     thread_ctx->segment_info.segment_index = 0;
     thread_ctx->segment_info.has_audio = false;
     thread_ctx->segment_info.last_frame_was_key = false;
+	thread_ctx->segment_info.pending_video_keyframe = NULL;
     thread_ctx->video_params_detected = false;
     pthread_mutex_init(&thread_ctx->context_mutex, NULL);
 
@@ -156,6 +157,14 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 avformat_close_input(&thread_ctx->input_ctx);
                 thread_ctx->input_ctx = NULL;
             }
+
+			// If we were carrying a keyframe for overlap, it belongs to the old connection.
+			if (thread_ctx->segment_info.pending_video_keyframe) {
+				av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
+				av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
+				thread_ctx->segment_info.pending_video_keyframe = NULL;
+				log_debug("Cleared pending keyframe due to forced reconnect for stream %s", stream_name);
+			}
 
             // Reset retry count to give the reconnection a clean slate
             thread_ctx->retry_count = 0;
@@ -535,6 +544,14 @@ thread_cleanup:
     }
 
     // 2b. BUGFIX: Destroy the context mutex
+	// Free any carried-over packet to avoid leaking if the thread exits between segments
+	if (thread_ctx->segment_info.pending_video_keyframe) {
+		av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
+		av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
+		thread_ctx->segment_info.pending_video_keyframe = NULL;
+		log_debug("Freed pending keyframe during thread cleanup for stream %s", stream_name);
+	}
+
     pthread_mutex_destroy(&thread_ctx->context_mutex);
 
     // 3. Notify the segment recorder that we're shutting down

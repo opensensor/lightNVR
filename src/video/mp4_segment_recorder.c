@@ -162,6 +162,15 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         return -1;
     }
 
+	// If we don't have an existing input context, we're about to open a fresh connection.
+	// Any carried-over keyframe belongs to the previous connection and must be discarded.
+	if (!*input_ctx_ptr && segment_info_ptr->pending_video_keyframe) {
+		log_debug("Discarding pending keyframe because input context is not being reused (new connection)");
+		av_packet_unref(segment_info_ptr->pending_video_keyframe);
+		av_packet_free(&segment_info_ptr->pending_video_keyframe);
+		segment_info_ptr->pending_video_keyframe = NULL;
+	}
+
     // BUGFIX: Use per-stream segment info instead of global static variable
     segment_index = segment_info_ptr->segment_index + 1;
 
@@ -533,20 +542,38 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             }
         }
 
-        // Read packet
-        ret = av_read_frame(input_ctx, pkt);
-        if (ret < 0) {
-            if (ret == AVERROR_EOF) {
-                log_info("End of stream reached");
-                break;
-            } else if (ret != AVERROR(EAGAIN)) {
-                log_error("Error reading frame: %d", ret);
-                break;
-            }
-            // EAGAIN means try again, so we continue
-            av_usleep(10000);  // Sleep 10ms to avoid busy waiting
-            continue;
-        }
+		// Read packet (or, if available, consume a carried-over boundary keyframe).
+		// This biases toward overlap vs gaps when segments are aligned on keyframes.
+		if (segment_info_ptr->pending_video_keyframe) {
+			if (segment_info_ptr->pending_video_keyframe->size > 0) {
+				log_debug("Using carried-over keyframe packet to start segment immediately (overlap mode)");
+				av_packet_unref(pkt);
+				av_packet_move_ref(pkt, segment_info_ptr->pending_video_keyframe);
+				av_packet_free(&segment_info_ptr->pending_video_keyframe);
+				segment_info_ptr->pending_video_keyframe = NULL;
+				ret = 0;
+			} else {
+				// Defensive: don't get stuck if we somehow stored an empty packet
+				av_packet_free(&segment_info_ptr->pending_video_keyframe);
+				segment_info_ptr->pending_video_keyframe = NULL;
+				ret = av_read_frame(input_ctx, pkt);
+			}
+		} else {
+			ret = av_read_frame(input_ctx, pkt);
+		}
+
+		if (ret < 0) {
+			if (ret == AVERROR_EOF) {
+				log_info("End of stream reached");
+				break;
+			} else if (ret != AVERROR(EAGAIN)) {
+				log_error("Error reading frame: %d", ret);
+				break;
+			}
+			// EAGAIN means try again, so we continue
+			av_usleep(10000);  // Sleep 10ms to avoid busy waiting
+			continue;
+		}
 
         // Process video packets
         if (pkt->stream_index == video_stream_idx) {
@@ -582,7 +609,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 }
             }
 
-            // If we're waiting for the final key frame to end recording
+			// If we're waiting for the final key frame to end recording
             if (waiting_for_final_keyframe) {
                 // Check if this is a key frame or if we've been waiting too long
 
@@ -594,16 +621,35 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 // Calculate how long we've been waiting for a key frame
                 int64_t wait_time = (av_gettime() - waiting_start_time) / 1000000;
 
-                // If this is a key frame or we've waited too long (more than 1 second)
-                // Reduced from 2 to 1 second to improve segment length precision
-                if (is_keyframe || wait_time > 1) {
+				// Prefer ending on a keyframe to avoid gaps in the next segment.
+				// Only allow ending on a non-keyframe when we're shutting down.
+				if (is_keyframe || (shutdown_detected && wait_time > 1)) {
                     if (is_keyframe) {
                         log_info("Found final key frame, ending recording");
                         // Set flag to indicate the last frame was a key frame
                         segment_info_ptr->last_frame_was_key = true;
-                        log_debug("Last frame was a key frame, next segment will start immediately with this keyframe");
+						log_debug("Last frame was a key frame, next segment can start immediately (overlap mode)");
+
+						// Overlap mode: store a copy of this boundary keyframe so the next segment
+						// can begin with it immediately (duplicate keyframe is OK; gaps are not).
+						if (!segment_info_ptr->pending_video_keyframe) {
+							segment_info_ptr->pending_video_keyframe = av_packet_alloc();
+						}
+						if (segment_info_ptr->pending_video_keyframe) {
+							av_packet_unref(segment_info_ptr->pending_video_keyframe);
+							int pref_ret = av_packet_ref(segment_info_ptr->pending_video_keyframe, pkt);
+							if (pref_ret < 0) {
+								log_warn("Failed to store pending keyframe for next segment (ret=%d)", pref_ret);
+								av_packet_free(&segment_info_ptr->pending_video_keyframe);
+								segment_info_ptr->pending_video_keyframe = NULL;
+							} else {
+								log_debug("Stored boundary keyframe for next segment start (overlap mode)");
+							}
+						} else {
+							log_warn("Failed to allocate pending keyframe packet for overlap mode");
+						}
                     } else {
-                        log_info("Waited %lld seconds for key frame, ending recording with non-key frame", (long long)wait_time);
+						log_info("Shutdown: waited %lld seconds for key frame, ending recording with non-key frame", (long long)wait_time);
                         // Clear flag since the last frame was not a key frame
                         segment_info_ptr->last_frame_was_key = false;
                         log_debug("Last frame was NOT a key frame, next segment will wait for a keyframe");

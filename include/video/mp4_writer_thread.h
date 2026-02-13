@@ -23,6 +23,10 @@ typedef struct mp4_writer mp4_writer_t;
 // Forward declaration for AVFormatContext
 struct AVFormatContext;
 
+// Forward declaration for AVPacket (we only store pointers here; implementation includes FFmpeg headers)
+struct AVPacket;
+typedef struct AVPacket AVPacket;
+
 /**
  * Structure to track segment information per stream
  */
@@ -30,6 +34,10 @@ typedef struct {
     int segment_index;
     bool has_audio;
     bool last_frame_was_key;  // Flag to indicate if the last frame of previous segment was a key frame
+
+    // If set, the next segment should start by writing this packet first.
+    // This intentionally duplicates the boundary keyframe to bias toward overlap (no gaps).
+    AVPacket *pending_video_keyframe;
 } segment_info_t;
 
 /**
