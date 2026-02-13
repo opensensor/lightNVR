@@ -605,8 +605,9 @@ bool go2rtc_stream_is_ready(void) {
         }
 
         // Prepare HTTP request with safety checks
+        // Use GO2RTC_BASE_PATH to match the base_path in go2rtc config
         int req_result = snprintf(request, sizeof(request),
-                "GET /api/streams HTTP/1.1\r\n"
+                "GET " GO2RTC_BASE_PATH "/api/streams HTTP/1.1\r\n"
                 "Host: localhost:%d\r\n"
                 "Connection: close\r\n"
                 "\r\n", g_api_port);
