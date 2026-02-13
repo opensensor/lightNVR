@@ -1,44 +1,103 @@
 # LightNVR Frontend Architecture
 
-This document describes the frontend architecture of the LightNVR web interface, which has been modernized to use Tailwind CSS and Preact.
+This document describes the frontend architecture of the LightNVR web interface.
 
 ## Overview
 
-The LightNVR frontend has been redesigned to use modern web technologies:
+The LightNVR frontend is a multi-page application built with modern web technologies:
 
-- **Tailwind CSS** for utility-first styling
-- **Preact** for lightweight component-based UI
-- **Modular JavaScript** for better organization and maintainability
-
-This approach provides several benefits:
-
-- Improved performance and responsiveness
-- Better code organization and maintainability
-- Consistent styling across the application
-- Smaller bundle size compared to larger frameworks
+- **Preact** for lightweight component-based UI (React-compatible)
+- **Tailwind CSS** for utility-first styling with dark mode and theme customization
+- **Vite** for build tooling, bundling, and development server
+- **@tanstack/query** for data fetching and caching
+- **HLS.js** for HLS video playback
+- **WebRTC/MSE** for low-latency live viewing via go2rtc
 
 ## Directory Structure
 
 ```
 web/
-├── css/
-│   ├── base.css          # Base styles and Tailwind imports
-│   ├── components.css    # Component-specific styles
-│   ├── layout.css        # Layout styles
-│   ├── live.css          # Live view specific styles
-│   └── recordings.css    # Recordings view specific styles
+├── css/                              # Stylesheets
 ├── js/
-│   ├── components/       # JavaScript components
-│   │   └── preact/       # Preact components
-│   │       ├── LiveView.jsx
-│   │       ├── RecordingsView.jsx
-│   │       ├── SettingsView.jsx
-│   │       ├── StreamsView.js
-│   │       └── UI.js     # Shared UI components
-│   ├── preact.min.js     # Preact library
-│   ├── preact.hooks.module.js # Preact hooks
-│   └── preact-app.js     # Preact application setup
-└── *.html                # HTML entry points
+│   ├── pages/                        # Page-level entry points
+│   │   ├── index-page.jsx            # Live view
+│   │   ├── recordings-page.jsx       # Recording browser
+│   │   ├── streams-page.jsx          # Stream management
+│   │   ├── settings-page.jsx         # System settings
+│   │   ├── system-page.jsx           # System info and logs
+│   │   ├── users-page.jsx            # User management
+│   │   ├── timeline-page.jsx         # Timeline playback
+│   │   ├── hls-page.jsx              # Direct HLS viewer
+│   │   └── login-page.jsx            # Authentication
+│   ├── components/
+│   │   └── preact/                   # Preact components
+│   │       ├── LiveView.jsx          # Live camera grid
+│   │       ├── WebRTCVideoCell.jsx   # WebRTC video player
+│   │       ├── HLSVideoCell.jsx      # HLS video player
+│   │       ├── MSEVideoCell.jsx      # MSE video player
+│   │       ├── RecordingsView.jsx    # Recording browser
+│   │       ├── StreamsView.jsx       # Stream list
+│   │       ├── StreamConfigModal.jsx # Stream config with zones
+│   │       ├── StreamDeleteModal.jsx # Stream deletion
+│   │       ├── SettingsView.jsx      # System settings
+│   │       ├── SystemView.jsx        # System info dashboard
+│   │       ├── UsersView.jsx         # User management
+│   │       ├── LoginView.jsx         # Login form
+│   │       ├── ZoneEditor.jsx        # Detection zone editor
+│   │       ├── DetectionOverlay.jsx  # Detection overlay
+│   │       ├── PTZControls.jsx       # Pan-Tilt-Zoom controls
+│   │       ├── ThemeCustomizer.jsx   # Theme/dark mode
+│   │       ├── SnapshotManager.jsx   # Camera snapshots
+│   │       ├── FullscreenManager.jsx # Fullscreen video
+│   │       ├── BatchDeleteModal.jsx  # Batch recording delete
+│   │       ├── Toast.jsx / ToastContainer.jsx  # Notifications
+│   │       ├── Header.jsx / Footer.jsx         # Layout
+│   │       ├── LoadingIndicator.jsx  # Loading spinner
+│   │       ├── UI.jsx                # Shared UI primitives
+│   │       ├── recordings/           # Recording sub-components
+│   │       │   ├── ActiveFilters.jsx
+│   │       │   ├── FiltersSidebar.jsx
+│   │       │   ├── PaginationControls.jsx
+│   │       │   ├── RecordingsTable.jsx
+│   │       │   ├── formatUtils.js
+│   │       │   ├── recordingsAPI.jsx
+│   │       │   └── urlUtils.js
+│   │       ├── system/               # System sub-components
+│   │       │   ├── LogsView.jsx / LogsPoller.jsx
+│   │       │   ├── MemoryStorage.jsx
+│   │       │   ├── NetworkInfo.jsx
+│   │       │   ├── StreamStorage.jsx / StreamsInfo.jsx
+│   │       │   ├── SystemControls.jsx / SystemInfo.jsx
+│   │       │   ├── RestartModal.jsx
+│   │       │   └── SystemUtils.js
+│   │       ├── timeline/             # Timeline sub-components
+│   │       │   ├── TimelinePage.jsx
+│   │       │   ├── TimelinePlayer.jsx
+│   │       │   ├── TimelineSegments.jsx
+│   │       │   ├── TimelineRuler.jsx
+│   │       │   ├── TimelineCursor.jsx
+│   │       │   ├── TimelineControls.jsx
+│   │       │   └── SpeedControls.jsx
+│   │       └── users/                # User sub-components
+│   │           ├── UsersTable.jsx
+│   │           ├── AddUserModal.jsx
+│   │           ├── EditUserModal.jsx
+│   │           ├── DeleteUserModal.jsx
+│   │           ├── ApiKeyModal.jsx
+│   │           ├── TotpSetupModal.jsx
+│   │           └── UserRoles.js
+│   ├── utils/                        # Utility modules
+│   │   ├── auth-utils.js
+│   │   ├── dom-utils.js
+│   │   ├── settings-utils.js
+│   │   ├── theme-init.js
+│   │   └── url-utils.js
+│   ├── lib/                          # Third-party libraries
+│   ├── fetch-utils.js                # HTTP fetch helpers
+│   ├── query-client.js               # @tanstack/query client
+│   ├── url-param-handler.js          # URL parameter management
+│   └── version.js                    # Version info
+└── *.html                            # HTML entry points
 ```
 
 ## Tailwind CSS Integration
