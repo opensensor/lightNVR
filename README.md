@@ -67,47 +67,22 @@ For more detail, the repository also includes:
 - `docs/images/arch-state.svg` – high-level state machine for streams/recordings
 - `docs/images/arch-thread.svg` – thread and worker layout for the core service
 
-## 🆕 What's New in v0.14+
+## 🆕 Recent Highlights
 
-### Detection Zones (v0.14.0)
-Visual polygon-based zone editor for precise object detection. Draw custom zones, filter by object class, and set per-zone confidence thresholds. Perfect for reducing false positives and focusing on areas that matter.
+### libuv HTTP Backend (v0.20.0)
+Migrated from Mongoose to libuv + llhttp for the HTTP server, improving performance and reliability.
 
-### Theme Customization (v0.13.0)
-Choose from 7 beautiful color themes with adjustable intensity. Supports both light and dark modes with automatic system preference detection. Make LightNVR match your style!
+### TOTP Two-Factor Authentication (v0.20.0)
+Optional TOTP-based MFA for securing the web interface with authenticator apps.
 
-### Enhanced light-object-detect Integration (v0.14.0)
-Seamless integration with modern ONNX and TFLite models. Configurable detection backends (ONNX, TFLite, OpenCV) with zone-aware filtering and direct go2rtc frame extraction for optimal performance.
+### MQTT Event Streaming (v0.19.0)
+Publish detection events to an MQTT broker for integration with Home Assistant and other automation platforms.
 
-### WebRTC Improvements (v0.12.6+)
-Ultra-low latency streaming with automatic NAT/firewall traversal. Configurable STUN servers and ICE configuration for reliable streaming in complex network environments.
+### Demo Mode (v0.21.0)
+Built-in demo mode with virtual test streams for development and evaluation without real cameras.
 
-### Improved Docker Deployment (v0.12.6+)
-Unified data volume for persistent storage, automatic configuration initialization, and WebRTC support out-of-the-box with STUN server configuration.
-
----
-
-## 📹 Demo & Media
-
-Screenshots and videos are automatically generated using Playwright automation. To update documentation media:
-
-```bash
-# Install dependencies (one-time)
-npm install --save-dev playwright
-npx playwright install chromium
-
-# Capture all screenshots and videos
-./scripts/update-documentation-media.sh --docker
-
-# Or capture screenshots only
-./scripts/update-documentation-media.sh --screenshots-only
-
-# Capture all theme variations
-./scripts/update-documentation-media.sh --all-themes
-```
-
-See [scripts/README-screenshots.md](scripts/README-screenshots.md) for detailed documentation on the automation system.
-
-> **Note for Contributors**: Screenshots and videos should be generated using the automated scripts to ensure consistency. Manual captures are discouraged unless adding new features not yet covered by automation.
+### Auto-Generated Credentials (v0.21.7)
+Admin password is now auto-generated on first run for improved out-of-box security.
 
 ## 💡 Use Cases
 
