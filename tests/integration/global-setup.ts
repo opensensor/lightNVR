@@ -21,6 +21,15 @@ const LIGHTNVR_PORT = 18080;
 const GO2RTC_API_PORT = 11984;
 const GO2RTC_RTSP_PORT = 18554;
 
+// go2rtc API is typically mounted under a base path (see include/video/go2rtc/go2rtc_api.h)
+// In CI/lightNVR-managed mode we default to /go2rtc.
+const GO2RTC_BASE_PATH = (process.env.GO2RTC_BASE_PATH ?? '/go2rtc').replace(/\/+$/, '');
+const GO2RTC_HTTP_BASE = `http://localhost:${GO2RTC_API_PORT}${GO2RTC_BASE_PATH}`;
+
+// go2rtc API uses the same basic auth as lightNVR's web config in the test ini.
+// If go2rtc auth is disabled in some environments, providing the header is harmless.
+const GO2RTC_AUTH_HEADER = 'Basic ' + Buffer.from('admin:admin').toString('base64');
+
 // Test streams to register with go2rtc and lightNVR
 const TEST_STREAMS = [
   { name: 'test_pattern', source: 'ffmpeg:virtual?video&size=720#video=h264', width: 1280, height: 720 },
@@ -250,8 +259,9 @@ async function waitForGo2rtc(): Promise<void> {
 
   // LightNVR needs time to start go2rtc, so we use a longer timeout
   const ready = await waitForService(
-    `http://localhost:${GO2RTC_API_PORT}/api/streams`,
-    60000  // 60 seconds timeout - go2rtc startup can take a while
+    `${GO2RTC_HTTP_BASE}/api/streams`,
+    60000,  // 60 seconds timeout - go2rtc startup can take a while
+    GO2RTC_AUTH_HEADER
   );
 
   if (!ready) {
@@ -281,9 +291,14 @@ async function registerTestStreamsWithGo2rtc(): Promise<void> {
   for (const stream of TEST_STREAMS) {
     try {
       const encodedSource = encodeURIComponent(stream.source);
-      const url = `http://localhost:${GO2RTC_API_PORT}/api/streams?name=${stream.name}&src=${encodedSource}`;
+      const url = `${GO2RTC_HTTP_BASE}/api/streams?name=${stream.name}&src=${encodedSource}`;
 
-      const response = await fetch(url, { method: 'PUT' });
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': GO2RTC_AUTH_HEADER,
+        },
+      });
       if (response.ok) {
         console.log(`  ✓ Registered with go2rtc: ${stream.name}`);
       } else {

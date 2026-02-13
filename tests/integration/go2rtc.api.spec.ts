@@ -6,15 +6,48 @@
 import { test, expect, APIRequestContext } from '@playwright/test';
 import { execSync } from 'child_process';
 
+// GO2RTC_URL may be provided as either an origin (http://host:port) or with a base path
+// (http://host:port/go2rtc). Playwright's request `baseURL` doesn't safely preserve paths
+// when request paths start with '/', so we split origin vs base_path explicitly.
 const GO2RTC_URL = process.env.GO2RTC_URL || 'http://localhost:11984';
-const GO2RTC_RTSP_PORT = process.env.GO2RTC_RTSP_PORT || '8554';
+let GO2RTC_ORIGIN = GO2RTC_URL;
+let GO2RTC_BASE_PATH: string | undefined = process.env.GO2RTC_BASE_PATH;
+
+try {
+  const u = new URL(GO2RTC_URL);
+  GO2RTC_ORIGIN = u.origin;
+
+  // If GO2RTC_BASE_PATH isn't explicitly set, infer it from GO2RTC_URL's path.
+  if (GO2RTC_BASE_PATH === undefined) {
+    const inferred = u.pathname.replace(/\/+$/, '');
+    // Only infer a non-root path. If GO2RTC_URL has no path component ("/"),
+    // keep GO2RTC_BASE_PATH undefined so we fall back to the default (/go2rtc).
+    if (inferred !== '/' && inferred !== '') {
+      GO2RTC_BASE_PATH = inferred;
+    }
+  }
+} catch {
+  // Leave GO2RTC_ORIGIN as-is for backwards compatibility if GO2RTC_URL isn't a full URL.
+}
+
+GO2RTC_BASE_PATH = (GO2RTC_BASE_PATH ?? '/go2rtc').replace(/\/+$/, '');
+const go2rtcPath = (p: string) => `${GO2RTC_BASE_PATH}${p.startsWith('/') ? p : `/${p}`}`;
+const GO2RTC_RTSP_PORT = process.env.GO2RTC_RTSP_PORT || '18554';
+
+const GO2RTC_API_USERNAME = process.env.GO2RTC_API_USERNAME || 'admin';
+const GO2RTC_API_PASSWORD = process.env.GO2RTC_API_PASSWORD || 'admin';
+const GO2RTC_AUTH_HEADER =
+  'Basic ' + Buffer.from(`${GO2RTC_API_USERNAME}:${GO2RTC_API_PASSWORD}`).toString('base64');
 
 test.describe('go2rtc API @go2rtc', () => {
   let request: APIRequestContext;
 
   test.beforeAll(async ({ playwright }) => {
     request = await playwright.request.newContext({
-      baseURL: GO2RTC_URL,
+      baseURL: GO2RTC_ORIGIN,
+      extraHTTPHeaders: {
+        Authorization: GO2RTC_AUTH_HEADER,
+      },
     });
   });
 
@@ -24,7 +57,7 @@ test.describe('go2rtc API @go2rtc', () => {
 
   test.describe('Streams API', () => {
     test('GET /api/streams returns registered streams', async () => {
-      const response = await request.get('/api/streams');
+      const response = await request.get(go2rtcPath('/api/streams'));
       expect(response.ok()).toBeTruthy();
       
       const data = await response.json();
@@ -36,7 +69,7 @@ test.describe('go2rtc API @go2rtc', () => {
     });
 
     test('test_pattern stream is registered', async () => {
-      const response = await request.get('/api/streams');
+      const response = await request.get(go2rtcPath('/api/streams'));
       expect(response.ok()).toBeTruthy();
       
       const data = await response.json();
@@ -44,7 +77,7 @@ test.describe('go2rtc API @go2rtc', () => {
     });
 
     test('test_colorbars stream is registered', async () => {
-      const response = await request.get('/api/streams');
+      const response = await request.get(go2rtcPath('/api/streams'));
       expect(response.ok()).toBeTruthy();
       
       const data = await response.json();
@@ -56,12 +89,12 @@ test.describe('go2rtc API @go2rtc', () => {
       const streamSource = encodeURIComponent('ffmpeg:virtual?video&size=480#video=h264');
       
       const response = await request.put(
-        `/api/streams?name=${streamName}&src=${streamSource}`
+        go2rtcPath(`/api/streams?name=${streamName}&src=${streamSource}`)
       );
       expect(response.ok()).toBeTruthy();
       
       // Verify it was added
-      const listResponse = await request.get('/api/streams');
+      const listResponse = await request.get(go2rtcPath('/api/streams'));
       const data = await listResponse.json();
       expect(data).toHaveProperty(streamName);
     });
@@ -70,7 +103,7 @@ test.describe('go2rtc API @go2rtc', () => {
   test.describe('WebRTC API', () => {
     test('GET /api/webrtc endpoint is accessible', async () => {
       // The WebRTC API may return different status codes depending on request
-      const response = await request.get('/api/webrtc');
+      const response = await request.get(go2rtcPath('/api/webrtc'));
       // Should be accessible (200) or require POST (405)
       expect([200, 405].includes(response.status())).toBeTruthy();
     });
