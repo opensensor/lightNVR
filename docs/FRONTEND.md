@@ -128,11 +128,19 @@ Preact is a lightweight alternative to React with the same modern API. It's used
 
 ### Key Components
 
-- **LiveView**: Displays live camera feeds
-- **RecordingsView**: Manages recording playback and filtering
-- **SettingsView**: Handles system configuration
-- **StreamsView**: Manages camera streams
-- **UI**: Shared UI components like modals, notifications, and form elements
+- **LiveView**: Live camera grid with WebRTC, HLS, and MSE video cells
+- **RecordingsView**: Recording browser with filtering, pagination, batch operations, and protection
+- **StreamsView**: Stream list with CRUD, ONVIF discovery integration, and connection testing
+- **StreamConfigModal**: Stream configuration with detection zone editor and PTZ settings
+- **SettingsView**: System configuration including go2rtc, MQTT, and ONVIF settings
+- **SystemView**: System dashboard with logs, memory/storage info, and restart controls
+- **UsersView**: User management with roles, API keys, TOTP/MFA setup, and password controls
+- **TimelinePage**: Timeline-based recording playback with segments, ruler, cursor, and speed controls
+- **PTZControls**: Pan-Tilt-Zoom camera controls with presets
+- **ZoneEditor**: Detection zone polygon editor
+- **DetectionOverlay**: Real-time detection result overlay on video
+- **ThemeCustomizer**: Theme selection and dark mode toggle
+- **UI**: Shared UI primitives (modals, buttons, form elements)
 
 ### Component Example
 
