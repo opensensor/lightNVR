@@ -202,75 +202,62 @@ export function StreamCard({ stream, onToggle, onEdit, onDelete }) {
 
 ## State Management
 
-State management in the LightNVR frontend is handled using Preact's built-in hooks:
+State management uses a combination of Preact hooks and @tanstack/query:
 
-- **useState**: For component-local state
-- **useEffect**: For side effects like data fetching
-- **useCallback**: For memoized callbacks
-- **useRef**: For persistent references to DOM elements
+- **@tanstack/query (Preact Query)**: Primary data-fetching and server-state caching layer. Handles loading states, error handling, retries, cache invalidation, and stale-while-revalidate patterns.
+- **useState / useEffect**: For component-local UI state (modals, forms, toggles)
+- **useCallback / useMemo**: For memoized callbacks and computed values
+- **useRef**: For DOM element references and persistent values across renders
 
-For more complex state management, custom hooks are used to encapsulate related logic.
+### Data Fetching with Preact Query
 
-### Example: Custom Hook for API Data
+The `query-client.js` module provides custom hooks that wrap @tanstack/query with `enhancedFetch` (automatic timeout, retries, auth redirect on 401):
 
-```javascript
-function useApiData(endpoint, defaultValue = []) {
-  const [data, setData] = useState(defaultValue);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  useEffect(() => {
-    fetch(endpoint)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        return response.json();
-      })
-      .then(data => {
-        setData(data);
-        setLoading(false);
-      })
-      .catch(error => {
-        setError(error.message);
-        setLoading(false);
-      });
-  }, [endpoint]);
-  
-  return { data, loading, error };
-}
-```
-
-## API Integration
-
-The frontend communicates with the backend API using the Fetch API. API calls are typically made in the following scenarios:
-
-- When a component mounts (via `useEffect`)
-- In response to user actions (button clicks, form submissions)
-- On a timer for data that needs to be periodically refreshed
+- `useQuery(key, url, options)` — Declarative data fetching with caching
+- `useMutation(options)` — For POST/PUT/DELETE operations
+- `usePostMutation(url)` / `usePutMutation(url)` — Convenience mutation hooks
+- `useQueryClient()` — Access query client for cache invalidation
+- `prefetchQuery(key, url)` — Prefetch data into cache
 
 ### Example: Fetching Streams
 
 ```javascript
-useEffect(() => {
-  // Fetch streams when component mounts
-  fetch('/api/streams')
-    .then(response => {
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      return response.json();
-    })
-    .then(data => {
-      setStreams(data.streams);
-      setLoading(false);
-    })
-    .catch(error => {
-      setError(error.message);
-      setLoading(false);
-    });
-}, []);
+import { useQuery, useQueryClient } from '../../query-client.js';
+
+const { data, isLoading, error } = useQuery(
+  ['streams'], '/api/streams',
+  { timeout: 10000, retries: 2, retryDelay: 1000 }
+);
 ```
+
+### Example: Mutation with Cache Invalidation
+
+```javascript
+const queryClient = useQueryClient();
+const saveMutation = useMutation({
+  mutationFn: async (streamData) => {
+    const response = await fetch(`/api/streams/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(streamData)
+    });
+    return response.json();
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['streams'] });
+  }
+});
+```
+
+## API Integration
+
+The frontend communicates with the backend through a layered fetch architecture:
+
+1. **`fetch-utils.js`** — `enhancedFetch()` wraps the native Fetch API with timeouts, retries, abort controller support, and automatic 401 → login redirect. `fetchJSON()` adds JSON parsing.
+2. **`query-client.js`** — Wraps `enhancedFetch` in @tanstack/query hooks for declarative data fetching with caching and automatic background refetching.
+3. **Components** — Use `useQuery` / `useMutation` hooks for all server communication. Direct `fetch()` calls are avoided in favor of the query hooks.
+
+Session cookies (`credentials: 'same-origin'`) are automatically included in all requests.
 
 ## Responsive Design
 
@@ -344,11 +331,13 @@ function DarkModeToggle() {
 
 Several performance optimizations are implemented in the frontend:
 
-- **Code Splitting**: Loading components only when needed
+- **Preact over React**: ~3KB virtual DOM library with identical API, significantly smaller than React
+- **@tanstack/query Caching**: Server data cached with configurable stale times (5 min default), reducing redundant API calls
+- **Vite Build**: Tree-shaking, code splitting, and minification for optimized production bundles
 - **Memoization**: Using `useCallback` and `useMemo` to prevent unnecessary re-renders
-- **Lazy Loading**: Images and non-critical resources are loaded lazily
+- **Request Deduplication**: @tanstack/query automatically deduplicates concurrent requests for the same data
+- **Abort Controllers**: Fetch requests are cancellable via AbortController to prevent stale responses
 - **Efficient Rendering**: Using keys for list items and optimizing render cycles
-- **Minimal Dependencies**: Using lightweight libraries and avoiding bloat
 
 ## Accessibility
 
@@ -368,16 +357,14 @@ The frontend is compatible with modern browsers:
 - Firefox (latest 2 versions)
 - Safari (latest 2 versions)
 
-Internet Explorer is not supported.
+Internet Explorer is not supported. WebRTC features require browser support for RTCPeerConnection.
 
 ## Future Enhancements
 
 Planned enhancements for the frontend:
 
 1. **Progressive Web App (PWA)** capabilities for offline access
-2. **Enhanced WebRTC Support** for lower-latency live viewing (via go2rtc integration)
-3. **Advanced Filtering** for recordings and events
-4. **Customizable Dashboard** with drag-and-drop widgets
-5. **Internationalization** support for multiple languages
+2. **Customizable Dashboard** with drag-and-drop widgets
+3. **Internationalization** support for multiple languages
 
-**Note:** WebSocket support has been removed as of version 0.11.22 to simplify the architecture. Real-time updates are now handled via HTTP polling.
+**Note:** WebSocket support has been removed in favor of HTTP polling and @tanstack/query's background refetching. WebRTC live viewing is available via go2rtc integration.
