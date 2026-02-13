@@ -102,7 +102,30 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
     // Draw the image if loaded
     if (image && imageLoaded && !snapshotError) {
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      // Calculate the scaling and positioning to maintain aspect ratio
+      const imageAspect = image.naturalWidth / image.naturalHeight;
+      const canvasAspect = canvas.width / canvas.height;
+
+      let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+      if (imageAspect > canvasAspect) {
+        // Image is wider than canvas (letterboxing - black bars on top and bottom)
+        drawWidth = canvas.width;
+        drawHeight = canvas.width / imageAspect;
+        offsetY = (canvas.height - drawHeight) / 2;
+      } else {
+        // Image is taller than canvas (pillarboxing - black bars on sides)
+        drawHeight = canvas.height;
+        drawWidth = canvas.height * imageAspect;
+        offsetX = (canvas.width - drawWidth) / 2;
+      }
+
+      // Draw black background for letterboxing/pillarboxing
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw the image with proper aspect ratio
+      ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
     } else {
       // Draw a placeholder background
       ctx.fillStyle = '#1a1a1a';
