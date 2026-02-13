@@ -61,23 +61,29 @@ export async function getGo2rtcApiPort() {
 /**
  * Get the go2rtc base URL for HTTP API calls (HLS, WebRTC SDP, etc.)
  *
- * go2rtc is configured with base_path: /go2rtc, so all its API endpoints
+ * go2rtc is configured with base_path: /go2rtc/, so all its API endpoints
  * are served under the /go2rtc prefix (e.g., /go2rtc/api/streams).
  *
- * All HTTP requests are routed through lightNVR's built-in reverse proxy at /go2rtc/*,
- * which forwards to go2rtc on localhost. This ensures HLS streaming works both
- * on-network and off-network (only lightNVR's port needs to be exposed).
+ * Over HTTPS: Routes through external reverse proxy at /go2rtc/* which forwards
+ * to go2rtc. The proxy must handle both HTTP and WebSocket connections.
  *
- * NOTE: This proxy is HTTP-only (uses curl). For WebSocket connections (e.g., MSE),
- * use getGo2rtcWebSocketUrl() instead, which connects directly to go2rtc.
+ * Over HTTP (local dev): lightNVR's built-in /go2rtc/* proxy only handles HLS
+ * and snapshots (not WebRTC). WebRTC must connect directly to go2rtc's port
+ * for lower latency and because the curl-based proxy can't handle the SDP exchange.
  *
- * @returns {Promise<string>} - go2rtc base URL (e.g., "https://hostname/go2rtc" or "http://hostname:8080/go2rtc")
+ * @returns {Promise<string>} - go2rtc base URL (e.g., "https://hostname/go2rtc" or "http://hostname:1984/go2rtc")
  */
 export async function getGo2rtcBaseUrl() {
-  // Always route through lightNVR's reverse proxy on the same origin.
-  // This works for both HTTP and HTTPS, and ensures HLS works off-network
-  // since only lightNVR's port needs to be accessible (not go2rtc's port).
-  return `${window.location.origin}/go2rtc`;
+  // Over HTTPS, use the external reverse proxy (nginx, ingress, etc.)
+  // which handles both HTTP and WebSocket to /go2rtc/*
+  if (window.location.protocol === 'https:') {
+    return `${window.location.origin}/go2rtc`;
+  }
+
+  // Over HTTP (local dev), connect directly to go2rtc's port
+  // because lightNVR's proxy doesn't handle WebRTC endpoints
+  const port = await getGo2rtcApiPort();
+  return `http://${window.location.hostname}:${port}/go2rtc`;
 }
 
 /**
