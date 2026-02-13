@@ -15,7 +15,7 @@ api:
   listen: :11984
   origin: "*"
   # Note: base_path removed for simpler API access during testing
-  # Use base_path: /go2rtc/ when running behind lightNVR's reverse proxy
+  # Use base_path: /go2rtc (no trailing slash) when running behind lightNVR's reverse proxy
 
 rtsp:
   listen: :18554

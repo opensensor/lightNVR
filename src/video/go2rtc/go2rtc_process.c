@@ -262,8 +262,11 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     // API configuration
     fprintf(config_file, "api:\n");
     fprintf(config_file, "  listen: :%d\n", api_port);
-    // base_path must match GO2RTC_BASE_PATH in go2rtc_api.h so all C API calls resolve correctly
-    fprintf(config_file, "  base_path: /go2rtc/\n");
+	// base_path must match GO2RTC_BASE_PATH in go2rtc_api.h so all C API calls resolve correctly.
+	// IMPORTANT: do not include a trailing slash here. go2rtc registers routes as:
+	//   pattern = base_path + "/" + "api/..."
+	// so a trailing slash would produce double slashes ("/go2rtc//api") and can cause 404s.
+	fprintf(config_file, "  base_path: %s\n", GO2RTC_BASE_PATH);
 
     // Use wildcard for CORS origin to support both localhost and 127.0.0.1
     // This allows the web interface to access go2rtc API from any local address
