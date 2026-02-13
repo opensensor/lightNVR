@@ -11,7 +11,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { PTZControls } from './PTZControls.jsx';
-import { getGo2rtcApiPort } from '../../utils/settings-utils.js';
+import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import adapter from 'webrtc-adapter';
 
 /**
@@ -104,15 +104,13 @@ export function WebRTCVideoCell({
 
     // Async function to initialize WebRTC
     const initWebRTC = async () => {
-      // Get the go2rtc port and build direct URL
-      // WebRTC signaling connects directly to go2rtc for lower latency
+      // Get the go2rtc base URL from settings
       try {
-        const port = await getGo2rtcApiPort();
-        go2rtcBaseUrl = `http://${window.location.hostname}:${port}/go2rtc`;
-        console.log(`Using direct go2rtc connection: ${go2rtcBaseUrl}`);
+        go2rtcBaseUrl = await getGo2rtcBaseUrl();
+        console.log(`Using go2rtc base URL: ${go2rtcBaseUrl}`);
       } catch (err) {
-        console.warn('Failed to get go2rtc port from settings, using default:', err);
-        go2rtcBaseUrl = `http://${window.location.hostname}:1984/go2rtc`;
+        console.warn('Failed to get go2rtc URL from settings, using default:', err);
+        go2rtcBaseUrl = `${window.location.origin}/go2rtc`;
       }
 
       // Fetch ICE server configuration from API (includes TURN if configured)

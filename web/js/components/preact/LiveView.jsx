@@ -388,15 +388,13 @@ export function LiveView({isWebRTCDisabled}) {
           <h2 className="text-xl font-bold mr-4">Live View ({useMSE ? 'MSE' : 'HLS'})</h2>
           <div className="flex space-x-2">
             {!isWebRTCDisabled && (
-            <button
+            <a
+              href="/index.html"
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }}
-              onClick={() => {
-                window.location.href = '/index.html';
-              }}
             >
               WebRTC View
-            </button>
+            </a>
                 )}
             {go2rtcAvailable && (
             <button

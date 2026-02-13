@@ -407,25 +407,21 @@ export function WebRTCView() {
         <div className="flex items-center space-x-2">
           <h2 className="text-xl font-bold mr-4">Live View (WebRTC)</h2>
           <div className="flex space-x-2">
-            <button
+            <a
+              href="/hls.html"
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }}
-              onClick={() => {
-                window.location.href = '/hls.html';
-              }}
             >
               HLS View
-            </button>
+            </a>
             {go2rtcAvailable && (
-            <button
+            <a
+              href="/hls.html?mode=mse"
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }}
-              onClick={() => {
-                window.location.href = '/hls.html?mode=mse';
-              }}
             >
               MSE View
-            </button>
+            </a>
                 )}
           </div>
         </div>
