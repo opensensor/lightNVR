@@ -1136,5 +1136,58 @@ void mqtt_cleanup(void) {
     log_info("MQTT: Cleaned up");
 }
 
+/**
+ * Reinitialize MQTT client with current configuration.
+ * Used for hot-reload when settings change from the web UI.
+ *
+ * @param config Pointer to the (updated) application configuration
+ * @return 0 on success, -1 on failure
+ */
+int mqtt_reinit(const config_t *config) {
+    if (!config) {
+        log_error("MQTT reinit: Invalid config pointer");
+        return -1;
+    }
+
+    log_info("MQTT reinit: Starting hot-reload...");
+
+    // Step 1: Full cleanup of existing MQTT state
+    // (mqtt_cleanup sets shutting_down = true and tears everything down)
+    mqtt_cleanup();
+
+    // Step 2: Reset the shutting_down flag so callbacks work again
+    shutting_down = false;
+    __sync_synchronize();
+
+    // Step 3: If MQTT is now disabled, we're done
+    if (!config->mqtt_enabled) {
+        log_info("MQTT reinit: MQTT is disabled, cleanup complete");
+        return 0;
+    }
+
+    // Step 4: Re-initialize with the updated config
+    if (mqtt_init(config) != 0) {
+        log_error("MQTT reinit: Failed to initialize MQTT client");
+        return -1;
+    }
+
+    // Step 5: Connect to broker
+    if (mqtt_connect() != 0) {
+        log_warn("MQTT reinit: Failed to connect to MQTT broker, will retry automatically");
+        // Not a fatal error — mosquitto loop thread will retry
+    } else {
+        log_info("MQTT reinit: Connected to MQTT broker");
+
+        // Step 6: Publish HA discovery and start services if enabled
+        if (config->mqtt_ha_discovery) {
+            mqtt_publish_ha_discovery();
+            mqtt_start_ha_services();
+        }
+    }
+
+    log_info("MQTT reinit: Hot-reload complete");
+    return 0;
+}
+
 #endif /* ENABLE_MQTT */
 

@@ -110,6 +110,16 @@ void mqtt_disconnect(void);
  */
 void mqtt_cleanup(void);
 
+/**
+ * Reinitialize MQTT client with current configuration.
+ * Performs cleanup → init → connect → HA discovery/services.
+ * Used for hot-reload when settings change from the web UI.
+ *
+ * @param config Pointer to the (updated) application configuration
+ * @return 0 on success, -1 on failure
+ */
+int mqtt_reinit(const config_t *config);
+
 #else /* ENABLE_MQTT not defined */
 
 /* Stub implementations when MQTT is disabled */
@@ -133,6 +143,7 @@ static inline int mqtt_start_ha_services(void) { return 0; }
 static inline void mqtt_stop_ha_services(void) {}
 static inline void mqtt_disconnect(void) {}
 static inline void mqtt_cleanup(void) {}
+static inline int mqtt_reinit(const config_t *config) { (void)config; return 0; }
 
 #endif /* ENABLE_MQTT */
 

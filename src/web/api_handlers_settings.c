@@ -26,6 +26,33 @@
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/hls/hls_api.h"
+#include "core/mqtt_client.h"
+
+/**
+ * @brief Background task for MQTT reinit after settings change.
+ *
+ * MQTT cleanup and reconnection can take several seconds due to timeouts,
+ * so we run it in a detached thread (same pattern as go2rtc below).
+ */
+typedef struct {
+    bool mqtt_now_enabled;  // Whether MQTT is enabled after the settings change
+} mqtt_settings_task_t;
+
+static void mqtt_settings_worker(mqtt_settings_task_t *task) {
+    if (!task) return;
+
+    log_info("MQTT settings worker: reinitializing MQTT client...");
+
+    int rc = mqtt_reinit(&g_config);
+    if (rc != 0) {
+        log_error("MQTT settings worker: reinit failed (rc=%d)", rc);
+    } else {
+        log_info("MQTT settings worker: reinit complete (mqtt_enabled=%s)",
+                 task->mqtt_now_enabled ? "true" : "false");
+    }
+
+    free(task);
+}
 
 /**
  * @brief Background task for go2rtc start/stop after settings change.
@@ -352,6 +379,29 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     bool settings_changed = false;
     bool go2rtc_config_changed = false;  // Track if go2rtc-related settings changed
     bool go2rtc_becoming_enabled = false;  // Track transition direction
+    bool mqtt_config_changed = false;     // Track if MQTT-related settings changed
+
+    // Snapshot current MQTT settings before parsing new values
+    bool old_mqtt_enabled = g_config.mqtt_enabled;
+    char old_mqtt_broker_host[256];
+    strncpy(old_mqtt_broker_host, g_config.mqtt_broker_host, sizeof(old_mqtt_broker_host));
+    int old_mqtt_broker_port = g_config.mqtt_broker_port;
+    char old_mqtt_username[128];
+    strncpy(old_mqtt_username, g_config.mqtt_username, sizeof(old_mqtt_username));
+    char old_mqtt_password[128];
+    strncpy(old_mqtt_password, g_config.mqtt_password, sizeof(old_mqtt_password));
+    char old_mqtt_client_id[128];
+    strncpy(old_mqtt_client_id, g_config.mqtt_client_id, sizeof(old_mqtt_client_id));
+    char old_mqtt_topic_prefix[256];
+    strncpy(old_mqtt_topic_prefix, g_config.mqtt_topic_prefix, sizeof(old_mqtt_topic_prefix));
+    bool old_mqtt_tls_enabled = g_config.mqtt_tls_enabled;
+    int old_mqtt_keepalive = g_config.mqtt_keepalive;
+    int old_mqtt_qos = g_config.mqtt_qos;
+    bool old_mqtt_retain = g_config.mqtt_retain;
+    bool old_mqtt_ha_discovery = g_config.mqtt_ha_discovery;
+    char old_mqtt_ha_discovery_prefix[128];
+    strncpy(old_mqtt_ha_discovery_prefix, g_config.mqtt_ha_discovery_prefix, sizeof(old_mqtt_ha_discovery_prefix));
+    int old_mqtt_ha_snapshot_interval = g_config.mqtt_ha_snapshot_interval;
 
     // Web port
     cJSON *web_port = cJSON_GetObjectItem(settings, "web_port");
@@ -836,6 +886,25 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.mqtt_ha_snapshot_interval = interval;
         settings_changed = true;
         log_info("Updated mqtt_ha_snapshot_interval: %d", g_config.mqtt_ha_snapshot_interval);
+    }
+
+    // Detect if any MQTT setting actually changed
+    if (old_mqtt_enabled != g_config.mqtt_enabled ||
+        strcmp(old_mqtt_broker_host, g_config.mqtt_broker_host) != 0 ||
+        old_mqtt_broker_port != g_config.mqtt_broker_port ||
+        strcmp(old_mqtt_username, g_config.mqtt_username) != 0 ||
+        strcmp(old_mqtt_password, g_config.mqtt_password) != 0 ||
+        strcmp(old_mqtt_client_id, g_config.mqtt_client_id) != 0 ||
+        strcmp(old_mqtt_topic_prefix, g_config.mqtt_topic_prefix) != 0 ||
+        old_mqtt_tls_enabled != g_config.mqtt_tls_enabled ||
+        old_mqtt_keepalive != g_config.mqtt_keepalive ||
+        old_mqtt_qos != g_config.mqtt_qos ||
+        old_mqtt_retain != g_config.mqtt_retain ||
+        old_mqtt_ha_discovery != g_config.mqtt_ha_discovery ||
+        strcmp(old_mqtt_ha_discovery_prefix, g_config.mqtt_ha_discovery_prefix) != 0 ||
+        old_mqtt_ha_snapshot_interval != g_config.mqtt_ha_snapshot_interval) {
+        mqtt_config_changed = true;
+        log_info("MQTT settings changed, will reinitialize MQTT client");
     }
 
     // TURN server settings for WebRTC relay
@@ -1358,6 +1427,31 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                     pthread_attr_destroy(&attr);
                 } else {
                     log_error("Failed to allocate go2rtc settings task");
+                }
+            }
+
+            // If MQTT-related settings changed, spawn background thread
+            // to handle cleanup + reinit (avoids blocking the API response)
+            if (mqtt_config_changed) {
+                mqtt_settings_task_t *task = calloc(1, sizeof(mqtt_settings_task_t));
+                if (task) {
+                    task->mqtt_now_enabled = g_config.mqtt_enabled;
+
+                    pthread_t thread_id;
+                    pthread_attr_t attr;
+                    pthread_attr_init(&attr);
+                    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+                    if (pthread_create(&thread_id, &attr,
+                                       (void *(*)(void *))mqtt_settings_worker, task) != 0) {
+                        log_error("Failed to create MQTT settings worker thread");
+                        free(task);
+                    } else {
+                        log_info("MQTT settings change dispatched to background thread");
+                    }
+                    pthread_attr_destroy(&attr);
+                } else {
+                    log_error("Failed to allocate MQTT settings task");
                 }
             }
         } else {
