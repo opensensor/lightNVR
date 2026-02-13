@@ -13,6 +13,9 @@
 
 #include "core/mqtt_client.h"
 #include "core/logger.h"
+#include "core/version.h"
+#include "database/db_streams.h"
+#include "video/go2rtc/go2rtc_snapshot.h"
 
 // MQTT client state
 static struct mosquitto *mosq = NULL;
@@ -20,6 +23,28 @@ static const config_t *mqtt_config = NULL;
 static bool connected = false;
 static volatile bool shutting_down = false;  // Flag to prevent callbacks from acquiring mutex during shutdown
 static pthread_mutex_t mqtt_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// HA discovery state
+static volatile bool ha_services_running = false;
+static pthread_t ha_snapshot_thread;
+static pthread_t ha_motion_thread;
+
+// Motion state tracking per stream
+#define MAX_MOTION_STREAMS 16
+#define MOTION_OFF_DELAY_SEC 30
+
+typedef struct {
+    char stream_name[256];
+    time_t last_detection_time;
+    bool motion_active;
+    int object_counts[32];       // Count per object class
+    char object_labels[32][32];  // Label names
+    int num_labels;
+} motion_state_t;
+
+static motion_state_t motion_states[MAX_MOTION_STREAMS];
+static int num_motion_states = 0;
+static pthread_mutex_t motion_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Forward declarations for callbacks
 static void on_connect(struct mosquitto *mosq, void *userdata, int rc);
@@ -98,9 +123,22 @@ int mqtt_init(const config_t *config) {
             return -1;
         }
     }
-    
+
+    // Set up Last Will and Testament for HA availability tracking
+    if (config->mqtt_ha_discovery) {
+        char lwt_topic[512];
+        snprintf(lwt_topic, sizeof(lwt_topic), "%s/availability", config->mqtt_topic_prefix);
+        rc = mosquitto_will_set(mosq, lwt_topic, (int)strlen("offline"), "offline",
+                                config->mqtt_qos, true);
+        if (rc != MOSQ_ERR_SUCCESS) {
+            log_warn("MQTT: Failed to set LWT: %s (continuing anyway)", mosquitto_strerror(rc));
+        } else {
+            log_info("MQTT: LWT set on topic %s", lwt_topic);
+        }
+    }
+
     pthread_mutex_unlock(&mqtt_mutex);
-    
+
     log_info("MQTT: Client initialized (broker: %s:%d, client_id: %s)",
              config->mqtt_broker_host, config->mqtt_broker_port, config->mqtt_client_id);
     
@@ -172,11 +210,21 @@ static void on_connect(struct mosquitto *m, void *userdata, int rc) {
     if (rc == 0) {
         connected = true;
         log_info("MQTT: Connected to broker successfully");
+        pthread_mutex_unlock(&mqtt_mutex);
+
+        // Publish availability "online" for HA discovery
+        if (mqtt_config && mqtt_config->mqtt_ha_discovery) {
+            char avail_topic[512];
+            snprintf(avail_topic, sizeof(avail_topic), "%s/availability",
+                     mqtt_config->mqtt_topic_prefix);
+            mqtt_publish_raw(avail_topic, "online", true);
+            log_info("MQTT: Published availability 'online' to %s", avail_topic);
+        }
     } else {
         connected = false;
         log_error("MQTT: Connection failed: %s", mosquitto_connack_string(rc));
+        pthread_mutex_unlock(&mqtt_mutex);
     }
-    pthread_mutex_unlock(&mqtt_mutex);
 }
 
 // Disconnection callback
@@ -346,6 +394,520 @@ int mqtt_publish_raw(const char *topic, const char *payload, bool retain) {
     return 0;
 }
 
+/**
+ * Publish binary data to a topic (e.g., JPEG snapshots)
+ */
+int mqtt_publish_binary(const char *topic, const void *data, size_t len, bool retain) {
+    if (!mosq || !mqtt_config || !mqtt_config->mqtt_enabled) {
+        return 0;
+    }
+    if (!topic || !data || len == 0) {
+        return -1;
+    }
+    if (!mqtt_is_connected()) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&mqtt_mutex);
+    int rc = mosquitto_publish(mosq, NULL, topic, (int)len, data, mqtt_config->mqtt_qos, retain);
+    pthread_mutex_unlock(&mqtt_mutex);
+
+    if (rc != MOSQ_ERR_SUCCESS) {
+        log_error("MQTT: Failed to publish binary to %s: %s", topic, mosquitto_strerror(rc));
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * Sanitize a stream name for use as a Home Assistant unique_id / object_id.
+ * Replaces non-alphanumeric characters with underscores and lowercases.
+ */
+static void sanitize_stream_name(const char *input, char *output, size_t output_size) {
+    size_t i = 0;
+    for (; i < output_size - 1 && input[i] != '\0'; i++) {
+        char c = input[i];
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+            output[i] = c;
+        } else if (c >= 'A' && c <= 'Z') {
+            output[i] = c + ('a' - 'A');
+        } else {
+            output[i] = '_';
+        }
+    }
+    output[i] = '\0';
+}
+
+/**
+ * Build the common HA device JSON block for lightNVR.
+ * Caller must free the returned cJSON object.
+ */
+static cJSON *build_ha_device_block(void) {
+    cJSON *device = cJSON_CreateObject();
+    if (!device) return NULL;
+
+    cJSON *ids = cJSON_CreateArray();
+    cJSON_AddItemToArray(ids, cJSON_CreateString("lightnvr"));
+    cJSON_AddItemToObject(device, "identifiers", ids);
+    cJSON_AddStringToObject(device, "name", "LightNVR");
+    cJSON_AddStringToObject(device, "manufacturer", "OpenSensor");
+    cJSON_AddStringToObject(device, "model", "LightNVR");
+    cJSON_AddStringToObject(device, "sw_version", LIGHTNVR_VERSION_STRING);
+
+    // Configuration URL (point to web UI)
+    if (mqtt_config) {
+        char config_url[256];
+        snprintf(config_url, sizeof(config_url), "http://localhost:%d", mqtt_config->web_port);
+        cJSON_AddStringToObject(device, "configuration_url", config_url);
+    }
+
+    return device;
+}
+
+/**
+ * Publish Home Assistant MQTT discovery messages for all configured streams.
+ */
+int mqtt_publish_ha_discovery(void) {
+    if (!mosq || !mqtt_config || !mqtt_config->mqtt_enabled || !mqtt_config->mqtt_ha_discovery) {
+        return 0;
+    }
+
+    if (!mqtt_is_connected()) {
+        log_warn("MQTT HA: Not connected, skipping discovery publish");
+        return -1;
+    }
+
+    log_info("MQTT HA: Publishing Home Assistant discovery messages...");
+
+    // Get all configured streams
+    stream_config_t streams[MAX_MOTION_STREAMS];
+    int num_streams = get_all_stream_configs(streams, MAX_MOTION_STREAMS);
+    if (num_streams <= 0) {
+        log_warn("MQTT HA: No streams configured, skipping discovery");
+        return 0;
+    }
+
+    const char *prefix = mqtt_config->mqtt_ha_discovery_prefix;
+    const char *topic_prefix = mqtt_config->mqtt_topic_prefix;
+    int published = 0;
+
+    for (int i = 0; i < num_streams; i++) {
+        if (!streams[i].enabled || streams[i].name[0] == '\0') {
+            continue;
+        }
+
+        char safe_name[256];
+        sanitize_stream_name(streams[i].name, safe_name, sizeof(safe_name));
+
+        // --- 1. Camera entity (snapshot image via MQTT) ---
+        {
+            char topic[512];
+            snprintf(topic, sizeof(topic), "%s/camera/lightnvr/%s/config", prefix, safe_name);
+
+            cJSON *payload = cJSON_CreateObject();
+            if (!payload) continue;
+
+            char unique_id[256];
+            snprintf(unique_id, sizeof(unique_id), "lightnvr_%s_camera", safe_name);
+            cJSON_AddStringToObject(payload, "unique_id", unique_id);
+
+            char name[256];
+            snprintf(name, sizeof(name), "%s", streams[i].name);
+            cJSON_AddStringToObject(payload, "name", name);
+
+            char image_topic[512];
+            snprintf(image_topic, sizeof(image_topic), "%s/cameras/%s/snapshot",
+                     topic_prefix, streams[i].name);
+            cJSON_AddStringToObject(payload, "topic", image_topic);
+
+            // Availability
+            cJSON *avail = cJSON_CreateObject();
+            char avail_topic[512];
+            snprintf(avail_topic, sizeof(avail_topic), "%s/availability", topic_prefix);
+            cJSON_AddStringToObject(avail, "topic", avail_topic);
+            cJSON_AddStringToObject(avail, "payload_available", "online");
+            cJSON_AddStringToObject(avail, "payload_not_available", "offline");
+            cJSON *avail_list = cJSON_CreateArray();
+            cJSON_AddItemToArray(avail_list, avail);
+            cJSON_AddItemToObject(payload, "availability", avail_list);
+
+            // Device
+            cJSON_AddItemToObject(payload, "device", build_ha_device_block());
+
+            char *json_str = cJSON_PrintUnformatted(payload);
+            cJSON_Delete(payload);
+            if (json_str) {
+                mqtt_publish_raw(topic, json_str, true);
+                free(json_str);
+                published++;
+            }
+        }
+
+        // --- 2. Binary sensor for motion detection ---
+        {
+            char topic[512];
+            snprintf(topic, sizeof(topic), "%s/binary_sensor/lightnvr/%s_motion/config",
+                     prefix, safe_name);
+
+            cJSON *payload = cJSON_CreateObject();
+            if (!payload) continue;
+
+            char unique_id[256];
+            snprintf(unique_id, sizeof(unique_id), "lightnvr_%s_motion", safe_name);
+            cJSON_AddStringToObject(payload, "unique_id", unique_id);
+
+            char name[256];
+            snprintf(name, sizeof(name), "%s Motion", streams[i].name);
+            cJSON_AddStringToObject(payload, "name", name);
+
+            char state_topic[512];
+            snprintf(state_topic, sizeof(state_topic), "%s/cameras/%s/motion",
+                     topic_prefix, streams[i].name);
+            cJSON_AddStringToObject(payload, "state_topic", state_topic);
+            cJSON_AddStringToObject(payload, "payload_on", "ON");
+            cJSON_AddStringToObject(payload, "payload_off", "OFF");
+            cJSON_AddStringToObject(payload, "device_class", "motion");
+
+            // Availability
+            cJSON *avail = cJSON_CreateObject();
+            char avail_topic[512];
+            snprintf(avail_topic, sizeof(avail_topic), "%s/availability", topic_prefix);
+            cJSON_AddStringToObject(avail, "topic", avail_topic);
+            cJSON_AddStringToObject(avail, "payload_available", "online");
+            cJSON_AddStringToObject(avail, "payload_not_available", "offline");
+            cJSON *avail_list = cJSON_CreateArray();
+            cJSON_AddItemToArray(avail_list, avail);
+            cJSON_AddItemToObject(payload, "availability", avail_list);
+
+            // Device
+            cJSON_AddItemToObject(payload, "device", build_ha_device_block());
+
+            char *json_str = cJSON_PrintUnformatted(payload);
+            cJSON_Delete(payload);
+            if (json_str) {
+                mqtt_publish_raw(topic, json_str, true);
+                free(json_str);
+                published++;
+            }
+        }
+
+        // --- 3. Sensor for detection count (generic) ---
+        {
+            char topic[512];
+            snprintf(topic, sizeof(topic), "%s/sensor/lightnvr/%s_detection_count/config",
+                     prefix, safe_name);
+
+            cJSON *payload = cJSON_CreateObject();
+            if (!payload) continue;
+
+            char unique_id[256];
+            snprintf(unique_id, sizeof(unique_id), "lightnvr_%s_detection_count", safe_name);
+            cJSON_AddStringToObject(payload, "unique_id", unique_id);
+
+            char name[256];
+            snprintf(name, sizeof(name), "%s Detections", streams[i].name);
+            cJSON_AddStringToObject(payload, "name", name);
+
+            char state_topic[512];
+            snprintf(state_topic, sizeof(state_topic), "%s/cameras/%s/detection_count",
+                     topic_prefix, streams[i].name);
+            cJSON_AddStringToObject(payload, "state_topic", state_topic);
+            cJSON_AddStringToObject(payload, "icon", "mdi:motion-sensor");
+
+            // Availability
+            cJSON *avail = cJSON_CreateObject();
+            char avail_topic[512];
+            snprintf(avail_topic, sizeof(avail_topic), "%s/availability", topic_prefix);
+            cJSON_AddStringToObject(avail, "topic", avail_topic);
+            cJSON_AddStringToObject(avail, "payload_available", "online");
+            cJSON_AddStringToObject(avail, "payload_not_available", "offline");
+            cJSON *avail_list = cJSON_CreateArray();
+            cJSON_AddItemToArray(avail_list, avail);
+            cJSON_AddItemToObject(payload, "availability", avail_list);
+
+            // Device
+            cJSON_AddItemToObject(payload, "device", build_ha_device_block());
+
+            char *json_str = cJSON_PrintUnformatted(payload);
+            cJSON_Delete(payload);
+            if (json_str) {
+                mqtt_publish_raw(topic, json_str, true);
+                free(json_str);
+                published++;
+            }
+        }
+    }
+
+    log_info("MQTT HA: Published %d discovery messages for %d streams", published, num_streams);
+    return 0;
+}
+
+/**
+ * Update the motion state for a camera stream.
+ * Publishes ON on detection, tracks last detection time for debounce OFF.
+ * Also updates per-object-class counts.
+ */
+void mqtt_set_motion_state(const char *stream_name, const detection_result_t *result) {
+    if (!mosq || !mqtt_config || !mqtt_config->mqtt_enabled || !mqtt_config->mqtt_ha_discovery) {
+        return;
+    }
+    if (!stream_name || stream_name[0] == '\0') {
+        return;
+    }
+
+    pthread_mutex_lock(&motion_mutex);
+
+    // Find or create motion state for this stream
+    motion_state_t *state = NULL;
+    for (int i = 0; i < num_motion_states; i++) {
+        if (strcmp(motion_states[i].stream_name, stream_name) == 0) {
+            state = &motion_states[i];
+            break;
+        }
+    }
+
+    if (!state && num_motion_states < MAX_MOTION_STREAMS) {
+        state = &motion_states[num_motion_states++];
+        memset(state, 0, sizeof(*state));
+        strncpy(state->stream_name, stream_name, sizeof(state->stream_name) - 1);
+    }
+
+    if (!state) {
+        pthread_mutex_unlock(&motion_mutex);
+        return;
+    }
+
+    state->last_detection_time = time(NULL);
+
+    // Publish ON if not already active
+    bool should_publish_on = !state->motion_active;
+    state->motion_active = true;
+
+    // Update object counts
+    if (result && result->count > 0) {
+        // Reset counts
+        memset(state->object_counts, 0, sizeof(state->object_counts));
+        state->num_labels = 0;
+
+        for (int i = 0; i < result->count && i < MAX_DETECTIONS; i++) {
+            const char *label = result->detections[i].label;
+            if (label[0] == '\0') continue;
+
+            // Find existing label or add new one
+            int label_idx = -1;
+            for (int j = 0; j < state->num_labels; j++) {
+                if (strcmp(state->object_labels[j], label) == 0) {
+                    label_idx = j;
+                    break;
+                }
+            }
+            if (label_idx < 0 && state->num_labels < 32) {
+                label_idx = state->num_labels++;
+                strncpy(state->object_labels[label_idx], label,
+                        sizeof(state->object_labels[0]) - 1);
+            }
+            if (label_idx >= 0) {
+                state->object_counts[label_idx]++;
+            }
+        }
+    }
+
+    // Copy data we need before releasing mutex
+    int total_count = result ? result->count : 0;
+    int num_labels = state->num_labels;
+    char labels_copy[32][32];
+    int counts_copy[32];
+    memcpy(labels_copy, state->object_labels, sizeof(labels_copy));
+    memcpy(counts_copy, state->object_counts, sizeof(counts_copy));
+
+    pthread_mutex_unlock(&motion_mutex);
+
+    // Publish motion ON
+    if (should_publish_on) {
+        char topic[512];
+        snprintf(topic, sizeof(topic), "%s/cameras/%s/motion",
+                 mqtt_config->mqtt_topic_prefix, stream_name);
+        mqtt_publish_raw(topic, "ON", false);
+        log_debug("MQTT HA: Motion ON for %s", stream_name);
+    }
+
+    // Publish detection count
+    {
+        char topic[512];
+        snprintf(topic, sizeof(topic), "%s/cameras/%s/detection_count",
+                 mqtt_config->mqtt_topic_prefix, stream_name);
+        char count_str[16];
+        snprintf(count_str, sizeof(count_str), "%d", total_count);
+        mqtt_publish_raw(topic, count_str, false);
+    }
+
+    // Publish per-object-class counts
+    for (int i = 0; i < num_labels; i++) {
+        char topic[512];
+        snprintf(topic, sizeof(topic), "%s/cameras/%s/%s",
+                 mqtt_config->mqtt_topic_prefix, stream_name, labels_copy[i]);
+        char count_str[16];
+        snprintf(count_str, sizeof(count_str), "%d", counts_copy[i]);
+        mqtt_publish_raw(topic, count_str, false);
+    }
+}
+
+/**
+ * Background thread: periodically publishes JPEG snapshots for each stream.
+ */
+static void *ha_snapshot_thread_func(void *arg) {
+    (void)arg;
+    log_info("MQTT HA: Snapshot publishing thread started (interval=%ds)",
+             mqtt_config->mqtt_ha_snapshot_interval);
+
+    while (ha_services_running) {
+        if (!mqtt_is_connected() || !mqtt_config) {
+            sleep(1);
+            continue;
+        }
+
+        stream_config_t streams[MAX_MOTION_STREAMS];
+        int num_streams = get_all_stream_configs(streams, MAX_MOTION_STREAMS);
+
+        for (int i = 0; i < num_streams && ha_services_running; i++) {
+            if (!streams[i].enabled || streams[i].name[0] == '\0') {
+                continue;
+            }
+
+            unsigned char *jpeg_data = NULL;
+            size_t jpeg_size = 0;
+
+            if (go2rtc_get_snapshot(streams[i].name, &jpeg_data, &jpeg_size)) {
+                char topic[512];
+                snprintf(topic, sizeof(topic), "%s/cameras/%s/snapshot",
+                         mqtt_config->mqtt_topic_prefix, streams[i].name);
+                mqtt_publish_binary(topic, jpeg_data, jpeg_size, false);
+                log_debug("MQTT HA: Published snapshot for %s (%zu bytes)",
+                          streams[i].name, jpeg_size);
+                free(jpeg_data);
+            } else {
+                log_debug("MQTT HA: Failed to get snapshot for %s", streams[i].name);
+            }
+        }
+
+        // Sleep in 1-second increments so we can check ha_services_running
+        for (int s = 0; s < mqtt_config->mqtt_ha_snapshot_interval && ha_services_running; s++) {
+            sleep(1);
+        }
+    }
+
+    go2rtc_snapshot_cleanup_thread();
+    log_info("MQTT HA: Snapshot publishing thread stopped");
+    return NULL;
+}
+
+/**
+ * Background thread: checks motion states and publishes OFF after timeout.
+ */
+static void *ha_motion_thread_func(void *arg) {
+    (void)arg;
+    log_info("MQTT HA: Motion timeout thread started");
+
+    while (ha_services_running) {
+        if (!mqtt_is_connected() || !mqtt_config) {
+            sleep(1);
+            continue;
+        }
+
+        time_t now = time(NULL);
+
+        pthread_mutex_lock(&motion_mutex);
+        for (int i = 0; i < num_motion_states; i++) {
+            if (motion_states[i].motion_active &&
+                (now - motion_states[i].last_detection_time) >= MOTION_OFF_DELAY_SEC) {
+
+                motion_states[i].motion_active = false;
+                char stream_name[256];
+                strncpy(stream_name, motion_states[i].stream_name, sizeof(stream_name) - 1);
+                stream_name[sizeof(stream_name) - 1] = '\0';
+
+                pthread_mutex_unlock(&motion_mutex);
+
+                // Publish motion OFF
+                char topic[512];
+                snprintf(topic, sizeof(topic), "%s/cameras/%s/motion",
+                         mqtt_config->mqtt_topic_prefix, stream_name);
+                mqtt_publish_raw(topic, "OFF", false);
+                log_debug("MQTT HA: Motion OFF for %s (timeout)", stream_name);
+
+                // Reset detection count to 0
+                snprintf(topic, sizeof(topic), "%s/cameras/%s/detection_count",
+                         mqtt_config->mqtt_topic_prefix, stream_name);
+                mqtt_publish_raw(topic, "0", false);
+
+                pthread_mutex_lock(&motion_mutex);
+            }
+        }
+        pthread_mutex_unlock(&motion_mutex);
+
+        sleep(1); // Check every second
+    }
+
+    log_info("MQTT HA: Motion timeout thread stopped");
+    return NULL;
+}
+
+/**
+ * Start Home Assistant background services (snapshot timer, motion timeout).
+ */
+int mqtt_start_ha_services(void) {
+    if (!mqtt_config || !mqtt_config->mqtt_ha_discovery) {
+        return 0;
+    }
+    if (ha_services_running) {
+        return 0; // Already running
+    }
+
+    ha_services_running = true;
+
+    // Start snapshot publishing thread if interval > 0
+    if (mqtt_config->mqtt_ha_snapshot_interval > 0) {
+        if (pthread_create(&ha_snapshot_thread, NULL, ha_snapshot_thread_func, NULL) != 0) {
+            log_error("MQTT HA: Failed to create snapshot thread");
+            ha_services_running = false;
+            return -1;
+        }
+        log_info("MQTT HA: Snapshot publishing started (interval=%ds)",
+                 mqtt_config->mqtt_ha_snapshot_interval);
+    }
+
+    // Start motion timeout thread
+    if (pthread_create(&ha_motion_thread, NULL, ha_motion_thread_func, NULL) != 0) {
+        log_error("MQTT HA: Failed to create motion timeout thread");
+        ha_services_running = false;
+        return -1;
+    }
+
+    log_info("MQTT HA: Background services started");
+    return 0;
+}
+
+/**
+ * Stop Home Assistant background services.
+ */
+void mqtt_stop_ha_services(void) {
+    if (!ha_services_running) {
+        return;
+    }
+
+    log_info("MQTT HA: Stopping background services...");
+    ha_services_running = false;
+
+    // Wait for threads to finish (they check ha_services_running each second)
+    if (mqtt_config && mqtt_config->mqtt_ha_snapshot_interval > 0) {
+        pthread_join(ha_snapshot_thread, NULL);
+    }
+    pthread_join(ha_motion_thread, NULL);
+
+    log_info("MQTT HA: Background services stopped");
+}
+
 // Cleanup operation types
 typedef enum {
     MQTT_OP_LOOP_STOP,
@@ -508,6 +1070,9 @@ void mqtt_disconnect(void) {
  */
 void mqtt_cleanup(void) {
     log_info("MQTT: Starting cleanup...");
+
+    // Stop HA background services first
+    mqtt_stop_ha_services();
 
     // Set shutdown flag FIRST to prevent callbacks from acquiring mutex
     // This must happen before any other cleanup operations

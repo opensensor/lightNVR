@@ -344,6 +344,11 @@ void load_default_config(config_t *config) {
     config->mqtt_keepalive = 60;                // 60 seconds keepalive
     config->mqtt_qos = 1;                       // QoS 1 (at least once)
     config->mqtt_retain = false;                // Don't retain messages by default
+
+    // Home Assistant MQTT auto-discovery settings
+    config->mqtt_ha_discovery = false;          // Disabled by default
+    snprintf(config->mqtt_ha_discovery_prefix, sizeof(config->mqtt_ha_discovery_prefix), "homeassistant");
+    config->mqtt_ha_snapshot_interval = 30;     // 30 seconds default
 }
 
 // Create directory if it doesn't exist
@@ -802,6 +807,19 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             }
         } else if (strcmp(name, "retain") == 0) {
             config->mqtt_retain = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "ha_discovery") == 0 || strcmp(name, "ha_discovery_enabled") == 0) {
+            config->mqtt_ha_discovery = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "ha_discovery_prefix") == 0) {
+            strncpy(config->mqtt_ha_discovery_prefix, value, sizeof(config->mqtt_ha_discovery_prefix) - 1);
+            config->mqtt_ha_discovery_prefix[sizeof(config->mqtt_ha_discovery_prefix) - 1] = '\0';
+        } else if (strcmp(name, "ha_snapshot_interval") == 0) {
+            config->mqtt_ha_snapshot_interval = atoi(value);
+            if (config->mqtt_ha_snapshot_interval < 0) {
+                config->mqtt_ha_snapshot_interval = 0; // 0 = disabled
+            }
+            if (config->mqtt_ha_snapshot_interval > 300) {
+                config->mqtt_ha_snapshot_interval = 300; // Maximum 5 minutes
+            }
         }
     }
 
@@ -1323,6 +1341,30 @@ int save_config(const config_t *config, const char *path) {
     if (config->turn_password[0] != '\0') {
         fprintf(file, "turn_password = %s\n", config->turn_password);
     }
+
+    // Write MQTT settings
+    fprintf(file, "\n[mqtt]\n");
+    fprintf(file, "enabled = %s\n", config->mqtt_enabled ? "true" : "false");
+    if (config->mqtt_broker_host[0] != '\0') {
+        fprintf(file, "broker_host = %s\n", config->mqtt_broker_host);
+    }
+    fprintf(file, "broker_port = %d\n", config->mqtt_broker_port);
+    if (config->mqtt_username[0] != '\0') {
+        fprintf(file, "username = %s\n", config->mqtt_username);
+    }
+    if (config->mqtt_password[0] != '\0') {
+        fprintf(file, "password = %s\n", config->mqtt_password);
+    }
+    fprintf(file, "client_id = %s\n", config->mqtt_client_id);
+    fprintf(file, "topic_prefix = %s\n", config->mqtt_topic_prefix);
+    fprintf(file, "tls_enabled = %s\n", config->mqtt_tls_enabled ? "true" : "false");
+    fprintf(file, "keepalive = %d\n", config->mqtt_keepalive);
+    fprintf(file, "qos = %d\n", config->mqtt_qos);
+    fprintf(file, "retain = %s\n", config->mqtt_retain ? "true" : "false");
+    fprintf(file, "; Home Assistant MQTT auto-discovery\n");
+    fprintf(file, "ha_discovery = %s\n", config->mqtt_ha_discovery ? "true" : "false");
+    fprintf(file, "ha_discovery_prefix = %s\n", config->mqtt_ha_discovery_prefix);
+    fprintf(file, "ha_snapshot_interval = %d\n", config->mqtt_ha_snapshot_interval);
 
     // Write ONVIF settings
     fprintf(file, "\n[onvif]\n");

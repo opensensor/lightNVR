@@ -182,6 +182,11 @@ typedef struct {
     int mqtt_keepalive;                   // MQTT keepalive interval in seconds (default: 60)
     int mqtt_qos;                         // MQTT QoS level 0, 1, or 2 (default: 1)
     bool mqtt_retain;                     // Retain detection messages (default: false)
+
+    // Home Assistant MQTT auto-discovery settings
+    bool mqtt_ha_discovery;               // Enable HA MQTT auto-discovery (default: false)
+    char mqtt_ha_discovery_prefix[128];   // HA discovery topic prefix (default: "homeassistant")
+    int mqtt_ha_snapshot_interval;        // Snapshot publish interval in seconds (default: 30, 0=disabled)
 } config_t;
 
 /**
