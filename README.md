@@ -274,10 +274,7 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 If you see a blank page after installation, the web assets may not have been installed:
 
 ```bash
-# Diagnose the issue
-sudo ./scripts/diagnose_web_issue.sh
-
-# Install web assets
+# Install/reinstall web assets
 sudo ./scripts/install_web_assets.sh
 
 # Restart service
@@ -285,22 +282,6 @@ sudo systemctl restart lightnvr
 ```
 
 See [Web Interface Troubleshooting Guide](docs/TROUBLESHOOTING_WEB_INTERFACE.md) for detailed instructions.
-
-### Daemon Mode Issues
-
-If the systemd service starts but port 8080 is not accessible, see the [Daemon Troubleshooting Guide](docs/DAEMON_TROUBLESHOOTING.md).
-
-Quick diagnosis:
-```bash
-# Run the diagnostic script
-sudo ./scripts/diagnose_daemon.sh
-
-# Test daemon mode functionality
-sudo ./scripts/test_daemon_mode.sh
-
-# Validate that fixes are working
-sudo ./scripts/validate_daemon_fix.sh
-```
 
 ### General Troubleshooting
 
