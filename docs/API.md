@@ -814,115 +814,28 @@ Error responses include a JSON object with an error message:
 }
 ```
 
-## Rate Limiting
-
-To prevent abuse, the API implements rate limiting. If you exceed the rate limit, you will receive a 429 Too Many Requests response.
-
 ## Examples
 
 ### Curl Examples
 
-List all streams:
+Login and list streams:
 ```bash
-curl -u admin:admin http://your-lightnvr-ip:8080/api/streams
+# Login
+curl -c cookies.txt -X POST -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"yourpassword"}' \
+  http://your-lightnvr-ip:8080/api/auth/login
+
+# List streams
+curl -b cookies.txt http://your-lightnvr-ip:8080/api/streams
+
+# Get system information
+curl -b cookies.txt http://your-lightnvr-ip:8080/api/system
+
+# Add a new stream
+curl -b cookies.txt -X POST -H "Content-Type: application/json" \
+  -d '{"name":"New Camera","url":"rtsp://192.168.1.103:554/stream1","enabled":true,"width":1280,"height":720,"fps":10,"codec":"h264","priority":5,"record":true}' \
+  http://your-lightnvr-ip:8080/api/streams
+
+# Trigger ONVIF discovery
+curl -b cookies.txt -X POST http://your-lightnvr-ip:8080/api/onvif/discovery/discover
 ```
-
-Get system information:
-```bash
-curl -u admin:admin http://your-lightnvr-ip:8080/api/system
-```
-
-Add a new stream:
-```bash
-curl -u admin:admin -X POST -H "Content-Type: application/json" -d '{"name":"New Camera","url":"rtsp://192.168.1.103:554/stream1","enabled":true,"width":1280,"height":720,"fps":10,"codec":"h264","priority":5,"record":true}' http://your-lightnvr-ip:8080/api/streams
-```
-
-### JavaScript Examples
-
-List all streams:
-```javascript
-fetch('http://your-lightnvr-ip:8080/api/streams', {
-  headers: {
-    'Authorization': 'Basic ' + btoa('admin:admin')
-  }
-})
-.then(response => response.json())
-.then(data => console.log(data));
-```
-
-Add a new stream:
-```javascript
-fetch('http://your-lightnvr-ip:8080/api/streams', {
-  method: 'POST',
-  headers: {
-    'Authorization': 'Basic ' + btoa('admin:admin'),
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    name: 'New Camera',
-    url: 'rtsp://192.168.1.103:554/stream1',
-    enabled: true,
-    width: 1280,
-    height: 720,
-    fps: 10,
-    codec: 'h264',
-    priority: 5,
-    record: true
-  })
-})
-.then(response => response.json())
-.then(data => console.log(data));
-```
-
-### Preact Component Example
-
-```javascript
-import { h } from 'preact';
-import { useState, useEffect } from 'preact/hooks';
-
-function StreamsList() {
-  const [streams, setStreams] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    // Fetch streams when component mounts
-    fetch('/api/streams')
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Network response was not ok');
-        }
-        return response.json();
-      })
-      .then(data => {
-        setStreams(data.streams);
-        setLoading(false);
-      })
-      .catch(error => {
-        setError(error.message);
-        setLoading(false);
-      });
-  }, []);
-
-  if (loading) return <div>Loading streams...</div>;
-  if (error) return <div>Error: {error}</div>;
-
-  return (
-    <div class="streams-list">
-      <h2>Streams</h2>
-      {streams.length === 0 ? (
-        <p>No streams configured</p>
-      ) : (
-        <ul>
-          {streams.map(stream => (
-            <li key={stream.id}>
-              <strong>{stream.name}</strong> - {stream.status}
-              <p>URL: {stream.url}</p>
-              <p>Resolution: {stream.width}x{stream.height} @ {stream.fps}fps</p>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}

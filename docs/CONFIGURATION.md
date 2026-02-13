@@ -40,52 +40,81 @@ syslog_ident = lightnvr  ; Syslog identifier
 syslog_facility = LOG_USER  ; Syslog facility
 
 [storage]
-path = /var/lib/lightnvr/recordings
+path = /var/lib/lightnvr/data/recordings
 max_size = 0  ; 0 means unlimited, otherwise bytes
 retention_days = 30
 auto_delete_oldest = true
 
-[database]
-path = /var/lib/lightnvr/lightnvr.db
+; New recording format options
+record_mp4_directly = false
+mp4_path = /var/lib/lightnvr/data/recordings/mp4
+mp4_segment_duration = 900
+mp4_retention_days = 30
 
-[models]
-path = /var/lib/lightnvr/models
+[database]
+path = /var/lib/lightnvr/data/database/lightnvr.db
 
 [web]
 port = 8080
 root = /var/lib/lightnvr/www
 auth_enabled = true
 username = admin
-password = admin  ; IMPORTANT: Change this default password!
+; Password is auto-generated on first run - check logs for the generated password
+; password =
+auth_timeout_hours = 24  ; Session timeout in hours (default: 24)
+web_thread_pool_size = 8
 
 [streams]
 max_streams = 16
 
 ; Note: Stream configurations are stored in the database
-; This section is for reference only
+; and managed via the API/web UI
 
-; Example stream configuration:
-; [stream_0]
-; name = Front Door
-; url = rtsp://192.168.1.100:554/stream1
-; enabled = true
-; width = 1920
-; height = 1080
-; fps = 15
-; codec = h264
-; priority = 10
-; record = true
-; segment_duration = 900  ; 15 minutes in seconds
+[models]
+path = /var/lib/lightnvr/data/models
+
+[api_detection]
+url = http://localhost:9001/api/v1/detect
+backend = onnx  ; Detection backend: onnx (YOLOv8), tflite, or opencv
+confidence_threshold = 0.35
+filter_classes = car,motorcycle,truck,bus,bicycle  ; Comma-separated class filter
 
 [memory]
 buffer_size = 1024  ; Buffer size in KB
 use_swap = true
-swap_file = /var/lib/lightnvr/swap
+swap_file = /var/lib/lightnvr/data/swap
 swap_size = 134217728  ; 128MB in bytes
 
 [hardware]
 hw_accel_enabled = false
-hw_accel_device = 
+hw_accel_device =
+
+[go2rtc]
+webrtc_enabled = true
+webrtc_listen_port = 8555
+stun_enabled = true
+stun_server = stun.l.google.com:19302
+; external_ip =
+; ice_servers =
+; proxy_max_inflight = 12
+
+[mqtt]
+enabled = false
+broker_host = localhost
+broker_port = 1883
+; username =
+; password =
+client_id = lightnvr
+topic_prefix = lightnvr
+tls_enabled = false
+keepalive = 60
+qos = 1
+retain = false
+
+[onvif]
+discovery_enabled = false
+discovery_interval = 300
+discovery_network = auto
 ```
 
 The INI format offers several advantages:
