@@ -85,17 +85,19 @@ cd lightnvr
 
 ### Building with or without SOD
 
-LightNVR can be built with or without SOD (an embedded computer vision & machine learning library) support. By default, SOD is enabled.
+LightNVR can be built with or without SOD (an embedded computer vision & machine learning library) support. By default, SOD is enabled. Use CMake options to control this:
 
 ```bash
 # Build with SOD support (default)
-./scripts/build_with_sod.sh
+./scripts/build.sh --release
 
 # Build without SOD support
-./scripts/build_without_sod.sh
+cd build/Release
+cmake -DCMAKE_BUILD_TYPE=Release -DENABLE_SOD=OFF ../..
+cmake --build . -- -j$(nproc)
 ```
 
-When built without SOD, LightNVR will still function normally but will not have object detection capabilities unless the SOD library is installed separately and available at runtime.
+When built without SOD, LightNVR will still function normally but will not have embedded object detection capabilities. You can still use external API-based detection via the `[api_detection]` configuration section.
 
 For more information about SOD integration, see [SOD Integration](SOD_INTEGRATION.md).
 
@@ -140,13 +142,15 @@ After building, you can run LightNVR directly:
 ```
 
 By default, LightNVR will look for a configuration file in the following locations:
-1. `./lightnvr.conf` (current directory)
-2. `/etc/lightnvr/lightnvr.conf`
+1. `./lightnvr.ini` (INI format in current directory)
+2. `/etc/lightnvr/lightnvr.ini` (INI format in system directory)
+3. `./lightnvr.conf` (legacy format in current directory)
+4. `/etc/lightnvr/lightnvr.conf` (legacy format in system directory)
 
 You can specify a different configuration file using the `-c` option:
 
 ```bash
-./lightnvr -c /path/to/config.conf
+./lightnvr -c /path/to/config.ini
 ```
 
 ## Building Web Assets
