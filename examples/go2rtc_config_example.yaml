@@ -3,6 +3,7 @@
 
 api:
   listen: :1984
+  base_path: /go2rtc/
   origin: 'http://localhost:8080'
   username: admin
   password: admin
