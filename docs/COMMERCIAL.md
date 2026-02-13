@@ -32,6 +32,40 @@ For organizations that require proprietary deployment, integration into closed-s
 
 ---
 
+## ☁️ LightNVR Cloud — Managed Hosting
+
+**[lightnvr.com](https://lightnvr.com)** is the official managed cloud hosting service for LightNVR, operated by OpenSensor Engineering. Connect your existing IP cameras to a dedicated cloud NVR instance — secure WireGuard tunnels, WebRTC streaming, no vendor lock-in.
+
+> **[🎥 Try the Live Demo](https://demo.lightnvr.com)** — See LightNVR Cloud in action with real camera feeds, no sign-up required.
+
+### How It Works
+
+1. **Sign Up** — Create your account and provision your dedicated NVR instance
+2. **Configure Tunnel** — Set up a WireGuard tunnel to securely connect your camera network
+3. **Add Cameras** — Point your RTSP/ONVIF cameras at your cloud NVR instance
+4. **Watch Anywhere** — Access live streams and recordings from any browser, anywhere
+
+### Key Features
+
+- 🔒 **WireGuard VPN Tunnels** — Securely connect cameras behind NAT or firewalls; no port forwarding required
+- 📹 **Bring Your Own Cameras** — Works with any RTSP/ONVIF IP camera; no proprietary hardware lock-in
+- 🏗️ **Isolated Instances** — Your own dedicated NVR instance, not shared multi-tenant infrastructure
+- 🌐 **WebRTC Live Streaming** — Watch live feeds from anywhere with sub-50ms latency browser streaming
+- 💾 **Cloud Recording** — Continuous or motion-triggered recording with configurable retention
+- 🛡️ **Enterprise Security** — TLS everywhere, encrypted storage, SOC 2 compliance roadmap
+
+### Pricing
+
+Visit **[lightnvr.com](https://lightnvr.com)** for current plans and pricing.
+
+> **[Join the Waitlist](https://lightnvr.com)** — No credit card required. Cancel anytime.
+
+### Cloud vs. Self-Hosted
+
+LightNVR is free and open-source at the core. Self-host it on your own hardware forever — no license fees, no vendor lock-in. Want the convenience of cloud? Let us handle the provisioning, hosting, and maintenance. Cloud recording also provides an added layer of security — offsite backups that survive local disasters.
+
+---
+
 ## Professional Support
 
 Whether you're using lightNVR under GPL or commercial license, professional support ensures your deployment succeeds. Support is available independently or bundled with commercial licensing.
@@ -87,6 +121,7 @@ Deep experience with Ingenic SoCs, neural network accelerators, ISP tuning, and 
 
 Ready to discuss your project? Contact OpenSensor Engineering to schedule a discovery call:
 
+- ☁️ **LightNVR Cloud**: [lightnvr.com](https://lightnvr.com)
 - 📧 **Email**: [matt@opensensor.io](mailto:matt@opensensor.io)
 - 🐙 **GitHub**: [github.com/opensensor/lightnvr](https://github.com/opensensor/lightnvr)
 - 🌐 **Web**: [www.opensensor.io](https://www.opensensor.io)
