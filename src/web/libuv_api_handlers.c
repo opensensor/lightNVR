@@ -27,6 +27,7 @@
 #include "web/api_handlers_users.h"
 #include "web/api_handlers_totp.h"
 #include "web/api_handlers_ice_servers.h"
+#include "web/api_handlers_go2rtc_proxy.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -180,6 +181,18 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // HLS Streaming (backend-agnostic handler)
     // Pattern uses # for single-segment wildcards: /hls/{stream_name}/{filename}
     http_server_register_handler(server, "/hls/#/#", "GET", handle_direct_hls_request);
+
+    // go2rtc Streaming Proxy - SCOPED to HLS streaming endpoints only
+    // This provides buffered pass-through with concurrency limiting
+    // WebRTC connects directly to go2rtc for lower latency
+    // Streams list endpoint (for health check)
+    http_server_register_handler(server, "/go2rtc/api/streams", "GET", handle_go2rtc_proxy);
+    // HLS manifest endpoint
+    http_server_register_handler(server, "/go2rtc/api/stream.m3u8", "GET", handle_go2rtc_proxy);
+    // HLS segments (fMP4 and MPEG-TS)
+    http_server_register_handler(server, "/go2rtc/api/hls/*", "GET", handle_go2rtc_proxy);
+    // Snapshot endpoint
+    http_server_register_handler(server, "/go2rtc/api/frame.jpeg", "GET", handle_go2rtc_proxy);
 
     log_info("Successfully registered API handlers");
 

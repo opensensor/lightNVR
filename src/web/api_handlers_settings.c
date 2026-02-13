@@ -277,6 +277,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "go2rtc_stun_server", g_config.go2rtc_stun_server);
     cJSON_AddStringToObject(settings, "go2rtc_external_ip", g_config.go2rtc_external_ip);
     cJSON_AddStringToObject(settings, "go2rtc_ice_servers", g_config.go2rtc_ice_servers);
+    cJSON_AddBoolToObject(settings, "go2rtc_force_native_hls", g_config.go2rtc_force_native_hls);
 
     // MQTT settings
     cJSON_AddBoolToObject(settings, "mqtt_enabled", g_config.mqtt_enabled);
@@ -699,6 +700,13 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.go2rtc_ice_servers[sizeof(g_config.go2rtc_ice_servers) - 1] = '\0';
         settings_changed = true;
         log_info("Updated go2rtc_ice_servers: %s", g_config.go2rtc_ice_servers);
+    }
+
+    cJSON *go2rtc_force_native_hls = cJSON_GetObjectItem(settings, "go2rtc_force_native_hls");
+    if (go2rtc_force_native_hls && cJSON_IsBool(go2rtc_force_native_hls)) {
+        g_config.go2rtc_force_native_hls = cJSON_IsTrue(go2rtc_force_native_hls);
+        settings_changed = true;
+        log_info("Updated go2rtc_force_native_hls: %s", g_config.go2rtc_force_native_hls ? "true" : "false");
     }
 
     // MQTT enabled

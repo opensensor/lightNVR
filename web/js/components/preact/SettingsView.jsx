@@ -54,6 +54,7 @@ export function SettingsView() {
     go2rtcStunServer: 'stun.l.google.com:19302',
     go2rtcExternalIp: '',
     go2rtcIceServers: '',
+    go2rtcForceNativeHls: false,
     // MQTT settings
     mqttEnabled: false,
     mqttBrokerHost: 'localhost',
@@ -186,6 +187,7 @@ export function SettingsView() {
         go2rtcStunServer: settingsData.go2rtc_stun_server || 'stun.l.google.com:19302',
         go2rtcExternalIp: settingsData.go2rtc_external_ip || '',
         go2rtcIceServers: settingsData.go2rtc_ice_servers || '',
+        go2rtcForceNativeHls: settingsData.go2rtc_force_native_hls || false,
         // MQTT settings
         mqttEnabled: settingsData.mqtt_enabled || false,
         mqttBrokerHost: settingsData.mqtt_broker_host || 'localhost',
@@ -258,6 +260,7 @@ export function SettingsView() {
       go2rtc_stun_server: settings.go2rtcStunServer,
       go2rtc_external_ip: settings.go2rtcExternalIp,
       go2rtc_ice_servers: settings.go2rtcIceServers,
+      go2rtc_force_native_hls: settings.go2rtcForceNativeHls,
       // MQTT settings
       mqtt_enabled: settings.mqttEnabled,
       mqtt_broker_host: settings.mqttBrokerHost,
@@ -816,6 +819,21 @@ export function SettingsView() {
           </div>
           {settings.go2rtcEnabled && (
           <>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-go2rtc-force-native-hls" class="font-medium">Force Native HLS</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-go2rtc-force-native-hls"
+                name="go2rtcForceNativeHls"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.go2rtcForceNativeHls}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Use lightNVR's native FFmpeg-based HLS instead of go2rtc HLS for live view. Useful if go2rtc HLS has compatibility issues. WebRTC is not affected.</span>
+            </div>
+          </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-go2rtc-binary-path" class="font-medium">Binary Path</label>
             <div class="col-span-2">

@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { getGo2rtcApiPort } from '../../utils/settings-utils.js';
+import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 
 /**
  * ZoneEditor Component
@@ -52,20 +52,19 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   // Load snapshot for the stream
   useEffect(() => {
     if (streamName) {
-      // Use go2rtc's snapshot API endpoint directly
-      // Get the port from settings (async)
+      // Use go2rtc's snapshot API endpoint via lightNVR reverse proxy
       const loadSnapshot = async () => {
         try {
-          const go2rtcPort = await getGo2rtcApiPort();
+          const go2rtcBaseUrl = await getGo2rtcBaseUrl();
           // Add cache-busting parameter to force fresh snapshot
           const timestamp = Date.now();
-          const url = `http://${window.location.hostname}:${go2rtcPort}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
+          const url = `${go2rtcBaseUrl}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
           console.log('Loading snapshot from:', url);
           setSnapshotUrl(url);
         } catch (err) {
-          console.warn('Failed to get go2rtc port from settings, using default 1984:', err);
+          console.warn('Failed to get go2rtc URL, using origin proxy:', err);
           const timestamp = Date.now();
-          const url = `http://${window.location.hostname}:1984/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
+          const url = `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
           setSnapshotUrl(url);
         }
       };

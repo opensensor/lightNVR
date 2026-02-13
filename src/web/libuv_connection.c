@@ -388,6 +388,7 @@ static int on_body(llhttp_t *parser, const char *at, size_t length) {
  *   - "/api/streams" matches "/api/streams" exactly
  *   - "/api/streams/#" matches "/api/streams/foo" but not "/api/streams/foo/bar"
  *   - "/api/streams/#/zones" matches "/api/streams/foo/zones"
+ *   - "/go2rtc/*" matches "/go2rtc/api/streams", "/go2rtc/api/hls/segment.m4s", etc.
  *
  * @param path The request path to match
  * @param pattern The pattern to match against
@@ -398,7 +399,10 @@ static bool path_matches_pattern(const char *path, const char *pattern) {
     const char *pat = pattern;
 
     while (*pat) {
-        if (*pat == '#') {
+        if (*pat == '*') {
+            // Glob wildcard - match everything remaining (including slashes)
+            return true;
+        } else if (*pat == '#') {
             // Wildcard - match any characters except '/'
             pat++; // Move past '#'
 

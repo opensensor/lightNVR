@@ -153,6 +153,8 @@ typedef struct {
     char go2rtc_config_dir[MAX_PATH_LENGTH];
     int go2rtc_api_port;
     int go2rtc_rtsp_port;                 // RTSP listen port (default: 8554)
+    bool go2rtc_force_native_hls;         // Force native HLS instead of go2rtc HLS (default: false)
+    int go2rtc_proxy_max_inflight;        // Max concurrent proxy requests (default: 12)
 
     // go2rtc WebRTC settings for NAT traversal
     bool go2rtc_webrtc_enabled;           // Enable WebRTC (default: true)

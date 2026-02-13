@@ -1152,6 +1152,13 @@ int go2rtc_integration_start_hls(const char *stream_name) {
         return -1;
     }
 
+    // Check if force_native_hls is enabled - if so, always use ffmpeg-based HLS
+    extern config_t g_config;
+    if (g_config.go2rtc_force_native_hls) {
+        log_info("force_native_hls enabled, using ffmpeg-based HLS for stream %s", stream_name);
+        return start_hls_stream(stream_name);
+    }
+
     // Ensure go2rtc is ready and the stream is registered
     bool using_go2rtc = ensure_go2rtc_ready_for_stream(stream_name);
 

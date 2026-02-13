@@ -59,27 +59,48 @@ export async function getGo2rtcApiPort() {
 }
 
 /**
- * Get the go2rtc base URL for API calls
+ * Get the go2rtc base URL for HTTP API calls (HLS, WebRTC SDP, etc.)
  *
  * go2rtc is configured with base_path: /go2rtc, so all its API endpoints
  * are served under the /go2rtc prefix (e.g., /go2rtc/api/streams).
  *
- * Over HTTPS: Uses origin + /go2rtc path prefix. The ingress/reverse proxy
- * routes /go2rtc/* directly to go2rtc service.
+ * All HTTP requests are routed through lightNVR's built-in reverse proxy at /go2rtc/*,
+ * which forwards to go2rtc on localhost. This ensures HLS streaming works both
+ * on-network and off-network (only lightNVR's port needs to be exposed).
  *
- * Over HTTP: Uses hostname:port + /go2rtc to hit go2rtc directly.
+ * NOTE: This proxy is HTTP-only (uses curl). For WebSocket connections (e.g., MSE),
+ * use getGo2rtcWebSocketUrl() instead, which connects directly to go2rtc.
  *
- * @returns {Promise<string>} - go2rtc base URL (e.g., "http://hostname:1984/go2rtc" or "https://hostname/go2rtc")
+ * @returns {Promise<string>} - go2rtc base URL (e.g., "https://hostname/go2rtc" or "http://hostname:8080/go2rtc")
  */
 export async function getGo2rtcBaseUrl() {
-  // When served over HTTPS, use the /go2rtc path prefix.
-  // The ingress routes /go2rtc/* directly to go2rtc service.
+  // Always route through lightNVR's reverse proxy on the same origin.
+  // This works for both HTTP and HTTPS, and ensures HLS works off-network
+  // since only lightNVR's port needs to be accessible (not go2rtc's port).
+  return `${window.location.origin}/go2rtc`;
+}
+
+/**
+ * Get the go2rtc WebSocket URL for MSE streaming.
+ *
+ * lightNVR's reverse proxy at /go2rtc/* uses curl (HTTP-only) and CANNOT
+ * handle WebSocket upgrade requests. MSE streaming requires a WebSocket
+ * connection, so it must connect directly to go2rtc, bypassing the proxy.
+ *
+ * Over HTTP:  ws://hostname:go2rtc_port/go2rtc  (direct to go2rtc)
+ * Over HTTPS: wss://hostname/go2rtc              (external reverse proxy handles WS)
+ *
+ * @returns {Promise<string>} - WebSocket-compatible go2rtc base URL
+ */
+export async function getGo2rtcWebSocketUrl() {
+  // Over HTTPS, the external reverse proxy (nginx, HA ingress, etc.) handles
+  // WebSocket upgrades natively and routes /go2rtc/* to go2rtc.
   if (window.location.protocol === 'https:') {
-    return `${window.location.origin}/go2rtc`;
+    return `wss://${window.location.host}/go2rtc`;
   }
-  // Over HTTP, hit go2rtc directly on its port with the base_path prefix
+  // Over HTTP, connect directly to go2rtc's port (bypass lightNVR's HTTP-only proxy)
   const port = await getGo2rtcApiPort();
-  return `http://${window.location.hostname}:${port}/go2rtc`;
+  return `ws://${window.location.hostname}:${port}/go2rtc`;
 }
 
 /**
@@ -151,6 +172,17 @@ export async function isGo2rtcEnabled() {
   const settings = await getSettings();
   // Default to true for backward compatibility
   return settings.go2rtc_enabled !== undefined ? settings.go2rtc_enabled : true;
+}
+
+/**
+ * Check if force native HLS is enabled in settings
+ * When enabled, the web interface uses lightNVR's native FFmpeg-based HLS
+ * instead of go2rtc's HLS, even when go2rtc is running.
+ * @returns {Promise<boolean>} - true if force native HLS is enabled
+ */
+export async function isForceNativeHls() {
+  const settings = await getSettings();
+  return settings.go2rtc_force_native_hls === true;
 }
 
 /**

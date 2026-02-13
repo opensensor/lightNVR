@@ -297,6 +297,8 @@ void load_default_config(config_t *config) {
     snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "/etc/lightnvr/go2rtc");
     config->go2rtc_api_port = 1984;
     config->go2rtc_rtsp_port = 8554;  // Default RTSP listen port
+    config->go2rtc_force_native_hls = false;  // Use go2rtc HLS by default
+    config->go2rtc_proxy_max_inflight = 12;  // Default: 12 concurrent proxy requests
 
     // go2rtc WebRTC settings for NAT traversal
     config->go2rtc_webrtc_enabled = true;  // Enable WebRTC by default
@@ -718,6 +720,16 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "ice_servers") == 0) {
             strncpy(config->go2rtc_ice_servers, value, sizeof(config->go2rtc_ice_servers) - 1);
             config->go2rtc_ice_servers[sizeof(config->go2rtc_ice_servers) - 1] = '\0';
+        } else if (strcmp(name, "force_native_hls") == 0) {
+            config->go2rtc_force_native_hls = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "proxy_max_inflight") == 0) {
+            config->go2rtc_proxy_max_inflight = atoi(value);
+            if (config->go2rtc_proxy_max_inflight < 1) {
+                config->go2rtc_proxy_max_inflight = 1;  // Minimum 1
+            }
+            if (config->go2rtc_proxy_max_inflight > 128) {
+                config->go2rtc_proxy_max_inflight = 128;  // Maximum 128
+            }
         } else if (strcmp(name, "turn_enabled") == 0) {
             config->turn_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "turn_server_url") == 0) {
@@ -1298,6 +1310,8 @@ int save_config(const config_t *config, const char *path) {
     if (config->go2rtc_ice_servers[0] != '\0') {
         fprintf(file, "ice_servers = %s\n", config->go2rtc_ice_servers);
     }
+    fprintf(file, "force_native_hls = %s\n", config->go2rtc_force_native_hls ? "true" : "false");
+    fprintf(file, "proxy_max_inflight = %d\n", config->go2rtc_proxy_max_inflight);
     // TURN server settings
     fprintf(file, "turn_enabled = %s\n", config->turn_enabled ? "true" : "false");
     if (config->turn_server_url[0] != '\0') {

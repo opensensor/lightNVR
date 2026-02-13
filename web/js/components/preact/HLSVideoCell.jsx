@@ -10,7 +10,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { PTZControls } from './PTZControls.jsx';
-import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled } from '../../utils/settings-utils.js';
+import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled, isForceNativeHls } from '../../utils/settings-utils.js';
 import Hls from 'hls.js';
 
 /**
@@ -113,6 +113,17 @@ export function HLSVideoCell({
       let hlsStreamUrl;
       let usingGo2rtc = false;
 
+      // Check if force native HLS is enabled in settings.
+      // When enabled, always use lightNVR's native FFmpeg-based HLS regardless of go2rtc state.
+      const forceNative = await isForceNativeHls();
+      if (!isMounted) return;
+
+      if (forceNative) {
+        hlsStreamUrl = `/hls/${encodeURIComponent(stream.name)}/index.m3u8`;
+        usingGo2rtc = false;
+        setHlsMode('native');
+        console.log(`[HLS ${stream.name}] Force native HLS enabled, using: ${hlsStreamUrl}`);
+      } else {
       // Check if go2rtc is enabled in runtime settings.
       // When enabled, we NEVER fall back to ffmpeg HLS - it's go2rtc or nothing.
       const go2rtcEnabled = await isGo2rtcEnabled();
@@ -140,8 +151,8 @@ export function HLSVideoCell({
             go2rtcBaseUrl = await getGo2rtcBaseUrl();
             console.log(`Using go2rtc base URL for HLS: ${go2rtcBaseUrl}`);
           } catch (err) {
-            console.warn('Failed to get go2rtc URL from settings, using default port 1984:', err);
-            go2rtcBaseUrl = `http://${window.location.hostname}:1984`;
+            console.warn('Failed to get go2rtc URL from settings, using origin proxy:', err);
+            go2rtcBaseUrl = `${window.location.origin}/go2rtc`;
           }
 
           if (!isMounted) return;
@@ -180,6 +191,7 @@ export function HLSVideoCell({
         setIsLoading(false);
         return;
       }
+      } // end of !forceNative else block
 
       // Check if HLS.js is supported
       if (Hls.isSupported()) {

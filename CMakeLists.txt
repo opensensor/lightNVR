@@ -337,8 +337,6 @@ file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
 
 # Filter web sources - exclude libuv sources (they're added separately via LIBUV_SERVER_SOURCES)
 list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
-# Exclude api_handlers_go2rtc_proxy.c (not yet converted to backend-agnostic)
-list(FILTER WEB_SOURCES EXCLUDE REGEX ".*api_handlers_go2rtc_proxy\\.c$")
 
 file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
 # Exclude sod.c and rebuild_recordings.c from ROOT_SOURCES to avoid static linking and multiple main functions
@@ -346,8 +344,6 @@ list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*utils/rebuild_recordings\\.c$")
 # Also exclude libuv sources from ROOT_SOURCES (they're added separately)
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
-# Exclude api_handlers_go2rtc_proxy.c (not yet converted to backend-agnostic)
-list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*api_handlers_go2rtc_proxy\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
 
 # Explicitly list video sources to exclude motion_detection_optimized.c, detection_thread_pool.c,

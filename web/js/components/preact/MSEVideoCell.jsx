@@ -11,7 +11,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { PTZControls } from './PTZControls.jsx';
-import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
+import { getGo2rtcWebSocketUrl } from '../../utils/settings-utils.js';
 
 /**
  * MSEVideoCell component
@@ -90,8 +90,9 @@ export function MSEVideoCell({
     setError(null);
 
     try {
-      const go2rtcBaseUrl = await getGo2rtcBaseUrl();
-      const wsUrl = `${go2rtcBaseUrl.replace('http', 'ws')}/api/ws?src=${encodeURIComponent(stream.name)}`;
+      // Use direct WebSocket URL to go2rtc (bypasses lightNVR's HTTP-only proxy)
+      const go2rtcWsUrl = await getGo2rtcWebSocketUrl();
+      const wsUrl = `${go2rtcWsUrl}/api/ws?src=${encodeURIComponent(stream.name)}`;
 
       // Create WebSocket connection
       const ws = new WebSocket(wsUrl);
