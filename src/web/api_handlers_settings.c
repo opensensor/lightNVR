@@ -293,6 +293,11 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "mqtt_qos", g_config.mqtt_qos);
     cJSON_AddBoolToObject(settings, "mqtt_retain", g_config.mqtt_retain);
 
+    // Home Assistant MQTT auto-discovery settings
+    cJSON_AddBoolToObject(settings, "mqtt_ha_discovery", g_config.mqtt_ha_discovery);
+    cJSON_AddStringToObject(settings, "mqtt_ha_discovery_prefix", g_config.mqtt_ha_discovery_prefix);
+    cJSON_AddNumberToObject(settings, "mqtt_ha_snapshot_interval", g_config.mqtt_ha_snapshot_interval);
+
     // TURN server settings for WebRTC relay
     cJSON_AddBoolToObject(settings, "turn_enabled", g_config.turn_enabled);
     cJSON_AddStringToObject(settings, "turn_server_url", g_config.turn_server_url);
@@ -803,6 +808,34 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.mqtt_retain = cJSON_IsTrue(mqtt_retain);
         settings_changed = true;
         log_info("Updated mqtt_retain: %s", g_config.mqtt_retain ? "true" : "false");
+    }
+
+    // MQTT HA discovery enabled
+    cJSON *mqtt_ha_discovery = cJSON_GetObjectItem(settings, "mqtt_ha_discovery");
+    if (mqtt_ha_discovery && cJSON_IsBool(mqtt_ha_discovery)) {
+        g_config.mqtt_ha_discovery = cJSON_IsTrue(mqtt_ha_discovery);
+        settings_changed = true;
+        log_info("Updated mqtt_ha_discovery: %s", g_config.mqtt_ha_discovery ? "true" : "false");
+    }
+
+    // MQTT HA discovery prefix
+    cJSON *mqtt_ha_discovery_prefix = cJSON_GetObjectItem(settings, "mqtt_ha_discovery_prefix");
+    if (mqtt_ha_discovery_prefix && cJSON_IsString(mqtt_ha_discovery_prefix)) {
+        strncpy(g_config.mqtt_ha_discovery_prefix, mqtt_ha_discovery_prefix->valuestring, sizeof(g_config.mqtt_ha_discovery_prefix) - 1);
+        g_config.mqtt_ha_discovery_prefix[sizeof(g_config.mqtt_ha_discovery_prefix) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated mqtt_ha_discovery_prefix: %s", g_config.mqtt_ha_discovery_prefix);
+    }
+
+    // MQTT HA snapshot interval
+    cJSON *mqtt_ha_snapshot_interval = cJSON_GetObjectItem(settings, "mqtt_ha_snapshot_interval");
+    if (mqtt_ha_snapshot_interval && cJSON_IsNumber(mqtt_ha_snapshot_interval)) {
+        int interval = mqtt_ha_snapshot_interval->valueint;
+        if (interval < 0) interval = 0;
+        if (interval > 300) interval = 300;
+        g_config.mqtt_ha_snapshot_interval = interval;
+        settings_changed = true;
+        log_info("Updated mqtt_ha_snapshot_interval: %d", g_config.mqtt_ha_snapshot_interval);
     }
 
     // TURN server settings for WebRTC relay

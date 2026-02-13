@@ -67,6 +67,10 @@ export function SettingsView() {
     mqttKeepalive: '60',
     mqttQos: '1',
     mqttRetain: false,
+    // Home Assistant MQTT auto-discovery
+    mqttHaDiscovery: false,
+    mqttHaDiscoveryPrefix: 'homeassistant',
+    mqttHaSnapshotInterval: '30',
     // TURN server settings for WebRTC relay
     turnEnabled: false,
     turnServerUrl: '',
@@ -200,6 +204,10 @@ export function SettingsView() {
         mqttKeepalive: settingsData.mqtt_keepalive?.toString() || '60',
         mqttQos: settingsData.mqtt_qos?.toString() || '1',
         mqttRetain: settingsData.mqtt_retain || false,
+        // Home Assistant MQTT auto-discovery
+        mqttHaDiscovery: settingsData.mqtt_ha_discovery || false,
+        mqttHaDiscoveryPrefix: settingsData.mqtt_ha_discovery_prefix || 'homeassistant',
+        mqttHaSnapshotInterval: settingsData.mqtt_ha_snapshot_interval?.toString() || '30',
         // TURN server settings for WebRTC relay
         turnEnabled: settingsData.turn_enabled || false,
         turnServerUrl: settingsData.turn_server_url || '',
@@ -273,6 +281,10 @@ export function SettingsView() {
       mqtt_keepalive: parseInt(settings.mqttKeepalive, 10),
       mqtt_qos: parseInt(settings.mqttQos, 10),
       mqtt_retain: settings.mqttRetain,
+      // Home Assistant MQTT auto-discovery
+      mqtt_ha_discovery: settings.mqttHaDiscovery,
+      mqtt_ha_discovery_prefix: settings.mqttHaDiscoveryPrefix,
+      mqtt_ha_snapshot_interval: parseInt(settings.mqttHaSnapshotInterval, 10),
       // TURN server settings for WebRTC relay
       turn_enabled: settings.turnEnabled,
       turn_server_url: settings.turnServerUrl,
@@ -1180,6 +1192,64 @@ export function SettingsView() {
               <span class="hint text-sm text-muted-foreground ml-2">Broker stores last message for new subscribers</span>
             </div>
           </div>
+
+          {/* Home Assistant Auto-Discovery sub-section */}
+          <h4 class="text-md font-semibold mt-6 mb-3 pb-1 border-b border-border">Home Assistant Auto-Discovery</h4>
+          <p class="text-sm text-muted-foreground mb-4">
+            Automatically register cameras and sensors in Home Assistant via MQTT discovery. Requires the same MQTT broker used by Home Assistant.
+          </p>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-ha-discovery" class="font-medium">Enable HA Discovery</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-mqtt-ha-discovery"
+                name="mqttHaDiscovery"
+                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
+                checked={settings.mqttHaDiscovery}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Cameras and motion sensors appear automatically in Home Assistant</span>
+            </div>
+          </div>
+          {settings.mqttHaDiscovery && (
+          <>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-ha-discovery-prefix" class="font-medium">Discovery Prefix</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-mqtt-ha-discovery-prefix"
+                name="mqttHaDiscoveryPrefix"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttHaDiscoveryPrefix}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="homeassistant"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Must match Home Assistant's MQTT discovery prefix (default: homeassistant)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-mqtt-ha-snapshot-interval" class="font-medium">Snapshot Interval (seconds)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-mqtt-ha-snapshot-interval"
+                name="mqttHaSnapshotInterval"
+                min="0"
+                max="300"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.mqttHaSnapshotInterval}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">How often to publish camera snapshots (0 = disabled, max 300)</span>
+            </div>
+          </div>
+          </>
+          )}
           </div>
 
           {/* TURN Server Settings */}
