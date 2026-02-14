@@ -547,188 +547,190 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       onClick={handleBackgroundClick}
     >
       <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'} w-full md:w-[90%]`}>
-        <div className="flex justify-between items-center p-4 border-b border-border">
-          <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+        <div className="flex justify-between items-center p-3 border-b border-border flex-shrink-0">
+          <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white truncate mr-2">
             {title || 'Video'}
           </h3>
           <button
-            className="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            className="close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex-shrink-0"
             onClick={onClose}
           >
             ✕
           </button>
         </div>
 
-        <div className="p-4 flex-grow">
-          <div className="relative">
-            <video
-              ref={videoRef}
-              className="w-full h-auto max-w-full object-contain mx-auto"
-              controls
-              autoPlay
-              key={videoUrl} /* Add key to force re-render when URL changes */
-              onError={(e) => {
-                console.error('Video error:', e);
-                showStatusMessage('Error loading video. Please try again.', 'error');
-              }}
-              onLoadStart={() => console.log('Video load started')}
-              onLoadedData={() => console.log('Video data loaded')}
-            >
-              {/* Use source element instead of src attribute for better control */}
-              {videoUrl && <source src={videoUrl} type="video/mp4" />}
-            </video>
-            <canvas
-              ref={canvasRef}
-              className="absolute top-0 left-0 w-full h-full pointer-events-none"
-              style={{ display: 'none' }}
-            />
-          </div>
-        </div>
-
-        <div id="recordings-controls" className="mx-4 mb-4 p-4 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10">
-          <h3 className="text-lg font-bold text-center mb-4 text-foreground">
-            PLAYBACK CONTROLS
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-            {/* Speed controls section */}
-            <div className="border-b border-border pb-4 md:border-b-0 md:border-r md:pr-4 md:pb-0">
-              <h4 className="font-bold text-center mb-3 text-foreground">
-                Playback Speed
-              </h4>
-
-              <div className="flex flex-wrap justify-center gap-2">
-                {[0.25, 0.5, 1.0, 1.5, 2.0, 4.0].map(speed => (
-                  <button
-                    key={speed}
-                    className={`speed-btn px-3 py-2 rounded-full ${
-                      speed === currentSpeed
-                        ? 'badge-success'
-                        : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                    } text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50`}
-                    data-speed={speed}
-                    onClick={() => handleSpeedChange(speed)}
-                  >
-                    {speed === 1.0 ? '1× (Normal)' : `${speed}×`}
-                  </button>
-                ))}
-              </div>
-
-              <div id="current-speed-indicator" className="mt-3 text-center font-medium text-green-600 dark:text-green-400 text-sm">
-                Current Speed: {currentSpeed}× {currentSpeed === 1.0 ? '(Normal)' : ''}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="p-3">
+            <div className="relative flex justify-center">
+              <div className="relative inline-block max-w-full">
+                <video
+                  ref={videoRef}
+                  className="w-full h-auto max-w-full max-h-[50vh] object-contain"
+                  controls
+                  autoPlay
+                  key={videoUrl} /* Add key to force re-render when URL changes */
+                  onError={(e) => {
+                    console.error('Video error:', e);
+                    showStatusMessage('Error loading video. Please try again.', 'error');
+                  }}
+                  onLoadStart={() => console.log('Video load started')}
+                  onLoadedData={() => console.log('Video data loaded')}
+                >
+                  {/* Use source element instead of src attribute for better control */}
+                  {videoUrl && <source src={videoUrl} type="video/mp4" />}
+                </video>
+                <canvas
+                  ref={canvasRef}
+                  className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                  style={{ display: 'none' }}
+                />
               </div>
             </div>
+          </div>
 
-            {/* Detection overlay section */}
-            <div className="pt-4 md:pt-0 md:pl-4">
-              <h4 className="font-bold text-center mb-2 text-foreground">
-                Detection Overlays
-              </h4>
+          <div id="recordings-controls" className="mx-3 mb-3 p-3 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10">
+            <h3 className="text-base font-bold text-center mb-2 text-foreground">
+              PLAYBACK CONTROLS
+            </h3>
 
-              <div className="flex flex-col items-center gap-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <input
-                    type="checkbox"
-                    id="detection-overlay-checkbox"
-                    className="w-4 h-4 accent-primary bg-secondary border-border rounded focus:ring-primary focus:ring-2"
-                    checked={detectionOverlayEnabled}
-                    onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
-                    disabled={detections.length === 0}
-                  />
-                  <label
-                    htmlFor="detection-overlay-checkbox"
-                    className="text-sm font-medium text-foreground"
-                  >
-                    Show Detection Overlays
-                  </label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+              {/* Speed controls section */}
+              <div className="border-b border-border pb-3 md:border-b-0 md:border-r md:pr-3 md:pb-0">
+                <h4 className="font-bold text-center mb-2 text-foreground text-sm">
+                  Playback Speed
+                </h4>
+
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {[0.25, 0.5, 1.0, 1.5, 2.0, 4.0].map(speed => (
+                    <button
+                      key={speed}
+                      className={`speed-btn px-2.5 py-1.5 rounded-full ${
+                        speed === currentSpeed
+                          ? 'badge-success'
+                          : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                      } text-xs font-medium transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50`}
+                      data-speed={speed}
+                      onClick={() => handleSpeedChange(speed)}
+                    >
+                      {speed === 1.0 ? '1× (Normal)' : `${speed}×`}
+                    </button>
+                  ))}
                 </div>
 
-                <div className="flex flex-col w-full mt-2 mb-2">
-                  <label
-                    htmlFor="detection-sensitivity-slider"
-                    className="text-sm font-medium text-foreground mb-1"
-                  >
-                    Detection Sensitivity
-                  </label>
+                <div id="current-speed-indicator" className="mt-2 text-center font-medium text-green-600 dark:text-green-400 text-xs">
+                  Current Speed: {currentSpeed}× {currentSpeed === 1.0 ? '(Normal)' : ''}
+                </div>
+              </div>
 
-                  <input
-                    type="range"
-                    id="detection-sensitivity-slider"
-                    className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                    min="1"
-                    max="10"
-                    step="1"
-                    value={timeWindow}
-                    onChange={handleTimeWindowChange}
-                  />
+              {/* Detection overlay section */}
+              <div className="pt-3 md:pt-0 md:pl-3">
+                <h4 className="font-bold text-center mb-2 text-foreground text-sm">
+                  Detection Overlays
+                </h4>
 
-                  <div id="detection-sensitivity-value" className="text-xs text-muted-foreground text-center mb-1">
-                    Time Window: {timeWindow} second{timeWindow !== 1 ? 's' : ''}
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <input
+                      type="checkbox"
+                      id="detection-overlay-checkbox"
+                      className="w-4 h-4 accent-primary bg-secondary border-border rounded focus:ring-primary focus:ring-2"
+                      checked={detectionOverlayEnabled}
+                      onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
+                      disabled={detections.length === 0}
+                    />
+                    <label
+                      htmlFor="detection-overlay-checkbox"
+                      className="text-xs font-medium text-foreground"
+                    >
+                      Show Detection Overlays
+                    </label>
+                  </div>
+
+                  <div className="flex flex-col w-full mt-1 mb-1">
+                    <label
+                      htmlFor="detection-sensitivity-slider"
+                      className="text-xs font-medium text-foreground mb-1"
+                    >
+                      Detection Sensitivity
+                    </label>
+
+                    <input
+                      type="range"
+                      id="detection-sensitivity-slider"
+                      className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                      min="1"
+                      max="10"
+                      step="1"
+                      value={timeWindow}
+                      onChange={handleTimeWindowChange}
+                    />
+
+                    <div id="detection-sensitivity-value" className="text-xs text-muted-foreground text-center mb-1">
+                      Time Window: {timeWindow} second{timeWindow !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+
+                  <div id="detection-status-indicator" className={`text-center text-xs ${
+                    detections.length > 0
+                      ? 'font-medium text-green-600 dark:text-green-400'
+                      : 'text-muted-foreground'
+                  }`}>
+                    {detectionStatus}
                   </div>
                 </div>
-
-                <div id="detection-status-indicator" className={`text-center text-sm ${
-                  detections.length > 0
-                    ? 'font-medium text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground'
-                }`}>
-                  {detectionStatus}
-                </div>
               </div>
             </div>
-          </div>
 
-          {/* Download and Timeline buttons */}
-          <div className="flex flex-wrap justify-center gap-3 mt-4 pt-2 border-t border-border">
-            {downloadUrl && (
-              <a
-                className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-sm"
-                href={downloadUrl}
-                download={`video-${Date.now()}.mp4`}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Download Video
-              </a>
-            )}
-            {recordingData && recordingData.stream && recordingData.start_time && (() => {
-              // Parse "YYYY-MM-DD HH:MM:SS UTC" format and convert to local time
-              const utcMatch = recordingData.start_time.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-              if (!utcMatch) return null;
-              const [, year, month, day, hours, minutes, seconds] = utcMatch;
-              // Create Date from UTC components
-              const utcDate = new Date(Date.UTC(
-                parseInt(year), parseInt(month) - 1, parseInt(day),
-                parseInt(hours), parseInt(minutes), parseInt(seconds)
-              ));
-              // Extract local date and time (the Date object automatically converts to local)
-              const localYear = utcDate.getFullYear();
-              const localMonth = String(utcDate.getMonth() + 1).padStart(2, '0');
-              const localDay = String(utcDate.getDate()).padStart(2, '0');
-              const localHours = String(utcDate.getHours()).padStart(2, '0');
-              const localMinutes = String(utcDate.getMinutes()).padStart(2, '0');
-              const localSeconds = String(utcDate.getSeconds()).padStart(2, '0');
-              const date = `${localYear}-${localMonth}-${localDay}`;
-              const time = `${localHours}:${localMinutes}:${localSeconds}`;
-              const timelineUrl = `timeline.html?stream=${encodeURIComponent(recordingData.stream)}&date=${date}&time=${time}`;
-              return (
+            {/* Download and Timeline buttons */}
+            <div className="flex flex-wrap justify-center gap-2 mt-3 pt-2 border-t border-border">
+              {downloadUrl && (
                 <a
-                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-sm"
-                  href={timelineUrl}
-                  title="View this stream at this point in time in the Timeline view"
+                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-xs"
+                  href={downloadUrl}
+                  download={`video-${Date.now()}.mp4`}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  View in Timeline
+                  Download Video
                 </a>
-              );
-            })()}
+              )}
+              {recordingData && recordingData.stream && recordingData.start_time && (() => {
+                // Parse "YYYY-MM-DD HH:MM:SS UTC" format and convert to local time
+                const utcMatch = recordingData.start_time.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+                if (!utcMatch) return null;
+                const [, year, month, day, hours, minutes, seconds] = utcMatch;
+                // Create Date from UTC components
+                const utcDate = new Date(Date.UTC(
+                  parseInt(year), parseInt(month) - 1, parseInt(day),
+                  parseInt(hours), parseInt(minutes), parseInt(seconds)
+                ));
+                // Extract local date and time (the Date object automatically converts to local)
+                const localYear = utcDate.getFullYear();
+                const localMonth = String(utcDate.getMonth() + 1).padStart(2, '0');
+                const localDay = String(utcDate.getDate()).padStart(2, '0');
+                const localHours = String(utcDate.getHours()).padStart(2, '0');
+                const localMinutes = String(utcDate.getMinutes()).padStart(2, '0');
+                const localSeconds = String(utcDate.getSeconds()).padStart(2, '0');
+                const date = `${localYear}-${localMonth}-${localDay}`;
+                const time = `${localHours}:${localMinutes}:${localSeconds}`;
+                const timelineUrl = `timeline.html?stream=${encodeURIComponent(recordingData.stream)}&date=${date}&time=${time}`;
+                return (
+                  <a
+                    className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
+                    href={timelineUrl}
+                    title="View this stream at this point in time in the Timeline view"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    View in Timeline
+                  </a>
+                );
+              })()}
+            </div>
           </div>
         </div>
-
-        <div className="p-2"></div>
       </div>
     </div>,
     document.body
