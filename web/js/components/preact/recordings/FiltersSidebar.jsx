@@ -3,6 +3,7 @@
  */
 
 import { h } from 'preact';
+import { useState, useEffect, useRef } from 'preact/hooks';
 
 /**
  * FiltersSidebar component
@@ -20,6 +21,40 @@ export function FiltersSidebar({
   handleDateRangeChange,
   setDefaultDateRange
 }) {
+  // Local state for detection label input (debounced)
+  const [localDetectionLabel, setLocalDetectionLabel] = useState(filters.detectionLabel || '');
+  const debounceTimerRef = useRef(null);
+
+  // Sync local state when filters are reset externally (e.g. Reset button, URL change)
+  useEffect(() => {
+    setLocalDetectionLabel(filters.detectionLabel || '');
+  }, [filters.detectionLabel]);
+
+  // Handle detection label input with debounce
+  const handleDetectionLabelChange = (e) => {
+    const value = e.target.value;
+    setLocalDetectionLabel(value);
+
+    // Clear previous timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Set new debounced update (500ms delay)
+    debounceTimerRef.current = setTimeout(() => {
+      setFilters(prev => ({ ...prev, detectionLabel: value }));
+    }, 500);
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
   return (
     <aside id="filters-sidebar"
            className="filters-sidebar w-full md:w-64 bg-card text-card-foreground rounded-lg shadow p-4 md:sticky md:top-4 md:self-start transition-all duration-300">
@@ -110,8 +145,8 @@ export function FiltersSidebar({
             id="detection-label-filter"
             className="w-full p-2 border border-input rounded bg-background text-foreground"
             placeholder="e.g., car, person, bicycle"
-            value={filters.detectionLabel || ''}
-            onChange={e => setFilters(prev => ({ ...prev, detectionLabel: e.target.value }))}
+            value={localDetectionLabel}
+            onChange={handleDetectionLabelChange}
           />
           <p className="mt-1 text-xs text-muted-foreground">Filter recordings by detected object type</p>
         </div>
