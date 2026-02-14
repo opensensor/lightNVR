@@ -103,6 +103,21 @@ export function FiltersSidebar({
       </div>
 
       <div className="filter-group mb-4">
+        <h3 className="text-lg font-medium mb-2 pb-1 border-b border-border">Detection Object</h3>
+        <div className="filter-option">
+          <input
+            type="text"
+            id="detection-label-filter"
+            className="w-full p-2 border border-input rounded bg-background text-foreground"
+            placeholder="e.g., car, person, bicycle"
+            value={filters.detectionLabel || ''}
+            onChange={e => setFilters(prev => ({ ...prev, detectionLabel: e.target.value }))}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">Filter recordings by detected object type</p>
+        </div>
+      </div>
+
+      <div className="filter-group mb-4">
         <h3 className="text-lg font-medium mb-2 pb-1 border-b border-border">Display Options</h3>
         <div className="filter-option">
           <label htmlFor="page-size" className="block mb-1 text-sm font-medium">Items per page:</label>

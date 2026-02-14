@@ -328,6 +328,8 @@ void load_default_config(config_t *config) {
         config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
         config->streams[i].post_detection_buffer = 10; // 10 seconds after detection
         config->streams[i].detection_api_url[0] = '\0'; // Empty = use global config
+        strncpy(config->streams[i].detection_object_filter, "none", sizeof(config->streams[i].detection_object_filter) - 1);
+        config->streams[i].detection_object_filter_list[0] = '\0';
         config->streams[i].streaming_enabled = true; // Enable streaming by default
         config->streams[i].record_audio = false; // Disable audio recording by default
     }
@@ -666,6 +668,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "detection_api_url") == 0) {
             strncpy(config->streams[stream_idx].detection_api_url, value, MAX_URL_LENGTH - 1);
             config->streams[stream_idx].detection_api_url[MAX_URL_LENGTH - 1] = '\0';
+        } else if (strcmp(name, "detection_object_filter") == 0) {
+            strncpy(config->streams[stream_idx].detection_object_filter, value, sizeof(config->streams[stream_idx].detection_object_filter) - 1);
+            config->streams[stream_idx].detection_object_filter[sizeof(config->streams[stream_idx].detection_object_filter) - 1] = '\0';
+        } else if (strcmp(name, "detection_object_filter_list") == 0) {
+            strncpy(config->streams[stream_idx].detection_object_filter_list, value, sizeof(config->streams[stream_idx].detection_object_filter_list) - 1);
+            config->streams[stream_idx].detection_object_filter_list[sizeof(config->streams[stream_idx].detection_object_filter_list) - 1] = '\0';
         } else if (strcmp(name, "record_audio") == 0) {
             config->streams[stream_idx].record_audio =
                 (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
@@ -1352,6 +1360,14 @@ int save_config(const config_t *config, const char *path) {
 
                 if (config->streams[i].detection_api_url[0] != '\0') {
                     fprintf(file, "detection_api_url = %s\n", config->streams[i].detection_api_url);
+                }
+
+                if (config->streams[i].detection_object_filter[0] != '\0' &&
+                    strcmp(config->streams[i].detection_object_filter, "none") != 0) {
+                    fprintf(file, "detection_object_filter = %s\n", config->streams[i].detection_object_filter);
+                    if (config->streams[i].detection_object_filter_list[0] != '\0') {
+                        fprintf(file, "detection_object_filter_list = %s\n", config->streams[i].detection_object_filter_list);
+                    }
                 }
             }
             

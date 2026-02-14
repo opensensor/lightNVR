@@ -1,6 +1,8 @@
 #include "video/zone_filter.h"
 #include "database/db_zones.h"
+#include "database/db_streams.h"
 #include "core/logger.h"
+#include "core/config.h"
 #include <string.h>
 #include <math.h>
 
@@ -185,14 +187,14 @@ int filter_detections_by_zones(const char *stream_name, detection_result_t *resu
         // If detection was accepted by at least one zone, add it to filtered result
         if (detection_accepted) {
             memcpy(&filtered.detections[filtered.count], det, sizeof(detection_t));
-            
+
             // Set the zone_id for this detection
             if (matched_zone_id) {
                 strncpy(filtered.detections[filtered.count].zone_id, matched_zone_id,
                        sizeof(filtered.detections[filtered.count].zone_id) - 1);
                 filtered.detections[filtered.count].zone_id[sizeof(filtered.detections[filtered.count].zone_id) - 1] = '\0';
             }
-            
+
             filtered.count++;
         } else {
             log_debug("Detection %s (%.2f%%) at [%.2f, %.2f] rejected (not in any enabled zone)",
@@ -210,3 +212,114 @@ int filter_detections_by_zones(const char *stream_name, detection_result_t *resu
     return 0;
 }
 
+
+/**
+ * Check if a detection label is in a comma-separated list of class names
+ */
+static bool label_in_list(const char *label, const char *class_list) {
+    if (!label || !class_list || class_list[0] == '\0') {
+        return false;
+    }
+
+    char list_copy[256];
+    strncpy(list_copy, class_list, sizeof(list_copy) - 1);
+    list_copy[sizeof(list_copy) - 1] = '\0';
+
+    char *token = strtok(list_copy, ",");
+    while (token) {
+        // Trim leading whitespace
+        while (*token == ' ') token++;
+        // Trim trailing whitespace
+        char *end = token + strlen(token) - 1;
+        while (end > token && *end == ' ') {
+            *end = '\0';
+            end--;
+        }
+
+        if (strcmp(token, label) == 0) {
+            return true;
+        }
+
+        token = strtok(NULL, ",");
+    }
+
+    return false;
+}
+
+/**
+ * Filter detections based on per-stream object include/exclude lists
+ */
+int filter_detections_by_stream_objects(const char *stream_name, detection_result_t *result) {
+    if (!stream_name || !result) {
+        log_error("Invalid parameters for filter_detections_by_stream_objects");
+        return -1;
+    }
+
+    // If no detections, nothing to filter
+    if (result->count == 0) {
+        return 0;
+    }
+
+    // Get stream configuration
+    stream_config_t config;
+    memset(&config, 0, sizeof(config));
+    if (get_stream_config_by_name(stream_name, &config) != 0) {
+        log_warn("Could not get stream config for '%s', skipping object filter", stream_name);
+        return 0;
+    }
+
+    // Check filter mode
+    if (config.detection_object_filter[0] == '\0' ||
+        strcmp(config.detection_object_filter, "none") == 0) {
+        log_debug("No object filter configured for stream '%s'", stream_name);
+        return 0;
+    }
+
+    // Need a non-empty list for include/exclude to work
+    if (config.detection_object_filter_list[0] == '\0') {
+        log_debug("Object filter mode is '%s' but list is empty for stream '%s', skipping",
+                 config.detection_object_filter, stream_name);
+        return 0;
+    }
+
+    bool is_include = (strcmp(config.detection_object_filter, "include") == 0);
+    bool is_exclude = (strcmp(config.detection_object_filter, "exclude") == 0);
+
+    if (!is_include && !is_exclude) {
+        log_warn("Unknown object filter mode '%s' for stream '%s'",
+                config.detection_object_filter, stream_name);
+        return 0;
+    }
+
+    // Filter detections
+    detection_result_t filtered;
+    memset(&filtered, 0, sizeof(filtered));
+
+    for (int i = 0; i < result->count && filtered.count < MAX_DETECTIONS; i++) {
+        const detection_t *det = &result->detections[i];
+        bool in_list = label_in_list(det->label, config.detection_object_filter_list);
+
+        bool keep = false;
+        if (is_include) {
+            keep = in_list;  // Only keep if in the include list
+        } else {
+            keep = !in_list; // Keep if NOT in the exclude list
+        }
+
+        if (keep) {
+            memcpy(&filtered.detections[filtered.count], det, sizeof(detection_t));
+            filtered.count++;
+        } else {
+            log_debug("Object filter (%s): rejected detection '%s' for stream '%s'",
+                     config.detection_object_filter, det->label, stream_name);
+        }
+    }
+
+    log_info("Object filtering (%s): %d detections -> %d detections for stream '%s'",
+             config.detection_object_filter, result->count, filtered.count, stream_name);
+
+    // Replace original result with filtered result
+    memcpy(result, &filtered, sizeof(detection_result_t));
+
+    return 0;
+}

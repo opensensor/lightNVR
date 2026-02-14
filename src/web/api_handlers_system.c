@@ -545,7 +545,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Pass 0 for start_time and end_time to get all recordings
         // Pass NULL for stream_name to get recordings from all streams
         // Pass 0 for has_detection to get all recordings regardless of detection status
-        recording_count = get_recording_count(0, 0, NULL, 0);
+        recording_count = get_recording_count(0, 0, NULL, 0, NULL);
         if (recording_count < 0) {
             recording_count = 0; // Reset if query fails
             log_error("Failed to get recording count from database");

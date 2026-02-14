@@ -431,6 +431,18 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.post_detection_buffer = post_detection_buffer->valueint;
     }
 
+    cJSON *detection_object_filter = cJSON_GetObjectItem(stream_json, "detection_object_filter");
+    if (detection_object_filter && cJSON_IsString(detection_object_filter)) {
+        strncpy(config.detection_object_filter, detection_object_filter->valuestring, sizeof(config.detection_object_filter) - 1);
+        config.detection_object_filter[sizeof(config.detection_object_filter) - 1] = '\0';
+    }
+
+    cJSON *detection_object_filter_list = cJSON_GetObjectItem(stream_json, "detection_object_filter_list");
+    if (detection_object_filter_list && cJSON_IsString(detection_object_filter_list)) {
+        strncpy(config.detection_object_filter_list, detection_object_filter_list->valuestring, sizeof(config.detection_object_filter_list) - 1);
+        config.detection_object_filter_list[sizeof(config.detection_object_filter_list) - 1] = '\0';
+    }
+
     cJSON *protocol = cJSON_GetObjectItem(stream_json, "protocol");
     if (protocol && cJSON_IsNumber(protocol)) {
         config.protocol = (stream_protocol_t)protocol->valueint;
@@ -811,6 +823,20 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         config.post_detection_buffer = post_detection_buffer->valueint;
         config_changed = true;
         non_dynamic_config_changed = true;
+    }
+
+    cJSON *detection_object_filter = cJSON_GetObjectItem(stream_json, "detection_object_filter");
+    if (detection_object_filter && cJSON_IsString(detection_object_filter)) {
+        strncpy(config.detection_object_filter, detection_object_filter->valuestring, sizeof(config.detection_object_filter) - 1);
+        config.detection_object_filter[sizeof(config.detection_object_filter) - 1] = '\0';
+        config_changed = true;
+    }
+
+    cJSON *detection_object_filter_list = cJSON_GetObjectItem(stream_json, "detection_object_filter_list");
+    if (detection_object_filter_list && cJSON_IsString(detection_object_filter_list)) {
+        strncpy(config.detection_object_filter_list, detection_object_filter_list->valuestring, sizeof(config.detection_object_filter_list) - 1);
+        config.detection_object_filter_list[sizeof(config.detection_object_filter_list) - 1] = '\0';
+        config_changed = true;
     }
 
     cJSON *record_audio = cJSON_GetObjectItem(stream_json, "record_audio");

@@ -39,7 +39,8 @@ export function RecordingsView() {
     endDate: '',
     endTime: '23:59',
     streamId: 'all',
-    recordingType: 'all'
+    recordingType: 'all',
+    detectionLabel: ''
   });
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -404,7 +405,8 @@ export function RecordingsView() {
       endDate: '',
       endTime: '23:59',
       streamId: 'all',
-      recordingType: 'all'
+      recordingType: 'all',
+      detectionLabel: ''
     };
 
     // Get default date range
@@ -452,6 +454,12 @@ export function RecordingsView() {
         setFilters(prev => ({
           ...prev,
           recordingType: 'all'
+        }));
+        break;
+      case 'detectionLabel':
+        setFilters(prev => ({
+          ...prev,
+          detectionLabel: ''
         }));
         break;
     }

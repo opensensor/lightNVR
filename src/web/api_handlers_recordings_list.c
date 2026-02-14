@@ -36,6 +36,7 @@
  * - sort: Sort field (default: "start_time")
  * - order: Sort order "asc" or "desc" (default: "desc")
  * - has_detection: Filter by detection status (0 or 1)
+ * - detection_label: Filter by specific detection object label (e.g., "car", "person")
  */
 void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Check if shutdown is in progress
@@ -75,6 +76,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     char sort_field[32] = "start_time";
     char sort_order[8] = "desc";
     char has_detection_str[8] = {0};
+    char detection_label[64] = {0};
 
     http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name));
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -84,6 +86,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     http_request_get_query_param(req, "sort", sort_field, sizeof(sort_field));
     http_request_get_query_param(req, "order", sort_order, sizeof(sort_order));
     http_request_get_query_param(req, "has_detection", has_detection_str, sizeof(has_detection_str));
+    http_request_get_query_param(req, "detection_label", detection_label, sizeof(detection_label));
 
     // Parse numeric parameters
     int page = page_str[0] ? atoi(page_str) : 1;
@@ -156,10 +159,16 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    // If detection_label is specified, also force has_detection filter
+    const char *label_filter = detection_label[0] != '\0' ? detection_label : NULL;
+    if (label_filter) {
+        has_detection = 1;  // Searching by label implies detection filter
+    }
+
     // Get total count first (for pagination)
     int total_count = get_recording_count(start_time, end_time,
                                           stream_name[0] != '\0' ? stream_name : NULL,
-                                          has_detection);
+                                          has_detection, label_filter);
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
@@ -171,7 +180,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Get recordings with pagination
     int count = get_recording_metadata_paginated(start_time, end_time,
                                                  stream_name[0] != '\0' ? stream_name : NULL,
-                                                 has_detection, sort_field, sort_order,
+                                                 has_detection, label_filter, sort_field, sort_order,
                                                  recordings, limit, offset);
 
     if (count < 0) {

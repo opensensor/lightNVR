@@ -93,6 +93,11 @@ export const recordingsAPI = {
         params.append('detection', '1');
       }
 
+      // Add detection label filter
+      if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
+        params.append('detection_label', filters.detectionLabel.trim());
+      }
+
       // Create query key that includes all filter parameters
       const queryKey = ['recordings', filters, pagination, sortField, sortDirection];
 

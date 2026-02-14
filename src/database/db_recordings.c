@@ -469,7 +469,8 @@ int get_recording_metadata(time_t start_time, time_t end_time,
 
 // Get total count of recordings matching filter criteria
 int get_recording_count(time_t start_time, time_t end_time,
-                       const char *stream_name, int has_detection) {
+                       const char *stream_name, int has_detection,
+                       const char *detection_label) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -494,6 +495,12 @@ int get_recording_count(time_t start_time, time_t end_time,
         // Filter by trigger_type = 'detection' OR existence of detections in the recording's time range
         strcat(sql, " AND (r.trigger_type = 'detection' OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
         log_debug("Adding detection filter (trigger_type OR detections table)");
+    }
+
+    if (detection_label) {
+        // Filter by specific detection label in the recording's time range
+        strcat(sql, " AND EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time AND d.label LIKE ?)");
+        log_debug("Adding detection_label filter: %s", detection_label);
     }
 
     if (start_time > 0) {
@@ -523,6 +530,13 @@ int get_recording_count(time_t start_time, time_t end_time,
 
     // Bind parameters
     int param_index = 1;
+
+    if (detection_label) {
+        // Use LIKE with % wildcards for partial matching
+        char label_pattern[128];
+        snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label);
+        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+    }
 
     if (start_time > 0) {
         sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)start_time);
@@ -555,6 +569,7 @@ int get_recording_count(time_t start_time, time_t end_time,
 // Get paginated recording metadata from the database with sorting
 int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    const char *stream_name, int has_detection,
+                                   const char *detection_label,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
                                    int limit, int offset) {
@@ -619,6 +634,12 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         log_info("Adding detection filter (trigger_type OR detections table)");
     }
 
+    if (detection_label) {
+        // Filter by specific detection label in the recording's time range
+        strcat(sql, " AND EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time AND d.label LIKE ?)");
+        log_info("Adding detection_label filter: %s", detection_label);
+    }
+
     if (start_time > 0) {
         strcat(sql, " AND r.start_time >= ?");
         log_info("Adding start_time filter to paginated query: %ld", (long)start_time);
@@ -656,6 +677,13 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     // Bind parameters
     int param_index = 1;
+
+    if (detection_label) {
+        // Use LIKE with % wildcards for partial matching
+        char label_pattern[128];
+        snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label);
+        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+    }
 
     if (start_time > 0) {
         sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)start_time);

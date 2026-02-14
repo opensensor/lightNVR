@@ -152,6 +152,9 @@ export function StreamsView() {
     preBuffer: 10,
     postBuffer: 30,
     detectionZones: [],
+    // Detection object filter defaults
+    detectionObjectFilter: 'none',
+    detectionObjectFilterList: '',
     // Motion (ONVIF) recording defaults
     motionRecordingEnabled: false,
     motionPreBuffer: 5,
@@ -367,6 +370,9 @@ export function StreamsView() {
       ptz_max_y: parseInt(currentStream.ptzMaxY, 10) || 0,
       ptz_max_z: parseInt(currentStream.ptzMaxZ, 10) || 0,
       ptz_has_home: !!currentStream.ptzHasHome,
+      // Detection object filter settings
+      detection_object_filter: currentStream.detectionObjectFilter || 'none',
+      detection_object_filter_list: currentStream.detectionObjectFilterList || '',
       // Retention policy settings
       retention_days: parseInt(currentStream.retentionDays, 10) || 0,
       detection_retention_days: parseInt(currentStream.detectionRetentionDays, 10) || 0,
@@ -519,6 +525,8 @@ export function StreamsView() {
       detectionInterval: 10,
       preBuffer: 10,
       postBuffer: 30,
+      detectionObjectFilter: 'none',
+      detectionObjectFilterList: '',
       motionRecordingEnabled: false,
       motionPreBuffer: 5,
       motionPostBuffer: 10,
@@ -599,6 +607,9 @@ export function StreamsView() {
         ptzMaxY: stream.ptz_max_y || 0,
         ptzMaxZ: stream.ptz_max_z || 0,
         ptzHasHome: stream.ptz_has_home !== undefined ? stream.ptz_has_home : false,
+        // Detection object filter settings
+        detectionObjectFilter: stream.detection_object_filter || 'none',
+        detectionObjectFilterList: stream.detection_object_filter_list || '',
         // Retention policy settings
         retentionDays: stream.retention_days || 0,
         detectionRetentionDays: stream.detection_retention_days || 0,

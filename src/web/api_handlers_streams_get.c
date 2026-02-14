@@ -100,6 +100,8 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(stream_obj, "detection_interval", db_streams[i].detection_interval);
         cJSON_AddNumberToObject(stream_obj, "pre_detection_buffer", db_streams[i].pre_detection_buffer);
         cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", db_streams[i].post_detection_buffer);
+        cJSON_AddStringToObject(stream_obj, "detection_object_filter", db_streams[i].detection_object_filter);
+        cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", db_streams[i].detection_object_filter_list);
         cJSON_AddNumberToObject(stream_obj, "protocol", (int)db_streams[i].protocol);
         cJSON_AddBoolToObject(stream_obj, "record_audio", db_streams[i].record_audio);
         cJSON_AddBoolToObject(stream_obj, "isOnvif", db_streams[i].is_onvif);
@@ -237,6 +239,8 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "detection_interval", config.detection_interval);
     cJSON_AddNumberToObject(stream_obj, "pre_detection_buffer", config.pre_detection_buffer);
     cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", config.post_detection_buffer);
+    cJSON_AddStringToObject(stream_obj, "detection_object_filter", config.detection_object_filter);
+    cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", config.detection_object_filter_list);
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
@@ -371,6 +375,8 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "detection_interval", config.detection_interval);
     cJSON_AddNumberToObject(stream_obj, "pre_detection_buffer", config.pre_detection_buffer);
     cJSON_AddNumberToObject(stream_obj, "post_detection_buffer", config.post_detection_buffer);
+    cJSON_AddStringToObject(stream_obj, "detection_object_filter", config.detection_object_filter);
+    cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", config.detection_object_filter_list);
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);

@@ -15,7 +15,7 @@ export const urlUtils = {
     const urlParams = new URLSearchParams(window.location.search);
     
     // Check if we have any filter parameters
-    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection') && !urlParams.has('stream')) {
+    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection') && !urlParams.has('stream') && !urlParams.has('detection_label')) {
       return null;
     }
     
@@ -28,7 +28,8 @@ export const urlUtils = {
         endDate: '',
         endTime: '23:59',
         streamId: 'all',
-        recordingType: 'all'
+        recordingType: 'all',
+        detectionLabel: ''
       },
       page: 1,
       limit: 20,
@@ -65,7 +66,12 @@ export const urlUtils = {
     if (urlParams.has('detection') && urlParams.get('detection') === '1') {
       result.filters.recordingType = 'detection';
     }
-    
+
+    // Detection label
+    if (urlParams.has('detection_label')) {
+      result.filters.detectionLabel = urlParams.get('detection_label');
+    }
+
     // Pagination
     if (urlParams.has('page')) {
       result.page = parseInt(urlParams.get('page'), 10);
@@ -97,7 +103,8 @@ export const urlUtils = {
     const hasFilters = (
       filters.dateRange !== 'last7days' ||
       filters.streamId !== 'all' ||
-      filters.recordingType !== 'all'
+      filters.recordingType !== 'all' ||
+      (filters.detectionLabel && filters.detectionLabel.trim() !== '')
     );
     
     if (hasFilters) {
@@ -129,6 +136,11 @@ export const urlUtils = {
       // Recording type filter
       if (filters.recordingType !== 'all') {
         activeFilters.push({ key: 'recordingType', label: 'Detection Events Only' });
+      }
+
+      // Detection label filter
+      if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
+        activeFilters.push({ key: 'detectionLabel', label: `Object: ${filters.detectionLabel.trim()}` });
       }
     }
     
@@ -251,7 +263,14 @@ export const urlUtils = {
     } else {
       params.delete('detection');
     }
-    
+
+    // Update detection label filter
+    if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
+      params.set('detection_label', filters.detectionLabel.trim());
+    } else {
+      params.delete('detection_label');
+    }
+
     // Update pagination
     params.set('page', pagination.currentPage.toString());
     params.set('limit', pagination.pageSize.toString());

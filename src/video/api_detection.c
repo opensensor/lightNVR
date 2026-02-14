@@ -562,6 +562,9 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             log_warn("Failed to filter detections by zones, storing all detections");
         }
 
+        // Filter detections by per-stream object include/exclude lists
+        filter_detections_by_stream_objects(stream_name, result);
+
         // Store the detections in the database with recording_id linkage
         time_t timestamp = time(NULL);
         store_detections_in_db(stream_name, result, timestamp, recording_id);
@@ -889,6 +892,10 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         log_info("API Detection (snapshot): Filtering %d detections by zones for stream %s",
                  result->count, stream_name);
         filter_detections_by_zones(stream_name, result);
+
+        // Filter detections by per-stream object include/exclude lists
+        filter_detections_by_stream_objects(stream_name, result);
+
         time_t timestamp = time(NULL);
         store_detections_in_db(stream_name, result, timestamp, recording_id);
 
