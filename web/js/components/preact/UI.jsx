@@ -678,9 +678,9 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
             </div>
           </div>
 
-          {/* Download button */}
-          {downloadUrl && (
-            <div className="flex justify-center mt-4 pt-2 border-t border-border">
+          {/* Download and Timeline buttons */}
+          <div className="flex flex-wrap justify-center gap-3 mt-4 pt-2 border-t border-border">
+            {downloadUrl && (
               <a
                 className="px-4 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-sm"
                 href={downloadUrl}
@@ -691,8 +691,41 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 </svg>
                 Download Video
               </a>
-            </div>
-          )}
+            )}
+            {recordingData && recordingData.stream && recordingData.start_time && (() => {
+              // Parse "YYYY-MM-DD HH:MM:SS UTC" format and convert to local time
+              const utcMatch = recordingData.start_time.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+              if (!utcMatch) return null;
+              const [, year, month, day, hours, minutes, seconds] = utcMatch;
+              // Create Date from UTC components
+              const utcDate = new Date(Date.UTC(
+                parseInt(year), parseInt(month) - 1, parseInt(day),
+                parseInt(hours), parseInt(minutes), parseInt(seconds)
+              ));
+              // Extract local date and time (the Date object automatically converts to local)
+              const localYear = utcDate.getFullYear();
+              const localMonth = String(utcDate.getMonth() + 1).padStart(2, '0');
+              const localDay = String(utcDate.getDate()).padStart(2, '0');
+              const localHours = String(utcDate.getHours()).padStart(2, '0');
+              const localMinutes = String(utcDate.getMinutes()).padStart(2, '0');
+              const localSeconds = String(utcDate.getSeconds()).padStart(2, '0');
+              const date = `${localYear}-${localMonth}-${localDay}`;
+              const time = `${localHours}:${localMinutes}:${localSeconds}`;
+              const timelineUrl = `timeline.html?stream=${encodeURIComponent(recordingData.stream)}&date=${date}&time=${time}`;
+              return (
+                <a
+                  className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-sm"
+                  href={timelineUrl}
+                  title="View this stream at this point in time in the Timeline view"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  View in Timeline
+                </a>
+              );
+            })()}
+          </div>
         </div>
 
         <div className="p-2"></div>

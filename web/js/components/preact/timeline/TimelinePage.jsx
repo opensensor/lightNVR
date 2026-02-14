@@ -162,7 +162,8 @@ function parseUrlParams() {
   const params = new URLSearchParams(window.location.search);
   return {
     stream: params.get('stream') || '',
-    date: params.get('date') || formatDateForInput(new Date())
+    date: params.get('date') || formatDateForInput(new Date()),
+    time: params.get('time') || ''  // Optional HH:MM:SS to auto-seek on load
   };
 }
 
@@ -174,6 +175,7 @@ function updateUrlParams(stream, date) {
   const url = new URL(window.location.href);
   url.searchParams.set('stream', stream);
   url.searchParams.set('date', date);
+  url.searchParams.delete('time');  // Remove one-time seek param after initial load
   window.history.replaceState({}, '', url);
 }
 
@@ -195,6 +197,7 @@ export function TimelinePage() {
   const timelineContainerRef = useRef(null);
   const initialLoadRef = useRef(false);
   const flushIntervalRef = useRef(null);
+  const initialTimeRef = useRef(urlParams.time);  // Store initial time param for auto-seek
 
   // Set up periodic flush of pending updates
   useEffect(() => {
@@ -369,17 +372,68 @@ export function TimelinePage() {
         // Directly update the global state with the segments
         const firstSegmentStartTime = segmentsCopy[0].start_timestamp;
 
+        // Determine initial time and segment - check for time URL parameter
+        let initialTime = firstSegmentStartTime;
+        let initialSegmentIndex = 0;
+
+        if (initialTimeRef.current) {
+          // Parse HH:MM:SS time param and convert to a timestamp for the selected date
+          const timeParts = initialTimeRef.current.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+          if (timeParts) {
+            const [, hours, minutes, seconds] = timeParts.map(Number);
+            const hour = hours + (minutes / 60) + (seconds / 3600);
+            const seekTimestamp = timelineHourToTimestamp(hour, selectedDate);
+
+            console.log('TimelinePage: Auto-seeking to time from URL param', {
+              timeParam: initialTimeRef.current,
+              seekTimestamp,
+              seekDate: new Date(seekTimestamp * 1000).toLocaleTimeString()
+            });
+
+            // Find the segment that contains this timestamp, or the closest one
+            let foundSegment = false;
+            for (let i = 0; i < segmentsCopy.length; i++) {
+              if (seekTimestamp >= segmentsCopy[i].start_timestamp &&
+                  seekTimestamp <= segmentsCopy[i].end_timestamp) {
+                initialSegmentIndex = i;
+                initialTime = seekTimestamp;
+                foundSegment = true;
+                console.log(`TimelinePage: Found matching segment ${i} for seek time`);
+                break;
+              }
+            }
+
+            // If no exact match, find the closest segment after the seek time
+            if (!foundSegment) {
+              let closestIndex = 0;
+              let closestDistance = Infinity;
+              for (let i = 0; i < segmentsCopy.length; i++) {
+                const distance = Math.abs(segmentsCopy[i].start_timestamp - seekTimestamp);
+                if (distance < closestDistance) {
+                  closestDistance = distance;
+                  closestIndex = i;
+                }
+              }
+              initialSegmentIndex = closestIndex;
+              initialTime = segmentsCopy[closestIndex].start_timestamp;
+              console.log(`TimelinePage: No exact match, using closest segment ${closestIndex}`);
+            }
+          }
+          // Clear the initial time ref so it's only used once
+          initialTimeRef.current = '';
+        }
+
         console.log('TimelinePage: Setting initial segment and time', {
-          firstSegmentId: segmentsCopy[0].id,
-          startTime: new Date(firstSegmentStartTime * 1000).toLocaleTimeString()
+          segmentId: segmentsCopy[initialSegmentIndex].id,
+          startTime: new Date(initialTime * 1000).toLocaleTimeString()
         });
 
         // DIRECT ASSIGNMENT to ensure state is properly set
         console.log('TimelinePage: Directly setting timelineState properties');
         timelineState.timelineSegments = segmentsCopy;
-        timelineState.currentSegmentIndex = 0;
-        timelineState.currentTime = firstSegmentStartTime;
-        timelineState.prevCurrentTime = firstSegmentStartTime;
+        timelineState.currentSegmentIndex = initialSegmentIndex;
+        timelineState.currentTime = initialTime;
+        timelineState.prevCurrentTime = initialTime;
         timelineState.isPlaying = false;
         timelineState.forceReload = true;
         timelineState.zoomLevel = 1;
@@ -404,17 +458,17 @@ export function TimelinePage() {
           if (!timelineState.currentTime || timelineState.currentSegmentIndex === -1) {
             console.log('TimelinePage: State not properly updated, forcing update');
             timelineState.setState({
-              currentSegmentIndex: 0,
-              currentTime: firstSegmentStartTime,
-              prevCurrentTime: firstSegmentStartTime
+              currentSegmentIndex: initialSegmentIndex,
+              currentTime: initialTime,
+              prevCurrentTime: initialTime
             });
           }
         }, 100);
 
-        // Preload the first segment's video
+        // Preload the initial segment's video
         const videoPlayer = document.querySelector('#video-player video');
         if (videoPlayer) {
-          videoPlayer.src = `/api/recordings/play/${segmentsCopy[0].id}?t=${Date.now()}`;
+          videoPlayer.src = `/api/recordings/play/${segmentsCopy[initialSegmentIndex].id}?t=${Date.now()}`;
           videoPlayer.load();
         }
 
