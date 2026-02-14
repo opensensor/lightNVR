@@ -75,6 +75,7 @@ RUN DPKG_ARCH=$(dpkg --print-architecture) && \
     echo "# go2rtc configuration file" > /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "api:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "  listen: :1984" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
+    echo "  base_path: /go2rtc" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo '  origin: "*"' >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \
     echo "webrtc:" >> /etc/lightnvr/go2rtc/go2rtc.yaml && \

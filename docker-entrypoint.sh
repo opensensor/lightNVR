@@ -193,9 +193,19 @@ EOF
         log_info "Default go2rtc configuration created at /etc/lightnvr/go2rtc/go2rtc.yaml"
     fi
 
-    # Ensure existing go2rtc configs have CORS origin set
-    # Without origin: "*", browsers block cross-origin requests from the web UI (:8080) to go2rtc (:1984)
+    # Ensure existing go2rtc configs have required settings
     if [ -f /etc/lightnvr/go2rtc/go2rtc.yaml ]; then
+        # Ensure base_path: /go2rtc is set - lightNVR C code prefixes ALL go2rtc API calls
+        # with /go2rtc (GO2RTC_BASE_PATH), so go2rtc must be configured to serve on that path.
+        # Without this, readiness checks hit /go2rtc/api/streams which returns 404.
+        if ! grep -q 'base_path:' /etc/lightnvr/go2rtc/go2rtc.yaml 2>/dev/null; then
+            log_warn "go2rtc config missing base_path setting - adding base_path: /go2rtc for lightNVR compatibility"
+            sed -i '/listen: :1984/a\  base_path: /go2rtc' /etc/lightnvr/go2rtc/go2rtc.yaml
+            log_info "Added base_path to go2rtc configuration"
+        fi
+
+        # Ensure CORS origin is set
+        # Without origin: "*", browsers block cross-origin requests from the web UI (:8080) to go2rtc (:1984)
         if ! grep -q 'origin:' /etc/lightnvr/go2rtc/go2rtc.yaml 2>/dev/null; then
             log_warn "go2rtc config missing CORS origin setting - adding origin: \"*\" for browser compatibility"
             sed -i '/listen: :1984/a\  origin: "*"' /etc/lightnvr/go2rtc/go2rtc.yaml

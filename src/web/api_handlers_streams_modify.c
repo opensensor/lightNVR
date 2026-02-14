@@ -1343,11 +1343,88 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
 }
 
 /**
+ * @brief Structure for stream refresh task
+ */
+typedef struct {
+    char stream_name[MAX_STREAM_NAME];  // Decoded stream name
+} refresh_stream_task_t;
+
+/**
+ * @brief Worker function for stream refresh
+ *
+ * This function performs the actual go2rtc reload and detection thread
+ * restart in a background thread so the event loop is not blocked.
+ */
+static void refresh_stream_worker(refresh_stream_task_t *task) {
+    if (!task) {
+        log_error("Invalid refresh stream task");
+        return;
+    }
+
+    log_info("Processing stream refresh for %s in worker thread", task->stream_name);
+
+    // If go2rtc integration is not initialized, try to start it
+    if (!go2rtc_integration_is_initialized()) {
+        log_info("go2rtc integration not initialized, attempting full start");
+        if (!go2rtc_integration_full_start()) {
+            log_error("Failed to start go2rtc integration for stream refresh: %s", task->stream_name);
+            free(task);
+            return;
+        }
+        log_info("go2rtc integration started successfully");
+    }
+
+    // Reload the stream with go2rtc
+    bool success = go2rtc_integration_reload_stream(task->stream_name);
+
+    if (success) {
+        log_info("Successfully refreshed go2rtc registration for stream: %s", task->stream_name);
+
+        // Also restart the unified detection thread if detection-based recording is enabled
+        stream_handle_t stream = get_stream_by_name(task->stream_name);
+        stream_config_t config;
+        if (stream && get_stream_config(stream, &config) == 0) {
+            if (config.detection_based_recording && config.detection_model[0] != '\0') {
+                log_info("Restarting unified detection thread for stream: %s", task->stream_name);
+
+                // Stop existing detection thread if running
+                if (is_unified_detection_running(task->stream_name)) {
+                    stop_unified_detection_thread(task->stream_name);
+                    // Give it a moment to stop
+                    usleep(500000);  // 500ms
+                }
+
+                // Start the detection thread
+                // If continuous recording is also enabled, run detection in annotation-only mode
+                bool annotation_only = config.record;
+                if (start_unified_detection_thread(task->stream_name,
+                                                   config.detection_model,
+                                                   config.detection_threshold,
+                                                   config.pre_detection_buffer,
+                                                   config.post_detection_buffer,
+                                                   annotation_only) != 0) {
+                    log_warn("Failed to restart unified detection thread for stream: %s", task->stream_name);
+                } else {
+                    log_info("Successfully restarted unified detection thread for stream: %s", task->stream_name);
+                }
+            }
+        }
+    } else {
+        log_error("Failed to refresh go2rtc registration for stream: %s", task->stream_name);
+    }
+
+    free(task);
+}
+
+/**
  * @brief Handler for POST /api/streams/{stream_name}/refresh
  *
  * This endpoint triggers a re-registration of the stream with go2rtc.
  * It's useful when WebRTC connections fail and the stream needs to be refreshed
  * without changing any configuration.
+ *
+ * Returns 202 Accepted immediately and performs the blocking go2rtc reload
+ * work in a background thread so the event loop is not blocked.
  *
  * @param req HTTP request
  * @param res HTTP response
@@ -1383,61 +1460,55 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
         return;
     }
 
-    // Check if go2rtc integration is initialized
-    if (!go2rtc_integration_is_initialized()) {
-        log_error("go2rtc integration not initialized");
-        http_response_set_json_error(res, 503, "go2rtc integration not available");
+    // Allocate task for worker thread
+    refresh_stream_task_t *task = calloc(1, sizeof(refresh_stream_task_t));
+    if (!task) {
+        log_error("Failed to allocate refresh stream task");
+        http_response_set_json_error(res, 500, "Internal server error");
+        return;
+    }
+    strncpy(task->stream_name, decoded_name, MAX_STREAM_NAME - 1);
+
+    // Send immediate 202 Accepted response
+    cJSON *response = cJSON_CreateObject();
+    if (!response) {
+        log_error("Failed to create response JSON object");
+        free(task);
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
 
-    // Reload the stream with go2rtc
-    bool success = go2rtc_integration_reload_stream(decoded_name);
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddStringToObject(response, "message", "Stream refresh request accepted and processing");
+    cJSON_AddStringToObject(response, "stream", decoded_name);
 
-    if (success) {
-        log_info("Successfully refreshed go2rtc registration for stream: %s", decoded_name);
+    char *json_str = cJSON_PrintUnformatted(response);
+    cJSON_Delete(response);
 
-        // Also restart the unified detection thread if detection-based recording is enabled
-        stream_config_t config;
-        if (get_stream_config(stream, &config) == 0) {
-            if (config.detection_based_recording && config.detection_model[0] != '\0') {
-                log_info("Restarting unified detection thread for stream: %s", decoded_name);
-
-                // Stop existing detection thread if running
-                if (is_unified_detection_running(decoded_name)) {
-                    stop_unified_detection_thread(decoded_name);
-                    // Give it a moment to stop
-                    usleep(500000);  // 500ms
-                }
-
-                // Start the detection thread
-                // If continuous recording is also enabled, run detection in annotation-only mode
-                bool annotation_only = config.record;
-                if (start_unified_detection_thread(decoded_name,
-                                                   config.detection_model,
-                                                   config.detection_threshold,
-                                                   config.pre_detection_buffer,
-                                                   config.post_detection_buffer,
-                                                   annotation_only) != 0) {
-                    log_warn("Failed to restart unified detection thread for stream: %s", decoded_name);
-                } else {
-                    log_info("Successfully restarted unified detection thread for stream: %s", decoded_name);
-                }
-            }
-        }
-
-        // Create success response
-        cJSON *response = cJSON_CreateObject();
-        cJSON_AddBoolToObject(response, "success", true);
-        cJSON_AddStringToObject(response, "message", "Stream refreshed successfully");
-        cJSON_AddStringToObject(response, "stream", decoded_name);
-
-        char *json_str = cJSON_PrintUnformatted(response);
-        http_response_set_json(res, 200, json_str);
-
-        free(json_str);
-        cJSON_Delete(response);
-    } else {
-        log_error("Failed to refresh go2rtc registration for stream: %s", decoded_name);
-        http_response_set_json_error(res, 500, "Failed to refresh stream with go2rtc");
+    if (!json_str) {
+        log_error("Failed to convert response JSON to string");
+        free(task);
+        http_response_set_json_error(res, 500, "Failed to convert response JSON");
+        return;
     }
+
+    http_response_set_json(res, 202, json_str);
+    free(json_str);
+
+    // Spawn background thread to perform the actual refresh work
+    // This prevents blocking the web server event loop
+    pthread_t thread_id;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+    if (pthread_create(&thread_id, &attr, (void *(*)(void *))refresh_stream_worker, task) != 0) {
+        log_error("Failed to create worker thread for stream refresh");
+        free(task);
+        // Response already sent, just log the error
+    } else {
+        log_info("Stream refresh task started in worker thread for: %s", decoded_name);
+    }
+
+    pthread_attr_destroy(&attr);
 }
