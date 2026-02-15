@@ -168,21 +168,23 @@ export const thumbnailQueue = new RequestQueue(4, 200, false);
  * Queue a thumbnail load
  * @param {string} url - Thumbnail URL
  * @param {number} priority - Priority level
- * @returns {Promise<string>} - Promise that resolves with the URL when loaded
+ * @returns {Promise<HTMLImageElement>} - Promise that resolves with the loaded image element
  */
 export function queueThumbnailLoad(url, priority = Priority.NORMAL) {
   return thumbnailQueue.enqueue(() => {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      
+
       img.onload = () => {
-        resolve(url);
+        // Resolve with the image element to keep it in memory
+        // This ensures the browser has actually loaded and cached it
+        resolve(img);
       };
-      
+
       img.onerror = (error) => {
         reject(new Error(`Failed to load thumbnail: ${url}`));
       };
-      
+
       img.src = url;
     });
   }, priority);
