@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useContext } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
+import { clearThumbnailQueue } from '../../request-queue.js';
 
 // Import components
 import { FiltersSidebar } from './recordings/FiltersSidebar.jsx';
@@ -195,6 +196,13 @@ export function RecordingsView() {
       setSortDirection(urlFilters.order || 'desc');
     }
 
+  }, []);
+
+  // Clear thumbnail queue when component unmounts (user navigates away)
+  useEffect(() => {
+    return () => {
+      clearThumbnailQueue();
+    };
   }, []);
 
   // Update active filters when filters change
@@ -539,6 +547,9 @@ export function RecordingsView() {
   // Go to page
   const goToPage = (page) => {
     if (page < 1 || page > pagination.totalPages) return;
+
+    // Clear thumbnail queue when changing pages
+    clearThumbnailQueue();
 
     // Set the current page in pagination state
     setPagination(prev => ({

@@ -165,28 +165,74 @@ export class RequestQueue {
 export const thumbnailQueue = new RequestQueue(4, 200, false);
 
 /**
- * Queue a thumbnail load
+ * Queue a thumbnail load with smart caching
  * @param {string} url - Thumbnail URL
  * @param {number} priority - Priority level
- * @returns {Promise<HTMLImageElement>} - Promise that resolves with the loaded image element
+ * @returns {Promise<string>} - Promise that resolves with the URL when loaded
  */
 export function queueThumbnailLoad(url, priority = Priority.NORMAL) {
-  return thumbnailQueue.enqueue(() => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
+  // Try to load the image immediately to check if it's cached
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    let resolved = false;
 
-      img.onload = () => {
-        // Resolve with the image element to keep it in memory
-        // This ensures the browser has actually loaded and cached it
-        resolve(img);
-      };
+    // Set a very short timeout to detect cache hits
+    // Cached images load synchronously or within ~10ms
+    const cacheCheckTimeout = setTimeout(() => {
+      // Image didn't load immediately, so it's not cached
+      // Queue it to avoid overwhelming the server
+      thumbnailQueue.enqueue(() => {
+        return new Promise((queueResolve, queueReject) => {
+          const queueImg = new Image();
 
-      img.onerror = (error) => {
+          queueImg.onload = () => {
+            if (!resolved) {
+              resolved = true;
+              resolve(url);
+              queueResolve(url);
+            }
+          };
+
+          queueImg.onerror = (error) => {
+            if (!resolved) {
+              resolved = true;
+              const err = new Error(`Failed to load thumbnail: ${url}`);
+              reject(err);
+              queueReject(err);
+            }
+          };
+
+          queueImg.src = url;
+        });
+      }, priority);
+    }, 10); // 10ms is enough to detect cache hits
+
+    img.onload = () => {
+      // Image loaded quickly (cache hit)
+      clearTimeout(cacheCheckTimeout);
+      if (!resolved) {
+        resolved = true;
+        resolve(url);
+      }
+    };
+
+    img.onerror = (error) => {
+      // Image failed to load
+      clearTimeout(cacheCheckTimeout);
+      if (!resolved) {
+        resolved = true;
         reject(new Error(`Failed to load thumbnail: ${url}`));
-      };
+      }
+    };
 
-      img.src = url;
-    });
-  }, priority);
+    img.src = url;
+  });
+}
+
+/**
+ * Clear the thumbnail queue (call when navigating away from recordings page)
+ */
+export function clearThumbnailQueue() {
+  thumbnailQueue.clear();
 }
 
