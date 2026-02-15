@@ -71,8 +71,9 @@ static int generate_thumbnail(const char *input_path, const char *output_path,
     // -frames:v 1 to grab a single frame
     // -vf scale=320:-1 to scale to 320px wide maintaining aspect ratio
     // -q:v 8 for reasonable JPEG quality (~5-10KB)
+    // timeout 5s to prevent hanging on slow/corrupted files
     snprintf(cmd, sizeof(cmd),
-             "ffmpeg -ss %.2f -i \"%s\" -frames:v 1 -vf scale=320:-1 "
+             "timeout 5s ffmpeg -ss %.2f -i \"%s\" -frames:v 1 -vf scale=320:-1 "
              "-q:v 8 -y \"%s\" 2>/dev/null",
              seek_seconds, input_path, output_path);
 

@@ -151,13 +151,12 @@ function RecordingCard({
         class="relative aspect-video bg-muted overflow-hidden"
         onClick={() => playRecording(recording)}
       >
-        {!imageError ? (
+        {!imageError && imageLoaded ? (
           <img
             src={thumbnailUrl}
             alt={`${recording.stream} recording`}
             class="w-full h-full object-cover transition-opacity duration-300"
             onError={handleImageError}
-            loading="lazy"
           />
         ) : (
           <div class="w-full h-full flex items-center justify-center text-muted-foreground">
