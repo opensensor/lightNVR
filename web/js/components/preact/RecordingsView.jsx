@@ -579,6 +579,12 @@ export function RecordingsView() {
     return Object.values(selectedRecordings).filter(Boolean).length;
   };
 
+  // Clear all selections
+  const clearSelections = () => {
+    setSelectedRecordings({});
+    setSelectAll(false);
+  };
+
   // Open delete confirmation modal
   const openDeleteModal = (mode) => {
     setDeleteMode(mode);
@@ -826,6 +832,7 @@ export function RecordingsView() {
                 toggleProtection={toggleProtection}
                 pagination={pagination}
                 canDelete={canDelete}
+                clearSelections={clearSelections}
               />
             ) : (
               <RecordingsTable

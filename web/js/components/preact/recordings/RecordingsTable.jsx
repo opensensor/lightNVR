@@ -105,7 +105,7 @@ export function RecordingsTable({
   return (
     <div className="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
       {/* Toolbar: batch actions + column config */}
-      <div className="p-3 border-b border-border flex flex-wrap gap-2 items-center">
+      <div className="px-3 py-2.5 border-b border-border flex flex-wrap gap-2 items-center">
         {canDelete && (
           <>
             <div className="selected-count text-sm text-muted-foreground mr-2">

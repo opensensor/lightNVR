@@ -26,7 +26,7 @@
 
 /* Transition effects for sidebar */
 .filters-sidebar {
-    @apply w-full md:w-72 rounded-lg p-4 shadow flex-shrink-0;
+    @apply w-full md:w-72 rounded-lg shadow flex-shrink-0;
     transition: transform 0.3s ease, opacity 0.3s ease, width 0.3s ease;
 }
 

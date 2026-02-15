@@ -5,8 +5,68 @@
  */
 
 import { h } from 'preact';
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
+
+/** Card elements that can be hidden via the settings cog */
+const HIDEABLE_ELEMENTS = [
+  { key: 'stream', label: 'Stream Name' },
+  { key: 'duration', label: 'Duration' },
+  { key: 'detections', label: 'Detections' },
+  { key: 'protected', label: 'Protected Badge' },
+  { key: 'actions', label: 'Actions' },
+];
+
+/**
+ * Settings cog dropdown for grid cards – mirrors ColumnConfigDropdown from RecordingsTable
+ */
+function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} class="relative inline-block">
+      <button
+        type="button"
+        class="p-1.5 rounded hover:bg-muted/70 transition-colors"
+        onClick={() => setOpen(o => !o)}
+        title="Configure visible card elements"
+      >
+        <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+      {open && (
+        <div class="absolute right-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
+          <div class="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+            Visible Elements
+          </div>
+          {HIDEABLE_ELEMENTS.map(el => (
+            <label key={el.key} class="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-sm">
+              <input
+                type="checkbox"
+                checked={!hiddenColumns[el.key]}
+                onChange={() => toggleColumn(el.key)}
+                class="w-3.5 h-3.5 rounded"
+                style={{ accentColor: 'hsl(var(--primary))' }}
+              />
+              {el.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Single recording card with thumbnail and hover animation
@@ -19,7 +79,9 @@ function RecordingCard({
   toggleProtection,
   selectedRecordings,
   toggleRecordingSelection,
-  canDelete
+  canDelete,
+  selectionMode,
+  hiddenColumns
 }) {
   const [currentFrame, setCurrentFrame] = useState(1); // Start with middle frame
   const [isHovering, setIsHovering] = useState(false);
@@ -54,6 +116,7 @@ function RecordingCard({
 
   const thumbnailUrl = `/api/recordings/thumbnail/${recording.id}/${currentFrame}`;
   const isSelected = !!selectedRecordings[recording.id];
+  const show = (key) => !hiddenColumns[key];
 
   return (
     <div
@@ -103,12 +166,14 @@ function RecordingCard({
         )}
 
         {/* Duration badge */}
-        <div class="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">
-          {formatUtils.formatDuration(recording.duration)}
-        </div>
+        {show('duration') && (
+          <div class="absolute bottom-2 right-2 px-1.5 py-0.5 bg-black/70 text-white text-xs rounded">
+            {formatUtils.formatDuration(recording.duration)}
+          </div>
+        )}
 
-        {/* Selection checkbox */}
-        {canDelete && (
+        {/* Selection checkbox — only visible in selection mode */}
+        {canDelete && selectionMode && (
           <div class="absolute top-2 left-2" onClick={(e) => e.stopPropagation()}>
             <input
               type="checkbox"
@@ -121,7 +186,7 @@ function RecordingCard({
         )}
 
         {/* Protected badge */}
-        {recording.protected && (
+        {show('protected') && recording.protected && (
           <div class="absolute top-2 right-2 px-1.5 py-0.5 bg-yellow-500/90 text-white text-xs rounded flex items-center gap-0.5">
             <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
@@ -130,82 +195,89 @@ function RecordingCard({
         )}
       </div>
 
-      {/* Card info */}
-      <div class="p-3">
-        <div class="flex items-center justify-between mb-1">
-          <span class="font-medium text-sm truncate" title={recording.stream}>
-            {recording.stream || 'Unknown'}
-          </span>
-          <span class="text-xs text-muted-foreground ml-2 whitespace-nowrap">
-            {recording.size || ''}
-          </span>
-        </div>
-        <div class="text-xs text-muted-foreground mb-2">
-          {formatUtils.formatDateTime(recording.start_time)}
-        </div>
-
-        {/* Detection badges */}
-        {recording.detection_labels && recording.detection_labels.length > 0 && (
-          <div class="flex flex-wrap gap-1 mb-2">
-            {recording.detection_labels.map((det, idx) => (
-              <span key={idx} class="badge-success text-xs" title={`${det.count} detection${det.count !== 1 ? 's' : ''}`}>
-                {det.label}
-                {det.count > 1 && <span class="ml-0.5 opacity-75">({det.count})</span>}
+      {/* Card info — only render if at least one info element is visible */}
+      {(show('stream') || show('detections') || show('actions')) && (
+        <div class="p-3">
+          {show('stream') && (
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-medium text-sm truncate" title={recording.stream}>
+                {recording.stream || 'Unknown'}
               </span>
-            ))}
-          </div>
-        )}
+              <span class="text-xs text-muted-foreground ml-2 whitespace-nowrap">
+                {formatUtils.formatDateTime(recording.start_time)}
+              </span>
+            </div>
+          )}
 
-        {/* Action buttons */}
-        <div class="flex items-center gap-1 pt-1 border-t border-border">
-          <button
-            class="p-1 rounded-full focus:outline-none"
-            style={{ color: 'hsl(var(--primary))' }}
-            onClick={() => playRecording(recording)}
-            title="Play"
-          >
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-            </svg>
-          </button>
-          <button
-            class="p-1 rounded-full focus:outline-none"
-            style={{ color: 'hsl(var(--success))' }}
-            onClick={() => downloadRecording(recording)}
-            title="Download"
-          >
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
-          <button
-            class="p-1 rounded-full focus:outline-none"
-            style={{ color: recording.protected ? 'hsl(var(--warning))' : 'hsl(var(--muted-foreground))' }}
-            onClick={() => toggleProtection && toggleProtection(recording)}
-            title={recording.protected ? 'Unprotect' : 'Protect'}
-          >
-            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              {recording.protected ? (
-                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+          {/* Detection badges */}
+          {show('detections') && (
+            <div class={`flex flex-wrap gap-1 min-h-[22px] ${show('actions') ? 'mb-2' : ''}`}>
+              {recording.detection_labels && recording.detection_labels.length > 0 ? (
+                recording.detection_labels.map((det, idx) => (
+                  <span key={idx} class="badge-success text-xs" title={`${det.count} detection${det.count !== 1 ? 's' : ''}`}>
+                    {det.label}
+                    {det.count > 1 && <span class="ml-0.5 opacity-75">({det.count})</span>}
+                  </span>
+                ))
               ) : (
-                <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
+                <span class="text-xs text-muted-foreground/40 select-none">&nbsp;</span>
               )}
-            </svg>
-          </button>
-          {canDelete && (
-            <button
-              class="p-1 rounded-full focus:outline-none ml-auto"
-              style={{ color: 'hsl(var(--danger))' }}
-              onClick={() => deleteRecording(recording)}
-              title="Delete"
-            >
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </button>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          {show('actions') && (
+            <div class="flex items-center gap-1 pt-1 border-t border-border">
+              <button
+                class="p-1 rounded-full focus:outline-none"
+                style={{ color: 'hsl(var(--primary))' }}
+                onClick={() => playRecording(recording)}
+                title="Play"
+              >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button
+                class="p-1 rounded-full focus:outline-none"
+                style={{ color: 'hsl(var(--success))' }}
+                onClick={() => downloadRecording(recording)}
+                title={`Download${recording.size ? ' (' + recording.size + ')' : ''}`}
+              >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button
+                class="p-1 rounded-full focus:outline-none"
+                style={{ color: recording.protected ? 'hsl(var(--warning))' : 'hsl(var(--muted-foreground))' }}
+                onClick={() => toggleProtection && toggleProtection(recording)}
+                title={recording.protected ? 'Unprotect' : 'Protect'}
+              >
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  {recording.protected ? (
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  ) : (
+                    <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
+                  )}
+                </svg>
+              </button>
+              {canDelete && (
+                <button
+                  class="p-1 rounded-full focus:outline-none ml-auto"
+                  style={{ color: 'hsl(var(--danger))' }}
+                  onClick={() => deleteRecording(recording)}
+                  title="Delete"
+                >
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              )}
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -228,39 +300,78 @@ export function RecordingsGrid({
   deleteRecording,
   toggleProtection,
   pagination,
-  canDelete = true
+  canDelete = true,
+  clearSelections,
+  hiddenColumns = {},
+  toggleColumn = () => {}
 }) {
+  const [selectionMode, setSelectionMode] = useState(false);
+
+  /** Exit selection mode and clear all selections */
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    if (clearSelections) clearSelections();
+  }, [clearSelections]);
+
   return (
     <div class="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
-      {/* Batch actions - only show if user can delete */}
-      {canDelete && (
-        <div class="batch-actions p-3 border-b border-border flex flex-wrap gap-2 items-center">
-          <div class="flex items-center gap-2 mr-2">
-            <input
-              type="checkbox"
-              checked={selectAll}
-              onChange={toggleSelectAll}
-              class="w-4 h-4 rounded focus:ring-2"
-              style={{ accentColor: 'hsl(var(--primary))' }}
-            />
-            <span class="text-sm text-muted-foreground">
-              {getSelectedCount() > 0
-                ? `${getSelectedCount()} recording${getSelectedCount() !== 1 ? 's' : ''} selected`
-                : 'Select all'}
-            </span>
-          </div>
-          <button
-            class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={getSelectedCount() === 0}
-            onClick={() => openDeleteModal('selected')}
-          >
-            Delete Selected
-          </button>
-          <button class="btn-danger" onClick={() => openDeleteModal('all')}>
-            Delete All Filtered
-          </button>
+      {/* Toolbar */}
+      <div class="batch-actions px-3 py-2.5 border-b border-border flex flex-wrap gap-2 items-center">
+        {canDelete && (
+          <>
+            {selectionMode ? (
+              <>
+                <div class="flex items-center gap-2 mr-2">
+                  <input
+                    type="checkbox"
+                    checked={selectAll}
+                    onChange={toggleSelectAll}
+                    class="w-4 h-4 rounded focus:ring-2"
+                    style={{ accentColor: 'hsl(var(--primary))' }}
+                  />
+                  <span class="text-sm text-muted-foreground">
+                    {getSelectedCount() > 0
+                      ? `${getSelectedCount()} recording${getSelectedCount() !== 1 ? 's' : ''} selected`
+                      : 'Select all'}
+                  </span>
+                </div>
+                <button
+                  class="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={getSelectedCount() === 0}
+                  onClick={() => openDeleteModal('selected')}
+                >
+                  Delete Selected
+                </button>
+                <button class="btn-danger" onClick={() => openDeleteModal('all')}>
+                  Delete All Filtered
+                </button>
+                <button
+                  class="text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
+                  onClick={exitSelectionMode}
+                  title="Exit selection mode"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                class="flex items-center gap-1.5 text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
+                onClick={() => setSelectionMode(true)}
+                title="Enter selection mode"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                Select
+              </button>
+            )}
+          </>
+        )}
+        <div class="ml-auto">
+          <CardConfigDropdown hiddenColumns={hiddenColumns} toggleColumn={toggleColumn} />
         </div>
-      )}
+      </div>
 
       {/* Grid of cards */}
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
@@ -280,6 +391,8 @@ export function RecordingsGrid({
               selectedRecordings={selectedRecordings}
               toggleRecordingSelection={toggleRecordingSelection}
               canDelete={canDelete}
+              selectionMode={selectionMode}
+              hiddenColumns={hiddenColumns}
             />
           ))
         )}
