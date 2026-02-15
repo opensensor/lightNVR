@@ -109,6 +109,10 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(stream_obj, "retention_days", db_streams[i].retention_days);
         cJSON_AddNumberToObject(stream_obj, "detection_retention_days", db_streams[i].detection_retention_days);
         cJSON_AddNumberToObject(stream_obj, "max_storage_mb", db_streams[i].max_storage_mb);
+        cJSON_AddNumberToObject(stream_obj, "tier_critical_multiplier", db_streams[i].tier_critical_multiplier);
+        cJSON_AddNumberToObject(stream_obj, "tier_important_multiplier", db_streams[i].tier_important_multiplier);
+        cJSON_AddNumberToObject(stream_obj, "tier_ephemeral_multiplier", db_streams[i].tier_ephemeral_multiplier);
+        cJSON_AddNumberToObject(stream_obj, "storage_priority", db_streams[i].storage_priority);
         cJSON_AddBoolToObject(stream_obj, "ptz_enabled", db_streams[i].ptz_enabled);
         cJSON_AddNumberToObject(stream_obj, "ptz_max_x", db_streams[i].ptz_max_x);
         cJSON_AddNumberToObject(stream_obj, "ptz_max_y", db_streams[i].ptz_max_y);
@@ -248,6 +252,10 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
     cJSON_AddNumberToObject(stream_obj, "detection_retention_days", config.detection_retention_days);
     cJSON_AddNumberToObject(stream_obj, "max_storage_mb", config.max_storage_mb);
+    cJSON_AddNumberToObject(stream_obj, "tier_critical_multiplier", config.tier_critical_multiplier);
+    cJSON_AddNumberToObject(stream_obj, "tier_important_multiplier", config.tier_important_multiplier);
+    cJSON_AddNumberToObject(stream_obj, "tier_ephemeral_multiplier", config.tier_ephemeral_multiplier);
+    cJSON_AddNumberToObject(stream_obj, "storage_priority", config.storage_priority);
     cJSON_AddBoolToObject(stream_obj, "ptz_enabled", config.ptz_enabled);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_x", config.ptz_max_x);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);
@@ -384,6 +392,10 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
     cJSON_AddNumberToObject(stream_obj, "detection_retention_days", config.detection_retention_days);
     cJSON_AddNumberToObject(stream_obj, "max_storage_mb", config.max_storage_mb);
+    cJSON_AddNumberToObject(stream_obj, "tier_critical_multiplier", config.tier_critical_multiplier);
+    cJSON_AddNumberToObject(stream_obj, "tier_important_multiplier", config.tier_important_multiplier);
+    cJSON_AddNumberToObject(stream_obj, "tier_ephemeral_multiplier", config.tier_ephemeral_multiplier);
+    cJSON_AddNumberToObject(stream_obj, "storage_priority", config.storage_priority);
     cJSON_AddBoolToObject(stream_obj, "ptz_enabled", config.ptz_enabled);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_x", config.ptz_max_x);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);

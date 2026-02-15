@@ -126,6 +126,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/motion/cleanup", "POST", handle_post_motion_cleanup);
     http_server_register_handler(server, "/api/motion/storage", "GET", handle_get_motion_storage);
 
+    // Storage Management API
+    http_server_register_handler(server, "/api/storage/health", "GET", handle_get_storage_health);
+    http_server_register_handler(server, "/api/storage/cleanup", "POST", handle_post_storage_cleanup);
+
     // Auth API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/auth/login", "POST", handle_auth_login);
     http_server_register_handler(server, "/api/auth/logout", "POST", handle_auth_logout);

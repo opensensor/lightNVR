@@ -21,7 +21,15 @@ typedef struct {
     char trigger_type[16];  // 'scheduled', 'detection', 'motion', 'manual'
     bool protected;         // If true, recording is protected from automatic deletion
     int retention_override_days;  // Custom retention period override (-1 = use stream default)
+    int retention_tier;     // 0=Critical, 1=Important, 2=Standard, 3=Ephemeral
+    bool disk_pressure_eligible;  // If true, recording can be deleted under disk pressure
 } recording_metadata_t;
+
+// Retention tier constants
+#define RETENTION_TIER_CRITICAL   0
+#define RETENTION_TIER_IMPORTANT  1
+#define RETENTION_TIER_STANDARD   2
+#define RETENTION_TIER_EPHEMERAL  3
 
 /**
  * Add recording metadata to the database
@@ -192,5 +200,61 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
  * @return Number of recordings found, or -1 on error
  */
 int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count);
+
+/**
+ * Get recordings eligible for deletion based on tiered retention policy
+ * Returns recordings ordered by tier (ephemeral first) then by age (oldest first)
+ * Protected recordings and recordings with active retention overrides are excluded
+ *
+ * @param stream_name Stream name to filter (NULL for all streams)
+ * @param base_retention_days Base retention period in days
+ * @param tier_multipliers Array of 4 multipliers [critical, important, standard, ephemeral]
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @return Number of recordings found, or -1 on error
+ */
+int get_recordings_for_tiered_retention(const char *stream_name,
+                                        int base_retention_days,
+                                        const double *tier_multipliers,
+                                        recording_metadata_t *recordings,
+                                        int max_count);
+
+/**
+ * Get recordings eligible for disk pressure cleanup
+ * Returns disk_pressure_eligible recordings ordered by tier (ephemeral first)
+ * then by age (oldest first), excluding protected recordings
+ *
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @return Number of recordings found, or -1 on error
+ */
+int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
+                                        int max_count);
+
+/**
+ * Get total storage bytes used by a stream from the database
+ *
+ * @param stream_name Stream name (NULL for all streams)
+ * @return Total bytes used, or -1 on error
+ */
+int64_t get_stream_storage_bytes(const char *stream_name);
+
+/**
+ * Set retention tier for a recording
+ *
+ * @param id Recording ID
+ * @param tier Retention tier (RETENTION_TIER_CRITICAL..RETENTION_TIER_EPHEMERAL)
+ * @return 0 on success, non-zero on failure
+ */
+int set_recording_retention_tier(uint64_t id, int tier);
+
+/**
+ * Set disk pressure eligibility for a recording
+ *
+ * @param id Recording ID
+ * @param eligible Whether the recording is eligible for disk pressure deletion
+ * @return 0 on success, non-zero on failure
+ */
+int set_recording_disk_pressure_eligible(uint64_t id, bool eligible);
 
 #endif // LIGHTNVR_DB_RECORDINGS_H
