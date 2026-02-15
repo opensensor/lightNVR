@@ -4,85 +4,75 @@
 
 import { h } from 'preact';
 
-const NAV_BTN = "w-8 h-8 flex items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed text-sm";
-const PAGE_BTN = "w-8 h-8 flex items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-primary text-sm";
-const PAGE_BTN_ACTIVE = "bg-primary text-primary-foreground";
-const PAGE_BTN_INACTIVE = "bg-secondary text-secondary-foreground hover:bg-secondary/80";
-const EDGE_BTN = "h-8 px-2 flex items-center justify-center gap-0.5 rounded-full focus:outline-none focus:ring-2 focus:ring-primary text-sm";
+/* shared base for every clickable element */
+const BASE = "h-8 inline-flex items-center justify-center text-sm rounded cursor-pointer select-none border border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed";
+/* nav arrows (‹ ›) — square */
+const NAV = `${BASE} w-8 bg-secondary text-secondary-foreground hover:bg-secondary/80`;
+/* page number — square */
+const PAGE = `${BASE} min-w-8 px-1`;
+const PAGE_ON = "bg-primary text-primary-foreground";
+const PAGE_OFF = "bg-secondary text-secondary-foreground hover:bg-secondary/80";
+/* edge hybrid (1« / »N) — slightly wider */
+const EDGE = `${BASE} px-2 gap-0.5`;
 
 /**
- * Build the list of interior page numbers to display (excluding first & last).
- * Shows up to 3 pages on each side of the current page.
+ * Interior page numbers (excluding first & last).
+ * Up to 3 each side of current page.
  */
 function getMiddlePages(current, total) {
   if (total <= 2) return [];
-
-  const pages = new Set();
-  for (let i = current - 3; i <= current + 3; i++) {
-    if (i > 1 && i < total) pages.add(i);
+  const pages = [];
+  for (let i = current - 2; i <= current + 2; i++) {
+    if (i > 1 && i < total) pages.push(i);
   }
-
-  return Array.from(pages).sort((a, b) => a - b);
+  return pages;
 }
 
 /**
  * PaginationControls component
- * @param {Object} props Component props
- * @returns {JSX.Element} PaginationControls component
  */
 export function PaginationControls({ pagination, goToPage }) {
   const { currentPage, totalPages } = pagination;
-  const middlePages = getMiddlePages(currentPage, totalPages);
+  const middle = getMiddlePages(currentPage, totalPages);
+
+  const pageCls = (p) => `${PAGE} ${p === currentPage ? PAGE_ON : PAGE_OFF}`;
+  const edgeCls = (p) => `${EDGE} ${p === currentPage ? PAGE_ON : PAGE_OFF}`;
 
   return (
     <div className="pagination-controls flex flex-col sm:flex-row justify-between items-center p-4 border-t border-border">
       <div className="pagination-info text-sm text-muted-foreground mb-2 sm:mb-0">
-        Showing <span>{pagination.startItem}-{pagination.endItem}</span> of <span>{pagination.totalItems}</span> recordings
+        Showing {pagination.startItem}-{pagination.endItem} of {pagination.totalItems} recordings
       </div>
-      <div className="pagination-buttons flex items-center space-x-1">
-        {/* First page hybrid: number then « */}
-        <button
-          className={`${EDGE_BTN} ${currentPage === 1 ? PAGE_BTN_ACTIVE : PAGE_BTN_INACTIVE}`}
-          onClick={() => goToPage(1)}
-          title="First Page"
-        >
-          <span>1</span>
-          <span className="text-xs opacity-60">«</span>
+
+      <div className="flex items-center gap-1">
+        {/* First page — hybrid: 1 « */}
+        <button className={edgeCls(1)} onClick={() => goToPage(1)} title="First Page">
+          <span>1</span><span className="text-xs opacity-60">«</span>
         </button>
 
-        {/* Previous */}
-        <button className={NAV_BTN} title="Previous Page"
-                onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>
-          ‹
-        </button>
+        {/* Previous — hidden on first page */}
+        {currentPage > 1 && (
+          <button className={NAV} onClick={() => goToPage(currentPage - 1)}
+                  title="Previous Page">‹</button>
+        )}
 
-        {/* Middle numbered pages */}
-        {middlePages.map((page) => (
-          <button
-            key={page}
-            className={`${PAGE_BTN} ${page === currentPage ? PAGE_BTN_ACTIVE : PAGE_BTN_INACTIVE}`}
-            onClick={() => goToPage(page)}
-            title={`Page ${page}`}
-          >
-            {page}
-          </button>
+        {/* Middle pages */}
+        {middle.map((p) => (
+          <button key={p} className={pageCls(p)} onClick={() => goToPage(p)}
+                  title={`Page ${p}`}>{p}</button>
         ))}
 
-        {/* Next */}
-        <button className={NAV_BTN} title="Next Page"
-                onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages}>
-          ›
-        </button>
+        {/* Next — hidden on last page */}
+        {currentPage < totalPages && (
+          <button className={NAV} onClick={() => goToPage(currentPage + 1)}
+                  title="Next Page">›</button>
+        )}
 
-        {/* Last page hybrid: » then number */}
+        {/* Last page — hybrid: » N */}
         {totalPages > 1 && (
-          <button
-            className={`${EDGE_BTN} ${currentPage === totalPages ? PAGE_BTN_ACTIVE : PAGE_BTN_INACTIVE}`}
-            onClick={() => goToPage(totalPages)}
-            title="Last Page"
-          >
-            <span className="text-xs opacity-60">»</span>
-            <span>{totalPages}</span>
+          <button className={edgeCls(totalPages)} onClick={() => goToPage(totalPages)}
+                  title="Last Page">
+            <span className="text-xs opacity-60">»</span><span>{totalPages}</span>
           </button>
         )}
       </div>

@@ -251,7 +251,7 @@ function RecordingCard({
               <a
                 class="p-1 rounded-full focus:outline-none inline-flex"
                 style={{ color: 'hsl(var(--info))' }}
-                href={`timeline.html?stream=${encodeURIComponent(recording.stream)}&date=${recording.start_time ? recording.start_time.slice(0, 10) : ''}`}
+                href={`timeline.html?stream=${encodeURIComponent(recording.stream)}&date=${recording.start_time ? recording.start_time.slice(0, 10) : ''}&time=${recording.start_time ? recording.start_time.slice(11, 19) : ''}`}
                 title="View in Timeline"
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

@@ -88,34 +88,13 @@ th {
     @apply text-center text-muted-foreground py-8;
 }
 
-/* Pagination styles */
+/* Pagination styles — all button styling handled in PaginationControls.jsx */
 .pagination-controls {
     @apply flex justify-between items-center py-4 flex-wrap gap-4;
 }
 
 .pagination-info {
     @apply text-muted-foreground text-sm;
-}
-
-.pagination-buttons {
-    @apply flex items-center gap-2;
-}
-
-.pagination-buttons button {
-    @apply min-w-8 h-8 p-0 flex items-center justify-center bg-secondary border border-input rounded cursor-pointer text-base disabled:opacity-50 disabled:cursor-not-allowed;
-}
-
-.pagination-buttons button:hover:not(:disabled) {
-    background-color: hsl(var(--secondary) / 0.8);
-}
-
-.pagination-buttons button.active {
-    background-color: hsl(var(--primary));
-    color: hsl(var(--primary-foreground));
-}
-
-#pagination-current {
-    @apply px-2 text-sm text-foreground;
 }
 
 /* Responsive layout styles */
