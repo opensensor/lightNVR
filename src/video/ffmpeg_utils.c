@@ -1,5 +1,6 @@
 #include "video/ffmpeg_utils.h"
 #include "core/logger.h"
+#include "core/config.h"
 #include "video/ffmpeg_leak_detector.h"
 #include "video/stream_protocol.h"
 

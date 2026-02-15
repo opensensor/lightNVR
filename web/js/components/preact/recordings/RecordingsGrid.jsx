@@ -86,22 +86,22 @@ function RecordingCard({
 }) {
   const [currentFrame, setCurrentFrame] = useState(1); // Start with middle frame
   const [isHovering, setIsHovering] = useState(false);
-  const [imageError, setImageError] = useState(false);
+  const [loadState, setLoadState] = useState('loading'); // 'loading', 'loaded', 'error'
   const intervalRef = useRef(null);
   const preloadedRef = useRef(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
 
   // Handle image load errors
   const handleImageError = useCallback(() => {
-    setImageError(true);
+    setLoadState('error');
   }, []);
 
   // Preload the middle frame (index 1) on mount with HIGH priority since it's visible
   useEffect(() => {
     const url = `/api/recordings/thumbnail/${recording.id}/1`;
+    setLoadState('loading');
     queueThumbnailLoad(url, Priority.HIGH)
-      .then(() => setImageLoaded(true))
-      .catch(() => setImageError(true));
+      .then(() => setLoadState('loaded'))
+      .catch(() => setLoadState('error'));
   }, [recording.id]);
 
   // Preload the other two frames when user first hovers (LOW priority background task)
@@ -151,18 +151,26 @@ function RecordingCard({
         class="relative aspect-video bg-muted overflow-hidden"
         onClick={() => playRecording(recording)}
       >
-        {!imageError && imageLoaded ? (
+        {loadState === 'loaded' ? (
           <img
             src={thumbnailUrl}
             alt={`${recording.stream} recording`}
             class="w-full h-full object-cover transition-opacity duration-300"
             onError={handleImageError}
           />
-        ) : (
-          <div class="w-full h-full flex items-center justify-center text-muted-foreground">
-            <svg class="w-12 h-12 opacity-30" fill="currentColor" viewBox="0 0 20 20">
+        ) : loadState === 'loading' ? (
+          <div class="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+            <svg class="w-12 h-12 opacity-30 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
             </svg>
+            <span class="text-xs mt-2 opacity-50">Loading...</span>
+          </div>
+        ) : (
+          <div class="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50">
+            <svg class="w-12 h-12 opacity-40 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span class="text-xs mt-2 opacity-60">Failed to load</span>
           </div>
         )}
 

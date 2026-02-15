@@ -528,7 +528,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         log_debug("Enabled streams count from database: %d", enabled_streams);
 
         cJSON_AddNumberToObject(streams_obj, "active", enabled_streams);
-        cJSON_AddNumberToObject(streams_obj, "total", g_config.max_streams);
+        cJSON_AddNumberToObject(streams_obj, "total", MAX_STREAMS);
 
         // Add streams object to info
         cJSON_AddItemToObject(info, "streams", streams_obj);
@@ -833,7 +833,7 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
     cJSON_AddStringToObject(config, "db_path", g_config.db_path);
     cJSON_AddStringToObject(config, "storage_path", g_config.storage_path);
     cJSON_AddNumberToObject(config, "max_storage_size", g_config.max_storage_size);
-    cJSON_AddNumberToObject(config, "max_streams", g_config.max_streams);
+    cJSON_AddNumberToObject(config, "max_streams", MAX_STREAMS);
 
     // Add streams array
     cJSON *streams = cJSON_CreateArray();
@@ -847,7 +847,7 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
     }
 
     // Add streams to array
-    for (int i = 0; i < g_config.max_streams; i++) {
+    for (int i = 0; i < MAX_STREAMS; i++) {
         if (g_config.streams[i].name[0] != '\0') {
             cJSON *stream = cJSON_CreateObject();
             if (!stream) {

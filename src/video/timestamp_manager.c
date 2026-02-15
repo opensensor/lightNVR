@@ -4,6 +4,7 @@
 
 #include "video/timestamp_manager.h"
 #include "core/logger.h"
+#include "core/config.h"
 #include <pthread.h>
 #include <string.h>
 #include <time.h>

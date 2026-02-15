@@ -144,7 +144,6 @@ typedef struct {
     char onvif_discovery_network[64]; // Network to scan for ONVIF devices (e.g., "192.168.1.0/24")
     
     // Stream settings
-    int max_streams;
     stream_config_t streams[MAX_STREAMS];
     
     // Memory optimization

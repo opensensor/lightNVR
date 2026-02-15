@@ -222,7 +222,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
     cJSON_AddBoolToObject(settings, "generate_thumbnails", g_config.generate_thumbnails);
-    cJSON_AddNumberToObject(settings, "max_streams", g_config.max_streams);
+    cJSON_AddNumberToObject(settings, "max_streams", MAX_STREAMS);
     cJSON_AddStringToObject(settings, "log_file", g_config.log_file);
     cJSON_AddNumberToObject(settings, "log_level", g_config.log_level);
     cJSON_AddStringToObject(settings, "pid_file", g_config.pid_file);
@@ -469,14 +469,8 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated models_path: %s", g_config.models_path);
     }
     
-    // Max streams
-    cJSON *max_streams = cJSON_GetObjectItem(settings, "max_streams");
-    if (max_streams && cJSON_IsNumber(max_streams)) {
-        g_config.max_streams = max_streams->valueint;
-        settings_changed = true;
-        log_info("Updated max_streams: %d", g_config.max_streams);
-    }
-    
+    // max_streams is no longer configurable (compile-time MAX_STREAMS constant)
+
     // Log file
     cJSON *log_file = cJSON_GetObjectItem(settings, "log_file");
     if (log_file && cJSON_IsString(log_file)) {
@@ -931,7 +925,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         int active_stream_count = 0;
         
         log_info("Scanning for active streams...");
-        for (int i = 0; i < g_config.max_streams; i++) {
+        for (int i = 0; i < MAX_STREAMS; i++) {
             log_info("Checking stream slot %d: name='%s', enabled=%d", 
                     i, g_config.streams[i].name, g_config.streams[i].enabled);
             
@@ -996,7 +990,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             }
             
             // Reinitialize stream manager
-            if (init_stream_manager(g_config.max_streams) != 0) {
+            if (init_stream_manager(MAX_STREAMS) != 0) {
                 log_error("Failed to reinitialize stream manager");
             } else {
                 log_info("Successfully reinitialized stream manager");
@@ -1009,7 +1003,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         }
         
         log_info("Reinitializing stream manager...");
-        if (init_stream_manager(g_config.max_streams) != 0) {
+        if (init_stream_manager(MAX_STREAMS) != 0) {
             log_error("Failed to reinitialize stream manager");
             
             // Send error response
@@ -1076,7 +1070,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                 
                 // Try to find the stream configuration in the global config
                 stream_config_t *config = NULL;
-                for (int j = 0; j < g_config.max_streams; j++) {
+                for (int j = 0; j < MAX_STREAMS; j++) {
                     if (strcmp(g_config.streams[j].name, active_streams[i]) == 0) {
                         config = &g_config.streams[j];
                         break;
