@@ -158,11 +158,11 @@ export class RequestQueue {
  * Limits concurrent thumbnail generation to prevent overwhelming the server
  *
  * Configuration:
- * - maxConcurrent: 4 (conservative to avoid overwhelming ffmpeg)
- * - startDelay: 200ms (stagger request starts to give backend breathing room)
+ * - maxConcurrent: 4 (matches backend MAX_CONCURRENT_THUMBNAIL_GENERATIONS)
+ * - startDelay: 50ms (minimal delay - disk cache hits are <10ms, generation is ~1-5s)
  * - debug: false (disable logging in production)
  */
-export const thumbnailQueue = new RequestQueue(4, 200, false);
+export const thumbnailQueue = new RequestQueue(4, 50, false);
 
 /**
  * Check if an image is already loaded in memory (true cache hit)
