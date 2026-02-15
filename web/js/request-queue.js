@@ -160,9 +160,9 @@ export class RequestQueue {
  * Configuration:
  * - maxConcurrent: 4 (conservative to avoid overwhelming ffmpeg)
  * - startDelay: 200ms (stagger request starts to give backend breathing room)
- * - debug: true (enable logging to verify staggering works)
+ * - debug: false (disable logging in production)
  */
-export const thumbnailQueue = new RequestQueue(4, 200, true);
+export const thumbnailQueue = new RequestQueue(4, 200, false);
 
 /**
  * Queue a thumbnail load
