@@ -7,6 +7,7 @@
 import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
+import { queueThumbnailLoad, Priority } from '../../../request-queue.js';
 
 /** Card elements that can be hidden via the settings cog */
 const HIDEABLE_ELEMENTS = [
@@ -87,14 +88,34 @@ function RecordingCard({
   const [isHovering, setIsHovering] = useState(false);
   const [imageError, setImageError] = useState(false);
   const intervalRef = useRef(null);
+  const preloadedRef = useRef(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
-  // Preload all 3 frames on mount
+  // Handle image load errors
+  const handleImageError = useCallback(() => {
+    setImageError(true);
+  }, []);
+
+  // Preload the middle frame (index 1) on mount with HIGH priority since it's visible
   useEffect(() => {
-    for (let i = 0; i < 3; i++) {
-      const img = new Image();
-      img.src = `/api/recordings/thumbnail/${recording.id}/${i}`;
-    }
+    const url = `/api/recordings/thumbnail/${recording.id}/1`;
+    queueThumbnailLoad(url, Priority.HIGH)
+      .then(() => setImageLoaded(true))
+      .catch(() => setImageError(true));
   }, [recording.id]);
+
+  // Preload the other two frames when user first hovers (LOW priority background task)
+  useEffect(() => {
+    if (isHovering && !preloadedRef.current) {
+      preloadedRef.current = true;
+      for (const i of [0, 2]) {
+        const url = `/api/recordings/thumbnail/${recording.id}/${i}`;
+        queueThumbnailLoad(url, Priority.LOW).catch(() => {
+          // Silently ignore preload failures
+        });
+      }
+    }
+  }, [isHovering, recording.id]);
 
   // Cycle through frames on hover
   useEffect(() => {
@@ -135,7 +156,7 @@ function RecordingCard({
             src={thumbnailUrl}
             alt={`${recording.stream} recording`}
             class="w-full h-full object-cover transition-opacity duration-300"
-            onError={() => setImageError(true)}
+            onError={handleImageError}
             loading="lazy"
           />
         ) : (

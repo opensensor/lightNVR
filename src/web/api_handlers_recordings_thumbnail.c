@@ -25,6 +25,18 @@
 #include "database/db_recordings.h"
 
 /**
+ * Concurrency limiter for thumbnail generation.
+ *
+ * Each ffmpeg system() call blocks a libuv thread-pool worker for seconds.
+ * If the grid view fires dozens of thumbnail requests at once, the pool is
+ * starved and the health-check endpoint can't be served, triggering a
+ * server restart.  Cap the number of in-flight ffmpeg processes so there
+ * are always free workers for normal API traffic.
+ */
+#define MAX_CONCURRENT_THUMBNAIL_GENERATIONS 4
+static volatile int g_active_thumbnail_generations = 0;
+
+/**
  * @brief Ensure the thumbnails directory exists
  */
 static int ensure_thumbnails_dir(const char *storage_path) {
@@ -208,8 +220,23 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
         seek_seconds = duration > 1.0 ? duration - 1.0 : 0;
     }
 
+    // Enforce concurrency limit – avoid starving the libuv thread pool
+    if (__sync_fetch_and_add(&g_active_thumbnail_generations, 0) >=
+        MAX_CONCURRENT_THUMBNAIL_GENERATIONS) {
+        // Tell the browser to retry shortly
+        http_response_add_header(res, "Retry-After", "2");
+        http_response_set_json_error(res, 503,
+            "Thumbnail generation busy, try again later");
+        return;
+    }
+    __sync_add_and_fetch(&g_active_thumbnail_generations, 1);
+
     // Generate thumbnail
-    if (generate_thumbnail(recording.file_path, thumb_path, seek_seconds) != 0) {
+    int gen_result = generate_thumbnail(recording.file_path, thumb_path,
+                                        seek_seconds);
+    __sync_sub_and_fetch(&g_active_thumbnail_generations, 1);
+
+    if (gen_result != 0) {
         http_response_set_json_error(res, 500, "Failed to generate thumbnail");
         return;
     }
