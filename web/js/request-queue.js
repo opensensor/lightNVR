@@ -165,68 +165,46 @@ export class RequestQueue {
 export const thumbnailQueue = new RequestQueue(4, 200, false);
 
 /**
+ * Check if an image is already loaded in memory (true cache hit)
+ * @param {string} url - Image URL to check
+ * @returns {boolean} - True if image is already in memory
+ */
+function isImageInMemory(url) {
+  const img = new Image();
+  img.src = url;
+  // If complete is true and naturalWidth > 0, the image is already decoded in memory
+  return img.complete && img.naturalWidth > 0;
+}
+
+/**
  * Queue a thumbnail load with smart caching
  * @param {string} url - Thumbnail URL
  * @param {number} priority - Priority level
  * @returns {Promise<string>} - Promise that resolves with the URL when loaded
  */
 export function queueThumbnailLoad(url, priority = Priority.NORMAL) {
-  // Try to load the image immediately to check if it's cached
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    let resolved = false;
+  // Check if image is already in memory (true cache hit)
+  // This is synchronous and doesn't trigger a network request
+  if (isImageInMemory(url)) {
+    return Promise.resolve(url);
+  }
 
-    // Set a very short timeout to detect cache hits
-    // Cached images load synchronously or within ~10ms
-    const cacheCheckTimeout = setTimeout(() => {
-      // Image didn't load immediately, so it's not cached
-      // Queue it to avoid overwhelming the server
-      thumbnailQueue.enqueue(() => {
-        return new Promise((queueResolve, queueReject) => {
-          const queueImg = new Image();
+  // Image not in memory, queue it to avoid overwhelming the server
+  return thumbnailQueue.enqueue(() => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
 
-          queueImg.onload = () => {
-            if (!resolved) {
-              resolved = true;
-              resolve(url);
-              queueResolve(url);
-            }
-          };
-
-          queueImg.onerror = (error) => {
-            if (!resolved) {
-              resolved = true;
-              const err = new Error(`Failed to load thumbnail: ${url}`);
-              reject(err);
-              queueReject(err);
-            }
-          };
-
-          queueImg.src = url;
-        });
-      }, priority);
-    }, 10); // 10ms is enough to detect cache hits
-
-    img.onload = () => {
-      // Image loaded quickly (cache hit)
-      clearTimeout(cacheCheckTimeout);
-      if (!resolved) {
-        resolved = true;
+      img.onload = () => {
         resolve(url);
-      }
-    };
+      };
 
-    img.onerror = (error) => {
-      // Image failed to load
-      clearTimeout(cacheCheckTimeout);
-      if (!resolved) {
-        resolved = true;
+      img.onerror = (error) => {
         reject(new Error(`Failed to load thumbnail: ${url}`));
-      }
-    };
+      };
 
-    img.src = url;
-  });
+      img.src = url;
+    });
+  }, priority);
 }
 
 /**
