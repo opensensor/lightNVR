@@ -60,6 +60,12 @@ typedef struct {
     int detection_retention_days;    // Detection recordings retention (0 = use global)
     int max_storage_mb;              // Storage quota in MB (0 = unlimited)
 
+    // Tiered retention multipliers (applied to base retention_days)
+    double tier_critical_multiplier;   // Critical tier multiplier (default: 3.0)
+    double tier_important_multiplier;  // Important tier multiplier (default: 2.0)
+    double tier_ephemeral_multiplier;  // Ephemeral tier multiplier (default: 0.25)
+    int storage_priority;              // Storage priority 1-10 (default: 5, higher = kept longer)
+
     // PTZ (Pan-Tilt-Zoom) configuration
     bool ptz_enabled;                // Whether PTZ is enabled for this stream
     int ptz_max_x;                   // Maximum X (pan) position (0 = no limit)

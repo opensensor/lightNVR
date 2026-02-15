@@ -36,8 +36,9 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
     pthread_mutex_lock(db_mutex);
 
     const char *sql = "INSERT INTO recordings (stream_name, file_path, start_time, end_time, "
-                      "size_bytes, width, height, fps, codec, is_complete, trigger_type) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                      "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+                      "retention_tier, disk_pressure_eligible) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -69,6 +70,10 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
     // Bind trigger_type, default to 'scheduled' if not set
     const char *trigger_type = (metadata->trigger_type[0] != '\0') ? metadata->trigger_type : "scheduled";
     sqlite3_bind_text(stmt, 11, trigger_type, -1, SQLITE_STATIC);
+
+    // Bind retention tier and disk pressure eligibility
+    sqlite3_bind_int(stmt, 12, metadata->retention_tier);
+    sqlite3_bind_int(stmt, 13, metadata->disk_pressure_eligible ? 1 : 0);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -158,7 +163,8 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
     pthread_mutex_lock(db_mutex);
 
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
-                      "size_bytes, width, height, fps, codec, is_complete, trigger_type "
+                      "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+                      "protected, retention_override_days, retention_tier, disk_pressure_eligible "
                       "FROM recordings WHERE id = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -224,6 +230,19 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
             strncpy(metadata->trigger_type, "scheduled", sizeof(metadata->trigger_type) - 1);
         }
 
+        metadata->protected = sqlite3_column_int(stmt, 12) != 0;
+
+        if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
+            metadata->retention_override_days = sqlite3_column_int(stmt, 13);
+        } else {
+            metadata->retention_override_days = -1;
+        }
+
+        metadata->retention_tier = (sqlite3_column_type(stmt, 14) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
+        metadata->disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 15) != 0) : true;
+
         result = 0; // Success
     }
 
@@ -257,7 +276,7 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
 
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-                      "protected, retention_override_days "
+                      "protected, retention_override_days, retention_tier, disk_pressure_eligible "
                       "FROM recordings WHERE file_path = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -326,6 +345,11 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
         } else {
             metadata->retention_override_days = -1;
         }
+
+        metadata->retention_tier = (sqlite3_column_type(stmt, 14) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
+        metadata->disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 15) != 0) : true;
 
         result = 0; // Success
     }
@@ -1381,4 +1405,396 @@ int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count) {
 
     log_info("Checked %d recordings, found %d orphaned DB entries", checked, count);
     return count;
+}
+
+/**
+ * Get recordings eligible for deletion based on tiered retention policy.
+ * Returns recordings ordered by tier (ephemeral first) then by age (oldest first).
+ */
+int get_recordings_for_tiered_retention(const char *stream_name,
+                                        int base_retention_days,
+                                        const double *tier_multipliers,
+                                        recording_metadata_t *recordings,
+                                        int max_count) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!tier_multipliers || !recordings || max_count <= 0) {
+        log_error("Invalid parameters for get_recordings_for_tiered_retention");
+        return -1;
+    }
+
+    time_t now = time(NULL);
+
+    // Calculate cutoff times for each tier
+    time_t cutoff_critical = now - (time_t)(base_retention_days * tier_multipliers[RETENTION_TIER_CRITICAL] * 86400);
+    time_t cutoff_important = now - (time_t)(base_retention_days * tier_multipliers[RETENTION_TIER_IMPORTANT] * 86400);
+    time_t cutoff_standard = now - (time_t)(base_retention_days * tier_multipliers[RETENTION_TIER_STANDARD] * 86400);
+    time_t cutoff_ephemeral = now - (time_t)(base_retention_days * tier_multipliers[RETENTION_TIER_EPHEMERAL] * 86400);
+
+    pthread_mutex_lock(db_mutex);
+
+    // Select recordings past their tier-specific retention cutoff
+    // Order by tier descending (ephemeral=3 first) then oldest first
+    const char *sql;
+    if (stream_name) {
+        sql = "SELECT id, stream_name, file_path, start_time, end_time, "
+              "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+              "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+              "FROM recordings "
+              "WHERE stream_name = ? "
+              "AND protected = 0 "
+              "AND is_complete = 1 "
+              "AND ("
+              "  (retention_tier = 0 AND start_time < ?) OR "
+              "  (retention_tier = 1 AND start_time < ?) OR "
+              "  (retention_tier = 2 AND start_time < ?) OR "
+              "  (retention_tier = 3 AND start_time < ?)"
+              ") "
+              "AND (retention_override_days IS NULL "
+              "  OR start_time < (strftime('%s', 'now') - retention_override_days * 86400)) "
+              "ORDER BY retention_tier DESC, start_time ASC "
+              "LIMIT ?;";
+    } else {
+        sql = "SELECT id, stream_name, file_path, start_time, end_time, "
+              "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+              "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+              "FROM recordings "
+              "WHERE protected = 0 "
+              "AND is_complete = 1 "
+              "AND ("
+              "  (retention_tier = 0 AND start_time < ?) OR "
+              "  (retention_tier = 1 AND start_time < ?) OR "
+              "  (retention_tier = 2 AND start_time < ?) OR "
+              "  (retention_tier = 3 AND start_time < ?)"
+              ") "
+              "AND (retention_override_days IS NULL "
+              "  OR start_time < (strftime('%s', 'now') - retention_override_days * 86400)) "
+              "ORDER BY retention_tier DESC, start_time ASC "
+              "LIMIT ?;";
+    }
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare tiered retention query: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    int param = 1;
+    if (stream_name) {
+        sqlite3_bind_text(stmt, param++, stream_name, -1, SQLITE_STATIC);
+    }
+    sqlite3_bind_int64(stmt, param++, (sqlite3_int64)cutoff_critical);
+    sqlite3_bind_int64(stmt, param++, (sqlite3_int64)cutoff_important);
+    sqlite3_bind_int64(stmt, param++, (sqlite3_int64)cutoff_standard);
+    sqlite3_bind_int64(stmt, param++, (sqlite3_int64)cutoff_ephemeral);
+    sqlite3_bind_int(stmt, param++, max_count);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
+
+        const char *sname = (const char *)sqlite3_column_text(stmt, 1);
+        if (sname) {
+            strncpy(recordings[count].stream_name, sname, sizeof(recordings[count].stream_name) - 1);
+            recordings[count].stream_name[sizeof(recordings[count].stream_name) - 1] = '\0';
+        }
+
+        const char *fpath = (const char *)sqlite3_column_text(stmt, 2);
+        if (fpath) {
+            strncpy(recordings[count].file_path, fpath, sizeof(recordings[count].file_path) - 1);
+            recordings[count].file_path[sizeof(recordings[count].file_path) - 1] = '\0';
+        }
+
+        recordings[count].start_time = (time_t)sqlite3_column_int64(stmt, 3);
+        recordings[count].end_time = (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
+            ? (time_t)sqlite3_column_int64(stmt, 4) : 0;
+        recordings[count].size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
+        recordings[count].width = sqlite3_column_int(stmt, 6);
+        recordings[count].height = sqlite3_column_int(stmt, 7);
+        recordings[count].fps = sqlite3_column_int(stmt, 8);
+
+        const char *codec = (const char *)sqlite3_column_text(stmt, 9);
+        if (codec) {
+            strncpy(recordings[count].codec, codec, sizeof(recordings[count].codec) - 1);
+            recordings[count].codec[sizeof(recordings[count].codec) - 1] = '\0';
+        }
+
+        recordings[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
+
+        const char *ttype = (const char *)sqlite3_column_text(stmt, 11);
+        if (ttype) {
+            strncpy(recordings[count].trigger_type, ttype, sizeof(recordings[count].trigger_type) - 1);
+            recordings[count].trigger_type[sizeof(recordings[count].trigger_type) - 1] = '\0';
+        } else {
+            strncpy(recordings[count].trigger_type, "scheduled", sizeof(recordings[count].trigger_type) - 1);
+        }
+
+        recordings[count].protected = sqlite3_column_int(stmt, 12) != 0;
+        recordings[count].retention_override_days = (sqlite3_column_type(stmt, 13) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, 13) : -1;
+        recordings[count].retention_tier = (sqlite3_column_type(stmt, 14) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
+        recordings[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 15) != 0) : true;
+
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    log_info("Found %d recordings eligible for tiered retention cleanup", count);
+    return count;
+}
+
+
+/**
+ * Get recordings eligible for disk pressure cleanup.
+ * Returns disk_pressure_eligible recordings ordered by tier (ephemeral first)
+ * then by age (oldest first), excluding protected recordings.
+ */
+int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
+                                        int max_count) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!recordings || max_count <= 0) {
+        log_error("Invalid parameters for get_recordings_for_pressure_cleanup");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql =
+        "SELECT id, stream_name, file_path, start_time, end_time, "
+        "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+        "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+        "FROM recordings "
+        "WHERE protected = 0 "
+        "AND disk_pressure_eligible = 1 "
+        "AND is_complete = 1 "
+        "ORDER BY retention_tier DESC, start_time ASC "
+        "LIMIT ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare pressure cleanup query: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int(stmt, 1, max_count);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
+
+        const char *sname = (const char *)sqlite3_column_text(stmt, 1);
+        if (sname) {
+            strncpy(recordings[count].stream_name, sname, sizeof(recordings[count].stream_name) - 1);
+            recordings[count].stream_name[sizeof(recordings[count].stream_name) - 1] = '\0';
+        }
+
+        const char *fpath = (const char *)sqlite3_column_text(stmt, 2);
+        if (fpath) {
+            strncpy(recordings[count].file_path, fpath, sizeof(recordings[count].file_path) - 1);
+            recordings[count].file_path[sizeof(recordings[count].file_path) - 1] = '\0';
+        }
+
+        recordings[count].start_time = (time_t)sqlite3_column_int64(stmt, 3);
+        recordings[count].end_time = (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
+            ? (time_t)sqlite3_column_int64(stmt, 4) : 0;
+        recordings[count].size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
+        recordings[count].width = sqlite3_column_int(stmt, 6);
+        recordings[count].height = sqlite3_column_int(stmt, 7);
+        recordings[count].fps = sqlite3_column_int(stmt, 8);
+
+        const char *codec = (const char *)sqlite3_column_text(stmt, 9);
+        if (codec) {
+            strncpy(recordings[count].codec, codec, sizeof(recordings[count].codec) - 1);
+            recordings[count].codec[sizeof(recordings[count].codec) - 1] = '\0';
+        }
+
+        recordings[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
+
+        const char *ttype = (const char *)sqlite3_column_text(stmt, 11);
+        if (ttype) {
+            strncpy(recordings[count].trigger_type, ttype, sizeof(recordings[count].trigger_type) - 1);
+            recordings[count].trigger_type[sizeof(recordings[count].trigger_type) - 1] = '\0';
+        } else {
+            strncpy(recordings[count].trigger_type, "scheduled", sizeof(recordings[count].trigger_type) - 1);
+        }
+
+        recordings[count].protected = sqlite3_column_int(stmt, 12) != 0;
+        recordings[count].retention_override_days = (sqlite3_column_type(stmt, 13) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, 13) : -1;
+        recordings[count].retention_tier = (sqlite3_column_type(stmt, 14) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
+        recordings[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 15) != 0) : true;
+
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    log_info("Found %d recordings eligible for disk pressure cleanup", count);
+    return count;
+}
+
+/**
+ * Get total storage bytes used by a stream from the database.
+ */
+int64_t get_stream_storage_bytes(const char *stream_name) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int64_t total_bytes = -1;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql;
+    if (stream_name) {
+        sql = "SELECT COALESCE(SUM(size_bytes), 0) FROM recordings WHERE stream_name = ? AND is_complete = 1;";
+    } else {
+        sql = "SELECT COALESCE(SUM(size_bytes), 0) FROM recordings WHERE is_complete = 1;";
+    }
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare storage bytes query: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    if (stream_name) {
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    }
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        total_bytes = sqlite3_column_int64(stmt, 0);
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return total_bytes;
+}
+
+/**
+ * Set retention tier for a recording.
+ */
+int set_recording_retention_tier(uint64_t id, int tier) {
+    int rc;
+    sqlite3_stmt *stmt;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (tier < RETENTION_TIER_CRITICAL || tier > RETENTION_TIER_EPHEMERAL) {
+        log_error("Invalid retention tier: %d", tier);
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql = "UPDATE recordings SET retention_tier = ? WHERE id = ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int(stmt, 1, tier);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to set retention tier for recording %llu: %s",
+                  (unsigned long long)id, sqlite3_errmsg(db));
+        return -1;
+    }
+
+    log_debug("Recording %llu retention tier set to %d", (unsigned long long)id, tier);
+    return 0;
+}
+
+/**
+ * Set disk pressure eligibility for a recording.
+ */
+int set_recording_disk_pressure_eligible(uint64_t id, bool eligible) {
+    int rc;
+    sqlite3_stmt *stmt;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql = "UPDATE recordings SET disk_pressure_eligible = ? WHERE id = ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int(stmt, 1, eligible ? 1 : 0);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to set disk pressure eligibility for recording %llu: %s",
+                  (unsigned long long)id, sqlite3_errmsg(db));
+        return -1;
+    }
+
+    log_debug("Recording %llu disk pressure eligible set to %s",
+              (unsigned long long)id, eligible ? "true" : "false");
+    return 0;
 }

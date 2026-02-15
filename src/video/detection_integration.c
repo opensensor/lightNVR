@@ -24,7 +24,6 @@
 #include "video/onvif_detection.h"
 #include "video/onvif_detection_integration.h"
 #include "video/onvif_motion_recording.h"
-#include "video/motion_storage_manager.h"
 #include "utils/memory.h"
 
 // Include our new modules
@@ -106,15 +105,6 @@ int init_detection_integration(void) {
         log_info("ONVIF motion recording system initialized");
     }
 
-    // Initialize the motion storage manager
-    if (init_motion_storage_manager() != 0) {
-        log_error("Failed to initialize motion storage manager");
-        // This is not a critical error
-        log_warn("Motion storage cleanup will not be available");
-    } else {
-        log_info("Motion storage manager initialized");
-    }
-
     log_info("Detection integration initialized with %d max concurrent detections", max_detections);
     return 0;
 }
@@ -169,9 +159,6 @@ void cleanup_detection_resources(void) {
     cleanup_onvif_motion_recording();
     log_info("ONVIF motion recording system has shutdown");
 
-    // Shutdown the motion storage manager
-    shutdown_motion_storage_manager();
-    log_info("Motion storage manager has shutdown");
 }
 
 /**

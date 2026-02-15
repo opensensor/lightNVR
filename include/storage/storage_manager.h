@@ -32,6 +32,38 @@ typedef struct {
 } storage_stats_t;
 
 /**
+ * Disk pressure levels for proactive storage management
+ * Thresholds based on percentage of free space remaining
+ */
+typedef enum {
+    DISK_PRESSURE_NORMAL   = 0,  // >20% free - normal operations
+    DISK_PRESSURE_WARNING  = 1,  // 10-20% free - increase cleanup frequency
+    DISK_PRESSURE_CRITICAL = 2,  // 5-10% free - aggressive cleanup
+    DISK_PRESSURE_EMERGENCY = 3  // <5% free - emergency deletion
+} disk_pressure_level_t;
+
+// Disk pressure thresholds (percentage of free space)
+#define DISK_PRESSURE_WARNING_PCT   20.0
+#define DISK_PRESSURE_CRITICAL_PCT  10.0
+#define DISK_PRESSURE_EMERGENCY_PCT  5.0
+
+/**
+ * Storage health information updated by heartbeat cycle
+ */
+typedef struct {
+    disk_pressure_level_t pressure_level;
+    double free_space_pct;       // Percentage of free space (0-100)
+    uint64_t free_space_bytes;   // Absolute free space in bytes
+    uint64_t total_space_bytes;  // Total filesystem space in bytes
+    uint64_t used_space_bytes;   // Used space in bytes
+    time_t last_check_time;      // Time of last heartbeat check
+    time_t last_cleanup_time;    // Time of last standard cleanup
+    time_t last_deep_time;       // Time of last deep maintenance
+    int last_cleanup_deleted;    // Number of recordings deleted in last cleanup
+    uint64_t last_cleanup_freed; // Bytes freed in last cleanup
+} storage_health_t;
+
+/**
  * Initialize the storage manager
  *
  * @param storage_path Base path for storing recordings
@@ -165,13 +197,14 @@ int create_stream_directory(const char *stream_name);
 bool ensure_disk_space(uint64_t min_free_bytes);
 
 /**
- * Start the storage manager thread
+ * Start the storage manager thread (unified controller)
  *
- * This thread periodically performs storage management tasks:
- * - Applies the retention policy to delete old recordings based on age and storage limits
- * - Refreshes the storage cache to ensure API responses are fast
+ * This thread implements a tiered wake cycle:
+ * - Heartbeat (60s): Disk pressure detection via statvfs()
+ * - Standard cleanup (15min): Tiered retention, quota enforcement, cache refresh
+ * - Deep maintenance (6h): Full analytics, daily stats update
  *
- * @param interval_seconds How often to run storage management tasks (in seconds)
+ * @param interval_seconds Base interval (used for standard cleanup cycle)
  * @return 0 on success, non-zero on failure
  */
 int start_storage_manager_thread(int interval_seconds);
@@ -182,5 +215,35 @@ int start_storage_manager_thread(int interval_seconds);
  * @return 0 on success, non-zero on failure
  */
 int stop_storage_manager_thread(void);
+
+/**
+ * Get current storage health information
+ * Thread-safe: returns a snapshot of the latest health data
+ *
+ * @param health Pointer to storage_health_t to fill
+ * @return 0 on success, -1 on error
+ */
+int get_storage_health(storage_health_t *health);
+
+/**
+ * Get current disk pressure level
+ * Thread-safe: returns the latest pressure level from heartbeat
+ *
+ * @return Current disk_pressure_level_t
+ */
+disk_pressure_level_t get_disk_pressure_level(void);
+
+/**
+ * Trigger an immediate cleanup cycle
+ * Wakes the storage controller thread to perform cleanup now
+ *
+ * @param force_aggressive If true, perform aggressive cleanup regardless of pressure
+ */
+void trigger_storage_cleanup(bool force_aggressive);
+
+/**
+ * Get human-readable string for a disk pressure level
+ */
+const char* disk_pressure_level_str(disk_pressure_level_t level);
 
 #endif // LIGHTNVR_STORAGE_MANAGER_H

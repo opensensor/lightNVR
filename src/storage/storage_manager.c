@@ -16,7 +16,9 @@
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
+#include "core/config.h"
 #include "core/logger.h"
+#include "core/mqtt_client.h"
 
 // Maximum number of streams to process at once
 #define MAX_STREAMS_BATCH 64
@@ -533,39 +535,389 @@ int create_stream_directory(const char *stream_name) {
     return 0;
 }
 
-// Check disk space and ensure minimum free space is available
-bool ensure_disk_space(uint64_t min_free_bytes) {
-    // Stub implementation
-    return true;
-}
+// ============================================================================
+// Unified Storage Controller - Tiered Wake Cycle Architecture
+// ============================================================================
+//
+// Heartbeat (60s):   Disk pressure detection via statvfs(), health monitoring
+// Standard (15min):  Tiered retention cleanup, quota enforcement, cache refresh
+// Deep (6h):         Full analytics, daily stats, session cleanup
+// Emergency:         On-demand triggered by pressure or API
+//
+// Memory budget: Heartbeat <4KB, Standard <256KB, Deep <1MB, Emergency <512KB
+// ============================================================================
 
-// Storage manager thread state
-static struct {
-    pthread_t thread;
-    volatile bool running;
-    volatile bool exited;  // Flag to indicate thread has exited
-    int interval_seconds;
-    pthread_mutex_t mutex;
-    time_t last_cache_refresh;
-    int cache_refresh_interval; // in seconds
-} storage_manager_thread = {
-    .running = false,
-    .exited = true,  // Initially true since thread hasn't started
-    .interval_seconds = 3600, // Default to 1 hour
-    .last_cache_refresh = 0,
-    .cache_refresh_interval = 900 // Default to 15 minutes
-};
+// Tiered wake cycle intervals (seconds)
+#define HEARTBEAT_INTERVAL_SEC    60
+#define STANDARD_INTERVAL_SEC    900   // 15 minutes
+#define DEEP_INTERVAL_SEC      21600   // 6 hours
+
+// Maximum recordings to process per emergency cleanup
+#define MAX_EMERGENCY_RECORDINGS 200
 
 // Forward declaration for the cache refresh function
 extern int force_refresh_cache(void);
 
-// Storage manager thread function
-static void* storage_manager_thread_func(void *arg) {
-    log_info("Storage manager thread started with interval: %d seconds", storage_manager_thread.interval_seconds);
-    log_info("Cache refresh interval: %d seconds", storage_manager_thread.cache_refresh_interval);
+// Unified storage controller thread state
+static struct {
+    pthread_t thread;
+    volatile bool running;
+    volatile bool exited;
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
 
-    // Initialize last cache refresh time
-    storage_manager_thread.last_cache_refresh = time(NULL);
+    // Tiered cycle tracking
+    time_t last_heartbeat;
+    time_t last_standard;
+    time_t last_deep;
+
+    // Disk pressure state (protected by mutex)
+    storage_health_t health;
+
+    // Force flags (set by API, cleared by thread)
+    volatile bool force_cleanup;
+    volatile bool force_aggressive;
+} unified_ctrl = {
+    .running = false,
+    .exited = true,
+    .mutex = PTHREAD_MUTEX_INITIALIZER,
+    .cond = PTHREAD_COND_INITIALIZER,
+    .last_heartbeat = 0,
+    .last_standard = 0,
+    .last_deep = 0,
+    .health = {
+        .pressure_level = DISK_PRESSURE_NORMAL,
+        .free_space_pct = 100.0,
+        .free_space_bytes = 0,
+        .total_space_bytes = 0,
+        .used_space_bytes = 0,
+        .last_check_time = 0,
+        .last_cleanup_time = 0,
+        .last_deep_time = 0,
+        .last_cleanup_deleted = 0,
+        .last_cleanup_freed = 0
+    },
+    .force_cleanup = false,
+    .force_aggressive = false
+};
+
+// Get human-readable string for disk pressure level
+const char* disk_pressure_level_str(disk_pressure_level_t level) {
+    switch (level) {
+        case DISK_PRESSURE_NORMAL:    return "Normal";
+        case DISK_PRESSURE_WARNING:   return "Warning";
+        case DISK_PRESSURE_CRITICAL:  return "Critical";
+        case DISK_PRESSURE_EMERGENCY: return "Emergency";
+        default:                      return "Unknown";
+    }
+}
+
+// ---- Heartbeat Cycle: Disk Pressure Detection ----
+
+/**
+ * Detect disk pressure level using statvfs()
+ * Updates unified_ctrl.health under mutex
+ * Memory budget: <4KB (stack only, no heap allocations)
+ */
+static void heartbeat_check_disk_pressure(void) {
+    struct statvfs fs;
+    if (statvfs(storage_manager.storage_path, &fs) != 0) {
+        log_error("Heartbeat: failed to statvfs(%s): %s",
+                  storage_manager.storage_path, strerror(errno));
+        return;
+    }
+
+    uint64_t total = (uint64_t)fs.f_blocks * fs.f_frsize;
+    uint64_t avail = (uint64_t)fs.f_bavail * fs.f_frsize;
+    uint64_t used  = total > avail ? total - avail : 0;
+    double free_pct = total > 0 ? ((double)avail / (double)total) * 100.0 : 0.0;
+
+    // Determine pressure level
+    disk_pressure_level_t new_level;
+    if (free_pct < DISK_PRESSURE_EMERGENCY_PCT) {
+        new_level = DISK_PRESSURE_EMERGENCY;
+    } else if (free_pct < DISK_PRESSURE_CRITICAL_PCT) {
+        new_level = DISK_PRESSURE_CRITICAL;
+    } else if (free_pct < DISK_PRESSURE_WARNING_PCT) {
+        new_level = DISK_PRESSURE_WARNING;
+    } else {
+        new_level = DISK_PRESSURE_NORMAL;
+    }
+
+    // Update health state under mutex
+    pthread_mutex_lock(&unified_ctrl.mutex);
+    disk_pressure_level_t old_level = unified_ctrl.health.pressure_level;
+    unified_ctrl.health.pressure_level = new_level;
+    unified_ctrl.health.free_space_pct = free_pct;
+    unified_ctrl.health.free_space_bytes = avail;
+    unified_ctrl.health.total_space_bytes = total;
+    unified_ctrl.health.used_space_bytes = used;
+    unified_ctrl.health.last_check_time = time(NULL);
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+
+    // Log and publish MQTT event on pressure level changes
+    if (new_level != old_level) {
+        if (new_level > old_level) {
+            log_warn("Disk pressure INCREASED: %s -> %s (%.1f%% free, %llu MB available)",
+                     disk_pressure_level_str(old_level), disk_pressure_level_str(new_level),
+                     free_pct, (unsigned long long)(avail / (1024 * 1024)));
+        } else {
+            log_info("Disk pressure decreased: %s -> %s (%.1f%% free)",
+                     disk_pressure_level_str(old_level), disk_pressure_level_str(new_level),
+                     free_pct);
+        }
+
+        // Publish pressure change to MQTT: {prefix}/storage/pressure
+        char mqtt_topic[256];
+        char mqtt_payload[512];
+        snprintf(mqtt_topic, sizeof(mqtt_topic), "%s/storage/pressure",
+                 g_config.mqtt_topic_prefix);
+        snprintf(mqtt_payload, sizeof(mqtt_payload),
+                 "{\"previous\":\"%s\",\"current\":\"%s\","
+                 "\"free_pct\":%.1f,\"free_mb\":%llu,\"total_mb\":%llu}",
+                 disk_pressure_level_str(old_level),
+                 disk_pressure_level_str(new_level),
+                 free_pct,
+                 (unsigned long long)(avail / (1024 * 1024)),
+                 (unsigned long long)(total / (1024 * 1024)));
+        mqtt_publish_raw(mqtt_topic, mqtt_payload, true);
+    }
+
+    log_debug("Heartbeat: %.1f%% free (%llu MB), pressure=%s",
+              free_pct, (unsigned long long)(avail / (1024 * 1024)),
+              disk_pressure_level_str(new_level));
+}
+
+// ---- Emergency Cleanup: Pressure-Driven Deletion ----
+
+/**
+ * Emergency cleanup triggered by Critical/Emergency disk pressure
+ * Deletes disk_pressure_eligible recordings starting with ephemeral tier
+ * Memory budget: <512KB
+ */
+static void emergency_cleanup(bool aggressive) {
+    log_warn("Emergency cleanup triggered (aggressive=%s)", aggressive ? "true" : "false");
+
+    int max_to_delete = aggressive ? MAX_EMERGENCY_RECORDINGS : (MAX_EMERGENCY_RECORDINGS / 2);
+
+    recording_metadata_t *recordings = calloc(max_to_delete, sizeof(recording_metadata_t));
+    if (!recordings) {
+        log_error("Emergency cleanup: failed to allocate recording buffer");
+        return;
+    }
+
+    int count = get_recordings_for_pressure_cleanup(recordings, max_to_delete);
+    if (count <= 0) {
+        log_info("Emergency cleanup: no eligible recordings to delete");
+        free(recordings);
+        return;
+    }
+
+    int deleted = 0;
+    uint64_t freed = 0;
+
+    for (int i = 0; i < count; i++) {
+        if (!unified_ctrl.running) break;  // Respect shutdown
+
+        if (recordings[i].file_path[0] != '\0') {
+            if (unlink(recordings[i].file_path) == 0) {
+                log_debug("Emergency: deleted %s (tier=%d, size=%llu)",
+                         recordings[i].file_path, recordings[i].retention_tier,
+                         (unsigned long long)recordings[i].size_bytes);
+                freed += recordings[i].size_bytes;
+                deleted++;
+            } else if (errno != ENOENT) {
+                log_error("Emergency: failed to delete %s: %s",
+                         recordings[i].file_path, strerror(errno));
+            }
+        }
+
+        // Delete associated thumbnails and DB entry
+        delete_recording_thumbnails(recordings[i].id);
+        if (delete_recording_metadata(recordings[i].id) != 0) {
+            log_warn("Emergency: failed to delete DB entry for ID %llu",
+                     (unsigned long long)recordings[i].id);
+        }
+    }
+
+    free(recordings);
+
+    // Update health stats
+    pthread_mutex_lock(&unified_ctrl.mutex);
+    unified_ctrl.health.last_cleanup_deleted = deleted;
+    unified_ctrl.health.last_cleanup_freed = freed;
+    unified_ctrl.health.last_cleanup_time = time(NULL);
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+
+    log_warn("Emergency cleanup complete: deleted %d recordings, freed %llu MB",
+             deleted, (unsigned long long)(freed / (1024 * 1024)));
+
+    // Re-check pressure after cleanup
+    heartbeat_check_disk_pressure();
+}
+
+// ---- Standard Cleanup Cycle (15min) ----
+
+/**
+ * Standard cleanup: tiered retention + quota enforcement + cache refresh
+ * Memory budget: <256KB
+ */
+static void standard_cleanup_cycle(void) {
+    log_info("Standard cleanup cycle starting");
+    time_t cycle_start = time(NULL);
+
+    // 1. Apply existing per-stream retention policy (already DB-driven)
+    int deleted = apply_retention_policy();
+    if (deleted > 0) {
+        log_info("Standard cleanup: retention policy deleted %d recordings", deleted);
+    } else if (deleted < 0) {
+        log_error("Standard cleanup: retention policy error");
+    }
+
+    // 2. Tiered retention cleanup using new tier-aware queries
+    int tier_deleted = 0;
+    uint64_t tier_freed = 0;
+    recording_metadata_t *tier_recs = calloc(MAX_RECORDINGS_PER_STREAM, sizeof(recording_metadata_t));
+    if (tier_recs) {
+        // Get all stream names
+        char stream_names[MAX_STREAMS_BATCH][64];
+        int stream_count = get_all_stream_names(stream_names, MAX_STREAMS_BATCH);
+
+        for (int s = 0; s < stream_count && unified_ctrl.running; s++) {
+            // Get stream config for tier multipliers
+            stream_config_t sconfig;
+            if (get_stream_config_by_name(stream_names[s], &sconfig) != 0) {
+                continue;
+            }
+
+            int base_retention = sconfig.retention_days > 0 ? sconfig.retention_days : storage_manager.retention_days;
+            if (base_retention <= 0) base_retention = 30;
+
+            // Build tier multipliers array: [critical, important, standard, ephemeral]
+            double tier_mults[4] = {
+                sconfig.tier_critical_multiplier,   // RETENTION_TIER_CRITICAL = 0
+                sconfig.tier_important_multiplier,  // RETENTION_TIER_IMPORTANT = 1
+                1.0,                                // RETENTION_TIER_STANDARD = 2
+                sconfig.tier_ephemeral_multiplier   // RETENTION_TIER_EPHEMERAL = 3
+            };
+
+            int count = get_recordings_for_tiered_retention(
+                stream_names[s], base_retention,
+                tier_mults,
+                tier_recs, MAX_RECORDINGS_PER_STREAM);
+
+            for (int i = 0; i < count && unified_ctrl.running; i++) {
+                if (tier_recs[i].file_path[0] != '\0') {
+                    if (unlink(tier_recs[i].file_path) == 0) {
+                        tier_freed += tier_recs[i].size_bytes;
+                        tier_deleted++;
+                    } else if (errno != ENOENT) {
+                        log_error("Tiered cleanup: failed to delete %s: %s",
+                                 tier_recs[i].file_path, strerror(errno));
+                    }
+                }
+                delete_recording_thumbnails(tier_recs[i].id);
+                delete_recording_metadata(tier_recs[i].id);
+            }
+        }
+        free(tier_recs);
+    }
+
+    if (tier_deleted > 0) {
+        log_info("Standard cleanup: tiered retention deleted %d recordings, freed %llu MB",
+                 tier_deleted, (unsigned long long)(tier_freed / (1024 * 1024)));
+    }
+
+    // 3. Refresh storage cache
+    if (force_refresh_cache() == 0) {
+        log_debug("Standard cleanup: cache refresh successful");
+    } else {
+        log_warn("Standard cleanup: cache refresh failed");
+    }
+
+    // 4. Check if pressure requires escalated cleanup
+    pthread_mutex_lock(&unified_ctrl.mutex);
+    disk_pressure_level_t pressure = unified_ctrl.health.pressure_level;
+    unified_ctrl.health.last_cleanup_deleted = deleted + tier_deleted;
+    unified_ctrl.health.last_cleanup_freed = tier_freed;
+    unified_ctrl.health.last_cleanup_time = time(NULL);
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+
+    if (pressure >= DISK_PRESSURE_CRITICAL) {
+        log_warn("Standard cleanup: pressure is %s, triggering emergency cleanup",
+                 disk_pressure_level_str(pressure));
+        emergency_cleanup(pressure == DISK_PRESSURE_EMERGENCY);
+    }
+
+    time_t elapsed = time(NULL) - cycle_start;
+    log_info("Standard cleanup cycle complete in %ld seconds (deleted=%d, tier_deleted=%d)",
+             (long)elapsed, deleted, tier_deleted);
+
+    // Publish cleanup results to MQTT: {prefix}/storage/cleanup
+    if (deleted + tier_deleted > 0) {
+        char mqtt_topic[256];
+        char mqtt_payload[512];
+        snprintf(mqtt_topic, sizeof(mqtt_topic), "%s/storage/cleanup",
+                 g_config.mqtt_topic_prefix);
+        snprintf(mqtt_payload, sizeof(mqtt_payload),
+                 "{\"deleted\":%d,\"tier_deleted\":%d,\"freed_bytes\":%llu,"
+                 "\"elapsed_sec\":%ld,\"pressure\":\"%s\"}",
+                 deleted, tier_deleted,
+                 (unsigned long long)tier_freed,
+                 (long)elapsed,
+                 disk_pressure_level_str(pressure));
+        mqtt_publish_raw(mqtt_topic, mqtt_payload, false);
+    }
+}
+
+// ---- Deep Maintenance Cycle (6h) ----
+
+/**
+ * Deep maintenance: session cleanup, full analytics
+ * Memory budget: <1MB
+ */
+static void deep_maintenance_cycle(void) {
+    log_info("Deep maintenance cycle starting");
+
+    // 1. Clean up expired authentication sessions
+    int sessions_deleted = db_auth_cleanup_sessions();
+    if (sessions_deleted > 0) {
+        log_info("Deep maintenance: cleaned up %d expired sessions", sessions_deleted);
+    } else if (sessions_deleted < 0) {
+        log_warn("Deep maintenance: session cleanup error");
+    }
+
+    // 2. Run a standard cleanup as part of deep maintenance
+    standard_cleanup_cycle();
+
+    // 3. Update deep maintenance timestamp
+    pthread_mutex_lock(&unified_ctrl.mutex);
+    unified_ctrl.health.last_deep_time = time(NULL);
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+
+    log_info("Deep maintenance cycle complete");
+}
+
+// ---- Unified Storage Controller Thread ----
+
+/**
+ * Main thread function implementing tiered wake cycle
+ *
+ * Uses pthread_cond_timedwait for responsive sleep with the shortest
+ * interval (heartbeat = 60s). Each wake checks which cycles are due
+ * and executes them in order: heartbeat -> standard -> deep.
+ */
+static void* unified_storage_controller_func(void *arg) {
+    (void)arg;
+    log_info("Unified storage controller started");
+    log_info("  Heartbeat interval: %d seconds", HEARTBEAT_INTERVAL_SEC);
+    log_info("  Standard cleanup interval: %d seconds", STANDARD_INTERVAL_SEC);
+    log_info("  Deep maintenance interval: %d seconds", DEEP_INTERVAL_SEC);
+
+    time_t now = time(NULL);
+    unified_ctrl.last_heartbeat = now;
+    unified_ctrl.last_standard = now;
+    unified_ctrl.last_deep = now;
 
     // Initial cache refresh
     if (force_refresh_cache() == 0) {
@@ -574,124 +926,182 @@ static void* storage_manager_thread_func(void *arg) {
         log_warn("Initial cache refresh failed");
     }
 
-    while (storage_manager_thread.running) {
-        time_t now = time(NULL);
+    // Initial heartbeat to establish baseline pressure
+    heartbeat_check_disk_pressure();
 
-        // Apply retention policy
-        int deleted = apply_retention_policy();
-        if (deleted > 0) {
-            log_info("Storage manager thread deleted %d recordings", deleted);
-        } else if (deleted < 0) {
-            log_error("Storage manager thread encountered an error applying retention policy");
+    while (unified_ctrl.running) {
+        // Sleep until next heartbeat or signal
+        pthread_mutex_lock(&unified_ctrl.mutex);
+
+        if (!unified_ctrl.force_cleanup) {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += HEARTBEAT_INTERVAL_SEC;
+            pthread_cond_timedwait(&unified_ctrl.cond, &unified_ctrl.mutex, &ts);
         }
 
-        // Clean up expired authentication sessions
-        int sessions_deleted = db_auth_cleanup_sessions();
-        if (sessions_deleted > 0) {
-            log_info("Storage manager thread cleaned up %d expired sessions", sessions_deleted);
-        } else if (sessions_deleted < 0) {
-            log_warn("Storage manager thread encountered an error cleaning up sessions");
-        }
+        bool do_force = unified_ctrl.force_cleanup;
+        bool do_aggressive = unified_ctrl.force_aggressive;
+        unified_ctrl.force_cleanup = false;
+        unified_ctrl.force_aggressive = false;
+        pthread_mutex_unlock(&unified_ctrl.mutex);
 
-        // Check if it's time to refresh the cache
-        if (now - storage_manager_thread.last_cache_refresh >= storage_manager_thread.cache_refresh_interval) {
-            log_info("Refreshing storage cache");
-            if (force_refresh_cache() == 0) {
-                log_info("Cache refresh successful");
+        if (!unified_ctrl.running) break;
+
+        now = time(NULL);
+
+        // Always run heartbeat (disk pressure detection)
+        heartbeat_check_disk_pressure();
+        unified_ctrl.last_heartbeat = now;
+
+        // Check if forced cleanup was requested
+        if (do_force) {
+            log_info("Forced cleanup requested (aggressive=%s)", do_aggressive ? "true" : "false");
+            if (do_aggressive) {
+                emergency_cleanup(true);
             } else {
-                log_warn("Cache refresh failed");
+                standard_cleanup_cycle();
             }
-            storage_manager_thread.last_cache_refresh = now;
+            continue;  // Skip normal cycle checks after forced cleanup
         }
 
-        // Sleep for 1 second at a time to be responsive to shutdown requests
-        for (int i = 0; i < storage_manager_thread.interval_seconds && storage_manager_thread.running; i++) {
-            sleep(1);
+        // Check for emergency pressure (trigger immediate action)
+        pthread_mutex_lock(&unified_ctrl.mutex);
+        disk_pressure_level_t pressure = unified_ctrl.health.pressure_level;
+        pthread_mutex_unlock(&unified_ctrl.mutex);
+
+        if (pressure >= DISK_PRESSURE_EMERGENCY) {
+            log_warn("Emergency pressure detected in heartbeat, triggering emergency cleanup");
+            emergency_cleanup(true);
+        } else if (pressure >= DISK_PRESSURE_CRITICAL) {
+            // At critical pressure, run standard cleanup more frequently
+            if (now - unified_ctrl.last_standard >= (STANDARD_INTERVAL_SEC / 3)) {
+                standard_cleanup_cycle();
+                unified_ctrl.last_standard = now;
+            }
+        }
+
+        // Check if standard cleanup is due
+        if (now - unified_ctrl.last_standard >= STANDARD_INTERVAL_SEC) {
+            standard_cleanup_cycle();
+            unified_ctrl.last_standard = now;
+        }
+
+        // Check if deep maintenance is due
+        if (now - unified_ctrl.last_deep >= DEEP_INTERVAL_SEC) {
+            deep_maintenance_cycle();
+            unified_ctrl.last_deep = now;
         }
     }
 
-    log_info("Storage manager thread exiting");
-    storage_manager_thread.exited = true;  // Signal that thread has exited
+    log_info("Unified storage controller exiting");
+    unified_ctrl.exited = true;
     return NULL;
 }
 
-// Start the storage manager thread
-int start_storage_manager_thread(int interval_seconds) {
-    // Initialize mutex if not already initialized
-    static bool mutex_initialized = false;
-    if (!mutex_initialized) {
-        if (pthread_mutex_init(&storage_manager_thread.mutex, NULL) != 0) {
-            log_error("Failed to initialize storage manager thread mutex");
-            return -1;
-        }
-        mutex_initialized = true;
+// ---- Public API: Start/Stop/Query ----
+
+// Check disk space and ensure minimum free space is available
+bool ensure_disk_space(uint64_t min_free_bytes) {
+    struct statvfs fs;
+    if (statvfs(storage_manager.storage_path, &fs) != 0) {
+        log_error("ensure_disk_space: statvfs failed: %s", strerror(errno));
+        return false;
     }
+    uint64_t avail = (uint64_t)fs.f_bavail * fs.f_frsize;
+    return avail >= min_free_bytes;
+}
 
-    pthread_mutex_lock(&storage_manager_thread.mutex);
+// Start the unified storage controller thread
+int start_storage_manager_thread(int interval_seconds) {
+    (void)interval_seconds;  // Intervals are now fixed by tiered architecture
 
-    // Check if thread is already running
-    if (storage_manager_thread.running) {
-        log_warn("Storage manager thread is already running");
-        pthread_mutex_unlock(&storage_manager_thread.mutex);
+    pthread_mutex_lock(&unified_ctrl.mutex);
+
+    if (unified_ctrl.running) {
+        log_warn("Storage controller thread is already running");
+        pthread_mutex_unlock(&unified_ctrl.mutex);
         return 0;
     }
 
-    // Set interval (minimum 60 seconds)
-    storage_manager_thread.interval_seconds = (interval_seconds < 60) ? 60 : interval_seconds;
-    storage_manager_thread.running = true;
-    storage_manager_thread.exited = false;  // Reset the exited flag
+    unified_ctrl.running = true;
+    unified_ctrl.exited = false;
 
-    // Create thread
-    if (pthread_create(&storage_manager_thread.thread, NULL, storage_manager_thread_func, NULL) != 0) {
-        log_error("Failed to create storage manager thread: %s", strerror(errno));
-        storage_manager_thread.running = false;
-        pthread_mutex_unlock(&storage_manager_thread.mutex);
+    if (pthread_create(&unified_ctrl.thread, NULL, unified_storage_controller_func, NULL) != 0) {
+        log_error("Failed to create storage controller thread: %s", strerror(errno));
+        unified_ctrl.running = false;
+        pthread_mutex_unlock(&unified_ctrl.mutex);
         return -1;
     }
 
-    pthread_mutex_unlock(&storage_manager_thread.mutex);
-    log_info("Storage manager thread started with interval: %d seconds", storage_manager_thread.interval_seconds);
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+    log_info("Unified storage controller thread started (heartbeat=%ds, standard=%ds, deep=%ds)",
+             HEARTBEAT_INTERVAL_SEC, STANDARD_INTERVAL_SEC, DEEP_INTERVAL_SEC);
     return 0;
 }
 
-// Stop the storage manager thread
-// Uses portable polling approach instead of pthread_timedjoin_np (GNU extension)
-// to work on both glibc and musl (e.g., Linux 4.4 with thingino-firmware)
+// Stop the unified storage controller thread
+// Uses portable polling approach for musl/glibc compatibility
 int stop_storage_manager_thread(void) {
-    pthread_mutex_lock(&storage_manager_thread.mutex);
+    pthread_mutex_lock(&unified_ctrl.mutex);
 
-    // Check if thread is running
-    if (!storage_manager_thread.running && storage_manager_thread.exited) {
-        log_info("Storage manager thread is not running");
-        pthread_mutex_unlock(&storage_manager_thread.mutex);
+    if (!unified_ctrl.running && unified_ctrl.exited) {
+        log_info("Storage controller thread is not running");
+        pthread_mutex_unlock(&unified_ctrl.mutex);
         return 0;
     }
 
-    // Signal thread to stop
-    storage_manager_thread.running = false;
-    pthread_mutex_unlock(&storage_manager_thread.mutex);
+    unified_ctrl.running = false;
+    pthread_cond_broadcast(&unified_ctrl.cond);  // Wake thread immediately
+    pthread_mutex_unlock(&unified_ctrl.mutex);
 
-    log_info("Waiting for storage manager thread to exit...");
+    log_info("Waiting for storage controller thread to exit...");
 
-    // Use portable polling approach with timeout (5 seconds)
-    // Poll every 100ms to check if thread has exited
+    // Poll for thread exit with 5-second timeout
     int timeout_ms = 5000;
     int elapsed_ms = 0;
     const int poll_interval_ms = 100;
 
     while (elapsed_ms < timeout_ms) {
-        if (storage_manager_thread.exited) {
-            // Thread has exited, we can join it
-            pthread_join(storage_manager_thread.thread, NULL);
-            log_info("Storage manager thread stopped successfully");
+        if (unified_ctrl.exited) {
+            pthread_join(unified_ctrl.thread, NULL);
+            log_info("Storage controller thread stopped successfully");
             return 0;
         }
         usleep(poll_interval_ms * 1000);
         elapsed_ms += poll_interval_ms;
     }
 
-    // Thread did not exit in time, detach it
-    log_warn("Storage manager thread did not exit in time (%d ms), detaching", timeout_ms);
-    pthread_detach(storage_manager_thread.thread);
+    log_warn("Storage controller thread did not exit in time (%d ms), detaching", timeout_ms);
+    pthread_detach(unified_ctrl.thread);
     return 0;
+}
+
+// Get current storage health (thread-safe snapshot)
+int get_storage_health(storage_health_t *health) {
+    if (!health) return -1;
+
+    pthread_mutex_lock(&unified_ctrl.mutex);
+    *health = unified_ctrl.health;
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+    return 0;
+}
+
+// Get current disk pressure level (thread-safe)
+disk_pressure_level_t get_disk_pressure_level(void) {
+    pthread_mutex_lock(&unified_ctrl.mutex);
+    disk_pressure_level_t level = unified_ctrl.health.pressure_level;
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+    return level;
+}
+
+// Trigger an immediate cleanup cycle (thread-safe)
+void trigger_storage_cleanup(bool force_aggressive) {
+    pthread_mutex_lock(&unified_ctrl.mutex);
+    unified_ctrl.force_cleanup = true;
+    unified_ctrl.force_aggressive = force_aggressive;
+    pthread_cond_broadcast(&unified_ctrl.cond);
+    pthread_mutex_unlock(&unified_ctrl.mutex);
+    log_info("Triggered immediate storage cleanup (aggressive=%s)",
+             force_aggressive ? "true" : "false");
 }
