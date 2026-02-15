@@ -833,6 +833,8 @@ export function RecordingsView() {
                 pagination={pagination}
                 canDelete={canDelete}
                 clearSelections={clearSelections}
+                hiddenColumns={hiddenColumns}
+                toggleColumn={toggleColumn}
               />
             ) : (
               <RecordingsTable

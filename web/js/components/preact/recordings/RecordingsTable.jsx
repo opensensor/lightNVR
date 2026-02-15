@@ -114,13 +114,13 @@ export function RecordingsTable({
                 'No recordings selected'}
             </div>
             <button
-              className="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn-danger text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={getSelectedCount() === 0}
               onClick={() => openDeleteModal('selected')}>
               Delete Selected
             </button>
             <button
-              className="btn-danger"
+              className="btn-danger text-xs px-2 py-1"
               onClick={() => openDeleteModal('all')}>
               Delete All Filtered
             </button>
@@ -299,6 +299,16 @@ export function RecordingsTable({
                           <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd"></path>
                         </svg>
                       </button>
+                      <a className="p-1 rounded-full focus:outline-none inline-flex"
+                              style={{color: 'hsl(var(--info))'}}
+                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--info) / 0.1)'}
+                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              href={`timeline.html?stream=${encodeURIComponent(recording.stream)}&date=${recording.start_time ? recording.start_time.slice(0, 10) : ''}`}
+                              title="View in Timeline">
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"></path>
+                        </svg>
+                      </a>
                       {canDelete && (
                         <button className="p-1 rounded-full focus:outline-none"
                                 style={{color: 'hsl(var(--danger))'}}
