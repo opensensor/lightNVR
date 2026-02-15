@@ -14,6 +14,7 @@ import { SystemControls } from './system/SystemControls.jsx';
 import { SystemInfo } from './system/SystemInfo.jsx';
 import { MemoryStorage } from './system/MemoryStorage.jsx';
 import { StreamStorage } from './system/StreamStorage.jsx';
+import { StorageHealth } from './system/StorageHealth.jsx';
 import { NetworkInfo } from './system/NetworkInfo.jsx';
 import { StreamsInfo } from './system/StreamsInfo.jsx';
 import { LogsView } from './system/LogsView.jsx';
@@ -257,6 +258,10 @@ export function SystemView() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <NetworkInfo systemInfo={systemInfo} />
           <StreamsInfo systemInfo={systemInfo} formatBytes={formatBytes} />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <StorageHealth formatBytes={formatBytes} />
         </div>
 
         <LogsView

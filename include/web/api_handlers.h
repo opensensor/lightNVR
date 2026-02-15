@@ -178,6 +178,19 @@ void handle_get_protected_recordings(const http_request_t *req, http_response_t 
  */
 void handle_batch_protect_recordings(const http_request_t *req, http_response_t *res);
 
+// Storage health and cleanup API handlers
+/**
+ * @brief Handler for GET /api/storage/health
+ * Returns disk health status, pressure level, free space from cached data
+ */
+void handle_get_storage_health(const http_request_t *req, http_response_t *res);
+
+/**
+ * @brief Handler for POST /api/storage/cleanup
+ * Triggers immediate cleanup cycle with optional aggressive flag
+ */
+void handle_post_storage_cleanup(const http_request_t *req, http_response_t *res);
+
 // Health check functions
 void init_health_check_system(void);
 void update_health_metrics(bool request_succeeded);

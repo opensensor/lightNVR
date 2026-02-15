@@ -479,6 +479,27 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.max_storage_mb = max_storage_mb->valueint;
     }
 
+    // Parse tier multiplier settings
+    cJSON *tier_critical_multiplier = cJSON_GetObjectItem(stream_json, "tier_critical_multiplier");
+    if (tier_critical_multiplier && cJSON_IsNumber(tier_critical_multiplier)) {
+        config.tier_critical_multiplier = tier_critical_multiplier->valuedouble;
+    }
+
+    cJSON *tier_important_multiplier = cJSON_GetObjectItem(stream_json, "tier_important_multiplier");
+    if (tier_important_multiplier && cJSON_IsNumber(tier_important_multiplier)) {
+        config.tier_important_multiplier = tier_important_multiplier->valuedouble;
+    }
+
+    cJSON *tier_ephemeral_multiplier = cJSON_GetObjectItem(stream_json, "tier_ephemeral_multiplier");
+    if (tier_ephemeral_multiplier && cJSON_IsNumber(tier_ephemeral_multiplier)) {
+        config.tier_ephemeral_multiplier = tier_ephemeral_multiplier->valuedouble;
+    }
+
+    cJSON *storage_priority = cJSON_GetObjectItem(stream_json, "storage_priority");
+    if (storage_priority && cJSON_IsNumber(storage_priority)) {
+        config.storage_priority = storage_priority->valueint;
+    }
+
     // Parse PTZ settings
     cJSON *ptz_enabled = cJSON_GetObjectItem(stream_json, "ptz_enabled");
     if (ptz_enabled && cJSON_IsBool(ptz_enabled)) {
@@ -897,6 +918,47 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config_changed = true;
             // Storage limit is metadata only, doesn't require restart
             log_info("Max storage MB changed to %d for stream %s", new_max_storage, config.name);
+        }
+    }
+
+    // Parse tier multiplier settings - metadata only, don't require restart
+    cJSON *tier_critical_multiplier = cJSON_GetObjectItem(stream_json, "tier_critical_multiplier");
+    if (tier_critical_multiplier && cJSON_IsNumber(tier_critical_multiplier)) {
+        double new_val = tier_critical_multiplier->valuedouble;
+        if (config.tier_critical_multiplier != new_val) {
+            config.tier_critical_multiplier = new_val;
+            config_changed = true;
+            log_info("Tier critical multiplier changed to %.2f for stream %s", new_val, config.name);
+        }
+    }
+
+    cJSON *tier_important_multiplier = cJSON_GetObjectItem(stream_json, "tier_important_multiplier");
+    if (tier_important_multiplier && cJSON_IsNumber(tier_important_multiplier)) {
+        double new_val = tier_important_multiplier->valuedouble;
+        if (config.tier_important_multiplier != new_val) {
+            config.tier_important_multiplier = new_val;
+            config_changed = true;
+            log_info("Tier important multiplier changed to %.2f for stream %s", new_val, config.name);
+        }
+    }
+
+    cJSON *tier_ephemeral_multiplier = cJSON_GetObjectItem(stream_json, "tier_ephemeral_multiplier");
+    if (tier_ephemeral_multiplier && cJSON_IsNumber(tier_ephemeral_multiplier)) {
+        double new_val = tier_ephemeral_multiplier->valuedouble;
+        if (config.tier_ephemeral_multiplier != new_val) {
+            config.tier_ephemeral_multiplier = new_val;
+            config_changed = true;
+            log_info("Tier ephemeral multiplier changed to %.2f for stream %s", new_val, config.name);
+        }
+    }
+
+    cJSON *storage_priority = cJSON_GetObjectItem(stream_json, "storage_priority");
+    if (storage_priority && cJSON_IsNumber(storage_priority)) {
+        int new_val = storage_priority->valueint;
+        if (config.storage_priority != new_val) {
+            config.storage_priority = new_val;
+            config_changed = true;
+            log_info("Storage priority changed to %d for stream %s", new_val, config.name);
         }
     }
 

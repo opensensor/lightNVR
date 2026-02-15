@@ -335,6 +335,12 @@ void load_default_config(config_t *config) {
         config->streams[i].detection_object_filter_list[0] = '\0';
         config->streams[i].streaming_enabled = true; // Enable streaming by default
         config->streams[i].record_audio = false; // Disable audio recording by default
+
+        // Tiered retention defaults
+        config->streams[i].tier_critical_multiplier = 3.0;
+        config->streams[i].tier_important_multiplier = 2.0;
+        config->streams[i].tier_ephemeral_multiplier = 0.25;
+        config->streams[i].storage_priority = 5;
     }
 
     // MQTT settings for detection event streaming
