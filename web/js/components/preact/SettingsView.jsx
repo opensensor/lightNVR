@@ -33,7 +33,6 @@ export function SettingsView() {
     demoMode: false, // Demo mode: allows unauthenticated viewer access
     webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
     authTimeoutHours: '24',
-    maxStreams: '32',
     bufferSize: '1024',
     useSwap: true,
     swapSize: '128',
@@ -168,7 +167,6 @@ export function SettingsView() {
         demoMode: settingsData.demo_mode || false,
         webrtcDisabled: settingsData.webrtc_disabled || false,
         authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
-        maxStreams: settingsData.max_streams?.toString() || '32',
         bufferSize: settingsData.buffer_size?.toString() || '',
         useSwap: settingsData.use_swap || false,
         swapSize: settingsData.swap_size?.toString() || '',
@@ -243,7 +241,6 @@ export function SettingsView() {
       demo_mode: settings.demoMode,
       webrtc_disabled: settings.webrtcDisabled,
       auth_timeout_hours: parseInt(settings.authTimeoutHours, 10),
-      max_streams: parseInt(settings.maxStreams, 10),
       buffer_size: parseInt(settings.bufferSize, 10),
       use_swap: settings.useSwap,
       swap_size: parseInt(settings.swapSize, 10),
@@ -625,27 +622,6 @@ export function SettingsView() {
                 disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground block mt-1">How long authentication sessions remain valid (minimum 1 hour)</span>
-            </div>
-          </div>
-          </div>
-
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Stream Settings</h3>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-max-streams" class="font-medium">Max Streams</label>
-            <div class="col-span-2 flex items-center">
-              <input
-                type="number"
-                id="setting-max-streams"
-                name="maxStreams"
-                min="1"
-                max="32"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.maxStreams}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint ml-2 text-sm text-muted-foreground">Maximum number of streams (1-32). Requires restart.</span>
             </div>
           </div>
           </div>
