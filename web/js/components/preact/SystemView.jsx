@@ -251,17 +251,18 @@ export function SystemView() {
           <MemoryStorage systemInfo={systemInfo} formatBytes={formatBytes} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 mb-4">
-          <StreamStorage systemInfo={systemInfo} formatBytes={formatBytes} />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="md:col-span-2">
+            <StreamStorage systemInfo={systemInfo} formatBytes={formatBytes} />
+          </div>
+          <div className="md:col-span-1">
+            <StorageHealth formatBytes={formatBytes} />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <NetworkInfo systemInfo={systemInfo} />
           <StreamsInfo systemInfo={systemInfo} formatBytes={formatBytes} />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <StorageHealth formatBytes={formatBytes} />
         </div>
 
         <LogsView

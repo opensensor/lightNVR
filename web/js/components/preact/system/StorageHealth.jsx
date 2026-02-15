@@ -65,7 +65,7 @@ export function StorageHealth({ formatBytes }) {
 
   if (isLoading) {
     return (
-      <div className="bg-card text-card-foreground rounded-lg shadow p-4">
+      <div className="bg-card text-card-foreground rounded-lg shadow p-4 h-full">
         <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Health</h3>
         <div className="text-muted-foreground text-center py-4">Loading...</div>
       </div>
@@ -74,7 +74,7 @@ export function StorageHealth({ formatBytes }) {
 
   if (error || !health) {
     return (
-      <div className="bg-card text-card-foreground rounded-lg shadow p-4">
+      <div className="bg-card text-card-foreground rounded-lg shadow p-4 h-full">
         <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Health</h3>
         <div className="text-muted-foreground text-center py-4">
           Storage health data unavailable
@@ -88,7 +88,7 @@ export function StorageHealth({ formatBytes }) {
   const usedPct = health.free_space_pct != null ? (100 - health.free_space_pct).toFixed(1) : '?';
 
   return (
-    <div className="bg-card text-card-foreground rounded-lg shadow p-4">
+    <div className="bg-card text-card-foreground rounded-lg shadow p-4 h-full">
       <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Health</h3>
       <div className="space-y-3">
         {/* Pressure level badge */}
