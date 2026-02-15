@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
+#include "core/config.h"
 
 /**
  * Packet Buffer Module
