@@ -566,8 +566,42 @@ export function TimelinePage() {
       <div className="flex items-center mb-4">
         <h1 className="text-2xl font-bold">Timeline Playback</h1>
         <div className="ml-4 flex">
-          <a href="recordings.html" className="px-3 py-1 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-l-md">Table View</a>
-          <a href="timeline.html" className="px-3 py-1 rounded-r-md bg-primary text-primary-foreground">Timeline View</a>
+          <a
+            href="recordings.html"
+            className="px-3 py-1 rounded-l-md text-sm"
+            style={{
+              backgroundColor: 'hsl(var(--secondary))',
+              color: 'hsl(var(--secondary-foreground))'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+            onClick={() => { try { localStorage.setItem('recordings_view_mode', 'table'); } catch(e) {} }}
+          >
+            Table
+          </a>
+          <a
+            href="recordings.html"
+            className="px-3 py-1 text-sm"
+            style={{
+              backgroundColor: 'hsl(var(--secondary))',
+              color: 'hsl(var(--secondary-foreground))'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+            onClick={() => { try { localStorage.setItem('recordings_view_mode', 'grid'); } catch(e) {} }}
+          >
+            Grid
+          </a>
+          <a
+            href="timeline.html"
+            className="px-3 py-1 rounded-r-md text-sm"
+            style={{
+              backgroundColor: 'hsl(var(--primary))',
+              color: 'hsl(var(--primary-foreground))'
+            }}
+          >
+            Timeline
+          </a>
         </div>
       </div>
 

@@ -221,6 +221,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "max_storage_size", g_config.max_storage_size);
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
+    cJSON_AddBoolToObject(settings, "generate_thumbnails", g_config.generate_thumbnails);
     cJSON_AddNumberToObject(settings, "max_streams", g_config.max_streams);
     cJSON_AddStringToObject(settings, "log_file", g_config.log_file);
     cJSON_AddNumberToObject(settings, "log_level", g_config.log_level);
@@ -450,7 +451,15 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated auto_delete_oldest: %s", g_config.auto_delete_oldest ? "true" : "false");
     }
-    
+
+    // Generate thumbnails (grid view)
+    cJSON *generate_thumbnails = cJSON_GetObjectItem(settings, "generate_thumbnails");
+    if (generate_thumbnails && cJSON_IsBool(generate_thumbnails)) {
+        g_config.generate_thumbnails = cJSON_IsTrue(generate_thumbnails);
+        settings_changed = true;
+        log_info("Updated generate_thumbnails: %s", g_config.generate_thumbnails ? "true" : "false");
+    }
+
     // Models path
     cJSON *models_path = cJSON_GetObjectItem(settings, "models_path");
     if (models_path && cJSON_IsString(models_path)) {

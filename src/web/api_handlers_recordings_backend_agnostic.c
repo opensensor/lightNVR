@@ -26,6 +26,7 @@
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 #include "database/db_auth.h"
+#include "web/api_handlers_recordings_thumbnail.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/:id
@@ -258,6 +259,9 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
         // This is acceptable - DB entry is removed
     }
 
+    // Delete associated thumbnails
+    delete_recording_thumbnails(id);
+
     // Send success response
     http_response_set_json(res, 200, "{\"success\":true,\"message\":\"Recording deleted successfully\"}");
 
@@ -341,6 +345,9 @@ static void *batch_delete_worker_thread(void *arg) {
                         log_warn("Recording file does not exist: %s (already deleted or never created)",
                                 file_path_copy);
                     }
+
+                    // Delete associated thumbnails
+                    delete_recording_thumbnails(id);
 
                     success_count++;
                     log_info("Successfully deleted recording: %llu", (unsigned long long)id);
@@ -474,6 +481,9 @@ static void *batch_delete_worker_thread(void *arg) {
                     log_warn("Recording file does not exist: %s (already deleted or never created)",
                             file_path_copy);
                 }
+
+                // Delete associated thumbnails
+                    delete_recording_thumbnails(id);
 
                 success_count++;
                 log_info("Successfully deleted recording: %llu", (unsigned long long)id);

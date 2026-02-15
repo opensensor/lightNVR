@@ -15,6 +15,7 @@
 #include "database/db_auth.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
+#include "web/api_handlers_recordings_thumbnail.h"
 #include "core/logger.h"
 
 // Maximum number of streams to process at once
@@ -317,6 +318,9 @@ int apply_retention_policy(void) {
                         }
                     }
 
+                    // Delete associated thumbnails
+                    delete_recording_thumbnails(recordings[i].id);
+
                     // Delete the database entry
                     if (delete_recording_metadata(recordings[i].id) != 0) {
                         log_warn("Failed to delete recording metadata for ID %llu",
@@ -355,6 +359,9 @@ int apply_retention_policy(void) {
                                      recordings[i].file_path, strerror(errno));
                         }
                     }
+
+                    // Delete associated thumbnails
+                    delete_recording_thumbnails(recordings[i].id);
 
                     // Delete the database entry
                     if (delete_recording_metadata(recordings[i].id) != 0) {

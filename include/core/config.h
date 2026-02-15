@@ -87,6 +87,9 @@ typedef struct {
     int retention_days;
     bool auto_delete_oldest;
 
+    // Thumbnail/grid view settings
+    bool generate_thumbnails;        // Enable grid view with thumbnail previews on recordings page
+
     // New recording format options
     bool record_mp4_directly;        // Record directly to MP4 alongside HLS
     char mp4_storage_path[256];      // Path for MP4 recordings storage

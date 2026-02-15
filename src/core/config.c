@@ -235,6 +235,9 @@ void load_default_config(config_t *config) {
     config->retention_days = 30;
     config->auto_delete_oldest = true;
 
+    // Thumbnail/grid view settings
+    config->generate_thumbnails = true;
+
     // MP4 recording settings
     config->record_mp4_directly = false;
     snprintf(config->mp4_storage_path, sizeof(config->mp4_storage_path), "/var/lib/lightnvr/recordings/mp4");
@@ -561,6 +564,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->mp4_segment_duration = atoi(value);
         } else if (strcmp(name, "mp4_retention_days") == 0) {
             config->mp4_retention_days = atoi(value);
+        } else if (strcmp(name, "generate_thumbnails") == 0) {
+            config->generate_thumbnails = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
     // Models settings
@@ -1255,6 +1260,10 @@ int save_config(const config_t *config, const char *path) {
     }
     fprintf(file, "mp4_segment_duration = %d\n", config->mp4_segment_duration);
     fprintf(file, "mp4_retention_days = %d\n\n", config->mp4_retention_days);
+
+    // Write thumbnail/grid view settings
+    fprintf(file, "; Thumbnail preview settings\n");
+    fprintf(file, "generate_thumbnails = %s\n\n", config->generate_thumbnails ? "true" : "false");
 
     // Write models settings
     fprintf(file, "[models]\n");

@@ -21,6 +21,7 @@
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
+#include "web/api_handlers_recordings_thumbnail.h"
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_onvif.h"
@@ -158,6 +159,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
 
     // Recordings API (backend-agnostic handlers)
     // Note: More specific routes must come before wildcard routes
+    http_server_register_handler(server, "/api/recordings/thumbnail/#/#", "GET", handle_recordings_thumbnail);
     http_server_register_handler(server, "/api/recordings/play/#", "GET", handle_recordings_playback);
     http_server_register_handler(server, "/api/recordings/download/#", "GET", handle_recordings_download);
     http_server_register_handler(server, "/api/recordings/files/check", "GET", handle_check_recording_file);
