@@ -12,17 +12,17 @@ import { showStatusMessage } from '../ToastContainer.jsx';
  * @returns {JSX.Element} TimelineControls component
  */
 export function TimelineControls() {
-  // Local state
   const [isPlaying, setIsPlaying] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [canZoomIn, setCanZoomIn] = useState(true);
+  const [canZoomOut, setCanZoomOut] = useState(true);
 
-  // Subscribe to timeline state changes
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
       setIsPlaying(state.isPlaying);
-      setZoomLevel(state.zoomLevel);
+      const range = (state.timelineEndHour ?? 24) - (state.timelineStartHour ?? 0);
+      setCanZoomIn(range > 0.5);    // don't zoom below 30 min
+      setCanZoomOut(range < 24);     // can't expand beyond 24 h
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -344,22 +344,52 @@ export function TimelineControls() {
     });
   };
 
-  // Zoom in on timeline
-  const zoomIn = () => {
-    if (zoomLevel < 8) {
-      const newZoomLevel = zoomLevel * 2;
-      timelineState.setState({ zoomLevel: newZoomLevel });
-      showStatusMessage(`Zoomed in: ${24 / newZoomLevel} hours view`, 'info');
+  // ── Helper: get the center hour for zoom (cursor position or range midpoint) ──
+  const getCenter = () => {
+    const s = timelineState.timelineStartHour ?? 0;
+    const e = timelineState.timelineEndHour ?? 24;
+    if (timelineState.currentTime !== null) {
+      const d = new Date(timelineState.currentTime * 1000);
+      const h = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+      // Only use cursor if it's inside the current view
+      if (h >= s && h <= e) return h;
     }
+    return (s + e) / 2;
   };
 
-  // Zoom out on timeline
+  // Zoom in — halve the visible range, centered on cursor
+  const zoomIn = () => {
+    const s = timelineState.timelineStartHour ?? 0;
+    const e = timelineState.timelineEndHour ?? 24;
+    const range = e - s;
+    if (range <= 0.5) return;           // minimum 30 min view
+    const center = getCenter();
+    const newRange = range / 2;
+    let ns = Math.max(0, center - newRange / 2);
+    let ne = ns + newRange;
+    if (ne > 24) { ne = 24; ns = Math.max(0, ne - newRange); }
+    timelineState.setState({ timelineStartHour: ns, timelineEndHour: ne });
+  };
+
+  // Zoom out — double the visible range, centered on cursor, capped at 0-24
   const zoomOut = () => {
-    if (zoomLevel > 1) {
-      const newZoomLevel = zoomLevel / 2;
-      timelineState.setState({ zoomLevel: newZoomLevel });
-      showStatusMessage(`Zoomed out: ${24 / newZoomLevel} hours view`, 'info');
-    }
+    const s = timelineState.timelineStartHour ?? 0;
+    const e = timelineState.timelineEndHour ?? 24;
+    const range = e - s;
+    if (range >= 24) return;
+    const center = getCenter();
+    const newRange = Math.min(24, range * 2);
+    let ns = Math.max(0, center - newRange / 2);
+    let ne = ns + newRange;
+    if (ne > 24) { ne = 24; ns = Math.max(0, ne - newRange); }
+    timelineState.setState({ timelineStartHour: ns, timelineEndHour: ne });
+  };
+
+  // Fit — reset to the auto-fit range computed on data load
+  const fitToSegments = () => {
+    const fs = timelineState.autoFitStartHour ?? 0;
+    const fe = timelineState.autoFitEndHour ?? 24;
+    timelineState.setState({ timelineStartHour: fs, timelineEndHour: fe });
   };
 
   return (
@@ -374,15 +404,11 @@ export function TimelineControls() {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             {isPlaying ? (
               <>
-                {/* Pause icon - two vertical bars */}
                 <rect x="6" y="6" width="4" height="12" rx="1" fill="white" />
                 <rect x="14" y="6" width="4" height="12" rx="1" fill="white" />
               </>
             ) : (
-              <>
-                {/* Play icon - triangle */}
-                <path d="M8 5.14v14l11-7-11-7z" fill="white" />
-              </>
+              <path d="M8 5.14v14l11-7-11-7z" fill="white" />
             )}
           </svg>
         </button>
@@ -390,13 +416,19 @@ export function TimelineControls() {
       </div>
 
       <div className="flex items-center gap-1">
-        <span className="text-xs text-muted-foreground mr-1">Zoom:</span>
+        <button
+          className="px-2 h-6 rounded text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          onClick={fitToSegments}
+          title="Fit to recordings"
+        >
+          Fit
+        </button>
         <button
           id="zoom-out-button"
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomOut}
           title="Zoom Out (Show more time)"
-          disabled={zoomLevel <= 1}
+          disabled={!canZoomOut}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -407,7 +439,7 @@ export function TimelineControls() {
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomIn}
           title="Zoom In (Show less time)"
-          disabled={zoomLevel >= 8}
+          disabled={!canZoomIn}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />

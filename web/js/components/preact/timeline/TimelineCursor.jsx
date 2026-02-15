@@ -47,16 +47,6 @@ export function TimelineCursor() {
   // Subscribe to timeline state changes
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
-      console.log('TimelineCursor: State update received', {
-        currentTime: state.currentTime,
-        startHour: state.timelineStartHour,
-        endHour: state.timelineEndHour,
-        segmentsCount: state.timelineSegments ? state.timelineSegments.length : 0,
-        isDragging: isDragging,
-        userControllingCursor: state.userControllingCursor
-      });
-
-      // Update local state
       setStartHour(state.timelineStartHour || 0);
       setEndHour(state.timelineEndHour || 24);
 
@@ -64,8 +54,6 @@ export function TimelineCursor() {
       if (!isDragging && !state.userControllingCursor) {
         setCurrentTime(state.currentTime);
         updateTimeDisplay(state.currentTime);
-
-        // Use debounced update for smoother performance
         debouncedUpdateCursorPosition(state.currentTime, state.timelineStartHour || 0, state.timelineEndHour || 24);
       }
     });
@@ -81,22 +69,14 @@ export function TimelineCursor() {
     const handleMouseDown = (e) => {
       e.preventDefault();
       e.stopPropagation();
-
-      console.log('TimelineCursor: Mouse down event');
-
-      // Store the starting X position
       dragStartXRef.current = e.clientX;
-
-      // Set dragging state
       setIsDragging(true);
 
-      // Set global flags to prevent other components from updating cursor
       timelineState.userControllingCursor = true;
       timelineState.preserveCursorPosition = true;
       timelineState.cursorPositionLocked = true;
       timelineState.setState({});
 
-      // Add event listeners for drag
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     };
@@ -133,145 +113,67 @@ export function TimelineCursor() {
     const handleMouseUp = (e) => {
       if (!isDragging) return;
 
-      // Get container dimensions
       const container = cursor.parentElement;
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
       const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-      const containerWidth = rect.width;
+      const positionPercent = (clickX / rect.width) * 100;
 
-      // Calculate position as percentage
-      const positionPercent = (clickX / containerWidth) * 100;
-      console.log('TimelineCursor: Mouse up at position', { positionPercent, clickX, containerWidth });
-
-      // Calculate time based on position
       const hourRange = endHour - startHour;
       const hour = startHour + (positionPercent / 100) * hourRange;
-      console.log('TimelineCursor: Calculated hour', { hour, startHour, endHour, hourRange });
-
-      // Convert hour to timestamp using the utility function
       const timestamp = timelineState.timelineHourToTimestamp(hour, timelineState.selectedDate);
 
-      console.log('TimelineCursor: Converted hour to timestamp', {
-        hour,
-        localDate: new Date(timestamp * 1000).toLocaleString(),
-        timestamp
-      });
-      console.log('TimelineCursor: Converted to timestamp', {
-        timestamp,
-        dateTime: new Date(timestamp * 1000).toLocaleString(),
-        selectedDate: timelineState.selectedDate
-      });
-
-      console.log('TimelineCursor: Mouse up event');
-
-      // Reset dragging state FIRST
+      // Reset dragging state
       setIsDragging(false);
-
-      // Remove event listeners
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
 
-      // Reset some flags but keep preserveCursorPosition true
-      // This allows the current update to complete before other components can update the cursor
+      // Release cursor control after a short delay
       setTimeout(() => {
-        console.log('TimelineCursor: Releasing cursor control but preserving position');
         timelineState.userControllingCursor = false;
-        // Keep preserveCursorPosition true to prevent position resets
-        // Keep cursorPositionLocked true to prevent automatic updates
         timelineState.setState({});
       }, 100);
 
-      // Always update the current time to where the user placed the cursor
-      // This allows the user to position the cursor anywhere on the timeline
+      // Set the cursor time
       timelineState.currentTime = timestamp;
 
-      // Add a small buffer to prevent cursor from snapping to segment start
-      // This is especially important for positions near the beginning of segments
+      // Snap-guard: nudge away from segment start to prevent snap-back
       if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
-        // Find the segment that contains this timestamp
-        const segment = timelineState.timelineSegments.find(seg =>
-          timestamp >= seg.start_timestamp && timestamp <= seg.end_timestamp
+        const seg = timelineState.timelineSegments.find(s =>
+          timestamp >= s.start_timestamp && timestamp <= s.end_timestamp
         );
-
-        if (segment) {
-          // If we're very close to the start of the segment (within 1 second),
-          // add a small offset to prevent snapping to the start
-          const distanceFromStart = timestamp - segment.start_timestamp;
-          if (distanceFromStart < 1.0) {
-            // Add a small offset (0.5 seconds) to prevent snapping to start
-            const adjustedTime = segment.start_timestamp + 1.0;
-            console.log(`TimelineCursor: Adjusting cursor position from ${timestamp} to ${adjustedTime} to prevent snapping to segment start`);
-            timelineState.currentTime = adjustedTime;
-          }
+        if (seg && (timestamp - seg.start_timestamp) < 1.0) {
+          timelineState.currentTime = seg.start_timestamp + 1.0;
         }
       }
+
       timelineState.prevCurrentTime = timelineState.currentTime;
       timelineState.isPlaying = false;
-
-      // Notify listeners
       timelineState.setState({});
 
-      // Find segment that contains this timestamp
-      const segments = timelineState.timelineSegments || [];
-      console.log('TimelineCursor: Searching for segment containing timestamp', {
-        timestamp,
-        segmentsCount: segments.length
-      });
+      // Find the segment at the drop position (exact match or closest)
+      const segs = timelineState.timelineSegments || [];
+      let found = false;
+      let closestIdx = -1;
+      let minDist = Infinity;
 
-      let foundSegment = false;
-      let closestSegment = -1;
-      let minDistance = Infinity;
-
-      // First try to find an exact match
-      for (let i = 0; i < segments.length; i++) {
-        const segment = segments[i];
-        // Use local timestamps if available, otherwise fall back to regular timestamps
-        const startTimestamp = segment.local_start_timestamp || segment.start_timestamp;
-        const endTimestamp = segment.local_end_timestamp || segment.end_timestamp;
-
-        // Log the first few segments for debugging
-        if (i < 3) {
-          console.log(`TimelineCursor: Segment ${i}`, {
-            startTimestamp,
-            endTimestamp,
-            startTime: new Date(startTimestamp * 1000).toLocaleTimeString(),
-            endTime: new Date(endTimestamp * 1000).toLocaleTimeString()
-          });
-        }
-
-        // Check if timestamp is within this segment
-        if (timestamp >= startTimestamp && timestamp <= endTimestamp) {
-          console.log(`TimelineCursor: Found exact match at segment ${i}`);
-          // Update current segment index without changing the time or starting playback
+      for (let i = 0; i < segs.length; i++) {
+        const st = segs[i].start_timestamp;
+        const et = segs[i].end_timestamp;
+        if (timestamp >= st && timestamp <= et) {
           timelineState.currentSegmentIndex = i;
           timelineState.setState({});
-          foundSegment = true;
+          found = true;
           break;
         }
-
-        // Calculate distance to this segment (for finding closest if no exact match)
-        const midpoint = (startTimestamp + endTimestamp) / 2;
-        const distance = Math.abs(timestamp - midpoint);
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestSegment = i;
-        }
+        const dist = Math.abs(timestamp - (st + et) / 2);
+        if (dist < minDist) { minDist = dist; closestIdx = i; }
       }
 
-      // If no exact match found, use the closest segment
-      if (!foundSegment) {
-        if (closestSegment >= 0) {
-          console.log(`TimelineCursor: No exact match, using closest segment ${closestSegment}`);
-          timelineState.currentSegmentIndex = closestSegment;
-          timelineState.setState({});
-        } else {
-          console.log('TimelineCursor: No segments found at all');
-          // Reset current segment index
-          timelineState.currentSegmentIndex = -1;
-          timelineState.setState({});
-        }
+      if (!found) {
+        timelineState.currentSegmentIndex = closestIdx >= 0 ? closestIdx : -1;
+        timelineState.setState({});
       }
     };
 
@@ -287,32 +189,20 @@ export function TimelineCursor() {
 
   // Update cursor position
   const updateCursorPosition = (time, startHr, endHr) => {
-    console.log('TimelineCursor: updateCursorPosition called', { time, startHr, endHr });
-
     if (time === null) {
-      console.log('TimelineCursor: No current time, hiding cursor');
       setVisible(false);
       return;
     }
 
-    // Calculate cursor position
     const date = new Date(time * 1000);
-    const hour = date.getHours() + (date.getMinutes() / 60) + (date.getSeconds() / 3600);
-    console.log('TimelineCursor: Calculated hour', { hour, timeString: date.toLocaleTimeString() });
+    const hour = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
 
-    // Check if the current time is within the visible range
     if (hour < startHr || hour > endHr) {
-      console.log('TimelineCursor: Time outside visible range, hiding cursor');
       setVisible(false);
       return;
     }
 
-    // Calculate position as percentage
-    const position = ((hour - startHr) / (endHr - startHr)) * 100;
-    console.log('TimelineCursor: Calculated position', { position, hour, startHr, endHr });
-
-    // Update cursor position
-    setPosition(position);
+    setPosition(((hour - startHr) / (endHr - startHr)) * 100);
     setVisible(true);
   };
 
@@ -334,26 +224,10 @@ export function TimelineCursor() {
     timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
   };
 
-  // Force the cursor to be visible on initial render
+  // Initialise cursor on mount (with retries for async data)
   useEffect(() => {
-    console.log('TimelineCursor: Initializing cursor position');
-    console.log('TimelineCursor: Initial state', {
-      currentTime: timelineState.currentTime,
-      startHour: timelineState.timelineStartHour,
-      endHour: timelineState.timelineEndHour,
-      segments: timelineState.timelineSegments ? timelineState.timelineSegments.length : 0
-    });
-
-    // Function to initialize cursor
     const initCursor = () => {
-      console.log('TimelineCursor: Checking timelineState directly', {
-        currentTime: timelineState.currentTime,
-        segmentsLength: timelineState.timelineSegments ? timelineState.timelineSegments.length : 0,
-        currentSegmentIndex: timelineState.currentSegmentIndex
-      });
-
       if (timelineState.currentTime) {
-        console.log('TimelineCursor: Setting initial cursor position with current time');
         setVisible(true);
         updateCursorPosition(
           timelineState.currentTime,
@@ -361,50 +235,23 @@ export function TimelineCursor() {
           timelineState.timelineEndHour || 24
         );
         return true;
-      } else if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
-        // If no current time but we have segments, use the first segment's start time
-        console.log('TimelineCursor: Using first segment start time for cursor');
-        const firstSegment = timelineState.timelineSegments[0];
-        const segmentStartTime = firstSegment.start_timestamp;
-
-        // Update the timeline state with this time - DIRECT ASSIGNMENT
-        console.log('TimelineCursor: Directly setting timelineState properties');
-        timelineState.currentTime = segmentStartTime;
+      }
+      if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
+        const t = timelineState.timelineSegments[0].start_timestamp;
+        timelineState.currentTime = t;
         timelineState.currentSegmentIndex = 0;
-
-        // Now call setState to notify listeners
-        timelineState.setState({
-          // Empty object just to trigger notification
-        });
-
+        timelineState.setState({});
         setVisible(true);
-        updateCursorPosition(
-          segmentStartTime,
-          timelineState.timelineStartHour || 0,
-          timelineState.timelineEndHour || 24
-        );
+        updateCursorPosition(t, timelineState.timelineStartHour || 0, timelineState.timelineEndHour || 24);
         return true;
       }
       return false;
     };
 
-    // Try to initialize immediately
-    const initialized = initCursor();
-
-    // If not initialized, try again after a delay
-    if (!initialized) {
-      console.log('TimelineCursor: Initial initialization failed, will retry after delay');
-
-      // Set up multiple attempts with increasing delays
-      const delays = [100, 300, 500, 1000];
-
-      delays.forEach((delay, index) => {
-        setTimeout(() => {
-          if (!visible) {
-            console.log(`TimelineCursor: Retry initialization attempt ${index + 1}`);
-            initCursor();
-          }
-        }, delay);
+    if (!initCursor()) {
+      // Retry a few times for async data arrival
+      [100, 300, 500, 1000].forEach(delay => {
+        setTimeout(() => { if (!visible) initCursor(); }, delay);
       });
     }
   }, []);
@@ -412,26 +259,43 @@ export function TimelineCursor() {
   return (
     <div
       ref={cursorRef}
-      className="timeline-cursor absolute top-0 h-full z-50 transition-all duration-100 cursor-ew-resize"
+      className="timeline-cursor absolute top-0 h-full z-50 cursor-ew-resize"
       style={{
         left: `${position}%`,
         display: visible ? 'block' : 'none',
         pointerEvents: 'auto',
-        width: '7px',
-        marginLeft: '-3.5px'
+        width: '18px',
+        marginLeft: '-9px'
       }}
     >
-      {/* Invisible wider clickable area */}
-      <div className="absolute top-0 bottom-0 left-0 w-full"></div>
+      {/* Invisible hit-area */}
+      <div className="absolute inset-0" />
 
-      {/* Skinnier needle with no middle chunk - perfectly centered */}
-      <div className="absolute top-0 bottom-0 w-0.5 bg-orange-500 left-0 right-0 mx-auto pointer-events-none"></div>
+      {/* Thin vertical line — full height */}
+      <div
+        className="pointer-events-none absolute top-0 bottom-0"
+        style={{
+          left: '50%',
+          width: '1.5px',
+          marginLeft: '-0.75px',
+          background: '#ef6c00'
+        }}
+      />
 
-      {/* Top handle (black) - perfectly centered */}
-      <div className="absolute top-0 left-0 right-0 mx-auto w-4 h-4 bg-black rounded-full transform -translate-y-1/2 shadow-md pointer-events-none"></div>
-
-      {/* Bottom handle (black) - perfectly centered */}
-      <div className="absolute bottom-0 left-0 right-0 mx-auto w-4 h-4 bg-black rounded-full transform translate-y-1/2 shadow-md pointer-events-none"></div>
+      {/* Thumb — small rounded pill pinned to top of ruler */}
+      <div
+        className="pointer-events-none absolute"
+        style={{
+          left: '50%',
+          top: '0px',
+          transform: 'translateX(-50%)',
+          width: '10px',
+          height: '18px',
+          borderRadius: '3px',
+          background: '#ef6c00',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.35)'
+        }}
+      />
     </div>
   );
 }

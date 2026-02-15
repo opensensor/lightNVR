@@ -53,27 +53,24 @@
 .timeline-segments {
     position: relative;
     width: 100%;
-    height: 70px;
-    padding: 10px 0;
+    height: 64px;          /* matches Tailwind h-16 */
 }
 
-/* Timeline segment */
+/* Timeline segment – positioned via inline left/width from JSX */
 .timeline-segment {
     position: absolute;
-    height: 20px;
+    top: 10%;
+    height: 80%;
     background-color: hsl(var(--primary));
-    border-radius: 2px;
-    top: 25px;
-    opacity: 0.8;
+    border-radius: 3px;
+    opacity: 0.85;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: opacity 0.15s ease, box-shadow 0.15s ease;
 }
 
 .timeline-segment:hover {
     opacity: 1;
-    height: 24px;
-    top: 23px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
 }
 
 /* Segments with detection */
@@ -81,13 +78,12 @@
     background-color: hsl(var(--destructive));
 }
 
-/* Timeline cursor */
+/* Timeline cursor — container is invisible; child elements draw the line + thumb */
 .timeline-cursor {
     position: absolute;
     top: 0;
-    width: 2px;
     height: 100%;
-    background-color: hsl(var(--warning, 25 95% 53%));
+    background: transparent;
     z-index: 10;
 }
 
@@ -211,16 +207,6 @@
     
     .timeline-segments {
         height: 55px;
-    }
-    
-    .timeline-segment {
-        height: 15px;
-        top: 20px;
-    }
-    
-    .timeline-segment:hover {
-        height: 18px;
-        top: 18px;
     }
     
     .timeline-time-display {

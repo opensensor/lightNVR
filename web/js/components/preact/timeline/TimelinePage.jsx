@@ -9,41 +9,22 @@ import { TimelineRuler } from './TimelineRuler.jsx';
 import { TimelineSegments } from './TimelineSegments.jsx';
 import { TimelineCursor } from './TimelineCursor.jsx';
 import { TimelinePlayer } from './TimelinePlayer.jsx';
+import { CalendarPicker } from './CalendarPicker.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
 
-// Utility function to convert between timeline hour and timestamp
+// Convert fractional hour (0–24) → Unix timestamp (seconds) for the given date
 function timelineHourToTimestamp(hour, selectedDate) {
-  // Get the selected date or today
-  // If we have a selectedDate in YYYY-MM-DD format, parse it correctly
   let date;
-
-  console.log(`timelineHourToTimestamp: Converting hour ${hour} for date ${selectedDate}`);
-
   if (selectedDate && typeof selectedDate === 'string' && selectedDate.includes('-')) {
-    // Parse the date string to avoid timezone issues
-    const [year, month, day] = selectedDate.split('-').map(num => parseInt(num, 10));
-    // Create a date at midnight for the selected date (month is 0-indexed)
+    const [year, month, day] = selectedDate.split('-').map(Number);
     date = new Date(year, month - 1, day, 0, 0, 0, 0);
-    console.log(`timelineHourToTimestamp: Parsed date - Year: ${year}, Month: ${month}, Day: ${day}`);
-    console.log(`timelineHourToTimestamp: Created date object: ${date.toString()}`);
   } else {
-    // Fallback to current date
     date = new Date();
     date.setHours(0, 0, 0, 0);
-    console.log(`timelineHourToTimestamp: Using current date: ${date.toString()}`);
   }
-
-  // Add the hour component (this is in local time)
-  const milliseconds = date.getTime() + (hour * 60 * 60 * 1000);
-  const resultDate = new Date(milliseconds);
-
-  console.log(`timelineHourToTimestamp: Result date for hour ${hour}: ${resultDate.toString()}`);
-
-  // Convert to timestamp (seconds)
-  const timestamp = Math.floor(milliseconds / 1000);
-  return timestamp;
+  return Math.floor((date.getTime() + hour * 3600000) / 1000);
 }
 
 // Utility function to convert timestamp to timeline hour
@@ -60,13 +41,13 @@ const timelineState = {
   selectedDate: null,
   isPlaying: false,
   currentSegmentIndex: -1,
-  zoomLevel: 1, // 1 = 1 hour, 2 = 30 minutes, 4 = 15 minutes
   timelineStartHour: 0,
   timelineEndHour: 24,
+  autoFitStartHour: 0,   // auto-fit range computed from segments
+  autoFitEndHour: 24,
   currentTime: null,
   prevCurrentTime: null,
   playbackSpeed: 1.0,
-  showOnlySegments: true,
   forceReload: false,
   userControllingCursor: false, // New flag to track if user is controlling cursor
   preserveCursorPosition: false, // New flag to explicitly preserve cursor position
@@ -86,40 +67,21 @@ const timelineState = {
   setState(newState) {
     const now = Date.now();
 
-    console.log('timelineState: setState called with', newState);
-    console.log('timelineState: current state before update', {
-      currentTime: this.currentTime,
-      currentSegmentIndex: this.currentSegmentIndex,
-      segmentsLength: this.timelineSegments.length
-    });
-
-    // For time-sensitive updates (like currentTime), we want to batch them
-    // to prevent too many updates in a short period
+    // Batch frequent time-only updates (≤250 ms apart)
     if (newState.currentTime !== undefined &&
         !newState.currentSegmentIndex &&
         !newState.isPlaying &&
         now - this.lastUpdateTime < 250) {
-      // Skip frequent time updates that don't change playback state
-      console.log('timelineState: Skipping frequent time update');
       return;
     }
 
-    // Apply the new state
     Object.assign(this, newState);
 
-    // Reset forceReload flag immediately
     if (newState.forceReload) {
       this.forceReload = false;
     }
 
     this.lastUpdateTime = now;
-
-    console.log('timelineState: state after update', {
-      currentTime: this.currentTime,
-      currentSegmentIndex: this.currentSegmentIndex,
-      segmentsLength: this.timelineSegments.length
-    });
-
     this.notifyListeners();
   },
 
@@ -275,47 +237,24 @@ export function TimelinePage() {
     const startTime = startDate.toISOString();
     const endTime = endDate.toISOString();
 
-    console.log('TimelinePage: Generated time range:', {
-      date,
-      startDate: startDate.toString(),
-      endDate: endDate.toString(),
-      startTime,
-      endTime,
-      year, month, day
-    });
-
-    return {
-      startTime,
-      endTime
-    };
+    return { startTime, endTime };
   };
 
   // Update URL and global state when stream or date changes
   useEffect(() => {
     if (selectedStream) {
-      // Update URL
       updateUrlParams(selectedStream, selectedDate);
-
-      // Update global state
-      timelineState.setState({
-        selectedStream,
-        selectedDate
-      });
+      timelineState.setState({ selectedStream, selectedDate });
     }
   }, [selectedStream, selectedDate]);
 
   // Get time range for current date
-  const timeRange = getTimeRange(selectedDate);
-  const startTime = timeRange.startTime;
-  const endTime = timeRange.endTime;
+  const { startTime, endTime } = getTimeRange(selectedDate);
 
   // Construct the URL for the API call
-  const timelineUrl = selectedStream ?
-    `/api/timeline/segments?stream=${encodeURIComponent(selectedStream)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}` :
-    null;
-
-  // Debug the URL being used
-  console.log('TimelinePage: Timeline URL:', timelineUrl);
+  const timelineUrl = selectedStream
+    ? `/api/timeline/segments?stream=${encodeURIComponent(selectedStream)}&start=${encodeURIComponent(startTime)}&end=${encodeURIComponent(endTime)}`
+    : null;
 
   // Fetch timeline segments using preact-query
   // NOTE: onSuccess/onError were removed in TanStack Query v5 (@preact-signals/query v2.x)
@@ -338,150 +277,102 @@ export function TimelinePage() {
     }
   );
 
-  // Process timeline data when it arrives (replaces onSuccess/onError)
+  // Process timeline data when it arrives
   useEffect(() => {
-    // Handle error
     if (timelineError) {
-      console.error('TimelinePage: Error loading timeline data:', timelineError);
-      console.error('TimelinePage: Error details:', {
-        message: timelineError.message,
-        status: timelineError.status,
-        statusText: timelineError.statusText,
-        response: timelineError.response
-      });
+      console.error('TimelinePage: Error loading timeline data:', timelineError.message);
       showStatusMessage('Error loading timeline data: ' + timelineError.message, 'error');
       setSegments([]);
       return;
     }
 
-    // Skip if no data or already processed this exact data object
     if (!timelineData || timelineData === processedDataRef.current) return;
     processedDataRef.current = timelineData;
 
-    console.log('TimelinePage: Timeline data received:', timelineData);
     const timelineSegments = timelineData.segments || [];
-    console.log(`TimelinePage: Received ${timelineSegments.length} segments`);
 
     if (timelineSegments.length === 0) {
-      console.log('TimelinePage: No segments found');
       setSegments([]);
-
-      // Update global state
       timelineState.setState({
         timelineSegments: [],
         currentSegmentIndex: -1,
         currentTime: null,
         isPlaying: false
       });
-
       showStatusMessage('No recordings found for the selected date', 'warning');
       return;
     }
 
-    // IMPORTANT: Make a deep copy of the segments to avoid reference issues
     const segmentsCopy = JSON.parse(JSON.stringify(timelineSegments));
-
-    // Log the first few segments for debugging
-    segmentsCopy.slice(0, 3).forEach((segment, i) => {
-      const startTime = new Date(segment.start_timestamp * 1000);
-      const endTime = new Date(segment.end_timestamp * 1000);
-      console.log(`TimelinePage: Segment ${i} - Start: ${startTime.toLocaleTimeString()}, End: ${endTime.toLocaleTimeString()}`);
-    });
-
-    console.log('TimelinePage: Setting segments');
     setSegments(segmentsCopy);
 
-    // Force a synchronous DOM update
-    document.body.offsetHeight;
-
-    // Directly update the global state with the segments
-    const firstSegmentStartTime = segmentsCopy[0].start_timestamp;
-
-    // Determine initial time and segment - check for time URL parameter
-    let initialTime = firstSegmentStartTime;
+    // Determine initial time/segment (honour ?time= URL param)
+    let initialTime = segmentsCopy[0].start_timestamp;
     let initialSegmentIndex = 0;
 
     if (initialTimeRef.current) {
-      // Parse HH:MM:SS time param and convert to a timestamp for the selected date
       const timeParts = initialTimeRef.current.match(/^(\d{2}):(\d{2}):(\d{2})$/);
       if (timeParts) {
-        const [, hours, minutes, seconds] = timeParts.map(Number);
-        const hour = hours + (minutes / 60) + (seconds / 3600);
-        const seekTimestamp = timelineHourToTimestamp(hour, selectedDate);
+        const [, h, m, s] = timeParts.map(Number);
+        const seekTs = timelineHourToTimestamp(h + m / 60 + s / 3600, selectedDate);
 
-        console.log('TimelinePage: Auto-seeking to time from URL param', {
-          timeParam: initialTimeRef.current,
-          seekTimestamp,
-          seekDate: new Date(seekTimestamp * 1000).toLocaleTimeString()
-        });
-
-        // Find the segment that contains this timestamp, or the closest one
-        let foundSegment = false;
+        let found = false;
         for (let i = 0; i < segmentsCopy.length; i++) {
-          if (seekTimestamp >= segmentsCopy[i].start_timestamp &&
-              seekTimestamp <= segmentsCopy[i].end_timestamp) {
+          if (seekTs >= segmentsCopy[i].start_timestamp && seekTs <= segmentsCopy[i].end_timestamp) {
             initialSegmentIndex = i;
-            initialTime = seekTimestamp;
-            foundSegment = true;
-            console.log(`TimelinePage: Found matching segment ${i} for seek time`);
+            initialTime = seekTs;
+            found = true;
             break;
           }
         }
-
-        // If no exact match, find the closest segment after the seek time
-        if (!foundSegment) {
-          let closestIndex = 0;
-          let closestDistance = Infinity;
+        if (!found) {
+          let best = 0, bestDist = Infinity;
           for (let i = 0; i < segmentsCopy.length; i++) {
-            const distance = Math.abs(segmentsCopy[i].start_timestamp - seekTimestamp);
-            if (distance < closestDistance) {
-              closestDistance = distance;
-              closestIndex = i;
-            }
+            const d = Math.abs(segmentsCopy[i].start_timestamp - seekTs);
+            if (d < bestDist) { bestDist = d; best = i; }
           }
-          initialSegmentIndex = closestIndex;
-          initialTime = segmentsCopy[closestIndex].start_timestamp;
-          console.log(`TimelinePage: No exact match, using closest segment ${closestIndex}`);
+          initialSegmentIndex = best;
+          initialTime = segmentsCopy[best].start_timestamp;
         }
       }
-      // Clear the initial time ref so it's only used once
       initialTimeRef.current = '';
     }
 
-    console.log('TimelinePage: Setting initial segment and time', {
-      segmentId: segmentsCopy[initialSegmentIndex].id,
-      startTime: new Date(initialTime * 1000).toLocaleTimeString()
+    // Compute auto-fit range from segments
+    let earliest = 24, latest = 0;
+    segmentsCopy.forEach(seg => {
+      const s = new Date(seg.start_timestamp * 1000);
+      const e = new Date(seg.end_timestamp * 1000);
+      earliest = Math.min(earliest, s.getHours() + s.getMinutes() / 60 + s.getSeconds() / 3600);
+      latest   = Math.max(latest,   e.getHours() + e.getMinutes() / 60 + e.getSeconds() / 3600);
     });
+    const span = latest - earliest;
+    const pad  = Math.max(0.5, Math.min(1, span * 0.1));
+    let fitStart = Math.max(0, Math.floor((earliest - pad) * 2) / 2);
+    let fitEnd   = Math.min(24, Math.ceil((latest + pad) * 2) / 2);
+    if (fitEnd - fitStart < 2) {
+      const center = (earliest + latest) / 2;
+      fitStart = Math.max(0, Math.floor((center - 1) * 2) / 2);
+      fitEnd   = Math.min(24, fitStart + 2);
+    }
 
-    // DIRECT ASSIGNMENT to ensure state is properly set
-    console.log('TimelinePage: Directly setting timelineState properties');
+    // Push to global state
     timelineState.timelineSegments = segmentsCopy;
     timelineState.currentSegmentIndex = initialSegmentIndex;
     timelineState.currentTime = initialTime;
     timelineState.prevCurrentTime = initialTime;
     timelineState.isPlaying = false;
     timelineState.forceReload = true;
-    timelineState.zoomLevel = 1;
-    timelineState.selectedDate = selectedDate; // Make sure the date is set
+    timelineState.autoFitStartHour = fitStart;
+    timelineState.autoFitEndHour = fitEnd;
+    timelineState.timelineStartHour = fitStart;
+    timelineState.timelineEndHour = fitEnd;
+    timelineState.selectedDate = selectedDate;
+    timelineState.setState({});
 
-    // Now call setState to notify listeners
-    timelineState.setState({
-      // Empty object just to trigger notification
-    });
-
-    console.log('TimelinePage: Updated timelineState with segments');
-
-    // Wait a moment to ensure state is updated, then log the current state
+    // Safety net: retry if state didn't stick
     setTimeout(() => {
-      console.log('TimelinePage: State after update (delayed check):', {
-        segmentsLength: timelineState.timelineSegments.length,
-        currentSegmentIndex: timelineState.currentSegmentIndex,
-        currentTime: timelineState.currentTime
-      });
-
-      // Force a state update if the state wasn't properly updated
       if (!timelineState.currentTime || timelineState.currentSegmentIndex === -1) {
-        console.log('TimelinePage: State not properly updated, forcing update');
         timelineState.setState({
           currentSegmentIndex: initialSegmentIndex,
           currentTime: initialTime,
@@ -500,32 +391,13 @@ export function TimelinePage() {
     showStatusMessage(`Loaded ${segmentsCopy.length} recording segments`, 'success');
   }, [timelineData, timelineError, selectedDate]);
 
-  // Handle stream selection change
-  const handleStreamChange = (e) => {
-    const newStream = e.target.value;
-    console.log(`TimelinePage: Stream changed to ${newStream}`);
-    setSelectedStream(newStream);
-  };
+  const handleStreamChange = (e) => setSelectedStream(e.target.value);
 
-  // Handle date selection change
-  const handleDateChange = (e) => {
-    const newDate = e.target.value;
-    console.log(`TimelinePage: Date changed to ${newDate}`);
-
-    // Validate the date format (should be YYYY-MM-DD)
+  const handleDateChange = (newDate) => {
     if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
-      // Parse the date to ensure it's valid
-      const [year, month, day] = newDate.split('-').map(num => parseInt(num, 10));
-      console.log(`TimelinePage: Parsed date - Year: ${year}, Month: ${month}, Day: ${day}`);
-
-      // Update the selected date
       setSelectedDate(newDate);
     } else {
-      console.error(`TimelinePage: Invalid date format: ${newDate}`);
-      // Fallback to today's date in YYYY-MM-DD format
-      const today = formatDateForInput(new Date());
-      console.log(`TimelinePage: Falling back to today's date: ${today}`);
-      setSelectedDate(today);
+      setSelectedDate(formatDateForInput(new Date()));
     }
   };
 
@@ -566,7 +438,7 @@ export function TimelinePage() {
 
           {/* Instructions for cursor */}
           <div className="absolute bottom-1 right-2 text-xs text-muted-foreground bg-card text-card-foreground bg-opacity-75 dark:bg-opacity-75 px-2 py-1 rounded">
-            Drag the orange dial to navigate
+            Drag the playhead to navigate
           </div>
         </div>
       </>
@@ -643,14 +515,8 @@ export function TimelinePage() {
         </div>
 
         <div className="date-selector flex-grow">
-          <label htmlFor="timeline-date" className="block mb-2">Date</label>
-          <input
-            type="date"
-            id="timeline-date"
-            className="w-full p-2 border border-border rounded bg-background text-foreground"
-            value={selectedDate}
-            onChange={handleDateChange}
-          />
+          <label className="block mb-2">Date</label>
+          <CalendarPicker value={selectedDate} onChange={handleDateChange} />
         </div>
       </div>
 
@@ -680,7 +546,7 @@ export function TimelinePage() {
         <ul className="list-disc pl-5">
           <li>Select a stream and date to load recordings</li>
           <li>Click on the timeline to position the cursor at a specific time</li>
-          <li>Drag the orange cursor to navigate precisely</li>
+          <li>Drag the playhead to navigate precisely</li>
           <li>Click on a segment (blue bar) to play that recording</li>
           <li>Use the play button to start playback from the current cursor position</li>
           <li>Use the zoom buttons to adjust the timeline scale</li>
