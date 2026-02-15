@@ -282,7 +282,7 @@ void load_default_config(config_t *config) {
     config->web_cache_max_age_default = 86400;    // 1 day default
     
     // Stream settings
-    config->max_streams = 16;
+    config->max_streams = 32;
     
     // Memory optimization
     config->buffer_size = 1024; // 1MB buffer size

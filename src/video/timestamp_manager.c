@@ -25,7 +25,7 @@ typedef struct {
 } timestamp_tracker_t;
 
 // Array to track timestamps for multiple streams
-#define MAX_TIMESTAMP_TRACKERS 16
+#define MAX_TIMESTAMP_TRACKERS MAX_STREAMS
 static timestamp_tracker_t timestamp_trackers[MAX_TIMESTAMP_TRACKERS];
 
 /**

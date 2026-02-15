@@ -11,7 +11,7 @@
 // Maximum length for URLs
 #define MAX_URL_LENGTH 512
 // Maximum number of streams supported
-#define MAX_STREAMS 16
+#define MAX_STREAMS 32
 
 // Stream protocol enum
 typedef enum {
