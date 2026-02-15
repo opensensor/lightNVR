@@ -303,7 +303,7 @@ export function RecordingsTable({
                               style={{color: 'hsl(var(--info))'}}
                               onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--info) / 0.1)'}
                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                              href={`timeline.html?stream=${encodeURIComponent(recording.stream)}&date=${recording.start_time ? recording.start_time.slice(0, 10) : ''}`}
+                              href={`timeline.html?stream=${encodeURIComponent(recording.stream)}&date=${recording.start_time ? recording.start_time.slice(0, 10) : ''}&time=${recording.start_time ? recording.start_time.slice(11, 19) : ''}`}
                               title="View in Timeline">
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"></path>
