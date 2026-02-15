@@ -15,6 +15,7 @@
 #include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
+#include "web/thumbnail_thread.h"
 #include "core/logger.h"
 
 // Initial handler capacity
@@ -143,9 +144,15 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
         log_info("libuv_server_init: TLS support requested (not yet implemented)");
         server->tls_ctx = NULL;
     }
-    
+
+    // Initialize thumbnail thread subsystem
+    if (thumbnail_thread_init(server->loop) != 0) {
+        log_error("libuv_server_init: Failed to initialize thumbnail thread subsystem");
+        // Continue anyway - thumbnails will just fail
+    }
+
     log_info("libuv_server_init: Server initialized on port %d", config->port);
-    
+
     // Cast to generic handle type (http_server_t* is compatible pointer)
     return (http_server_handle_t)server;
 }
@@ -418,6 +425,9 @@ void libuv_server_destroy(http_server_handle_t handle) {
     if (server->running) {
         libuv_server_stop(handle);
     }
+
+    // Shutdown thumbnail thread subsystem
+    thumbnail_thread_shutdown();
 
     // Free handler registry
     if (server->handlers) {

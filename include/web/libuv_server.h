@@ -94,6 +94,7 @@ typedef struct libuv_connection {
     char deferred_file_path[1024];      // Deferred file path to serve
     char deferred_content_type[128];    // Deferred content type (empty = auto-detect)
     char deferred_extra_headers[512];   // Deferred extra headers (empty = none)
+    write_complete_action_t deferred_action; // Action to take after async response completes
 } libuv_connection_t;
 
 /**

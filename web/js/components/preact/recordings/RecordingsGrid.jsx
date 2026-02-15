@@ -89,20 +89,34 @@ function RecordingCard({
   const [loadState, setLoadState] = useState('loading'); // 'loading', 'loaded', 'error'
   const intervalRef = useRef(null);
   const preloadedRef = useRef(false);
+  const imgErrorCountRef = useRef(0);
 
-  // Handle image load errors
-  const handleImageError = useCallback(() => {
-    setLoadState('error');
-  }, []);
-
-  // Preload the middle frame (index 1) on mount with HIGH priority since it's visible
-  useEffect(() => {
+  /** Load (or reload) the middle-frame thumbnail. */
+  const loadThumbnail = useCallback(() => {
     const url = `/api/recordings/thumbnail/${recording.id}/1`;
     setLoadState('loading');
+    imgErrorCountRef.current = 0;
     queueThumbnailLoad(url, Priority.HIGH)
       .then(() => setLoadState('loaded'))
       .catch(() => setLoadState('error'));
   }, [recording.id]);
+
+  // Handle <img> element load errors — if the decoded image was evicted
+  // from the browser cache between queueThumbnailLoad success and render,
+  // retry once rather than permanently showing "Failed to load".
+  const handleImageError = useCallback(() => {
+    imgErrorCountRef.current++;
+    if (imgErrorCountRef.current <= 1) {
+      loadThumbnail(); // retry once
+    } else {
+      setLoadState('error');
+    }
+  }, [loadThumbnail]);
+
+  // Preload the middle frame (index 1) on mount with HIGH priority since it's visible
+  useEffect(() => {
+    loadThumbnail();
+  }, [loadThumbnail]);
 
   // Preload the other two frames when user first hovers (LOW priority background task)
   useEffect(() => {
@@ -166,11 +180,15 @@ function RecordingCard({
             <span class="text-xs mt-2 opacity-50">Loading...</span>
           </div>
         ) : (
-          <div class="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50">
+          <div
+            class="w-full h-full flex flex-col items-center justify-center text-muted-foreground bg-muted/50 cursor-pointer"
+            onClick={(e) => { e.stopPropagation(); loadThumbnail(); }}
+            title="Click to retry"
+          >
             <svg class="w-12 h-12 opacity-40 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <span class="text-xs mt-2 opacity-60">Failed to load</span>
+            <span class="text-xs mt-2 opacity-60">Tap to retry</span>
           </div>
         )}
 

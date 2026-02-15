@@ -19,22 +19,14 @@
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/thumbnail_thread.h"
+#include "web/libuv_server.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 
-/**
- * Concurrency limiter for thumbnail generation.
- *
- * Each ffmpeg system() call blocks a libuv thread-pool worker for seconds.
- * If the grid view fires dozens of thumbnail requests at once, the pool is
- * starved and the health-check endpoint can't be served, triggering a
- * server restart.  Cap the number of in-flight ffmpeg processes so there
- * are always free workers for normal API traffic.
- */
-#define MAX_CONCURRENT_THUMBNAIL_GENERATIONS 4
-static volatile int g_active_thumbnail_generations = 0;
+
 
 /**
  * @brief Ensure the thumbnails directory exists
@@ -55,6 +47,31 @@ static int ensure_thumbnails_dir(const char *storage_path) {
     }
 
     return 0;
+}
+
+/**
+ * @brief Callback invoked when thumbnail generation completes
+ *
+ * This runs on the event loop thread via uv_async.
+ */
+static void thumbnail_complete_callback(deferred_action_handle_t handle,
+                                       const char *output_path, int result) {
+    libuv_connection_t *conn = (libuv_connection_t *)handle;
+
+    if (result == 0 && output_path) {
+        // Success - serve the generated thumbnail
+        log_debug("Serving generated thumbnail: %s", output_path);
+        if (libuv_serve_file(conn, output_path, "image/jpeg",
+                            "Cache-Control: public, max-age=86400\r\n") != 0) {
+            http_response_set_json_error(&conn->response, 500, "Failed to serve thumbnail");
+            libuv_send_response_ex(conn, &conn->response, conn->deferred_action);
+        }
+        // libuv_serve_file handles the response and connection lifecycle
+    } else {
+        // Failure - send error response
+        http_response_set_json_error(&conn->response, 500, "Failed to generate thumbnail");
+        libuv_send_response_ex(conn, &conn->response, conn->deferred_action);
+    }
 }
 
 /**
@@ -221,32 +238,32 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
         seek_seconds = duration > 1.0 ? duration - 1.0 : 0;
     }
 
-    // Enforce concurrency limit – avoid starving the libuv thread pool
-    if (__sync_fetch_and_add(&g_active_thumbnail_generations, 0) >=
-        MAX_CONCURRENT_THUMBNAIL_GENERATIONS) {
-        // Tell the browser to retry shortly
+    // Get connection pointer from request user_data
+    libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
+    if (!conn) {
+        log_error("handle_recordings_thumbnail: No connection in request user_data");
+        http_response_set_json_error(res, 500, "Internal server error");
+        return;
+    }
+
+    // Submit thumbnail generation to detached pthread
+    // The callback will be invoked on the event loop thread when complete
+    if (thumbnail_thread_submit(id, index, recording.file_path, thumb_path,
+                               seek_seconds, (deferred_action_handle_t)conn,
+                               thumbnail_complete_callback) != 0) {
+        // Submission failed (likely at concurrency limit)
         http_response_add_header(res, "Retry-After", "2");
         http_response_set_json_error(res, 503,
             "Thumbnail generation busy, try again later");
         return;
     }
-    __sync_add_and_fetch(&g_active_thumbnail_generations, 1);
 
-    // Generate thumbnail
-    int gen_result = generate_thumbnail(recording.file_path, thumb_path,
-                                        seek_seconds);
-    __sync_sub_and_fetch(&g_active_thumbnail_generations, 1);
+    // Mark that an async response is pending
+    // This prevents the worker callback from sending a response immediately
+    conn->async_response_pending = true;
 
-    if (gen_result != 0) {
-        http_response_set_json_error(res, 500, "Failed to generate thumbnail");
-        return;
-    }
-
-    // Serve the newly generated thumbnail
-    if (http_serve_file(req, res, thumb_path, "image/jpeg",
-                        "Cache-Control: public, max-age=86400\r\n") != 0) {
-        http_response_set_json_error(res, 500, "Failed to serve thumbnail");
-    }
+    log_debug("Submitted thumbnail generation for recording %llu index %d",
+              (unsigned long long)id, index);
 }
 
 void delete_recording_thumbnails(uint64_t recording_id) {
