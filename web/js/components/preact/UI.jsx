@@ -961,48 +961,23 @@ export function showSnapshotPreview(imageData, streamName) {
   import('preact').then(({ render, h }) => {
     const handleDownload = () => {
       try {
-        // Import the snapshot manager hook
-        import('./SnapshotManager.jsx').then(({ useSnapshotManager }) => {
-          const { downloadSnapshot } = useSnapshotManager();
-          if (downloadSnapshot) {
-            downloadSnapshot();
-          } else {
-            // Fallback to the old implementation
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
 
-            const link = document.createElement('a');
-            link.href = imageData;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
+        const link = document.createElement('a');
+        link.href = imageData;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
 
-            // Clean up
-            setTimeout(() => {
-              document.body.removeChild(link);
-            }, 100);
-
-            showStatusMessage('Snapshot downloaded successfully', 'success', 3000);
-          }
-        }).catch(error => {
-          console.error('Error importing SnapshotManager:', error);
-          // Fallback to the old implementation
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
-
-          const link = document.createElement('a');
-          link.href = imageData;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-
-          // Clean up
-          setTimeout(() => {
+        // Clean up
+        setTimeout(() => {
+          if (document.body.contains(link)) {
             document.body.removeChild(link);
-          }, 100);
+          }
+        }, 100);
 
-          showStatusMessage('Snapshot downloaded successfully', 'success', 3000);
-        });
+        showStatusMessage('Snapshot downloaded successfully', 'success', 3000);
       } catch (error) {
         console.error('Error downloading snapshot:', error);
         showStatusMessage('Download failed: ' + error.message, 'error', 5000);
