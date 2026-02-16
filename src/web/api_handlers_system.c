@@ -257,67 +257,98 @@ static unsigned long long get_effective_memory_used(void) {
 }
 
 /**
- * Get container-scoped CPU usage percentage.
- *
- * Uses cgroup v2 cpu.stat (usage_usec) sampled over a short interval, or
- * cgroup v1 cpuacct.usage.  Falls back to /proc/stat on bare metal.
- *
- * Returns a value 0.0 – 100.0  (can exceed 100% on multi-core containers).
+ * Return true if a real CPU limit is set in cgroups (i.e. we are in a
+ * constrained container), false if unlimited / bare-metal.
  */
-static double get_effective_cpu_usage(void) {
-    // ── cgroup v2: /sys/fs/cgroup/cpu.stat  → usage_usec
-    FILE *fp = fopen("/sys/fs/cgroup/cpu.stat", "r");
+static bool has_cgroup_cpu_limit(void) {
+    // cgroup v2: /sys/fs/cgroup/cpu.max  – "max <period>" means unlimited
+    FILE *fp = fopen("/sys/fs/cgroup/cpu.max", "r");
     if (fp) {
-        char line[128];
-        unsigned long long usage1 = 0;
-        while (fgets(line, sizeof(line), fp)) {
-            if (strncmp(line, "usage_usec", 10) == 0) {
-                sscanf(line + 10, " %llu", &usage1);
-                break;
-            }
+        char quota_str[64] = {0};
+        unsigned long long period = 0;
+        if (fscanf(fp, "%63s %llu", quota_str, &period) == 2) {
+            fclose(fp);
+            return (strcmp(quota_str, "max") != 0);
         }
         fclose(fp);
+    }
+    // cgroup v1: quota == -1 means unlimited
+    unsigned long long quota = 0;
+    if (read_ull_from_file("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", &quota)) {
+        return ((long long)quota > 0);
+    }
+    return false;
+}
 
-        if (usage1 > 0) {
-            // Sleep briefly and sample again
-            usleep(100000); // 100 ms
-            fp = fopen("/sys/fs/cgroup/cpu.stat", "r");
-            if (fp) {
-                unsigned long long usage2 = 0;
-                while (fgets(line, sizeof(line), fp)) {
-                    if (strncmp(line, "usage_usec", 10) == 0) {
-                        sscanf(line + 10, " %llu", &usage2);
-                        break;
+/**
+ * Get container-scoped CPU usage percentage.
+ *
+ * Only uses cgroup cpu.stat / cpuacct.usage when an actual CPU limit is set
+ * (i.e. inside a container with resource constraints).  On bare metal the
+ * root cgroup tracks all cores combined, which would produce values like
+ * 800% on an 8-core box — so we skip straight to /proc/stat there.
+ *
+ * Returns a value 0.0 – 100.0.
+ */
+static double get_effective_cpu_usage(void) {
+    // Only use cgroup-scoped CPU accounting when a real limit is set;
+    // otherwise the root cgroup aggregates all cores and the percentage
+    // is meaningless (e.g. 234% on a bare-metal 8-core machine).
+    if (has_cgroup_cpu_limit()) {
+        // ── cgroup v2: /sys/fs/cgroup/cpu.stat  → usage_usec
+        FILE *fp = fopen("/sys/fs/cgroup/cpu.stat", "r");
+        if (fp) {
+            char line[128];
+            unsigned long long usage1 = 0;
+            while (fgets(line, sizeof(line), fp)) {
+                if (strncmp(line, "usage_usec", 10) == 0) {
+                    sscanf(line + 10, " %llu", &usage1);
+                    break;
+                }
+            }
+            fclose(fp);
+
+            if (usage1 > 0) {
+                // Sleep briefly and sample again
+                usleep(100000); // 100 ms
+                fp = fopen("/sys/fs/cgroup/cpu.stat", "r");
+                if (fp) {
+                    unsigned long long usage2 = 0;
+                    while (fgets(line, sizeof(line), fp)) {
+                        if (strncmp(line, "usage_usec", 10) == 0) {
+                            sscanf(line + 10, " %llu", &usage2);
+                            break;
+                        }
+                    }
+                    fclose(fp);
+                    if (usage2 > usage1) {
+                        // delta in microseconds over 100ms (100000 us)
+                        double delta_us = (double)(usage2 - usage1);
+                        double pct = (delta_us / 100000.0) * 100.0;
+                        log_debug("cgroup v2 cpu usage: %.1f%%", pct);
+                        return pct;
                     }
                 }
-                fclose(fp);
-                if (usage2 > usage1) {
-                    // delta in microseconds over 100ms (100000 us)
-                    double delta_us = (double)(usage2 - usage1);
-                    double pct = (delta_us / 100000.0) * 100.0;
-                    log_debug("cgroup v2 cpu usage: %.1f%%", pct);
-                    return pct;
-                }
+            }
+        }
+
+        // ── cgroup v1: /sys/fs/cgroup/cpuacct/cpuacct.usage (nanoseconds)
+        unsigned long long ns1 = 0;
+        if (read_ull_from_file("/sys/fs/cgroup/cpuacct/cpuacct.usage", &ns1) && ns1 > 0) {
+            usleep(100000);
+            unsigned long long ns2 = 0;
+            if (read_ull_from_file("/sys/fs/cgroup/cpuacct/cpuacct.usage", &ns2) && ns2 > ns1) {
+                double delta_ns = (double)(ns2 - ns1);
+                double pct = (delta_ns / 100000000.0) * 100.0; // 100ms = 1e8 ns
+                log_debug("cgroup v1 cpu usage: %.1f%%", pct);
+                return pct;
             }
         }
     }
 
-    // ── cgroup v1: /sys/fs/cgroup/cpuacct/cpuacct.usage (nanoseconds)
-    unsigned long long ns1 = 0;
-    if (read_ull_from_file("/sys/fs/cgroup/cpuacct/cpuacct.usage", &ns1) && ns1 > 0) {
-        usleep(100000);
-        unsigned long long ns2 = 0;
-        if (read_ull_from_file("/sys/fs/cgroup/cpuacct/cpuacct.usage", &ns2) && ns2 > ns1) {
-            double delta_ns = (double)(ns2 - ns1);
-            double pct = (delta_ns / 100000000.0) * 100.0; // 100ms = 1e8 ns
-            log_debug("cgroup v1 cpu usage: %.1f%%", pct);
-            return pct;
-        }
-    }
-
-    // ── Bare-metal fallback: /proc/stat
+    // ── Bare-metal / no CPU limit: /proc/stat  (gives proper 0–100%)
     double cpu_usage = 0.0;
-    fp = fopen("/proc/stat", "r");
+    FILE *fp = fopen("/proc/stat", "r");
     if (fp) {
         unsigned long user, nice, system, idle, iowait, irq, softirq;
         if (fscanf(fp, "cpu %lu %lu %lu %lu %lu %lu %lu",
