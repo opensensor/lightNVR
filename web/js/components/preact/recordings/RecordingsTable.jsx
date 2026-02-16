@@ -12,7 +12,6 @@ const HIDEABLE_COLUMNS = [
   { key: 'duration', label: 'Duration' },
   { key: 'size', label: 'Size' },
   { key: 'detections', label: 'Detections' },
-  { key: 'protected', label: 'Protected' },
   { key: 'actions', label: 'Actions' },
 ];
 
@@ -100,7 +99,7 @@ export function RecordingsTable({
   // Count visible columns for colSpan on empty row
   const visibleCount = (canDelete ? 1 : 0) + 1 /* start_time always */ +
     (show('stream') ? 1 : 0) + (show('duration') ? 1 : 0) + (show('size') ? 1 : 0) +
-    (show('detections') ? 1 : 0) + (show('protected') ? 1 : 0) + (show('actions') ? 1 : 0);
+    (show('detections') ? 1 : 0) + (show('actions') ? 1 : 0);
 
   return (
     <div className="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
@@ -186,11 +185,6 @@ export function RecordingsTable({
                   Detections
                 </th>
               )}
-              {show('protected') && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Protected
-                </th>
-              )}
               {show('actions') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Actions
@@ -249,33 +243,6 @@ export function RecordingsTable({
                     ) : ''}
                   </td>
                 )}
-                {show('protected') && (
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {recording.protected ? (
-                      <button
-                        className="badge-warning cursor-pointer hover:opacity-80"
-                        onClick={() => toggleProtection && toggleProtection(recording)}
-                        title="Click to unprotect"
-                      >
-                        <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path>
-                        </svg>
-                        Protected
-                      </button>
-                    ) : (
-                      <button
-                        className="text-muted-foreground hover:text-foreground cursor-pointer text-xs"
-                        onClick={() => toggleProtection && toggleProtection(recording)}
-                        title="Click to protect from deletion"
-                      >
-                        <svg className="w-3 h-3 inline mr-1" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z"></path>
-                        </svg>
-                        Protect
-                      </button>
-                    )}
-                  </td>
-                )}
                 {show('actions') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex space-x-2">
@@ -309,6 +276,20 @@ export function RecordingsTable({
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"></path>
                         </svg>
                       </a>
+                      <button className="p-1 rounded-full focus:outline-none"
+                              style={{color: recording.protected ? 'hsl(var(--warning))' : 'hsl(var(--muted-foreground))'}}
+                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = recording.protected ? 'hsl(var(--warning) / 0.1)' : 'hsl(var(--muted-foreground) / 0.1)'}
+                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              onClick={() => toggleProtection && toggleProtection(recording)}
+                              title={recording.protected ? 'Unprotect' : 'Protect'}>
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          {recording.protected ? (
+                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path>
+                          ) : (
+                            <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z"></path>
+                          )}
+                        </svg>
+                      </button>
                       {canDelete && (
                         <button className="p-1 rounded-full focus:outline-none"
                                 style={{color: 'hsl(var(--danger))'}}
