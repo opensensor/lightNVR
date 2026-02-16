@@ -104,6 +104,233 @@ extern void handle_get_system_logs(const http_request_t *req, http_response_t *r
 extern void handle_post_system_logs_clear(const http_request_t *req, http_response_t *res);
 extern int get_system_logs(char ***logs, int *count);
 
+// ── cgroup-aware resource helpers ──────────────────────────────────────────
+// Prefer cgroup limits (container / K8s pod) when available, otherwise fall
+// back to host-level syscalls so bare-metal installs keep working.
+
+/**
+ * Read a single unsigned long long from a file.  Returns true on success.
+ */
+static bool read_ull_from_file(const char *path, unsigned long long *out) {
+    FILE *fp = fopen(path, "r");
+    if (!fp) return false;
+    bool ok = (fscanf(fp, "%llu", out) == 1);
+    fclose(fp);
+    return ok;
+}
+
+/**
+ * Get the effective number of CPU cores available to this process.
+ *
+ * Checks cgroup v2 (cpu.max) then cgroup v1 (cpu.cfs_quota_us / period)
+ * to derive the fractional CPU limit, rounded up to the nearest integer.
+ * Falls back to sysconf(_SC_NPROCESSORS_ONLN) when not cgroup-constrained.
+ *
+ * Also writes the raw millicores value (0 = unconstrained) for the UI to
+ * use if it wants to show "0.5 CPUs" instead of "1 core".
+ */
+static int get_effective_cpu_cores(int *out_millicores) {
+    int host_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    if (out_millicores) *out_millicores = 0;
+
+    // ── cgroup v2: /sys/fs/cgroup/cpu.max  ("quota period" or "max period")
+    FILE *fp = fopen("/sys/fs/cgroup/cpu.max", "r");
+    if (fp) {
+        char quota_str[64] = {0};
+        unsigned long long period = 0;
+        if (fscanf(fp, "%63s %llu", quota_str, &period) == 2 && period > 0) {
+            fclose(fp);
+            if (strcmp(quota_str, "max") != 0) {
+                // Quota is a number – compute effective cores
+                unsigned long long quota = strtoull(quota_str, NULL, 10);
+                if (quota > 0) {
+                    int millicores = (int)((quota * 1000) / period);
+                    if (out_millicores) *out_millicores = millicores;
+                    int cores = (int)((quota + period - 1) / period); // ceil
+                    log_debug("cgroup v2 cpu.max: quota=%llu period=%llu → %d cores (%dm)",
+                              quota, period, cores, millicores);
+                    return cores > 0 ? cores : 1;
+                }
+            }
+            // "max" means unlimited – fall through to host value
+            log_debug("cgroup v2 cpu.max: unlimited");
+            return host_cores;
+        }
+        fclose(fp);
+    }
+
+    // ── cgroup v1: cpu.cfs_quota_us / cpu.cfs_period_us
+    unsigned long long quota = 0, period = 0;
+    if (read_ull_from_file("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", &quota) &&
+        read_ull_from_file("/sys/fs/cgroup/cpu/cpu.cfs_period_us", &period) &&
+        period > 0) {
+        if ((long long)quota > 0) {  // -1 means unlimited
+            int millicores = (int)((quota * 1000) / period);
+            if (out_millicores) *out_millicores = millicores;
+            int cores = (int)((quota + period - 1) / period);
+            log_debug("cgroup v1 cpu: quota=%llu period=%llu → %d cores (%dm)",
+                      quota, period, cores, millicores);
+            return cores > 0 ? cores : 1;
+        }
+    }
+
+    // No cgroup constraint – use host cores
+    log_debug("No cgroup CPU limit detected, using host cores: %d", host_cores);
+    return host_cores;
+}
+
+/**
+ * Get the effective memory limit for this process (in bytes).
+ *
+ * Checks cgroup v2 (memory.max) then cgroup v1 (memory.limit_in_bytes).
+ * Falls back to sysinfo() totalram when not cgroup-constrained.
+ */
+static unsigned long long get_effective_memory_total(void) {
+    // Host fallback
+    struct sysinfo si;
+    unsigned long long host_total = 0;
+    if (sysinfo(&si) == 0) {
+        host_total = (unsigned long long)si.totalram * si.mem_unit;
+    }
+
+    // ── cgroup v2: /sys/fs/cgroup/memory.max  ("max" or a number)
+    FILE *fp = fopen("/sys/fs/cgroup/memory.max", "r");
+    if (fp) {
+        char buf[64] = {0};
+        if (fgets(buf, sizeof(buf), fp)) {
+            fclose(fp);
+            if (strncmp(buf, "max", 3) != 0) {
+                unsigned long long limit = strtoull(buf, NULL, 10);
+                if (limit > 0 && limit < host_total) {
+                    log_debug("cgroup v2 memory.max: %llu bytes", limit);
+                    return limit;
+                }
+            }
+            // "max" or value >= host_total means effectively unlimited
+            log_debug("cgroup v2 memory.max: unlimited");
+            return host_total;
+        }
+        fclose(fp);
+    }
+
+    // ── cgroup v1: /sys/fs/cgroup/memory/memory.limit_in_bytes
+    unsigned long long limit = 0;
+    if (read_ull_from_file("/sys/fs/cgroup/memory/memory.limit_in_bytes", &limit)) {
+        // Very large values (~PAGE_COUNTER_MAX) mean unlimited
+        if (limit > 0 && limit < host_total) {
+            log_debug("cgroup v1 memory.limit_in_bytes: %llu bytes", limit);
+            return limit;
+        }
+    }
+
+    log_debug("No cgroup memory limit detected, using host total: %llu bytes", host_total);
+    return host_total;
+}
+
+/**
+ * Get the current memory usage for the cgroup (in bytes).
+ *
+ * In a container the cgroup tracks memory for all processes in the pod,
+ * which is more useful than a single process's VmRSS.
+ * Falls back to sysinfo() used-ram on bare metal.
+ */
+static unsigned long long get_effective_memory_used(void) {
+    // ── cgroup v2: /sys/fs/cgroup/memory.current
+    unsigned long long used = 0;
+    if (read_ull_from_file("/sys/fs/cgroup/memory.current", &used) && used > 0) {
+        log_debug("cgroup v2 memory.current: %llu bytes", used);
+        return used;
+    }
+
+    // ── cgroup v1: /sys/fs/cgroup/memory/memory.usage_in_bytes
+    if (read_ull_from_file("/sys/fs/cgroup/memory/memory.usage_in_bytes", &used) && used > 0) {
+        log_debug("cgroup v1 memory.usage_in_bytes: %llu bytes", used);
+        return used;
+    }
+
+    // Fall back to host-wide calculation
+    struct sysinfo si;
+    if (sysinfo(&si) == 0) {
+        used = ((unsigned long long)si.totalram - (unsigned long long)si.freeram) * si.mem_unit;
+    }
+    return used;
+}
+
+/**
+ * Get container-scoped CPU usage percentage.
+ *
+ * Uses cgroup v2 cpu.stat (usage_usec) sampled over a short interval, or
+ * cgroup v1 cpuacct.usage.  Falls back to /proc/stat on bare metal.
+ *
+ * Returns a value 0.0 – 100.0  (can exceed 100% on multi-core containers).
+ */
+static double get_effective_cpu_usage(void) {
+    // ── cgroup v2: /sys/fs/cgroup/cpu.stat  → usage_usec
+    FILE *fp = fopen("/sys/fs/cgroup/cpu.stat", "r");
+    if (fp) {
+        char line[128];
+        unsigned long long usage1 = 0;
+        while (fgets(line, sizeof(line), fp)) {
+            if (strncmp(line, "usage_usec", 10) == 0) {
+                sscanf(line + 10, " %llu", &usage1);
+                break;
+            }
+        }
+        fclose(fp);
+
+        if (usage1 > 0) {
+            // Sleep briefly and sample again
+            usleep(100000); // 100 ms
+            fp = fopen("/sys/fs/cgroup/cpu.stat", "r");
+            if (fp) {
+                unsigned long long usage2 = 0;
+                while (fgets(line, sizeof(line), fp)) {
+                    if (strncmp(line, "usage_usec", 10) == 0) {
+                        sscanf(line + 10, " %llu", &usage2);
+                        break;
+                    }
+                }
+                fclose(fp);
+                if (usage2 > usage1) {
+                    // delta in microseconds over 100ms (100000 us)
+                    double delta_us = (double)(usage2 - usage1);
+                    double pct = (delta_us / 100000.0) * 100.0;
+                    log_debug("cgroup v2 cpu usage: %.1f%%", pct);
+                    return pct;
+                }
+            }
+        }
+    }
+
+    // ── cgroup v1: /sys/fs/cgroup/cpuacct/cpuacct.usage (nanoseconds)
+    unsigned long long ns1 = 0;
+    if (read_ull_from_file("/sys/fs/cgroup/cpuacct/cpuacct.usage", &ns1) && ns1 > 0) {
+        usleep(100000);
+        unsigned long long ns2 = 0;
+        if (read_ull_from_file("/sys/fs/cgroup/cpuacct/cpuacct.usage", &ns2) && ns2 > ns1) {
+            double delta_ns = (double)(ns2 - ns1);
+            double pct = (delta_ns / 100000000.0) * 100.0; // 100ms = 1e8 ns
+            log_debug("cgroup v1 cpu usage: %.1f%%", pct);
+            return pct;
+        }
+    }
+
+    // ── Bare-metal fallback: /proc/stat
+    double cpu_usage = 0.0;
+    fp = fopen("/proc/stat", "r");
+    if (fp) {
+        unsigned long user, nice, system, idle, iowait, irq, softirq;
+        if (fscanf(fp, "cpu %lu %lu %lu %lu %lu %lu %lu",
+                  &user, &nice, &system, &idle, &iowait, &irq, &softirq) == 7) {
+            unsigned long total = user + nice + system + idle + iowait + irq + softirq;
+            unsigned long active = user + nice + system + irq + softirq;
+            cpu_usage = (double)active / (double)total * 100.0;
+        }
+        fclose(fp);
+    }
+    return cpu_usage;
+}
+
 /**
  * @brief Direct handler for GET /api/system/info
  */
@@ -129,23 +356,13 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         if (cpu) {
             cJSON_AddStringToObject(cpu, "model", system_info.machine);
 
-            // Get CPU cores
-            int cores = sysconf(_SC_NPROCESSORS_ONLN);
+            // Get CPU cores (cgroup-aware: prefers container limit)
+            int millicores = 0;
+            int cores = get_effective_cpu_cores(&millicores);
             cJSON_AddNumberToObject(cpu, "cores", cores);
 
-            // Calculate CPU usage (simplified)
-            double cpu_usage = 0.0;
-            FILE *fp = fopen("/proc/stat", "r");
-            if (fp) {
-                unsigned long user, nice, system, idle, iowait, irq, softirq;
-                if (fscanf(fp, "cpu %lu %lu %lu %lu %lu %lu %lu",
-                          &user, &nice, &system, &idle, &iowait, &irq, &softirq) == 7) {
-                    unsigned long total = user + nice + system + idle + iowait + irq + softirq;
-                    unsigned long active = user + nice + system + irq + softirq;
-                    cpu_usage = (double)active / (double)total * 100.0;
-                }
-                fclose(fp);
-            }
+            // Calculate CPU usage (cgroup-aware: prefers container-scoped stats)
+            double cpu_usage = get_effective_cpu_usage();
             cJSON_AddNumberToObject(cpu, "usage", cpu_usage);
 
             // Add CPU object to info
@@ -153,18 +370,10 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         }
     }
 
-    // Get system-wide memory information first
-    struct sysinfo sys_info;
-    unsigned long long system_total = 0;
-    unsigned long long system_free = 0;
-    unsigned long long system_used = 0;
-
-    if (sysinfo(&sys_info) == 0) {
-        // Calculate memory values in bytes
-        system_total = sys_info.totalram * sys_info.mem_unit;
-        system_free = sys_info.freeram * sys_info.mem_unit;
-        system_used = system_total - system_free;
-    }
+    // Get system-wide memory information first (cgroup-aware)
+    unsigned long long system_total = get_effective_memory_total();
+    unsigned long long system_used  = get_effective_memory_used();
+    unsigned long long system_free  = (system_total > system_used) ? (system_total - system_used) : 0;
 
     // Get memory information for the LightNVR process
     cJSON *memory = cJSON_CreateObject();
