@@ -1,3 +1,6 @@
+@reference "tailwindcss";
+@config "../tailwind.config.js";
+
 /* Live Video Styles - Hybrid approach with Tailwind and custom CSS */
 
 /*
