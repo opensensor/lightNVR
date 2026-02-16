@@ -47,13 +47,57 @@ int mqtt_publish_detection(const char *stream_name, const detection_result_t *re
 
 /**
  * Publish a raw message to a custom topic
- * 
+ *
  * @param topic Full topic path (topic_prefix is NOT automatically prepended)
  * @param payload Message payload (null-terminated string)
  * @param retain Whether to set the retain flag
  * @return 0 on success, -1 on failure
  */
 int mqtt_publish_raw(const char *topic, const char *payload, bool retain);
+
+/**
+ * Publish binary data to a topic (e.g., JPEG snapshots)
+ *
+ * @param topic Full topic path
+ * @param data Binary data buffer
+ * @param len Length of data in bytes
+ * @param retain Whether to set the retain flag
+ * @return 0 on success, -1 on failure
+ */
+int mqtt_publish_binary(const char *topic, const void *data, size_t len, bool retain);
+
+/**
+ * Publish Home Assistant MQTT discovery messages for all configured streams.
+ * Publishes camera, binary_sensor (motion), and sensor (object counts) entities.
+ * Called on connect and when stream configuration changes.
+ *
+ * @return 0 on success, -1 on failure
+ */
+int mqtt_publish_ha_discovery(void);
+
+/**
+ * Update the motion state for a camera stream.
+ * Publishes ON to the motion topic when detection occurs.
+ * After a timeout with no new detections, publishes OFF.
+ *
+ * @param stream_name Name of the stream
+ * @param result Detection results (NULL to force OFF)
+ */
+void mqtt_set_motion_state(const char *stream_name, const detection_result_t *result);
+
+/**
+ * Start Home Assistant services (snapshot timer, motion timeout checker).
+ * Should be called after MQTT is connected and HA discovery is published.
+ *
+ * @return 0 on success, -1 on failure
+ */
+int mqtt_start_ha_services(void);
+
+/**
+ * Stop Home Assistant services.
+ * Should be called before MQTT cleanup.
+ */
+void mqtt_stop_ha_services(void);
 
 /**
  * Disconnect from the MQTT broker gracefully
@@ -65,6 +109,16 @@ void mqtt_disconnect(void);
  * Should be called when shutting down the application
  */
 void mqtt_cleanup(void);
+
+/**
+ * Reinitialize MQTT client with current configuration.
+ * Performs cleanup → init → connect → HA discovery/services.
+ * Used for hot-reload when settings change from the web UI.
+ *
+ * @param config Pointer to the (updated) application configuration
+ * @return 0 on success, -1 on failure
+ */
+int mqtt_reinit(const config_t *config);
 
 #else /* ENABLE_MQTT not defined */
 
@@ -78,8 +132,18 @@ static inline int mqtt_publish_detection(const char *stream_name, const detectio
 static inline int mqtt_publish_raw(const char *topic, const char *payload, bool retain) {
     (void)topic; (void)payload; (void)retain; return 0;
 }
+static inline int mqtt_publish_binary(const char *topic, const void *data, size_t len, bool retain) {
+    (void)topic; (void)data; (void)len; (void)retain; return 0;
+}
+static inline int mqtt_publish_ha_discovery(void) { return 0; }
+static inline void mqtt_set_motion_state(const char *stream_name, const detection_result_t *result) {
+    (void)stream_name; (void)result;
+}
+static inline int mqtt_start_ha_services(void) { return 0; }
+static inline void mqtt_stop_ha_services(void) {}
 static inline void mqtt_disconnect(void) {}
 static inline void mqtt_cleanup(void) {}
+static inline int mqtt_reinit(const config_t *config) { (void)config; return 0; }
 
 #endif /* ENABLE_MQTT */
 

@@ -572,6 +572,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         // Publish to MQTT if enabled
         if (result->count > 0) {
             mqtt_publish_detection(stream_name, result, timestamp);
+            mqtt_set_motion_state(stream_name, result);
         }
     } else {
         log_warn("No stream name provided, skipping database storage");
@@ -902,6 +903,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         // Publish to MQTT if enabled
         if (result->count > 0) {
             mqtt_publish_detection(stream_name, result, timestamp);
+            mqtt_set_motion_state(stream_name, result);
         }
     }
 

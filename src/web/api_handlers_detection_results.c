@@ -71,6 +71,7 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
         if (mqtt_ret != 0) {
             log_debug("MQTT publish skipped or failed for stream '%s'", stream_name);
         }
+        mqtt_set_motion_state(stream_name, result);
     }
 
     // Log the stored detections
