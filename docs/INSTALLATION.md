@@ -91,7 +91,7 @@ git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
 
 # Start the container
-docker-compose up -d
+docker compose up -d
 ```
 
 The default `docker-compose.yml` creates two volumes:
@@ -105,7 +105,7 @@ To customize the configuration:
 nano config/lightnvr.ini
 
 # Restart the container to apply changes
-docker-compose restart
+docker compose restart
 ```
 
 #### Option 2: Using Docker Run
@@ -441,9 +441,9 @@ cd lightNVR
 git pull
 
 # Rebuild and restart
-docker-compose down
-docker-compose build
-docker-compose up -d
+docker compose down
+docker compose build
+docker compose up -d
 ```
 
 #### Using Docker Run
