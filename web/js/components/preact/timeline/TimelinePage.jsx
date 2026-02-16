@@ -438,7 +438,7 @@ export function TimelinePage() {
 
           {/* Instructions for cursor */}
           <div className="absolute bottom-1 right-2 text-xs text-muted-foreground bg-card text-card-foreground bg-opacity-75 dark:bg-opacity-75 px-2 py-1 rounded">
-            Drag the playhead to navigate
+            Click a segment to play · Drag playhead to navigate
           </div>
         </div>
       </>

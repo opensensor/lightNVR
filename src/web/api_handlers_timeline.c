@@ -27,7 +27,9 @@
 #include "database/db_recordings.h"
 
 // Maximum number of segments to return in a single request
-#define MAX_TIMELINE_SEGMENTS 1000
+// Must be large enough for a full 24-hour day of short segments
+// (e.g., 10-second segments = 8640 per day)
+#define MAX_TIMELINE_SEGMENTS 8640
 
 // Maximum number of segments in a manifest
 #define MAX_MANIFEST_SEGMENTS 100

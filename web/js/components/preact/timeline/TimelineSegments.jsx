@@ -68,8 +68,8 @@ export function TimelineSegments({ segments: propSegments }) {
     if (!container) return;
 
     const handleMouseDown = (e) => {
-      // Only handle clicks on the container itself, not on segments
-      if (e.target === container || e.target.classList.contains('timeline-clickable-area')) {
+      // Handle clicks on the container, clickable area, or directly on segments
+      if (e.target === container || e.target.classList.contains('timeline-clickable-area') || e.target.classList.contains('timeline-segment')) {
         isDragging.current = true;
         handleTimelineClick(e);
 
