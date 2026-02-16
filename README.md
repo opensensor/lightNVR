@@ -11,7 +11,7 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 
 ![Live Streams Interface](docs/images/live-streams.png)
 
-> **✨ New Features:** Detection zones with visual polygon editor, customizable themes, enhanced light-object-detect integration, and ultra-low latency WebRTC streaming!
+> **✨ New Features:** Detection zones with visual polygon editor, customizable themes, enhanced light-object-detect integration, and ultra-low-latency WebRTC streaming!
 
 ### Key Features
 
@@ -52,7 +52,7 @@ LightNVR is built as a small, C-based core service with a modern Preact/Tailwind
 
 | ![Overall Architecture](docs/images/arch-overall.svg) |
 |:------------------------------------------------------:|
-| High-level architecture: web UI, API, core, go2rtc and detection service |
+| High-level architecture: web UI, API, core, go2rtc, and detection service |
 
 At a high level:
 
