@@ -78,8 +78,9 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div
-              className="h-2.5 rounded-full" style={{backgroundColor: 'hsl(var(--primary))'}}
+              className="h-2.5 rounded-full"
               style={{
+                backgroundColor: 'hsl(var(--primary))',
                 width: `${systemInfo.systemMemory?.total ?
                   (systemInfo.systemMemory.used / systemInfo.systemMemory.total * 100).toFixed(1) : 0}%`
               }}
@@ -96,8 +97,9 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div
-              className="h-2.5 rounded-full" style={{backgroundColor: 'hsl(var(--primary))'}}
+              className="h-2.5 rounded-full"
               style={{
+                backgroundColor: 'hsl(var(--primary))',
                 width: `${systemInfo.disk?.total ?
                   (systemInfo.disk.used / systemInfo.disk.total * 100).toFixed(1) : 0}%`
               }}
@@ -114,8 +116,9 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div
-              className="h-2.5 rounded-full" style={{backgroundColor: 'hsl(var(--primary))'}}
+              className="h-2.5 rounded-full"
               style={{
+                backgroundColor: 'hsl(var(--primary))',
                 width: `${systemInfo.systemDisk?.total ?
                   (systemInfo.systemDisk.used / systemInfo.systemDisk.total * 100).toFixed(1) : 0}%`
               }}

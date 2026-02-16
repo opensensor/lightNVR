@@ -19,6 +19,7 @@
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
+#include "video/zone_filter.h"
 #include "database/database_manager.h"
 
 // Maximum age of detections to return (in seconds)
@@ -45,21 +46,28 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
                  stream_name, result);
         return;
     }
-    
+
     log_debug("Storing detection results for stream '%s': %d detections", stream_name, result->count);
-    
+
+    // Make a mutable copy for filtering
+    detection_result_t filtered_result;
+    memcpy(&filtered_result, result, sizeof(detection_result_t));
+
+    // Apply per-stream object include/exclude filter
+    filter_detections_by_stream_objects(stream_name, &filtered_result);
+
     // Store in database (no recording_id linkage for direct API calls)
     time_t timestamp = time(NULL);
-    int ret = store_detections_in_db(stream_name, result, timestamp, 0);
+    int ret = store_detections_in_db(stream_name, &filtered_result, timestamp, 0);
 
     if (ret != 0) {
         log_error("Failed to store detections in database for stream '%s'", stream_name);
         return;
     }
 
-    // Publish to MQTT if enabled
-    if (result->count > 0) {
-        int mqtt_ret = mqtt_publish_detection(stream_name, result, timestamp);
+    // Publish to MQTT if enabled (use filtered result)
+    if (filtered_result.count > 0) {
+        int mqtt_ret = mqtt_publish_detection(stream_name, &filtered_result, timestamp);
         if (mqtt_ret != 0) {
             log_debug("MQTT publish skipped or failed for stream '%s'", stream_name);
         }
@@ -67,17 +75,17 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
     }
 
     // Log the stored detections
-    for (int i = 0; i < result->count; i++) {
+    for (int i = 0; i < filtered_result.count; i++) {
         log_debug("  Detection %d: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
-                i, result->detections[i].label,
-                result->detections[i].confidence * 100.0f,
-                result->detections[i].x,
-                result->detections[i].y,
-                result->detections[i].width,
-                result->detections[i].height);
+                i, filtered_result.detections[i].label,
+                filtered_result.detections[i].confidence * 100.0f,
+                filtered_result.detections[i].x,
+                filtered_result.detections[i].y,
+                filtered_result.detections[i].width,
+                filtered_result.detections[i].height);
     }
 
-    log_debug("Successfully stored %d detections in database for stream '%s'", result->count, stream_name);
+    log_debug("Successfully stored %d detections in database for stream '%s'", filtered_result.count, stream_name);
 }
 
 /**

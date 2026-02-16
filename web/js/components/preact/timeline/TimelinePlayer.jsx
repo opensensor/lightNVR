@@ -26,7 +26,7 @@ export function TimelinePlayer() {
 
   // Subscribe to timeline state changes
   useEffect(() => {
-    const unsubscribe = timelineState.subscribe(state => {
+    const listener = state => {
       // Update local state
       setCurrentSegmentIndex(state.currentSegmentIndex);
       setIsPlaying(state.isPlaying);
@@ -35,7 +35,13 @@ export function TimelinePlayer() {
 
       // Handle video playback
       handleVideoPlayback(state);
-    });
+    };
+
+    const unsubscribe = timelineState.subscribe(listener);
+
+    // Initialize with current state immediately so we don't miss
+    // segments that were already loaded before this component mounted
+    listener(timelineState);
 
     return () => unsubscribe();
   }, []);

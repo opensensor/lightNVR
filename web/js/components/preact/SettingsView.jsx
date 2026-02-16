@@ -26,6 +26,7 @@ export function SettingsView() {
     maxStorage: '0',
     retention: '30',
     autoDelete: true,
+    generateThumbnails: true,
     dbPath: '/var/lib/lightnvr/lightnvr.db',
     webPort: '8080',
     authEnabled: true,
@@ -163,6 +164,7 @@ export function SettingsView() {
         maxStorage: settingsData.max_storage_size?.toString() || '',
         retention: settingsData.retention_days?.toString() || '',
         autoDelete: settingsData.auto_delete_oldest || false,
+        generateThumbnails: settingsData.generate_thumbnails !== false,
         dbPath: settingsData.db_path || '',
         webPort: settingsData.web_port?.toString() || '',
         authEnabled: settingsData.web_auth_enabled || false,
@@ -240,6 +242,7 @@ export function SettingsView() {
       max_storage_size: parseInt(settings.maxStorage, 10),
       retention_days: parseInt(settings.retention, 10),
       auto_delete_oldest: settings.autoDelete,
+      generate_thumbnails: settings.generateThumbnails,
       db_path: settings.dbPath,
       web_port: parseInt(settings.webPort, 10),
       web_auth_enabled: settings.authEnabled,
@@ -521,6 +524,22 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-generate-thumbnails" class="font-medium">Enable Grid View (Thumbnails)</label>
+            <div class="col-span-2">
+              <input
+                type="checkbox"
+                id="setting-generate-thumbnails"
+                name="generateThumbnails"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{accentColor: 'hsl(var(--primary))'}}
+                checked={settings.generateThumbnails}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Allow grid view with thumbnail previews on recordings page</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

@@ -6,10 +6,10 @@
 
 import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay.jsx';
+import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
-import { showSnapshotPreview } from './UI.jsx';
+import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import adapter from 'webrtc-adapter';
@@ -69,6 +69,9 @@ export function WebRTCVideoCell({
 
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
+
+  // Detection overlay visibility state
+  const [showDetections, setShowDetections] = useState(true);
 
   // Refs
   const videoRef = useRef(null);
@@ -868,7 +871,7 @@ export function WebRTCVideoCell({
       />
 
       {/* Detection overlay component */}
-      {stream.detection_based_recording && stream.detection_model && (
+      {stream.detection_based_recording && stream.detection_model && showDetections && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}
@@ -950,35 +953,59 @@ export function WebRTCVideoCell({
             streamId={streamId}
             streamName={stream.name}
             onSnapshot={() => {
-              if (videoRef.current) {
-                let canvasRef = null;
+              if (!videoRef.current) return;
 
-                // Try to get canvas ref from detection overlay if available
-                if (detectionOverlayRef.current && typeof detectionOverlayRef.current.getCanvasRef === 'function') {
-                  canvasRef = detectionOverlayRef.current.getCanvasRef();
-                }
+              const videoElement = videoRef.current;
 
-                // Take snapshot with or without detections
-                if (canvasRef) {
-                  const snapshot = takeSnapshotWithDetections(videoRef, canvasRef, stream.name);
-                  if (snapshot) {
-                    showSnapshotPreview(snapshot.canvas.toDataURL('image/jpeg', 0.95), `Snapshot: ${stream.name}`);
-                  }
-                } else {
-                  // Take a simple snapshot without detections
-                  const videoElement = videoRef.current;
-                  const canvas = document.createElement('canvas');
-                  canvas.width = videoElement.videoWidth;
-                  canvas.height = videoElement.videoHeight;
+              // Ensure valid video dimensions for native resolution capture
+              if (!videoElement.videoWidth || !videoElement.videoHeight) {
+                showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+                return;
+              }
 
-                  if (canvas.width > 0 && canvas.height > 0) {
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+              // Create canvas at native video resolution
+              const canvas = document.createElement('canvas');
+              canvas.width = videoElement.videoWidth;
+              canvas.height = videoElement.videoHeight;
+              const ctx = canvas.getContext('2d');
 
-                    showSnapshotPreview(canvas.toDataURL('image/jpeg', 0.95), `Snapshot: ${stream.name}`);
-                  }
+              // Draw video frame at native resolution
+              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+              // Draw detections at native resolution if available (fixes boundary shift)
+              if (detectionOverlayRef.current && typeof detectionOverlayRef.current.getDetections === 'function') {
+                const detections = detectionOverlayRef.current.getDetections();
+                if (detections && detections.length > 0) {
+                  drawDetectionsOnCanvas(ctx, canvas.width, canvas.height, detections);
                 }
               }
+
+              // Auto-download for rapid-fire capability (also works in fullscreen)
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+
+              canvas.toBlob((blob) => {
+                if (!blob) {
+                  showStatusMessage('Failed to create snapshot', 'error');
+                  return;
+                }
+
+                const blobUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+
+                setTimeout(() => {
+                  if (document.body.contains(link)) {
+                    document.body.removeChild(link);
+                  }
+                  URL.revokeObjectURL(blobUrl);
+                }, 1000);
+
+                showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+              }, 'image/jpeg', 0.95);
             }}
           />
         </div>
@@ -1095,6 +1122,37 @@ export function WebRTCVideoCell({
               )}
             </button>
           </div>
+        )}
+        {/* Detection overlay toggle button */}
+        {stream.detection_based_recording && stream.detection_model && isPlaying && (
+          <button
+            className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
+            title={showDetections ? 'Hide Detections' : 'Show Detections'}
+            onClick={() => setShowDetections(!showDetections)}
+            style={{
+              backgroundColor: 'transparent',
+              border: 'none',
+              padding: '5px',
+              borderRadius: '4px',
+              color: 'white',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s ease'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+          >
+            {showDetections ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                <line x1="1" y1="1" x2="23" y2="23"/>
+              </svg>
+            )}
+          </button>
         )}
         {/* PTZ control toggle button */}
         {stream.ptz_enabled && isPlaying && (

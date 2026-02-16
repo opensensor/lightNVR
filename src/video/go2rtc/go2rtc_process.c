@@ -271,12 +271,12 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     // Use wildcard for CORS origin to support both localhost and 127.0.0.1
     // This allows the web interface to access go2rtc API from any local address
     fprintf(config_file, "  origin: '*'\n");
-    // Add authentication if enabled in the main application
-    // go2rtc expects username/password directly under api:, not nested under auth:
-    if (global_config->web_auth_enabled) {
-        fprintf(config_file, "  username: %s\n", global_config->web_username);
-        fprintf(config_file, "  password: %s\n", global_config->web_password);
-    }
+    // NOTE: Do NOT pass username/password to go2rtc. go2rtc's middleware chain
+    // runs Auth before CORS, so when auth is enabled, unauthenticated browser
+    // requests (including CORS preflights) get rejected with 401 before the
+    // CORS headers are added — causing the browser to block the response.
+    // lightNVR's own auth on port 8080 protects the main application; go2rtc
+    // on its local port does not need a separate auth layer.
 
     // RTSP configuration - use configured port or default to 8554
     int rtsp_port = global_config->go2rtc_rtsp_port > 0 ? global_config->go2rtc_rtsp_port : 8554;

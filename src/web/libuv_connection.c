@@ -565,6 +565,7 @@ static int on_message_complete(llhttp_t *parser) {
         hw->handler = handler;
         hw->action = action;
         conn->handler_on_worker = true;
+        conn->deferred_action = action;  // Store action for async responses
 
         int r = uv_queue_work(server->loop, &hw->work,
                               handler_work_cb, handler_after_work_cb);

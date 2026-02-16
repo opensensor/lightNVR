@@ -12,9 +12,56 @@ This guide helps you diagnose and fix common web interface issues with LightNVR.
 ### Most Common Cause
 The web assets (HTML, CSS, JavaScript files) were not installed to the web root directory during installation.
 
-### Quick Diagnosis
+## Docker vs Native Installation
 
-Check the following:
+**Important:** The troubleshooting steps differ depending on how you installed LightNVR.
+
+### For Docker Users
+
+If you're running LightNVR in Docker, the web assets are **already built into the Docker image**. If you're experiencing web interface issues:
+
+1. **Check if you mounted `/var/lib/lightnvr` directly** (this overwrites the built-in web assets):
+   ```bash
+   docker inspect lightnvr | grep -A 5 Mounts
+   ```
+
+   If you see `/var/lib/lightnvr` mounted, this is the problem. You should only mount `/var/lib/lightnvr/data`.
+
+2. **Fix the volume mount:**
+   ```bash
+   # Stop the container
+   docker compose down
+
+   # Edit docker-compose.yml to change:
+   #   - ./data:/var/lib/lightnvr        # WRONG - overwrites web assets
+   # to:
+   #   - ./data:/var/lib/lightnvr/data   # CORRECT - preserves web assets
+
+   # Restart the container
+   docker compose up -d
+   ```
+
+3. **If the issue persists, recreate the container:**
+   ```bash
+   docker compose down
+   docker compose pull  # Get the latest image
+   docker compose up -d
+   ```
+
+**Note:** The `install_web_assets.sh` script is **not available** in Docker containers and is not needed. The Docker image already contains all web assets.
+
+### For Native Installation Users
+
+If you installed LightNVR directly on your system (not using Docker), use the following steps:
+
+#### Quick Diagnosis
+
+Run the diagnostic script:
+```bash
+sudo bash scripts/diagnose_web_issue.sh
+```
+
+This will check:
 - Service status
 - Configuration file
 - Web root directory existence
@@ -22,7 +69,7 @@ Check the following:
 - Assets directory
 - Recent logs
 
-### Quick Fix
+#### Quick Fix
 
 If the diagnostic confirms missing web assets, run:
 ```bash
@@ -40,9 +87,9 @@ Then restart the service:
 sudo systemctl restart lightnvr
 ```
 
-### Manual Fix
+#### Manual Fix (Native Installation)
 
-If you prefer to fix it manually:
+If you prefer to fix it manually instead of using the script:
 
 #### Option 1: Install from prebuilt assets (if available)
 ```bash
@@ -163,7 +210,15 @@ sudo systemctl restart lightnvr
 
 **Cause**: Incomplete or corrupted web assets
 
-**Fix**:
+**Fix for Docker:**
+```bash
+# Recreate the container with fresh assets
+docker compose down
+docker compose pull
+docker compose up -d
+```
+
+**Fix for Native Installation:**
 1. Clear browser cache
 2. Reinstall web assets:
 ```bash
@@ -241,40 +296,72 @@ sudo systemctl restart lightnvr
 If none of these solutions work:
 
 1. Collect diagnostic information:
-```bash
-# Collect logs
-sudo journalctl -u lightnvr -n 100 --no-pager > service_logs.txt
-sudo tail -n 100 /var/log/lightnvr/lightnvr.log > app_logs.txt 2>/dev/null || true
 
-# Check browser console
-# Open browser, press F12, go to Console tab, copy any errors
-```
+   **For Docker:**
+   ```bash
+   # Collect container logs
+   docker compose logs lightnvr > container_logs.txt
+
+   # Check volume mounts
+   docker inspect lightnvr | grep -A 10 Mounts > volume_info.txt
+
+   # Check browser console
+   # Open browser, press F12, go to Console tab, copy any errors
+   ```
+
+   **For Native Installation:**
+   ```bash
+   # Collect logs
+   sudo journalctl -u lightnvr -n 100 --no-pager > service_logs.txt
+   sudo tail -n 100 /var/log/lightnvr/lightnvr.log > app_logs.txt 2>/dev/null || true
+
+   # Check browser console
+   # Open browser, press F12, go to Console tab, copy any errors
+   ```
 
 2. Create an issue on GitHub with:
-   - Service logs
-   - Application logs
+   - Installation method (Docker or native)
+   - Container/service logs
+   - Application logs (if applicable)
    - Browser console errors (if any)
    - Your OS and version
-   - Installation method used
+   - Docker version (if using Docker)
 
 ## Prevention
 
 To avoid web interface issues in future installations:
 
+### For Docker Users
+
+1. **Always use the correct volume mounts**:
+   - Mount `/var/lib/lightnvr/data` for persistent data
+   - Do NOT mount `/var/lib/lightnvr` directly (overwrites web assets)
+
+2. **Use the official Docker image**:
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+3. **Keep your docker-compose.yml updated**:
+   Follow the example in the repository to ensure correct configuration.
+
+### For Native Installation Users
+
 1. **Always build web assets before installation**:
-```bash
-cd web
-npm install
-npm run build
-cd ..
-```
+   ```bash
+   cd web
+   npm install
+   npm run build
+   cd ..
+   ```
 
 2. **Use the installation script**:
-```bash
-sudo bash scripts/install.sh
-```
-The install script will automatically detect and install prebuilt assets.
+   ```bash
+   sudo bash scripts/install.sh
+   ```
+   The install script will automatically detect and install prebuilt assets.
 
 3. **Keep backups**:
-The install_web_assets.sh script automatically creates backups before overwriting files.
+   The install_web_assets.sh script automatically creates backups before overwriting files.
 

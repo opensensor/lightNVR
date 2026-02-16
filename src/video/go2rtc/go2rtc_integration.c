@@ -32,7 +32,7 @@
 #include <curl/curl.h>
 
 // Tracking for streams using go2rtc
-#define MAX_TRACKED_STREAMS 16
+#define MAX_TRACKED_STREAMS MAX_STREAMS
 
 typedef struct {
     char stream_name[MAX_STREAM_NAME];

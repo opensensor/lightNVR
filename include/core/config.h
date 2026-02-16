@@ -11,7 +11,7 @@
 // Maximum length for URLs
 #define MAX_URL_LENGTH 512
 // Maximum number of streams supported
-#define MAX_STREAMS 16
+#define MAX_STREAMS 32
 
 // Stream protocol enum
 typedef enum {
@@ -38,6 +38,8 @@ typedef struct {
     int pre_detection_buffer; // Seconds to keep before detection
     int post_detection_buffer; // Seconds to keep after detection
     char detection_api_url[MAX_URL_LENGTH]; // Per-stream detection API URL override (empty = use global)
+    char detection_object_filter[16];  // Filter mode: "include", "exclude", or "none"
+    char detection_object_filter_list[256];  // Comma-separated list of object classes (e.g., "person,car,bicycle")
     char buffer_strategy[32];  // Pre-detection buffer strategy: "auto", "go2rtc", "hls_segment", "memory_packet", "mmap_hybrid"
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
     stream_protocol_t protocol; // Stream protocol (TCP, UDP, or ONVIF)
@@ -57,6 +59,12 @@ typedef struct {
     int retention_days;              // Regular recordings retention (0 = use global)
     int detection_retention_days;    // Detection recordings retention (0 = use global)
     int max_storage_mb;              // Storage quota in MB (0 = unlimited)
+
+    // Tiered retention multipliers (applied to base retention_days)
+    double tier_critical_multiplier;   // Critical tier multiplier (default: 3.0)
+    double tier_important_multiplier;  // Important tier multiplier (default: 2.0)
+    double tier_ephemeral_multiplier;  // Ephemeral tier multiplier (default: 0.25)
+    int storage_priority;              // Storage priority 1-10 (default: 5, higher = kept longer)
 
     // PTZ (Pan-Tilt-Zoom) configuration
     bool ptz_enabled;                // Whether PTZ is enabled for this stream
@@ -84,6 +92,9 @@ typedef struct {
     uint64_t max_storage_size; // in bytes
     int retention_days;
     bool auto_delete_oldest;
+
+    // Thumbnail/grid view settings
+    bool generate_thumbnails;        // Enable grid view with thumbnail previews on recordings page
 
     // New recording format options
     bool record_mp4_directly;        // Record directly to MP4 alongside HLS
@@ -133,7 +144,6 @@ typedef struct {
     char onvif_discovery_network[64]; // Network to scan for ONVIF devices (e.g., "192.168.1.0/24")
     
     // Stream settings
-    int max_streams;
     stream_config_t streams[MAX_STREAMS];
     
     // Memory optimization

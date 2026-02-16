@@ -24,10 +24,10 @@ git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
 
 # Start the container
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Access the web UI
 # http://localhost:8080
@@ -334,7 +334,7 @@ webrtc:
 
 Restart the container to apply changes:
 ```bash
-docker-compose restart
+docker compose restart
 ```
 
 ### Port Forwarding for WebRTC
@@ -357,7 +357,7 @@ If running behind NAT/firewall, forward these ports:
 **Solution:**
 ```bash
 # Stop container
-docker-compose down
+docker compose down
 
 # Remove incorrect volume mount
 # Edit docker-compose.yml to use /var/lib/lightnvr/data instead
@@ -366,7 +366,7 @@ docker-compose down
 rm -rf ./data/web
 
 # Start container
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Database Lost on Restart

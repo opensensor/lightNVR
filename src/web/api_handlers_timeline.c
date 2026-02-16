@@ -27,7 +27,9 @@
 #include "database/db_recordings.h"
 
 // Maximum number of segments to return in a single request
-#define MAX_TIMELINE_SEGMENTS 1000
+// Must be large enough for a full 24-hour day of short segments
+// (e.g., 10-second segments = 8640 per day)
+#define MAX_TIMELINE_SEGMENTS 8640
 
 // Maximum number of segments in a manifest
 #define MAX_MANIFEST_SEGMENTS 100
@@ -54,7 +56,7 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
     
     // Get recordings from database
     int count = get_recording_metadata_paginated(start_time, end_time, stream_name, 0,
-                                              "start_time", "asc", recordings, max_segments, 0);
+                                              NULL, "start_time", "asc", recordings, max_segments, 0);
     
     if (count < 0) {
         log_error("Failed to get recordings from database");

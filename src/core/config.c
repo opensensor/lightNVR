@@ -235,6 +235,9 @@ void load_default_config(config_t *config) {
     config->retention_days = 30;
     config->auto_delete_oldest = true;
 
+    // Thumbnail/grid view settings
+    config->generate_thumbnails = true;
+
     // MP4 recording settings
     config->record_mp4_directly = false;
     snprintf(config->mp4_storage_path, sizeof(config->mp4_storage_path), "/var/lib/lightnvr/recordings/mp4");
@@ -277,9 +280,6 @@ void load_default_config(config_t *config) {
     config->web_cache_max_age_images = 2592000;   // 30 days for images
     config->web_cache_max_age_fonts = 2592000;    // 30 days for fonts
     config->web_cache_max_age_default = 86400;    // 1 day default
-    
-    // Stream settings
-    config->max_streams = 16;
     
     // Memory optimization
     config->buffer_size = 1024; // 1MB buffer size
@@ -328,8 +328,16 @@ void load_default_config(config_t *config) {
         config->streams[i].pre_detection_buffer = 5; // 5 seconds before detection
         config->streams[i].post_detection_buffer = 10; // 10 seconds after detection
         config->streams[i].detection_api_url[0] = '\0'; // Empty = use global config
+        strncpy(config->streams[i].detection_object_filter, "none", sizeof(config->streams[i].detection_object_filter) - 1);
+        config->streams[i].detection_object_filter_list[0] = '\0';
         config->streams[i].streaming_enabled = true; // Enable streaming by default
         config->streams[i].record_audio = false; // Disable audio recording by default
+
+        // Tiered retention defaults
+        config->streams[i].tier_critical_multiplier = 3.0;
+        config->streams[i].tier_important_multiplier = 2.0;
+        config->streams[i].tier_ephemeral_multiplier = 0.25;
+        config->streams[i].storage_priority = 5;
     }
 
     // MQTT settings for detection event streaming
@@ -486,12 +494,6 @@ int validate_config(const config_t *config) {
         return -1;
     }
     
-    // Check max streams
-    if (config->max_streams <= 0 || config->max_streams > MAX_STREAMS) {
-        log_error("Invalid max streams: %d (must be 1-%d)", config->max_streams, MAX_STREAMS);
-        return -1;
-    }
-    
     // Check buffer size
     if (config->buffer_size <= 0) {
         log_error("Invalid buffer size: %d", config->buffer_size);
@@ -564,6 +566,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->mp4_segment_duration = atoi(value);
         } else if (strcmp(name, "mp4_retention_days") == 0) {
             config->mp4_retention_days = atoi(value);
+        } else if (strcmp(name, "generate_thumbnails") == 0) {
+            config->generate_thumbnails = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
     // Models settings
@@ -628,11 +632,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->demo_mode = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
     }
-    // Stream settings
+    // Stream settings (max_streams is ignored, uses compile-time MAX_STREAMS)
     else if (strcmp(section, "streams") == 0) {
-        if (strcmp(name, "max_streams") == 0) {
-            config->max_streams = atoi(value);
-        }
+        // max_streams setting is no longer configurable, using MAX_STREAMS constant
     }
     // Stream-specific settings (format: stream_name.setting)
     else if (strstr(section, "stream.") == section) {
@@ -641,7 +643,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         
         // Find the stream with this name
         int stream_idx = -1;
-        for (int i = 0; i < config->max_streams; i++) {
+        for (int i = 0; i < MAX_STREAMS; i++) {
             if (strcmp(config->streams[i].name, stream_name) == 0) {
                 stream_idx = i;
                 break;
@@ -671,6 +673,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "detection_api_url") == 0) {
             strncpy(config->streams[stream_idx].detection_api_url, value, MAX_URL_LENGTH - 1);
             config->streams[stream_idx].detection_api_url[MAX_URL_LENGTH - 1] = '\0';
+        } else if (strcmp(name, "detection_object_filter") == 0) {
+            strncpy(config->streams[stream_idx].detection_object_filter, value, sizeof(config->streams[stream_idx].detection_object_filter) - 1);
+            config->streams[stream_idx].detection_object_filter[sizeof(config->streams[stream_idx].detection_object_filter) - 1] = '\0';
+        } else if (strcmp(name, "detection_object_filter_list") == 0) {
+            strncpy(config->streams[stream_idx].detection_object_filter_list, value, sizeof(config->streams[stream_idx].detection_object_filter_list) - 1);
+            config->streams[stream_idx].detection_object_filter_list[sizeof(config->streams[stream_idx].detection_object_filter_list) - 1] = '\0';
         } else if (strcmp(name, "record_audio") == 0) {
             config->streams[stream_idx].record_audio =
                 (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
@@ -870,7 +878,7 @@ int load_stream_configs(config_t *config) {
     }
     
     // Copy stream configurations to config
-    for (int i = 0; i < loaded && i < config->max_streams; i++) {
+    for (int i = 0; i < loaded && i < MAX_STREAMS; i++) {
         memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
     }
     
@@ -906,7 +914,7 @@ int save_stream_configs(const config_t *config) {
     
     // Skip stream configuration updates if there are no changes
     // This is a performance optimization and reduces the chance of locking issues
-    if (count == 0 && config->max_streams == 0) {
+    if (count == 0) {
         log_info("No stream configurations to save");
         commit_transaction();
         return 0;
@@ -924,7 +932,7 @@ int save_stream_configs(const config_t *config) {
         
         // Check if configurations are identical to avoid unnecessary updates
         int identical = 1;
-        if (loaded == config->max_streams) {
+        if (loaded == count) {
             for (int i = 0; i < loaded && identical; i++) {
                 if (strlen(config->streams[i].name) == 0 || 
                     strcmp(config->streams[i].name, db_streams[i].name) != 0) {
@@ -950,7 +958,7 @@ int save_stream_configs(const config_t *config) {
     }
     
     // Add stream configurations to database
-    for (int i = 0; i < config->max_streams; i++) {
+    for (int i = 0; i < MAX_STREAMS; i++) {
         if (strlen(config->streams[i].name) > 0) {
             uint64_t result = add_stream_config(&config->streams[i]);
             if (result == 0) {
@@ -1266,6 +1274,10 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "mp4_segment_duration = %d\n", config->mp4_segment_duration);
     fprintf(file, "mp4_retention_days = %d\n\n", config->mp4_retention_days);
 
+    // Write thumbnail/grid view settings
+    fprintf(file, "; Thumbnail preview settings\n");
+    fprintf(file, "generate_thumbnails = %s\n\n", config->generate_thumbnails ? "true" : "false");
+
     // Write models settings
     fprintf(file, "[models]\n");
     fprintf(file, "path = %s\n\n", config->models_path);
@@ -1297,7 +1309,7 @@ int save_config(const config_t *config, const char *path) {
 
     // Write stream settings
     fprintf(file, "[streams]\n");
-    fprintf(file, "max_streams = %d\n\n", config->max_streams);
+    fprintf(file, "# max_streams is no longer configurable (compile-time limit: %d)\n\n", MAX_STREAMS);
     
     // Write memory optimization settings
     fprintf(file, "[memory]\n");
@@ -1373,8 +1385,8 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
 
     // Write stream-specific settings
-    for (int i = 0; i < config->max_streams; i++) {
-        if (strlen(config->streams[i].name) > 0 && 
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (strlen(config->streams[i].name) > 0 &&
             (config->streams[i].detection_based_recording || config->streams[i].record_audio)) {
             fprintf(file, "\n[stream.%s]\n", config->streams[i].name);
             
@@ -1394,6 +1406,14 @@ int save_config(const config_t *config, const char *path) {
 
                 if (config->streams[i].detection_api_url[0] != '\0') {
                     fprintf(file, "detection_api_url = %s\n", config->streams[i].detection_api_url);
+                }
+
+                if (config->streams[i].detection_object_filter[0] != '\0' &&
+                    strcmp(config->streams[i].detection_object_filter, "none") != 0) {
+                    fprintf(file, "detection_object_filter = %s\n", config->streams[i].detection_object_filter);
+                    if (config->streams[i].detection_object_filter_list[0] != '\0') {
+                        fprintf(file, "detection_object_filter_list = %s\n", config->streams[i].detection_object_filter_list);
+                    }
                 }
             }
             
@@ -1453,7 +1473,7 @@ void print_config(const config_t *config) {
     printf("    Demo Mode: %s\n", config->demo_mode ? "true" : "false");
 
     printf("  Stream Settings:\n");
-    printf("    Max Streams: %d\n", config->max_streams);
+    printf("    Max Streams: %d (compile-time)\n", MAX_STREAMS);
     
     printf("  Memory Optimization:\n");
     printf("    Buffer Size: %d KB\n", config->buffer_size);
@@ -1466,7 +1486,7 @@ void print_config(const config_t *config) {
     printf("    HW Accel Device: %s\n", config->hw_accel_device);
     
     printf("  Stream Configurations:\n");
-    for (int i = 0; i < config->max_streams; i++) {
+    for (int i = 0; i < MAX_STREAMS; i++) {
         if (strlen(config->streams[i].name) > 0) {
             printf("    Stream %d:\n", i);
             printf("      Name: %s\n", config->streams[i].name);

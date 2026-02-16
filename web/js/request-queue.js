@@ -1,0 +1,243 @@
+/**
+ * Request Queue - Limits concurrent requests to prevent server overload
+ *
+ * This prevents the frontend from overwhelming the backend with too many
+ * simultaneous requests (e.g., thumbnail generation via ffmpeg).
+ *
+ * Instead of returning 503s and implementing retry logic, we control
+ * concurrency at the source - the frontend only sends as many requests
+ * as the backend can handle at once. Requests are queued with priority
+ * levels so visible content loads first.
+ *
+ * Usage:
+ *   import { queueThumbnailLoad, Priority } from './request-queue.js';
+ *
+ *   // High priority for visible content
+ *   queueThumbnailLoad(url, Priority.HIGH)
+ *     .then(() => console.log('Loaded!'))
+ *     .catch(err => console.error('Failed:', err));
+ *
+ *   // Low priority for preloading
+ *   queueThumbnailLoad(url, Priority.LOW).catch(() => {});
+ */
+
+/**
+ * Priority levels for queued requests
+ */
+export const Priority = {
+  HIGH: 0,    // Visible content, user-initiated
+  NORMAL: 1,  // Default priority
+  LOW: 2      // Preloading, background tasks
+};
+
+/**
+ * Request Queue class
+ */
+export class RequestQueue {
+  constructor(maxConcurrent = 4, startDelay = 0, debug = false) {
+    this.maxConcurrent = maxConcurrent;
+    this.activeCount = 0;
+    this.queue = [];
+    this.startDelay = startDelay; // Delay in ms between starting requests
+    this.lastStartTime = 0;
+    this.debug = debug;
+    this.requestCounter = 0;
+  }
+
+  _log(...args) {
+    if (this.debug) {
+      console.log('[RequestQueue]', ...args);
+    }
+  }
+
+  /**
+   * Add a request to the queue
+   * @param {Function} requestFn - Function that returns a Promise
+   * @param {number} priority - Priority level (lower = higher priority)
+   * @returns {Promise} - Promise that resolves when request completes
+   */
+  enqueue(requestFn, priority = Priority.NORMAL) {
+    return new Promise((resolve, reject) => {
+      const item = {
+        requestFn,
+        priority,
+        resolve,
+        reject,
+        timestamp: Date.now()
+      };
+
+      // Insert into queue based on priority (and timestamp for same priority)
+      const insertIndex = this.queue.findIndex(
+        q => q.priority > priority || (q.priority === priority && q.timestamp > item.timestamp)
+      );
+      
+      if (insertIndex === -1) {
+        this.queue.push(item);
+      } else {
+        this.queue.splice(insertIndex, 0, item);
+      }
+
+      this._processQueue();
+    });
+  }
+
+  /**
+   * Process the queue - start requests up to maxConcurrent
+   */
+  _processQueue() {
+    // Don't process if already at max concurrency or queue is empty
+    if (this.activeCount >= this.maxConcurrent || this.queue.length === 0) {
+      return;
+    }
+
+    // Apply start delay to prevent overwhelming the server
+    if (this.startDelay > 0) {
+      const now = Date.now();
+      const timeSinceLastStart = now - this.lastStartTime;
+      if (timeSinceLastStart < this.startDelay) {
+        // Schedule processing after the delay
+        const delay = this.startDelay - timeSinceLastStart;
+        this._log(`Delaying next request by ${delay}ms (active: ${this.activeCount}, queued: ${this.queue.length})`);
+        setTimeout(() => this._processQueue(), delay);
+        return;
+      }
+      this.lastStartTime = Date.now();
+    }
+
+    // Start the next request
+    const item = this.queue.shift();
+    const requestId = ++this.requestCounter;
+    this.activeCount++;
+
+    this._log(`Starting request #${requestId} (active: ${this.activeCount}, queued: ${this.queue.length})`);
+
+    // Execute the request
+    item.requestFn()
+      .then(result => {
+        this._log(`Request #${requestId} completed successfully`);
+        item.resolve(result);
+      })
+      .catch(error => {
+        this._log(`Request #${requestId} failed:`, error.message);
+        item.reject(error);
+      })
+      .finally(() => {
+        this.activeCount--;
+        this._log(`Request #${requestId} finished (active: ${this.activeCount}, queued: ${this.queue.length})`);
+        this._processQueue();
+      });
+
+    // Try to start another request if we have capacity
+    this._processQueue();
+  }
+
+  /**
+   * Get queue statistics
+   */
+  getStats() {
+    return {
+      active: this.activeCount,
+      queued: this.queue.length,
+      total: this.activeCount + this.queue.length
+    };
+  }
+
+  /**
+   * Clear all pending requests
+   */
+  clear() {
+    this.queue.forEach(item => {
+      item.reject(new Error('Queue cleared'));
+    });
+    this.queue = [];
+  }
+}
+
+/**
+ * Global thumbnail request queue
+ * Limits concurrent thumbnail generation to prevent overwhelming the server
+ *
+ * Configuration:
+ * - maxConcurrent: 2 (backend event loop is single-threaded and serializes
+ *   ffmpeg system() calls; sending more than 2 just queues them on the
+ *   server side where they block the event loop and delay other API
+ *   traffic including health checks)
+ * - startDelay: 100ms (stagger requests to avoid burst overload)
+ * - debug: false (disable logging in production)
+ */
+export const thumbnailQueue = new RequestQueue(2, 100, false);
+
+/**
+ * Check if an image is already loaded in memory (true cache hit)
+ * @param {string} url - Image URL to check
+ * @returns {boolean} - True if image is already in memory
+ */
+function isImageInMemory(url) {
+  const img = new Image();
+  img.src = url;
+  // If complete is true and naturalWidth > 0, the image is already decoded in memory
+  return img.complete && img.naturalWidth > 0;
+}
+
+/**
+ * Load a single thumbnail image via new Image().
+ * Returns a promise that resolves with the URL on success.
+ */
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(url);
+    img.onerror = () => reject(new Error(`Failed to load thumbnail: ${url}`));
+    img.src = url;
+  });
+}
+
+/**
+ * Queue a thumbnail load with smart caching and automatic retry.
+ *
+ * On transient failures (server busy / 503, ffmpeg timeout, nginx gateway
+ * timeout, etc.) the request is re-queued up to {@link maxRetries} times
+ * with exponential back-off so that thumbnails generated by earlier
+ * requests have time to land on disk and can be served from cache on the
+ * next attempt.
+ *
+ * @param {string}  url        - Thumbnail URL
+ * @param {number}  priority   - Priority level
+ * @param {number}  maxRetries - Maximum number of retry attempts (default 3)
+ * @returns {Promise<string>}  - Promise that resolves with the URL when loaded
+ */
+export function queueThumbnailLoad(url, priority = Priority.NORMAL, maxRetries = 3) {
+  // Check if image is already in memory (true cache hit)
+  // This is synchronous and doesn't trigger a network request
+  if (isImageInMemory(url)) {
+    return Promise.resolve(url);
+  }
+
+  let attempt = 0;
+
+  const tryLoad = () => {
+    return thumbnailQueue.enqueue(() => loadImage(url), priority);
+  };
+
+  const retryWithBackoff = (err) => {
+    attempt++;
+    if (attempt > maxRetries) {
+      return Promise.reject(err);
+    }
+    // Exponential back-off: 2s, 4s, 8s  – gives the backend time to
+    // finish in-flight ffmpeg jobs so the thumbnail may be cached by
+    // the next attempt.
+    const delay = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+    return new Promise((resolve) => setTimeout(resolve, delay)).then(tryLoad).catch(retryWithBackoff);
+  };
+
+  return tryLoad().catch(retryWithBackoff);
+}
+
+/**
+ * Clear the thumbnail queue (call when navigating away from recordings page)
+ */
+export function clearThumbnailQueue() {
+  thumbnailQueue.clear();
+}
+

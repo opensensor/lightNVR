@@ -1,96 +1,24 @@
 /**
  * LightNVR Timeline Ruler Component
- * Displays the time ruler with hour markers
+ * Pure display — reads timelineStartHour / timelineEndHour from global state
+ * and renders tick marks + labels.  All range calculations live in
+ * TimelinePage (auto-fit on load) and TimelineControls (zoom in/out).
  */
 
 import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 
-/**
- * TimelineRuler component
- * @returns {JSX.Element} TimelineRuler component
- */
 export function TimelineRuler() {
-  // Local state
-  const [startHour, setStartHour] = useState(0);
-  const [endHour, setEndHour] = useState(24);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [startHour, setStartHour] = useState(timelineState.timelineStartHour ?? 0);
+  const [endHour, setEndHour]     = useState(timelineState.timelineEndHour ?? 24);
 
-  // Subscribe to timeline state changes
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
-      console.log('TimelineRuler: State update received', {
-        zoomLevel: state.zoomLevel,
-        segmentsCount: state.timelineSegments ? state.timelineSegments.length : 0,
-        currentTime: state.currentTime
-      });
-
-      // Calculate time range based on zoom level
-      const hoursPerView = 24 / state.zoomLevel;
-
-      // Calculate the center hour based on current time or segments
-      let centerHour = 12; // Default to noon
-
-      if (state.currentTime !== null) {
-        // If we have a current time, use it as the center
-        const currentDate = new Date(state.currentTime * 1000);
-        centerHour = currentDate.getHours() + (currentDate.getMinutes() / 60) + (currentDate.getSeconds() / 3600);
-      } else if (state.timelineSegments && state.timelineSegments.length > 0) {
-        // If we have segments but no current time, use the middle of the segments
-        let earliestHour = 24;
-        let latestHour = 0;
-
-        state.timelineSegments.forEach(segment => {
-          const startTime = new Date(segment.start_timestamp * 1000);
-          const endTime = new Date(segment.end_timestamp * 1000);
-
-          const startHour = startTime.getHours() + (startTime.getMinutes() / 60) + (startTime.getSeconds() / 3600);
-          const endHour = endTime.getHours() + (endTime.getMinutes() / 60) + (endTime.getSeconds() / 3600);
-
-          earliestHour = Math.min(earliestHour, startHour);
-          latestHour = Math.max(latestHour, endHour);
-        });
-
-        centerHour = (earliestHour + latestHour) / 2;
-        console.log('TimelineRuler: Calculated center from segments', { earliestHour, latestHour, centerHour });
-      }
-
-      // Calculate start and end hours based on center and zoom level
-      let newStartHour = Math.max(0, centerHour - (hoursPerView / 2));
-      let newEndHour = Math.min(24, newStartHour + hoursPerView);
-
-      // Adjust start hour if end hour is at the limit
-      if (newEndHour === 24 && hoursPerView < 24) {
-        newStartHour = Math.max(0, 24 - hoursPerView);
-        newEndHour = 24;
-      } else if (newStartHour === 0 && hoursPerView < 24) {
-        newEndHour = Math.min(24, hoursPerView);
-      }
-
-      // Update local state
-      setStartHour(newStartHour);
-      setEndHour(newEndHour);
-      setZoomLevel(state.zoomLevel);
-
-      console.log('TimelineRuler: Calculated time range', {
-        newStartHour,
-        newEndHour,
-        hoursPerView,
-        centerHour
-      });
-
-      // Only update global state if the values have actually changed
-      // to prevent infinite recursion
-      if (timelineState.timelineStartHour !== newStartHour ||
-          timelineState.timelineEndHour !== newEndHour) {
-        console.log('TimelineRuler: Updating global state with new time range');
-        timelineState.setState({
-          timelineStartHour: newStartHour,
-          timelineEndHour: newEndHour
-        });
-      }
+      const s = state.timelineStartHour ?? 0;
+      const e = state.timelineEndHour ?? 24;
+      setStartHour(s);
+      setEndHour(e);
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -124,8 +52,8 @@ export function TimelineRuler() {
           </div>
         );
 
-        // Add half-hour marker if not the last hour and we're zoomed in enough
-        if (hour < 24 && zoomLevel >= 2) {
+        // Add half-hour marker when the visible range is ≤ 12 h (zoomed or auto-fit)
+        if (hour < 24 && (endHour - startHour) <= 12) {
           const halfHourPosition = ((hour + 0.5 - startHour) / (endHour - startHour)) * 100;
           markers.push(
             <div
@@ -135,8 +63,8 @@ export function TimelineRuler() {
             ></div>
           );
 
-          // Add 15-minute markers if zoomed in even more
-          if (zoomLevel >= 4) {
+          // Add 15-minute markers when visible range is ≤ 6 h
+          if ((endHour - startHour) <= 6) {
             const quarterHourPosition1 = ((hour + 0.25 - startHour) / (endHour - startHour)) * 100;
             const quarterHourPosition3 = ((hour + 0.75 - startHour) / (endHour - startHour)) * 100;
 
@@ -167,7 +95,7 @@ export function TimelineRuler() {
     <div className="timeline-ruler relative w-full h-8 bg-muted border-b border-border">
       {generateHourMarkers()}
       <div className="absolute bottom-0 left-0 text-xs text-muted-foreground px-1">
-        Zoom: {zoomLevel}x ({Math.round(24 / zoomLevel)} hours)
+        {`${(endHour - startHour).toFixed(1)}h view`}
       </div>
     </div>
   );

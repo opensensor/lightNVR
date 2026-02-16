@@ -80,7 +80,6 @@ config_t* get_streaming_config(void) {
         for (int i = 0; i < count && i < MAX_STREAMS; i++) {
             memcpy(&db_config.streams[i], &db_streams[i], sizeof(stream_config_t));
         }
-        db_config.max_streams = count;
     }
     
     // Log the storage path for debugging

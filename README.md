@@ -271,10 +271,22 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 
 ### Blank Web Page
 
-If you see a blank page after installation, the web assets may not have been installed:
+If you see a blank page after installation:
 
+**For Docker users:**
 ```bash
-# Install/reinstall web assets
+# Check if you mounted /var/lib/lightnvr directly (this overwrites web assets)
+docker inspect lightnvr | grep -A 5 Mounts
+
+# Fix: Update docker-compose.yml to mount /var/lib/lightnvr/data instead
+# Then recreate the container:
+docker compose down
+docker compose up -d
+```
+
+**For native installation:**
+```bash
+# Install/reinstall web assets (requires source directory)
 sudo ./scripts/install_web_assets.sh
 
 # Restart service
@@ -297,10 +309,10 @@ git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
 
 # Start the container
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 The container will automatically:
@@ -380,7 +392,7 @@ nano ./config/lightnvr.ini
 nano ./config/go2rtc/go2rtc.yaml
 
 # Restart to apply changes
-docker-compose restart
+docker compose restart
 ```
 
 The configuration files will persist across container restarts and updates.

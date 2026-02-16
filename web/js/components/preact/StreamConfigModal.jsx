@@ -613,6 +613,49 @@ export function StreamConfigModal({
                           <p className="mt-1 text-xs text-muted-foreground">Seconds after detection</p>
                         </div>
                       </div>
+
+                      {/* Detection Object Filter */}
+                      <div>
+                        <label htmlFor="stream-detection-object-filter" className="block text-sm font-medium mb-2">
+                          Object Filter Mode
+                        </label>
+                        <select
+                          id="stream-detection-object-filter"
+                          name="detectionObjectFilter"
+                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                          value={currentStream.detectionObjectFilter || 'none'}
+                          onChange={onInputChange}
+                        >
+                          <option value="none">None (detect all objects)</option>
+                          <option value="include">Include only (whitelist)</option>
+                          <option value="exclude">Exclude (blacklist)</option>
+                        </select>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Filter which object types trigger detections for this stream
+                        </p>
+                      </div>
+
+                      {currentStream.detectionObjectFilter && currentStream.detectionObjectFilter !== 'none' && (
+                        <div>
+                          <label htmlFor="stream-detection-object-filter-list" className="block text-sm font-medium mb-2">
+                            {currentStream.detectionObjectFilter === 'include' ? 'Include Objects' : 'Exclude Objects'}
+                          </label>
+                          <input
+                            type="text"
+                            id="stream-detection-object-filter-list"
+                            name="detectionObjectFilterList"
+                            className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                            placeholder="person, car, bicycle, dog"
+                            value={currentStream.detectionObjectFilterList || ''}
+                            onChange={onInputChange}
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {currentStream.detectionObjectFilter === 'include'
+                              ? 'Comma-separated list of object classes to detect (all others ignored)'
+                              : 'Comma-separated list of object classes to ignore (all others detected)'}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

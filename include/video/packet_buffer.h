@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
+#include "core/config.h"
 
 /**
  * Packet Buffer Module
@@ -84,7 +85,7 @@ typedef struct {
 
 // Buffer pool for managing multiple stream buffers
 typedef struct {
-    packet_buffer_t buffers[16];    // One buffer per stream (MAX_STREAMS)
+    packet_buffer_t buffers[MAX_STREAMS];    // One buffer per stream
     pthread_mutex_t pool_mutex;
     int active_buffers;
     size_t total_memory_limit;      // Total memory limit for all buffers

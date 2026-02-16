@@ -27,7 +27,7 @@
 #include "video/mp4_writer.h"
 
 // Maximum number of unified detection threads
-#define MAX_UNIFIED_DETECTION_THREADS 16
+#define MAX_UNIFIED_DETECTION_THREADS MAX_STREAMS
 
 /**
  * Thread state machine states

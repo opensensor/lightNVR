@@ -1,5 +1,6 @@
 #include "video/ffmpeg_utils.h"
 #include "core/logger.h"
+#include "core/config.h"
 #include "video/ffmpeg_leak_detector.h"
 #include "video/stream_protocol.h"
 
@@ -911,7 +912,7 @@ void jpeg_encoder_cache_destroy(jpeg_encoder_cache_t *encoder) {
 }
 
 // Global cache for JPEG encoders (one per unique resolution/channel/quality combo)
-#define MAX_JPEG_ENCODER_CACHE 16
+#define MAX_JPEG_ENCODER_CACHE MAX_STREAMS
 
 typedef struct {
     jpeg_encoder_cache_t *encoder;

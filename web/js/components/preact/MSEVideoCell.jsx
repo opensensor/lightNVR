@@ -6,10 +6,10 @@
 
 import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { DetectionOverlay, takeSnapshotWithDetections } from './DetectionOverlay.jsx';
+import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
-import { showSnapshotPreview } from './UI.jsx';
+import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
 import { getGo2rtcWebSocketUrl } from '../../utils/settings-utils.js';
 
@@ -38,6 +38,9 @@ export function MSEVideoCell({
 
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
+
+  // Detection overlay visibility state
+  const [showDetections, setShowDetections] = useState(true);
 
   // Refs
   const videoRef = useRef(null);
@@ -328,31 +331,57 @@ export function MSEVideoCell({
   const handleSnapshot = () => {
     if (!videoRef.current) return;
 
-    // If detection overlay is enabled, use it for snapshot
-    if (detectionOverlayRef.current && stream.detection_based_recording && stream.detection_model) {
-      takeSnapshotWithDetections(
-        videoRef.current,
-        detectionOverlayRef.current,
-        stream.name
-      ).then(blob => {
-        if (blob) {
-          showSnapshotPreview(blob, stream.name);
-        }
-      });
-    } else {
-      // Regular snapshot without detections
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0);
+    const videoElement = videoRef.current;
 
-      canvas.toBlob(blob => {
-        if (blob) {
-          showSnapshotPreview(blob, stream.name);
-        }
-      }, 'image/jpeg', 0.95);
+    // Ensure valid video dimensions for native resolution capture
+    if (!videoElement.videoWidth || !videoElement.videoHeight) {
+      showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+      return;
     }
+
+    // Create canvas at native video resolution
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    const ctx = canvas.getContext('2d');
+
+    // Draw video frame at native resolution
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+    // Draw detections at native resolution if available (fixes boundary shift)
+    if (detectionOverlayRef.current && typeof detectionOverlayRef.current.getDetections === 'function') {
+      const detections = detectionOverlayRef.current.getDetections();
+      if (detections && detections.length > 0) {
+        drawDetectionsOnCanvas(ctx, canvas.width, canvas.height, detections);
+      }
+    }
+
+    // Auto-download for rapid-fire capability (also works in fullscreen)
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        showStatusMessage('Failed to create snapshot', 'error');
+        return;
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+
+      showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+    }, 'image/jpeg', 0.95);
   };
 
   // Initialize MSE when component mounts or retry is triggered
@@ -427,7 +456,7 @@ export function MSEVideoCell({
       />
 
       {/* Detection overlay component */}
-      {stream.detection_based_recording && stream.detection_model && (
+      {stream.detection_based_recording && stream.detection_model && showDetections && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}
@@ -544,7 +573,40 @@ export function MSEVideoCell({
           }}
         >
           {/* Snapshot button */}
-          <SnapshotButton onClick={handleSnapshot} />
+          <SnapshotButton streamId={streamId} streamName={stream.name} onSnapshot={handleSnapshot} />
+
+          {/* Detection overlay toggle button */}
+          {stream.detection_based_recording && stream.detection_model && isPlaying && (
+            <button
+              className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
+              title={showDetections ? 'Hide Detections' : 'Show Detections'}
+              onClick={() => setShowDetections(!showDetections)}
+              style={{
+                padding: '8px 12px',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.3)',
+                transition: 'background-color 0.2s ease'
+              }}
+            >
+              {showDetections ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              )}
+            </button>
+          )}
 
           {/* PTZ toggle button */}
           {stream.ptz_type && stream.ptz_type !== 'none' && (

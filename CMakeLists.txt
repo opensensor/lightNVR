@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(LightNVR VERSION 0.21.13 LANGUAGES C CXX)
+project(LightNVR VERSION 0.23.1 LANGUAGES C CXX)
 
 # Set C/C++ standards
 set(CMAKE_C_STANDARD 11)
@@ -287,6 +287,7 @@ set(LIBUV_SERVER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_response.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_file_serve.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/web/libuv_api_handlers.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/web/thumbnail_thread.c"
 )
 
 

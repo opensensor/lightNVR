@@ -21,6 +21,7 @@
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
+#include "web/api_handlers_recordings_thumbnail.h"
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_onvif.h"
@@ -125,6 +126,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/motion/cleanup", "POST", handle_post_motion_cleanup);
     http_server_register_handler(server, "/api/motion/storage", "GET", handle_get_motion_storage);
 
+    // Storage Management API
+    http_server_register_handler(server, "/api/storage/health", "GET", handle_get_storage_health);
+    http_server_register_handler(server, "/api/storage/cleanup", "POST", handle_post_storage_cleanup);
+
     // Auth API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/auth/login", "POST", handle_auth_login);
     http_server_register_handler(server, "/api/auth/logout", "POST", handle_auth_logout);
@@ -158,6 +163,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
 
     // Recordings API (backend-agnostic handlers)
     // Note: More specific routes must come before wildcard routes
+    http_server_register_handler(server, "/api/recordings/thumbnail/#/#", "GET", handle_recordings_thumbnail);
     http_server_register_handler(server, "/api/recordings/play/#", "GET", handle_recordings_playback);
     http_server_register_handler(server, "/api/recordings/download/#", "GET", handle_recordings_download);
     http_server_register_handler(server, "/api/recordings/files/check", "GET", handle_check_recording_file);

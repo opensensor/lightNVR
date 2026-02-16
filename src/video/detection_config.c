@@ -10,11 +10,12 @@
 
 #include "../../include/core/logger.h"
 #include "../../include/video/detection_config.h"
+#include "../../include/core/config.h"
 
 // Default configuration for standard systems
 detection_config_t default_config = {
     // Memory constraints
-    .concurrent_detections = 16,    // 16 concurrent detections
+    .concurrent_detections = MAX_STREAMS,    // MAX_STREAMS concurrent detections
 
     // Downscaling factors
     .downscale_factor_default = 1,   // No downscaling by default

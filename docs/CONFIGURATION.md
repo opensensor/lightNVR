@@ -65,7 +65,7 @@ auth_timeout_hours = 24  ; Session timeout in hours (default: 24)
 web_thread_pool_size = 8
 
 [streams]
-max_streams = 16
+max_streams = 32
 
 ; Note: Stream configurations are stored in the database
 ; and managed via the API/web UI
@@ -239,10 +239,10 @@ web_thread_pool_size = 8
 
 ```ini
 [streams]
-max_streams = 16
+max_streams = 32
 ```
 
-- `max_streams`: Maximum number of streams to support
+- `max_streams`: Maximum number of streams to support (default: 32, max: 32)
 
 **Note:** Stream configurations are stored in the SQLite database and managed via the API or web UI. They are no longer configured in the INI file.
 

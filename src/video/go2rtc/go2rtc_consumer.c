@@ -28,7 +28,7 @@ typedef struct {
 } consumer_state_t;
 
 // Arrays to track active consumers
-#define MAX_CONSUMERS 16
+#define MAX_CONSUMERS MAX_STREAMS
 static consumer_state_t g_recording_consumers[MAX_CONSUMERS] = {0};
 static consumer_state_t g_hls_consumers[MAX_CONSUMERS] = {0};
 static bool g_initialized = false;

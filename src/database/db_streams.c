@@ -70,8 +70,10 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                                 "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                                 "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                                "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
+                                "detection_api_url = ?, detection_object_filter = ?, detection_object_filter_list = ?, "
+                                "protocol = ?, is_onvif = ?, record_audio = ?, "
                                 "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, "
+                                "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                                 "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
                                 "onvif_username = ?, onvif_password = ?, onvif_profile = ? "
                                 "WHERE id = ?;";
@@ -104,37 +106,47 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         sqlite3_bind_int(stmt, 16, stream->post_detection_buffer);
         sqlite3_bind_text(stmt, 17, stream->detection_api_url, -1, SQLITE_STATIC);
 
+        // Bind detection object filter parameters
+        sqlite3_bind_text(stmt, 18, stream->detection_object_filter, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 19, stream->detection_object_filter_list, -1, SQLITE_STATIC);
+
         // Bind protocol parameter
-        sqlite3_bind_int(stmt, 18, (int)stream->protocol);
+        sqlite3_bind_int(stmt, 20, (int)stream->protocol);
 
         // Bind is_onvif parameter
-        sqlite3_bind_int(stmt, 19, stream->is_onvif ? 1 : 0);
+        sqlite3_bind_int(stmt, 21, stream->is_onvif ? 1 : 0);
 
         // Bind record_audio parameter
-        sqlite3_bind_int(stmt, 20, stream->record_audio ? 1 : 0);
+        sqlite3_bind_int(stmt, 22, stream->record_audio ? 1 : 0);
 
         // Bind backchannel_enabled parameter
-        sqlite3_bind_int(stmt, 21, stream->backchannel_enabled ? 1 : 0);
+        sqlite3_bind_int(stmt, 23, stream->backchannel_enabled ? 1 : 0);
 
         // Bind retention policy parameters
-        sqlite3_bind_int(stmt, 22, stream->retention_days);
-        sqlite3_bind_int(stmt, 23, stream->detection_retention_days);
-        sqlite3_bind_int(stmt, 24, stream->max_storage_mb);
+        sqlite3_bind_int(stmt, 24, stream->retention_days);
+        sqlite3_bind_int(stmt, 25, stream->detection_retention_days);
+        sqlite3_bind_int(stmt, 26, stream->max_storage_mb);
+
+        // Bind tier multiplier parameters
+        sqlite3_bind_double(stmt, 27, stream->tier_critical_multiplier);
+        sqlite3_bind_double(stmt, 28, stream->tier_important_multiplier);
+        sqlite3_bind_double(stmt, 29, stream->tier_ephemeral_multiplier);
+        sqlite3_bind_int(stmt, 30, stream->storage_priority);
 
         // Bind PTZ parameters
-        sqlite3_bind_int(stmt, 25, stream->ptz_enabled ? 1 : 0);
-        sqlite3_bind_int(stmt, 26, stream->ptz_max_x);
-        sqlite3_bind_int(stmt, 27, stream->ptz_max_y);
-        sqlite3_bind_int(stmt, 28, stream->ptz_max_z);
-        sqlite3_bind_int(stmt, 29, stream->ptz_has_home ? 1 : 0);
+        sqlite3_bind_int(stmt, 31, stream->ptz_enabled ? 1 : 0);
+        sqlite3_bind_int(stmt, 32, stream->ptz_max_x);
+        sqlite3_bind_int(stmt, 33, stream->ptz_max_y);
+        sqlite3_bind_int(stmt, 34, stream->ptz_max_z);
+        sqlite3_bind_int(stmt, 35, stream->ptz_has_home ? 1 : 0);
 
         // Bind ONVIF credentials
-        sqlite3_bind_text(stmt, 30, stream->onvif_username, -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 31, stream->onvif_password, -1, SQLITE_STATIC);
-        sqlite3_bind_text(stmt, 32, stream->onvif_profile, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 36, stream->onvif_username, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 37, stream->onvif_password, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 38, stream->onvif_profile, -1, SQLITE_STATIC);
 
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 33, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 39, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -175,11 +187,14 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     // No disabled stream found, insert a new one
     const char *sql = "INSERT INTO streams (name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
           "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-          "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
+          "pre_detection_buffer, post_detection_buffer, detection_api_url, "
+          "detection_object_filter, detection_object_filter_list, "
+          "protocol, is_onvif, record_audio, backchannel_enabled, "
           "retention_days, detection_retention_days, max_storage_mb, "
+          "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
           "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
           "onvif_username, onvif_password, onvif_profile) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -210,34 +225,44 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
     sqlite3_bind_text(stmt, 18, stream->detection_api_url, -1, SQLITE_STATIC);
 
+    // Bind detection object filter parameters
+    sqlite3_bind_text(stmt, 19, stream->detection_object_filter, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 20, stream->detection_object_filter_list, -1, SQLITE_STATIC);
+
     // Bind protocol parameter
-    sqlite3_bind_int(stmt, 19, (int)stream->protocol);
+    sqlite3_bind_int(stmt, 21, (int)stream->protocol);
 
     // Bind is_onvif parameter
-    sqlite3_bind_int(stmt, 20, stream->is_onvif ? 1 : 0);
+    sqlite3_bind_int(stmt, 22, stream->is_onvif ? 1 : 0);
 
     // Bind record_audio parameter
-    sqlite3_bind_int(stmt, 21, stream->record_audio ? 1 : 0);
+    sqlite3_bind_int(stmt, 23, stream->record_audio ? 1 : 0);
 
     // Bind backchannel_enabled parameter
-    sqlite3_bind_int(stmt, 22, stream->backchannel_enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 24, stream->backchannel_enabled ? 1 : 0);
 
     // Bind retention policy parameters
-    sqlite3_bind_int(stmt, 23, stream->retention_days);
-    sqlite3_bind_int(stmt, 24, stream->detection_retention_days);
-    sqlite3_bind_int(stmt, 25, stream->max_storage_mb);
+    sqlite3_bind_int(stmt, 25, stream->retention_days);
+    sqlite3_bind_int(stmt, 26, stream->detection_retention_days);
+    sqlite3_bind_int(stmt, 27, stream->max_storage_mb);
+
+    // Bind tier multiplier parameters
+    sqlite3_bind_double(stmt, 28, stream->tier_critical_multiplier);
+    sqlite3_bind_double(stmt, 29, stream->tier_important_multiplier);
+    sqlite3_bind_double(stmt, 30, stream->tier_ephemeral_multiplier);
+    sqlite3_bind_int(stmt, 31, stream->storage_priority);
 
     // Bind PTZ parameters
-    sqlite3_bind_int(stmt, 26, stream->ptz_enabled ? 1 : 0);
-    sqlite3_bind_int(stmt, 27, stream->ptz_max_x);
-    sqlite3_bind_int(stmt, 28, stream->ptz_max_y);
-    sqlite3_bind_int(stmt, 29, stream->ptz_max_z);
-    sqlite3_bind_int(stmt, 30, stream->ptz_has_home ? 1 : 0);
+    sqlite3_bind_int(stmt, 32, stream->ptz_enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 33, stream->ptz_max_x);
+    sqlite3_bind_int(stmt, 34, stream->ptz_max_y);
+    sqlite3_bind_int(stmt, 35, stream->ptz_max_z);
+    sqlite3_bind_int(stmt, 36, stream->ptz_has_home ? 1 : 0);
 
     // Bind ONVIF credentials
-    sqlite3_bind_text(stmt, 31, stream->onvif_username, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 32, stream->onvif_password, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 33, stream->onvif_profile, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 37, stream->onvif_username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 38, stream->onvif_password, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 39, stream->onvif_profile, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -301,8 +326,10 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
                       "detection_based_recording = ?, detection_model = ?, detection_threshold = ?, "
                       "detection_interval = ?, pre_detection_buffer = ?, post_detection_buffer = ?, "
-                      "detection_api_url = ?, protocol = ?, is_onvif = ?, record_audio = ?, "
+                      "detection_api_url = ?, detection_object_filter = ?, detection_object_filter_list = ?, "
+                      "protocol = ?, is_onvif = ?, record_audio = ?, "
                       "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, "
+                      "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                       "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
                       "onvif_username = ?, onvif_password = ?, onvif_profile = ? "
                       "WHERE name = ?;";
@@ -336,37 +363,47 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_int(stmt, 17, stream->post_detection_buffer);
     sqlite3_bind_text(stmt, 18, stream->detection_api_url, -1, SQLITE_STATIC);
 
+    // Bind detection object filter parameters
+    sqlite3_bind_text(stmt, 19, stream->detection_object_filter, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 20, stream->detection_object_filter_list, -1, SQLITE_STATIC);
+
     // Bind protocol parameter
-    sqlite3_bind_int(stmt, 19, (int)stream->protocol);
+    sqlite3_bind_int(stmt, 21, (int)stream->protocol);
 
     // Bind is_onvif parameter
-    sqlite3_bind_int(stmt, 20, stream->is_onvif ? 1 : 0);
+    sqlite3_bind_int(stmt, 22, stream->is_onvif ? 1 : 0);
 
     // Bind record_audio parameter
-    sqlite3_bind_int(stmt, 21, stream->record_audio ? 1 : 0);
+    sqlite3_bind_int(stmt, 23, stream->record_audio ? 1 : 0);
 
     // Bind backchannel_enabled parameter
-    sqlite3_bind_int(stmt, 22, stream->backchannel_enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 24, stream->backchannel_enabled ? 1 : 0);
 
     // Bind retention policy parameters
-    sqlite3_bind_int(stmt, 23, stream->retention_days);
-    sqlite3_bind_int(stmt, 24, stream->detection_retention_days);
-    sqlite3_bind_int(stmt, 25, stream->max_storage_mb);
+    sqlite3_bind_int(stmt, 25, stream->retention_days);
+    sqlite3_bind_int(stmt, 26, stream->detection_retention_days);
+    sqlite3_bind_int(stmt, 27, stream->max_storage_mb);
+
+    // Bind tier multiplier parameters
+    sqlite3_bind_double(stmt, 28, stream->tier_critical_multiplier);
+    sqlite3_bind_double(stmt, 29, stream->tier_important_multiplier);
+    sqlite3_bind_double(stmt, 30, stream->tier_ephemeral_multiplier);
+    sqlite3_bind_int(stmt, 31, stream->storage_priority);
 
     // Bind PTZ parameters
-    sqlite3_bind_int(stmt, 26, stream->ptz_enabled ? 1 : 0);
-    sqlite3_bind_int(stmt, 27, stream->ptz_max_x);
-    sqlite3_bind_int(stmt, 28, stream->ptz_max_y);
-    sqlite3_bind_int(stmt, 29, stream->ptz_max_z);
-    sqlite3_bind_int(stmt, 30, stream->ptz_has_home ? 1 : 0);
+    sqlite3_bind_int(stmt, 32, stream->ptz_enabled ? 1 : 0);
+    sqlite3_bind_int(stmt, 33, stream->ptz_max_x);
+    sqlite3_bind_int(stmt, 34, stream->ptz_max_y);
+    sqlite3_bind_int(stmt, 35, stream->ptz_max_z);
+    sqlite3_bind_int(stmt, 36, stream->ptz_has_home ? 1 : 0);
 
     // Bind ONVIF credentials
-    sqlite3_bind_text(stmt, 31, stream->onvif_username, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 32, stream->onvif_password, -1, SQLITE_STATIC);
-    sqlite3_bind_text(stmt, 33, stream->onvif_profile, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 37, stream->onvif_username, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 38, stream->onvif_password, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 39, stream->onvif_profile, -1, SQLITE_STATIC);
 
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 34, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 40, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -587,8 +624,11 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
     const char *sql =
         "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
         "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-        "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
+        "pre_detection_buffer, post_detection_buffer, detection_api_url, "
+        "detection_object_filter, detection_object_filter_list, "
+        "protocol, is_onvif, record_audio, backchannel_enabled, "
         "retention_days, detection_retention_days, max_storage_mb, "
+        "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
         "onvif_username, onvif_password, onvif_profile "
         "FROM streams WHERE name = ?;";
@@ -599,8 +639,10 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_WIDTH, COL_HEIGHT, COL_FPS, COL_CODEC, COL_PRIORITY, COL_RECORD, COL_SEGMENT_DURATION,
         COL_DETECTION_BASED_RECORDING, COL_DETECTION_MODEL, COL_DETECTION_THRESHOLD, COL_DETECTION_INTERVAL,
         COL_PRE_DETECTION_BUFFER, COL_POST_DETECTION_BUFFER, COL_DETECTION_API_URL,
+        COL_DETECTION_OBJECT_FILTER, COL_DETECTION_OBJECT_FILTER_LIST,
         COL_PROTOCOL, COL_IS_ONVIF, COL_RECORD_AUDIO, COL_BACKCHANNEL_ENABLED,
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
+        COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
         COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE
     };
@@ -670,6 +712,21 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
             stream->detection_api_url[MAX_URL_LENGTH - 1] = '\0';
         }
 
+        // Detection object filter settings
+        const char *detection_object_filter = (const char *)sqlite3_column_text(stmt, COL_DETECTION_OBJECT_FILTER);
+        if (detection_object_filter) {
+            strncpy(stream->detection_object_filter, detection_object_filter, sizeof(stream->detection_object_filter) - 1);
+            stream->detection_object_filter[sizeof(stream->detection_object_filter) - 1] = '\0';
+        } else {
+            strncpy(stream->detection_object_filter, "none", sizeof(stream->detection_object_filter) - 1);
+        }
+
+        const char *detection_object_filter_list = (const char *)sqlite3_column_text(stmt, COL_DETECTION_OBJECT_FILTER_LIST);
+        if (detection_object_filter_list) {
+            strncpy(stream->detection_object_filter_list, detection_object_filter_list, sizeof(stream->detection_object_filter_list) - 1);
+            stream->detection_object_filter_list[sizeof(stream->detection_object_filter_list) - 1] = '\0';
+        }
+
         // Protocol and ONVIF
         stream->protocol = (sqlite3_column_type(stmt, COL_PROTOCOL) != SQLITE_NULL)
             ? (stream_protocol_t)sqlite3_column_int(stmt, COL_PROTOCOL) : STREAM_PROTOCOL_TCP;
@@ -684,6 +741,16 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
             ? sqlite3_column_int(stmt, COL_DETECTION_RETENTION_DAYS) : 0;
         stream->max_storage_mb = (sqlite3_column_type(stmt, COL_MAX_STORAGE_MB) != SQLITE_NULL)
             ? sqlite3_column_int(stmt, COL_MAX_STORAGE_MB) : 0;
+
+        // Tier multiplier settings
+        stream->tier_critical_multiplier = (sqlite3_column_type(stmt, COL_TIER_CRITICAL_MULTIPLIER) != SQLITE_NULL)
+            ? sqlite3_column_double(stmt, COL_TIER_CRITICAL_MULTIPLIER) : 3.0;
+        stream->tier_important_multiplier = (sqlite3_column_type(stmt, COL_TIER_IMPORTANT_MULTIPLIER) != SQLITE_NULL)
+            ? sqlite3_column_double(stmt, COL_TIER_IMPORTANT_MULTIPLIER) : 2.0;
+        stream->tier_ephemeral_multiplier = (sqlite3_column_type(stmt, COL_TIER_EPHEMERAL_MULTIPLIER) != SQLITE_NULL)
+            ? sqlite3_column_double(stmt, COL_TIER_EPHEMERAL_MULTIPLIER) : 0.25;
+        stream->storage_priority = (sqlite3_column_type(stmt, COL_STORAGE_PRIORITY) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_STORAGE_PRIORITY) : 5;
 
         // PTZ settings
         stream->ptz_enabled = sqlite3_column_int(stmt, COL_PTZ_ENABLED) != 0;
@@ -758,19 +825,24 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     const char *sql =
         "SELECT name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
         "detection_based_recording, detection_model, detection_threshold, detection_interval, "
-        "pre_detection_buffer, post_detection_buffer, detection_api_url, protocol, is_onvif, record_audio, backchannel_enabled, "
+        "pre_detection_buffer, post_detection_buffer, detection_api_url, "
+        "detection_object_filter, detection_object_filter_list, "
+        "protocol, is_onvif, record_audio, backchannel_enabled, "
         "retention_days, detection_retention_days, max_storage_mb, "
+        "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
         "FROM streams ORDER BY name;";
 
-    // Column index constants (same as get_stream_config_by_name)
+    // Column index constants (same as get_stream_config_by_name, minus ONVIF creds)
     enum {
         COL_NAME = 0, COL_URL, COL_ENABLED, COL_STREAMING_ENABLED,
         COL_WIDTH, COL_HEIGHT, COL_FPS, COL_CODEC, COL_PRIORITY, COL_RECORD, COL_SEGMENT_DURATION,
         COL_DETECTION_BASED_RECORDING, COL_DETECTION_MODEL, COL_DETECTION_THRESHOLD, COL_DETECTION_INTERVAL,
         COL_PRE_DETECTION_BUFFER, COL_POST_DETECTION_BUFFER, COL_DETECTION_API_URL,
+        COL_DETECTION_OBJECT_FILTER, COL_DETECTION_OBJECT_FILTER_LIST,
         COL_PROTOCOL, COL_IS_ONVIF, COL_RECORD_AUDIO, COL_BACKCHANNEL_ENABLED,
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
+        COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME
     };
 
@@ -838,6 +910,21 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             s->detection_api_url[MAX_URL_LENGTH - 1] = '\0';
         }
 
+        // Detection object filter settings
+        const char *detection_object_filter = (const char *)sqlite3_column_text(stmt, COL_DETECTION_OBJECT_FILTER);
+        if (detection_object_filter) {
+            strncpy(s->detection_object_filter, detection_object_filter, sizeof(s->detection_object_filter) - 1);
+            s->detection_object_filter[sizeof(s->detection_object_filter) - 1] = '\0';
+        } else {
+            strncpy(s->detection_object_filter, "none", sizeof(s->detection_object_filter) - 1);
+        }
+
+        const char *detection_object_filter_list = (const char *)sqlite3_column_text(stmt, COL_DETECTION_OBJECT_FILTER_LIST);
+        if (detection_object_filter_list) {
+            strncpy(s->detection_object_filter_list, detection_object_filter_list, sizeof(s->detection_object_filter_list) - 1);
+            s->detection_object_filter_list[sizeof(s->detection_object_filter_list) - 1] = '\0';
+        }
+
         // Protocol and ONVIF
         s->protocol = (sqlite3_column_type(stmt, COL_PROTOCOL) != SQLITE_NULL)
             ? (stream_protocol_t)sqlite3_column_int(stmt, COL_PROTOCOL) : STREAM_PROTOCOL_TCP;
@@ -852,6 +939,16 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             ? sqlite3_column_int(stmt, COL_DETECTION_RETENTION_DAYS) : 0;
         s->max_storage_mb = (sqlite3_column_type(stmt, COL_MAX_STORAGE_MB) != SQLITE_NULL)
             ? sqlite3_column_int(stmt, COL_MAX_STORAGE_MB) : 0;
+
+        // Tier multiplier settings
+        s->tier_critical_multiplier = (sqlite3_column_type(stmt, COL_TIER_CRITICAL_MULTIPLIER) != SQLITE_NULL)
+            ? sqlite3_column_double(stmt, COL_TIER_CRITICAL_MULTIPLIER) : 3.0;
+        s->tier_important_multiplier = (sqlite3_column_type(stmt, COL_TIER_IMPORTANT_MULTIPLIER) != SQLITE_NULL)
+            ? sqlite3_column_double(stmt, COL_TIER_IMPORTANT_MULTIPLIER) : 2.0;
+        s->tier_ephemeral_multiplier = (sqlite3_column_type(stmt, COL_TIER_EPHEMERAL_MULTIPLIER) != SQLITE_NULL)
+            ? sqlite3_column_double(stmt, COL_TIER_EPHEMERAL_MULTIPLIER) : 0.25;
+        s->storage_priority = (sqlite3_column_type(stmt, COL_STORAGE_PRIORITY) != SQLITE_NULL)
+            ? sqlite3_column_int(stmt, COL_STORAGE_PRIORITY) : 5;
 
         // PTZ settings
         s->ptz_enabled = sqlite3_column_int(stmt, COL_PTZ_ENABLED) != 0;

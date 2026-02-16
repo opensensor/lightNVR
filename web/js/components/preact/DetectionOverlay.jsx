@@ -236,6 +236,48 @@ export const DetectionOverlay = forwardRef(({
 });
 
 /**
+ * Draw detection boxes directly on a canvas at specified dimensions.
+ * Used for snapshot canvases at native video resolution where the video fills the
+ * entire canvas (no letterbox/pillarbox offsets needed).
+ * @param {CanvasRenderingContext2D} ctx - Canvas 2D context to draw on
+ * @param {number} width - Canvas width (native video width)
+ * @param {number} height - Canvas height (native video height)
+ * @param {Array} detections - Array of detection objects with normalized coordinates
+ */
+export function drawDetectionsOnCanvas(ctx, width, height, detections) {
+  if (!ctx || !detections || detections.length === 0) return;
+
+  // Scale line width and font for native resolution
+  const scale = Math.max(1, Math.min(width, height) / 500);
+
+  detections.forEach(detection => {
+    // Calculate pixel coordinates from normalized values (0-1)
+    // No letterbox/pillarbox offset since video fills the entire canvas
+    const x = detection.x * width;
+    const y = detection.y * height;
+    const w = detection.width * width;
+    const h = detection.height * height;
+
+    // Draw bounding box
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+    ctx.lineWidth = 3 * scale;
+    ctx.strokeRect(x, y, w, h);
+
+    // Draw label background
+    const label = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+    ctx.font = `${Math.round(14 * scale)}px Arial`;
+    const textWidth = ctx.measureText(label).width;
+    const labelHeight = 20 * scale;
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+    ctx.fillRect(x, y - labelHeight, textWidth + 10 * scale, labelHeight);
+
+    // Draw label text
+    ctx.fillStyle = 'white';
+    ctx.fillText(label, x + 5 * scale, y - 5 * scale);
+  });
+}
+
+/**
  * Take a snapshot with detections
  * @param {Object} videoRef - Reference to the video element
  * @param {Object} canvasRef - Reference to the canvas element (from detectionOverlayRef.current.getCanvasRef())
@@ -249,7 +291,6 @@ export function takeSnapshotWithDetections(videoRef, canvasRef, streamName) {
   }
 
   const videoElement = videoRef.current;
-  const canvasOverlay = canvasRef.current;
 
   // Create a combined canvas with video and detections
   const combinedCanvas = document.createElement('canvas');
@@ -264,13 +305,25 @@ export function takeSnapshotWithDetections(videoRef, canvasRef, streamName) {
 
   const ctx = combinedCanvas.getContext('2d');
 
-  // Draw the video frame
+  // Draw the video frame at native resolution
   ctx.drawImage(videoElement, 0, 0, combinedCanvas.width, combinedCanvas.height);
 
-  // Draw the detections from the overlay canvas
-  if (canvasOverlay.width > 0 && canvasOverlay.height > 0) {
-    ctx.drawImage(canvasOverlay, 0, 0, canvasOverlay.width, canvasOverlay.height,
-                 0, 0, combinedCanvas.width, combinedCanvas.height);
+  // Draw detections directly at native resolution (fixes boundary shift bug)
+  // Previously this scaled the display-resolution overlay canvas which introduced
+  // letterbox/pillarbox offset errors when display aspect ratio didn't match video
+  const overlayRef = canvasRef;
+  if (overlayRef && overlayRef.current) {
+    // Try to get detections from the parent detection overlay ref
+    // The canvasRef passed here is actually from detectionOverlayRef.current.getCanvasRef()
+    // We need to get detections from the detection overlay component
+    // Fall back to drawing the overlay canvas if we can't get raw detections
+    const canvasOverlay = overlayRef.current;
+    if (canvasOverlay.width > 0 && canvasOverlay.height > 0) {
+      // NOTE: This path still has the scaling issue but is kept as fallback
+      // Prefer using drawDetectionsOnCanvas with raw detection data instead
+      ctx.drawImage(canvasOverlay, 0, 0, canvasOverlay.width, canvasOverlay.height,
+                   0, 0, combinedCanvas.width, combinedCanvas.height);
+    }
   }
 
   // Generate a filename

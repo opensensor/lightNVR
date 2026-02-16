@@ -8,11 +8,13 @@ import { useState, useEffect, useRef, useContext } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
+import { clearThumbnailQueue } from '../../request-queue.js';
 
 // Import components
 import { FiltersSidebar } from './recordings/FiltersSidebar.jsx';
 import { ActiveFilters } from './recordings/ActiveFilters.jsx';
 import { RecordingsTable } from './recordings/RecordingsTable.jsx';
+import { RecordingsGrid } from './recordings/RecordingsGrid.jsx';
 import { PaginationControls } from './recordings/PaginationControls.jsx';
 
 // Import utilities
@@ -39,7 +41,8 @@ export function RecordingsView() {
     endDate: '',
     endTime: '23:59',
     streamId: 'all',
-    recordingType: 'all'
+    recordingType: 'all',
+    detectionLabel: ''
   });
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -56,6 +59,48 @@ export function RecordingsView() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState('selected'); // 'selected' or 'all'
   const recordingsTableBodyRef = useRef(null);
+
+  // View mode: 'table' or 'grid'
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('recordings_view_mode') || 'table');
+  const [thumbnailsEnabled, setThumbnailsEnabled] = useState(true);
+
+  // Column visibility for table view
+  const [hiddenColumns, setHiddenColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('recordings_hidden_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  const toggleColumn = (col) => {
+    setHiddenColumns(prev => {
+      const next = { ...prev, [col]: !prev[col] };
+      localStorage.setItem('recordings_hidden_columns', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Persist view mode preference
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode);
+    localStorage.setItem('recordings_view_mode', mode);
+  };
+
+  // Fetch generate_thumbnails setting
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data.generate_thumbnails !== 'undefined') {
+          setThumbnailsEnabled(data.generate_thumbnails);
+          // If thumbnails disabled and user had grid mode saved, fall back to table
+          if (!data.generate_thumbnails && viewMode === 'grid') {
+            handleViewModeChange('table');
+          }
+        }
+      })
+      .catch(() => {}); // Silently ignore - default to enabled
+  }, []);
 
   // Get modal context for video playback
   const modalContext = useContext(ModalContext);
@@ -151,6 +196,13 @@ export function RecordingsView() {
       setSortDirection(urlFilters.order || 'desc');
     }
 
+  }, []);
+
+  // Clear thumbnail queue when component unmounts (user navigates away)
+  useEffect(() => {
+    return () => {
+      clearThumbnailQueue();
+    };
   }, []);
 
   // Update active filters when filters change
@@ -404,7 +456,8 @@ export function RecordingsView() {
       endDate: '',
       endTime: '23:59',
       streamId: 'all',
-      recordingType: 'all'
+      recordingType: 'all',
+      detectionLabel: ''
     };
 
     // Get default date range
@@ -454,6 +507,12 @@ export function RecordingsView() {
           recordingType: 'all'
         }));
         break;
+      case 'detectionLabel':
+        setFilters(prev => ({
+          ...prev,
+          detectionLabel: ''
+        }));
+        break;
     }
 
     applyFilters();
@@ -488,6 +547,9 @@ export function RecordingsView() {
   // Go to page
   const goToPage = (page) => {
     if (page < 1 || page > pagination.totalPages) return;
+
+    // Clear thumbnail queue when changing pages
+    clearThumbnailQueue();
 
     // Set the current page in pagination state
     setPagination(prev => ({
@@ -526,6 +588,12 @@ export function RecordingsView() {
   // Get count of selected recordings
   const getSelectedCount = () => {
     return Object.values(selectedRecordings).filter(Boolean).length;
+  };
+
+  // Clear all selections
+  const clearSelections = () => {
+    setSelectedRecordings({});
+    setSelectAll(false);
   };
 
   // Open delete confirmation modal
@@ -696,8 +764,40 @@ export function RecordingsView() {
         <div class="flex items-center">
           <h2 class="text-xl font-bold">Recordings</h2>
           <div class="ml-4 flex">
-            <a href="recordings.html" class="px-3 py-1 rounded-l-md" style={{backgroundColor: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))'}}>Table View</a>
-            <a href="timeline.html" class="px-3 py-1 rounded-r-md" style={{backgroundColor: 'hsl(var(--secondary))', color: 'hsl(var(--secondary-foreground))'}} onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}>Timeline View</a>
+            <button
+              onClick={() => handleViewModeChange('table')}
+              class="px-3 py-1 rounded-l-md text-sm"
+              style={{
+                backgroundColor: viewMode === 'table' ? 'hsl(var(--primary))' : 'hsl(var(--secondary))',
+                color: viewMode === 'table' ? 'hsl(var(--primary-foreground))' : 'hsl(var(--secondary-foreground))'
+              }}
+            >
+              Table
+            </button>
+            {thumbnailsEnabled && (
+              <button
+                onClick={() => handleViewModeChange('grid')}
+                class="px-3 py-1 text-sm"
+                style={{
+                  backgroundColor: viewMode === 'grid' ? 'hsl(var(--primary))' : 'hsl(var(--secondary))',
+                  color: viewMode === 'grid' ? 'hsl(var(--primary-foreground))' : 'hsl(var(--secondary-foreground))'
+                }}
+              >
+                Grid
+              </button>
+            )}
+            <a
+              href="timeline.html"
+              class="px-3 py-1 rounded-r-md text-sm"
+              style={{
+                backgroundColor: 'hsl(var(--secondary))',
+                color: 'hsl(var(--secondary-foreground))'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+            >
+              Timeline
+            </a>
           </div>
         </div>
       </div>
@@ -728,25 +828,48 @@ export function RecordingsView() {
             loadingMessage="Loading recordings..."
             emptyMessage="No recordings found matching your criteria"
           >
-            <RecordingsTable
-              recordings={recordings}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              sortBy={sortBy}
-              selectedRecordings={selectedRecordings}
-              toggleRecordingSelection={toggleRecordingSelection}
-              selectAll={selectAll}
-              toggleSelectAll={toggleSelectAll}
-              getSelectedCount={getSelectedCount}
-              openDeleteModal={openDeleteModal}
-              playRecording={playRecording}
-              downloadRecording={downloadRecording}
-              deleteRecording={deleteRecording}
-              toggleProtection={toggleProtection}
-              recordingsTableBodyRef={recordingsTableBodyRef}
-              pagination={pagination}
-              canDelete={canDelete}
-            />
+            {viewMode === 'grid' && thumbnailsEnabled ? (
+              <RecordingsGrid
+                recordings={recordings}
+                selectedRecordings={selectedRecordings}
+                toggleRecordingSelection={toggleRecordingSelection}
+                selectAll={selectAll}
+                toggleSelectAll={toggleSelectAll}
+                getSelectedCount={getSelectedCount}
+                openDeleteModal={openDeleteModal}
+                playRecording={playRecording}
+                downloadRecording={downloadRecording}
+                deleteRecording={deleteRecording}
+                toggleProtection={toggleProtection}
+                pagination={pagination}
+                canDelete={canDelete}
+                clearSelections={clearSelections}
+                hiddenColumns={hiddenColumns}
+                toggleColumn={toggleColumn}
+              />
+            ) : (
+              <RecordingsTable
+                recordings={recordings}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                sortBy={sortBy}
+                selectedRecordings={selectedRecordings}
+                toggleRecordingSelection={toggleRecordingSelection}
+                selectAll={selectAll}
+                toggleSelectAll={toggleSelectAll}
+                getSelectedCount={getSelectedCount}
+                openDeleteModal={openDeleteModal}
+                playRecording={playRecording}
+                downloadRecording={downloadRecording}
+                deleteRecording={deleteRecording}
+                toggleProtection={toggleProtection}
+                recordingsTableBodyRef={recordingsTableBodyRef}
+                pagination={pagination}
+                canDelete={canDelete}
+                hiddenColumns={hiddenColumns}
+                toggleColumn={toggleColumn}
+              />
+            )}
 
             <PaginationControls
               pagination={pagination}

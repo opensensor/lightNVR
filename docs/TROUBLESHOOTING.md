@@ -263,16 +263,23 @@ If recordings are corrupt:
 
 If you see a blank page with the title "WebRTC View - LightNVR" but no content:
 
-**Quick Fix:**
+**For Docker:**
 ```bash
-# Install/reinstall web assets
+# Check volume mounts and recreate container
+docker compose down
+docker compose up -d
+```
+
+**For Native Installation:**
+```bash
+# Install/reinstall web assets (requires source directory)
 sudo bash scripts/install_web_assets.sh
 
 # Restart service
 sudo systemctl restart lightnvr
 ```
 
-**Cause:** Web assets (HTML, CSS, JavaScript files) were not installed to `/var/lib/lightnvr/www/`
+**Cause:** Web assets (HTML, CSS, JavaScript files) were not installed to `/var/lib/lightnvr/www/` or were overwritten by incorrect Docker volume mounts
 
 See [TROUBLESHOOTING_WEB_INTERFACE.md](TROUBLESHOOTING_WEB_INTERFACE.md) for detailed instructions.
 
