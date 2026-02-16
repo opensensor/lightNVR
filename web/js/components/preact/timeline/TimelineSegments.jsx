@@ -186,7 +186,10 @@ export function TimelineSegments({ segments: propSegments }) {
           videoElement.onloadedmetadata = () => {
             const seekTime = relativeTime !== null ? relativeTime : 0;
             videoElement.currentTime = seekTime;
-            videoElement.play().catch(e => console.error('Error playing video:', e));
+            videoElement.play().catch(e => {
+              if (e.name === 'AbortError') return;
+              console.error('Error playing video:', e);
+            });
           };
         }
       }, 50);

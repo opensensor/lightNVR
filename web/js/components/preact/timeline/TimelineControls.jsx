@@ -267,6 +267,7 @@ export function TimelineControls() {
                     if (videoElement.paused && timelineState.isPlaying) {
                       console.log(`TimelineControls: Video paused unexpectedly (attempt ${attempt}), trying to resume`);
                       videoElement.play().catch(e => {
+                        if (e.name === 'AbortError') return;
                         console.error(`Error resuming video (attempt ${attempt}):`, e);
                       });
 
@@ -302,12 +303,17 @@ export function TimelineControls() {
                       console.log('TimelineControls: Reached end of video but not end of segment, restarting video');
                       videoElement.currentTime = 0;
                       videoElement.play().catch(e => {
+                        if (e.name === 'AbortError') return;
                         console.error('Error restarting video:', e);
                       });
                     }
                   }, 500);
                 }
               }).catch(e => {
+                if (e.name === 'AbortError') {
+                  console.log('TimelineControls: play() interrupted, ignoring AbortError');
+                  return;
+                }
                 console.error('Error playing video:', e);
                 showStatusMessage('Error playing video: ' + e.message, 'error');
               });

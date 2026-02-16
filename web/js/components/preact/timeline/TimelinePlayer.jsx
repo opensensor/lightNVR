@@ -113,6 +113,11 @@ export function TimelinePlayer() {
     } else if (state.isPlaying && video.paused) {
       // Resume playback if needed
       video.play().catch(error => {
+        if (error.name === 'AbortError') {
+          // play() was interrupted by a new load or pause — expected when clicking around the timeline
+          console.log('Video play() interrupted, ignoring AbortError');
+          return;
+        }
         console.error('Error playing video:', error);
       });
     } else if (!state.isPlaying && !video.paused) {
@@ -202,6 +207,10 @@ export function TimelinePlayer() {
       // Play if needed
       if (autoplay) {
         video.play().catch(error => {
+          if (error.name === 'AbortError') {
+            console.log('Video play() interrupted during segment load, ignoring AbortError');
+            return;
+          }
           console.error('Error playing video:', error);
           showStatusMessage('Error playing video: ' + error.message, 'error');
         });
@@ -270,7 +279,10 @@ export function TimelinePlayer() {
         const onLoadedMetadata = () => {
           console.log('Next segment metadata loaded, starting playback immediately');
           video.currentTime = 0; // Start from the beginning of the next segment
-          video.play().catch(e => console.error('Error playing next segment:', e));
+          video.play().catch(e => {
+            if (e.name === 'AbortError') return;
+            console.error('Error playing next segment:', e);
+          });
           video.removeEventListener('loadedmetadata', onLoadedMetadata);
         };
         
