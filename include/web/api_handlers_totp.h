@@ -42,5 +42,13 @@ void handle_totp_status(const http_request_t *req, http_response_t *res);
  */
 void handle_auth_login_totp(const http_request_t *req, http_response_t *res);
 
+/**
+ * @brief Verify a TOTP code against a base32-encoded secret
+ * @param secret_b32 Base32-encoded TOTP secret
+ * @param code_str 6-digit code string to verify
+ * @return 0 if valid, -1 if invalid
+ */
+int totp_verify(const char *secret_b32, const char *code_str);
+
 #endif /* API_HANDLERS_TOTP_H */
 

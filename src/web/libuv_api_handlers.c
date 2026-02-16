@@ -131,6 +131,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/storage/cleanup", "POST", handle_post_storage_cleanup);
 
     // Auth API (backend-agnostic handlers)
+    http_server_register_handler(server, "/api/auth/login/config", "GET", handle_auth_login_config);  // Public, no auth required
     http_server_register_handler(server, "/api/auth/login", "POST", handle_auth_login);
     http_server_register_handler(server, "/api/auth/logout", "POST", handle_auth_logout);
     http_server_register_handler(server, "/api/auth/verify", "GET", handle_auth_verify);

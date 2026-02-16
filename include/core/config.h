@@ -127,7 +127,13 @@ typedef struct {
     bool webrtc_disabled;  // Whether WebRTC is disabled (use HLS only)
     int auth_timeout_hours; // Session timeout in hours (default: 24)
     bool demo_mode;         // Demo mode: allows unauthenticated viewer access while still allowing login
-    
+
+    // Security settings
+    bool force_mfa_on_login;          // When true, TOTP code is required alongside password (single-step MFA)
+    bool login_rate_limit_enabled;    // Whether login rate limiting is enabled
+    int login_rate_limit_max_attempts; // Maximum login attempts before lockout (default: 5)
+    int login_rate_limit_window_seconds; // Time window in seconds for rate limiting (default: 300)
+
     // Web optimization settings
     bool web_compression_enabled;    // Whether to enable gzip compression for text-based responses
     bool web_use_minified_assets;    // Whether to use minified assets (JS/CSS)

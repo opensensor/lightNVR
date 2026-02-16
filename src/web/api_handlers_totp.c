@@ -161,7 +161,7 @@ static int totp_generate(const char *secret_b32, uint64_t time_step) {
  * @param code 6-digit code to verify
  * @return 0 if valid, -1 if invalid
  */
-static int totp_verify(const char *secret_b32, const char *code_str) {
+int totp_verify(const char *secret_b32, const char *code_str) {
     if (!secret_b32 || !code_str || strlen(code_str) != 6) return -1;
 
     int provided_code = atoi(code_str);

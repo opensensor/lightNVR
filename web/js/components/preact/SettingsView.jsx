@@ -33,6 +33,11 @@ export function SettingsView() {
     demoMode: false, // Demo mode: allows unauthenticated viewer access
     webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
     authTimeoutHours: '24',
+    // Security settings
+    forceMfaOnLogin: false,
+    loginRateLimitEnabled: true,
+    loginRateLimitMaxAttempts: '5',
+    loginRateLimitWindowSeconds: '300',
     bufferSize: '1024',
     useSwap: true,
     swapSize: '128',
@@ -171,6 +176,11 @@ export function SettingsView() {
         demoMode: settingsData.demo_mode || false,
         webrtcDisabled: settingsData.webrtc_disabled || false,
         authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
+        // Security settings
+        forceMfaOnLogin: settingsData.force_mfa_on_login || false,
+        loginRateLimitEnabled: settingsData.login_rate_limit_enabled !== undefined ? settingsData.login_rate_limit_enabled : true,
+        loginRateLimitMaxAttempts: settingsData.login_rate_limit_max_attempts?.toString() || '5',
+        loginRateLimitWindowSeconds: settingsData.login_rate_limit_window_seconds?.toString() || '300',
         bufferSize: settingsData.buffer_size?.toString() || '',
         useSwap: settingsData.use_swap || false,
         swapSize: settingsData.swap_size?.toString() || '',
@@ -249,6 +259,11 @@ export function SettingsView() {
       demo_mode: settings.demoMode,
       webrtc_disabled: settings.webrtcDisabled,
       auth_timeout_hours: parseInt(settings.authTimeoutHours, 10),
+      // Security settings
+      force_mfa_on_login: settings.forceMfaOnLogin,
+      login_rate_limit_enabled: settings.loginRateLimitEnabled,
+      login_rate_limit_max_attempts: parseInt(settings.loginRateLimitMaxAttempts, 10),
+      login_rate_limit_window_seconds: parseInt(settings.loginRateLimitWindowSeconds, 10),
       buffer_size: parseInt(settings.bufferSize, 10),
       use_swap: settings.useSwap,
       swap_size: parseInt(settings.swapSize, 10),
@@ -634,6 +649,74 @@ export function SettingsView() {
                 disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground block mt-1">How long authentication sessions remain valid (minimum 1 hour)</span>
+            </div>
+          </div>
+          </div>
+
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Login Security</h3>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-force-mfa" class="font-medium">Force MFA on Login</label>
+            <div class="col-span-2 flex items-center">
+              <input
+                type="checkbox"
+                id="setting-force-mfa"
+                name="forceMfaOnLogin"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{accentColor: 'hsl(var(--primary))'}}
+                checked={settings.forceMfaOnLogin}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Require TOTP code alongside password at login (prevents password-only brute force). Users must have MFA configured.</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-rate-limit-enabled" class="font-medium">Login Rate Limiting</label>
+            <div class="col-span-2 flex items-center">
+              <input
+                type="checkbox"
+                id="setting-rate-limit-enabled"
+                name="loginRateLimitEnabled"
+                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{accentColor: 'hsl(var(--primary))'}}
+                checked={settings.loginRateLimitEnabled}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground ml-2">Limit login attempts to prevent brute force attacks</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-rate-limit-max" class="font-medium">Max Login Attempts</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-rate-limit-max"
+                name="loginRateLimitMaxAttempts"
+                min="1"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.loginRateLimitMaxAttempts}
+                onChange={handleInputChange}
+                disabled={!canModifySettings || !settings.loginRateLimitEnabled}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Maximum failed login attempts before lockout (minimum 1)</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-rate-limit-window" class="font-medium">Rate Limit Window (seconds)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-rate-limit-window"
+                name="loginRateLimitWindowSeconds"
+                min="10"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.loginRateLimitWindowSeconds}
+                onChange={handleInputChange}
+                disabled={!canModifySettings || !settings.loginRateLimitEnabled}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Time window in seconds for rate limiting (minimum 10 seconds, default 300 = 5 minutes)</span>
             </div>
           </div>
           </div>

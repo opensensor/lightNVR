@@ -17,12 +17,35 @@ export function LoginView() {
   const [totpRequired, setTotpRequired] = useState(false);
   const [totpCode, setTotpCode] = useState('');
   const [totpToken, setTotpToken] = useState('');
+  const [forceMfaEnabled, setForceMfaEnabled] = useState(false);
+  const [forceMfaTotpCode, setForceMfaTotpCode] = useState('');
+
+  // Fetch login config to determine if force MFA is enabled
+  useEffect(() => {
+    async function fetchLoginConfig() {
+      try {
+        const response = await fetch('/api/auth/login/config');
+        if (response.ok) {
+          const data = await response.json();
+          setForceMfaEnabled(data.force_mfa_on_login || false);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch login config:', error);
+      }
+    }
+    fetchLoginConfig();
+  }, []);
 
   // Check URL for error, auth_required, or logout parameter
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('error')) {
-      setErrorMessage('Invalid username or password');
+      const errorType = urlParams.get('error');
+      if (errorType === 'rate_limited') {
+        setErrorMessage('Too many login attempts. Please try again later.');
+      } else {
+        setErrorMessage('Invalid username or password');
+      }
     } else if (urlParams.has('auth_required') && urlParams.has('logout')) {
       setErrorMessage('You have been successfully logged out.');
     } else if (urlParams.has('auth_required')) {
@@ -78,6 +101,12 @@ export function LoginView() {
       return;
     }
 
+    // When force MFA is enabled, require TOTP code in the same step
+    if (forceMfaEnabled && (!forceMfaTotpCode || forceMfaTotpCode.length !== 6)) {
+      setErrorMessage('Please enter your 6-digit verification code');
+      return;
+    }
+
     setIsLoggingIn(true);
     setErrorMessage('');
 
@@ -86,6 +115,12 @@ export function LoginView() {
       const authString = btoa(`${username}:${password}`);
       localStorage.setItem('auth', authString);
 
+      // Build login request body
+      const loginBody = { username, password };
+      if (forceMfaEnabled && forceMfaTotpCode) {
+        loginBody.totp_code = forceMfaTotpCode;
+      }
+
       // Make login request
       const response = await fetch('/api/auth/login', {
         method: 'POST',
@@ -93,14 +128,14 @@ export function LoginView() {
           'Content-Type': 'application/json',
           'Authorization': `Basic ${authString}`
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(loginBody),
         timeout: 10000
       });
 
       if (response.ok) {
         const data = await response.json();
 
-        // Check if TOTP verification is required
+        // Check if TOTP verification is required (two-step flow, only when force MFA is off)
         if (data.totp_required && data.totp_token) {
           setTotpRequired(true);
           setTotpToken(data.totp_token);
@@ -109,7 +144,7 @@ export function LoginView() {
           return;
         }
 
-        // Successful login (no TOTP required)
+        // Successful login (no TOTP required or force MFA verified)
         console.log('Login successful, proceeding to redirect');
 
         // Get redirect URL from query parameter if it exists
@@ -122,8 +157,15 @@ export function LoginView() {
       } else {
         // Failed login
         setIsLoggingIn(false);
-        setErrorMessage('Invalid username or password');
+        if (response.status === 429) {
+          setErrorMessage('Too many login attempts. Please try again later.');
+        } else {
+          setErrorMessage('Invalid credentials');
+        }
         localStorage.removeItem('auth');
+        if (forceMfaEnabled) {
+          setForceMfaTotpCode('');
+        }
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -245,11 +287,29 @@ export function LoginView() {
                   autoComplete="current-password"
               />
             </div>
+            {forceMfaEnabled && (
+              <div className="form-group">
+                <label htmlFor="totp-code-force" className="block text-sm font-medium mb-1">Verification Code</label>
+                <input
+                    type="text"
+                    id="totp-code-force"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-2xl tracking-widest"
+                    placeholder="000000"
+                    value={forceMfaTotpCode}
+                    onChange={(e) => setForceMfaTotpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
+                    maxLength="6"
+                    pattern="[0-9]{6}"
+                    autoComplete="one-time-code"
+                    required
+                />
+                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app</span>
+              </div>
+            )}
             <div className="form-group">
               <button
                   type="submit"
                   className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isLoggingIn}
+                  disabled={isLoggingIn || (forceMfaEnabled && forceMfaTotpCode.length !== 6)}
               >
                 {isLoggingIn ? 'Signing in...' : 'Sign In'}
               </button>

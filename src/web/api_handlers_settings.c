@@ -293,6 +293,12 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     // Auth timeout
     cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
 
+    // Security settings
+    cJSON_AddBoolToObject(settings, "force_mfa_on_login", g_config.force_mfa_on_login);
+    cJSON_AddBoolToObject(settings, "login_rate_limit_enabled", g_config.login_rate_limit_enabled);
+    cJSON_AddNumberToObject(settings, "login_rate_limit_max_attempts", g_config.login_rate_limit_max_attempts);
+    cJSON_AddNumberToObject(settings, "login_rate_limit_window_seconds", g_config.login_rate_limit_window_seconds);
+
     // go2rtc settings
     cJSON_AddBoolToObject(settings, "go2rtc_enabled", g_config.go2rtc_enabled);
     cJSON_AddStringToObject(settings, "go2rtc_binary_path", g_config.go2rtc_binary_path);
@@ -463,6 +469,42 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.auth_timeout_hours = value;
         settings_changed = true;
         log_info("Updated auth_timeout_hours: %d", g_config.auth_timeout_hours);
+    }
+
+    // Force MFA on login
+    cJSON *force_mfa_on_login = cJSON_GetObjectItem(settings, "force_mfa_on_login");
+    if (force_mfa_on_login && cJSON_IsBool(force_mfa_on_login)) {
+        g_config.force_mfa_on_login = cJSON_IsTrue(force_mfa_on_login);
+        settings_changed = true;
+        log_info("Updated force_mfa_on_login: %s", g_config.force_mfa_on_login ? "true" : "false");
+    }
+
+    // Login rate limit enabled
+    cJSON *login_rate_limit_enabled = cJSON_GetObjectItem(settings, "login_rate_limit_enabled");
+    if (login_rate_limit_enabled && cJSON_IsBool(login_rate_limit_enabled)) {
+        g_config.login_rate_limit_enabled = cJSON_IsTrue(login_rate_limit_enabled);
+        settings_changed = true;
+        log_info("Updated login_rate_limit_enabled: %s", g_config.login_rate_limit_enabled ? "true" : "false");
+    }
+
+    // Login rate limit max attempts
+    cJSON *login_rate_limit_max_attempts = cJSON_GetObjectItem(settings, "login_rate_limit_max_attempts");
+    if (login_rate_limit_max_attempts && cJSON_IsNumber(login_rate_limit_max_attempts)) {
+        int value = login_rate_limit_max_attempts->valueint;
+        if (value < 1) value = 1;
+        g_config.login_rate_limit_max_attempts = value;
+        settings_changed = true;
+        log_info("Updated login_rate_limit_max_attempts: %d", g_config.login_rate_limit_max_attempts);
+    }
+
+    // Login rate limit window seconds
+    cJSON *login_rate_limit_window_seconds = cJSON_GetObjectItem(settings, "login_rate_limit_window_seconds");
+    if (login_rate_limit_window_seconds && cJSON_IsNumber(login_rate_limit_window_seconds)) {
+        int value = login_rate_limit_window_seconds->valueint;
+        if (value < 10) value = 10; // Minimum 10 seconds
+        g_config.login_rate_limit_window_seconds = value;
+        settings_changed = true;
+        log_info("Updated login_rate_limit_window_seconds: %d", g_config.login_rate_limit_window_seconds);
     }
 
     // Storage path

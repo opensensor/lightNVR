@@ -271,6 +271,12 @@ void load_default_config(config_t *config) {
     config->auth_timeout_hours = 24; // Default session timeout: 24 hours
     config->demo_mode = false; // Demo mode disabled by default
 
+    // Security settings
+    config->force_mfa_on_login = false;           // Force MFA disabled by default
+    config->login_rate_limit_enabled = true;       // Rate limiting enabled by default
+    config->login_rate_limit_max_attempts = 5;     // 5 attempts before lockout
+    config->login_rate_limit_window_seconds = 300; // 5 minute window
+
     // Web optimization settings
     config->web_compression_enabled = true;
     config->web_use_minified_assets = true;
@@ -630,6 +636,20 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             }
         } else if (strcmp(name, "demo_mode") == 0) {
             config->demo_mode = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "force_mfa_on_login") == 0) {
+            config->force_mfa_on_login = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "login_rate_limit_enabled") == 0) {
+            config->login_rate_limit_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "login_rate_limit_max_attempts") == 0) {
+            config->login_rate_limit_max_attempts = atoi(value);
+            if (config->login_rate_limit_max_attempts < 1) {
+                config->login_rate_limit_max_attempts = 1;
+            }
+        } else if (strcmp(name, "login_rate_limit_window_seconds") == 0) {
+            config->login_rate_limit_window_seconds = atoi(value);
+            if (config->login_rate_limit_window_seconds < 10) {
+                config->login_rate_limit_window_seconds = 10; // Minimum 10 seconds
+            }
         }
     }
     // Stream settings (max_streams is ignored, uses compile-time MAX_STREAMS)
@@ -1305,6 +1325,10 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "webrtc_disabled = %s\n", config->webrtc_disabled ? "true" : "false");
     fprintf(file, "auth_timeout_hours = %d  ; Session timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
+    fprintf(file, "force_mfa_on_login = %s  ; Require TOTP code with password at login (prevents password-only brute force)\n", config->force_mfa_on_login ? "true" : "false");
+    fprintf(file, "login_rate_limit_enabled = %s  ; Enable login rate limiting\n", config->login_rate_limit_enabled ? "true" : "false");
+    fprintf(file, "login_rate_limit_max_attempts = %d  ; Max login attempts before lockout (default: 5)\n", config->login_rate_limit_max_attempts);
+    fprintf(file, "login_rate_limit_window_seconds = %d  ; Rate limit window in seconds (default: 300)\n", config->login_rate_limit_window_seconds);
     fprintf(file, "\n");
 
     // Write stream settings
@@ -1471,6 +1495,10 @@ void print_config(const config_t *config) {
     printf("    WebRTC Disabled: %s\n", config->webrtc_disabled ? "true" : "false");
     printf("    Auth Timeout: %d hours\n", config->auth_timeout_hours);
     printf("    Demo Mode: %s\n", config->demo_mode ? "true" : "false");
+    printf("    Force MFA on Login: %s\n", config->force_mfa_on_login ? "true" : "false");
+    printf("    Login Rate Limit: %s\n", config->login_rate_limit_enabled ? "true" : "false");
+    printf("    Login Rate Limit Max Attempts: %d\n", config->login_rate_limit_max_attempts);
+    printf("    Login Rate Limit Window: %d seconds\n", config->login_rate_limit_window_seconds);
 
     printf("  Stream Settings:\n");
     printf("    Max Streams: %d (compile-time)\n", MAX_STREAMS);

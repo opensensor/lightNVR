@@ -169,6 +169,12 @@ void handle_auth_logout(const http_request_t *req, http_response_t *res);
 void handle_auth_verify(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Handler for GET /api/auth/login/config
+ * Returns public login config (force_mfa_on_login). No auth required.
+ */
+void handle_auth_login_config(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief Handler for GET /api/recordings/protected
  */
 void handle_get_protected_recordings(const http_request_t *req, http_response_t *res);

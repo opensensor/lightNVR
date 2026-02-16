@@ -8,14 +8,127 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/api_handlers_totp.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "database/db_auth.h"
+
+/* ========== Login Rate Limiting ========== */
+
+#define MAX_RATE_LIMIT_ENTRIES 256
+
+typedef struct {
+    char username[64];
+    int attempt_count;
+    time_t window_start;
+} rate_limit_entry_t;
+
+static rate_limit_entry_t rate_limit_table[MAX_RATE_LIMIT_ENTRIES];
+static int rate_limit_count = 0;
+
+/**
+ * @brief Check if a login attempt is rate-limited
+ * @param username The username being attempted
+ * @return true if the attempt should be blocked, false if allowed
+ */
+static bool check_rate_limit(const char *username) {
+    if (!g_config.login_rate_limit_enabled || !username) {
+        return false;
+    }
+
+    time_t now = time(NULL);
+    int max_attempts = g_config.login_rate_limit_max_attempts;
+    int window = g_config.login_rate_limit_window_seconds;
+
+    // Find existing entry for this username
+    for (int i = 0; i < rate_limit_count; i++) {
+        if (strcmp(rate_limit_table[i].username, username) == 0) {
+            // Check if window has expired
+            if (now - rate_limit_table[i].window_start > window) {
+                // Reset window
+                rate_limit_table[i].attempt_count = 0;
+                rate_limit_table[i].window_start = now;
+                return false;
+            }
+            // Check if over limit
+            return rate_limit_table[i].attempt_count >= max_attempts;
+        }
+    }
+
+    return false; // No entry found, not rate-limited
+}
+
+/**
+ * @brief Record a failed login attempt for rate limiting
+ * @param username The username that failed authentication
+ */
+static void record_failed_attempt(const char *username) {
+    if (!g_config.login_rate_limit_enabled || !username) {
+        return;
+    }
+
+    time_t now = time(NULL);
+    int window = g_config.login_rate_limit_window_seconds;
+
+    // Find existing entry
+    for (int i = 0; i < rate_limit_count; i++) {
+        if (strcmp(rate_limit_table[i].username, username) == 0) {
+            // Reset window if expired
+            if (now - rate_limit_table[i].window_start > window) {
+                rate_limit_table[i].attempt_count = 1;
+                rate_limit_table[i].window_start = now;
+            } else {
+                rate_limit_table[i].attempt_count++;
+            }
+            return;
+        }
+    }
+
+    // Add new entry
+    if (rate_limit_count < MAX_RATE_LIMIT_ENTRIES) {
+        strncpy(rate_limit_table[rate_limit_count].username, username, 63);
+        rate_limit_table[rate_limit_count].username[63] = '\0';
+        rate_limit_table[rate_limit_count].attempt_count = 1;
+        rate_limit_table[rate_limit_count].window_start = now;
+        rate_limit_count++;
+    } else {
+        // Table full - evict oldest entry (simple strategy)
+        int oldest_idx = 0;
+        time_t oldest_time = rate_limit_table[0].window_start;
+        for (int i = 1; i < MAX_RATE_LIMIT_ENTRIES; i++) {
+            if (rate_limit_table[i].window_start < oldest_time) {
+                oldest_time = rate_limit_table[i].window_start;
+                oldest_idx = i;
+            }
+        }
+        strncpy(rate_limit_table[oldest_idx].username, username, 63);
+        rate_limit_table[oldest_idx].username[63] = '\0';
+        rate_limit_table[oldest_idx].attempt_count = 1;
+        rate_limit_table[oldest_idx].window_start = now;
+    }
+}
+
+/**
+ * @brief Clear rate limit entry on successful login
+ * @param username The username that successfully authenticated
+ */
+static void clear_rate_limit(const char *username) {
+    if (!username) return;
+
+    for (int i = 0; i < rate_limit_count; i++) {
+        if (strcmp(rate_limit_table[i].username, username) == 0) {
+            rate_limit_table[i].attempt_count = 0;
+            rate_limit_table[i].window_start = 0;
+            return;
+        }
+    }
+}
 
 /**
  * @brief Initialize the authentication system
@@ -91,11 +204,12 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
 
     char username[64] = {0};
     char password[64] = {0};
+    char totp_code[8] = {0};  // Optional TOTP code for force-MFA mode
     bool is_form = false;
 
     // Check Content-Type to determine if it's form data or JSON
     const char *content_type = http_request_get_header(req, "Content-Type");
-    
+
     if (content_type && strstr(content_type, "application/x-www-form-urlencoded")) {
         // Parse form data
         if (parse_form_credentials(req->body, req->body_len, username, sizeof(username), password, sizeof(password)) == 0) {
@@ -103,7 +217,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
             log_info("Extracted form data: username=%s", username);
         }
     }
-    
+
     if (!is_form) {
         // Try to parse as JSON
         cJSON *login = httpd_parse_json_body(req);
@@ -114,7 +228,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
                     is_form = true;
                 }
             }
-            
+
             if (!is_form) {
                 log_error("Failed to parse login data from request body");
                 http_response_set_json_error(res, 400, "Invalid login data");
@@ -136,8 +250,29 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
             strncpy(username, username_json->valuestring, sizeof(username) - 1);
             strncpy(password, password_json->valuestring, sizeof(password) - 1);
 
+            // Extract optional TOTP code (used in force-MFA mode)
+            cJSON *totp_code_json = cJSON_GetObjectItem(login, "totp_code");
+            if (totp_code_json && cJSON_IsString(totp_code_json)) {
+                strncpy(totp_code, totp_code_json->valuestring, sizeof(totp_code) - 1);
+            }
+
             cJSON_Delete(login);
         }
+    }
+
+    // Check rate limiting before processing credentials
+    if (check_rate_limit(username)) {
+        log_warn("Login rate-limited for user: %s", username);
+
+        if (is_form) {
+            http_response_add_header(res, "Location", "/login.html?error=rate_limited");
+            res->status_code = 302;
+            res->body = NULL;
+            res->body_length = 0;
+        } else {
+            http_response_set_json_error(res, 429, "Too many login attempts. Please try again later.");
+        }
+        return;
     }
 
     // Check credentials using the database authentication system
@@ -145,7 +280,8 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     int rc = db_auth_authenticate(username, password, &user_id);
 
     if (rc != 0) {
-        // Login failed - all authentication is now database-based
+        // Login failed - record attempt for rate limiting
+        record_failed_attempt(username);
         log_warn("Login failed for user: %s", username);
 
         if (is_form) {
@@ -155,43 +291,75 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
             res->body = NULL;
             res->body_length = 0;
         } else {
-            // For API requests, return JSON error
-            http_response_set_json_error(res, 401, "Invalid username or password");
+            // Use generic error message (same for password-only or password+TOTP failure)
+            http_response_set_json_error(res, 401, "Invalid credentials");
         }
         return;
     }
 
-    // Login successful
-    log_info("Login successful for user: %s (ID: %lld)", username, (long long)user_id);
+    // Login successful (password verified)
+    log_info("Password verified for user: %s (ID: %lld)", username, (long long)user_id);
 
     // Check if user has TOTP enabled (only for API/JSON requests)
     if (!is_form) {
         char totp_secret[64] = {0};
         bool totp_enabled = false;
         if (db_auth_get_totp_info(user_id, totp_secret, sizeof(totp_secret), &totp_enabled) == 0 && totp_enabled) {
-            // Create a short-lived pending MFA session (5 minutes)
-            char totp_token[33];
-            rc = db_auth_create_session(user_id, NULL, NULL, 300, totp_token, sizeof(totp_token));
-            if (rc != 0) {
-                log_error("Failed to create pending MFA session for user: %s", username);
-                http_response_set_json_error(res, 500, "Failed to create MFA session");
+
+            // Force MFA mode: verify TOTP code in the same request
+            if (g_config.force_mfa_on_login) {
+                if (totp_code[0] == '\0') {
+                    // No TOTP code provided - return generic error
+                    // Don't reveal that password was correct
+                    record_failed_attempt(username);
+                    log_warn("Force MFA: no TOTP code provided for user: %s", username);
+                    http_response_set_json_error(res, 401, "Invalid credentials");
+                    return;
+                }
+
+                // Verify the TOTP code
+                if (totp_verify(totp_secret, totp_code) != 0) {
+                    record_failed_attempt(username);
+                    log_warn("Force MFA: invalid TOTP code for user: %s", username);
+                    http_response_set_json_error(res, 401, "Invalid credentials");
+                    return;
+                }
+
+                log_info("Force MFA: TOTP verified for user: %s", username);
+                // Fall through to create session
+            } else {
+                // Standard two-step MFA flow
+                // Create a short-lived pending MFA session (5 minutes)
+                char totp_token[33];
+                rc = db_auth_create_session(user_id, NULL, NULL, 300, totp_token, sizeof(totp_token));
+                if (rc != 0) {
+                    log_error("Failed to create pending MFA session for user: %s", username);
+                    http_response_set_json_error(res, 500, "Failed to create MFA session");
+                    return;
+                }
+
+                // Return TOTP required response (NO Set-Cookie header)
+                cJSON *response = cJSON_CreateObject();
+                cJSON_AddBoolToObject(response, "totp_required", true);
+                cJSON_AddStringToObject(response, "totp_token", totp_token);
+
+                char *json_str = cJSON_PrintUnformatted(response);
+                http_response_set_json(res, 200, json_str);
+                free(json_str);
+                cJSON_Delete(response);
+
+                log_info("TOTP verification required for user: %s", username);
                 return;
             }
-
-            // Return TOTP required response (NO Set-Cookie header)
-            cJSON *response = cJSON_CreateObject();
-            cJSON_AddBoolToObject(response, "totp_required", true);
-            cJSON_AddStringToObject(response, "totp_token", totp_token);
-
-            char *json_str = cJSON_PrintUnformatted(response);
-            http_response_set_json(res, 200, json_str);
-            free(json_str);
-            cJSON_Delete(response);
-
-            log_info("TOTP verification required for user: %s", username);
-            return;
+        } else if (g_config.force_mfa_on_login && totp_code[0] != '\0') {
+            // Force MFA is on, user provided a TOTP code but doesn't have TOTP enabled
+            // Just ignore the code and proceed (user hasn't set up MFA yet)
+            log_info("Force MFA: user %s has no TOTP configured, allowing login", username);
         }
     }
+
+    // Clear rate limit on successful login
+    clear_rate_limit(username);
 
     // Create a session token using configured timeout
     int session_timeout_seconds = g_config.auth_timeout_hours * 3600;
@@ -396,5 +564,22 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
     // No valid authentication
     log_debug("Authentication verification failed");
     http_response_set_json_error(res, 401, "Unauthorized");
+}
+
+/**
+ * @brief Handler for GET /api/auth/login/config
+ * Returns public login configuration (no auth required).
+ * The frontend uses this to determine if it should show the TOTP field on login.
+ */
+void handle_auth_login_config(const http_request_t *req, http_response_t *res) {
+    (void)req; // Unused
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "force_mfa_on_login", g_config.force_mfa_on_login);
+
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+    free(json_str);
+    cJSON_Delete(response);
 }
 
