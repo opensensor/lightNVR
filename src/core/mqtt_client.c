@@ -26,6 +26,7 @@ static pthread_mutex_t mqtt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // HA discovery state
 static volatile bool ha_services_running = false;
+static bool ha_snapshot_thread_started = false;
 static pthread_t ha_snapshot_thread;
 static pthread_t ha_motion_thread;
 
@@ -589,8 +590,16 @@ int mqtt_publish_ha_discovery(void) {
             cJSON_AddItemToObject(payload, "availability", avail_list);
 
             // Device & Origin
-            cJSON_AddItemToObject(payload, "device", build_ha_device_block());
-            cJSON_AddItemToObject(payload, "origin", build_ha_origin_block());
+            cJSON *device = build_ha_device_block();
+            cJSON *origin = build_ha_origin_block();
+            if (!device || !origin) {
+                cJSON_Delete(device);
+                cJSON_Delete(origin);
+                cJSON_Delete(payload);
+                continue;
+            }
+            cJSON_AddItemToObject(payload, "device", device);
+            cJSON_AddItemToObject(payload, "origin", origin);
 
             char *json_str = cJSON_PrintUnformatted(payload);
             cJSON_Delete(payload);
@@ -638,8 +647,16 @@ int mqtt_publish_ha_discovery(void) {
             cJSON_AddItemToObject(payload, "availability", avail_list);
 
             // Device & Origin
-            cJSON_AddItemToObject(payload, "device", build_ha_device_block());
-            cJSON_AddItemToObject(payload, "origin", build_ha_origin_block());
+            cJSON *device = build_ha_device_block();
+            cJSON *origin = build_ha_origin_block();
+            if (!device || !origin) {
+                cJSON_Delete(device);
+                cJSON_Delete(origin);
+                cJSON_Delete(payload);
+                continue;
+            }
+            cJSON_AddItemToObject(payload, "device", device);
+            cJSON_AddItemToObject(payload, "origin", origin);
 
             char *json_str = cJSON_PrintUnformatted(payload);
             cJSON_Delete(payload);
@@ -685,8 +702,16 @@ int mqtt_publish_ha_discovery(void) {
             cJSON_AddItemToObject(payload, "availability", avail_list);
 
             // Device & Origin
-            cJSON_AddItemToObject(payload, "device", build_ha_device_block());
-            cJSON_AddItemToObject(payload, "origin", build_ha_origin_block());
+            cJSON *device = build_ha_device_block();
+            cJSON *origin = build_ha_origin_block();
+            if (!device || !origin) {
+                cJSON_Delete(device);
+                cJSON_Delete(origin);
+                cJSON_Delete(payload);
+                continue;
+            }
+            cJSON_AddItemToObject(payload, "device", device);
+            cJSON_AddItemToObject(payload, "origin", origin);
 
             char *json_str = cJSON_PrintUnformatted(payload);
             cJSON_Delete(payload);
@@ -948,6 +973,7 @@ int mqtt_start_ha_services(void) {
     }
 
     ha_services_running = true;
+    ha_snapshot_thread_started = false;
 
     // Start snapshot publishing thread if interval > 0
     if (mqtt_config->mqtt_ha_snapshot_interval > 0) {
@@ -956,6 +982,7 @@ int mqtt_start_ha_services(void) {
             ha_services_running = false;
             return -1;
         }
+        ha_snapshot_thread_started = true;
         log_info("MQTT HA: Snapshot publishing started (interval=%ds)",
                  mqtt_config->mqtt_ha_snapshot_interval);
     }
@@ -963,7 +990,13 @@ int mqtt_start_ha_services(void) {
     // Start motion timeout thread
     if (pthread_create(&ha_motion_thread, NULL, ha_motion_thread_func, NULL) != 0) {
         log_error("MQTT HA: Failed to create motion timeout thread");
+        // Signal any already-started HA service threads to stop
         ha_services_running = false;
+        // If the snapshot thread was started, wait for it to exit
+        if (ha_snapshot_thread_started) {
+            pthread_join(ha_snapshot_thread, NULL);
+            ha_snapshot_thread_started = false;
+        }
         return -1;
     }
 
@@ -983,8 +1016,9 @@ void mqtt_stop_ha_services(void) {
     ha_services_running = false;
 
     // Wait for threads to finish (they check ha_services_running each second)
-    if (mqtt_config && mqtt_config->mqtt_ha_snapshot_interval > 0) {
+    if (ha_snapshot_thread_started) {
         pthread_join(ha_snapshot_thread, NULL);
+        ha_snapshot_thread_started = false;
     }
     pthread_join(ha_motion_thread, NULL);
 
