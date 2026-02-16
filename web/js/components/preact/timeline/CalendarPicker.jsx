@@ -105,7 +105,7 @@ export function CalendarPicker({ value, onChange }) {
   const displayStr = `${MONTHS[displayDate.getMonth()]} ${displayDate.getDate()}, ${displayDate.getFullYear()}`;
 
   return (
-    <div className="relative" ref={wrapperRef}>
+    <div className="relative" ref={wrapperRef} data-testid="date-picker">
       {/* Trigger row: ◀  date-button  ▶ */}
       <div className="flex items-center gap-1">
         <button
@@ -123,6 +123,8 @@ export function CalendarPicker({ value, onChange }) {
           type="button"
           onClick={() => setOpen(o => !o)}
           className="flex-1 flex items-center justify-between gap-2 p-2 rounded border border-border bg-background text-foreground hover:bg-accent transition-colors text-sm"
+          data-testid="date-display"
+          data-value={selected}
         >
           <span>{displayStr}</span>
           {/* calendar icon */}

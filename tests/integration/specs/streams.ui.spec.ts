@@ -148,7 +148,7 @@ test.describe('Streams Page @ui @streams', () => {
       await streamsPage.addStream({
         name: testStreamName,
         url: 'rtsp://localhost:18554/test_pattern',
-        enabled: true
+        enabled: false
       });
 
       // Track this stream for cleanup

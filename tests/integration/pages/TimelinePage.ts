@@ -23,7 +23,11 @@ export class TimelinePage extends BasePage {
   }
 
   get datePicker(): Locator {
-    return this.page.locator('input[type="date"], .date-picker, [data-testid="date-picker"]').first();
+    return this.page.locator('[data-testid="date-picker"]').first();
+  }
+
+  get dateDisplay(): Locator {
+    return this.page.locator('[data-testid="date-display"]').first();
   }
 
   get prevDayButton(): Locator {
@@ -74,10 +78,16 @@ export class TimelinePage extends BasePage {
   }
 
   /**
-   * Navigate to a specific date
+   * Navigate to a specific date using URL navigation
+   * (CalendarPicker is a custom component, not a native date input)
    */
   async goToDate(date: string): Promise<void> {
-    await this.datePicker.fill(date);
+    const currentUrl = new URL(this.page.url());
+    currentUrl.searchParams.set('date', date);
+    await this.page.goto(currentUrl.toString(), {
+      waitUntil: 'networkidle',
+      timeout: CONFIG.DEFAULT_TIMEOUT
+    });
     await sleep(1000);
   }
 
@@ -141,11 +151,11 @@ export class TimelinePage extends BasePage {
   }
 
   /**
-   * Get the selected date from the date picker
+   * Get the selected date from the date picker's data-value attribute
    */
   async getSelectedDate(): Promise<string | null> {
-    if (await this.datePicker.isVisible()) {
-      return await this.datePicker.inputValue();
+    if (await this.dateDisplay.isVisible()) {
+      return await this.dateDisplay.getAttribute('data-value');
     }
     return null;
   }
