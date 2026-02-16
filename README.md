@@ -472,6 +472,10 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 For organizations that need to integrate lightNVR into proprietary products or cannot comply with GPL requirements, **commercial licenses** are available from OpenSensor Engineering. See [Commercial Licensing & Professional Support](docs/COMMERCIAL.md) for details.
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=opensensor/lightNVR&type=Date)](https://star-history.com/#opensensor/lightNVR&Date)
+
 ## Acknowledgments
 
 LightNVR is built on the shoulders of giants. Special thanks to:
