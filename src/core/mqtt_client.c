@@ -988,6 +988,12 @@ void mqtt_stop_ha_services(void) {
     }
     pthread_join(ha_motion_thread, NULL);
 
+    // Reset motion state tracking to avoid stale states on reinit
+    pthread_mutex_lock(&motion_mutex);
+    num_motion_states = 0;
+    memset(motion_states, 0, sizeof(motion_states));
+    pthread_mutex_unlock(&motion_mutex);
+
     log_info("MQTT HA: Background services stopped");
 }
 
