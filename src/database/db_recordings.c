@@ -811,6 +811,28 @@ int delete_recording_metadata(uint64_t id) {
 
     pthread_mutex_lock(db_mutex);
 
+    // First, clear any foreign key references in the detections table
+    // The detections table has FOREIGN KEY (recording_id) REFERENCES recordings(id)
+    // without ON DELETE CASCADE, so we must nullify references before deleting
+    const char *clear_fk_sql = "UPDATE detections SET recording_id = NULL WHERE recording_id = ?;";
+    rc = sqlite3_prepare_v2(db, clear_fk_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare detections FK cleanup: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to clear detections FK for recording %llu: %s",
+                  (unsigned long long)id, sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+
+    // Now delete the recording
     const char *sql = "DELETE FROM recordings WHERE id = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -819,8 +841,6 @@ int delete_recording_metadata(uint64_t id) {
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
-
-    // No longer tracking statements - each function is responsible for finalizing its own statements
 
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)id);
@@ -855,8 +875,31 @@ int delete_old_recording_metadata(uint64_t max_age) {
         return -1;
     }
 
+    // Calculate cutoff time
+    time_t cutoff_time = time(NULL) - max_age;
+
     pthread_mutex_lock(db_mutex);
 
+    // First, clear foreign key references in detections for recordings about to be deleted
+    const char *clear_fk_sql = "UPDATE detections SET recording_id = NULL "
+                               "WHERE recording_id IN (SELECT id FROM recordings WHERE end_time < ?);";
+    rc = sqlite3_prepare_v2(db, clear_fk_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare detections FK cleanup for old recordings: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff_time);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to clear detections FK for old recordings: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+    sqlite3_finalize(stmt);
+
+    // Now delete the old recordings
     const char *sql = "DELETE FROM recordings WHERE end_time < ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -865,9 +908,6 @@ int delete_old_recording_metadata(uint64_t max_age) {
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
-
-    // Calculate cutoff time
-    time_t cutoff_time = time(NULL) - max_age;
 
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff_time);
