@@ -90,7 +90,7 @@ export const recordingsAPI = {
 
       // Add recording type filter
       if (filters.recordingType === 'detection') {
-        params.append('detection', '1');
+        params.append('has_detection', '1');
       }
 
       // Add detection label filter
@@ -286,7 +286,7 @@ export const recordingsAPI = {
 
       // Add recording type filter
       if (filters.recordingType === 'detection') {
-        params.append('detection', '1');
+        params.append('has_detection', '1');
       }
 
       // Log the API request
@@ -572,7 +572,7 @@ export const recordingsAPI = {
 
         // Add detection filter
         if (filter.detection) {
-          params.append('detection', '1');
+          params.append('has_detection', '1');
         }
 
         // Set page size to 1 to minimize data transfer, we just need the total count
