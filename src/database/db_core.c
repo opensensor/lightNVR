@@ -529,7 +529,9 @@ int init_database(const char *db_path) {
         "CREATE INDEX IF NOT EXISTS idx_recordings_complete_stream_start ON recordings (is_complete, stream_name, start_time);"
         "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);"
         "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp ON detections (stream_name, timestamp);"
-        "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);";
+        "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);"
+        "CREATE INDEX IF NOT EXISTS idx_detections_recording_id ON detections (recording_id);"
+        "CREATE INDEX IF NOT EXISTS idx_recordings_trigger_type ON recordings (trigger_type);";
 
     rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
     if (rc != SQLITE_OK) {

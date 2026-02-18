@@ -510,20 +510,27 @@ int get_recording_count(time_t start_time, time_t end_time,
     pthread_mutex_lock(db_mutex);
 
     // Build query based on filters
-    char sql[1024];
+    char sql[2048];
 
     // Use trigger_type and/or detections table to filter detection-based recordings
     strcpy(sql, "SELECT COUNT(*) FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection) {
-        // Filter by trigger_type = 'detection' OR existence of detections in the recording's time range
-        strcat(sql, " AND (r.trigger_type = 'detection' OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
-        log_debug("Adding detection filter (trigger_type OR detections table)");
+        // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)
+        // Falls back to timestamp range scan for legacy detections without recording_id
+        strcat(sql, " AND (r.trigger_type = 'detection'"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
+        log_debug("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
     }
 
     if (detection_label) {
-        // Filter by specific detection label in the recording's time range
-        strcat(sql, " AND EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time AND d.label LIKE ?)");
+        // Filter by specific detection label - prefer recording_id FK lookup, fall back to timestamp range
+        strcat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
+                    " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
+                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))");
         log_debug("Adding detection_label filter: %s", detection_label);
     }
 
@@ -557,8 +564,10 @@ int get_recording_count(time_t start_time, time_t end_time,
 
     if (detection_label) {
         // Use LIKE with % wildcards for partial matching
+        // Bind twice: once for recording_id EXISTS, once for timestamp range fallback
         char label_pattern[128];
         snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label);
+        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
     }
 
@@ -644,7 +653,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     }
 
     // Build query based on filters
-    char sql[1536];
+    char sql[2048];
 
     // Use trigger_type and/or detections table to filter detection-based recordings
     snprintf(sql, sizeof(sql),
@@ -653,14 +662,21 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection) {
-        // Filter by trigger_type = 'detection' OR existence of detections in the recording's time range
-        strcat(sql, " AND (r.trigger_type = 'detection' OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
-        log_info("Adding detection filter (trigger_type OR detections table)");
+        // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)
+        // Falls back to timestamp range scan for legacy detections without recording_id
+        strcat(sql, " AND (r.trigger_type = 'detection'"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
+        log_info("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
     }
 
     if (detection_label) {
-        // Filter by specific detection label in the recording's time range
-        strcat(sql, " AND EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time AND d.label LIKE ?)");
+        // Filter by specific detection label - prefer recording_id FK lookup, fall back to timestamp range
+        strcat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
+                    " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
+                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))");
         log_info("Adding detection_label filter: %s", detection_label);
     }
 
@@ -704,8 +720,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     if (detection_label) {
         // Use LIKE with % wildcards for partial matching
+        // Bind twice: once for recording_id EXISTS, once for timestamp range fallback
         char label_pattern[128];
         snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label);
+        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
     }
 

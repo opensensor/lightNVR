@@ -109,9 +109,10 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         }
         
         // Create indexes
-        const char *create_indexes = 
+        const char *create_indexes =
             "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp ON detections (stream_name, timestamp);"
-            "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);";
+            "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);"
+            "CREATE INDEX IF NOT EXISTS idx_detections_recording_id ON detections (recording_id);";
         
         rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
         if (rc != SQLITE_OK) {
