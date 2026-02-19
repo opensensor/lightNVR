@@ -620,10 +620,29 @@ static int on_message_complete(llhttp_t *parser) {
                 libuv_send_response_ex(conn, &conn->response, action);
             }
         } else {
-            // File not found
-            log_debug("Static file not found: %s", file_path);
-            http_response_set_json_error(&conn->response, 404, "Not Found");
-            libuv_send_response_ex(conn, &conn->response, action);
+            // File not found - try .gz version for pre-compressed assets
+            // (embedded devices may only have gzip-compressed files)
+            char gz_path[1080];
+            snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
+            if (stat(gz_path, &st) == 0 && S_ISREG(st.st_mode)) {
+                // Found gzip version - serve with Content-Encoding header
+                // Use MIME type from original (non-.gz) path
+                log_debug("Serving gzip static file: %s", gz_path);
+                extern const char *libuv_get_mime_type(const char *path);
+                const char *mime_type = libuv_get_mime_type(file_path);
+                if (libuv_serve_file(conn, gz_path, mime_type,
+                                     "Content-Encoding: gzip\r\n") == 0) {
+                    return 0;
+                } else {
+                    log_error("Failed to serve gzip file: %s", gz_path);
+                    http_response_set_json_error(&conn->response, 500, "Failed to serve file");
+                    libuv_send_response_ex(conn, &conn->response, action);
+                }
+            } else {
+                log_debug("Static file not found: %s", file_path);
+                http_response_set_json_error(&conn->response, 404, "Not Found");
+                libuv_send_response_ex(conn, &conn->response, action);
+            }
         }
     }
 
