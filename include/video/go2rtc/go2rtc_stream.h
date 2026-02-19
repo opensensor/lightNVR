@@ -101,6 +101,15 @@ bool go2rtc_stream_start_service(void);
 bool go2rtc_stream_stop_service(void);
 
 /**
+ * @brief Invalidate the cached result of go2rtc_stream_is_ready()
+ *
+ * Call this after stopping or restarting the go2rtc process to force the next
+ * readiness check to perform a real HTTP probe instead of returning a stale
+ * cached value.
+ */
+void go2rtc_stream_invalidate_ready_cache(void);
+
+/**
  * @brief Clean up resources used by the go2rtc stream integration module
  */
 void go2rtc_stream_cleanup(void);

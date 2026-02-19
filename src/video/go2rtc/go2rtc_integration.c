@@ -656,6 +656,9 @@ static bool restart_go2rtc_process(void) {
         return false;
     }
 
+    // Invalidate cached readiness so the retry loop below does real probes
+    go2rtc_stream_invalidate_ready_cache();
+
     sleep(2);
 
     int api_port = go2rtc_stream_get_api_port();

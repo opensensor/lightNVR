@@ -37,6 +37,12 @@ static bool g_initialized = false;
 static int g_api_port = 0;
 static char *g_config_dir = NULL;  // Store config directory for later use
 
+// Cached result for go2rtc_stream_is_ready to avoid excessive HTTP requests
+static bool g_ready_cache_valid = false;
+static bool g_ready_cache_value = false;
+static time_t g_ready_cache_time = 0;
+#define READY_CACHE_TTL_SEC 5  // Cache result for 5 seconds
+
 bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api_port) {
     if (g_initialized) {
         log_warn("go2rtc stream integration already initialized");
@@ -489,6 +495,14 @@ bool go2rtc_stream_is_ready(void) {
         return false;
     }
 
+    // Return cached result if still fresh (avoids excessive HTTP requests on
+    // resource-constrained devices where many callers check readiness in quick
+    // succession during startup and stream registration).
+    time_t now = time(NULL);
+    if (g_ready_cache_valid && (now - g_ready_cache_time) < READY_CACHE_TTL_SEC) {
+        return g_ready_cache_value;
+    }
+
     // Check if API port is valid
     if (g_api_port <= 0 || g_api_port > 65535) {
         log_warn("go2rtc_stream_is_ready: invalid API port: %d", g_api_port);
@@ -649,7 +663,7 @@ bool go2rtc_stream_is_ready(void) {
 
         // Check if we got a valid HTTP response with safety checks
         if (strstr(response, "HTTP/1.1 200") || strstr(response, "HTTP/1.1 302")) {
-            log_info("go2rtc_stream_is_ready: socket HTTP request succeeded");
+            log_debug("go2rtc_stream_is_ready: socket HTTP request succeeded");
             close(sockfd);
             curl_easy_cleanup(curl);
             curl = NULL; // Set to NULL to prevent double-free
@@ -658,6 +672,9 @@ bool go2rtc_stream_is_ready(void) {
             // This addresses the 106-byte memory leak shown in Valgrind
             cleanup_dns_resolver();
 
+            g_ready_cache_value = true;
+            g_ready_cache_time = time(NULL);
+            g_ready_cache_valid = true;
             return true;
         }
 
@@ -674,6 +691,9 @@ bool go2rtc_stream_is_ready(void) {
         // This addresses the 106-byte memory leak shown in Valgrind
         cleanup_dns_resolver();
 
+        g_ready_cache_value = false;
+        g_ready_cache_time = time(NULL);
+        g_ready_cache_valid = true;
         return false;
     }
 
@@ -696,14 +716,23 @@ bool go2rtc_stream_is_ready(void) {
 
     // Check if we got a successful HTTP response (200) with safety checks
     if (http_code == 200) {
-        log_info("go2rtc_stream_is_ready: API is responsive (HTTP %ld)", http_code);
+        log_debug("go2rtc_stream_is_ready: API is responsive (HTTP %ld)", http_code);
+        g_ready_cache_value = true;
+        g_ready_cache_time = time(NULL);
+        g_ready_cache_valid = true;
         return true;
     } else if (http_code > 0) {
         // We got some HTTP response, which means the server is running
         log_warn("go2rtc_stream_is_ready: API returned HTTP %ld", http_code);
+        g_ready_cache_value = true;
+        g_ready_cache_time = time(NULL);
+        g_ready_cache_valid = true;
         return true;
     } else {
         log_warn("go2rtc_stream_is_ready: API is not responsive (HTTP %ld)", http_code);
+        g_ready_cache_value = false;
+        g_ready_cache_time = time(NULL);
+        g_ready_cache_valid = true;
         return false;
     }
 }
@@ -930,6 +959,10 @@ bool go2rtc_stream_stop_service(void) {
     return result;
 }
 
+void go2rtc_stream_invalidate_ready_cache(void) {
+    g_ready_cache_valid = false;
+}
+
 void go2rtc_stream_cleanup(void) {
     if (!g_initialized) {
         return;
@@ -949,6 +982,9 @@ void go2rtc_stream_cleanup(void) {
 
     g_initialized = false;
     g_api_port = 0;
+
+    // Invalidate the readiness cache
+    g_ready_cache_valid = false;
 
     log_info("go2rtc stream integration cleaned up");
 }
