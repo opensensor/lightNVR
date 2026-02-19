@@ -353,8 +353,29 @@ static int add_embedded_migrations(sqlite_migrate_t *ctx) {
         return 0;
     }
 
+    // Count how many embedded migrations are NOT already covered by filesystem migrations
+    int to_add = 0;
+    for (size_t i = 0; i < ctx->config.embedded_count; i++) {
+        const migration_t *src = &ctx->config.embedded_migrations[i];
+        bool already_exists = false;
+        for (int j = 0; j < ctx->migration_count; j++) {
+            if (strcmp(ctx->migrations[j].version, src->version) == 0) {
+                already_exists = true;
+                break;
+            }
+        }
+        if (!already_exists) {
+            to_add++;
+        }
+    }
+
+    if (to_add == 0) {
+        log_info("All embedded migrations already covered by filesystem migrations");
+        return 0;
+    }
+
     int existing = ctx->migration_count;
-    int new_count = existing + (int)ctx->config.embedded_count;
+    int new_count = existing + to_add;
 
     migration_t *new_array = realloc(ctx->migrations, new_count * sizeof(migration_t));
     if (!new_array) {
@@ -362,22 +383,39 @@ static int add_embedded_migrations(sqlite_migrate_t *ctx) {
     }
     ctx->migrations = new_array;
 
+    int added = 0;
     for (size_t i = 0; i < ctx->config.embedded_count; i++) {
         const migration_t *src = &ctx->config.embedded_migrations[i];
-        migration_t *dst = &ctx->migrations[existing + i];
 
+        // Skip if a filesystem migration with this version already exists
+        bool already_exists = false;
+        for (int j = 0; j < existing; j++) {
+            if (strcmp(ctx->migrations[j].version, src->version) == 0) {
+                already_exists = true;
+                break;
+            }
+        }
+        if (already_exists) {
+            continue;
+        }
+
+        migration_t *dst = &ctx->migrations[existing + added];
         memcpy(dst, src, sizeof(migration_t));
         dst->is_embedded = true;
         dst->status = is_migration_applied(ctx, dst->version) ?
                       MIGRATE_STATUS_APPLIED : MIGRATE_STATUS_PENDING;
+        added++;
     }
 
-    ctx->migration_count = new_count;
+    ctx->migration_count = existing + added;
 
     // Re-sort by version
     qsort(ctx->migrations, ctx->migration_count, sizeof(migration_t), compare_migrations);
 
-    return ctx->config.embedded_count;
+    log_info("Added %d embedded migrations (%d skipped as duplicates)",
+             added, (int)ctx->config.embedded_count - added);
+
+    return added;
 }
 
 /**
