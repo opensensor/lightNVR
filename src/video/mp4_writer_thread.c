@@ -543,20 +543,21 @@ thread_cleanup:
         log_info("Closed input context for stream %s to prevent memory leaks", stream_name);
     }
 
-    // 2b. BUGFIX: Destroy the context mutex
-	// Free any carried-over packet to avoid leaking if the thread exits between segments
-	if (thread_ctx->segment_info.pending_video_keyframe) {
-		av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
-		av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
-		thread_ctx->segment_info.pending_video_keyframe = NULL;
-		log_debug("Freed pending keyframe during thread cleanup for stream %s", stream_name);
-	}
+	    // 2b. BUGFIX: Destroy the context mutex and free any carried-over packet
+	    // Free any carried-over packet to avoid leaking if the thread exits between segments
+	    if (thread_ctx->segment_info.pending_video_keyframe) {
+	        av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
+	        av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
+	        thread_ctx->segment_info.pending_video_keyframe = NULL;
+	        log_debug("Freed pending keyframe during thread cleanup for stream %s", stream_name);
+	    }
 
-    pthread_mutex_destroy(&thread_ctx->context_mutex);
+	    pthread_mutex_destroy(&thread_ctx->context_mutex);
 
-    // 3. Notify the segment recorder that we're shutting down
-    // This helps ensure proper cleanup of shared resources
-    mp4_segment_recorder_cleanup();
+	    // NOTE: Global FFmpeg network cleanup (avformat_network_deinit) is performed
+	    // once at backend shutdown via mp4_segment_recorder_cleanup(). It must not
+	    // be called from individual writer threads, otherwise other threads that
+	    // are still using FFmpeg network APIs can crash.
 
     // Log that we've completed cleanup
     log_info("Completed cleanup of FFmpeg resources for stream %s", stream_name);
