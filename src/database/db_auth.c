@@ -198,20 +198,15 @@ int db_auth_init(void) {
     }
 
     // Create the default admin user
-    // If a password is set in the config file, use it; otherwise generate a random one
+    // If a password is set in the config file, use it; otherwise use "admin"
     const char *initial_password = NULL;
-    char random_password[65]; // 64 hex chars + null terminator
 
     if (g_config.web_password[0] != '\0') {
         initial_password = g_config.web_password;
         log_info("Creating default admin user with password from config file");
     } else {
-        log_info("Creating default admin user with secure random password");
-        if (generate_random_string(random_password, 32) != 0) {
-            log_error("Failed to generate random password for admin user");
-            return -1;
-        }
-        initial_password = random_password;
+        initial_password = "admin";
+        log_info("Creating default admin user with default password");
     }
 
     rc = db_auth_create_user("admin", initial_password, NULL, USER_ROLE_ADMIN, true, NULL);
@@ -220,23 +215,12 @@ int db_auth_init(void) {
         return -1;
     }
 
-    if (g_config.web_password[0] != '\0') {
-        log_info("********************************************************");
-        log_info("***    Default admin user created successfully       ***");
-        log_info("***    Username: admin                               ***");
-        log_info("***    Password: (from config file)                  ***");
-        log_info("***    Manage users via the User Management page     ***");
-        log_info("********************************************************");
-    } else {
-        log_info("********************************************************");
-        log_info("********************************************************");
-        log_info("***    Default admin user created successfully       ***");
-        log_info("***    Username: admin                               ***");
-        log_info("***    Password: %-32s   ***", random_password);
-        log_info("***    PLEASE CHANGE THIS PASSWORD IMMEDIATELY!      ***");
-        log_info("********************************************************");
-        log_info("********************************************************");
-    }
+    log_info("********************************************************");
+    log_info("***    Default admin user created successfully       ***");
+    log_info("***    Username: admin                               ***");
+    log_info("***    Password: admin                               ***");
+    log_info("***    PLEASE CHANGE THIS PASSWORD IMMEDIATELY!      ***");
+    log_info("********************************************************");
 
     return 0;
 }
