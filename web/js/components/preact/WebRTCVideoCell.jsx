@@ -322,8 +322,8 @@ export function WebRTCVideoCell({
               });
               if (response.ok) {
                 console.log(`Successfully refreshed go2rtc registration for ${stream.name}, retrying connection...`);
-                // Small delay to allow go2rtc to process the refresh
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Delay to allow go2rtc to fully process the refresh (longer for slow devices)
+                await new Promise(resolve => setTimeout(resolve, 3000));
                 // Trigger a retry by incrementing retryCount
                 setRetryCount(prev => prev + 1);
                 return;
@@ -448,23 +448,39 @@ export function WebRTCVideoCell({
 
         console.log(`Sending offer directly to go2rtc for stream ${stream.name}`);
 
-        // Send the offer directly to go2rtc
-        // go2rtc expects Content-Type: application/sdp with raw SDP
-        return fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/sdp',
-          },
-          body: pc.localDescription.sdp,
-        });
-      })
-      .then(async (response) => {
-        const bodyText = await response.text().catch(() => '');
-        if (!response.ok) {
-          console.error(`go2rtc /api/webrtc error for stream ${stream.name}: status=${response.status}, body="${bodyText}"`);
-          throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
-        }
-        return bodyText;
+        // Send the offer directly to go2rtc with retry logic for 404 responses.
+        // On slower devices, go2rtc may not have the stream ready yet when we
+        // first try to send the offer, resulting in a 404. We retry with
+        // exponential backoff to give it time.
+        const maxOfferRetries = 4;
+        const baseRetryDelayMs = 1500; // 1.5s, 3s, 6s, 12s
+
+        const sendOfferWithRetry = async (attempt) => {
+          const response = await fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/sdp',
+            },
+            body: pc.localDescription.sdp,
+          });
+
+          const bodyText = await response.text().catch(() => '');
+
+          if (!response.ok) {
+            // Retry on 404 (stream not ready in go2rtc) with exponential backoff
+            if (response.status === 404 && attempt < maxOfferRetries) {
+              const delay = baseRetryDelayMs * Math.pow(2, attempt);
+              console.warn(`go2rtc returned 404 for stream ${stream.name} (attempt ${attempt + 1}/${maxOfferRetries + 1}), retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              return sendOfferWithRetry(attempt + 1);
+            }
+            console.error(`go2rtc /api/webrtc error for stream ${stream.name}: status=${response.status}, body="${bodyText}"`);
+            throw new Error(`Failed to send offer: ${response.status} ${response.statusText}`);
+          }
+          return bodyText;
+        };
+
+        return sendOfferWithRetry(0);
       })
       .then(sdpAnswer => {
         console.log(`Received SDP answer from go2rtc for stream ${stream.name}`);
@@ -711,8 +727,8 @@ export function WebRTCVideoCell({
     // This helps recover from stale go2rtc state that causes WebRTC failures
     await refreshStreamRegistration();
 
-    // Small delay to allow go2rtc to re-register the stream
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Delay to allow go2rtc to fully re-register the stream (longer for slow devices)
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Increment retry count to trigger useEffect re-run
     setRetryCount(prev => prev + 1);
