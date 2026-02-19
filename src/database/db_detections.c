@@ -107,20 +107,8 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
             pthread_mutex_unlock(db_mutex);
             return -1;
         }
-        
-        // Create indexes
-        const char *create_indexes =
-            "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp ON detections (stream_name, timestamp);"
-            "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);"
-            "CREATE INDEX IF NOT EXISTS idx_detections_recording_id ON detections (recording_id);";
-        
-        rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to create indexes: %s", err_msg);
-            sqlite3_free(err_msg);
-            pthread_mutex_unlock(db_mutex);
-            return -1;
-        }
+
+        // Note: Indexes are created via SQL migration files in db/migrations/
     } else {
         sqlite3_free_table(query_result);
     }

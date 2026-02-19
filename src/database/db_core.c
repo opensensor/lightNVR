@@ -518,32 +518,8 @@ int init_database(const char *db_path) {
         return -1;
     }
 
-    // Create indexes for faster queries
-    const char *create_indexes =
-        "CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events (timestamp);"
-        "CREATE INDEX IF NOT EXISTS idx_events_type ON events (type);"
-        "CREATE INDEX IF NOT EXISTS idx_events_stream ON events (stream_name);"
-        "CREATE INDEX IF NOT EXISTS idx_recordings_start_time ON recordings (start_time);"
-        "CREATE INDEX IF NOT EXISTS idx_recordings_end_time ON recordings (end_time);"
-        "CREATE INDEX IF NOT EXISTS idx_recordings_stream ON recordings (stream_name);"
-        "CREATE INDEX IF NOT EXISTS idx_recordings_complete_stream_start ON recordings (is_complete, stream_name, start_time);"
-        "CREATE INDEX IF NOT EXISTS idx_streams_name ON streams (name);"
-        "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp ON detections (stream_name, timestamp);"
-        "CREATE INDEX IF NOT EXISTS idx_detections_timestamp ON detections (timestamp);"
-        "CREATE INDEX IF NOT EXISTS idx_detections_recording_id ON detections (recording_id);"
-        "CREATE INDEX IF NOT EXISTS idx_recordings_trigger_type ON recordings (trigger_type);";
-
-    rc = sqlite3_exec(db, create_indexes, NULL, NULL, &err_msg);
-    if (rc != SQLITE_OK) {
-        log_error("Failed to create indexes: %s", err_msg);
-        if (err_msg) {
-            sqlite3_free(err_msg);
-            err_msg = NULL;
-        }
-        sqlite3_close_v2(db); // Use close_v2 for better cleanup
-        db = NULL;
-        return -1;
-    }
+    // Note: All indexes are created via SQL migration files in db/migrations/
+    // Do not create indexes here - they must be managed through the migration system
 
     // Initialize schema management system
     log_info("Initializing schema management system");
