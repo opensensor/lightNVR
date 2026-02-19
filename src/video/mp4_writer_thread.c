@@ -630,56 +630,77 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
         return;
     }
 
+    // SAFETY: Copy stream name to a local buffer immediately.
+    // writer->stream_name is a char[] embedded in the struct so it can never
+    // be NULL, but the struct itself may be freed/corrupted by another thread
+    // racing with us (e.g. close_all_mp4_writers during shutdown).  A local
+    // copy ensures we always have a safe string for logging.
+    char sname[MAX_STREAM_NAME];
+    if (writer->stream_name[0] != '\0' && writer->stream_name[0] > 0x1F
+        && writer->stream_name[0] < 0x7F) {
+        strncpy(sname, writer->stream_name, MAX_STREAM_NAME - 1);
+        sname[MAX_STREAM_NAME - 1] = '\0';
+    } else {
+        strncpy(sname, "unknown", MAX_STREAM_NAME - 1);
+        sname[MAX_STREAM_NAME - 1] = '\0';
+    }
+
+    // Capture thread handle locally before any operations that might
+    // race with thread context being freed.
+    mp4_writer_thread_t *tctx = writer->thread_ctx;
+    if (!tctx) {
+        return;
+    }
+    pthread_t thread_handle = tctx->thread;
+
     // Signal thread to stop — the interrupt callback now checks this flag,
     // so any blocking FFmpeg call (av_read_frame, avformat_open_input) will
     // be interrupted promptly.
-    atomic_store(&writer->thread_ctx->shutdown_requested, 1);
-
-    const char *sname = writer->stream_name ? writer->stream_name : "unknown";
+    atomic_store(&tctx->shutdown_requested, 1);
 
     // Use a timed join to prevent the main thread from blocking forever.
     // With the interrupt callback fix, the thread should exit quickly once
     // shutdown_requested is set. The timeout is a safety net.
-    log_info("Joining recording thread for %s (running=%d)", sname, writer->thread_ctx->running);
+    log_info("Joining recording thread for %s (running=%d)", sname, tctx->running);
 
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += 10;  // 10 second timeout
 
-    int join_ret = pthread_timedjoin_np(writer->thread_ctx->thread, NULL, &ts);
+    int join_ret = pthread_timedjoin_np(thread_handle, NULL, &ts);
     if (join_ret == ETIMEDOUT) {
         log_warn("Recording thread for %s did not exit within 10 seconds, cancelling thread", sname);
-        pthread_cancel(writer->thread_ctx->thread);
+        pthread_cancel(thread_handle);
         // Give it a moment to handle cancellation, then detach if still stuck
         struct timespec ts2;
         clock_gettime(CLOCK_REALTIME, &ts2);
         ts2.tv_sec += 3;  // 3 more seconds for cancellation
-        int join_ret2 = pthread_timedjoin_np(writer->thread_ctx->thread, NULL, &ts2);
+        int join_ret2 = pthread_timedjoin_np(thread_handle, NULL, &ts2);
         if (join_ret2 == ETIMEDOUT) {
             log_error("Recording thread for %s still stuck after cancel, detaching to avoid deadlock", sname);
-            pthread_detach(writer->thread_ctx->thread);
+            pthread_detach(thread_handle);
         }
     } else if (join_ret != 0) {
         log_warn("pthread_timedjoin_np for %s returned error %d", sname, join_ret);
     }
-    writer->thread_ctx->running = 0;
+    tctx->running = 0;
 
     // CRITICAL: Only free resources after thread has completely stopped
-    if (writer->thread_ctx->rtsp_url[0] != '\0') {
-        memset(writer->thread_ctx->rtsp_url, 0, sizeof(writer->thread_ctx->rtsp_url));
+    if (tctx->rtsp_url[0] != '\0') {
+        memset(tctx->rtsp_url, 0, sizeof(tctx->rtsp_url));
     }
 
     // Free thread context
-    free(writer->thread_ctx);
+    free(tctx);
     writer->thread_ctx = NULL;
 
     // Update component state in shutdown coordinator
     if (writer->shutdown_component_id >= 0) {
         update_component_state(writer->shutdown_component_id, COMPONENT_STOPPED);
-        log_info("Updated MP4 writer component state to STOPPED for %s", writer->stream_name);
+        log_info("Updated MP4 writer component state to STOPPED for %s", sname);
     }
 
-    log_info("Stopped RTSP reading thread for %s", writer->stream_name);
+    log_info("Stopped RTSP reading thread for %s", sname);
 }
 
 /**
