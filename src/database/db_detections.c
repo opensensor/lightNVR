@@ -63,55 +63,11 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
     
     pthread_mutex_lock(db_mutex);
     
-    // Check if detections table exists
+    // Note: detections table is created by SQL migrations (see db/migrations/)
+    // No need for runtime table existence checks or fallback creation.
     char *err_msg = NULL;
     char **query_result;
     int rows, cols;
-    rc = sqlite3_get_table(db, 
-                          "SELECT name FROM sqlite_master WHERE type='table' AND name='detections';", 
-                          &query_result, &rows, &cols, &err_msg);
-    
-    if (rc != SQLITE_OK) {
-        log_error("Failed to check if detections table exists: %s", err_msg);
-        sqlite3_free(err_msg);
-        pthread_mutex_unlock(db_mutex);
-        return -1;
-    }
-    
-    if (rows == 0) {
-        log_error("Detections table does not exist, recreating it");
-        sqlite3_free_table(query_result);
-        
-        // Create detections table
-        const char *create_detections_table =
-            "CREATE TABLE IF NOT EXISTS detections ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "stream_name TEXT NOT NULL,"
-            "timestamp INTEGER NOT NULL,"
-            "label TEXT NOT NULL,"
-            "confidence REAL NOT NULL,"
-            "x REAL NOT NULL,"
-            "y REAL NOT NULL,"
-            "width REAL NOT NULL,"
-            "height REAL NOT NULL,"
-            "track_id INTEGER DEFAULT -1,"
-            "zone_id TEXT DEFAULT '',"
-            "recording_id INTEGER,"
-            "FOREIGN KEY (recording_id) REFERENCES recordings(id)"
-            ");";
-        
-        rc = sqlite3_exec(db, create_detections_table, NULL, NULL, &err_msg);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to create detections table: %s", err_msg);
-            sqlite3_free(err_msg);
-            pthread_mutex_unlock(db_mutex);
-            return -1;
-        }
-
-        // Note: Indexes are created via SQL migration files in db/migrations/
-    } else {
-        sqlite3_free_table(query_result);
-    }
 
     // Begin transaction for better performance when inserting multiple detections
     rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, &err_msg);

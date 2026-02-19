@@ -29,8 +29,20 @@ CREATE TABLE IF NOT EXISTS recordings (
     size_bytes INTEGER DEFAULT 0,
     width INTEGER,
     height INTEGER,
+    fps INTEGER,
     codec TEXT,
+    is_complete INTEGER DEFAULT 0,
     created_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+
+-- Events table
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type INTEGER NOT NULL,
+    timestamp INTEGER NOT NULL,
+    stream_name TEXT,
+    description TEXT NOT NULL,
+    details TEXT
 );
 
 -- Create index for efficient queries
@@ -39,6 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_recordings_start_time ON recordings(start_time);
 
 -- migrate:down
 
+DROP TABLE IF EXISTS events;
 DROP INDEX IF EXISTS idx_recordings_start_time;
 DROP INDEX IF EXISTS idx_recordings_stream_name;
 DROP TABLE IF EXISTS recordings;

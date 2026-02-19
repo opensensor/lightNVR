@@ -12,6 +12,7 @@
 #include "database/db_migrations.h"
 #include "database/sqlite_migrate.h"
 #include "database/db_core.h"
+#include "database/db_embedded_migrations.h"
 #include "core/logger.h"
 
 /**
@@ -250,8 +251,8 @@ int run_database_migrations(void) {
     migrate_config_t config = {
         .migrations_dir = migrations_dir,
         .migrations_table = "schema_migrations",
-        .embedded_migrations = NULL,
-        .embedded_count = 0,
+        .embedded_migrations = embedded_migrations_data,
+        .embedded_count = EMBEDDED_MIGRATIONS_COUNT,
         .callback = migration_callback,
         .callback_data = NULL,
         .dry_run = false,
