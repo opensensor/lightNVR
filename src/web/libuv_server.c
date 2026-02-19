@@ -12,10 +12,13 @@
 #include <llhttp.h>
 #include <uv.h>
 
+#include <pthread.h>
+
 #include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "web/thumbnail_thread.h"
+#include "web/api_handlers_health.h"
 #include "core/logger.h"
 
 // Initial handler capacity
@@ -25,6 +28,7 @@
 static void on_connection(uv_stream_t *server, int status);
 static void server_thread_func(void *arg);
 static void stop_async_cb(uv_async_t *handle);
+static void count_handles_cb(uv_handle_t *handle, void *arg);
 
 /**
  * @brief Async callback to wake up the event loop for shutdown
@@ -172,6 +176,41 @@ uv_loop_t *libuv_server_get_loop(http_server_handle_t handle) {
 }
 
 /**
+ * @brief Create a fresh event loop, replacing the old dirty one
+ *
+ * When the event loop thread dies unexpectedly and handles are stuck in a
+ * closing state, the only reliable recovery is to abandon the old loop and
+ * create a fresh one.
+ *
+ * @return 0 on success, -1 on failure
+ */
+static int libuv_server_reset_loop(libuv_server_t *server) {
+    log_warn("libuv_server_reset_loop: Abandoning dirty event loop, creating fresh one");
+
+    // Try to close the old loop (may fail if handles are stuck, that's OK)
+    int close_result = uv_loop_close(server->loop);
+    if (close_result != 0) {
+        log_warn("libuv_server_reset_loop: Old loop close returned %d (%s) - "
+                 "forcing new allocation", close_result, uv_strerror(close_result));
+        // Allocate a new loop structure since we can't cleanly close the old one
+        server->loop = safe_malloc(sizeof(uv_loop_t));
+        if (!server->loop) {
+            log_error("libuv_server_reset_loop: Failed to allocate new event loop");
+            return -1;
+        }
+    }
+
+    // Initialize the fresh loop
+    if (uv_loop_init(server->loop) != 0) {
+        log_error("libuv_server_reset_loop: Failed to initialize new event loop");
+        return -1;
+    }
+
+    log_info("libuv_server_reset_loop: Fresh event loop created successfully");
+    return 0;
+}
+
+/**
  * @brief Start the HTTP server
  */
 int libuv_server_start(http_server_handle_t handle) {
@@ -179,6 +218,9 @@ int libuv_server_start(http_server_handle_t handle) {
     if (!server) {
         return -1;
     }
+
+    // CRITICAL: Reset shutdown flag so callbacks work properly after restart
+    server->shutting_down = false;
 
     // Check if handles are closed (happens after restart)
     // If they're closed, we need to reinitialize them
@@ -200,11 +242,23 @@ int libuv_server_start(http_server_handle_t handle) {
 
         if (uv_is_closing((uv_handle_t *)&server->listener) ||
             uv_is_closing((uv_handle_t *)&server->stop_async)) {
-            log_error("libuv_server_start: Handles still closing after timeout");
-            return -1;
+            // Handles stuck closing - the event loop is dirty.
+            // Create a fresh event loop as fallback.
+            log_warn("libuv_server_start: Handles still closing after timeout, "
+                     "creating fresh event loop");
+
+            if (server->owns_loop) {
+                if (libuv_server_reset_loop(server) != 0) {
+                    log_error("libuv_server_start: Failed to create fresh event loop");
+                    return -1;
+                }
+            } else {
+                log_error("libuv_server_start: Cannot reset shared event loop");
+                return -1;
+            }
         }
 
-        // Reinitialize the TCP listener
+        // Reinitialize the TCP listener on the (possibly fresh) loop
         if (uv_tcp_init(server->loop, &server->listener) != 0) {
             log_error("libuv_server_start: Failed to reinitialize TCP handle");
             return -1;
@@ -262,6 +316,11 @@ static void server_thread_func(void *arg) {
 
     log_info("libuv_server: Event loop thread started");
 
+    // Register this thread's ID with the health check system so it can
+    // detect if this thread dies unexpectedly. On Linux, uv_thread_t is
+    // pthread_t, so we use pthread_self() for portability.
+    set_web_server_thread_id(pthread_self());
+
     // Run the event loop until stopped
     // Use UV_RUN_DEFAULT which blocks until there are no more active handles
     // or until uv_stop() is called. The stop_async handle ensures we can wake
@@ -277,10 +336,30 @@ static void server_thread_func(void *arg) {
     // 2. uv_async_send() wakes up the loop
     // 3. uv_stop() causes uv_run() to return
     // 4. This thread exits
-    uv_run(server->loop, UV_RUN_DEFAULT);
+    //
+    // If uv_run() returns unexpectedly while server->running is still true,
+    // it means handles were unexpectedly closed (e.g., resource exhaustion).
+    // We log a warning so this can be diagnosed from logs.
+    int run_result = uv_run(server->loop, UV_RUN_DEFAULT);
 
-    log_info("libuv_server: Event loop thread exiting (running=%s)",
-             server->running ? "true" : "false");
+    if (server->running) {
+        // uv_run returned but we didn't request shutdown - unexpected exit
+        log_error("libuv_server: Event loop exited UNEXPECTEDLY (running=true, "
+                  "uv_run returned %d) - this indicates handles were lost", run_result);
+
+        // Count remaining active handles for diagnostics
+        int active_handles = 0;
+        uv_walk(server->loop, count_handles_cb, &active_handles);
+        log_error("libuv_server: %d handles still registered at unexpected exit",
+                  active_handles);
+    } else {
+        log_info("libuv_server: Event loop thread exiting normally (shutdown requested)");
+    }
+
+    // CRITICAL: Mark thread as no longer running so restart logic works correctly.
+    // Without this, libuv_server_stop would try to join a thread that already exited
+    // and the restart mechanism would be stuck.
+    server->thread_running = false;
 }
 
 /**
