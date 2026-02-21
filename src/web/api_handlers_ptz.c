@@ -41,9 +41,10 @@ static int get_ptz_stream_config(const char *stream_name, stream_config_t *confi
  *
  * Preserves the transport scheme: RTSPS (RTSP over TLS) cameras also serve
  * ONVIF over HTTPS, so we use https:// for those.  Plain RTSP → http://.
- * Standard transport ports are mapped to their ONVIF web equivalents:
- *   RTSP  554  → HTTP  80
- *   RTSPS 322  → HTTPS 443
+ * Project-specific transport ports are mapped to their ONVIF web equivalents:
+ *   RTSP   554  → HTTP   80
+ *   RTSPS  322  → HTTPS 443  (note: 322 is a deployment-specific RTSPS port,
+ *                            many devices instead use 554 for both RTSP/RTSPS)
  */
 static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t url_size) {
     // Stream URL format: rtsp[s]://user:pass@host:port/path
@@ -59,10 +60,8 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
 
     // Parse host and port from RTSP/RTSPS URL
     const char *at_sign = strrchr(url, '@');
-    const char *host_start = at_sign ? at_sign + 1 : strstr(url, "://");
-    if (host_start && strstr(url, "://")) {
-        host_start = host_start + (at_sign ? 0 : 3);
-    }
+    const char *scheme_sep = strstr(url, "://");
+    const char *host_start = at_sign ? at_sign + 1 : (scheme_sep ? scheme_sep + 3 : NULL);
 
     if (host_start) {
         const char *port_start = strchr(host_start, ':');
@@ -74,7 +73,20 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
                 strncpy(host, host_start, host_len);
                 host[host_len] = '\0';
             }
-            port = atoi(port_start + 1);
+            char *endptr = NULL;
+            long parsed_port = strtol(port_start + 1, &endptr, 10);
+            /* Ensure we actually parsed digits, and that the port consists only of digits
+             * up to the end of the string or before the path separator. */
+            if (endptr == port_start + 1 ||
+                (*endptr != '\0' && *endptr != '/')) {
+                log_error("Invalid port in stream URL: %s", url);
+                return -1;
+            }
+            if (parsed_port <= 0 || parsed_port > 65535) {
+                log_error("Port out of range in stream URL: %s", url);
+                return -1;
+            }
+            port = (int)parsed_port;
             // Map standard transport ports to ONVIF web ports
             if (port == 554) port = 80;   // RTSP default  → HTTP  default
             if (port == 322) port = 443;  // RTSPS default → HTTPS default
@@ -86,6 +98,7 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
             }
         } else {
             strncpy(host, host_start, sizeof(host) - 1);
+            host[sizeof(host) - 1] = '\0';
         }
     }
 
