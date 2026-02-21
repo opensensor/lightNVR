@@ -99,6 +99,7 @@ void test_safe_strcpy_success(void) {
 
 void test_safe_strcpy_truncation_returns_error(void) {
     char buf[4];
+    memset(buf, 0, sizeof(buf));
     int rc = safe_strcpy(buf, "hello_world", sizeof(buf));
     TEST_ASSERT_NOT_EQUAL(0, rc);
     /* buf should still be null-terminated and contain truncated data */
