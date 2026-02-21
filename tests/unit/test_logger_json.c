@@ -170,10 +170,10 @@ void test_get_json_logs_timestamp_pagination_excludes_old(void) {
     int rc = get_json_logs("debug", "2025-01-01T00:03:00", &logs, &count);
     TEST_ASSERT_EQUAL_INT(0, rc);
 
-    /* The "new" entry (timestamp 00:03:01) should appear */
+    /* The entry at timestamp 2025-01-01T00:03:01 should appear */
     int found_new = 0;
     for (int i = 0; i < count; i++) {
-        if (strstr(logs[i], "new")) found_new = 1;
+        if (strstr(logs[i], "2025-01-01T00:03:01")) found_new = 1;
         free(logs[i]);
     }
     free(logs);

@@ -266,14 +266,22 @@ void test_secure_zero_memory_zero_size_no_crash(void) {
  * ================================================================ */
 
 void test_track_memory_underflow_handled(void) {
+    /* Preserve original total so we can restore it after the test. */
+    size_t original_total = get_total_memory_allocated();
+
     /* Reset total to 0 first by freeing anything we know about */
-    size_t current = get_total_memory_allocated();
-    if (current > 0) {
-        track_memory_allocation(current, false);
+    if (original_total > 0) {
+        track_memory_allocation(original_total, false);
     }
+
     /* Now freeing more than tracked should not crash and reset to 0 */
     track_memory_allocation(9999, false);
     TEST_ASSERT_EQUAL_UINT(0, get_total_memory_allocated());
+
+    /* Restore original total so this test does not affect others. */
+    if (original_total > 0) {
+        track_memory_allocation(original_total, true);
+    }
 }
 
 /* ================================================================
