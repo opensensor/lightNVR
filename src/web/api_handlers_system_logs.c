@@ -327,10 +327,8 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Get system logs
     char **logs = NULL;
-    // max_log_count is the input (maximum number of logs requested)
     // actual_log_count is the output (actual number of logs returned) by get_json_logs_tail().
-    int max_log_count = DEFAULT_MAX_LOG_ENTRIES;  // Input: maximum number of logs to return
-    int actual_log_count = max_log_count;         // Will be updated by get_json_logs_tail()
+    int actual_log_count = 0;                    // Will be updated by get_json_logs_tail()
 
     // Second argument is the optional source/filter/context; NULL means "no specific filter" (use default system logs)
     // Note: actual_log_count is updated by get_json_logs_tail() to the actual number of logs returned.
@@ -397,8 +395,8 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
             cJSON *message_json = cJSON_GetObjectItem(log_json, "message");
 
             const char *timestamp = timestamp_json && cJSON_IsString(timestamp_json) ? timestamp_json->valuestring : "Unknown";
-            const char *log_level = level_json && cJSON_IsString(level_json) ? level_json->valuestring : "info";
-            const char *message = message_json && cJSON_IsString(message_json) ? message_json->valuestring : "";
+            const char *log_level = level_json && cJSON_IsString(level_json) ? level_json->valuestring : "Unknown";
+            const char *message = message_json && cJSON_IsString(message_json) ? message_json->valuestring : "Unknown";
 
             // Check if this log meets the minimum level
             if (log_level_meets_minimum(log_level, level)) {
