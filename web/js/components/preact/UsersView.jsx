@@ -8,7 +8,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 
 // Import user components
-import { USER_ROLES } from './users/UserRoles.js';
+
 import { UsersTable } from './users/UsersTable.jsx';
 import { AddUserModal } from './users/AddUserModal.jsx';
 import { EditUserModal } from './users/EditUserModal.jsx';

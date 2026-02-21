@@ -117,8 +117,7 @@ export function SystemView() {
   const {
     data: systemInfoData,
     isLoading,
-    error: systemInfoError,
-    refetch: refetchSystemInfo
+    error: systemInfoError
   } = useQuery(
     ['systemInfo'],
     '/api/system/info',

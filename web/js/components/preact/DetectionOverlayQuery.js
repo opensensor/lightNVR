@@ -114,9 +114,8 @@ export function drawDetections(canvas, videoElement, detections) {
  */
 export function DetectionOverlay({ streamName, videoElement, canvasOverlay }) {
   // Use the detection results hook
-  const { 
+  const {
     data: detectionData,
-    isLoading,
     error
   } = useDetectionResults(streamName, true, 1000);
   

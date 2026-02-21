@@ -11,7 +11,7 @@ import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
-import adapter from 'webrtc-adapter';
+import 'webrtc-adapter';
 
 /**
  * WebRTCVideoCell component

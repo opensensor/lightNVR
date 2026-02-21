@@ -105,7 +105,6 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
   const [capabilities, setCapabilities] = useState(null);
   const [isMoving, setIsMoving] = useState(false);
   const [error, setError] = useState(null);
-  const moveTimeoutRef = useRef(null);
 
   // Load capabilities and presets
   useEffect(() => {
