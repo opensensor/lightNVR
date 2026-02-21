@@ -22,6 +22,10 @@
 /**
  * @brief Get system logs
  *
+ * Legacy API retained for backward compatibility. New code should use
+ * get_json_logs_tail() instead, which is the preferred way of obtaining
+ * log data for API responses.
+ *
  * @param logs Pointer to array of log strings (will be allocated)
  * @param count Pointer to store number of logs
  * @return int 0 on success, -1 on failure
@@ -128,7 +132,7 @@ int get_system_logs(char ***logs, int *count) {
             log_error("Failed to allocate memory for log line");
 
             // Free previously allocated lines
-            for (int i = 0; i < line_count; i++) {
+            for (int i = 0; i < log_index; i++) {
                 if (log_lines[i]) {
                     free(log_lines[i]);
                     log_lines[i] = NULL;
@@ -223,9 +227,11 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Get system logs
     char **logs = NULL;
-    int count = 250;
+    int max_count = 250;
 
-    const int result = get_json_logs_tail(level, NULL, &logs, &count);
+    const int result = get_json_logs_tail(level, NULL, &logs, &max_count);
+
+    int count = max_count;
 
     if (result != 0 || !logs) {
         http_response_set_json_error(res, 500, "Failed to get system logs");
@@ -369,7 +375,7 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
         file_exists = (stat(fallback_log_file, &st) == 0);
         is_writable = (access(fallback_log_file, W_OK) == 0);
 
-        if (file_exists || is_writable) {
+        if (file_exists && is_writable) {
             log_info("Using fallback log file for clearing");
             log_file = fallback_log_file;
         }
