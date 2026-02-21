@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   checks: write
+  pull-requests: write
 
 jobs:
   unity-tests:
@@ -124,6 +125,16 @@ jobs:
           name: c-coverage-report
           path: coverage-report/
           retention-days: 30
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/coverage_filtered.info
+          flags: unity-c
+          name: lightnvr-c-coverage
+          fail_ci_if_error: false
 
       - name: Upload test results on failure
         uses: actions/upload-artifact@v4
