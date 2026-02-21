@@ -22,8 +22,8 @@ const removeUseClientDirective = () => {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
         // Check for "use client" directive with various possible formats, allowing leading whitespace,
-        // and remove the entire directive line including an optional semicolon and trailing whitespace.
-        const useClientRegex = /^\s*(?:'use client'|"use client");?\s*$/gm;
+        // and remove the entire directive line including an optional semicolon and any trailing content (e.g. comments).
+        const useClientRegex = /^\s*(['"])use\s+client\1;?.*$/gm;
         // Remove the "use client" directive (if present) and return the modified code
         const transformedCode = code.replace(useClientRegex, '');
         if (transformedCode !== code) {
