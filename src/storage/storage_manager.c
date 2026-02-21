@@ -26,9 +26,17 @@
 // Maximum recordings to delete per stream per run
 #define MAX_RECORDINGS_PER_STREAM 100
 
+// Default retention period (in days) when no global or stream-specific value is configured
+#define DEFAULT_RETENTION_DAYS 30
+// Multiplier for detection retention default (detection = N * regular retention)
+#define DETECTION_RETENTION_MULTIPLIER 3
+// Orphan safety parameters
+#define ORPHAN_SAFETY_THRESHOLD 0.5
+#define MIN_RECORDINGS_FOR_THRESHOLD 10
+
 // Forward declarations
 static int apply_legacy_retention_policy(void);
-int get_all_stream_names(char stream_names[][64], int max_streams);
+static int get_all_stream_names(char stream_names[][64], int max_streams);
 
 // Storage manager state
 static struct {
@@ -274,8 +282,8 @@ int apply_retention_policy(void) {
         // Get stream-specific retention config
         if (get_stream_retention_config(stream_name, &config) != 0) {
             log_warn("Failed to get retention config for stream %s, using defaults", stream_name);
-            config.retention_days = storage_manager.retention_days > 0 ? storage_manager.retention_days : 30;
-            config.detection_retention_days = config.retention_days * 3; // Default: 3x regular retention
+            config.retention_days = storage_manager.retention_days > 0 ? storage_manager.retention_days : DEFAULT_RETENTION_DAYS;
+            config.detection_retention_days = config.retention_days * DETECTION_RETENTION_MULTIPLIER; // Default: 3x regular retention
             config.max_storage_mb = 0; // No quota
         }
 
@@ -401,7 +409,8 @@ int apply_retention_policy(void) {
             // Safety threshold: if more than 50% of checked recordings appear orphaned,
             // this is almost certainly a storage availability problem, not genuine orphans.
             double orphan_ratio = (double)orphan_count / (double)total_checked;
-            if (orphan_ratio > 0.5 && total_checked >= 10) {
+            if (orphan_ratio > ORPHAN_SAFETY_THRESHOLD &&
+                total_checked >= MIN_RECORDINGS_FOR_THRESHOLD) {
                 log_error("Orphan safety threshold exceeded: %d of %d checked recordings (%.0f%%) "
                           "appear orphaned - this likely indicates a storage availability issue, "
                           "skipping orphan cleanup to protect database integrity",
@@ -586,9 +595,6 @@ int create_stream_directory(const char *stream_name) {
 
 // Maximum recordings to process per emergency cleanup
 #define MAX_EMERGENCY_RECORDINGS 200
-
-// Forward declaration for the cache refresh function
-extern int force_refresh_cache(void);
 
 // Unified storage controller thread state
 static struct {
