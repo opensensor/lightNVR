@@ -24,9 +24,9 @@ const removeUseClientDirective = () => {
         // Check for "use client" directive with various possible formats, allowing leading whitespace,
         // and remove the entire directive line including an optional semicolon and trailing whitespace.
         const useClientRegex = /^\s*(?:'use client'|"use client");?\s*$/gm;
-        if (useClientRegex.test(code)) {
-          // Remove the "use client" directive and return the modified code
-          const transformedCode = code.replace(useClientRegex, '');
+        // Remove the "use client" directive (if present) and return the modified code
+        const transformedCode = code.replace(useClientRegex, '');
+        if (transformedCode !== code) {
           return {
             code: transformedCode,
             // Do not emit a custom sourcemap; allow Vite/Rollup to handle sourcemaps if enabled
@@ -161,9 +161,8 @@ export default defineConfig({
           importer &&
           MISSING_APP_JS_IMPORTERS.includes(basename(importer))
         ) {
-          // Return false to signal that this import should be treated as external
-          // This will prevent Vite from trying to resolve it during build
-          return false;
+          // Mark this import as external so Vite/Rollup does not try to resolve it during build
+          return { id, external: true };
         }
       }
     },
