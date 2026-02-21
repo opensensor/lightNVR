@@ -20,7 +20,6 @@
 
 const { chromium } = require('playwright');
 const fs = require('fs');
-const path = require('path');
 
 // Parse command line arguments
 const args = process.argv.slice(2);
