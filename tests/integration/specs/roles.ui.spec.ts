@@ -6,7 +6,6 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { LoginPage } from '../pages/LoginPage';
 import { CONFIG, USERS, login, sleep, getAuthHeader } from '../fixtures/test-fixtures';
 
 const AUTH_HEADER = getAuthHeader(USERS.admin);
@@ -152,8 +151,7 @@ test.describe('Role-Based Access Control @ui @roles @rbac', () => {
 
   test.describe('User Role Access', () => {
     test('user role can access basic features', async ({ page }) => {
-      const loginPage = new LoginPage(page);
-      await loginPage.login(TEST_USERS.user.username, TEST_USERS.user.password);
+      await login(page, TEST_USERS.user);
       
       await sleep(2000);
       

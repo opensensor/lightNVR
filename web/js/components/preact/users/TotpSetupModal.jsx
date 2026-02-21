@@ -2,7 +2,7 @@
  * TOTP MFA Setup Modal Component
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import QRCode from 'qrcode';
 
 /**
@@ -25,23 +25,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
 
   const stopPropagation = (e) => e.stopPropagation();
 
-  // Fetch current TOTP status on mount
-  useEffect(() => {
-    fetchStatus();
-  }, []);
-
-  // Render QR code when otpauthUri changes
-  useEffect(() => {
-    if (otpauthUri && canvasRef.current) {
-      QRCode.toCanvas(canvasRef.current, otpauthUri, {
-        width: 256,
-        margin: 2,
-        color: { dark: '#000000', light: '#ffffff' }
-      }).catch(err => console.error('QR Code error:', err));
-    }
-  }, [otpauthUri, step]);
-
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch(`/api/auth/users/${user.id}/totp/status`, {
         headers: getAuthHeaders()
@@ -59,7 +43,23 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
       console.error('Error fetching TOTP status:', err);
       setStep('status');
     }
-  };
+  }, [user.id, getAuthHeaders]);
+
+  // Fetch current TOTP status on mount or when dependencies change
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  // Render QR code when otpauthUri changes
+  useEffect(() => {
+    if (otpauthUri && canvasRef.current) {
+      QRCode.toCanvas(canvasRef.current, otpauthUri, {
+        width: 256,
+        margin: 2,
+        color: { dark: '#000000', light: '#ffffff' }
+      }).catch(err => console.error('QR Code error:', err));
+    }
+  }, [otpauthUri, step]);
 
   const handleSetup = async () => {
     setError('');

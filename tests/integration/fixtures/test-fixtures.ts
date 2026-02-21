@@ -4,7 +4,7 @@
  * Provides reusable fixtures for authentication, page setup, and test utilities.
  */
 
-import { expect } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
 
 // Configuration
 // Use longer timeouts in CI environments

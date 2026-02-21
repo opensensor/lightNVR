@@ -8,6 +8,8 @@ import preact from '@preact/preset-vite';
 import viteCompression from 'vite-plugin-compression';
 import themeInjectPlugin from './vite-plugin-theme-inject.js';
 
+const MISSING_APP_JS_IMPORTERS = ['streams.html'];
+
 // Custom plugin to remove "use client" directives
 const removeUseClientDirective = () => {
   return {
@@ -140,12 +142,11 @@ export default defineConfig({
     {
       name: 'handle-missing-app-js',
       // List of HTML files that import a missing ./js/app.js and should be treated as external
-      MISSING_APP_JS_IMPORTERS: ['streams.html'],
       resolveId(id, importer) {
         if (
           id === './js/app.js' &&
           importer &&
-          this.MISSING_APP_JS_IMPORTERS.includes(basename(importer))
+          MISSING_APP_JS_IMPORTERS.includes(basename(importer))
         ) {
           // Return false to signal that this import should be treated as external
           // This will prevent Vite from trying to resolve it during build
