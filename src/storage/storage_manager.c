@@ -21,6 +21,10 @@
 #include "core/logger.h"
 #include "core/mqtt_client.h"
 
+// Forward declarations for stream configuration
+typedef struct stream_config_t stream_config_t;
+int get_stream_config_by_name(const char *stream_name, stream_config_t *config);
+
 // Maximum number of streams to process at once
 #define MAX_STREAMS_BATCH 64
 // Maximum recordings to delete per stream per run
@@ -28,6 +32,7 @@
 
 // Forward declarations
 static int apply_legacy_retention_policy(void);
+int get_all_stream_names(char stream_names[][64], int max_streams);
 
 // Storage manager state
 static struct {
@@ -328,7 +333,7 @@ int apply_retention_policy(void) {
 
         // Phase 2: Storage quota enforcement
         if (config.max_storage_mb > 0) {
-            uint64_t current_usage = get_stream_storage_usage_db(stream_name);
+            uint64_t current_usage = get_stream_storage_bytes(stream_name);
             uint64_t max_bytes = config.max_storage_mb * 1024 * 1024;
 
             if (current_usage > max_bytes) {
