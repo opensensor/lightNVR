@@ -38,27 +38,36 @@ static int get_ptz_stream_config(const char *stream_name, stream_config_t *confi
 
 /**
  * Helper to build PTZ URL from stream URL
+ *
+ * Preserves the transport scheme: RTSPS (RTSP over TLS) cameras also serve
+ * ONVIF over HTTPS, so we use https:// for those.  Plain RTSP → http://.
+ * Standard transport ports are mapped to their ONVIF web equivalents:
+ *   RTSP  554  → HTTP  80
+ *   RTSPS 322  → HTTPS 443
  */
 static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t url_size) {
-    // Extract base URL from stream URL and build PTZ service URL
-    // Stream URL format: rtsp://user:pass@host:port/path
-    // We need: http://host:port/onvif/ptz_service
-    
+    // Stream URL format: rtsp[s]://user:pass@host:port/path
+    // We need:           http[s]://host:onvif_port/onvif/ptz_service
+
     const char *url = config->url;
     char host[256] = {0};
-    int port = 80;
-    
-    // Parse host and port from RTSP URL
+
+    // Detect RTSPS (RTSP over TLS); those cameras serve ONVIF over HTTPS
+    bool use_https = (strncasecmp(url, "rtsps://", 8) == 0);
+    const char *scheme = use_https ? "https" : "http";
+    int port = use_https ? 443 : 80;
+
+    // Parse host and port from RTSP/RTSPS URL
     const char *at_sign = strrchr(url, '@');
     const char *host_start = at_sign ? at_sign + 1 : strstr(url, "://");
     if (host_start && strstr(url, "://")) {
         host_start = host_start + (at_sign ? 0 : 3);
     }
-    
+
     if (host_start) {
         const char *port_start = strchr(host_start, ':');
         const char *path_start = strchr(host_start, '/');
-        
+
         if (port_start && (!path_start || port_start < path_start)) {
             size_t host_len = port_start - host_start;
             if (host_len < sizeof(host)) {
@@ -66,7 +75,9 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
                 host[host_len] = '\0';
             }
             port = atoi(port_start + 1);
-            if (port == 554) port = 80;  // RTSP port, use HTTP default
+            // Map standard transport ports to ONVIF web ports
+            if (port == 554) port = 80;   // RTSP default  → HTTP  default
+            if (port == 322) port = 443;  // RTSPS default → HTTPS default
         } else if (path_start) {
             size_t host_len = path_start - host_start;
             if (host_len < sizeof(host)) {
@@ -77,13 +88,13 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
             strncpy(host, host_start, sizeof(host) - 1);
         }
     }
-    
+
     if (strlen(host) == 0) {
         log_error("Could not parse host from stream URL: %s", url);
         return -1;
     }
-    
-    snprintf(ptz_url, url_size, "http://%s:%d/onvif/ptz_service", host, port); // lgtm[cpp/non-https-url] - ONVIF PTZ uses HTTP; cameras often don't support HTTPS ONVIF
+
+    snprintf(ptz_url, url_size, "%s://%s:%d/onvif/ptz_service", scheme, host, port);
     return 0;
 }
 

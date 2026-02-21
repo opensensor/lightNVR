@@ -481,57 +481,72 @@ int try_direct_http_discovery(char candidate_ips[][16], int candidate_count,
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, onvif_curl_write_callback);
     
-    log_info("Starting direct HTTP probing for %d candidate IPs", candidate_count);
-    
+    log_info("Starting direct HTTP/HTTPS probing for %d candidate IPs", candidate_count);
+
+    // Try HTTP first, then HTTPS (some cameras only expose ONVIF over TLS)
+    const char *schemes[] = {"http", "https", NULL};
+
     // Try each candidate IP
     for (int i = 0; i < candidate_count && count < max_devices; i++) {
         const char *ip = candidate_ips[i];
         log_info("Probing IP %s for ONVIF services", ip);
-        
-        // Try each ONVIF path
-        for (int j = 0; onvif_paths[j] != NULL && count < max_devices; j++) {
-            char url[128];
-            snprintf(url, sizeof(url), "http://%s%s", ip, onvif_paths[j]); // lgtm[cpp/non-https-url] - ONVIF protocol uses HTTP; cameras often don't support HTTPS ONVIF
-            
-            log_debug("Trying URL: %s", url);
-            curl_easy_setopt(curl, CURLOPT_URL, url);
-            
-            // Perform the request
-            res = curl_easy_perform(curl);
-            
-            // Check if successful
-            if (res == CURLE_OK) {
-                long http_code = 0;
-                curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-                
-                if (http_code >= 200 && http_code < 300) {
-                    log_info("Found ONVIF device at %s", url);
-                    
-                    // Initialize device info
-                    memset(&devices[count], 0, sizeof(onvif_device_info_t));
-                    
-                    // Set device info
-                    strncpy(devices[count].ip_address, ip, sizeof(devices[count].ip_address) - 1);
-                    strncpy(devices[count].device_service, url, sizeof(devices[count].device_service) - 1);
-                    strncpy(devices[count].endpoint, url, sizeof(devices[count].endpoint) - 1);
-                    strncpy(devices[count].model, "Unknown (HTTP discovery)", sizeof(devices[count].model) - 1);
-                    
-                    // Set discovery time and online status
-                    devices[count].discovery_time = time(NULL);
-                    devices[count].online = true;
-                    
-                    count++;
-                    break;  // Found a working path for this IP, move to next IP
+        bool device_found = false;
+
+        for (int s = 0; schemes[s] != NULL && !device_found && count < max_devices; s++) {
+            const char *scheme = schemes[s];
+            bool is_https = (schemes[s][4] == 's');  /* "https" vs "http" */
+
+            // IP cameras almost always use self-signed certificates; skip peer/host
+            // verification for HTTPS so we can reach them without a trusted CA.
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, is_https ? 0L : 1L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, is_https ? 0L : 2L);
+
+            // Try each ONVIF path
+            for (int j = 0; onvif_paths[j] != NULL && !device_found && count < max_devices; j++) {
+                char url[256];
+                snprintf(url, sizeof(url), "%s://%s%s", scheme, ip, onvif_paths[j]);
+
+                log_debug("Trying URL: %s", url);
+                curl_easy_setopt(curl, CURLOPT_URL, url);
+
+                // Perform the request
+                res = curl_easy_perform(curl);
+
+                // Check if successful
+                if (res == CURLE_OK) {
+                    long http_code = 0;
+                    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+                    if (http_code >= 200 && http_code < 300) {
+                        log_info("Found ONVIF device at %s", url);
+
+                        // Initialize device info
+                        memset(&devices[count], 0, sizeof(onvif_device_info_t));
+
+                        // Set device info
+                        strncpy(devices[count].ip_address, ip, sizeof(devices[count].ip_address) - 1);
+                        strncpy(devices[count].device_service, url, sizeof(devices[count].device_service) - 1);
+                        strncpy(devices[count].endpoint, url, sizeof(devices[count].endpoint) - 1);
+                        snprintf(devices[count].model, sizeof(devices[count].model),
+                                 "Unknown (%s discovery)", is_https ? "HTTPS" : "HTTP");
+
+                        // Set discovery time and online status
+                        devices[count].discovery_time = time(NULL);
+                        devices[count].online = true;
+
+                        count++;
+                        device_found = true;  /* stop trying other paths/schemes for this IP */
+                    }
                 }
             }
         }
     }
-    
+
     // Clean up (Note: Don't call curl_global_cleanup() - it's managed centrally)
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    log_info("Direct HTTP probing completed, found %d devices", count);
+    log_info("Direct HTTP/HTTPS probing completed, found %d devices", count);
     
     return count;
 }
