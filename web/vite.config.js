@@ -2,7 +2,7 @@
 // Migrated from Snowpack configuration
 
 import { defineConfig } from 'vite';
-import { resolve, join, basename, dirname } from 'path';
+import { resolve, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import legacy from '@vitejs/plugin-legacy';
 import preact from '@preact/preset-vite';
