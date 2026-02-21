@@ -670,30 +670,39 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
 
     int join_ret = pthread_timedjoin_np(thread_handle, NULL, &ts);
     if (join_ret == ETIMEDOUT) {
-        log_warn("Recording thread for %s did not exit within 10 seconds, cancelling thread", sname);
-        pthread_cancel(thread_handle);
-        // Give it a moment to handle cancellation, then detach if still stuck
-        struct timespec ts2;
-        clock_gettime(CLOCK_REALTIME, &ts2);
-        ts2.tv_sec += 3;  // 3 more seconds for cancellation
-        int join_ret2 = pthread_timedjoin_np(thread_handle, NULL, &ts2);
-        if (join_ret2 == ETIMEDOUT) {
-            log_error("Recording thread for %s still stuck after cancel, detaching to avoid deadlock", sname);
-            pthread_detach(thread_handle);
-        }
+        // SAFETY FIX: Do NOT use pthread_cancel() here.
+        // Cancelling a thread that is in the middle of FFmpeg operations
+        // (av_read_frame, avformat_open_input, etc.) corrupts the heap
+        // because FFmpeg's internal allocations are left in an inconsistent
+        // state.  Instead, detach the thread and let it exit on its own.
+        // The interrupt callback will eventually cause the blocking FFmpeg
+        // call to return, and the thread will clean up after itself.
+        // We accept the small resource leak — the OS will reclaim
+        // everything when the process exits during shutdown.
+        log_warn("Recording thread for %s did not exit within 10 seconds, "
+                 "detaching thread to avoid heap corruption (thread will "
+                 "clean up on its own)", sname);
+        pthread_detach(thread_handle);
+
+        // Do NOT free tctx — the detached thread may still be using it.
+        // Mark writer->thread_ctx = NULL so no one else tries to use it.
+        writer->thread_ctx = NULL;
     } else if (join_ret != 0) {
         log_warn("pthread_timedjoin_np for %s returned error %d", sname, join_ret);
-    }
-    tctx->running = 0;
+        // Thread is in an unknown state — detach to be safe
+        pthread_detach(thread_handle);
+        writer->thread_ctx = NULL;
+    } else {
+        // Thread exited cleanly — safe to free resources
+        tctx->running = 0;
 
-    // CRITICAL: Only free resources after thread has completely stopped
-    if (tctx->rtsp_url[0] != '\0') {
-        memset(tctx->rtsp_url, 0, sizeof(tctx->rtsp_url));
-    }
+        if (tctx->rtsp_url[0] != '\0') {
+            memset(tctx->rtsp_url, 0, sizeof(tctx->rtsp_url));
+        }
 
-    // Free thread context
-    free(tctx);
-    writer->thread_ctx = NULL;
+        free(tctx);
+        writer->thread_ctx = NULL;
+    }
 
     // Update component state in shutdown coordinator
     if (writer->shutdown_component_id >= 0) {

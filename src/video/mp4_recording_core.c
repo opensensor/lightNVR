@@ -315,24 +315,35 @@ void cleanup_mp4_recording_backend(void) {
         log_info("Waiting for MP4 recording thread for %s to exit",
                 items_to_cleanup[i].stream_name);
 
-        int join_result = pthread_join_with_timeout(items_to_cleanup[i].thread, NULL, 3);
+        // Use a 15-second timeout to allow the outer thread enough time to
+        // cleanly stop the inner RTSP thread (which itself has a 10-second
+        // timeout).  The previous 3-second timeout was too short and caused
+        // the context to be freed while the outer thread was still running.
+        int join_result = pthread_join_with_timeout(items_to_cleanup[i].thread, NULL, 15);
         if (join_result != 0) {
             log_warn("Could not join MP4 recording thread for %s within timeout: %s",
                     items_to_cleanup[i].stream_name, strerror(join_result));
+
+            // SAFETY FIX: Do NOT free the context if the thread is still
+            // running — that causes use-after-free.  Detach the thread and
+            // accept the small memory leak; the OS will reclaim everything
+            // when the process exits.
+            pthread_detach(items_to_cleanup[i].thread);
+            log_warn("Detached MP4 recording thread for %s, skipping context free to avoid use-after-free",
+                    items_to_cleanup[i].stream_name);
         } else {
             log_info("Successfully joined MP4 recording thread for %s",
                     items_to_cleanup[i].stream_name);
-        }
 
-        // Double-check that the context is still at the expected index
-        if (recording_contexts[items_to_cleanup[i].index] == items_to_cleanup[i].ctx) {
-            // Free context
-            free(recording_contexts[items_to_cleanup[i].index]);
-            recording_contexts[items_to_cleanup[i].index] = NULL;
-            log_info("Freed MP4 recording context for %s", items_to_cleanup[i].stream_name);
-        } else {
-            log_warn("MP4 recording context for %s was already cleaned up or moved",
-                    items_to_cleanup[i].stream_name);
+            // Thread has exited — safe to free the context
+            if (recording_contexts[items_to_cleanup[i].index] == items_to_cleanup[i].ctx) {
+                free(recording_contexts[items_to_cleanup[i].index]);
+                recording_contexts[items_to_cleanup[i].index] = NULL;
+                log_info("Freed MP4 recording context for %s", items_to_cleanup[i].stream_name);
+            } else {
+                log_warn("MP4 recording context for %s was already cleaned up or moved",
+                        items_to_cleanup[i].stream_name);
+            }
         }
     }
 
