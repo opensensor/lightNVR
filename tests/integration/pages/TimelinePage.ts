@@ -31,7 +31,7 @@ export class TimelinePage extends BasePage {
   }
 
   get prevDayButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /prev|</i }).first();
+    return this.page.locator('button').filter({ hasText: /prev|<</i }).first();
   }
 
   get nextDayButton(): Locator {
@@ -181,11 +181,7 @@ export class TimelinePage extends BasePage {
    * Get today's date in YYYY-MM-DD format
    */
   static getTodayDate(): string {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return new Date().toISOString().split('T')[0];
   }
 
   /**

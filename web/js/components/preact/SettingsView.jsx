@@ -773,7 +773,7 @@ export function SettingsView() {
             </p>
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
               <strong>Motion Detection:</strong> Built-in motion detection is available without requiring any external models.
-              Select "motion" as the detection model in stream settings to use this feature.
+              Select "motion" as the detection model in stream settings to use this feature. You can configure the detection model for each stream in the Stream Settings page.
             </p>
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
               <strong>Optimized Motion Detection:</strong> A memory- and CPU-optimized variant of motion detection designed for embedded and low-power devices.

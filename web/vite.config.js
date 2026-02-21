@@ -22,10 +22,8 @@ const removeUseClientDirective = () => {
           const transformedCode = code.replace(useClientRegex, '');
           return {
             code: transformedCode,
-            // Provide a basic sourcemap when sourcemaps are enabled; otherwise, disable it
-            map: process.env.BUILD_SOURCEMAPS === 'true'
-              ? { mappings: '' }
-              : null
+            // Do not emit a custom sourcemap; allow Vite/Rollup to handle sourcemaps if enabled
+            map: null
           };
         }
       }
@@ -205,9 +203,13 @@ export default defineConfig({
           try {
             await fs.access('img');
           } catch (err) {
-            // Intentionally ignore the specific error; any failure means the img directory is absent.
-            console.log('No img directory found, skipping');
-            return;
+            // If the directory truly doesn't exist, skip copying.
+            if (err && err.code === 'ENOENT') {
+              console.log('No img directory found, skipping');
+              return;
+            }
+            // For other errors (for example, permission issues), surface the problem.
+            throw err;
           }
 
           // Read all files from web/img

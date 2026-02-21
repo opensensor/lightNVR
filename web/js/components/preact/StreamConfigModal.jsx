@@ -365,21 +365,21 @@ export function StreamConfigModal({
                   {currentStream.record && currentStream.detectionEnabled && (
                     <div className="p-3 rounded-md bg-muted border border-border">
                       <p className="text-sm text-muted-foreground">
-                        <strong className="text-foreground">ℹ️ Both modes enabled:</strong> Continuous recording will run, and detection events will be logged and associated with the recordings.
+                        <strong className="text-foreground">{'\u2139\uFE0F Both modes enabled:'}</strong> Continuous recording will run, and detection events will be logged and associated with the recordings.
                       </p>
                     </div>
                   )}
                   {!currentStream.record && currentStream.detectionEnabled && (
                     <div className="p-3 rounded-md bg-muted border border-border">
                       <p className="text-sm text-muted-foreground">
-                        <strong className="text-foreground">⚡ Detection-only mode:</strong> Video will only be saved when detections occur, with pre and post buffers.
+                        <strong className="text-foreground">{'\u26A1 Detection-only mode:'}</strong> Video will only be saved when detections occur, with pre and post buffers.
                       </p>
                     </div>
                   )}
                   {!currentStream.record && !currentStream.detectionEnabled && (
                     <div className="p-3 bg-muted border border-border rounded-md">
                       <p className="text-sm text-muted-foreground">
-                        ⚠️ No recording mode selected. Video will not be saved to disk.
+                        {'\u26A0\uFE0F No recording mode selected. Video will not be saved to disk.'}
                       </p>
                     </div>
                   )}
