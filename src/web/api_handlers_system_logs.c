@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
@@ -18,8 +19,50 @@
 #include "core/logger.h"
 #include "core/config.h"
 
+typedef enum {
+    LOG_LEVEL_ERROR   = 0,
+    LOG_LEVEL_WARNING = 1,
+    LOG_LEVEL_INFO    = 2,
+    LOG_LEVEL_DEBUG   = 3
+} LogLevel;
+
 static const char *DEFAULT_LOG_FILE = "/var/log/lightnvr.log";
 static const char *FALLBACK_LOG_FILE = "./lightnvr.log";
+static const long MAX_LOG_TAIL_SIZE = 100 * 1024; // 100KB
+
+/**
+ * @brief Validate that the log file path does not contain suspicious path traversal components.
+ *
+ * This is a conservative check that rejects paths containing ".." as a path component.
+ */
+static bool is_safe_log_path(const char *path) {
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+
+    /* Reject any occurrence of "/../" */
+    if (strstr(path, "/../") != NULL) {
+        return false;
+    }
+
+    /* Reject paths ending with "/.." */
+    size_t len = strlen(path);
+    if (len >= 3 && strcmp(path + len - 3, "/..") == 0) {
+        return false;
+    }
+
+    /* Reject paths starting with "../" */
+    if (strncmp(path, "../", 3) == 0) {
+        return false;
+    }
+
+    /* Reject path that is exactly ".." */
+    if (strcmp(path, "..") == 0) {
+        return false;
+    }
+
+    return true;
+}
 
 /**
  * @brief Get system logs
@@ -64,7 +107,7 @@ int get_system_logs(char ***logs, int *count) {
     }
 
     // Limit to last 100KB if file is larger
-    const long max_size = 100 * 1024;
+    const long max_size = MAX_LOG_TAIL_SIZE;
     long read_size = file_size;
     long offset = 0;
 
@@ -164,14 +207,6 @@ int get_system_logs(char ***logs, int *count) {
         line = strtok_r(NULL, "\n", &saveptr);
     }
 
-    // If we didn't read as many lines as expected, adjust the count
-    if (log_index < lines_to_allocate) {
-        // Ensure any unused slots are NULL
-        for (int i = log_index; i < lines_to_allocate; i++) {
-            log_lines[i] = NULL;
-        }
-    }
-
     // Set output parameters
     *logs = log_lines;
     *count = log_index;
@@ -198,36 +233,36 @@ int log_level_meets_minimum(const char *log_level, const char *min_level) {
     }
 
     // Convert log levels to numeric values for comparison
-    int level_value = 2; // Default to INFO (2)
-    int min_value = 2;   // Default to INFO (2)
+    int level_value = LOG_LEVEL_INFO; // Default to INFO
+    int min_value = LOG_LEVEL_INFO;   // Default to INFO
 
     // Map log level strings to numeric values
     // ERROR = 0, WARNING = 1, INFO = 2, DEBUG = 3
     if (strcmp(log_level, "error") == 0) {
-        level_value = 0;
+        level_value = LOG_LEVEL_ERROR;
     } else if (strcmp(log_level, "warning") == 0) {
-        level_value = 1;
+        level_value = LOG_LEVEL_WARNING;
     } else if (strcmp(log_level, "info") == 0) {
-        level_value = 2;
+        level_value = LOG_LEVEL_INFO;
     } else if (strcmp(log_level, "debug") == 0) {
-        level_value = 3;
+        level_value = LOG_LEVEL_DEBUG;
     }
 
     if (strcmp(min_level, "error") == 0) {
-        min_value = 0;
+        min_value = LOG_LEVEL_ERROR;
     } else if (strcmp(min_level, "warning") == 0) {
-        min_value = 1;
+        min_value = LOG_LEVEL_WARNING;
     } else if (strcmp(min_level, "info") == 0) {
-        min_value = 2;
+        min_value = LOG_LEVEL_INFO;
     } else if (strcmp(min_level, "debug") == 0) {
-        min_value = 3;
+        min_value = LOG_LEVEL_DEBUG;
     }
 
     // NOTE: Lower numeric values represent *higher* severity:
-    //   error   = 0 (most severe)
-    //   warning = 1
-    //   info    = 2
-    //   debug   = 3 (least severe)
+    //   error   = LOG_LEVEL_ERROR   (0, most severe)
+    //   warning = LOG_LEVEL_WARNING (1)
+    //   info    = LOG_LEVEL_INFO    (2)
+    //   debug   = LOG_LEVEL_DEBUG   (3, least severe)
     //
     // The min_level parameter represents the least severe messages we still
     // want to include. A log entry should be included if its severity is
@@ -401,6 +436,18 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
         log_file = g_config.log_file;
     }
 
+    // Validate the selected log file path to prevent path traversal
+    if (!is_safe_log_path(log_file)) {
+        log_error("Configured log file path is unsafe: %s", log_file);
+        // Fall back to a known-safe default log file path
+        log_file = fallback_log_file;
+        if (!is_safe_log_path(log_file)) {
+            log_error("Fallback log file path is also unsafe: %s", log_file);
+            http_response_set_json_error(res, 500, "Invalid log file configuration");
+            return;
+        }
+    }
+
     // Check if log file exists and is writable
     struct stat st;
     bool file_exists = (stat(log_file, &st) == 0);
@@ -409,6 +456,12 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
     // If the log file doesn't exist or isn't writable, try the fallback
     if (!file_exists || !is_writable) {
         log_info("Primary log file not accessible, trying fallback: %s", fallback_log_file);
+        if (!is_safe_log_path(fallback_log_file)) {
+            log_error("Fallback log file path is unsafe: %s", fallback_log_file);
+            http_response_set_json_error(res, 500, "Invalid fallback log file configuration");
+            return;
+        }
+
         file_exists = (stat(fallback_log_file, &st) == 0);
         is_writable = (access(fallback_log_file, W_OK) == 0);
 
