@@ -235,27 +235,31 @@ static int validate_migration_sql(const char *sql) {
 
     /* Allowlist of permitted SQL statement prefixes, ordered longest-first so
      * that shorter prefixes (e.g. "INSERT") do not shadow longer ones
-     * (e.g. "INSERT OR REPLACE").                                           */
+     * (e.g. "INSERT OR REPLACE").
+     * Use sizeof(literal)-1 so the compiler computes lengths — avoids
+     * off-by-one errors from manual character counting.                     */
+#define _KW(s) { s, sizeof(s) - 1 }
     static const struct { const char *kw; size_t len; } allowed[] = {
-        { "CREATE UNIQUE INDEX", 18 },
-        { "CREATE TRIGGER",      14 },
-        { "CREATE TABLE",        12 },
-        { "CREATE INDEX",        12 },
-        { "CREATE VIEW",         11 },
-        { "ALTER TABLE",         11 },
-        { "DROP TRIGGER",        12 },
-        { "DROP TABLE",          10 },
-        { "DROP INDEX",          10 },
-        { "DROP VIEW",            9 },
-        { "INSERT OR REPLACE",   18 },
-        { "INSERT OR IGNORE",    16 },
-        { "INSERT",               6 },
-        { "REPLACE",              7 },
-        { "UPDATE",               6 },
-        { "DELETE",               6 },
-        { "SELECT",               6 },
+        _KW("CREATE UNIQUE INDEX"),
+        _KW("CREATE TRIGGER"),
+        _KW("CREATE TABLE"),
+        _KW("CREATE INDEX"),
+        _KW("CREATE VIEW"),
+        _KW("ALTER TABLE"),
+        _KW("DROP TRIGGER"),
+        _KW("DROP TABLE"),
+        _KW("DROP INDEX"),
+        _KW("DROP VIEW"),
+        _KW("INSERT OR REPLACE"),
+        _KW("INSERT OR IGNORE"),
+        _KW("INSERT"),
+        _KW("REPLACE"),
+        _KW("UPDATE"),
+        _KW("DELETE"),
+        _KW("SELECT"),
         { NULL, 0 }
     };
+#undef _KW
 
     const char *p = sql;
     while (*p) {
