@@ -15,8 +15,8 @@ const removeUseClientDirective = () => {
     transform(code, id) {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
-        // Check for "use client" directive with various possible formats
-        const useClientRegex = /^(['"]use client['"])/;
+        // Check for "use client" directive with various possible formats, allowing leading whitespace
+        const useClientRegex = /^\s*(['"]use client['"])/;
         if (useClientRegex.test(code)) {
           // Remove the "use client" directive and return the modified code
           return {
@@ -89,7 +89,7 @@ export default defineConfig({
       output: {
         // Ensure CSS files are properly named and placed
         assetFileNames: (assetInfo) => {
-          if (/\.(css)$/i.test(assetInfo.name)) {
+          if (/\.css$/i.test(assetInfo.name)) {
             return `css/[name][extname]`;
           }
           return `assets/[name][extname]`;
@@ -156,6 +156,17 @@ export default defineConfig({
         try {
           // Create dist/css directory if it doesn't exist
           await fs.mkdir('dist/css', { recursive: true });
+
+          // Ensure source css directory exists before reading
+          try {
+            await fs.access('css');
+          } catch (accessError) {
+            if (accessError.code === 'ENOENT') {
+              console.warn('Source css directory does not exist; skipping CSS copy.');
+              return;
+            }
+            throw accessError;
+          }
 
           // Read all files from web/css
           const cssFiles = await fs.readdir('css');
