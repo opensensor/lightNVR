@@ -36,7 +36,6 @@
 
 // Forward declarations
 static int apply_legacy_retention_policy(void);
-static int get_all_stream_names(char stream_names[][64], int max_streams);
 
 // Storage manager state
 static struct {
