@@ -147,7 +147,6 @@ export function RecordingsView() {
   // Fetch streams using preact-query
   const {
     data: streamsData,
-    isLoading: isLoadingStreams,
     error: streamsError
   } = recordingsAPI.hooks.useStreams();
 
@@ -226,8 +225,7 @@ export function RecordingsView() {
   const {
     data: recordingsData,
     isLoading: isLoadingRecordings,
-    error: recordingsError,
-    refetch: refetchRecordings
+    error: recordingsError
   } = recordingsAPI.hooks.useRecordings(filters, pagination, sortField, sortDirection);
 
   // Update recordings state when data is loaded

@@ -650,11 +650,6 @@ export function StreamsView() {
     setOnvifModalVisible(true);
   };
 
-  // Close ONVIF modal
-  const closeOnvifModal = () => {
-    setOnvifModalVisible(false);
-  };
-
   // Handle form input change
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -869,11 +864,6 @@ export function StreamsView() {
       device,
       credentials: onvifCredentials
     });
-  };
-
-  // Handle custom stream name change
-  const handleStreamNameChange = (e) => {
-    setCustomStreamName(e.target.value);
   };
 
   // Add ONVIF device as stream with selected profile

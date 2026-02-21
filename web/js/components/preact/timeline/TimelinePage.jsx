@@ -149,7 +149,6 @@ export function TimelinePage() {
   const urlParams = parseUrlParams();
 
   // State
-  const [isLoading, setIsLoading] = useState(false);
   const [streamsList, setStreamsList] = useState([]);
   const [selectedStream, setSelectedStream] = useState(urlParams.stream);
   const [selectedDate, setSelectedDate] = useState(urlParams.date);

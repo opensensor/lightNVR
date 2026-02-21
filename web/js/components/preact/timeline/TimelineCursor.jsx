@@ -21,8 +21,6 @@ export function TimelineCursor() {
 
   // Refs
   const cursorRef = useRef(null);
-  const containerRef = useRef(null);
-  const dragStartXRef = useRef(0);
 
   // Debounce function to limit how often a function can be called
   const debounce = (func, delay) => {
