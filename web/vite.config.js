@@ -15,6 +15,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const MISSING_APP_JS_IMPORTERS = ['streams.html'];
 const MIN_COMPRESSION_SIZE_BYTES = 1024;
 
+/**
+ * Check whether the given filesystem path exists.
+ * Returns true if it exists, false if it does not (ENOENT),
+ * and rethrows any other error.
+ *
+ * This centralizes the access/ENOENT handling pattern used
+ * across multiple plugins.
+ *
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+async function pathExists(path) {
+  try {
+    await fsPromises.access(path);
+    return true;
+  } catch (err) {
+    // ENOENT means the path does not exist; return false.
+    if (err && err.code === 'ENOENT') {
+      return false;
+    }
+    // For any other error, rethrow so callers can handle/log appropriately.
+    throw err;
+  }
+}
+
 // Custom plugin to remove "use client" directives
 const removeUseClientDirective = () => {
   return {
@@ -133,22 +158,33 @@ export default defineConfig({
     {
       name: 'handle-non-module-scripts',
       transformIndexHtml(html) {
-        // Replace dist/* references with ./* for Vite to process them
-        const replacements = [
-          { pattern: /src="dist\/js\//g, replacement: 'src="./js/' },
-          { pattern: /href="dist\/css\//g, replacement: 'href="./css/' },
-          { pattern: /src="dist\/img\//g, replacement: 'src="./img/' },
-          { pattern: /href="dist\/img\//g, replacement: 'href="./img/' },
-          { pattern: /src="dist\/fonts\//g, replacement: 'src="./fonts/' },
-          { pattern: /href="dist\/fonts\//g, replacement: 'href="./fonts/' },
-          // Also handle direct CSS references without dist/ prefix
-          { pattern: /href="css\//g, replacement: 'href="./css/' },
-        ];
-
-        let transformed = html;
-        for (const { pattern, replacement } of replacements) {
-          transformed = transformed.replace(pattern, replacement);
-        }
+        // Replace dist/* references with ./* for Vite to process them in a single pass.
+        // Alternations: src="dist/js/ | href="dist/css/ | src="dist/img/ | href="dist/img/ |
+        //               src="dist/fonts/ | href="dist/fonts/ | href="css/ (no dist/ prefix)
+        const transformed = html.replace(
+          /src="dist\/js\/|href="dist\/css\/|src="dist\/img\/|href="dist\/img\/|src="dist\/fonts\/|href="dist\/fonts\/|href="css\//g,
+          (match) => {
+            switch (match) {
+              case 'src="dist/js/':
+                return 'src="./js/';
+              case 'href="dist/css/':
+                return 'href="./css/';
+              case 'src="dist/img/':
+                return 'src="./img/';
+              case 'href="dist/img/':
+                return 'href="./img/';
+              case 'src="dist/fonts/':
+                return 'src="./fonts/';
+              case 'href="dist/fonts/':
+                return 'href="./fonts/';
+              case 'href="css/':
+                // Also handle direct CSS references without dist/ prefix
+                return 'href="./css/';
+              default:
+                return match;
+            }
+          }
+        );
 
         return transformed;
       }
@@ -177,16 +213,12 @@ export default defineConfig({
 
           // Ensure source css directory exists before reading
           const srcCssDir = 'css';
-          try {
-            await fsPromises.access(srcCssDir);
-          } catch (err) {
-            if (err.code === 'ENOENT') {
-              console.warn(
-                `Source CSS directory "${srcCssDir}" (resolved to "${resolve(srcCssDir)}") does not exist; skipping CSS copy.`
-              );
-              return;
-            }
-            throw err;
+          const cssDirExists = await pathExists(srcCssDir);
+          if (!cssDirExists) {
+            console.warn(
+              `Source CSS directory "${srcCssDir}" (resolved to "${resolve(srcCssDir)}") does not exist; skipping CSS copy.`
+            );
+            return;
           }
 
           // Read all directory entries from css, including type information
