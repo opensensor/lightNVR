@@ -148,6 +148,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int segment_index = 0;
     // Invoke-once guard for started callback
     bool started_cb_called = false;
+    // Flag to track if trailer has been written (initialized here so cleanup can
+    // always test it safely, even when entered via an early goto before the main loop)
+    bool trailer_written = false;
 
 
     // CRITICAL FIX: Initialize static variable for tracking waiting time for keyframes
@@ -798,7 +801,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // Write packet
                     ret = av_interleaved_write_frame(output_ctx, pkt);
                     if (ret < 0) {
-                        log_error("Error writing video frame: %d", ret);
+                        log_error("Error writing final video frame: %d", ret);
+                        if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
+                            log_error("Non-recoverable write error on final frame (disk full or I/O error), stopping segment");
+                            av_packet_unref(pkt);
+                            goto cleanup;
+                        }
                     }
 
                     // Break the loop after processing the final frame
@@ -906,6 +914,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
                 log_error("Error writing video frame: %d (%s)", ret, error_buf);
+
+                // Non-recoverable I/O error — stop the segment immediately
+                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
+                    log_error("Non-recoverable video write error (disk full or I/O error), stopping segment");
+                    goto cleanup;
+                }
 
                 // CRITICAL FIX: Handle timestamp-related errors
                 if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
@@ -1143,6 +1157,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
                 log_error("Error writing audio frame: %d (%s)", ret, error_buf);
 
+                // Non-recoverable I/O error — stop the segment immediately
+                if (ret == AVERROR(ENOSPC) || ret == AVERROR(EIO)) {
+                    log_error("Non-recoverable audio write error (disk full or I/O error), stopping segment");
+                    goto cleanup;
+                }
+
                 // CRITICAL FIX: Handle timestamp-related errors
                 if (ret == AVERROR(EINVAL) && strstr(error_buf, "monoton")) {
                     // This is likely a timestamp error, try to fix it for the next packet
@@ -1191,9 +1211,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
     log_info("Recording segment complete (video packets: %d, audio packets: %d)",
             video_packet_count, audio_packet_count);
-
-    // Flag to track if trailer has been written
-    bool trailer_written = false;
 
     // Write trailer
     if (output_ctx && output_ctx->pb) {
@@ -1257,21 +1274,8 @@ cleanup:
             avio_closep(&output_ctx->pb);
         }
 
-        // MEMORY LEAK FIX: Properly clean up all streams in the output context
-        // This ensures all codec contexts and other resources are freed
-        if (output_ctx->nb_streams > 0) {
-            log_debug("Cleaning up %d output streams", output_ctx->nb_streams);
-            for (unsigned int i = 0; i < output_ctx->nb_streams; i++) {
-                if (output_ctx->streams[i]) {
-                    // Free any codec parameters
-                    if (output_ctx->streams[i]->codecpar) {
-                        avcodec_parameters_free(&output_ctx->streams[i]->codecpar);
-                    }
-                }
-            }
-        }
-
-        // Free output context
+        // Free output context — avformat_free_context() owns all streams and their
+        // codecpar; do NOT call avcodec_parameters_free() on them beforehand.
         log_debug("Freeing output context");
         avformat_free_context(output_ctx);
         output_ctx = NULL;
@@ -1297,26 +1301,13 @@ cleanup:
         // CRITICAL FIX: Check if input_ctx is NULL before trying to access it
         // This prevents segmentation fault when RTSP connection fails
         if (input_ctx) {
-            // CRITICAL FIX: Use a safer approach to clean up FFmpeg resources
-            // First check if the context is valid and has streams
-            if (input_ctx->nb_streams > 0) {
-                // Clean up all streams before closing
-                for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
-                    if (input_ctx->streams && input_ctx->streams[i]) {
-                        // Free any codec parameters
-                        if (input_ctx->streams[i]->codecpar) {
-                            avcodec_parameters_free(&input_ctx->streams[i]->codecpar);
-                        }
-                    }
-                }
-            }
-
             // Flush any pending data
             if (input_ctx->pb) {
                 avio_flush(input_ctx->pb);
             }
 
-            // Close the input context
+            // Close the input context — avformat_close_input() owns all streams and
+            // their codecpar; do NOT call avcodec_parameters_free() on them beforehand.
             avformat_close_input(&input_ctx);
             input_ctx = NULL;  // Ensure the pointer is NULL after closing
         } else {
@@ -1324,13 +1315,6 @@ cleanup:
         }
         log_debug("Closed input context due to error");
     }
-
-    // Free the options dictionary
-    // Note: avformat_network_deinit() should NOT be called here as it's a global cleanup
-    // function that should only be called once at program shutdown, not during each
-    // recording error. Calling it here would unbalance the init/deinit reference count
-    // and could cause issues with other concurrent recordings.
-    av_dict_free(&opts);
 
     // Return the error code
     return ret;
