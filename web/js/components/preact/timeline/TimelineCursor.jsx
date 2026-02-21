@@ -67,7 +67,6 @@ export function TimelineCursor() {
     const handleMouseDown = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      dragStartXRef.current = e.clientX;
       setIsDragging(true);
 
       timelineState.userControllingCursor = true;
