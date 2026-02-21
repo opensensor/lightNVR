@@ -2,14 +2,13 @@
 // Migrated from Snowpack configuration
 
 import { defineConfig } from 'vite';
-import { resolve, basename, dirname } from 'path';
+import { resolve, join, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import legacy from '@vitejs/plugin-legacy';
 import preact from '@preact/preset-vite';
 import viteCompression from 'vite-plugin-compression';
 import themeInjectPlugin from './vite-plugin-theme-inject.js';
 import * as fsPromises from 'fs/promises';
-import * as nodePath from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -133,16 +132,24 @@ export default defineConfig({
     {
       name: 'handle-non-module-scripts',
       transformIndexHtml(html) {
-        // Replace dist/js/ references with ./js/ for Vite to process them
-        return html
-            .replace(/src="dist\/js\//g, 'src="./js/')
-            .replace(/href="dist\/css\//g, 'href="./css/')
-            .replace(/src="dist\/img\//g, 'src="./img/')
-            .replace(/href="dist\/img\//g, 'href="./img/')
-            .replace(/src="dist\/fonts\//g, 'src="./fonts/')
-            .replace(/href="dist\/fonts\//g, 'href="./fonts/')
-            // Also handle direct CSS references without dist/ prefix
-            .replace(/href="css\//g, 'href="./css/');
+        // Replace dist/* references with ./* for Vite to process them
+        const replacements = [
+          { pattern: /src="dist\/js\//g, replacement: 'src="./js/' },
+          { pattern: /href="dist\/css\//g, replacement: 'href="./css/' },
+          { pattern: /src="dist\/img\//g, replacement: 'src="./img/' },
+          { pattern: /href="dist\/img\//g, replacement: 'href="./img/' },
+          { pattern: /src="dist\/fonts\//g, replacement: 'src="./fonts/' },
+          { pattern: /href="dist\/fonts\//g, replacement: 'href="./fonts/' },
+          // Also handle direct CSS references without dist/ prefix
+          { pattern: /href="css\//g, replacement: 'href="./css/' },
+        ];
+
+        let transformed = html;
+        for (const { pattern, replacement } of replacements) {
+          transformed = transformed.replace(pattern, replacement);
+        }
+
+        return transformed;
       }
     },
     {
@@ -169,18 +176,21 @@ export default defineConfig({
           await fsPromises.mkdir('dist/css', { recursive: true });
 
           // Ensure source css directory exists before reading
+          const srcCssDir = 'css';
           try {
-            await fsPromises.access('css');
+            await fsPromises.access(srcCssDir);
           } catch (err) {
             if (err.code === 'ENOENT') {
-              console.warn('Source CSS directory does not exist; skipping CSS copy.');
+              console.warn(
+                `Source CSS directory "${srcCssDir}" (resolved to "${resolve(srcCssDir)}") does not exist; skipping CSS copy.`
+              );
               return;
             }
             throw err;
           }
 
           // Read all directory entries from css, including type information
-          const cssEntries = await fsPromises.readdir('css', { withFileTypes: true });
+          const cssEntries = await fsPromises.readdir(srcCssDir, { withFileTypes: true });
 
           // Copy each regular CSS file to dist/css
           for (const entry of cssEntries) {
@@ -189,8 +199,8 @@ export default defineConfig({
               continue;
             }
 
-            const srcPath = nodePath.join('css', entry.name);
-            const destPath = nodePath.join('dist/css', entry.name);
+            const srcPath = join('css', entry.name);
+            const destPath = join('dist/css', entry.name);
 
             try {
               await fsPromises.copyFile(srcPath, destPath);
@@ -236,8 +246,8 @@ export default defineConfig({
             }
             const file = entry.name;
             await fsPromises.copyFile(
-                nodePath.join('img', file),
-                nodePath.join('dist/img', file)
+                join('img', file),
+                join('dist/img', file)
             );
             console.log(`Copied ${file} to dist/img/`);
           }
