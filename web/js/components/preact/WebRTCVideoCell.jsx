@@ -601,7 +601,7 @@ export function WebRTCVideoCell({
     initWebRTC();
 
     // Cleanup function
-    return () => {
+    const cleanupWebRTCResources = () => {
       console.log(`Cleaning up WebRTC connection for stream ${stream.name}`);
 
       // Clear timeouts
@@ -659,6 +659,8 @@ export function WebRTCVideoCell({
       // Reset audio sender ref
       audioSenderRef.current = null;
     };
+
+    return cleanupWebRTCResources;
   }, [stream, retryCount]);
 
   /**

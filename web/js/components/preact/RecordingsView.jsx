@@ -247,7 +247,7 @@ export function RecordingsView() {
         updatePaginationFromResponse(recordingsData, pagination.currentPage);
       }
     }
-  }, [recordingsData, filters.recordingType]);
+  }, [recordingsData, filters.recordingType, pagination.currentPage]);
 
   // Handle recordings error
   useEffect(() => {

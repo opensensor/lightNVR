@@ -3,7 +3,7 @@
  * Handles polling for logs via HTTP API
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { fetchJSON } from '../../../fetch-utils.js';
 
 /**
@@ -30,7 +30,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
   }, []);
 
   // Function to fetch logs via HTTP API
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     // Only fetch if we're on the system page
     if (!document.getElementById('system-page')) {
       console.log('Not on system page, skipping log fetch');
@@ -90,7 +90,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
       console.error('Error fetching logs:', error);
       // Don't throw - just log the error and continue polling
     }
-  };
+  }, [onLogsReceived]);
 
   // Listen for manual refresh events
   useEffect(() => {
@@ -104,7 +104,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
     return () => {
       window.removeEventListener('refresh-logs', handleRefreshEvent);
     };
-  }, []);
+  }, [fetchLogs]);
 
   // Start/stop polling when isPolling or pollingInterval changes
   useEffect(() => {
@@ -137,7 +137,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
         pollingIntervalRef.current = null;
       }
     };
-  }, [isPolling, pollingInterval]);
+  }, [isPolling, pollingInterval, fetchLogs]);
 
   // Start polling when component mounts and update when log level or count changes
   useEffect(() => {

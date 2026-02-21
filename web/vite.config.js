@@ -2,7 +2,7 @@
 // Migrated from Snowpack configuration
 
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import { resolve, basename } from 'path';
 import legacy from '@vitejs/plugin-legacy';
 import preact from '@preact/preset-vite';
 import viteCompression from 'vite-plugin-compression';
@@ -82,7 +82,6 @@ export default defineConfig({
         recordings: resolve(__dirname, 'recordings.html'),
         settings: resolve(__dirname, 'settings.html'),
         streams: resolve(__dirname, 'streams.html'),
-
         system: resolve(__dirname, 'system.html'),
         timeline: resolve(__dirname, 'timeline.html'),
         users: resolve(__dirname, 'users.html'),
@@ -141,7 +140,7 @@ export default defineConfig({
     {
       name: 'handle-missing-app-js',
       resolveId(id, importer) {
-        if (id === './js/app.js' && importer && importer.includes('streams.html')) {
+        if (id === './js/app.js' && importer && basename(importer) === 'streams.html') {
           // Return false to signal that this import should be treated as external
           // This will prevent Vite from trying to resolve it during build
           return false;
@@ -255,11 +254,11 @@ export default defineConfig({
   // Resolve configuration
   resolve: {
     alias: {
-      // Add aliases for the dist/js paths
-      'dist/js': resolve(__dirname, 'js'),
-      'dist/css': resolve(__dirname, 'css'),
-      'dist/img': resolve(__dirname, 'img'),
-      'dist/fonts': resolve(__dirname, 'fonts'),
+      // Add aliases for source asset paths (JS, CSS, images, fonts)
+      '@js': resolve(__dirname, 'js'),
+      '@css': resolve(__dirname, 'css'),
+      '@img': resolve(__dirname, 'img'),
+      '@fonts': resolve(__dirname, 'fonts'),
 
       // Add React to Preact aliases
       'react': '@preact/compat',
