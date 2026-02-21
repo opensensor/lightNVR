@@ -2,11 +2,14 @@
 // Migrated from Snowpack configuration
 
 import { defineConfig } from 'vite';
-import { resolve, basename } from 'path';
+import { resolve, basename, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import legacy from '@vitejs/plugin-legacy';
 import preact from '@preact/preset-vite';
 import viteCompression from 'vite-plugin-compression';
 import themeInjectPlugin from './vite-plugin-theme-inject.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const MISSING_APP_JS_IMPORTERS = ['streams.html'];
 
