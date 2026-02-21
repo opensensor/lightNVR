@@ -2,9 +2,9 @@
  * Settings Page Object Model
  */
 
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
-import { CONFIG, sleep } from '../fixtures/test-fixtures';
+import { sleep } from '../fixtures/test-fixtures';
 
 export class SettingsPage extends BasePage {
   protected path = '/settings.html';

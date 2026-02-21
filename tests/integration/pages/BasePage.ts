@@ -4,7 +4,7 @@
  * Provides common functionality for all page objects.
  */
 
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 import { CONFIG, sleep } from '../fixtures/test-fixtures';
 
 export abstract class BasePage {
