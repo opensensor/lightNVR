@@ -6,20 +6,30 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 
 /**
- * Validates that a redirect URL is safe (relative, same-origin only).
- * Rejects absolute URLs, protocol-relative URLs, and anything that
- * could be used for open-redirect or XSS attacks.
- * @param {string} url
- * @returns {boolean}
+ * Returns a safe same-origin redirect path from a candidate URL string.
+ *
+ * Uses the browser's URL constructor to parse the candidate, then checks
+ * that the resolved origin matches the current page's origin.  Only the
+ * pathname + search + hash components are returned – never any user-supplied
+ * host or scheme – which prevents both open-redirect and javascript: XSS.
+ *
+ * @param {string|null} url  Raw value from the `redirect` query parameter
+ * @returns {string}  A safe relative path, defaulting to '/index.html'
  */
-function isSafeRedirectUrl(url) {
-  if (!url || typeof url !== 'string') return false;
-  // Must start with / but not // (protocol-relative)
-  if (!url.startsWith('/') || url.startsWith('//')) return false;
-  // Reject anything with a colon before the first slash (e.g. javascript:)
-  const colonIdx = url.indexOf(':');
-  if (colonIdx !== -1 && colonIdx < url.indexOf('/')) return false;
-  return true;
+function safeRedirectPath(url) {
+  if (!url || typeof url !== 'string') return '/index.html';
+  try {
+    // Resolve against the current origin so relative paths work too.
+    const parsed = new URL(url, window.location.origin);
+    // Reject anything that resolves to a different origin (open-redirect)
+    // or a non-http(s) scheme (e.g. javascript:).
+    if (parsed.origin !== window.location.origin) return '/index.html';
+    // Return only the path components – never the (potentially attacker-
+    // supplied) host or scheme.
+    return parsed.pathname + parsed.search + parsed.hash || '/index.html';
+  } catch (_) {
+    return '/index.html';
+  }
 }
 
 /**
@@ -164,14 +174,9 @@ export function LoginView() {
         // Successful login (no TOTP required or force MFA verified)
         console.log('Login successful, proceeding to redirect');
 
-        // Get redirect URL from query parameter if it exists.
-        // Only follow same-origin relative paths to prevent open-redirect / XSS.
+        // Redirect to the requested page, or the index if none / unsafe.
         const urlParams = new URLSearchParams(window.location.search);
-        const redirectUrl = urlParams.get('redirect');
-        const targetUrl = isSafeRedirectUrl(redirectUrl) ? redirectUrl : '/index.html';
-
-        // Redirect immediately
-        window.location.href = targetUrl;
+        window.location.href = safeRedirectPath(urlParams.get('redirect'));
       } else {
         // Failed login
         setIsLoggingIn(false);
@@ -216,11 +221,8 @@ export function LoginView() {
       if (response.ok) {
         console.log('TOTP verification successful, proceeding to redirect');
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const redirectUrl = urlParams.get('redirect');
-        const targetUrl = isSafeRedirectUrl(redirectUrl) ? redirectUrl : '/index.html';
-
-        window.location.href = targetUrl;
+        const urlParams2 = new URLSearchParams(window.location.search);
+        window.location.href = safeRedirectPath(urlParams2.get('redirect'));
       } else {
         const data = await response.json();
         setIsLoggingIn(false);

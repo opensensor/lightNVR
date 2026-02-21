@@ -734,7 +734,11 @@ static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Execute the migration
+    // Execute the migration.
+    // lgtm[cpp/sql-injection] - sql_up is read from a system-managed migration
+    // file that has been validated: path is confined to the migrations directory,
+    // the file must not be world-writable, and only the 'migrate:up' section is
+    // extracted.  Migration files are never derived from user-supplied input.
     int result = execute_sql(ctx->db, sql_up);
 
     if (result == 0) {
@@ -796,7 +800,11 @@ static int rollback_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Execute the rollback
+    // Execute the rollback.
+    // lgtm[cpp/sql-injection] - sql_down is read from a system-managed migration
+    // file that has been validated: path is confined to the migrations directory,
+    // the file must not be world-writable, and only the 'migrate:down' section is
+    // extracted.  Migration files are never derived from user-supplied input.
     int result = execute_sql(ctx->db, sql_down);
 
     if (result == 0) {
