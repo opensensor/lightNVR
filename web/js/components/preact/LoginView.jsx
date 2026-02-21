@@ -26,7 +26,7 @@ function safeRedirectPath(url) {
     if (parsed.origin !== window.location.origin) return '/index.html';
     // Return only the path components – never the (potentially attacker-
     // supplied) host or scheme.
-    return parsed.pathname + parsed.search + parsed.hash || '/index.html';
+    return (parsed.pathname + parsed.search + parsed.hash) || '/index.html';
   } catch (_) {
     return '/index.html';
   }
@@ -88,33 +88,6 @@ export function LoginView() {
   }, []);
 
   // Request controller for cancelling requests
-
-  // Function to check if browser might be blocking redirects
-  const checkBrowserRedirectSupport = () => {
-    // Check if running in a sandboxed iframe which might block navigation
-    const isSandboxed = window !== window.top;
-
-    // Check if there are any service workers that might intercept navigation
-    const hasServiceWorker = 'serviceWorker' in navigator;
-
-    // Log potential issues
-    if (isSandboxed) {
-      console.warn('Login page is running in an iframe, which might block navigation');
-    }
-
-    if (hasServiceWorker) {
-      console.log('Service Worker API is available, checking for active service workers');
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        if (registrations.length > 0) {
-          console.warn(`${registrations.length} service worker(s) detected which might intercept navigation`);
-        } else {
-          console.log('No active service workers detected');
-        }
-      });
-    }
-
-    return { isSandboxed, hasServiceWorker };
-  };
 
   // Handle login form submission
   const handleSubmit = async (e) => {
