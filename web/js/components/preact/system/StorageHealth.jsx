@@ -38,6 +38,7 @@ function formatTimeAgo(epochSeconds) {
  */
 export function StorageHealth({ formatBytes }) {
   const [cleanupPending, setCleanupPending] = useState(false);
+  const [cleanupTriggeredAt, setCleanupTriggeredAt] = useState(null);
 
   const { data: health, isLoading, error, refetch } = useQuery(
     ['storageHealth'],
@@ -55,11 +56,14 @@ export function StorageHealth({ formatBytes }) {
         timeout: 15000
       });
     },
-    onMutate: () => setCleanupPending(true),
+    onMutate: () => {
+      setCleanupPending(true);
+      setCleanupTriggeredAt(Date.now());
+    },
     onSettled: () => {
       setCleanupPending(false);
-      // Refresh health data after cleanup
-      setTimeout(() => refetch(), 2000);
+      // Refresh health data after cleanup — give the backend time to finish
+      setTimeout(() => refetch(), 3000);
     }
   });
 
@@ -86,6 +90,8 @@ export function StorageHealth({ formatBytes }) {
   const badge = pressureBadge(health.pressure_level);
   const freePct = health.free_space_pct != null ? health.free_space_pct.toFixed(1) : '?';
   const usedPct = health.free_space_pct != null ? (100 - health.free_space_pct).toFixed(1) : '?';
+  const totalSpace = (health.used_space_bytes || 0) + (health.free_space_bytes || 0);
+  const isElevated = health.pressure_level !== 'NORMAL';
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4 h-full">
@@ -104,7 +110,7 @@ export function StorageHealth({ formatBytes }) {
         <div>
           <div className="flex justify-between text-sm mb-1">
             <span>{formatBytes(health.used_space_bytes || 0)} used</span>
-            <span>{formatBytes(health.free_space_bytes || 0)} free ({freePct}%)</span>
+            <span>{formatBytes(health.free_space_bytes || 0)} free / {formatBytes(totalSpace)} ({freePct}% free)</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div className="h-2.5 rounded-full"
@@ -133,23 +139,39 @@ export function StorageHealth({ formatBytes }) {
           <span>{formatTimeAgo(health.last_check_time)}</span>
         </div>
 
-        {/* Cleanup trigger button */}
-        <div className="pt-2 flex gap-2">
+        {/* Cleanup trigger buttons */}
+        {isElevated && (
+          <div className="text-xs p-2 rounded"
+               style={{ backgroundColor: badge.bg, color: badge.text }}>
+            ⚠ Disk pressure is <strong>{badge.label}</strong>. Use cleanup buttons below to free space,
+            or <a href="settings.html" style={{ color: badge.text, textDecoration: 'underline' }}>adjust retention settings</a>.
+          </div>
+        )}
+        <div className="pt-2 flex gap-2 flex-wrap">
           <button
             className="btn-primary text-xs px-3 py-1 rounded disabled:opacity-50"
+            title="Delete recordings that have exceeded their configured retention period"
             onClick={() => cleanupMutation.mutate(false)}
             disabled={cleanupPending}>
             {cleanupPending ? 'Running...' : 'Run Cleanup'}
           </button>
-          {health.pressure_level !== 'NORMAL' && (
-            <button
-              className="btn-warning text-xs px-3 py-1 rounded disabled:opacity-50"
-              onClick={() => cleanupMutation.mutate(true)}
-              disabled={cleanupPending}>
-              Aggressive Cleanup
-            </button>
-          )}
+          <button
+            className="btn-warning text-xs px-3 py-1 rounded disabled:opacity-50"
+            title="Delete oldest unprotected recordings regardless of retention settings — use when disk is full and normal cleanup won't free space"
+            onClick={() => cleanupMutation.mutate(true)}
+            disabled={cleanupPending}>
+            Force Free Space
+          </button>
         </div>
+        <div className="text-xs text-muted-foreground">
+          <em>Run Cleanup</em> respects retention settings.&nbsp;
+          <em>Force Free Space</em> deletes oldest recordings immediately.
+        </div>
+        {cleanupTriggeredAt && (
+          <div className="text-xs text-muted-foreground">
+            Cleanup triggered {formatTimeAgo(Math.floor(cleanupTriggeredAt / 1000))} — stats refresh automatically.
+          </div>
+        )}
       </div>
     </div>
   );

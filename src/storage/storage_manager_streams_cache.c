@@ -256,6 +256,23 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
             cJSON_AddNumberToObject(stream_obj, "size", stream_info[i].size_bytes);
             cJSON_AddNumberToObject(stream_obj, "count", stream_info[i].recording_count);
 
+            // Look up per-stream retention config from global config
+            int retention_days = 0;
+            int detection_retention_days = 0;
+            int max_storage_mb = 0;
+            for (int j = 0; j < MAX_STREAMS; j++) {
+                if (g_config.streams[j].name[0] != '\0' &&
+                    strcmp(g_config.streams[j].name, stream_info[i].name) == 0) {
+                    retention_days = g_config.streams[j].retention_days;
+                    detection_retention_days = g_config.streams[j].detection_retention_days;
+                    max_storage_mb = g_config.streams[j].max_storage_mb;
+                    break;
+                }
+            }
+            cJSON_AddNumberToObject(stream_obj, "retention_days", retention_days);
+            cJSON_AddNumberToObject(stream_obj, "detection_retention_days", detection_retention_days);
+            cJSON_AddNumberToObject(stream_obj, "max_storage_mb", max_storage_mb);
+
             cJSON_AddItemToArray(stream_storage_array, stream_obj);
         }
     }

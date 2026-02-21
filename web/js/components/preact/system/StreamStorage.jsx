@@ -31,12 +31,20 @@ export function StreamStorage({ systemInfo, formatBytes }) {
   const totalStreamStoragePercent = totalDiskSpace ?
     (totalStreamStorage / totalDiskSpace * 100).toFixed(1) : 0;
 
+  // Resolve effective retention: 0 means use global default
+  const globalRetentionDays = systemInfo.global_retention_days || 30;
+
   // Calculate the percentage of each stream relative to the total stream storage
   const streamStorageData = systemInfo.streamStorage.map(stream => ({
     name: stream.name,
     size: stream.size,
     count: stream.count,
-    slicePercent: totalStreamStorage ? (stream.size / totalStreamStorage * 100).toFixed(1) : 0
+    slicePercent: totalStreamStorage ? (stream.size / totalStreamStorage * 100).toFixed(1) : 0,
+    retentionDays: stream.retention_days || 0,
+    detectionRetentionDays: stream.detection_retention_days || 0,
+    maxStorageMb: stream.max_storage_mb || 0,
+    // Effective retention: per-stream value if set, otherwise global
+    effectiveRetentionDays: stream.retention_days > 0 ? stream.retention_days : globalRetentionDays,
   }));
 
   // Sort streams by size (largest first)
@@ -101,17 +109,26 @@ export function StreamStorage({ systemInfo, formatBytes }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {streamStorageData.map((stream, index) => {
                 const color = getStreamColor(index);
+                const retentionLabel = stream.retentionDays > 0
+                  ? `${stream.retentionDays}d`
+                  : `${globalRetentionDays}d (global)`;
+                const quotaLabel = stream.maxStorageMb > 0
+                  ? `${stream.maxStorageMb} MB limit`
+                  : 'no quota';
                 return (
                   <a
                     key={stream.name}
                     href={`recordings.html?stream=${encodeURIComponent(stream.name)}`}
                     className="flex items-center p-2 rounded bg-muted hover:bg-muted/70 transition-colors cursor-pointer"
                   >
-                    <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: color.text }}></div>
-                    <div>
+                    <div className="w-3 h-3 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: color.text }}></div>
+                    <div className="min-w-0">
                       <div className="font-medium">{stream.name}</div>
                       <div className="text-xs text-muted-foreground">
                         {formatBytes(stream.size)} ({stream.slicePercent}%) • {stream.count} recordings
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Retention: {retentionLabel} • {quotaLabel}
                       </div>
                     </div>
                   </a>

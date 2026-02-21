@@ -603,6 +603,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    // Add global storage policy settings so the frontend can display effective retention per stream
+    cJSON_AddNumberToObject(info, "global_retention_days", g_config.retention_days);
+
     // Create network object
     cJSON *network = cJSON_CreateObject();
     if (network) {
