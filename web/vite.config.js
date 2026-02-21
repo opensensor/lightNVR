@@ -47,9 +47,30 @@ const removeUseClientDirective = () => {
     transform(code, id) {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
-        // Check for "use client" directive with various possible formats, allowing leading whitespace,
-        // and remove the directive line including an optional semicolon and any trailing whitespace or comments.
-        const useClientRegex = /^\s*(['"])use\s+client\1;?(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))?\s*$/gm;
+        // Regex components for matching a single "use client" directive line:
+        // - leadingWhitespace: optional spaces/tabs at the start of the line
+        // - quoteGroup: opening quote (single or double), captured for reuse
+        // - directiveText: the directive text itself, allowing multiple spaces
+        // - backreference \\1: matches the same quote used to open the string
+        // - optionalSemicolon: optional trailing semicolon
+        // - trailingComment: optional inline // comment or /* block comment */
+        // - optionalTrailingWhitespace: optional whitespace up to the end of the line
+        const leadingWhitespace = '^\\s*';
+        const quoteGroup = "(['\"])";
+        const directiveText = 'use\\s+client';
+        const optionalSemicolon = ';?';
+        const trailingComment = '(?:\\s*(?:\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/))?';
+        const optionalTrailingWhitespace = '\\s*$';
+        const useClientRegex = new RegExp(
+          leadingWhitespace +
+            quoteGroup +
+            directiveText +
+            '\\1' +
+            optionalSemicolon +
+            trailingComment +
+            optionalTrailingWhitespace,
+          'gm'
+        );
         // Remove the "use client" directive (if present) and return the modified code
         const transformedCode = code.replace(useClientRegex, '');
         if (transformedCode !== code) {
@@ -161,29 +182,20 @@ export default defineConfig({
         // Replace dist/* references with ./* for Vite to process them in a single pass.
         // Alternations: src="dist/js/ | href="dist/css/ | src="dist/img/ | href="dist/img/ |
         //               src="dist/fonts/ | href="dist/fonts/ | href="css/ (no dist/ prefix)
+        const pathMap = {
+          'src="dist/js/': 'src="./js/',
+          'href="dist/css/': 'href="./css/',
+          'src="dist/img/': 'src="./img/',
+          'href="dist/img/': 'href="./img/',
+          'src="dist/fonts/': 'src="./fonts/',
+          'href="dist/fonts/': 'href="./fonts/',
+          // Also handle direct CSS references without dist/ prefix
+          'href="css/': 'href="./css/',
+        };
+
         const transformed = html.replace(
           /src="dist\/js\/|href="dist\/css\/|src="dist\/img\/|href="dist\/img\/|src="dist\/fonts\/|href="dist\/fonts\/|href="css\//g,
-          (match) => {
-            switch (match) {
-              case 'src="dist/js/':
-                return 'src="./js/';
-              case 'href="dist/css/':
-                return 'href="./css/';
-              case 'src="dist/img/':
-                return 'src="./img/';
-              case 'href="dist/img/':
-                return 'href="./img/';
-              case 'src="dist/fonts/':
-                return 'src="./fonts/';
-              case 'href="dist/fonts/':
-                return 'href="./fonts/';
-              case 'href="css/':
-                // Also handle direct CSS references without dist/ prefix
-                return 'href="./css/';
-              default:
-                return match;
-            }
-          }
+          (match) => pathMap[match] || match
         );
 
         return transformed;
@@ -280,7 +292,7 @@ export default defineConfig({
             } catch (err) {
               console.error(`Failed to copy ${file} to dist/img/:`, err);
               // Continue copying other files instead of failing the entire build step
-              continue;
+              // (execution naturally proceeds to the next iteration)
             }
           }
         } catch (error) {
