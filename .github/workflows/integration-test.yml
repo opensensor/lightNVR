@@ -41,7 +41,8 @@ jobs:
             libuv1-dev \
             libcurl4-openssl-dev \
             libcjson-dev \
-            libmbedtls-dev
+            libmbedtls-dev \
+            lcov
 
       - name: Build Unity tests
         run: |
@@ -52,7 +53,9 @@ jobs:
             -DBUILD_TESTS=ON \
             -DENABLE_SOD=OFF \
             -DENABLE_GO2RTC=OFF \
-            -DENABLE_MQTT=OFF
+            -DENABLE_MQTT=OFF \
+            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
           make -j$(nproc) \
             test_storage_pressure \
             test_storage_pressure_extended \
@@ -82,6 +85,45 @@ jobs:
           cd build
           ctest --output-on-failure -V \
             -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder"
+
+      - name: Generate coverage report
+        if: always()
+        run: |
+          cd build
+          # Collect coverage data from all .gcda files generated during the test run
+          lcov --capture \
+               --directory . \
+               --output-file coverage.info \
+               --ignore-errors mismatch
+
+          # Strip noise: system headers, third-party code, and the test files themselves
+          lcov --remove coverage.info \
+               '/usr/*' \
+               '*/third_party/*' \
+               '*/external/*' \
+               '*/tests/*' \
+               --output-file coverage_filtered.info \
+               --ignore-errors unused
+
+          # Print a quick per-file summary to the job log
+          lcov --list coverage_filtered.info
+
+          # Render HTML
+          genhtml coverage_filtered.info \
+                  --output-directory ../coverage-report \
+                  --title "LightNVR C Unit-Test Coverage" \
+                  --show-details \
+                  --legend
+
+          echo "Coverage report generated at coverage-report/"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: c-coverage-report
+          path: coverage-report/
+          retention-days: 30
 
       - name: Upload test results on failure
         uses: actions/upload-artifact@v4
