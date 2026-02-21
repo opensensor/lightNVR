@@ -340,16 +340,6 @@ export function TimelineControls() {
     }
   };
 
-  // Play a specific segment
-  const playSegment = (index) => {
-    // This function will be implemented in the TimelinePlayer component
-    // Here we just update the state
-    timelineState.setState({
-      currentSegmentIndex: index,
-      isPlaying: true
-    });
-  };
-
   // ── Helper: get the center hour for zoom (cursor position or range midpoint) ──
   const getCenter = () => {
     const s = timelineState.timelineStartHour ?? 0;
