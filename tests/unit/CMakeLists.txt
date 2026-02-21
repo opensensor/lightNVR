@@ -141,20 +141,21 @@ endmacro()
 
 # ====================================================================
 # Layer 1: Pure logic tests — unity_lib + project headers only
+# (Only tests whose functions are static inline in headers)
 # ====================================================================
-add_layer1_test(test_config)
-add_layer1_test(test_logger)
-add_layer1_test(test_strings)
-add_layer1_test(test_memory)
-add_layer1_test(test_request_response)
-add_layer1_test(test_shutdown_coordinator)
-add_layer1_test(test_detection_config)
 add_layer1_test(test_storage_pressure_extended)
 add_layer1_test(test_detection_result_structures)
 
 # ====================================================================
-# Layer 2: Database tests — lightnvr_lib + real SQLite
+# Layer 2: lightnvr_lib tests — compiled functions + optional SQLite
 # ====================================================================
+add_layer2_test(test_config)
+add_layer2_test(test_logger)
+add_layer2_test(test_strings)
+add_layer2_test(test_memory)
+add_layer2_test(test_request_response)
+add_layer2_test(test_shutdown_coordinator)
+add_layer2_test(test_detection_config)
 add_layer2_test(test_db_streams)
 add_layer2_test(test_db_recordings_extended)
 add_layer2_test(test_db_detections)
