@@ -88,9 +88,6 @@ export function LoginView() {
   }, []);
 
   // Request controller for cancelling requests
-  const requestControllerRef = useRef(null);
-
-
 
   // Function to check if browser might be blocking redirects
   const checkBrowserRedirectSupport = () => {
@@ -148,16 +145,24 @@ export function LoginView() {
         loginBody.totp_code = forceMfaTotpCode;
       }
 
-      // Make login request
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Basic ${authString}`
-        },
-        body: JSON.stringify(loginBody),
-        timeout: 10000
-      });
+      // Make login request with an explicit timeout using AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      let response;
+      try {
+        response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Basic ${authString}`
+          },
+          body: JSON.stringify(loginBody),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (response.ok) {
         const data = await response.json();
@@ -221,8 +226,8 @@ export function LoginView() {
       if (response.ok) {
         console.log('TOTP verification successful, proceeding to redirect');
 
-        const urlParams2 = new URLSearchParams(window.location.search);
-        window.location.href = safeRedirectPath(urlParams2.get('redirect'));
+        const redirectParams = new URLSearchParams(window.location.search);
+        window.location.href = safeRedirectPath(redirectParams.get('redirect'));
       } else {
         const data = await response.json();
         setIsLoggingIn(false);
