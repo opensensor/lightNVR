@@ -19,6 +19,9 @@
 #include "core/logger.h"
 #include "core/config.h"
 
+/* Forward declaration: retrieves the most recent JSON log entries filtered by level and source. */
+int get_json_logs_tail(const char *level, const char *source, char ***logs, int *log_count);
+
 typedef enum {
     SYSLOG_LEVEL_ERROR   = 0,
     SYSLOG_LEVEL_WARNING = 1,
@@ -29,6 +32,8 @@ typedef enum {
 static const char *DEFAULT_LOG_FILE = "/var/log/lightnvr.log";
 static const char *FALLBACK_LOG_FILE = "./lightnvr.log";
 static const long MAX_LOG_TAIL_SIZE = 100 * 1024; // 100KB
+#define MAX_LOG_LEVEL_LENGTH 16
+static const int DEFAULT_MAX_LOG_ENTRIES = 250;
 
 /**
  * @brief Validate that the log file path does not contain suspicious path traversal components.
@@ -311,10 +316,10 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/system/logs request");
 
     // Get query parameters
-    char level[16] = "debug";
+    char level[MAX_LOG_LEVEL_LENGTH] = "debug";
 
     // Extract log level from query parameters
-    char level_buf[16] = {0};
+    char level_buf[MAX_LOG_LEVEL_LENGTH] = {0};
     if (http_request_get_query_param(req, "level", level_buf, sizeof(level_buf)) > 0 && level_buf[0]) {
         strncpy(level, level_buf, sizeof(level) - 1);
         level[sizeof(level) - 1] = '\0';
@@ -324,7 +329,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
     char **logs = NULL;
     // log_count is used as both input (maximum number of logs requested)
     // and output (actual number of logs returned) by get_json_logs_tail().
-    int log_count = 250;  // Input: maximum number of logs to return
+    int log_count = DEFAULT_MAX_LOG_ENTRIES;  // Input: maximum number of logs to return
 
     // Second argument is the optional source/filter/context; NULL means "no specific filter" (use default system logs)
     // Note: log_count is updated by get_json_logs_tail() to the actual number of logs returned.
@@ -499,7 +504,7 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
     }
 
     // Clear the log file by truncating it
-    int fd = open(log_file, O_WRONLY | O_TRUNC | O_CREAT, 0600);
+    int fd = open(log_file, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0600);
     if (fd >= 0) {
         close(fd);
         log_info("Log file cleared via API: %s", log_file);
