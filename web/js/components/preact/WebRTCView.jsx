@@ -150,7 +150,9 @@ export function WebRTCView() {
 
       processStreams();
     }
-  }, [streamsData, selectedStream]);
+    // Note: selectedStream is intentionally not in the dependency array.
+    // This effect is meant to run only when streamsData changes, and may update selectedStream.
+  }, [streamsData]);
 
   // Update URL when layout, page, or selectedStream changes
   useEffect(() => {
@@ -316,7 +318,7 @@ export function WebRTCView() {
     const startIdx = currentPage * maxStreams;
     const endIdx = Math.min(startIdx + maxStreams, streams.length);
     return streams.slice(startIdx, endIdx);
-  }, [streams, layout, selectedStream, currentPage]);
+  }, [streams, layout, selectedStream, currentPage, getMaxStreamsForLayout]);
 
   // Ensure current page is valid when streams or layout changes
   useEffect(() => {
@@ -374,7 +376,8 @@ export function WebRTCView() {
   };
 
   // Memoize the streams to show to prevent unnecessary re-renders
-  const streamsToShow = useMemo(() => getStreamsToShow(), [streams, layout, selectedStream, currentPage, getMaxStreamsForLayout]);
+  // Note: getMaxStreamsForLayout is omitted from dependencies because it's memoized from `layout`.
+  const streamsToShow = useMemo(() => getStreamsToShow(), [streams, layout, selectedStream, currentPage]);
 
   return (
     <section
