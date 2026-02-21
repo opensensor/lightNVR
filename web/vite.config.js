@@ -13,6 +13,7 @@ import * as fsPromises from 'fs/promises';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const MISSING_APP_JS_IMPORTERS = ['streams.html'];
+const MIN_COMPRESSION_SIZE_BYTES = 1024;
 
 // Custom plugin to remove "use client" directives
 const removeUseClientDirective = () => {
@@ -22,8 +23,8 @@ const removeUseClientDirective = () => {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
         // Check for "use client" directive with various possible formats, allowing leading whitespace,
-        // and remove the entire directive line including an optional semicolon and any trailing content (e.g. comments).
-        const useClientRegex = /^\s*(['"])use\s+client\1;?.*$/gm;
+        // and remove the directive line including an optional semicolon and any trailing whitespace or comments.
+        const useClientRegex = /^\s*(['"])use\s+client\1;?(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))?\s*$/gm;
         // Remove the "use client" directive (if present) and return the modified code
         const transformedCode = code.replace(useClientRegex, '');
         if (transformedCode !== code) {
@@ -266,7 +267,7 @@ export default defineConfig({
       verbose: true,
       disable: false,
       // Only compress files larger than 1 KiB to avoid wasting gzip overhead on tiny assets
-      threshold: 1024,
+      threshold: MIN_COMPRESSION_SIZE_BYTES,
       algorithm: 'gzip',
       ext: '.gz',
       // Compress JS, CSS, HTML, JSON, and SVG files
@@ -296,8 +297,8 @@ export default defineConfig({
 
       // Add React to Preact aliases
       'react': '@preact/compat',
-      'react-dom/test-utils': '@preact/compat/test-utils',
       'react-dom': '@preact/compat',
+      'react-dom/test-utils': '@preact/compat/test-utils',
       'react/jsx-runtime': '@preact/compat/jsx-runtime'
     },
   },
