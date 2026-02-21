@@ -66,7 +66,6 @@ export class TimelinePage extends BasePage {
    * Get count of segments on the timeline
    */
   async getSegmentCount(): Promise<number> {
-    await sleep(500);
     return await this.timelineSegments.count();
   }
 
@@ -88,7 +87,7 @@ export class TimelinePage extends BasePage {
       waitUntil: 'networkidle',
       timeout: CONFIG.DEFAULT_TIMEOUT
     });
-    await sleep(1000);
+    await this.waitForDateSyncWithUrl();
   }
 
   /**
@@ -96,7 +95,7 @@ export class TimelinePage extends BasePage {
    */
   async goToPreviousDay(): Promise<void> {
     await this.prevDayButton.click();
-    await sleep(1000);
+    await this.waitForDateSyncWithUrl();
   }
 
   /**
@@ -104,7 +103,7 @@ export class TimelinePage extends BasePage {
    */
   async goToNextDay(): Promise<void> {
     await this.nextDayButton.click();
-    await sleep(1000);
+    await this.waitForDateSyncWithUrl();
   }
 
   /**
@@ -113,7 +112,7 @@ export class TimelinePage extends BasePage {
   async goToToday(): Promise<void> {
     if (await this.todayButton.isVisible()) {
       await this.todayButton.click();
-      await sleep(1000);
+      await this.waitForDateSyncWithUrl();
     }
   }
 
@@ -122,7 +121,7 @@ export class TimelinePage extends BasePage {
    */
   async filterByStream(streamName: string): Promise<void> {
     await this.streamFilter.selectOption({ label: streamName });
-    await sleep(1000);
+    await this.waitForStreamSelection(streamName);
   }
 
   /**
@@ -130,7 +129,7 @@ export class TimelinePage extends BasePage {
    */
   async clickSegment(index: number): Promise<void> {
     await this.timelineSegments.nth(index).click();
-    await sleep(500);
+    await this.videoPlayer.waitFor({ state: 'visible', timeout: CONFIG.DEFAULT_TIMEOUT });
   }
 
   /**
@@ -187,6 +186,40 @@ export class TimelinePage extends BasePage {
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Wait until the selected date in the UI matches the date in the URL.
+   * This replaces fixed sleeps after date navigation with a condition-based wait.
+   */
+  private async waitForDateSyncWithUrl(timeout: number = CONFIG.DEFAULT_TIMEOUT): Promise<void> {
+    const start = Date.now();
+    // Poll periodically until the selected date matches the date in the URL or timeout elapses.
+    while (Date.now() - start < timeout) {
+      const [selectedDate, urlDate] = await Promise.all([
+        this.getSelectedDate(),
+        Promise.resolve(this.getDateFromUrl())
+      ]);
+      if (selectedDate && urlDate && selectedDate === urlDate) {
+        return;
+      }
+      await sleep(100);
+    }
+  }
+
+  /**
+   * Wait until the stream filter shows the expected stream name.
+   * This replaces fixed sleeps after changing the stream filter.
+   */
+  private async waitForStreamSelection(streamName: string, timeout: number = CONFIG.DEFAULT_TIMEOUT): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const selectedStream = await this.getSelectedStream();
+      if (selectedStream === streamName) {
+        return;
+      }
+      await sleep(100);
+    }
   }
 }
 

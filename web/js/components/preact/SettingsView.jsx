@@ -187,8 +187,8 @@ export function SettingsView() {
         apiDetectionUrl: settingsData.api_detection_url || 'http://localhost:8000/detect',
         apiDetectionBackend: settingsData.api_detection_backend || 'onnx',
         defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
-        defaultPreBuffer: settingsData.pre_detection_buffer?.toString() || '5',
-        defaultPostBuffer: settingsData.post_detection_buffer?.toString() || '10',
+        defaultPreBuffer: settingsData.pre_detection_buffer ?? 5,
+        defaultPostBuffer: settingsData.post_detection_buffer ?? 10,
         bufferStrategy: settingsData.buffer_strategy || 'auto',
         // go2rtc settings
         go2rtcEnabled: settingsData.go2rtc_enabled !== undefined ? settingsData.go2rtc_enabled : true,
@@ -776,8 +776,8 @@ export function SettingsView() {
               Select "motion" as the detection model in stream settings to use this feature.
             </p>
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              <strong>Optimized Motion Detection:</strong> Memory and CPU optimized motion detection for embedded devices.
-              Select "motion" as the detection model in stream settings to use this feature.
+              <strong>Optimized Motion Detection:</strong> A memory- and CPU-optimized variant of motion detection designed for embedded and low-power devices.
+              When "motion" is selected as the detection model, this optimized implementation is used automatically on supported devices; no additional configuration is required.
             </p>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

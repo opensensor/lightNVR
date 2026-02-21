@@ -91,7 +91,7 @@ export function StreamConfigModal({
     };
 
     loadZones();
-  }, [isEditing, currentStream.name]);
+  }, [isEditing, currentStream.name, onInputChange]);
 
   const handleZonesChange = (zones) => {
     setDetectionZones(zones);
@@ -502,7 +502,7 @@ export function StreamConfigModal({
                                 <input
                                   type="text"
                                   id="stream-custom-api-url"
-                                  name="customApiUrl"
+                                  name="detectionModel"
                                   className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
                                   placeholder="http://192.168.1.100:9001/detect"
                                   value={currentStream.detectionModel}
@@ -522,7 +522,7 @@ export function StreamConfigModal({
                                   // Switch to custom API mode by setting a placeholder URL
                                   const event = {
                                     target: {
-                                      name: 'customApiUrl',
+                                      name: 'detectionModel',
                                       value: 'http://'
                                     }
                                   };
@@ -924,15 +924,15 @@ export function StreamConfigModal({
                           </select>
                         </div>
 
-	                  <div className="flex justify-end pt-2">
-	                    <button
-	                      type="button"
-	                      onClick={onTestMotion}
-	                      className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors font-medium"
-	                    >
-	                      Trigger Test Motion Event
-	                    </button>
-	                  </div>
+                        <div className="flex justify-end pt-2">
+                          <button
+                            type="button"
+                            onClick={onTestMotion}
+                            className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors font-medium"
+                          >
+                            Trigger Test Motion Event
+                          </button>
+                        </div>
 
                       </div>
                     </>
