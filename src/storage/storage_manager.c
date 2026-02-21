@@ -7,6 +7,7 @@
 #include <sys/statvfs.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
 
@@ -445,21 +446,25 @@ static int apply_legacy_retention_policy(void) {
                         continue;
                     }
 
-                    // Check if it's a file
-                    char rec_path[768];
-                    snprintf(rec_path, sizeof(rec_path), "%s/%s", stream_path, rec_entry->d_name);
-
-                    // Use lstat to avoid following symlinks (prevents TOCTOU via symlink attacks)
+                    // Check if it's a file.
+                    // Use fstatat+unlinkat with the directory fd to eliminate the TOCTOU
+                    // race between lstat() and unlink() on the same path (#27).
+                    int dir_fd = dirfd(stream_dir);
                     struct stat rec_st;
-                    if (lstat(rec_path, &rec_st) == 0 && S_ISREG(rec_st.st_mode)) {
+                    if (fstatat(dir_fd, rec_entry->d_name, &rec_st, AT_SYMLINK_NOFOLLOW) == 0
+                            && S_ISREG(rec_st.st_mode)) {
+                        // Build path only for database lookup and logging (not for unlink)
+                        char rec_path[768];
+                        snprintf(rec_path, sizeof(rec_path), "%s/%s", stream_path, rec_entry->d_name);
+
                         // Check if file is older than retention days
                         if (storage_manager.retention_days > 0 && rec_st.st_mtime < cutoff_time) {
                             // Check if this file is tracked in database
                             // If not tracked, delete it
                             recording_metadata_t meta;
                             if (get_recording_metadata_by_path(rec_path, &meta) != 0) {
-                                // Not in database, safe to delete
-                                if (unlink(rec_path) == 0) {
+                                // Not in database, safe to delete via unlinkat (no TOCTOU)
+                                if (unlinkat(dir_fd, rec_entry->d_name, 0) == 0) {
                                     log_debug("Deleted untracked old recording: %s (age: %ld days)",
                                              rec_path, (now - rec_st.st_mtime) / 86400);
                                     deleted_count++;

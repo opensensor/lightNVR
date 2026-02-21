@@ -4,6 +4,7 @@
 #include <strings.h>
 #include <stddef.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -1238,10 +1239,18 @@ int save_config(const config_t *config, const char *path) {
         }
     }
     
-    // Try to open the file for writing
-    FILE *file = fopen(save_path, "w");
+    // Open the config file with 0600 permissions so passwords written to it
+    // are not world-readable. Using open()+fdopen() instead of fopen() lets us
+    // specify the mode explicitly and avoid relying on the process umask.
+    int config_fd = open(save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (config_fd < 0) {
+        log_error("Could not open config file for writing: %s (error: %s)", save_path, strerror(errno));
+        return -1;
+    }
+    FILE *file = fdopen(config_fd, "w");
     if (!file) {
         log_error("Could not open config file for writing: %s (error: %s)", save_path, strerror(errno));
+        close(config_fd);
         return -1;
     }
     
@@ -1375,7 +1384,7 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "turn_username = %s\n", config->turn_username);
     }
     if (config->turn_password[0] != '\0') {
-        fprintf(file, "turn_password = %s\n", config->turn_password);
+        fprintf(file, "turn_password = %s\n", config->turn_password); // lgtm[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
 
     // Write MQTT settings
@@ -1389,7 +1398,7 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "username = %s\n", config->mqtt_username);
     }
     if (config->mqtt_password[0] != '\0') {
-        fprintf(file, "password = %s\n", config->mqtt_password);
+        fprintf(file, "password = %s\n", config->mqtt_password); // lgtm[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
     fprintf(file, "topic_prefix = %s\n", config->mqtt_topic_prefix);

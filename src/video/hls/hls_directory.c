@@ -92,24 +92,31 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
         log_info("Successfully created output directory: %s", output_dir);
     }
 
-    // Attempt to fix permissions if not writable, using an open fd to avoid TOCTOU (#33)
-    if (access(output_dir, W_OK) != 0) {
-        log_error("Output directory is not writable: %s", output_dir);
-
+    // Ensure the directory is writable. Use open()+fstatat()+fchmod() exclusively
+    // so that there is no TOCTOU race between an access() check and the open().
+    {
         int dir_fd = open(output_dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-        if (dir_fd >= 0) {
-            if (fchmod(dir_fd, 0777) != 0) {
-                log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
-            }
-            close(dir_fd);
-        }
-
-        if (access(output_dir, W_OK) != 0) {
-            log_error("Still unable to write to output directory: %s", output_dir);
+        if (dir_fd < 0) {
+            log_error("Failed to open output directory: %s (error: %s)", output_dir, strerror(errno));
             return -1;
         }
 
-        log_info("Successfully fixed permissions for output directory: %s", output_dir);
+        struct stat dir_st;
+        if (fstat(dir_fd, &dir_st) != 0) {
+            log_error("Failed to stat output directory fd: %s (error: %s)", output_dir, strerror(errno));
+            close(dir_fd);
+            return -1;
+        }
+
+        // If the owner-write bit is missing, try to add full permissions via fd
+        if (!(dir_st.st_mode & S_IWUSR)) {
+            log_warn("Output directory may not be writable: %s, attempting permission fix", output_dir);
+            if (fchmod(dir_fd, 0777) != 0) {
+                log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
+            }
+        }
+
+        close(dir_fd);
     }
 
     // Create a parent directory check file to ensure the parent directory exists
@@ -432,23 +439,22 @@ void cleanup_hls_directories(void) {
                     time_t current_time = time(NULL);
                     time_t five_minutes_ago = current_time - (5 * 60); // 5 minutes in seconds
 
+                    int dir_fd = dirfd(stream_dir);
                     while ((file_entry = readdir(stream_dir)) != NULL) {
                         // Check if this is a .ts file
                         if (strstr(file_entry->d_name, ".ts") != NULL) {
-                            char file_path[MAX_PATH_LENGTH];
-                            snprintf(file_path, sizeof(file_path), "%s/%s", stream_hls_dir, file_entry->d_name);
-
-                            // Check file modification time.
-                            // Use lstat to avoid following symlinks (prevents TOCTOU #30)
+                            // Use fstatat+unlinkat with the directory fd to eliminate
+                            // the TOCTOU race between lstat() and unlink() (#30)
                             struct stat file_stat;
-                            if (lstat(file_path, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
+                            if (fstatat(dir_fd, file_entry->d_name, &file_stat, AT_SYMLINK_NOFOLLOW) == 0
+                                    && S_ISREG(file_stat.st_mode)) {
                                 if (file_stat.st_mtime < five_minutes_ago) {
                                     // File is older than 5 minutes, delete it
-                                    if (unlink(file_path) == 0) {
+                                    if (unlinkat(dir_fd, file_entry->d_name, 0) == 0) {
                                         removed_count++;
                                     } else {
-                                        log_warn("Failed to remove old .ts file: %s (error: %s)",
-                                                file_path, strerror(errno));
+                                        log_warn("Failed to remove old .ts file: %s/%s (error: %s)",
+                                                stream_hls_dir, file_entry->d_name, strerror(errno));
                                     }
                                 }
                             }
@@ -470,23 +476,22 @@ void cleanup_hls_directories(void) {
                     time_t current_time = time(NULL);
                     time_t five_minutes_ago = current_time - (5 * 60); // 5 minutes in seconds
 
+                    int dir_fd = dirfd(stream_dir);
                     while ((file_entry = readdir(stream_dir)) != NULL) {
                         // Check if this is a .m4s file
                         if (strstr(file_entry->d_name, ".m4s") != NULL) {
-                            char file_path[MAX_PATH_LENGTH];
-                            snprintf(file_path, sizeof(file_path), "%s/%s", stream_hls_dir, file_entry->d_name);
-
-                            // Check file modification time.
-                            // Use lstat to avoid following symlinks (prevents TOCTOU #31)
+                            // Use fstatat+unlinkat with the directory fd to eliminate
+                            // the TOCTOU race between lstat() and unlink() (#31)
                             struct stat file_stat;
-                            if (lstat(file_path, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
+                            if (fstatat(dir_fd, file_entry->d_name, &file_stat, AT_SYMLINK_NOFOLLOW) == 0
+                                    && S_ISREG(file_stat.st_mode)) {
                                 if (file_stat.st_mtime < five_minutes_ago) {
                                     // File is older than 5 minutes, delete it
-                                    if (unlink(file_path) == 0) {
+                                    if (unlinkat(dir_fd, file_entry->d_name, 0) == 0) {
                                         removed_count++;
                                     } else {
-                                        log_warn("Failed to remove old .m4s file: %s (error: %s)",
-                                                file_path, strerror(errno));
+                                        log_warn("Failed to remove old .m4s file: %s/%s (error: %s)",
+                                                stream_hls_dir, file_entry->d_name, strerror(errno));
                                     }
                                 }
                             }

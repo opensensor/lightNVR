@@ -6,6 +6,8 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <dirent.h>
@@ -412,53 +414,68 @@ int chmod_recursive(const char *path, mode_t mode) {
         return -1;
     }
 
-    // Use lstat to avoid following symlinks (prevents TOCTOU via symlink substitution)
-    struct stat st;
-    if (lstat(path, &st) != 0) {
-        log_warn("Failed to stat %s: %s", path, strerror(errno));
+    // Open as a directory first (O_NOFOLLOW prevents following symlinks, eliminating
+    // the TOCTOU race between the old lstat() check and chmod() on the same path).
+    int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    bool is_dir = (fd >= 0);
+
+    if (!is_dir) {
+        if (errno == ENOTDIR) {
+            // Not a directory — open as a regular file, still with O_NOFOLLOW
+            fd = open(path, O_RDONLY | O_NOFOLLOW);
+        }
+        if (fd < 0) {
+            if (errno == ELOOP) {
+                // Path is a symlink — skip without error (don't follow)
+                return 0;
+            }
+            log_warn("Failed to open %s: %s", path, strerror(errno));
+            return -1;
+        }
+    }
+
+    // Apply permissions atomically through the open fd (no TOCTOU)
+    if (fchmod(fd, mode) != 0) {
+        log_warn("Failed to fchmod %s: %s", path, strerror(errno));
+        close(fd);
         return -1;
     }
 
-    // Do not set permissions on symlinks — only on real files/dirs
-    if (!S_ISLNK(st.st_mode)) {
-        if (chmod(path, mode) != 0) {
-            log_warn("Failed to chmod %s: %s", path, strerror(errno));
-            return -1;
+    if (!is_dir) {
+        close(fd);
+        return 0;
+    }
+
+    // Directory: use fdopendir so readdir operates on the already-open fd
+    DIR *dir = fdopendir(fd);
+    if (!dir) {
+        log_warn("Failed to fdopendir %s: %s", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+    // fd is now owned by dir; do not close it separately
+
+    struct dirent *entry;
+    char full_path[PATH_MAX];
+    int result = 0;
+
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip . and ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+
+        // Recursively chmod (opens each entry with O_NOFOLLOW)
+        if (chmod_recursive(full_path, mode) != 0) {
+            result = -1;
+            // Continue processing other entries
         }
     }
 
-    // If it's a directory, recursively process contents
-    if (S_ISDIR(st.st_mode)) {
-        DIR *dir = opendir(path);
-        if (!dir) {
-            log_warn("Failed to open directory %s: %s", path, strerror(errno));
-            return -1;
-        }
-
-        struct dirent *entry;
-        char full_path[PATH_MAX];
-        int result = 0;
-
-        while ((entry = readdir(dir)) != NULL) {
-            // Skip . and ..
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-                continue;
-            }
-
-            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-
-            // Recursively chmod
-            if (chmod_recursive(full_path, mode) != 0) {
-                result = -1;
-                // Continue processing other entries
-            }
-        }
-
-        closedir(dir);
-        return result;
-    }
-
-    return 0;
+    closedir(dir); // also closes fd
+    return result;
 }
 
 /**

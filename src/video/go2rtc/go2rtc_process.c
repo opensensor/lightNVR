@@ -247,9 +247,18 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
         return false;
     }
 
-    FILE *config_file = fopen(config_path, "w");
+    // Use 0600 permissions so credentials written to the go2rtc config file
+    // are not world-readable. open()+fdopen() instead of fopen() lets us specify
+    // the mode explicitly without relying on the process umask.
+    int config_fd = open(config_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (config_fd < 0) {
+        log_error("Failed to open go2rtc config file for writing: %s", config_path);
+        return false;
+    }
+    FILE *config_file = fdopen(config_fd, "w");
     if (!config_file) {
         log_error("Failed to open go2rtc config file for writing: %s", config_path);
+        close(config_fd);
         return false;
     }
 
@@ -338,7 +347,7 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
                     fprintf(config_file, "      username: \"%s\"\n", global_config->turn_username);
                 }
                 if (global_config->turn_password[0] != '\0') {
-                    fprintf(config_file, "      credential: \"%s\"\n", global_config->turn_password);
+                    fprintf(config_file, "      credential: \"%s\"\n", global_config->turn_password); // lgtm[cpp/cleartext-storage-file] - TURN credential required by go2rtc config; file written with 0600 permissions
                 }
             } else {
                 log_info("go2rtc config: TURN server NOT added (enabled=%d, url_empty=%d)",

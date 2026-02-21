@@ -6,6 +6,23 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 
 /**
+ * Validates that a redirect URL is safe (relative, same-origin only).
+ * Rejects absolute URLs, protocol-relative URLs, and anything that
+ * could be used for open-redirect or XSS attacks.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isSafeRedirectUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  // Must start with / but not // (protocol-relative)
+  if (!url.startsWith('/') || url.startsWith('//')) return false;
+  // Reject anything with a colon before the first slash (e.g. javascript:)
+  const colonIdx = url.indexOf(':');
+  if (colonIdx !== -1 && colonIdx < url.indexOf('/')) return false;
+  return true;
+}
+
+/**
  * LoginView component
  * @returns {JSX.Element} LoginView component
  */
@@ -147,10 +164,11 @@ export function LoginView() {
         // Successful login (no TOTP required or force MFA verified)
         console.log('Login successful, proceeding to redirect');
 
-        // Get redirect URL from query parameter if it exists
+        // Get redirect URL from query parameter if it exists.
+        // Only follow same-origin relative paths to prevent open-redirect / XSS.
         const urlParams = new URLSearchParams(window.location.search);
         const redirectUrl = urlParams.get('redirect');
-        const targetUrl = redirectUrl || '/index.html';
+        const targetUrl = isSafeRedirectUrl(redirectUrl) ? redirectUrl : '/index.html';
 
         // Redirect immediately
         window.location.href = targetUrl;
@@ -200,7 +218,7 @@ export function LoginView() {
 
         const urlParams = new URLSearchParams(window.location.search);
         const redirectUrl = urlParams.get('redirect');
-        const targetUrl = redirectUrl || '/index.html';
+        const targetUrl = isSafeRedirectUrl(redirectUrl) ? redirectUrl : '/index.html';
 
         window.location.href = targetUrl;
       } else {

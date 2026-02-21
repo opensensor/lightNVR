@@ -198,6 +198,30 @@ static int compare_migrations(const void *a, const void *b) {
 }
 
 /**
+ * Validate that a migration SQL file is secure before executing its contents.
+ * Checks that the file:
+ *  - is a regular file (not a symlink or device)
+ *  - is not world-writable (cannot be tampered with by arbitrary users)
+ * Returns 0 if secure, -1 otherwise.
+ */
+static int validate_migration_file_security(const char *filepath) {
+    struct stat st;
+    if (lstat(filepath, &st) != 0) {
+        log_error("Cannot stat migration file: %s", filepath);
+        return -1;
+    }
+    if (!S_ISREG(st.st_mode)) {
+        log_error("Migration file is not a regular file: %s", filepath);
+        return -1;
+    }
+    if (st.st_mode & S_IWOTH) {
+        log_error("Migration file is world-writable, refusing to execute: %s", filepath);
+        return -1;
+    }
+    return 0;
+}
+
+/**
  * Read SQL file content
  */
 static char *read_sql_file(const char *filepath) {
@@ -678,6 +702,10 @@ static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
             }
         }
 
+        if (validate_migration_file_security(m->filepath) != 0) {
+            return -1;
+        }
+
         char *content = read_sql_file(m->filepath);
         if (!content) {
             return -1;
@@ -736,6 +764,10 @@ static int rollback_migration(sqlite_migrate_t *ctx, migration_t *m) {
 
     // For filesystem migrations, read the file
     if (!m->is_embedded) {
+        if (validate_migration_file_security(m->filepath) != 0) {
+            return -1;
+        }
+
         char *content = read_sql_file(m->filepath);
         if (!content) {
             return -1;

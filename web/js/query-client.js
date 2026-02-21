@@ -62,7 +62,7 @@ export function useQuery(queryKeyOrOptions, url, options = {}, queryOptions = {}
         try {
           return await fetchJSON(url, fetchOptions);
         } catch (error) {
-          console.error(`useQuery error for ${url}:`, error);
+          console.error('useQuery error for', url, ':', error);
           throw error;
         }
       },

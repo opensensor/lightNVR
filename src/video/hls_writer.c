@@ -442,32 +442,44 @@ static int ensure_output_directory(hls_writer_t *writer) {
 
         log_info("Created HLS output directory: %s", dir_path);
 
-        // Set permissions to ensure FFmpeg can write files
-        if (chmod(dir_path, 0755) != 0) {
-            log_warn("Failed to set permissions on directory: %s (error: %s)",
-                    dir_path, strerror(errno));
+        // Set permissions via fd to avoid TOCTOU between mkdir and chmod
+        {
+            int dir_fd = open(dir_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+            if (dir_fd >= 0) {
+                if (fchmod(dir_fd, 0755) != 0) {
+                    log_warn("Failed to set permissions on directory: %s (error: %s)",
+                            dir_path, strerror(errno));
+                }
+                close(dir_fd);
+            }
         }
     }
 
-    // Verify directory is writable; if not, fix permissions via fd to avoid TOCTOU (#34)
-    if (access(dir_path, W_OK) != 0) {
-        log_error("HLS output directory is not writable: %s", dir_path);
-
-        // Open the directory via fd and use fchmod to avoid TOCTOU race condition
+    // Ensure the directory is writable. Use open()+fstatat()+fchmod() to avoid
+    // TOCTOU race between access() check and subsequent open() (#34).
+    {
         int dir_fd = open(dir_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-        if (dir_fd >= 0) {
+        if (dir_fd < 0) {
+            log_error("Failed to open HLS output directory: %s (error: %s)", dir_path, strerror(errno));
+            return -1;
+        }
+
+        struct stat dir_st;
+        if (fstat(dir_fd, &dir_st) != 0) {
+            log_error("Failed to stat HLS output directory fd: %s (error: %s)", dir_path, strerror(errno));
+            close(dir_fd);
+            return -1;
+        }
+
+        if (!(dir_st.st_mode & S_IWUSR)) {
+            log_warn("HLS output directory may not be writable: %s, attempting permission fix", dir_path);
             if (fchmod(dir_fd, 0777) != 0) {
                 log_warn("Failed to set permissions on directory: %s (error: %s)",
                         dir_path, strerror(errno));
             }
-            close(dir_fd);
         }
 
-        // Check again
-        if (access(dir_path, W_OK) != 0) {
-            log_error("Still unable to write to HLS output directory: %s", dir_path);
-            return -1;
-        }
+        close(dir_fd);
     }
 
     return 0;

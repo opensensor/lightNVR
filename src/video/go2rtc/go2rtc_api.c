@@ -278,7 +278,7 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     }
     *q = '\0';
 
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s&name=%s",
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s&name=%s", // lgtm[cpp/non-https-url] - localhost-only internal API
             g_api_host, g_api_port, encoded_url, stream_id);
 
     log_info("Adding stream with URL: %s", url);
@@ -351,7 +351,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     }
 
     size_t url_buf_size = (size_t)URL_BUFFER_SIZE * (num_sources + 1);
-    int written = snprintf(url, url_buf_size, "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?",
+    int written = snprintf(url, url_buf_size, "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?", // lgtm[cpp/non-https-url] - localhost-only internal API
                            g_api_host, g_api_port);
     if (written < 0 || (size_t)written >= url_buf_size) {
         log_error("URL buffer overflow building go2rtc request");
@@ -458,7 +458,7 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
     resp.buffer[0] = '\0';
 
     // Format the URL for the API endpoint with the src parameter
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s", g_api_host, g_api_port, stream_id);
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s", g_api_host, g_api_port, stream_id); // lgtm[cpp/non-https-url] - localhost-only internal API
 
     // Log the URL for debugging
     log_info("DELETE URL: %s", url);
@@ -494,7 +494,7 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
             resp.buffer[0] = '\0';
 
             // Format the URL for the old API endpoint
-            snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams/%s", g_api_host, g_api_port, stream_id);
+            snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams/%s", g_api_host, g_api_port, stream_id); // lgtm[cpp/non-https-url] - localhost-only internal API
 
             log_info("Fallback DELETE URL: %s", url);
 
@@ -570,7 +570,7 @@ bool go2rtc_api_get_webrtc_url(const char *stream_id, char *buffer, size_t buffe
     }
     
     // Format the WebRTC URL
-    snprintf(buffer, buffer_size, "http://%s:%d" GO2RTC_BASE_PATH "/webrtc/%s", g_api_host, g_api_port, stream_id);
+    snprintf(buffer, buffer_size, "http://%s:%d" GO2RTC_BASE_PATH "/webrtc/%s", g_api_host, g_api_port, stream_id); // lgtm[cpp/non-https-url] - localhost-only internal API
     return true;
 }
 
@@ -661,7 +661,7 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
     resp.buffer[0] = '\0';
 
     // Format the URL for the API endpoint
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api", g_api_host, g_api_port);
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api", g_api_host, g_api_port); // lgtm[cpp/non-https-url] - localhost-only internal API
 
     // Set CURL options for GET request
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -754,7 +754,7 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
 
     // Build the preload URL: PUT /go2rtc/api/preload?src={stream_id}&video&audio
     // This tells go2rtc to keep a persistent consumer connected to the stream
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s&video&audio",
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s&video&audio", // lgtm[cpp/non-https-url] - localhost-only internal API
             g_api_host, g_api_port, stream_id);
 
     log_info("Preloading stream with URL: %s", url);

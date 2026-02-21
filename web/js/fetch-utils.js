@@ -250,11 +250,11 @@ export function createRequestController() {
 export async function fetchJSON(url, options = {}) {
   try {
     const response = await enhancedFetch(url, options);
-    console.log(`fetchJSON: Parsing JSON response from ${url}`);
+    console.log('fetchJSON: Parsing JSON response from', url);
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error(`fetchJSON: Error fetching or parsing JSON from ${url}:`, error);
+    console.error('fetchJSON: Error fetching or parsing JSON from', url, ':', error);
     throw error;
   }
 }

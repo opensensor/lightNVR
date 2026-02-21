@@ -83,7 +83,7 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
         return -1;
     }
     
-    snprintf(ptz_url, url_size, "http://%s:%d/onvif/ptz_service", host, port);
+    snprintf(ptz_url, url_size, "http://%s:%d/onvif/ptz_service", host, port); // lgtm[cpp/non-https-url] - ONVIF PTZ uses HTTP; cameras often don't support HTTPS ONVIF
     return 0;
 }
 

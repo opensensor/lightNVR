@@ -10,6 +10,10 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  checks: write
+
 jobs:
   unity-tests:
     name: Unity C Tests (Layer 1 + Layer 2)

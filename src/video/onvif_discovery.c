@@ -491,7 +491,7 @@ int try_direct_http_discovery(char candidate_ips[][16], int candidate_count,
         // Try each ONVIF path
         for (int j = 0; onvif_paths[j] != NULL && count < max_devices; j++) {
             char url[128];
-            snprintf(url, sizeof(url), "http://%s%s", ip, onvif_paths[j]);
+            snprintf(url, sizeof(url), "http://%s%s", ip, onvif_paths[j]); // lgtm[cpp/non-https-url] - ONVIF protocol uses HTTP; cameras often don't support HTTPS ONVIF
             
             log_debug("Trying URL: %s", url);
             curl_easy_setopt(curl, CURLOPT_URL, url);
