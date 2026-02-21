@@ -113,11 +113,10 @@ export function SettingsView() {
   const isViewer = userRole === 'viewer';
   
   // Fetch settings using useQuery
-  const { 
-    data: settingsData, 
-    isLoading, 
-    error,
-    refetch 
+  const {
+    data: settingsData,
+    isLoading,
+    refetch
   } = useQuery(
     ['settings'], 
     '/api/settings',

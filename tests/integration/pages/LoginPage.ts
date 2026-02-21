@@ -2,7 +2,7 @@
  * Login Page Object Model
  */
 
-import { Page, Locator, expect } from '@playwright/test';
+import { Locator, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CONFIG, USERS, sleep } from '../fixtures/test-fixtures';
 

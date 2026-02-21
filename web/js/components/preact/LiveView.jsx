@@ -3,7 +3,7 @@
  * Preact component for the HLS live view page
  */
 
-import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
+import { useState, useEffect, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';
@@ -18,7 +18,7 @@ import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
  */
 export function LiveView({isWebRTCDisabled}) {
   // Use the snapshot manager hook
-  const { takeSnapshot } = useSnapshotManager();
+  useSnapshotManager();
 
   // Use the fullscreen manager hook
   const { isFullscreen, setIsFullscreen, toggleFullscreen } = useFullscreenManager();

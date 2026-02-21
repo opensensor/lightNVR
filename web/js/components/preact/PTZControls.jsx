@@ -4,7 +4,7 @@
  */
 
 
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 
 /**
  * PTZ API functions
@@ -102,17 +102,12 @@ function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disa
 export function PTZControls({ stream, isVisible = true, onClose }) {
   const [speed, setSpeed] = useState(0.5);
   const [presets, setPresets] = useState([]);
-  const [capabilities, setCapabilities] = useState(null);
   const [isMoving, setIsMoving] = useState(false);
   const [error, setError] = useState(null);
 
   // Load capabilities and presets
   useEffect(() => {
     if (!stream?.name || !stream?.ptz_enabled) return;
-
-    ptzApi.getCapabilities(stream.name)
-      .then(setCapabilities)
-      .catch(err => console.error('Failed to get PTZ capabilities:', err));
 
     ptzApi.getPresets(stream.name)
       .then(data => setPresets(data.presets || []))

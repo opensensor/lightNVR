@@ -53,7 +53,6 @@ export function HLSVideoCell({
   const cellRef = useRef(null);
   const hlsPlayerRef = useRef(null);
   const detectionOverlayRef = useRef(null);
-  const initAttemptedRef = useRef(false);
   const fatalErrorCountRef = useRef(0);  // Track consecutive fatal error recovery attempts
   const recoveringRef = useRef(false);   // True when we're in the middle of error recovery (prevents counter reset)
 

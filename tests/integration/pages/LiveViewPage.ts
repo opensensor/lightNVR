@@ -2,7 +2,7 @@
  * Live View (Index) Page Object Model
  */
 
-import { Page, Locator } from '@playwright/test';
+import { Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { sleep } from '../fixtures/test-fixtures';
 
