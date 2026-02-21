@@ -601,16 +601,6 @@ static struct {
     .force_aggressive = false
 };
 
-// Get human-readable string for disk pressure level
-const char* disk_pressure_level_str(disk_pressure_level_t level) {
-    switch (level) {
-        case DISK_PRESSURE_NORMAL:    return "Normal";
-        case DISK_PRESSURE_WARNING:   return "Warning";
-        case DISK_PRESSURE_CRITICAL:  return "Critical";
-        case DISK_PRESSURE_EMERGENCY: return "Emergency";
-        default:                      return "Unknown";
-    }
-}
 
 // ---- Heartbeat Cycle: Disk Pressure Detection ----
 
@@ -632,17 +622,8 @@ static void heartbeat_check_disk_pressure(void) {
     uint64_t used  = total > avail ? total - avail : 0;
     double free_pct = total > 0 ? ((double)avail / (double)total) * 100.0 : 0.0;
 
-    // Determine pressure level
-    disk_pressure_level_t new_level;
-    if (free_pct < DISK_PRESSURE_EMERGENCY_PCT) {
-        new_level = DISK_PRESSURE_EMERGENCY;
-    } else if (free_pct < DISK_PRESSURE_CRITICAL_PCT) {
-        new_level = DISK_PRESSURE_CRITICAL;
-    } else if (free_pct < DISK_PRESSURE_WARNING_PCT) {
-        new_level = DISK_PRESSURE_WARNING;
-    } else {
-        new_level = DISK_PRESSURE_NORMAL;
-    }
+    // Determine pressure level (pure function defined in storage_manager.h)
+    disk_pressure_level_t new_level = evaluate_disk_pressure_level(free_pct);
 
     // Update health state under mutex
     pthread_mutex_lock(&unified_ctrl.mutex);

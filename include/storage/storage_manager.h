@@ -242,8 +242,35 @@ disk_pressure_level_t get_disk_pressure_level(void);
 void trigger_storage_cleanup(bool force_aggressive);
 
 /**
- * Get human-readable string for a disk pressure level
+ * Get human-readable string for a disk pressure level.
+ *
+ * Pure function: no I/O, no global state.  Static inline so tests can call
+ * it without linking the full storage module.
  */
-const char* disk_pressure_level_str(disk_pressure_level_t level);
+static inline const char* disk_pressure_level_str(disk_pressure_level_t level) {
+    switch (level) {
+        case DISK_PRESSURE_NORMAL:    return "Normal";
+        case DISK_PRESSURE_WARNING:   return "Warning";
+        case DISK_PRESSURE_CRITICAL:  return "Critical";
+        case DISK_PRESSURE_EMERGENCY: return "Emergency";
+        default:                      return "Unknown";
+    }
+}
+
+/**
+ * Classify a free-space percentage into a disk pressure level.
+ *
+ * Pure function: no I/O, no global state.  Safe to call from any thread
+ * and easy to unit-test in isolation.
+ *
+ * @param free_pct  Percentage of filesystem space that is free (0.0–100.0)
+ * @return          The corresponding disk_pressure_level_t
+ */
+static inline disk_pressure_level_t evaluate_disk_pressure_level(double free_pct) {
+    if (free_pct < DISK_PRESSURE_EMERGENCY_PCT) return DISK_PRESSURE_EMERGENCY;
+    if (free_pct < DISK_PRESSURE_CRITICAL_PCT)  return DISK_PRESSURE_CRITICAL;
+    if (free_pct < DISK_PRESSURE_WARNING_PCT)   return DISK_PRESSURE_WARNING;
+    return DISK_PRESSURE_NORMAL;
+}
 
 #endif // LIGHTNVR_STORAGE_MANAGER_H

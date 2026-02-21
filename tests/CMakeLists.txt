@@ -225,3 +225,6 @@ message(STATUS "Building motion detection optimization tests")
 message(STATUS "Building database backup tests")
 message(STATUS "Building stream detection tests")
 message(STATUS "Building go2rtc recovery tests")
+
+# Unity-based unit and integration tests
+add_subdirectory(unit)
