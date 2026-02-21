@@ -2,7 +2,7 @@
  * Timeline Page Object Model
  */
 
-import { Page, Locator } from '@playwright/test';
+import { Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CONFIG, sleep } from '../fixtures/test-fixtures';
 
