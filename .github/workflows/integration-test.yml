@@ -11,7 +11,63 @@ on:
   workflow_dispatch:
 
 jobs:
-  integration-test:
+  unity-tests:
+    name: Unity C Tests (Layer 1 + Layer 2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install C build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libavcodec-dev \
+            libavformat-dev \
+            libavutil-dev \
+            libswscale-dev \
+            libsqlite3-dev \
+            libuv1-dev \
+            libcurl4-openssl-dev \
+            libcjson-dev \
+            libmbedtls-dev
+
+      - name: Build Unity tests
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTS=ON \
+            -DENABLE_SOD=OFF \
+            -DENABLE_GO2RTC=OFF \
+            -DENABLE_MQTT=OFF
+          make -j$(nproc) test_storage_pressure test_storage_retention_sqlite
+          echo "Unity test binaries built:"
+          ls -la bin/test_storage_*
+
+      - name: Run Unity tests
+        run: |
+          cd build
+          ctest -R "test_storage" --output-on-failure -V
+
+      - name: Upload test results on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: unity-test-results
+          path: build/Testing/
+          retention-days: 7
+
+  playwright-tests:
+    name: Playwright Integration Tests (Layer 3)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
