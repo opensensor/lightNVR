@@ -3,6 +3,16 @@
  */
 
 import { USER_ROLES } from './UserRoles.js';
+import { useEffect, useRef } from 'preact/hooks';
+
+const FOCUSABLE_SELECTORS = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 /**
  * Edit User Modal Component
@@ -15,6 +25,64 @@ import { USER_ROLES } from './UserRoles.js';
  * @returns {JSX.Element} Edit user modal
  */
 export function EditUserModal({ currentUser, formData, handleInputChange, handleEditUser, onClose }) {
+  const modalRef = useRef(null);
+  const previousFocusedElementRef = useRef(null);
+
+  useEffect(() => {
+    // Remember previously focused element
+    previousFocusedElementRef.current = document.activeElement;
+
+    const modalNode = modalRef.current;
+    if (modalNode) {
+      const focusableElements = modalNode.querySelectorAll(FOCUSABLE_SELECTORS);
+      if (focusableElements.length > 0) {
+        focusableElements[0].focus();
+      } else {
+        modalNode.setAttribute('tabindex', '-1');
+        modalNode.focus();
+      }
+    }
+
+    return () => {
+      // Restore focus to previously focused element if possible
+      const prev = previousFocusedElementRef.current;
+      if (prev && typeof prev.focus === 'function') {
+        prev.focus();
+      }
+    };
+  }, []);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      onClose();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      const modalNode = modalRef.current;
+      if (!modalNode) {
+        return;
+      }
+      const focusable = Array.from(modalNode.querySelectorAll(FOCUSABLE_SELECTORS));
+      if (focusable.length === 0) {
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const current = document.activeElement;
+
+      if (!e.shiftKey && current === last) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && current === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    }
+  };
+
   // Direct submit handler
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -28,9 +96,22 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white" onClick={stopPropagation}>
-        <h2 className="text-xl font-bold mb-4">Edit User: {currentUser.username}</h2>
+    <div
+      className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+      onClick={onClose}
+    >
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-user-modal-title"
+        className="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white"
+        onClick={stopPropagation}
+        onKeyDown={handleKeyDown}
+      >
+        <h2 id="edit-user-modal-title" className="text-xl font-bold mb-4">
+          Edit User: {currentUser.username}
+        </h2>
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">

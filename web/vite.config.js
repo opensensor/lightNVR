@@ -16,7 +16,7 @@ const removeUseClientDirective = () => {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
         // Check for "use client" directive with various possible formats, allowing leading whitespace
-        const useClientRegex = /^\s*(['"]use client['"])/;
+        const useClientRegex = /^\s*(['"]use client['"])/m;
         if (useClientRegex.test(code)) {
           // Remove the "use client" directive and return the modified code
           return {
@@ -225,7 +225,8 @@ export default defineConfig({
     viteCompression({
       verbose: true,
       disable: false,
-      threshold: 0, // Compress all files (needed for embedded devices with gzip-only assets)
+      // Only compress files larger than 1 KiB to avoid wasting gzip overhead on tiny assets
+      threshold: 1024,
       algorithm: 'gzip',
       ext: '.gz',
       // Compress JS, CSS, HTML, JSON, and SVG files
