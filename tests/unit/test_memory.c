@@ -282,6 +282,9 @@ void test_track_memory_underflow_handled(void) {
     if (original_total > 0) {
         track_memory_allocation(original_total, true);
     }
+
+    /* Verify that restoration succeeded so later tests see original state. */
+    TEST_ASSERT_EQUAL_UINT(original_total, get_total_memory_allocated());
 }
 
 /* ================================================================
