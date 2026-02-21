@@ -224,16 +224,6 @@ void test_log_debug_suppressed_at_info_level(void) {
 }
 
 /* ================================================================
- * set_console_logging — API compatibility smoke test
- * ================================================================ */
-
-void test_set_console_logging_does_not_crash(void) {
-    set_console_logging(0);
-    set_console_logging(1);
-    TEST_PASS();
-}
-
-/* ================================================================
  * main
  * ================================================================ */
 
@@ -273,8 +263,6 @@ int main(void) {
     RUN_TEST(test_log_debug_does_not_crash);
     RUN_TEST(test_log_message_does_not_crash);
     RUN_TEST(test_log_debug_suppressed_at_info_level);
-
-    RUN_TEST(test_set_console_logging_does_not_crash);
 
     int result = UNITY_END();
     shutdown_logger();
