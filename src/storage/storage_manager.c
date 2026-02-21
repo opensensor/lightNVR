@@ -220,14 +220,7 @@ int delete_recording(const char *path) {
 
     log_info("Deleting recording file: %s", path);
 
-    // Check if file exists
-    struct stat st;
-    if (stat(path, &st) != 0) {
-        log_error("File not found: %s (error: %s)", path, strerror(errno));
-        return -1;
-    }
-
-    // Delete the file
+    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU race condition.
     if (unlink(path) != 0) {
         log_error("Failed to delete file: %s (error: %s)", path, strerror(errno));
         return -1;
@@ -456,8 +449,9 @@ static int apply_legacy_retention_policy(void) {
                     char rec_path[768];
                     snprintf(rec_path, sizeof(rec_path), "%s/%s", stream_path, rec_entry->d_name);
 
+                    // Use lstat to avoid following symlinks (prevents TOCTOU via symlink attacks)
                     struct stat rec_st;
-                    if (stat(rec_path, &rec_st) == 0 && S_ISREG(rec_st.st_mode)) {
+                    if (lstat(rec_path, &rec_st) == 0 && S_ISREG(rec_st.st_mode)) {
                         // Check if file is older than retention days
                         if (storage_manager.retention_days > 0 && rec_st.st_mtime < cutoff_time) {
                             // Check if this file is tracked in database

@@ -412,16 +412,19 @@ int chmod_recursive(const char *path, mode_t mode) {
         return -1;
     }
 
+    // Use lstat to avoid following symlinks (prevents TOCTOU via symlink substitution)
     struct stat st;
-    if (stat(path, &st) != 0) {
+    if (lstat(path, &st) != 0) {
         log_warn("Failed to stat %s: %s", path, strerror(errno));
         return -1;
     }
 
-    // Set permissions on the path itself
-    if (chmod(path, mode) != 0) {
-        log_warn("Failed to chmod %s: %s", path, strerror(errno));
-        return -1;
+    // Do not set permissions on symlinks — only on real files/dirs
+    if (!S_ISLNK(st.st_mode)) {
+        if (chmod(path, mode) != 0) {
+            log_warn("Failed to chmod %s: %s", path, strerror(errno));
+            return -1;
+        }
     }
 
     // If it's a directory, recursively process contents

@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <errno.h>
 #include <cjson/cJSON.h>
 
 #include "web/api_handlers_recordings.h"
@@ -113,21 +114,20 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
     }
     
     log_info("Deleting file: %s", path);
-    
-    // Check if file exists
-    struct stat st;
-    bool existed = (stat(path, &st) == 0);
-    
-    // Delete file if it exists
-    if (existed) {
-        if (unlink(path) != 0) {
-            log_error("Failed to delete file: %s", path);
-            http_response_set_json_error(res, 500, "Failed to delete file");
-            return;
-        }
+
+    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#36).
+    // Derive 'existed' from the result so the response JSON remains accurate.
+    bool existed;
+    if (unlink(path) == 0) {
+        existed = true;
         log_info("Successfully deleted file: %s", path);
-    } else {
+    } else if (errno == ENOENT) {
+        existed = false;
         log_info("File doesn't exist, no need to delete: %s", path);
+    } else {
+        log_error("Failed to delete file: %s (error: %s)", path, strerror(errno));
+        http_response_set_json_error(res, 500, "Failed to delete file");
+        return;
     }
 
     // Create response JSON

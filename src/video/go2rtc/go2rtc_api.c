@@ -350,8 +350,16 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
         return false;
     }
 
-    int offset = snprintf(url, URL_BUFFER_SIZE, "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?",
-                          g_api_host, g_api_port);
+    size_t url_buf_size = (size_t)URL_BUFFER_SIZE * (num_sources + 1);
+    int written = snprintf(url, url_buf_size, "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?",
+                           g_api_host, g_api_port);
+    if (written < 0 || (size_t)written >= url_buf_size) {
+        log_error("URL buffer overflow building go2rtc request");
+        free(url);
+        curl_easy_cleanup(curl);
+        return false;
+    }
+    size_t offset = (size_t)written;
 
     // Add each source as a src parameter
     for (int i = 0; i < num_sources; i++) {
@@ -373,15 +381,20 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
         *q = '\0';
 
         if (i > 0) {
-            offset += snprintf(url + offset, URL_BUFFER_SIZE - offset, "&");
+            written = snprintf(url + offset, url_buf_size - offset, "&");
+            if (written < 0 || (size_t)written >= url_buf_size - offset) { break; }
+            offset += (size_t)written;
         }
-        offset += snprintf(url + offset, URL_BUFFER_SIZE * (num_sources + 1) - offset,
-                          "src=%s", encoded_url);
+        written = snprintf(url + offset, url_buf_size - offset, "src=%s", encoded_url);
+        if (written < 0 || (size_t)written >= url_buf_size - offset) { break; }
+        offset += (size_t)written;
     }
 
     // Add stream name
-    offset += snprintf(url + offset, URL_BUFFER_SIZE * (num_sources + 1) - offset,
-                      "&name=%s", stream_id);
+    written = snprintf(url + offset, url_buf_size - offset, "&name=%s", stream_id);
+    if (written < 0 || (size_t)written >= url_buf_size - offset) {
+        log_warn("URL truncated building go2rtc request for stream %s", stream_id);
+    }
 
     log_info("Adding stream with multiple sources: %s", url);
 

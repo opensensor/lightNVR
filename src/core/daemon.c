@@ -262,8 +262,10 @@ static int write_pid_file(const char *pid_file) {
     // Keep the file descriptor open to maintain the lock
     // We'll close it when the daemon exits
     
-    // Set permissions to allow other processes to read the file
-    if (chmod(pid_file, 0644) != 0) {
+    // Set permissions to allow other processes to read the file.
+    // Use fchmod(fd) instead of chmod(path) to avoid TOCTOU race condition:
+    // operating on the already-open fd guarantees we chmod the same file we wrote.
+    if (fchmod(fd, 0644) != 0) {
         log_warn("Failed to set permissions on PID file: %s", strerror(errno));
         // Not a fatal error, continue
     }

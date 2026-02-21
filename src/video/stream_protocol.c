@@ -506,11 +506,9 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         }
 
         // CRITICAL FIX: Always ensure the output parameter is set to NULL to prevent use-after-free
-        // This is essential for preventing segmentation faults during shutdown
-        if (input_ctx) {
-            *input_ctx = NULL;
-            log_debug("Set input_ctx to NULL after failed connection to prevent segmentation fault");
-        }
+        // input_ctx is guaranteed non-null (validated at entry point above)
+        *input_ctx = NULL;
+        log_debug("Set input_ctx to NULL after failed connection to prevent segmentation fault");
 
         return ret;
     }

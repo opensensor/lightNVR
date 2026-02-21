@@ -668,6 +668,16 @@ static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
 
     // For filesystem migrations, read the file
     if (!m->is_embedded) {
+        // Validate that the filepath is within the configured migrations directory
+        // to prevent path traversal attacks (addresses SQL injection via file content)
+        if (ctx->config.migrations_dir) {
+            size_t dir_len = strlen(ctx->config.migrations_dir);
+            if (strncmp(m->filepath, ctx->config.migrations_dir, dir_len) != 0) {
+                log_error("Migration file is outside the configured directory: %s", m->filepath);
+                return -1;
+            }
+        }
+
         char *content = read_sql_file(m->filepath);
         if (!content) {
             return -1;

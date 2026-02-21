@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <time.h>
 #include <errno.h>
 
@@ -74,27 +75,33 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
             return -1;
         }
 
-        // Verify the directory was created
-        if (stat(output_dir, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        // Verify the directory was created and set permissions via fd to avoid TOCTOU
+        int dir_fd = open(output_dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (dir_fd < 0 || fstat(dir_fd, &st) != 0 || !S_ISDIR(st.st_mode)) {
             log_error("Failed to verify output directory: %s", output_dir);
+            if (dir_fd >= 0) close(dir_fd);
             return -1;
         }
 
-        // Set permissions directly using chmod
-        if (chmod(output_dir, 0777) != 0) {
+        // Use fchmod on the open fd to avoid TOCTOU race between stat and chmod (#32)
+        if (fchmod(dir_fd, 0777) != 0) {
             log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
         }
+        close(dir_fd);
 
         log_info("Successfully created output directory: %s", output_dir);
     }
 
-    // Check directory permissions
+    // Attempt to fix permissions if not writable, using an open fd to avoid TOCTOU (#33)
     if (access(output_dir, W_OK) != 0) {
         log_error("Output directory is not writable: %s", output_dir);
 
-        // Try to fix permissions using direct chmod
-        if (chmod(output_dir, 0777) != 0) {
-            log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
+        int dir_fd = open(output_dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (dir_fd >= 0) {
+            if (fchmod(dir_fd, 0777) != 0) {
+                log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
+            }
+            close(dir_fd);
         }
 
         if (access(output_dir, W_OK) != 0) {
@@ -431,9 +438,10 @@ void cleanup_hls_directories(void) {
                             char file_path[MAX_PATH_LENGTH];
                             snprintf(file_path, sizeof(file_path), "%s/%s", stream_hls_dir, file_entry->d_name);
 
-                            // Check file modification time
+                            // Check file modification time.
+                            // Use lstat to avoid following symlinks (prevents TOCTOU #30)
                             struct stat file_stat;
-                            if (stat(file_path, &file_stat) == 0) {
+                            if (lstat(file_path, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
                                 if (file_stat.st_mtime < five_minutes_ago) {
                                     // File is older than 5 minutes, delete it
                                     if (unlink(file_path) == 0) {
@@ -468,9 +476,10 @@ void cleanup_hls_directories(void) {
                             char file_path[MAX_PATH_LENGTH];
                             snprintf(file_path, sizeof(file_path), "%s/%s", stream_hls_dir, file_entry->d_name);
 
-                            // Check file modification time
+                            // Check file modification time.
+                            // Use lstat to avoid following symlinks (prevents TOCTOU #31)
                             struct stat file_stat;
-                            if (stat(file_path, &file_stat) == 0) {
+                            if (lstat(file_path, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
                                 if (file_stat.st_mtime < five_minutes_ago) {
                                     // File is older than 5 minutes, delete it
                                     if (unlink(file_path) == 0) {

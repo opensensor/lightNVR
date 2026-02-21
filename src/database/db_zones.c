@@ -19,23 +19,33 @@
  * Convert polygon points to JSON string
  */
 static int polygon_to_json(const zone_point_t *polygon, int count, char *json_out, size_t max_len) {
-    if (!polygon || count <= 0 || !json_out) {
+    if (!polygon || count <= 0 || !json_out || max_len == 0) {
         return -1;
     }
 
-    int offset = 0;
-    offset += snprintf(json_out + offset, max_len - offset, "[");
+    size_t offset = 0;
+    int written;
+
+    written = snprintf(json_out + offset, max_len - offset, "[");
+    if (written < 0 || (size_t)written >= max_len - offset) { return -1; }
+    offset += (size_t)written;
 
     for (int i = 0; i < count; i++) {
         if (i > 0) {
-            offset += snprintf(json_out + offset, max_len - offset, ",");
+            written = snprintf(json_out + offset, max_len - offset, ",");
+            if (written < 0 || (size_t)written >= max_len - offset) { return -1; }
+            offset += (size_t)written;
         }
-        offset += snprintf(json_out + offset, max_len - offset,
+        written = snprintf(json_out + offset, max_len - offset,
                           "{\"x\":%.6f,\"y\":%.6f}",
                           polygon[i].x, polygon[i].y);
+        if (written < 0 || (size_t)written >= max_len - offset) { return -1; }
+        offset += (size_t)written;
     }
 
-    offset += snprintf(json_out + offset, max_len - offset, "]");
+    written = snprintf(json_out + offset, max_len - offset, "]");
+    if (written < 0 || (size_t)written >= max_len - offset) { return -1; }
+
     return 0;
 }
 

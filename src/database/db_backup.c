@@ -104,25 +104,19 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
     sqlite3 *db = get_db_handle();
     
     log_info("Restoring database from backup: %s to %s", backup_path, db_path);
-    
-    // First, check if the backup file exists
-    struct stat st;
-    if (stat(backup_path, &st) != 0) {
-        log_error("Backup file does not exist: %s", backup_path);
-        return -1;
-    }
-    
+
     // Close the current database if it's open
     if (db) {
         log_info("Closing current database before restore");
         sqlite3_close_v2(db);
         // Note: We don't set the global db to NULL here, as that's handled by the core module
     }
-    
-    // Copy the backup file to the database file
+
+    // Copy the backup file to the database file.
+    // Attempt fopen directly instead of stat-then-fopen to avoid TOCTOU race condition.
     FILE *src = fopen(backup_path, "rb");
     if (!src) {
-        log_error("Failed to open backup file for reading: %s", strerror(errno));
+        log_error("Failed to open backup file for reading: %s (error: %s)", backup_path, strerror(errno));
         return -1;
     }
     

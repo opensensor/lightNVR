@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
@@ -243,20 +242,20 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
 
     log_info("Deleted recording from database: %llu", (unsigned long long)id);
 
-    // Then delete the file from disk
-    struct stat st;
-    if (stat(file_path_copy, &st) == 0) {
-        if (unlink(file_path_copy) != 0) {
+    // Then delete the file from disk.
+    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#38).
+    if (unlink(file_path_copy) != 0) {
+        if (errno == ENOENT) {
+            log_warn("Recording file does not exist: %s (already deleted or never created)", file_path_copy);
+            // This is acceptable - DB entry is removed
+        } else {
             log_warn("Failed to delete recording file: %s (error: %s)",
                     file_path_copy, strerror(errno));
             // File deletion failed but DB entry is already removed
             // This is acceptable - orphaned files can be cleaned up later
-        } else {
-            log_info("Deleted recording file: %s", file_path_copy);
         }
     } else {
-        log_warn("Recording file does not exist: %s (already deleted or never created)", file_path_copy);
-        // This is acceptable - DB entry is removed
+        log_info("Deleted recording file: %s", file_path_copy);
     }
 
     // Delete associated thumbnails
@@ -332,18 +331,18 @@ static void *batch_delete_worker_thread(void *arg) {
                     log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                     error_count++;
                 } else {
-                    // Then delete the file from disk
-                    struct stat st;
-                    if (stat(file_path_copy, &st) == 0) {
-                        if (unlink(file_path_copy) != 0) {
+                    // Then delete the file from disk.
+                    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#35).
+                    if (unlink(file_path_copy) != 0) {
+                        if (errno == ENOENT) {
+                            log_warn("Recording file does not exist: %s (already deleted or never created)",
+                                    file_path_copy);
+                        } else {
                             log_warn("Failed to delete recording file: %s (error: %s)",
                                     file_path_copy, strerror(errno));
-                        } else {
-                            log_info("Deleted recording file: %s", file_path_copy);
                         }
                     } else {
-                        log_warn("Recording file does not exist: %s (already deleted or never created)",
-                                file_path_copy);
+                        log_info("Deleted recording file: %s", file_path_copy);
                     }
 
                     // Delete associated thumbnails
@@ -468,22 +467,22 @@ static void *batch_delete_worker_thread(void *arg) {
                 log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
                 error_count++;
             } else {
-                // Then delete the file from disk
-                struct stat st;
-                if (stat(file_path_copy, &st) == 0) {
-                    if (unlink(file_path_copy) != 0) {
+                // Then delete the file from disk.
+                // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#37).
+                if (unlink(file_path_copy) != 0) {
+                    if (errno == ENOENT) {
+                        log_warn("Recording file does not exist: %s (already deleted or never created)",
+                                file_path_copy);
+                    } else {
                         log_warn("Failed to delete recording file: %s (error: %s)",
                                 file_path_copy, strerror(errno));
-                    } else {
-                        log_info("Deleted recording file: %s", file_path_copy);
                     }
                 } else {
-                    log_warn("Recording file does not exist: %s (already deleted or never created)",
-                            file_path_copy);
+                    log_info("Deleted recording file: %s", file_path_copy);
                 }
 
                 // Delete associated thumbnails
-                    delete_recording_thumbnails(id);
+                delete_recording_thumbnails(id);
 
                 success_count++;
                 log_info("Successfully deleted recording: %llu", (unsigned long long)id);

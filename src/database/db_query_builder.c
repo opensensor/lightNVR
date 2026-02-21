@@ -65,65 +65,72 @@ const char *qb_build_select(query_builder_t *qb, const char *where_clause, const
     int written;
     
     written = snprintf(ptr, remaining, "SELECT ");
+    if (written < 0 || (size_t)written >= remaining) { return NULL; }
     ptr += written;
-    remaining -= written;
-    
+    remaining -= (size_t)written;
+
     // Add columns that exist
     int result_idx = 0;
     bool first = true;
-    
+
     for (int i = 0; i < qb->column_count; i++) {
         column_info_t *col = &qb->columns[i];
-        
+
         if (!col->present) {
             continue;
         }
-        
+
         if (!first) {
             written = snprintf(ptr, remaining, ", ");
+            if (written < 0 || (size_t)written >= remaining) { break; }
             ptr += written;
-            remaining -= written;
+            remaining -= (size_t)written;
         }
-        
+
         written = snprintf(ptr, remaining, "%s", col->name);
+        if (written < 0 || (size_t)written >= remaining) { break; }
         ptr += written;
-        remaining -= written;
-        
+        remaining -= (size_t)written;
+
         col->index = result_idx++;
         first = true;
         first = false;
     }
-    
+
     qb->result_column_count = result_idx;
-    
+
     if (result_idx == 0) {
         log_error("No columns available for query on table %s", qb->table_name);
         return NULL;
     }
-    
+
     // Add FROM clause
     written = snprintf(ptr, remaining, " FROM %s", qb->table_name);
+    if (written < 0 || (size_t)written >= remaining) { return NULL; }
     ptr += written;
-    remaining -= written;
-    
+    remaining -= (size_t)written;
+
     // Add WHERE clause if provided
     if (where_clause && strlen(where_clause) > 0) {
         written = snprintf(ptr, remaining, " WHERE %s", where_clause);
+        if (written < 0 || (size_t)written >= remaining) { return NULL; }
         ptr += written;
-        remaining -= written;
+        remaining -= (size_t)written;
     }
-    
+
     // Add ORDER BY clause if provided
     if (order_by && strlen(order_by) > 0) {
         written = snprintf(ptr, remaining, " ORDER BY %s", order_by);
+        if (written < 0 || (size_t)written >= remaining) { return NULL; }
         ptr += written;
-        remaining -= written;
+        remaining -= (size_t)written;
     }
-    
+
     // Add semicolon
     written = snprintf(ptr, remaining, ";");
+    if (written < 0 || (size_t)written >= remaining) { return NULL; }
     ptr += written;
-    remaining -= written;
+    remaining -= (size_t)written;
     
     return qb->query;
 }

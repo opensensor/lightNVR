@@ -449,14 +449,18 @@ static int ensure_output_directory(hls_writer_t *writer) {
         }
     }
 
-    // Verify directory is writable
+    // Verify directory is writable; if not, fix permissions via fd to avoid TOCTOU (#34)
     if (access(dir_path, W_OK) != 0) {
         log_error("HLS output directory is not writable: %s", dir_path);
 
-        // Try to fix permissions using direct chmod
-        if (chmod(dir_path, 0777) != 0) {
-            log_warn("Failed to set permissions on directory: %s (error: %s)",
-                    dir_path, strerror(errno));
+        // Open the directory via fd and use fchmod to avoid TOCTOU race condition
+        int dir_fd = open(dir_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (dir_fd >= 0) {
+            if (fchmod(dir_fd, 0777) != 0) {
+                log_warn("Failed to set permissions on directory: %s (error: %s)",
+                        dir_path, strerror(errno));
+            }
+            close(dir_fd);
         }
 
         // Check again
