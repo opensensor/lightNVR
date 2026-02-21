@@ -216,7 +216,7 @@ export default defineConfig({
           const cssDirExists = await pathExists(srcCssDir);
           if (!cssDirExists) {
             console.warn(
-              `Source CSS directory "${srcCssDir}" (resolved to "${resolve(srcCssDir)}") does not exist; skipping CSS copy.`
+              `Source CSS directory "${srcCssDir}" (resolved to "${resolve(__dirname, srcCssDir)}") does not exist; skipping CSS copy.`
             );
             return;
           }
@@ -255,17 +255,11 @@ export default defineConfig({
           // Create dist/img directory if it doesn't exist
           await fsPromises.mkdir('dist/img', { recursive: true });
 
-          // Check if img directory exists
-          try {
-            await fsPromises.access('img');
-          } catch (err) {
-            // If the directory truly doesn't exist, skip copying.
-            if (err.code === 'ENOENT') {
-              console.log('No img directory found, skipping');
-              return;
-            }
-            // For other errors (for example, permission issues), surface the problem.
-            throw err;
+          // Check if img directory exists using shared helper
+          const imgDirExists = await pathExists('img');
+          if (!imgDirExists) {
+            console.log('No img directory found, skipping');
+            return;
           }
 
           // Read all entries from img (files and possibly subdirectories)
