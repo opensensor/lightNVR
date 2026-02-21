@@ -35,6 +35,30 @@ static const long MAX_LOG_TAIL_SIZE = 100 * 1024; // 100KB
  *
  * This is a conservative check that rejects paths containing ".." as a path component.
  */
+static bool is_safe_log_path(const char *path);
+
+/**
+ * @brief Check if the given path can be opened for writing.
+ *
+ * This attempts to open the file directly, avoiding TOCTOU issues
+ * associated with using access() before open().
+ */
+static bool can_open_for_write(const char *path) {
+    int fd;
+
+    if (!is_safe_log_path(path)) {
+        return false;
+    }
+
+    fd = open(path, O_WRONLY | O_APPEND | O_CLOEXEC);
+    if (fd < 0) {
+        return false;
+    }
+
+    close(fd);
+    return true;
+}
+
 static bool is_safe_log_path(const char *path) {
     if (path == NULL || path[0] == '\0') {
         return false;
@@ -298,12 +322,15 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Get system logs
     char **logs = NULL;
-    int max_count = 250;
+    // log_count is used as both input (maximum number of logs requested)
+    // and output (actual number of logs returned) by get_json_logs_tail().
+    int log_count = 250;  // Input: maximum number of logs to return
 
     // Second argument is the optional source/filter/context; NULL means "no specific filter" (use default system logs)
-    const int result = get_json_logs_tail(level, NULL, &logs, &max_count);
+    // Note: log_count is updated by get_json_logs_tail() to the actual number of logs returned.
+    const int result = get_json_logs_tail(level, NULL, &logs, &log_count);
 
-    int count = max_count;
+    int count = log_count;
 
     if (result != 0 || !logs) {
         http_response_set_json_error(res, 500, "Failed to get system logs");
@@ -451,7 +478,7 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
     // Check if log file exists and is writable
     struct stat st;
     bool file_exists = (stat(log_file, &st) == 0);
-    bool is_writable = (access(log_file, W_OK) == 0);
+    bool is_writable = can_open_for_write(log_file);
 
     // If the log file doesn't exist or isn't writable, try the fallback
     if (!file_exists || !is_writable) {
@@ -463,7 +490,7 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
         }
 
         file_exists = (stat(fallback_log_file, &st) == 0);
-        is_writable = (access(fallback_log_file, W_OK) == 0);
+        is_writable = can_open_for_write(fallback_log_file);
 
         if (file_exists && is_writable) {
             log_info("Using fallback log file for clearing");
@@ -472,7 +499,7 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
     }
 
     // Clear the log file by truncating it
-    int fd = open(log_file, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+    int fd = open(log_file, O_WRONLY | O_TRUNC | O_CREAT, 0600);
     if (fd >= 0) {
         close(fd);
         log_info("Log file cleared via API: %s", log_file);
