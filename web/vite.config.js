@@ -200,7 +200,8 @@ export default defineConfig({
           // Check if img directory exists
           try {
             await fs.access('img');
-          } catch {
+          } catch (err) {
+            // Intentionally ignore the specific error; any failure means the img directory is absent.
             console.log('No img directory found, skipping');
             return;
           }
