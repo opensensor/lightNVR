@@ -17,7 +17,7 @@ import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
  */
 export function WebRTCView() {
   // Use the snapshot manager hook
-  const { takeSnapshot } = useSnapshotManager();
+  useSnapshotManager();
 
   // Use the fullscreen manager hook
   const { isFullscreen, setIsFullscreen, toggleFullscreen } = useFullscreenManager();

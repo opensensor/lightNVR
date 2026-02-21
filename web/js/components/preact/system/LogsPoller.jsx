@@ -4,7 +4,6 @@
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { log_level_meets_minimum } from './SystemUtils.js';
 import { fetchJSON } from '../../../fetch-utils.js';
 
 /**

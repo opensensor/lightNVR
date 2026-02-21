@@ -38,7 +38,7 @@ export function WebRTCVideoCell({
   // Backchannel (two-way audio) state
   const [isTalking, setIsTalking] = useState(false);
   const [microphoneError, setMicrophoneError] = useState(null);
-  const [hasMicrophonePermission, setHasMicrophonePermission] = useState(null);
+  const [, setHasMicrophonePermission] = useState(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [talkMode, setTalkMode] = useState('ptt'); // 'ptt' (push-to-talk) or 'toggle'
 

@@ -38,7 +38,6 @@ function FilterSection({ title, badge, isExpanded, onToggle, children }) {
   );
 }
 
-const SECTION_KEYS = ['dateRange', 'stream', 'recordingType', 'detectionObject', 'display'];
 const DEFAULT_SECTIONS = { dateRange: true, stream: true, recordingType: true, detectionObject: false, display: false };
 
 /**

@@ -15,7 +15,6 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
   const imageRef = useRef(null);
   const [currentZone, setCurrentZone] = useState(null);
   const [selectedZoneIndex, setSelectedZoneIndex] = useState(null);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
   const [snapshotError, setSnapshotError] = useState(false);

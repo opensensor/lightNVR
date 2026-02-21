@@ -20,7 +20,7 @@ import { PaginationControls } from './recordings/PaginationControls.jsx';
 import { formatUtils } from './recordings/formatUtils.js';
 import { recordingsAPI } from './recordings/recordingsAPI.jsx';
 import { urlUtils } from './recordings/urlUtils.js';
-import { useQueryClient, invalidateQueries } from '../../query-client.js';
+
 import { validateSession } from '../../utils/auth-utils.js';
 
 /**
@@ -140,9 +140,6 @@ export function RecordingsView() {
       console.warn('Modal context not available in RecordingsView');
     }
   }, [modalContext]);
-
-  // Get query client for invalidating queries
-  const queryClient = useQueryClient();
 
   // Fetch streams using preact-query
   const {

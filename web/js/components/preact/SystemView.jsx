@@ -116,8 +116,7 @@ export function SystemView() {
   // Define all query hooks next
   const {
     data: systemInfoData,
-    isLoading,
-    error: systemInfoError
+    isLoading
   } = useQuery(
     ['systemInfo'],
     '/api/system/info',

@@ -8,7 +8,7 @@
  * 4. Registers test streams with go2rtc
  */
 
-import { spawn, ChildProcess, execSync } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import path from 'path';
 

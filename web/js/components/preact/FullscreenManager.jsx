@@ -3,7 +3,6 @@
  * React component for managing fullscreen mode
  */
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { showStatusMessage } from './ToastContainer.jsx';
 
 /**
  * Custom hook for fullscreen functionality

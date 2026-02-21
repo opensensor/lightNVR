@@ -7,7 +7,6 @@
 
 import { test, expect } from '@playwright/test';
 import { LoginPage } from '../pages/LoginPage';
-import { LiveViewPage } from '../pages/LiveViewPage';
 import { USERS, login, logout, sleep } from '../fixtures/test-fixtures';
 
 test.describe('Authentication @ui @auth', () => {

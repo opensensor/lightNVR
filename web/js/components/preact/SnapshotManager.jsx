@@ -156,7 +156,7 @@ export function useSnapshotManager() {
  * @returns {JSX.Element} SnapshotManager component
  */
 export function SnapshotManager() {
-  const { takeSnapshot, downloadSnapshot } = useSnapshotManager();
+  const { takeSnapshot } = useSnapshotManager();
 
   // Register the takeSnapshot function globally for backward compatibility
   useEffect(() => {

@@ -17,7 +17,7 @@ export function TimelineSegments({ segments: propSegments }) {
   const [segments, setSegments] = useState(propSegments || []);
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
-  const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
+  const [, setCurrentSegmentIndex] = useState(-1);
 
   // Update segments when props change
   useEffect(() => {
