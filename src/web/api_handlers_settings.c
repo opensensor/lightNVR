@@ -29,6 +29,32 @@
 #include "core/mqtt_client.h"
 
 /**
+ * @brief Validate that a path is safe to use as a storage path.
+ *
+ * A safe storage path must:
+ *   - Be non-NULL and non-empty
+ *   - Start with '/' (absolute path)
+ *   - Contain no shell metacharacters that could enable OS command injection
+ *     when the path is later used in disk-usage calculations.
+ *
+ * @param path  The candidate path string
+ * @return true if the path is acceptable, false otherwise
+ */
+static bool is_safe_storage_path(const char *path) {
+    if (!path || path[0] != '/') {
+        return false;
+    }
+    /* Characters that carry special meaning to a POSIX shell */
+    static const char dangerous[] = ";|&`$><\n\r\\\"'!{}()[]~*?";
+    for (const char *c = path; *c != '\0'; c++) {
+        if (strchr(dangerous, *c)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * @brief Background task for MQTT reinit after settings change.
  *
  * MQTT cleanup and reconnection can take several seconds due to timeouts,
@@ -507,18 +533,32 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated login_rate_limit_window_seconds: %d", g_config.login_rate_limit_window_seconds);
     }
 
-    // Storage path
+    // Storage path — validate before accepting to prevent shell injection
     cJSON *storage_path = cJSON_GetObjectItem(settings, "storage_path");
     if (storage_path && cJSON_IsString(storage_path)) {
+        if (!is_safe_storage_path(storage_path->valuestring)) {
+            log_warn("Rejected unsafe storage_path: %s", storage_path->valuestring);
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "Invalid storage_path: must be an absolute path without shell metacharacters");
+            return;
+        }
         strncpy(g_config.storage_path, storage_path->valuestring, sizeof(g_config.storage_path) - 1);
         g_config.storage_path[sizeof(g_config.storage_path) - 1] = '\0';
         settings_changed = true;
         log_info("Updated storage_path: %s", g_config.storage_path);
     }
-    
-    // Storage path for HLS segments
+
+    // Storage path for HLS segments — same validation
     cJSON *storage_path_hls = cJSON_GetObjectItem(settings, "storage_path_hls");
     if (storage_path_hls && cJSON_IsString(storage_path_hls)) {
+        if (!is_safe_storage_path(storage_path_hls->valuestring)) {
+            log_warn("Rejected unsafe storage_path_hls: %s", storage_path_hls->valuestring);
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "Invalid storage_path_hls: must be an absolute path without shell metacharacters");
+            return;
+        }
         strncpy(g_config.storage_path_hls, storage_path_hls->valuestring, sizeof(g_config.storage_path_hls) - 1);
         g_config.storage_path_hls[sizeof(g_config.storage_path_hls) - 1] = '\0';
         settings_changed = true;

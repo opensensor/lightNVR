@@ -18,6 +18,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <dirent.h>
 
 #include "web/api_handlers.h"
 #include "core/logger.h"
@@ -363,6 +364,66 @@ static double get_effective_cpu_usage(void) {
 }
 
 /**
+ * @brief Recursively sum the size of all regular files under a directory.
+ *
+ * Uses opendir/readdir/lstat exclusively — no shell is invoked, so the path
+ * is never interpreted by a shell (prevents command injection).
+ * Symbolic links are skipped to prevent directory-loop attacks.
+ *
+ * @param path   Absolute path of the directory to traverse
+ * @param depth  Current recursion depth (caller should pass 0)
+ * @return Total size in bytes of all regular files found
+ */
+static unsigned long long sum_directory_size(const char *path, int depth) {
+    if (depth > 64) return 0; /* guard against unexpectedly deep trees */
+
+    DIR *dir = opendir(path);
+    if (!dir) return 0;
+
+    unsigned long long total = 0;
+    struct dirent *entry;
+    char child[4096];
+    struct stat st;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        int n = snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+        if (n < 0 || n >= (int)sizeof(child))
+            continue; /* path too long — skip */
+
+        if (lstat(child, &st) != 0)
+            continue;
+
+        if (S_ISREG(st.st_mode)) {
+            total += (unsigned long long)st.st_size;
+        } else if (S_ISDIR(st.st_mode)) {
+            total += sum_directory_size(child, depth + 1);
+        }
+        /* skip symlinks, device nodes, pipes, etc. */
+    }
+
+    closedir(dir);
+    return total;
+}
+
+/**
+ * @brief Get the total byte size of all regular files under a directory.
+ *
+ * Safe replacement for: popen("du -sb <path> ...", "r")
+ *
+ * @param path  Absolute path to the directory
+ * @return Total size in bytes, or 0 if the path is not a valid directory
+ */
+static unsigned long long get_directory_size(const char *path) {
+    struct stat st;
+    if (!path || lstat(path, &st) != 0 || !S_ISDIR(st.st_mode))
+        return 0;
+    return sum_directory_size(path, 0);
+}
+
+/**
  * @brief Direct handler for GET /api/system/info
  */
 void handle_get_system_info(const http_request_t *req, http_response_t *res) {
@@ -559,19 +620,11 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
             unsigned long long total = disk_info.f_blocks * disk_info.f_frsize;
             unsigned long long free = disk_info.f_bfree * disk_info.f_frsize;
 
-            // Get actual usage of the storage directory
-            unsigned long long used = 0;
-            char command[512];
-            snprintf(command, sizeof(command), "du -sb %s 2>/dev/null | cut -f1", g_config.storage_path);
-            FILE *fp = popen(command, "r");
-            if (fp) {
-                if (fscanf(fp, "%llu", &used) != 1) {
-                    // If du command fails, fall back to statvfs calculation
-                    used = (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize;
-                }
-                pclose(fp);
-            } else {
-                // Fallback if popen fails
+            // Get actual usage of the storage directory using native filesystem
+            // traversal — avoids passing storage_path to a shell command.
+            unsigned long long used = get_directory_size(g_config.storage_path);
+            if (used == 0) {
+                // Fallback to statvfs estimation when directory traversal returns nothing
                 used = (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize;
             }
 
@@ -797,53 +850,22 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Get recordings size from storage directory
         unsigned long long recording_size = 0;
 
-        // Check if we have a recordings directory
+        // Compute recordings directory size using native filesystem traversal.
+        // storage_path is NEVER passed to a shell command (prevents injection).
         char recordings_dir[512];
-        snprintf(recordings_dir, sizeof(recordings_dir), "%s/", g_config.storage_path);
+        snprintf(recordings_dir, sizeof(recordings_dir), "%s", g_config.storage_path);
+        /* strip any trailing slash so lstat/opendir work consistently */
+        size_t rd_len = strlen(recordings_dir);
+        if (rd_len > 1 && recordings_dir[rd_len - 1] == '/')
+            recordings_dir[rd_len - 1] = '\0';
 
         struct stat st;
         if (stat(recordings_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
-            // Get size of recordings directory using du command
-            char command[512];
-            snprintf(command, sizeof(command), "du -sb %s 2>/dev/null | cut -f1", recordings_dir);
-            log_debug("Executing command: %s", command);
-
-            FILE *fp = popen(command, "r");
-            if (fp) {
-                if (fscanf(fp, "%llu", &recording_size) != 1) {
-                    log_error("Failed to parse du command output");
-                    recording_size = 0;
-                } else {
-                    log_debug("Recordings size from du command: %llu bytes", recording_size);
-                }
-                pclose(fp);
+            recording_size = get_directory_size(recordings_dir);
+            if (recording_size > 0) {
+                log_debug("Recordings size from directory traversal: %llu bytes", recording_size);
             } else {
-                log_error("Failed to execute du command");
-            }
-
-            // If du command failed, try to get size using stat
-            if (recording_size == 0) {
-                log_debug("Trying to get recordings size using stat");
-
-                // Use a different approach - recursively list all files and sum their sizes
-                char find_command[512];
-                snprintf(find_command, sizeof(find_command),
-                        "find %s -type f -name \"*.mp4\" -exec stat -c %%s {} \\; | awk '{sum+=$1} END {print sum}'",
-                        recordings_dir);
-                log_debug("Executing command: %s", find_command);
-
-                FILE *find_fp = popen(find_command, "r");
-                if (find_fp) {
-                    if (fscanf(find_fp, "%llu", &recording_size) != 1) {
-                        log_error("Failed to parse find command output");
-                        recording_size = 0;
-                    } else {
-                        log_debug("Recordings size from find command: %llu bytes", recording_size);
-                    }
-                    pclose(find_fp);
-                } else {
-                    log_error("Failed to execute find command");
-                }
+                log_debug("No recordings found or directory is empty: %s", recordings_dir);
             }
         }
 
