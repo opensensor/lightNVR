@@ -127,6 +127,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     
     ptzApi.move(stream.name, pan * speed, tilt * speed, zoom * speed)
       .catch(err => {
+        setIsMoving(false);
         setError('Move failed');
         console.error('PTZ move error:', err);
       });

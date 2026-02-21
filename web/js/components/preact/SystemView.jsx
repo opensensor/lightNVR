@@ -110,8 +110,8 @@ export function SystemView() {
 
   // Role is still loading if null
   const roleLoading = userRole === null;
-  // Only admin can restart/shutdown system
-  const canControlSystem = roleLoading || userRole === 'admin';
+  // Only admin can restart/shutdown system; default to false while loading
+  const canControlSystem = !roleLoading && userRole === 'admin';
 
   // Define all query hooks next
   const {

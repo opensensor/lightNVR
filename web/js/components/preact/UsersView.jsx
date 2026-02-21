@@ -258,24 +258,11 @@ export function UsersView() {
   const copyApiKey = useCallback(() => {
     navigator.clipboard.writeText(apiKey)
       .then(() => {
-        // Use global toast function if available
-        if (window.showSuccessToast) {
-          window.showSuccessToast('API key copied to clipboard');
-        } else {
-          // Fallback to standard showStatusMessage
-          showStatusMessage('API key copied to clipboard', 'success');
-        }
+        showStatusMessage('API key copied to clipboard', 'success');
       })
       .catch((err) => {
         console.error('Error copying API key:', err);
-
-        // Use global toast function if available
-        if (window.showErrorToast) {
-          window.showErrorToast('Failed to copy API key');
-        } else {
-          // Fallback to standard showStatusMessage
-          showStatusMessage('Failed to copy API key', 'error');
-        }
+        showStatusMessage('Failed to copy API key', 'error');
       });
   }, [apiKey]);
 
