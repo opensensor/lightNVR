@@ -1,7 +1,7 @@
 /**
  * Streams page E2E tests
  */
-const { By, until } = require('selenium-webdriver');
+const { By } = require('selenium-webdriver');
 const { createDriver, takeScreenshot, login } = require('../utils/test-utils');
 const StreamsPage = require('../pages/StreamsPage');
 

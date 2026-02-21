@@ -7,7 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import { UsersPage } from '../pages/UsersPage';
-import { CONFIG, USERS, login, sleep } from '../fixtures/test-fixtures';
+import { USERS, login, sleep } from '../fixtures/test-fixtures';
 
 test.describe('Users Page @ui @users @admin', () => {
   

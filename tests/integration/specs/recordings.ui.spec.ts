@@ -7,7 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import { RecordingsPage } from '../pages/RecordingsPage';
-import { CONFIG, USERS, login, sleep } from '../fixtures/test-fixtures';
+import { USERS, login, sleep } from '../fixtures/test-fixtures';
 
 test.describe('Recordings Page @ui @recordings', () => {
   

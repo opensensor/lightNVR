@@ -89,8 +89,6 @@ export default defineConfig({
       output: {
         // Ensure CSS files are properly named and placed
         assetFileNames: (assetInfo) => {
-          const info = assetInfo.name.split('.');
-          const ext = info[info.length - 1];
           if (/\.(css)$/i.test(assetInfo.name)) {
             return `css/[name][extname]`;
           }

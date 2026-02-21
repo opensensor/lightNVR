@@ -7,7 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import { LiveViewPage } from '../pages/LiveViewPage';
-import { CONFIG, USERS, login, sleep } from '../fixtures/test-fixtures';
+import { USERS, login, sleep } from '../fixtures/test-fixtures';
 
 test.describe('Live View Page @ui @liveview', () => {
   

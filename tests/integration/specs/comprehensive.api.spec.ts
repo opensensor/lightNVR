@@ -104,7 +104,7 @@ test.describe('LightNVR API Comprehensive Tests @api', () => {
       expect([200, 201, 409].includes(response.status())).toBeTruthy();
 
       if (response.ok()) {
-        const data = await response.json();
+        await response.json();
         console.log(`Created stream: ${testStreamName}`);
       }
     });
