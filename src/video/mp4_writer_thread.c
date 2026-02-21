@@ -191,7 +191,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         int db_config_result = get_stream_config_by_name(stream_name, &db_stream_config);
 
         // Define segment_duration variable outside the if block
-        int segment_duration = thread_ctx->writer->segment_duration;
+        segment_duration = thread_ctx->writer->segment_duration;
 
         // Update configuration from database if available
         if (db_config_result == 0) {
@@ -303,61 +303,56 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         }
 
         // Variables for retry mechanism and resource management
-        // CRITICAL FIX: These static variables should be initialized at the beginning of each call
-        // to prevent using uninitialized values during shutdown
-        static int segment_retry_count = 0;
-        static time_t last_segment_retry_time = 0;
-        static int segment_count = 0;
+        // Use per-thread context fields to avoid sharing state across streams
+        // and to prevent race conditions between concurrent writer threads.
 
-        // Initialize static variables at the beginning of each segment recording
-        // This ensures they have valid values even during shutdown
-        segment_retry_count = 0;
-        last_segment_retry_time = 0;
+        // Initialize retry-related state at the beginning of each segment recording.
+        // This ensures they have valid values even during shutdown.
+        thread_ctx->segment_retry_count = 0;
+        thread_ctx->last_segment_retry_time = 0;
         // Don't reset segment_count as it's used for logging purposes
 
         // Increment segment count and log it periodically to track memory usage
-        segment_count++;
-        if (segment_count % 10 == 0) {
-            log_info("Stream %s has processed %d segments since startup", stream_name, segment_count);
+        thread_ctx->segment_count++;
+        if (thread_ctx->segment_count % 10 == 0) {
+            log_info("Stream %s has processed %d segments since startup", stream_name, thread_ctx->segment_count);
 
             // Force a complete FFmpeg resource reset every 10 segments to prevent memory growth
-            if (segment_count % 10 == 0) {
-                log_info("Performing complete FFmpeg resource reset for stream %s after %d segments",
-                        stream_name, segment_count);
+            log_info("Performing complete FFmpeg resource reset for stream %s after %d segments",
+                    stream_name, thread_ctx->segment_count);
 
-                // MEMORY LEAK FIX: Ensure all FFmpeg resources are properly freed
-                // This is the most aggressive approach to prevent memory growth
+            // MEMORY LEAK FIX: Ensure all FFmpeg resources are properly freed
+            // This is the most aggressive approach to prevent memory growth
 
-                // 1. Free the packet if it exists
-                if (pkt) {
-                    av_packet_unref(pkt);
-                    av_packet_free(&pkt);
-                    pkt = NULL;
-                }
-
-                // 2. BUGFIX: Close the per-stream input context if it exists
-                if (thread_ctx->input_ctx) {
-                    // Flush all buffers before closing
-                    if (thread_ctx->input_ctx->pb) {
-                        avio_flush(thread_ctx->input_ctx->pb);
-                    }
-
-                    // Close the input context - this will free all associated resources
-                    // Let FFmpeg handle its own memory management
-                    avformat_close_input(&thread_ctx->input_ctx);
-                    thread_ctx->input_ctx = NULL;
-                }
-
-                // 3. Allocate a new packet
-                pkt = av_packet_alloc();
-                if (!pkt) {
-                    log_error("Failed to allocate packet during FFmpeg resource reset");
-                    // Continue anyway, the next iteration will try again
-                }
-
-                // Log that we've reset all FFmpeg resources
-                log_info("Successfully reset all FFmpeg resources for stream %s", stream_name);
+            // 1. Free the packet if it exists
+            if (pkt) {
+                av_packet_unref(pkt);
+                av_packet_free(&pkt);
+                pkt = NULL;
             }
+
+            // 2. BUGFIX: Close the per-stream input context if it exists
+            if (thread_ctx->input_ctx) {
+                // Flush all buffers before closing
+                if (thread_ctx->input_ctx->pb) {
+                    avio_flush(thread_ctx->input_ctx->pb);
+                }
+
+                // Close the input context - this will free all associated resources
+                // Let FFmpeg handle its own memory management
+                avformat_close_input(&thread_ctx->input_ctx);
+                thread_ctx->input_ctx = NULL;
+            }
+
+            // 3. Allocate a new packet
+            pkt = av_packet_alloc();
+            if (!pkt) {
+                log_error("Failed to allocate packet during FFmpeg resource reset");
+                // Continue anyway, the next iteration will try again
+            }
+
+            // Log that we've reset all FFmpeg resources
+            log_info("Successfully reset all FFmpeg resources for stream %s", stream_name);
         }
 
         // Record the segment with timestamp continuity and keyframe handling
@@ -597,9 +592,32 @@ int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url
         return -1;
     }
 
-    // Wait for thread to start
-    while (!writer->thread_ctx->running) {
+    // Wait for thread to start, but avoid infinite blocking
+    const int max_wait_ms = 5000;      // Maximum time to wait for startup (5 seconds)
+    int waited_ms = 0;
+    while (!writer->thread_ctx->running && waited_ms < max_wait_ms) {
+        // Allow global shutdown to break the wait early if requested
+        if (is_shutdown_initiated()) {
+            break;
+        }
         usleep(1000);  // Sleep for 1ms
+        waited_ms += 1;
+    }
+
+    // If the thread did not report running within the timeout, treat as failure
+    if (!writer->thread_ctx->running) {
+        log_error("MP4 writer thread for %s failed to start within %d ms",
+                  writer->stream_name, max_wait_ms);
+
+        // Signal the thread to shut down, if it is still initializing
+        atomic_store(&writer->thread_ctx->shutdown_requested, 1);
+
+        // Best-effort join; ignore errors since the thread may have already exited
+        pthread_join(writer->thread_ctx->thread, NULL);
+
+        free(writer->thread_ctx);
+        writer->thread_ctx = NULL;
+        return -1;
     }
 
     // Register with shutdown coordinator

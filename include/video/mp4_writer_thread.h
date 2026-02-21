@@ -65,6 +65,12 @@ typedef struct {
 
     // Auto-detection flag: set after video params (width, height, fps, codec) are persisted
     bool video_params_detected;
+
+    // Per-segment retry and segment-count tracking (moved from static locals to avoid
+    // cross-stream races when multiple writer threads run concurrently)
+    int segment_retry_count;
+    time_t last_segment_retry_time;
+    int segment_count;
 } mp4_writer_thread_t;
 
 // Function declarations

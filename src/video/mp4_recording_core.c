@@ -138,7 +138,7 @@ static void *mp4_recording_thread(void *arg) {
         }
 
         // Set permissions
-        if (chmod_recursive(mp4_dir, 0777) != 0) {
+        if (chmod_recursive(mp4_dir, 0755) != 0) {
             log_warn("Failed to set permissions on directory: %s", mp4_dir);
         }
 
@@ -150,7 +150,7 @@ static void *mp4_recording_thread(void *arg) {
         log_error("Output directory is not writable: %s", mp4_dir);
 
         // Try to fix permissions
-        if (chmod_recursive(mp4_dir, 0777) != 0) {
+        if (chmod_recursive(mp4_dir, 0755) != 0) {
             log_warn("Failed to set permissions on directory: %s", mp4_dir);
         }
 
@@ -513,8 +513,8 @@ int start_mp4_recording(const char *stream_name) {
         }
     }
 
-    // Set full permissions for MP4 directory
-    if (chmod_recursive(mp4_dir, 0777) != 0) {
+    // Set appropriate permissions for MP4 directory (owner rwx, group/others rx)
+    if (chmod_recursive(mp4_dir, 0755) != 0) {
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
@@ -659,8 +659,8 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
         }
     }
 
-    // Set full permissions for MP4 directory
-    if (chmod_recursive(mp4_dir, 0777) != 0) {
+    // Set permissions for MP4 directory (owner rwx, group/others rx)
+    if (chmod_recursive(mp4_dir, 0755) != 0) {
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
@@ -866,8 +866,8 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
         return -1;
     }
 
-    // Set full permissions for MP4 directory
-    if (chmod_recursive(mp4_dir, 0777) != 0) {
+    // Set permissions for MP4 directory (owner rwx, group/others rx)
+    if (chmod_recursive(mp4_dir, 0755) != 0) {
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
@@ -996,8 +996,8 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
         return -1;
     }
 
-    // Set full permissions for MP4 directory
-    if (chmod_recursive(mp4_dir, 0777) != 0) {
+    // Set permissions for MP4 directory (owner rwx, group/others rx)
+    if (chmod_recursive(mp4_dir, 0755) != 0) {
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
