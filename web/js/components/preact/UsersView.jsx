@@ -211,6 +211,8 @@ export function UsersView() {
     }
   });
 
+  const { mutate: addUserMutate } = addUserMutation;
+
   /**
    * Handle form submission for adding a user
    * @param {Event} e - Form submit event
@@ -219,8 +221,8 @@ export function UsersView() {
     if (e) e.preventDefault();
 
     console.log('Adding user:', formData.username);
-    addUserMutation.mutate(formData);
-  }, [formData]);
+    addUserMutate(formData);
+  }, [formData, addUserMutate]);
 
   /**
    * Handle form submission for editing a user
@@ -234,7 +236,7 @@ export function UsersView() {
       userId: selectedUser.id,
       userData: formData
     });
-  }, [selectedUser, formData]);
+  }, [selectedUser, formData, editUserMutation]);
 
   /**
    * Handle user deletion
@@ -242,7 +244,7 @@ export function UsersView() {
   const handleDeleteUser = useCallback(() => {
     console.log('Deleting user:', selectedUser.id, selectedUser.username);
     deleteUserMutation.mutate(selectedUser.id);
-  }, [selectedUser]);
+  }, [selectedUser, deleteUserMutation]);
 
   /**
    * Handle generating a new API key for a user
@@ -250,7 +252,7 @@ export function UsersView() {
   const handleGenerateApiKey = useCallback(() => {
     console.log('Generating API key for user:', selectedUser.id, selectedUser.username);
     generateApiKeyMutation.mutate(selectedUser.id);
-  }, [selectedUser]);
+  }, [selectedUser, generateApiKeyMutation]);
 
   /**
    * Copy API key to clipboard
