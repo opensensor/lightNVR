@@ -8,11 +8,20 @@
  *   - init_logger / shutdown_logger lifecycle (idempotent reinit).
  *   - set_log_level / get_log_level_string round-trip.
  *   - is_logger_available() reflects init/shutdown state.
+ *   - set_log_file() with a temporary file path.
+ *   - log_rotate() when no log file is configured.
+ *   - enable_syslog() / disable_syslog() / is_syslog_enabled().
+ *   - log_error / log_warn / log_info / log_debug / log_message — smoke tests.
+ *   - log_message_v() indirectly via log_message().
  */
 
 #define _POSIX_C_SOURCE 200809L
 
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <syslog.h>
 #include "unity.h"
 #include "core/logger.h"
 
@@ -91,6 +100,140 @@ void test_set_log_level_error(void) {
 }
 
 /* ================================================================
+ * log_rotate — no file configured → must return -1
+ * ================================================================ */
+
+void test_log_rotate_no_file_returns_error(void) {
+    /* Logger initialised with stderr; no filename → rotation impossible */
+    int rc = log_rotate(1024, 3);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+/* ================================================================
+ * set_log_file
+ * ================================================================ */
+
+void test_set_log_file_with_temp_file(void) {
+    char template[] = "/tmp/lightnvr_test_XXXXXX";
+    int fd = mkstemp(template);
+    TEST_ASSERT_NOT_EQUAL(-1, fd);
+    close(fd);
+
+    int rc = set_log_file(template);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* After setting the file, logging should still work */
+    log_info("test_set_log_file_with_temp_file: log line");
+
+    unlink(template);
+}
+
+void test_set_log_file_null_returns_error(void) {
+    int rc = set_log_file(NULL);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+/* ================================================================
+ * log_rotate — file configured, below threshold → returns 0
+ * ================================================================ */
+
+void test_log_rotate_below_threshold(void) {
+    char template[] = "/tmp/lightnvr_rotate_XXXXXX";
+    int fd = mkstemp(template);
+    TEST_ASSERT_NOT_EQUAL(-1, fd);
+    close(fd);
+
+    int rc = set_log_file(template);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    /* File is tiny; well above any reasonable threshold → no rotation */
+    rc = log_rotate(1024 * 1024, 3);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    unlink(template);
+}
+
+/* ================================================================
+ * enable_syslog / disable_syslog / is_syslog_enabled
+ * ================================================================ */
+
+void test_enable_syslog_succeeds(void) {
+    int rc = enable_syslog("lightnvr_test", LOG_USER);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_INT(1, is_syslog_enabled());
+    disable_syslog();
+}
+
+void test_enable_syslog_null_ident_fails(void) {
+    int rc = enable_syslog(NULL, LOG_USER);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+void test_enable_syslog_empty_ident_fails(void) {
+    int rc = enable_syslog("", LOG_USER);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+void test_disable_syslog_clears_flag(void) {
+    enable_syslog("lightnvr_test", LOG_USER);
+    disable_syslog();
+    TEST_ASSERT_EQUAL_INT(0, is_syslog_enabled());
+}
+
+void test_syslog_not_enabled_initially(void) {
+    /* After a fresh init_logger() there should be no syslog active */
+    TEST_ASSERT_EQUAL_INT(0, is_syslog_enabled());
+}
+
+/* ================================================================
+ * Smoke tests — logging functions must not crash
+ * ================================================================ */
+
+void test_log_error_does_not_crash(void) {
+    log_error("test error %d", 42);
+    TEST_PASS();
+}
+
+void test_log_warn_does_not_crash(void) {
+    log_warn("test warn %s", "hello");
+    TEST_PASS();
+}
+
+void test_log_info_does_not_crash(void) {
+    log_info("test info");
+    TEST_PASS();
+}
+
+void test_log_debug_does_not_crash(void) {
+    set_log_level(LOG_LEVEL_DEBUG);
+    log_debug("test debug %lu", (unsigned long)99);
+    set_log_level(LOG_LEVEL_INFO);
+    TEST_PASS();
+}
+
+void test_log_message_does_not_crash(void) {
+    log_message(LOG_LEVEL_WARN, "test log_message %d", 1);
+    TEST_PASS();
+}
+
+void test_log_debug_suppressed_at_info_level(void) {
+    /* DEBUG messages should not crash even when suppressed */
+    set_log_level(LOG_LEVEL_INFO);
+    log_debug("this should be suppressed");
+    TEST_PASS();
+}
+
+/* ================================================================
+ * set_console_logging — API compatibility smoke test
+ * ================================================================ */
+
+void test_set_console_logging_does_not_crash(void) {
+    set_console_logging(0);
+    set_console_logging(1);
+    TEST_PASS();
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -112,6 +255,26 @@ int main(void) {
 
     RUN_TEST(test_set_log_level_debug);
     RUN_TEST(test_set_log_level_error);
+
+    RUN_TEST(test_log_rotate_no_file_returns_error);
+    RUN_TEST(test_set_log_file_with_temp_file);
+    RUN_TEST(test_set_log_file_null_returns_error);
+    RUN_TEST(test_log_rotate_below_threshold);
+
+    RUN_TEST(test_syslog_not_enabled_initially);
+    RUN_TEST(test_enable_syslog_succeeds);
+    RUN_TEST(test_enable_syslog_null_ident_fails);
+    RUN_TEST(test_enable_syslog_empty_ident_fails);
+    RUN_TEST(test_disable_syslog_clears_flag);
+
+    RUN_TEST(test_log_error_does_not_crash);
+    RUN_TEST(test_log_warn_does_not_crash);
+    RUN_TEST(test_log_info_does_not_crash);
+    RUN_TEST(test_log_debug_does_not_crash);
+    RUN_TEST(test_log_message_does_not_crash);
+    RUN_TEST(test_log_debug_suppressed_at_info_level);
+
+    RUN_TEST(test_set_console_logging_does_not_crash);
 
     int result = UNITY_END();
     shutdown_logger();

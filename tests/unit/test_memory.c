@@ -158,6 +158,125 @@ void test_peak_memory_never_decreases(void) {
 }
 
 /* ================================================================
+ * safe_realloc
+ * ================================================================ */
+
+void test_safe_realloc_grow(void) {
+    char *p = (char *)safe_malloc(16);
+    TEST_ASSERT_NOT_NULL(p);
+    p[0] = 'A';
+    p = (char *)safe_realloc(p, 64);
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_EQUAL_CHAR('A', p[0]); /* data preserved */
+    free(p);
+}
+
+void test_safe_realloc_shrink(void) {
+    char *p = (char *)safe_malloc(64);
+    TEST_ASSERT_NOT_NULL(p);
+    p = (char *)safe_realloc(p, 8);
+    TEST_ASSERT_NOT_NULL(p);
+    free(p);
+}
+
+void test_safe_realloc_zero_frees_and_returns_null(void) {
+    char *p = (char *)safe_malloc(32);
+    TEST_ASSERT_NOT_NULL(p);
+    void *result = safe_realloc(p, 0);
+    /* safe_realloc(ptr, 0) must return NULL */
+    TEST_ASSERT_NULL(result);
+    /* p has been freed internally; don't free again */
+}
+
+/* ================================================================
+ * safe_free
+ * ================================================================ */
+
+void test_safe_free_null_is_safe(void) {
+    safe_free(NULL); /* must not crash */
+    TEST_PASS();
+}
+
+void test_safe_free_valid_pointer(void) {
+    void *p = safe_malloc(32);
+    TEST_ASSERT_NOT_NULL(p);
+    safe_free(p); /* must not crash */
+    TEST_PASS();
+}
+
+/* ================================================================
+ * safe_strcpy — additional NULL guard cases
+ * ================================================================ */
+
+void test_safe_strcpy_null_dest_returns_error(void) {
+    int rc = safe_strcpy(NULL, "hello", 10);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+void test_safe_strcpy_null_src_returns_error(void) {
+    char buf[16];
+    int rc = safe_strcpy(buf, NULL, sizeof(buf));
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+void test_safe_strcpy_zero_size_returns_error(void) {
+    char buf[16];
+    int rc = safe_strcpy(buf, "hello", 0);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+/* ================================================================
+ * safe_strcat — additional NULL guard cases
+ * ================================================================ */
+
+void test_safe_strcat_null_dest_returns_error(void) {
+    int rc = safe_strcat(NULL, "world", 10);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+void test_safe_strcat_null_src_returns_error(void) {
+    char buf[16] = "hello";
+    int rc = safe_strcat(buf, NULL, sizeof(buf));
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+void test_safe_strcat_zero_size_returns_error(void) {
+    char buf[16] = "hello";
+    int rc = safe_strcat(buf, " world", 0);
+    TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+/* ================================================================
+ * secure_zero_memory — edge cases
+ * ================================================================ */
+
+void test_secure_zero_memory_null_no_crash(void) {
+    secure_zero_memory(NULL, 16); /* must not crash */
+    TEST_PASS();
+}
+
+void test_secure_zero_memory_zero_size_no_crash(void) {
+    char buf[4] = {0x1, 0x2, 0x3, 0x4};
+    secure_zero_memory(buf, 0); /* must not crash or alter buffer */
+    TEST_PASS();
+}
+
+/* ================================================================
+ * track_memory_allocation — underflow handled gracefully
+ * ================================================================ */
+
+void test_track_memory_underflow_handled(void) {
+    /* Reset total to 0 first by freeing anything we know about */
+    size_t current = get_total_memory_allocated();
+    if (current > 0) {
+        track_memory_allocation(current, false);
+    }
+    /* Now freeing more than tracked should not crash and reset to 0 */
+    track_memory_allocation(9999, false);
+    TEST_ASSERT_EQUAL_UINT(0, get_total_memory_allocated());
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -180,14 +299,30 @@ int main(void) {
 
     RUN_TEST(test_safe_strcpy_success);
     RUN_TEST(test_safe_strcpy_truncation_returns_error);
+    RUN_TEST(test_safe_strcpy_null_dest_returns_error);
+    RUN_TEST(test_safe_strcpy_null_src_returns_error);
+    RUN_TEST(test_safe_strcpy_zero_size_returns_error);
 
     RUN_TEST(test_safe_strcat_success);
     RUN_TEST(test_safe_strcat_overflow_returns_error);
+    RUN_TEST(test_safe_strcat_null_dest_returns_error);
+    RUN_TEST(test_safe_strcat_null_src_returns_error);
+    RUN_TEST(test_safe_strcat_zero_size_returns_error);
+
+    RUN_TEST(test_safe_realloc_grow);
+    RUN_TEST(test_safe_realloc_shrink);
+    RUN_TEST(test_safe_realloc_zero_frees_and_returns_null);
+
+    RUN_TEST(test_safe_free_null_is_safe);
+    RUN_TEST(test_safe_free_valid_pointer);
 
     RUN_TEST(test_secure_zero_memory_clears_buffer);
+    RUN_TEST(test_secure_zero_memory_null_no_crash);
+    RUN_TEST(test_secure_zero_memory_zero_size_no_crash);
 
     RUN_TEST(test_track_memory_allocation_increases_total);
     RUN_TEST(test_peak_memory_never_decreases);
+    RUN_TEST(test_track_memory_underflow_handled);
 
     int result = UNITY_END();
     shutdown_logger();

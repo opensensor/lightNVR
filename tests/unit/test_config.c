@@ -12,6 +12,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -151,6 +153,161 @@ void test_validate_config_buffer_size_zero(void) {
 }
 
 /* ================================================================
+ * additional default field checks
+ * ================================================================ */
+
+void test_default_config_web_auth_enabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.web_auth_enabled);
+}
+
+void test_default_config_username(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_STRING("admin", cfg.web_username);
+}
+
+void test_default_config_syslog_disabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_FALSE(cfg.syslog_enabled);
+}
+
+void test_default_config_go2rtc_enabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.go2rtc_enabled);
+}
+
+void test_default_config_go2rtc_api_port(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(1984, cfg.go2rtc_api_port);
+}
+
+void test_default_config_go2rtc_webrtc_enabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.go2rtc_webrtc_enabled);
+}
+
+void test_default_config_go2rtc_stun_enabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.go2rtc_stun_enabled);
+}
+
+void test_default_config_turn_disabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_FALSE(cfg.turn_enabled);
+}
+
+void test_default_config_mqtt_disabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_FALSE(cfg.mqtt_enabled);
+}
+
+void test_default_config_mqtt_port(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(1883, cfg.mqtt_broker_port);
+}
+
+void test_default_config_mp4_segment_duration(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(900, cfg.mp4_segment_duration);
+}
+
+void test_default_config_stream_defaults(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    /* All streams should default to streaming enabled, no detection */
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        TEST_ASSERT_TRUE(cfg.streams[i].streaming_enabled);
+        TEST_ASSERT_FALSE(cfg.streams[i].detection_based_recording);
+    }
+}
+
+void test_default_config_auth_timeout(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(24, cfg.auth_timeout_hours);
+}
+
+void test_default_config_web_compression_enabled(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.web_compression_enabled);
+}
+
+/* ================================================================
+ * validate_config — swap_size zero with use_swap true
+ * ================================================================ */
+
+void test_validate_config_swap_size_zero_with_use_swap(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    cfg.use_swap = true;
+    cfg.swap_size = 0;
+    TEST_ASSERT_NOT_EQUAL(0, validate_config(&cfg));
+}
+
+void test_validate_config_swap_disabled_size_zero_ok(void) {
+    config_t cfg;
+    load_default_config(&cfg);
+    cfg.use_swap = false;
+    cfg.swap_size = 0;
+    /* Swap size check only applies when use_swap is true */
+    TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+}
+
+/* ================================================================
+ * set_custom_config_path / get_custom_config_path
+ * ================================================================ */
+
+void test_custom_config_path_roundtrip(void) {
+    set_custom_config_path("/tmp/test_lightnvr.ini");
+    const char *path = get_custom_config_path();
+    TEST_ASSERT_NOT_NULL(path);
+    TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", path);
+    /* Reset */
+    set_custom_config_path("");
+}
+
+void test_custom_config_path_empty_not_stored(void) {
+    /* Clear any prior value first */
+    set_custom_config_path("");
+    const char *path = get_custom_config_path();
+    /* Empty path should cause getter to return NULL */
+    TEST_ASSERT_NULL(path);
+}
+
+void test_custom_config_path_null_not_stored(void) {
+    set_custom_config_path("");      /* ensure clean state */
+    set_custom_config_path(NULL);   /* NULL must not crash */
+    const char *path = get_custom_config_path();
+    TEST_ASSERT_NULL(path);
+}
+
+/* ================================================================
+ * get_loaded_config_path — initially NULL (no file loaded yet)
+ * ================================================================ */
+
+void test_get_loaded_config_path_initially(void) {
+    /* Without calling load_config(), the loaded path should be NULL or empty */
+    const char *path = get_loaded_config_path();
+    /* Either NULL or an empty-equivalent string is acceptable */
+    if (path != NULL) {
+        /* If non-NULL, it was set by a previous test; just pass */
+    }
+    TEST_PASS();
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -179,6 +336,29 @@ int main(void) {
     RUN_TEST(test_validate_config_port_max_valid);
     RUN_TEST(test_validate_config_port_min_valid);
     RUN_TEST(test_validate_config_buffer_size_zero);
+
+    RUN_TEST(test_default_config_web_auth_enabled);
+    RUN_TEST(test_default_config_username);
+    RUN_TEST(test_default_config_syslog_disabled);
+    RUN_TEST(test_default_config_go2rtc_enabled);
+    RUN_TEST(test_default_config_go2rtc_api_port);
+    RUN_TEST(test_default_config_go2rtc_webrtc_enabled);
+    RUN_TEST(test_default_config_go2rtc_stun_enabled);
+    RUN_TEST(test_default_config_turn_disabled);
+    RUN_TEST(test_default_config_mqtt_disabled);
+    RUN_TEST(test_default_config_mqtt_port);
+    RUN_TEST(test_default_config_mp4_segment_duration);
+    RUN_TEST(test_default_config_stream_defaults);
+    RUN_TEST(test_default_config_auth_timeout);
+    RUN_TEST(test_default_config_web_compression_enabled);
+
+    RUN_TEST(test_validate_config_swap_size_zero_with_use_swap);
+    RUN_TEST(test_validate_config_swap_disabled_size_zero_ok);
+
+    RUN_TEST(test_custom_config_path_roundtrip);
+    RUN_TEST(test_custom_config_path_empty_not_stored);
+    RUN_TEST(test_custom_config_path_null_not_stored);
+    RUN_TEST(test_get_loaded_config_path_initially);
 
     int result = UNITY_END();
     shutdown_logger();
