@@ -82,7 +82,12 @@ int get_system_logs(char ***logs, int *count) {
     }
 
     // Read log file
-    fseek(log_file, offset, SEEK_SET);
+    if (fseek(log_file, offset, SEEK_SET) != 0) {
+        log_error("Failed to seek to offset %ld in log file: %s", offset, g_config.log_file);
+        free(buffer);
+        fclose(log_file);
+        return -1;
+    }
     size_t bytes_read = fread(buffer, 1, read_size, log_file);
     buffer[bytes_read] = '\0';
 
@@ -112,14 +117,14 @@ int get_system_logs(char ***logs, int *count) {
 
     // Limit the maximum number of lines to prevent excessive memory usage
     const int max_lines = 500;
-    int alloc_lines = line_count;
-    if (alloc_lines > max_lines) {
+    int lines_to_allocate = line_count;
+    if (lines_to_allocate > max_lines) {
         log_info("Limiting log lines from %d to %d to prevent excessive memory usage", line_count, max_lines);
-        alloc_lines = max_lines;
+        lines_to_allocate = max_lines;
     }
 
     // Allocate array of log strings
-    char **log_lines = calloc(alloc_lines, sizeof(char *));
+    char **log_lines = calloc(lines_to_allocate, sizeof(char *));
     if (!log_lines) {
         log_error("Failed to allocate memory for log lines");
         free(buffer);
@@ -131,7 +136,7 @@ int get_system_logs(char ***logs, int *count) {
     char *line = strtok_r(buffer, "\n", &saveptr);
     int log_index = 0;
 
-    while (line != NULL && log_index < alloc_lines) {
+    while (line != NULL && log_index < lines_to_allocate) {
         // Skip empty lines
         if (*line == '\0') {
             line = strtok_r(NULL, "\n", &saveptr);
@@ -160,9 +165,9 @@ int get_system_logs(char ***logs, int *count) {
     }
 
     // If we didn't read as many lines as expected, adjust the count
-    if (log_index < alloc_lines) {
+    if (log_index < lines_to_allocate) {
         // Ensure any unused slots are NULL
-        for (int i = log_index; i < alloc_lines; i++) {
+        for (int i = log_index; i < lines_to_allocate; i++) {
             log_lines[i] = NULL;
         }
     }
@@ -260,6 +265,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
     char **logs = NULL;
     int max_count = 250;
 
+    // Second argument is the optional source/filter/context; NULL means "no specific filter" (use default system logs)
     const int result = get_json_logs_tail(level, NULL, &logs, &max_count);
 
     int count = max_count;
@@ -468,7 +474,7 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
         }
 
         // Send response
-        http_response_set_json_error(res, 500, json_str);
+        http_response_set_json(res, 500, json_str);
 
         // Clean up
         free(json_str);
