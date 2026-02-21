@@ -484,6 +484,7 @@ int try_direct_http_discovery(char candidate_ips[][16], int candidate_count,
     log_info("Starting direct HTTP/HTTPS probing for %d candidate IPs", candidate_count);
 
     // Try HTTP first, then HTTPS (some cameras only expose ONVIF over TLS)
+    // codeql[cpp/non-https-url] - ONVIF discovery probes both HTTP and HTTPS on the local network
     const char *schemes[] = {"http", "https", NULL};
 
     // Try each candidate IP

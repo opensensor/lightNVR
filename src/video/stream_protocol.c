@@ -216,7 +216,7 @@ static bool check_rtsp_stream_exists(const char *url) {
              "\r\n",
              path);
 
-    // lgtm[cpp/cleartext-transmission] - RTSP is an inherently unencrypted protocol;
+    // codeql[cpp/cleartext-transmission] - RTSP is an inherently unencrypted protocol;
     // RTSPS (RTSP over TLS) is rarely supported by IP cameras. The OPTIONS request
     // path does not contain credentials (userinfo is in the URL authority, not the path).
     if (send(sock, request, strlen(request), 0) < 0) {

@@ -773,6 +773,25 @@ static int execute_sql(sqlite3 *db, const char *sql) {
 }
 
 /**
+ * Validate migration SQL against the statement allowlist and execute it.
+ *
+ * This function is the single trust boundary for migration SQL: only
+ * statements that pass validate_migration_sql() (DDL / safe-DML allowlist)
+ * are forwarded to execute_sql().  Keeping validation and execution together
+ * ensures the invariant cannot be accidentally bypassed.
+ *
+ * @return 0 on success, -1 on validation or execution error.
+ */
+static int execute_validated_migration_sql(sqlite3 *db, const char *sql) {
+    if (validate_migration_sql(sql) != 0) {
+        log_error("Migration SQL failed allowlist validation");
+        return -1;
+    }
+    // SQL has been validated against the DDL/safe-DML allowlist above.
+    return execute_sql(db, sql); // codeql[cpp/sql-injection]
+}
+
+/**
  * Apply a single migration (UP)
  */
 static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
@@ -823,22 +842,16 @@ static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Validate SQL content against allowlist before executing.
-    // validate_migration_sql() acts as the sanitization boundary: it rejects
-    // any statement not in the DDL/safe-DML allowlist (e.g. ATTACH, PRAGMA key,
-    // LOAD_EXTENSION), so the content passed to execute_sql() is known-safe.
-    // codeql[cpp/sql-injection] -- sanitized by validate_migration_sql() above
-    if (validate_migration_sql(sql_up) != 0) {
+    // Validate and execute in a single step (see execute_validated_migration_sql).
+    int result = execute_validated_migration_sql(ctx->db, sql_up);
+    if (result != 0) {
         execute_sql(ctx->db, "ROLLBACK;");
         if (allocated_sql) free(allocated_sql);
         return -1;
     }
-    int result = execute_sql(ctx->db, sql_up); // codeql[cpp/sql-injection]
 
-    if (result == 0) {
-        // Record the migration
-        result = record_migration_applied(ctx, m->version);
-    }
+    // Record the migration
+    result = record_migration_applied(ctx, m->version);
 
     if (result == 0) {
         execute_sql(ctx->db, "COMMIT;");
@@ -904,22 +917,16 @@ static int rollback_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Validate SQL content against allowlist before executing.
-    // validate_migration_sql() acts as the sanitization boundary: it rejects
-    // any statement not in the DDL/safe-DML allowlist (e.g. ATTACH, PRAGMA key,
-    // LOAD_EXTENSION), so the content passed to execute_sql() is known-safe.
-    // codeql[cpp/sql-injection] -- sanitized by validate_migration_sql() above
-    if (validate_migration_sql(sql_down) != 0) {
+    // Validate and execute in a single step (see execute_validated_migration_sql).
+    int result = execute_validated_migration_sql(ctx->db, sql_down);
+    if (result != 0) {
         execute_sql(ctx->db, "ROLLBACK;");
         if (allocated_sql) free(allocated_sql);
         return -1;
     }
-    int result = execute_sql(ctx->db, sql_down); // codeql[cpp/sql-injection]
 
-    if (result == 0) {
-        // Remove the migration record
-        result = remove_migration_record(ctx, m->version);
-    }
+    // Remove the migration record
+    result = remove_migration_record(ctx, m->version);
 
     if (result == 0) {
         execute_sql(ctx->db, "COMMIT;");

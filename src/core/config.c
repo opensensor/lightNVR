@@ -1384,7 +1384,7 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "turn_username = %s\n", config->turn_username);
     }
     if (config->turn_password[0] != '\0') {
-        fprintf(file, "turn_password = %s\n", config->turn_password); // lgtm[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
+        fprintf(file, "turn_password = %s\n", config->turn_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
 
     // Write MQTT settings
@@ -1398,7 +1398,7 @@ int save_config(const config_t *config, const char *path) {
         fprintf(file, "username = %s\n", config->mqtt_username);
     }
     if (config->mqtt_password[0] != '\0') {
-        fprintf(file, "password = %s\n", config->mqtt_password); // lgtm[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
+        fprintf(file, "password = %s\n", config->mqtt_password); // codeql[cpp/cleartext-storage-file] - user-configured credential stored in 0600 config file
     }
     fprintf(file, "client_id = %s\n", config->mqtt_client_id);
     fprintf(file, "topic_prefix = %s\n", config->mqtt_topic_prefix);

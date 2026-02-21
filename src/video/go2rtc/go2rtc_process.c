@@ -347,7 +347,7 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
                     fprintf(config_file, "      username: \"%s\"\n", global_config->turn_username);
                 }
                 if (global_config->turn_password[0] != '\0') {
-                    fprintf(config_file, "      credential: \"%s\"\n", global_config->turn_password); // lgtm[cpp/cleartext-storage-file] - TURN credential required by go2rtc config; file written with 0600 permissions
+                    fprintf(config_file, "      credential: \"%s\"\n", global_config->turn_password); // codeql[cpp/cleartext-storage-file] - TURN credential required by go2rtc config; file written with 0600 permissions
                 }
             } else {
                 log_info("go2rtc config: TURN server NOT added (enabled=%d, url_empty=%d)",
