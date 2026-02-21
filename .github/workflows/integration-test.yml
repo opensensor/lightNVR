@@ -49,14 +49,35 @@ jobs:
             -DENABLE_SOD=OFF \
             -DENABLE_GO2RTC=OFF \
             -DENABLE_MQTT=OFF
-          make -j$(nproc) test_storage_pressure test_storage_retention_sqlite
+          make -j$(nproc) \
+            test_storage_pressure \
+            test_storage_pressure_extended \
+            test_detection_result_structures \
+            test_storage_retention_sqlite \
+            test_config \
+            test_logger \
+            test_strings \
+            test_memory \
+            test_request_response \
+            test_shutdown_coordinator \
+            test_detection_config \
+            test_db_streams \
+            test_db_recordings_extended \
+            test_db_detections \
+            test_db_zones \
+            test_db_events \
+            test_db_auth \
+            test_db_transactions \
+            test_db_maintenance \
+            test_db_query_builder
           echo "Unity test binaries built:"
-          ls -la bin/test_storage_*
+          ls -la bin/test_*
 
       - name: Run Unity tests
         run: |
           cd build
-          ctest -R "test_storage" --output-on-failure -V
+          ctest --output-on-failure -V \
+            -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder"
 
       - name: Upload test results on failure
         uses: actions/upload-artifact@v4

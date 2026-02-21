@@ -64,6 +64,9 @@ void test_qb_has_column(void) {
     qb_add_column(&qb, "id",              true);
     qb_add_column(&qb, "missing_column",  false);
 
+    /* qb_has_column checks index >= 0, which is only set after qb_build_select */
+    qb_build_select(&qb, NULL, NULL);
+
     TEST_ASSERT_TRUE(qb_has_column(&qb, "id"));
     TEST_ASSERT_FALSE(qb_has_column(&qb, "missing_column"));
 }
@@ -74,6 +77,9 @@ void test_qb_get_column_index(void) {
     qb_init(&qb, "recordings");
     qb_add_column(&qb, "id",     true);
     qb_add_column(&qb, "absent", false);
+
+    /* Column indices are assigned during qb_build_select */
+    qb_build_select(&qb, NULL, NULL);
 
     TEST_ASSERT_GREATER_OR_EQUAL(0, qb_get_column_index(&qb, "id"));
     TEST_ASSERT_EQUAL_INT(-1, qb_get_column_index(&qb, "absent"));
