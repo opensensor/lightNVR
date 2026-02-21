@@ -861,17 +861,19 @@ int main(int argc, char *argv[]) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
 
-            // Determine the model path - handle API-based detection vs file-based models
+            // Determine the model path - handle API-based/built-in detection vs file-based models
             char model_path[MAX_PATH_LENGTH];
             bool is_api_based = (strcmp(config.streams[i].detection_model, "api-detection") == 0) ||
+                               (strcmp(config.streams[i].detection_model, "motion") == 0) ||
+                               (strcmp(config.streams[i].detection_model, "onvif") == 0) ||
                                (strncmp(config.streams[i].detection_model, "http://", 7) == 0) ||
                                (strncmp(config.streams[i].detection_model, "https://", 8) == 0);
 
             if (is_api_based) {
-                // For API-based detection, use the model string as-is
+                // For API-based or built-in detection (motion, onvif), use the model string as-is
                 strncpy(model_path, config.streams[i].detection_model, MAX_PATH_LENGTH - 1);
                 model_path[MAX_PATH_LENGTH - 1] = '\0';
-                log_info("Using API-based detection for stream %s: %s",
+                log_info("Using built-in/API detection for stream %s: %s",
                         config.streams[i].name, model_path);
             } else if (config.streams[i].detection_model[0] != '/') {
                 // Relative path, use configured models path from INI if it exists

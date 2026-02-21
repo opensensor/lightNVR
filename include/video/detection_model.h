@@ -14,6 +14,7 @@ typedef void* detection_model_t;
 #define MODEL_TYPE_TFLITE "tflite"
 #define MODEL_TYPE_API "api"
 #define MODEL_TYPE_ONVIF "onvif"
+#define MODEL_TYPE_MOTION "motion"
 
 /**
  * Check if a model file is supported

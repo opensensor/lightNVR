@@ -42,6 +42,7 @@
 #include "video/detection_model.h"
 #include "video/detection_result.h"
 #include "video/api_detection.h"
+#include "video/motion_detection.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_recording.h"
@@ -106,6 +107,17 @@ static bool is_api_detection(const char *model_path) {
         return true;
     }
     return false;
+}
+
+/**
+ * Check if a model path indicates built-in motion detection
+ * Returns true if the path is exactly "motion"
+ */
+static bool is_motion_detection_model(const char *model_path) {
+    if (!model_path || model_path[0] == '\0') {
+        return false;
+    }
+    return strcmp(model_path, "motion") == 0;
 }
 
 /**
@@ -1471,6 +1483,103 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
 
         ctx->total_detections += result.count;
         return detection_triggered;
+    }
+
+    // Built-in motion detection - requires frame decoding but no external model file
+    if (is_motion_detection_model(ctx->model_path)) {
+        if (!pkt || !ctx->decoder_ctx) return false;
+
+        // Decode the packet to get a frame
+        int ret = avcodec_send_packet(ctx->decoder_ctx, pkt);
+        if (ret < 0) {
+            return false;
+        }
+
+        AVFrame *motion_frame = av_frame_alloc();
+        if (!motion_frame) {
+            return false;
+        }
+
+        ret = avcodec_receive_frame(ctx->decoder_ctx, motion_frame);
+        if (ret < 0) {
+            av_frame_free(&motion_frame);
+            return false;
+        }
+
+        // Convert frame to RGB for motion detection
+        int mot_width = motion_frame->width;
+        int mot_height = motion_frame->height;
+        int mot_channels = 3;  // RGB
+
+        struct SwsContext *mot_sws_ctx = sws_getContext(
+            mot_width, mot_height, motion_frame->format,
+            mot_width, mot_height, AV_PIX_FMT_RGB24,
+            SWS_BILINEAR, NULL, NULL, NULL);
+
+        if (!mot_sws_ctx) {
+            log_error("[%s] Failed to create sws context for motion detection", ctx->stream_name);
+            av_frame_free(&motion_frame);
+            return false;
+        }
+
+        size_t mot_buffer_size = mot_width * mot_height * mot_channels;
+        uint8_t *mot_rgb_buffer = malloc(mot_buffer_size);
+        if (!mot_rgb_buffer) {
+            log_error("[%s] Failed to allocate RGB buffer for motion detection", ctx->stream_name);
+            sws_freeContext(mot_sws_ctx);
+            av_frame_free(&motion_frame);
+            return false;
+        }
+
+        uint8_t *mot_rgb_data[4] = {mot_rgb_buffer, NULL, NULL, NULL};
+        int mot_rgb_linesize[4] = {mot_width * mot_channels, 0, 0, 0};
+
+        sws_scale(mot_sws_ctx, (const uint8_t * const *)motion_frame->data, motion_frame->linesize,
+                  0, mot_height, mot_rgb_data, mot_rgb_linesize);
+
+        sws_freeContext(mot_sws_ctx);
+        av_frame_free(&motion_frame);
+
+        // Run built-in motion detection
+        time_t mot_frame_time = time(NULL);
+        int mot_ret = detect_motion(ctx->stream_name, mot_rgb_buffer, mot_width, mot_height,
+                                    mot_channels, mot_frame_time, &result);
+
+        free(mot_rgb_buffer);
+
+        if (mot_ret != 0) {
+            log_warn("[%s] Motion detection failed with error %d", ctx->stream_name, mot_ret);
+            return false;
+        }
+
+        // Check if any detections meet the threshold
+        bool mot_triggered = false;
+        for (int i = 0; i < result.count; i++) {
+            if (result.detections[i].confidence >= ctx->detection_threshold) {
+                mot_triggered = true;
+                log_info("[%s] Motion detected: %s (%.1f%%)",
+                         ctx->stream_name,
+                         result.detections[i].label,
+                         result.detections[i].confidence * 100.0f);
+            }
+        }
+
+        // Store detections in database if any were found
+        if (result.count > 0) {
+            time_t now = time(NULL);
+            uint64_t rec_id = 0;
+            if (ctx->annotation_only) {
+                rec_id = get_current_recording_id_for_stream(ctx->stream_name);
+            } else if (ctx->current_recording_id > 0) {
+                rec_id = ctx->current_recording_id;
+            }
+            if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
+                log_warn("[%s] Failed to store motion detections in database", ctx->stream_name);
+            }
+            ctx->total_detections += result.count;
+        }
+
+        return mot_triggered;
     }
 
     // Embedded model detection - requires frame decoding

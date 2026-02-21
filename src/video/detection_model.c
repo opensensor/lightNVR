@@ -157,6 +157,9 @@ const char* get_model_type(const char *model_path) {
     if (ends_with(model_path, "onvif")) {
         return MODEL_TYPE_ONVIF;
     }
+    if (ends_with(model_path, "motion")) {
+        return MODEL_TYPE_MOTION;
+    }
 
     // Check file extension
     const char *ext = strrchr(model_path, '.');
@@ -326,12 +329,15 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
                             strncmp(model_path, "http://", 7) == 0 ||
                             strncmp(model_path, "https://", 8) == 0;
     bool is_onvif_detection = ends_with(model_path, "onvif");
+    bool is_motion_detection = ends_with(model_path, "motion");
 
-    // Only check file existence if it's not an API URL or ONVIF
+    // Only check file existence if it's not an API URL, ONVIF, or built-in motion detection
     if (is_api_detection) {
         log_info("API DETECTION: Using API for detection instead of a local model file");
     } else if (is_onvif_detection) {
         log_info("ONVIF DETECTION: Using ONVIF for detection instead of a local model file");
+    } else if (is_motion_detection) {
+        log_info("MOTION DETECTION: Using built-in motion detection instead of a local model file");
     } else {
         // Check if file exists and get its size
         struct stat st;
@@ -386,6 +392,20 @@ detection_model_t load_detection_model(const char *model_path, float threshold) 
             // Initialize the ONVIF detection system
             init_onvif_detection_system();
             log_info("ONVIF model created: %s", model_path);
+        }
+    }
+    else if (strcmp(model_type, MODEL_TYPE_MOTION) == 0) {
+        // For built-in motion detection, we just need a lightweight handle
+        // The actual detection is done by detect_motion() in motion_detection.c
+        model_t *m = (model_t *)malloc(sizeof(model_t));
+        if (m) {
+            strncpy(m->type, MODEL_TYPE_MOTION, sizeof(m->type) - 1);
+            m->sod = NULL; // No external model handle needed
+            m->threshold = threshold;
+            strncpy(m->path, model_path, MAX_PATH_LENGTH - 1);
+            m->path[MAX_PATH_LENGTH - 1] = '\0';  // Ensure null termination
+            model = m;
+            log_info("Built-in motion detection model handle created");
         }
     }
     else if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
@@ -462,6 +482,11 @@ void unload_detection_model(detection_model_t model) {
         // ONVIF detection system initialized for other ONVIF models that might be in use
 
         // Just set the model pointer to NULL to prevent double-free
+        m->sod = NULL;
+    }
+    else if (strcmp(m->type, MODEL_TYPE_MOTION) == 0) {
+        // For built-in motion detection, no external resources to free
+        log_info("Unloading built-in motion detection model: %s", model_path);
         m->sod = NULL;
     }
     else if (strcmp(m->type, MODEL_TYPE_SOD) == 0) {
