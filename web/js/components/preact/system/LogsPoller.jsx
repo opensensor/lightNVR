@@ -80,9 +80,16 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
           console.log('Updated and saved last log timestamp:', cleanedLogs[0].timestamp);
         }
 
-        // Call the callback with the logs
-        console.log(`Received ${cleanedLogs.length} logs via HTTP API`);
-        onLogsReceived(cleanedLogs);
+        // Filter logs on the frontend according to the provided logLevel (if any)
+        let filteredLogs = cleanedLogs;
+        if (logLevel) {
+          const normalizedLevel = String(logLevel).toLowerCase();
+          filteredLogs = cleanedLogs.filter(log => log.level === normalizedLevel);
+        }
+
+        // Call the callback with the (optionally filtered) logs
+        console.log(`Received ${filteredLogs.length} logs via HTTP API after filtering`);
+        onLogsReceived(filteredLogs);
       } else {
         console.log('No logs received from API');
       }
@@ -90,7 +97,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
       console.error('Error fetching logs:', error);
       // Don't throw - just log the error and continue polling
     }
-  }, [onLogsReceived]);
+  }, [logLevel, onLogsReceived]);
 
   // Listen for manual refresh events
   useEffect(() => {

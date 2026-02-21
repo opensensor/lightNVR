@@ -377,7 +377,7 @@ export function WebRTCView() {
 
   // Memoize the streams to show to prevent unnecessary re-renders
   // Note: getMaxStreamsForLayout is omitted from dependencies because it's memoized from `layout`.
-  const streamsToShow = useMemo(() => getStreamsToShow(), [streams, layout, selectedStream, currentPage]);
+  const streamsToShow = useMemo(() => getStreamsToShow(), [getStreamsToShow]);
 
   return (
     <section

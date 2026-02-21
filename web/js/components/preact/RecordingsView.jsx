@@ -145,7 +145,11 @@ export function RecordingsView() {
   const {
     data: streamsData,
     error: streamsError
-  } = recordingsAPI.hooks.useStreams();
+  } = recordingsAPI.hooks.useStreams({
+    // Streams are relatively static; avoid unnecessary refetches
+    staleTime: 5 * 60 * 1000,  // 5 minutes
+    cacheTime: 10 * 60 * 1000  // 10 minutes
+  });
 
   // Update streams state when data is loaded
   useEffect(() => {
