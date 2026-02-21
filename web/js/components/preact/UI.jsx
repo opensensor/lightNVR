@@ -546,7 +546,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'} w-full md:w-[90%]`}>
+      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-100 opacity-100 w-full md:w-[90%]`}>
         <div className="flex justify-between items-center p-3 border-b border-border flex-shrink-0">
           <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white truncate mr-2">
             {title || 'Video'}

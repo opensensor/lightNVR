@@ -299,27 +299,23 @@ export function WebRTCView() {
    */
   const getStreamsToShow = useCallback(() => {
     // Filter streams based on layout and selected stream
-    let streamsToShow = streams;
-
     if (layout === '1' && selectedStream) {
-      streamsToShow = streams.filter(stream => stream.name === selectedStream);
-    } else {
-      // Apply pagination
-      const maxStreams = getMaxStreamsForLayout();
-      const totalPages = Math.ceil(streams.length / maxStreams);
-
-      // Ensure current page is valid
-      if (currentPage >= totalPages && totalPages > 0) {
-        return []; // Will be handled by the effect that watches currentPage
-      }
-
-      // Get streams for current page
-      const startIdx = currentPage * maxStreams;
-      const endIdx = Math.min(startIdx + maxStreams, streams.length);
-      streamsToShow = streams.slice(startIdx, endIdx);
+      return streams.filter(stream => stream.name === selectedStream);
     }
 
-    return streamsToShow;
+    // Apply pagination
+    const maxStreams = getMaxStreamsForLayout();
+    const totalPages = Math.ceil(streams.length / maxStreams);
+
+    // Ensure current page is valid
+    if (currentPage >= totalPages && totalPages > 0) {
+      return []; // Will be handled by the effect that watches currentPage
+    }
+
+    // Get streams for current page
+    const startIdx = currentPage * maxStreams;
+    const endIdx = Math.min(startIdx + maxStreams, streams.length);
+    return streams.slice(startIdx, endIdx);
   }, [streams, layout, selectedStream, currentPage]);
 
   // Ensure current page is valid when streams or layout changes
@@ -529,7 +525,7 @@ export function WebRTCView() {
                 <p className="mt-4 text-muted-foreground">Loading streams...</p>
               </div>
             </div>
-          ) : (isLoading && !isLoadingStreams) ? (
+          ) : isLoading ? (
             <div
                 className="flex justify-center items-center col-span-full row-span-full h-64 w-full"
                 style={{

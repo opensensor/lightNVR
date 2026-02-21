@@ -338,7 +338,7 @@ export function LiveView({isWebRTCDisabled}) {
   // Memoize the streams to show to prevent unnecessary re-renders
   const streamsToShow = useMemo(() => {
     // Filter streams based on layout and selected stream
-    let result = streams;
+    let result;
     if (layout === '1' && selectedStream) {
       result = streams.filter(stream => stream.name === selectedStream);
     } else {
@@ -521,7 +521,7 @@ export function LiveView({isWebRTCDisabled}) {
                 <p className="mt-4 text-muted-foreground">Loading streams...</p>
               </div>
             </div>
-          ) : (isLoading && !isLoadingStreams) ? (
+          ) : isLoading ? (
             <div
                 className="flex justify-center items-center col-span-full row-span-full h-64 w-full"
                 style={{

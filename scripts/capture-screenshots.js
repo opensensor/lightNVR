@@ -410,7 +410,6 @@ async function captureStreamConfiguration(page) {
       }
 
       // Try to expand and capture AI Detection Recording section
-      let detectionWasEnabled = false;
       let needToReopenModal = false;
       try {
         const detectionSection = await page.locator('button').filter({ hasText: /AI Detection Recording/i }).first();
@@ -423,7 +422,6 @@ async function captureStreamConfiguration(page) {
         try {
           const detectionCheckbox = await page.locator('input#stream-detection-enabled').first();
           const isChecked = await detectionCheckbox.isChecked();
-          detectionWasEnabled = isChecked;
 
           if (!isChecked) {
             console.log('  Detection not enabled, enabling it to showcase zones feature...');
