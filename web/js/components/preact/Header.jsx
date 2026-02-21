@@ -3,7 +3,6 @@
  * Preact component for the site header
  */
 
-import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import {VERSION} from '../../version.js';
 import { getSettings } from '../../utils/settings-utils.js';

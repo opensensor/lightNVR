@@ -3,7 +3,7 @@
  * Pan-Tilt-Zoom controls for PTZ-enabled cameras
  */
 
-import { h } from 'preact';
+
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 
 /**

@@ -2,8 +2,6 @@
  * PaginationControls component for RecordingsView
  */
 
-import { h } from 'preact';
-
 /* shared base for every clickable element */
 const BASE = "h-8 inline-flex items-center justify-center text-sm rounded cursor-pointer select-none border border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed";
 /* nav arrows (‹ ›) — square */

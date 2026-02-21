@@ -3,7 +3,6 @@
  * Collapsible sidebar with accordion-style filter sections
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 
 /** Small reusable accordion section for filter groups */

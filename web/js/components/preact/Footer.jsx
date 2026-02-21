@@ -3,7 +3,6 @@
  * Preact component for the site footer
  */
 
-import { h } from 'preact';
 import { useState } from 'preact/hooks';
 
 /**

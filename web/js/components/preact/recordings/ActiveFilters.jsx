@@ -2,8 +2,6 @@
  * ActiveFilters component for RecordingsView
  */
 
-import { h } from 'preact';
-
 /**
  * ActiveFilters component
  * @param {Object} props Component props

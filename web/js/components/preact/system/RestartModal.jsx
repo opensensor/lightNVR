@@ -3,7 +3,6 @@
  * A styled modal for confirming and showing restart progress
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 
