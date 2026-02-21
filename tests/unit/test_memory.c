@@ -121,6 +121,9 @@ void test_safe_strcat_overflow_returns_error(void) {
     char buf[8] = "hello";
     int rc = safe_strcat(buf, "_overflow", sizeof(buf));
     TEST_ASSERT_NOT_EQUAL(0, rc);
+    /* Buffer should remain a valid, null-terminated string and keep its safe content */
+    TEST_ASSERT_EQUAL_INT('\0', buf[sizeof(buf) - 1] == '\0' ? '\0' : buf[sizeof(buf) - 1]);
+    TEST_ASSERT_EQUAL_STRING_LEN("hello", buf, 5);
 }
 
 /* ================================================================
