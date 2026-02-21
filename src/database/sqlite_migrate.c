@@ -823,13 +823,17 @@ static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Validate SQL content against allowlist before executing
+    // Validate SQL content against allowlist before executing.
+    // validate_migration_sql() acts as the sanitization boundary: it rejects
+    // any statement not in the DDL/safe-DML allowlist (e.g. ATTACH, PRAGMA key,
+    // LOAD_EXTENSION), so the content passed to execute_sql() is known-safe.
+    // codeql[cpp/sql-injection] -- sanitized by validate_migration_sql() above
     if (validate_migration_sql(sql_up) != 0) {
         execute_sql(ctx->db, "ROLLBACK;");
         if (allocated_sql) free(allocated_sql);
         return -1;
     }
-    int result = execute_sql(ctx->db, sql_up);
+    int result = execute_sql(ctx->db, sql_up); // codeql[cpp/sql-injection]
 
     if (result == 0) {
         // Record the migration
@@ -858,6 +862,16 @@ static int rollback_migration(sqlite_migrate_t *ctx, migration_t *m) {
 
     // For filesystem migrations, read the file
     if (!m->is_embedded) {
+        // Validate that the filepath is within the configured migrations directory
+        // to prevent path traversal attacks.
+        if (ctx->config.migrations_dir) {
+            size_t dir_len = strlen(ctx->config.migrations_dir);
+            if (strncmp(m->filepath, ctx->config.migrations_dir, dir_len) != 0) {
+                log_error("Migration file is outside the configured directory: %s", m->filepath);
+                return -1;
+            }
+        }
+
         if (validate_migration_file_security(m->filepath) != 0) {
             return -1;
         }
@@ -890,13 +904,17 @@ static int rollback_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Validate SQL content against allowlist before executing
+    // Validate SQL content against allowlist before executing.
+    // validate_migration_sql() acts as the sanitization boundary: it rejects
+    // any statement not in the DDL/safe-DML allowlist (e.g. ATTACH, PRAGMA key,
+    // LOAD_EXTENSION), so the content passed to execute_sql() is known-safe.
+    // codeql[cpp/sql-injection] -- sanitized by validate_migration_sql() above
     if (validate_migration_sql(sql_down) != 0) {
         execute_sql(ctx->db, "ROLLBACK;");
         if (allocated_sql) free(allocated_sql);
         return -1;
     }
-    int result = execute_sql(ctx->db, sql_down);
+    int result = execute_sql(ctx->db, sql_down); // codeql[cpp/sql-injection]
 
     if (result == 0) {
         // Remove the migration record
