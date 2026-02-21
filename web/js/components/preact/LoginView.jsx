@@ -121,8 +121,6 @@ export function LoginView() {
     setErrorMessage('');
 
     try {
-      const authString = btoa(`${username}:${password}`);
-
       // Build login request body
       const loginBody = { username, password };
       if (forceMfaEnabled && forceMfaTotpCode) {
@@ -139,8 +137,7 @@ export function LoginView() {
         response = await fetch('/api/auth/login', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Basic ${authString}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify(loginBody),
           signal: controller.signal
@@ -264,7 +261,7 @@ export function LoginView() {
         )}
 
         {!totpRequired ? (
-          <form id="login-form" className="space-y-6" action="/api/auth/login" method="POST" onSubmit={handleSubmit}>
+          <form id="login-form" className="space-y-6" onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="username" className="block text-sm font-medium mb-1">Username</label>
               <input
