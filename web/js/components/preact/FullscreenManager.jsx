@@ -152,23 +152,6 @@ export function FullscreenManager({ isFullscreen, setIsFullscreen, targetId = 'l
         setIsFullscreen(prev => !prev);
       }
     };
-
-    // Create a wrapper function for exitFullscreenMode
-    const exitFullscreenModeWrapper = (e, setterFunc) => {
-      // If this was called from an event, stop propagation
-      if (e) {
-        e.stopPropagation();
-        e.preventDefault();
-      }
-
-      // If setterFunc is provided, use it (for backward compatibility)
-      if (typeof setterFunc === 'function') {
-        setterFunc(false);
-      } else {
-        // Otherwise use our internal state
-        setIsFullscreen(false);
-      }
-    };
   }, [setIsFullscreen]);
 
   // Render the exit button if in fullscreen mode
