@@ -46,6 +46,7 @@ export function LoginView() {
   const [totpToken, setTotpToken] = useState('');
   const [forceMfaEnabled, setForceMfaEnabled] = useState(false);
   const [forceMfaTotpCode, setForceMfaTotpCode] = useState('');
+  const abortControllerRef = useRef(null);
 
   // Fetch login config to determine if force MFA is enabled
   useEffect(() => {
@@ -87,7 +88,14 @@ export function LoginView() {
     }
   }, []);
 
-  // Request controller for cancelling requests
+  // Cancel any in-flight login request when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Handle login form submission
   const handleSubmit = async (e) => {
@@ -104,13 +112,18 @@ export function LoginView() {
       return;
     }
 
+    // Abort any previous in-flight login request before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     setIsLoggingIn(true);
     setErrorMessage('');
 
     try {
-      // Store credentials in localStorage for future requests
       const authString = btoa(`${username}:${password}`);
-      localStorage.setItem('auth', authString);
 
       // Build login request body
       const loginBody = { username, password };
@@ -151,6 +164,9 @@ export function LoginView() {
 
         // Successful login (no TOTP required or force MFA verified)
         console.log('Login successful, proceeding to redirect');
+
+        // Store credentials in localStorage for future requests, now that authentication succeeded
+        localStorage.setItem('auth', authString);
 
         // Redirect to the requested page, or the index if none / unsafe.
         const urlParams = new URLSearchParams(window.location.search);
@@ -223,15 +239,13 @@ export function LoginView() {
     }
   };
 
-  // Determine error message class based on content
-  const getErrorMessageClass = () => {
+  // Determine notification message class (success or error) based on content
+  const getNotificationClass = () => {
     const baseClass = "mb-4 p-3 rounded-lg ";
 
     // Check for success messages
     const isSuccess = (
-      errorMessage.includes('successfully logged out') ||
-      errorMessage.includes('Click the button below') ||
-      errorMessage.includes('Login successful')
+      errorMessage.includes('successfully logged out')
     );
 
     return baseClass + (
@@ -250,7 +264,7 @@ export function LoginView() {
         </div>
 
         {errorMessage && (
-          <div className={getErrorMessageClass()}>
+          <div className={getNotificationClass()}>
             {errorMessage}
           </div>
         )}

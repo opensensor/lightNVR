@@ -92,7 +92,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     strncpy(rtsp_url, thread_ctx->rtsp_url, sizeof(rtsp_url) - 1);
     rtsp_url[sizeof(rtsp_url) - 1] = '\0';
 
-    int segment_duration = thread_ctx->segment_duration;
+    int segment_duration;
     mp4_writer_t *writer = thread_ctx->writer;
 
     AVPacket *pkt = NULL;
@@ -107,7 +107,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     thread_ctx->segment_info.segment_index = 0;
     thread_ctx->segment_info.has_audio = false;
     thread_ctx->segment_info.last_frame_was_key = false;
-	thread_ctx->segment_info.pending_video_keyframe = NULL;
+    thread_ctx->segment_info.pending_video_keyframe = NULL;
     thread_ctx->video_params_detected = false;
     pthread_mutex_init(&thread_ctx->context_mutex, NULL);
 
@@ -158,13 +158,13 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->input_ctx = NULL;
             }
 
-			// If we were carrying a keyframe for overlap, it belongs to the old connection.
-			if (thread_ctx->segment_info.pending_video_keyframe) {
-				av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
-				av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
-				thread_ctx->segment_info.pending_video_keyframe = NULL;
-				log_debug("Cleared pending keyframe due to forced reconnect for stream %s", stream_name);
-			}
+            // If we were carrying a keyframe for overlap, it belongs to the old connection.
+            if (thread_ctx->segment_info.pending_video_keyframe) {
+                av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
+                av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
+                thread_ctx->segment_info.pending_video_keyframe = NULL;
+                log_debug("Cleared pending keyframe due to forced reconnect for stream %s", stream_name);
+            }
 
             // Reset retry count to give the reconnection a clean slate
             thread_ctx->retry_count = 0;
@@ -538,21 +538,21 @@ thread_cleanup:
         log_info("Closed input context for stream %s to prevent memory leaks", stream_name);
     }
 
-	    // 2b. BUGFIX: Destroy the context mutex and free any carried-over packet
-	    // Free any carried-over packet to avoid leaking if the thread exits between segments
-	    if (thread_ctx->segment_info.pending_video_keyframe) {
-	        av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
-	        av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
-	        thread_ctx->segment_info.pending_video_keyframe = NULL;
-	        log_debug("Freed pending keyframe during thread cleanup for stream %s", stream_name);
-	    }
+    // 2b. BUGFIX: Destroy the context mutex and free any carried-over packet
+    // Free any carried-over packet to avoid leaking if the thread exits between segments
+    if (thread_ctx->segment_info.pending_video_keyframe) {
+        av_packet_unref(thread_ctx->segment_info.pending_video_keyframe);
+        av_packet_free(&thread_ctx->segment_info.pending_video_keyframe);
+        thread_ctx->segment_info.pending_video_keyframe = NULL;
+        log_debug("Freed pending keyframe during thread cleanup for stream %s", stream_name);
+    }
 
-	    pthread_mutex_destroy(&thread_ctx->context_mutex);
+    pthread_mutex_destroy(&thread_ctx->context_mutex);
 
-	    // NOTE: Global FFmpeg network cleanup (avformat_network_deinit) is performed
-	    // once at backend shutdown via mp4_segment_recorder_cleanup(). It must not
-	    // be called from individual writer threads, otherwise other threads that
-	    // are still using FFmpeg network APIs can crash.
+    // NOTE: Global FFmpeg network cleanup (avformat_network_deinit) is performed
+    // once at backend shutdown via mp4_segment_recorder_cleanup(). It must not
+    // be called from individual writer threads, otherwise other threads that
+    // are still using FFmpeg network APIs can crash.
 
     // Log that we've completed cleanup
     log_info("Completed cleanup of FFmpeg resources for stream %s", stream_name);

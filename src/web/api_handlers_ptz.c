@@ -55,7 +55,7 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
 
     // Detect RTSPS (RTSP over TLS); those cameras serve ONVIF over HTTPS
     bool use_https = (strncasecmp(url, "rtsps://", 8) == 0);
-    const char *scheme = use_https ? "https" : "http"; // codeql[cpp/non-https-url] - ONVIF cameras on local network use HTTP; HTTPS is used when RTSPS is detected
+    const char *scheme = use_https ? "https" : "http"; // codeql[cpp/non-https-url] - Local ONVIF cameras use HTTP; HTTPS only when RTSPS detected
     int port = use_https ? 443 : 80;
 
     // Parse host and port from RTSP/RTSPS URL
@@ -73,11 +73,17 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
                 strncpy(host, host_start, host_len);
                 host[host_len] = '\0';
             }
+            /* Ensure there is at least one character after ':' before calling strtol. */
+            if (*(port_start + 1) == '\0' || *(port_start + 1) == '/') {
+                log_error("Invalid port in stream URL: %s", url);
+                return -1;
+            }
             char *endptr = NULL;
             long parsed_port = strtol(port_start + 1, &endptr, 10);
             /* Ensure we actually parsed digits, and that the port consists only of digits
              * up to the end of the string or before the path separator. */
-            if (endptr == port_start + 1 ||
+            if (endptr == NULL ||
+                endptr == port_start + 1 ||
                 (*endptr != '\0' && *endptr != '/')) {
                 log_error("Invalid port in stream URL: %s", url);
                 return -1;
