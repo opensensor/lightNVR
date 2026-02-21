@@ -16,7 +16,7 @@ const removeUseClientDirective = () => {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
         // Check for "use client" directive with various possible formats, allowing leading whitespace
-        const useClientRegex = /^\s*(['"]use client['"])/m;
+        const useClientRegex = /^\s*(['"])use client\1/m;
         if (useClientRegex.test(code)) {
           // Remove the "use client" directive and return the modified code
           return {
@@ -87,10 +87,10 @@ export default defineConfig({
         hls: resolve(__dirname, 'hls.html'),
       },
       output: {
-        // Ensure CSS files are properly named and placed
+        // Ensure CSS files are properly named and placed, with hashes for cache busting
         assetFileNames: (assetInfo) => {
           if (/\.css$/i.test(assetInfo.name)) {
-            return `css/[name][extname]`;
+            return `css/[name]-[hash][extname]`;
           }
           return `assets/[name][extname]`;
         },
