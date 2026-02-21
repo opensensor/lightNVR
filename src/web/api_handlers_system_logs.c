@@ -341,8 +341,6 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Clean up
     free(json_str);
-
-    log_info("Successfully handled GET /api/system/logs request");
 }
 
 /**
