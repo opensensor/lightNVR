@@ -21,7 +21,7 @@ const removeUseClientDirective = () => {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
         // Check for "use client" directive with various possible formats, allowing leading whitespace
-        const useClientRegex = /^\s*(['"])use client\1/m;
+        const useClientRegex = /^\s*(?:'use client'|"use client")/m;
         if (useClientRegex.test(code)) {
           // Remove the "use client" directive and return the modified code
           const transformedCode = code.replace(useClientRegex, '');
@@ -171,12 +171,12 @@ export default defineConfig({
           // Ensure source css directory exists before reading
           try {
             await fs.access('css');
-          } catch (accessError) {
-            if (accessError.code === 'ENOENT') {
+          } catch (err) {
+            if (err.code === 'ENOENT') {
               console.warn('Source CSS directory does not exist; skipping CSS copy.');
               return;
             }
-            throw accessError;
+            throw err;
           }
 
           // Read all files from web/css
@@ -213,7 +213,7 @@ export default defineConfig({
             await fs.access('img');
           } catch (err) {
             // If the directory truly doesn't exist, skip copying.
-            if (err && err.code === 'ENOENT') {
+            if (err.code === 'ENOENT') {
               console.log('No img directory found, skipping');
               return;
             }
