@@ -37,6 +37,7 @@
 #include "video/mp4_segment_recorder.h"
 #include "video/stream_packet_processor.h"
 #include "video/ffmpeg_utils.h"
+#include "video/thread_utils.h"
 
 
 // Hash map for tracking running MP4 recording contexts
@@ -47,6 +48,45 @@ volatile sig_atomic_t shutdown_in_progress = 0;
 
 // Forward declarations
 static void *mp4_recording_thread(void *arg);
+
+/**
+ * Clean up a dead recording by joining its outer thread.
+ *
+ * The outer recording thread (mp4_recording_thread) handles all writer
+ * cleanup: stopping the inner RTSP thread, unregistering, and closing the
+ * writer.  Calling mp4_writer_close() directly from here would race with
+ * the outer thread's cleanup and cause a double-free.
+ *
+ * @param index  Index into recording_contexts[]
+ * @param stream_name  For logging only
+ */
+static void cleanup_dead_recording(int index, const char *stream_name) {
+    mp4_recording_ctx_t *ctx = recording_contexts[index];
+    if (!ctx) return;
+
+    // Signal the outer thread to exit its monitoring loop
+    ctx->running = 0;
+
+    // Join the outer recording thread — it will stop the inner RTSP thread,
+    // unregister the writer, and close it.  15 seconds is enough for the
+    // inner thread's 10-second join timeout plus margin.
+    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 15);
+    if (join_result == 0) {
+        // Thread exited — safe to free the context
+        free(recording_contexts[index]);
+        recording_contexts[index] = NULL;
+        log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+    } else {
+        log_warn("Could not join outer recording thread for %s within 15s, detaching", stream_name);
+        pthread_detach(ctx->thread);
+        // Cannot safely free ctx — the detached thread still references it.
+        // Null the slot so a new recording can take it; accept the small leak.
+        recording_contexts[index] = NULL;
+    }
+
+    // Ensure the writer is unregistered (idempotent)
+    unregister_mp4_writer_for_stream(stream_name);
+}
 
 /**
  * MP4 recording thread function for a single stream
@@ -388,25 +428,7 @@ int start_mp4_recording(const char *stream_name) {
 
             // Recording context exists but is dead - clean it up first
             log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-
-            // Stop the dead recording
-            recording_contexts[i]->running = 0;
-
-            // Stop the recording thread if it exists
-            if (writer) {
-                mp4_writer_stop_recording_thread(writer);
-                mp4_writer_close(writer);
-                recording_contexts[i]->mp4_writer = NULL;
-            }
-
-            // Unregister the writer
-            unregister_mp4_writer_for_stream(stream_name);
-
-            // Free the context
-            free(recording_contexts[i]);
-            recording_contexts[i] = NULL;
-
-            log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+            cleanup_dead_recording(i, stream_name);
             break;  // Continue to start a new recording
         }
     }
@@ -549,25 +571,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
 
             // Recording context exists but is dead - clean it up first
             log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-
-            // Stop the dead recording
-            recording_contexts[i]->running = 0;
-
-            // Stop the recording thread if it exists
-            if (writer) {
-                mp4_writer_stop_recording_thread(writer);
-                mp4_writer_close(writer);
-                recording_contexts[i]->mp4_writer = NULL;
-            }
-
-            // Unregister the writer
-            unregister_mp4_writer_for_stream(stream_name);
-
-            // Free the context
-            free(recording_contexts[i]);
-            recording_contexts[i] = NULL;
-
-            log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+            cleanup_dead_recording(i, stream_name);
             break;  // Continue to start a new recording
         }
     }
@@ -710,43 +714,48 @@ int stop_mp4_recording(const char *stream_name) {
     ctx->running = 0;
     log_info("Marked MP4 recording for stream %s as stopping (index: %d)", stream_name, index);
 
-    // Join thread with timeout
-    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 5);
+    // Join thread with timeout — 15s is enough for the outer thread to stop the
+    // inner RTSP thread (10s timeout) and close the writer.
+    int join_result = pthread_join_with_timeout(ctx->thread, NULL, 15);
     if (join_result != 0) {
-        log_error("Failed to join thread for stream %s (error: %d), will continue cleanup",
+        // SAFETY FIX: Do NOT close the writer here — the outer thread is still
+        // running and will close it.  Detach the thread and accept a small leak.
+        log_warn("Failed to join recording thread for stream %s (error: %d), detaching",
                  stream_name, join_result);
-    } else {
-        log_info("Successfully joined thread for stream %s", stream_name);
-    }
+        pthread_detach(ctx->thread);
 
-    // Verify context is still valid
-    if (index >= 0 && index < MAX_STREAMS && recording_contexts[index] == ctx) {
-        // First clear the slot in the global array to prevent other threads from accessing it
+        // Null the slot so a new recording can take it
         recording_contexts[index] = NULL;
 
-        // Add a memory barrier to ensure the NULL assignment is visible to other threads
+        // Ensure the writer is unregistered (idempotent)
+        unregister_mp4_writer_for_stream(stream_name);
+
+        // Cannot safely free ctx — the detached thread still references it
+        log_info("Stopped MP4 recording for stream %s (thread detached)", stream_name);
+        return 0;
+    }
+
+    log_info("Successfully joined thread for stream %s", stream_name);
+
+    // Thread has exited — it already stopped the inner RTSP thread, unregistered
+    // the writer, and closed it (see mp4_recording_thread cleanup at exit).
+    // We only need to free the context.
+    if (index >= 0 && index < MAX_STREAMS && recording_contexts[index] == ctx) {
+        recording_contexts[index] = NULL;
         __sync_synchronize();
 
-        // Cleanup resources
+        // The outer thread NULLs ctx->mp4_writer after closing it.
+        // If it's still set, the thread exited before reaching cleanup (error path)
+        // — safe to close since the thread is no longer running.
         if (ctx->mp4_writer) {
-            // Make a local copy of the mp4_writer pointer
             mp4_writer_t *writer = ctx->mp4_writer;
-
-            // Set the pointer to NULL in the context to prevent double-free
             ctx->mp4_writer = NULL;
-
-            // Unregister the writer from the global array BEFORE closing it
-            // This prevents close_all_mp4_writers() from trying to access freed memory
             unregister_mp4_writer_for_stream(stream_name);
-
-            // Now close the writer with our local copy
-            log_info("Closing MP4 writer for stream %s", stream_name);
+            log_info("Closing MP4 writer for stream %s (thread exited early)", stream_name);
             mp4_writer_close(writer);
         }
 
-        // Free context after all resources have been cleaned up
         free(ctx);
-
         log_info("Successfully cleaned up resources for stream %s", stream_name);
     } else {
         log_warn("Context for stream %s was modified during cleanup", stream_name);
@@ -790,25 +799,7 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
 
             // Recording context exists but is dead - clean it up first
             log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-
-            // Stop the dead recording
-            recording_contexts[i]->running = 0;
-
-            // Stop the recording thread if it exists
-            if (writer) {
-                mp4_writer_stop_recording_thread(writer);
-                mp4_writer_close(writer);
-                recording_contexts[i]->mp4_writer = NULL;
-            }
-
-            // Unregister the writer
-            unregister_mp4_writer_for_stream(stream_name);
-
-            // Free the context
-            free(recording_contexts[i]);
-            recording_contexts[i] = NULL;
-
-            log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+            cleanup_dead_recording(i, stream_name);
             break;  // Continue to start a new recording
         }
     }
@@ -937,25 +928,7 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
 
             // Recording context exists but is dead - clean it up first
             log_warn("MP4 recording for stream %s exists but is dead, cleaning up before restart", stream_name);
-
-            // Stop the dead recording
-            recording_contexts[i]->running = 0;
-
-            // Stop the recording thread if it exists
-            if (writer) {
-                mp4_writer_stop_recording_thread(writer);
-                mp4_writer_close(writer);
-                recording_contexts[i]->mp4_writer = NULL;
-            }
-
-            // Unregister the writer
-            unregister_mp4_writer_for_stream(stream_name);
-
-            // Free the context
-            free(recording_contexts[i]);
-            recording_contexts[i] = NULL;
-
-            log_info("Cleaned up dead MP4 recording for stream %s, will restart", stream_name);
+            cleanup_dead_recording(i, stream_name);
             break;  // Continue to start a new recording
         }
     }
