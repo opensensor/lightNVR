@@ -26,6 +26,12 @@
 // Maximum recordings to delete per stream per run
 #define MAX_RECORDINGS_PER_STREAM 100
 
+// Maximum length for stream names (including null terminator)
+#define MAX_STREAM_NAME_LENGTH 64
+
+// Maximum orphaned recordings to process per run
+#define MAX_ORPHANED_BATCH 100
+
 // Default retention period (in days) when no global or stream-specific value is configured
 #define DEFAULT_RETENTION_DAYS 30
 // Multiplier for detection retention default (detection = N * regular retention)
@@ -33,13 +39,16 @@
 // Orphan safety parameters
 #define ORPHAN_SAFETY_THRESHOLD 0.5
 #define MIN_RECORDINGS_FOR_THRESHOLD 10
+#define MP4_SUBDIR "mp4"
+#define MAX_STORAGE_PATH_LENGTH      256
+#define MAX_RECORDING_PATH_LENGTH    768
 
 // Forward declarations
 static int apply_legacy_retention_policy(void);
 
 // Storage manager state
 static struct {
-    char storage_path[256];
+    char storage_path[MAX_STORAGE_PATH_LENGTH];
     uint64_t max_size;
     int retention_days;
     bool auto_delete_oldest;
@@ -161,7 +170,7 @@ int get_storage_stats(storage_stats_t *stats) {
             }
 
             // Check if it's a directory (stream directory)
-            char path[512];
+            char path[MAX_RECORDING_PATH_LENGTH];
             snprintf(path, sizeof(path), "%s/%s", storage_manager.storage_path, entry->d_name);
 
             struct stat st;
@@ -178,7 +187,7 @@ int get_storage_stats(storage_stats_t *stats) {
                         }
 
                         // Check if it's a file
-                        char rec_path[768];
+                        char rec_path[MAX_RECORDING_PATH_LENGTH];
                         snprintf(rec_path, sizeof(rec_path), "%s/%s", path, rec_entry->d_name);
 
                         struct stat rec_st;
@@ -258,7 +267,7 @@ int apply_retention_policy(void) {
     uint64_t total_freed = 0;
 
     // Get list of all stream names
-    char stream_names[MAX_STREAMS_BATCH][64];
+    char stream_names[MAX_STREAMS_BATCH][MAX_STREAM_NAME_LENGTH];
     int stream_count = get_all_stream_names(stream_names, MAX_STREAMS_BATCH);
 
     if (stream_count < 0) {
@@ -387,7 +396,7 @@ int apply_retention_policy(void) {
     bool storage_accessible = false;
     {
         char mp4_path[512];
-        snprintf(mp4_path, sizeof(mp4_path), "%s/mp4", storage_manager.storage_path);
+        snprintf(mp4_path, sizeof(mp4_path), "%s/%s", storage_manager.storage_path, MP4_SUBDIR);
         struct stat st;
         if (stat(storage_manager.storage_path, &st) == 0 && S_ISDIR(st.st_mode) &&
             stat(mp4_path, &st) == 0 && S_ISDIR(st.st_mode)) {
@@ -401,8 +410,8 @@ int apply_retention_policy(void) {
                   storage_manager.storage_path);
     } else {
         int total_checked = 0;
-        recording_metadata_t orphaned[100];
-        int orphan_count = get_orphaned_db_entries(orphaned, 100, &total_checked);
+        recording_metadata_t orphaned[MAX_ORPHANED_BATCH];
+        int orphan_count = get_orphaned_db_entries(orphaned, MAX_ORPHANED_BATCH, &total_checked);
 
         if (orphan_count > 0 && total_checked > 0) {
             // Safety threshold: if more than 50% of checked recordings appear orphaned,
@@ -471,7 +480,7 @@ static int apply_legacy_retention_policy(void) {
         }
 
         // Check if it's a directory (stream directory)
-        char stream_path[512];
+        char stream_path[MAX_RECORDING_PATH_LENGTH];
         snprintf(stream_path, sizeof(stream_path), "%s/%s", storage_manager.storage_path, entry->d_name);
 
         struct stat st;
@@ -495,7 +504,7 @@ static int apply_legacy_retention_policy(void) {
                     if (fstatat(dir_fd, rec_entry->d_name, &rec_st, AT_SYMLINK_NOFOLLOW) == 0
                             && S_ISREG(rec_st.st_mode)) {
                         // Build path only for database lookup and logging (not for unlink)
-                        char rec_path[768];
+                        char rec_path[MAX_RECORDING_PATH_LENGTH];
                         snprintf(rec_path, sizeof(rec_path), "%s/%s", stream_path, rec_entry->d_name);
 
                         // Check if file is older than retention days
@@ -798,7 +807,7 @@ static void standard_cleanup_cycle(void) {
     recording_metadata_t *tier_recs = calloc(MAX_RECORDINGS_PER_STREAM, sizeof(recording_metadata_t));
     if (tier_recs) {
         // Get all stream names
-        char stream_names[MAX_STREAMS_BATCH][64];
+        char stream_names[MAX_STREAMS_BATCH][MAX_STREAM_NAME_LENGTH];
         int stream_count = get_all_stream_names(stream_names, MAX_STREAMS_BATCH);
 
         for (int s = 0; s < stream_count && unified_ctrl.running; s++) {
