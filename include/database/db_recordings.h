@@ -193,13 +193,18 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
                                          int max_count);
 
 /**
- * Get orphaned recording entries (DB entries without files)
+ * Get orphaned recording entries (DB entries without files on disk)
+ * Protected recordings are excluded (never considered orphaned).
  *
  * @param recordings Array to fill with recording metadata
  * @param max_count Maximum number of recordings to return
- * @return Number of recordings found, or -1 on error
+ * @param total_checked If non-NULL, receives the total number of recordings checked.
+ *                      The caller can use this together with the return value to
+ *                      compute an orphan ratio for safety thresholding.
+ * @return Number of orphaned recordings found, or -1 on error
  */
-int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count);
+int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count,
+                            int *total_checked);
 
 /**
  * Get recordings eligible for deletion based on tiered retention policy

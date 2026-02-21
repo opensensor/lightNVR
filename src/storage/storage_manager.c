@@ -373,16 +373,48 @@ int apply_retention_policy(void) {
     }
 
     // Phase 3: Clean up orphaned database entries (files that no longer exist)
-    recording_metadata_t orphaned[100];
-    int orphan_count = get_orphaned_db_entries(orphaned, 100);
+    // Safety check: verify storage is actually accessible before orphan cleanup.
+    // If storage is unavailable (mount lost, etc.), every recording looks "orphaned"
+    // and we'd incorrectly wipe the entire database.
+    bool storage_accessible = false;
+    {
+        char mp4_path[512];
+        snprintf(mp4_path, sizeof(mp4_path), "%s/mp4", storage_manager.storage_path);
+        struct stat st;
+        if (stat(storage_manager.storage_path, &st) == 0 && S_ISDIR(st.st_mode) &&
+            stat(mp4_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            storage_accessible = true;
+        }
+    }
 
-    if (orphan_count > 0) {
-        log_info("Found %d orphaned database entries, cleaning up", orphan_count);
+    if (!storage_accessible) {
+        log_error("Storage path %s or mp4 subdirectory is not accessible - "
+                  "skipping orphan cleanup to prevent incorrect mass deletion",
+                  storage_manager.storage_path);
+    } else {
+        int total_checked = 0;
+        recording_metadata_t orphaned[100];
+        int orphan_count = get_orphaned_db_entries(orphaned, 100, &total_checked);
 
-        for (int i = 0; i < orphan_count; i++) {
-            if (delete_recording_metadata(orphaned[i].id) == 0) {
-                log_debug("Deleted orphaned DB entry: ID %llu, path %s",
-                         (unsigned long long)orphaned[i].id, orphaned[i].file_path);
+        if (orphan_count > 0 && total_checked > 0) {
+            // Safety threshold: if more than 50% of checked recordings appear orphaned,
+            // this is almost certainly a storage availability problem, not genuine orphans.
+            double orphan_ratio = (double)orphan_count / (double)total_checked;
+            if (orphan_ratio > 0.5 && total_checked >= 10) {
+                log_error("Orphan safety threshold exceeded: %d of %d checked recordings (%.0f%%) "
+                          "appear orphaned - this likely indicates a storage availability issue, "
+                          "skipping orphan cleanup to protect database integrity",
+                          orphan_count, total_checked, orphan_ratio * 100.0);
+            } else {
+                log_info("Found %d orphaned database entries (checked %d, ratio %.0f%%), cleaning up",
+                         orphan_count, total_checked, orphan_ratio * 100.0);
+
+                for (int i = 0; i < orphan_count; i++) {
+                    if (delete_recording_metadata(orphaned[i].id) == 0) {
+                        log_debug("Deleted orphaned DB entry: ID %llu, path %s",
+                                 (unsigned long long)orphaned[i].id, orphaned[i].file_path);
+                    }
+                }
             }
         }
     }

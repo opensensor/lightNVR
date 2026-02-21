@@ -1361,13 +1361,18 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
 }
 
 /**
- * Get orphaned recording entries (DB entries without files)
+ * Get orphaned recording entries (DB entries without files on disk)
+ * Protected recordings are excluded (never considered orphaned).
  *
  * @param recordings Array to fill with recording metadata
  * @param max_count Maximum number of recordings to return
- * @return Number of recordings found, or -1 on error
+ * @param total_checked If non-NULL, receives the total number of recordings checked.
+ *                      The caller can use this together with the return value to
+ *                      compute an orphan ratio for safety thresholding.
+ * @return Number of orphaned recordings found, or -1 on error
  */
-int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count) {
+int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count,
+                            int *total_checked) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -1388,12 +1393,15 @@ int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count) {
 
     pthread_mutex_lock(db_mutex);
 
-    // Get all recordings and check if files exist
+    // Get all unprotected complete recordings and check if files exist.
+    // Protected recordings are never considered orphaned — they must be
+    // explicitly unprotected before any automatic cleanup can touch them.
     const char *sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
         "size_bytes, width, height, fps, codec, is_complete, trigger_type "
         "FROM recordings "
         "WHERE is_complete = 1 "
+        "AND protected = 0 "
         "ORDER BY start_time ASC;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1403,11 +1411,14 @@ int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count) {
         return -1;
     }
 
-    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+    // Keep iterating all rows even after max_count orphans are found so that
+    // 'checked' reflects the true total — the caller needs this for ratio checks.
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        checked++;
         const char *path = (const char *)sqlite3_column_text(stmt, 2);
 
         // Check if file exists
-        if (path && access(path, F_OK) != 0) {
+        if (path && count < max_count && access(path, F_OK) != 0) {
             // File doesn't exist - this is an orphaned entry
             recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
@@ -1455,11 +1466,14 @@ int get_orphaned_db_entries(recording_metadata_t *recordings, int max_count) {
 
             count++;
         }
-        checked++;
     }
 
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
+
+    if (total_checked) {
+        *total_checked = checked;
+    }
 
     log_info("Checked %d recordings, found %d orphaned DB entries", checked, count);
     return count;
