@@ -116,7 +116,7 @@ export function WebRTCView() {
     setIsLoading(isLoadingStreams);
   }, [isLoadingStreams]);
 
-  // Process streams data when it's loaded
+  // Process streams data when it's loaded or when the selected stream changes.
   useEffect(() => {
     if (streamsData && Array.isArray(streamsData)) {
       // Process the streams data
@@ -150,9 +150,9 @@ export function WebRTCView() {
 
       processStreams();
     }
-    // Note: selectedStream is intentionally not in the dependency array.
-    // This effect is meant to run only when streamsData changes, and may update selectedStream.
-  }, [streamsData]);
+    // Note: This effect now explicitly depends on selectedStream.
+    // It is written to be idempotent and will only update selectedStream when necessary.
+  }, [streamsData, selectedStream]);
 
   // Update URL when layout, page, or selectedStream changes
   useEffect(() => {
