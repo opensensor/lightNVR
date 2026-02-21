@@ -244,11 +244,17 @@ export default defineConfig({
               continue;
             }
             const file = entry.name;
-            await fsPromises.copyFile(
-                join('img', file),
-                join('dist/img', file)
-            );
-            console.log(`Copied ${file} to dist/img/`);
+            try {
+              await fsPromises.copyFile(
+                  join('img', file),
+                  join('dist/img', file)
+              );
+              console.log(`Copied ${file} to dist/img/`);
+            } catch (err) {
+              console.error(`Failed to copy ${file} to dist/img/:`, err);
+              // Continue copying other files instead of failing the entire build step
+              continue;
+            }
           }
         } catch (error) {
           console.error('Error copying img files:', error);
