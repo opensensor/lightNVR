@@ -20,10 +20,10 @@
 #include "core/config.h"
 
 typedef enum {
-    LOG_LEVEL_ERROR   = 0,
-    LOG_LEVEL_WARNING = 1,
-    LOG_LEVEL_INFO    = 2,
-    LOG_LEVEL_DEBUG   = 3
+    SYSLOG_LEVEL_ERROR   = 0,
+    SYSLOG_LEVEL_WARNING = 1,
+    SYSLOG_LEVEL_INFO    = 2,
+    SYSLOG_LEVEL_DEBUG   = 3
 } LogLevel;
 
 static const char *DEFAULT_LOG_FILE = "/var/log/lightnvr.log";
@@ -233,36 +233,36 @@ int log_level_meets_minimum(const char *log_level, const char *min_level) {
     }
 
     // Convert log levels to numeric values for comparison
-    int level_value = LOG_LEVEL_INFO; // Default to INFO
-    int min_value = LOG_LEVEL_INFO;   // Default to INFO
+    int level_value = SYSLOG_LEVEL_INFO; // Default to INFO
+    int min_value = SYSLOG_LEVEL_INFO;   // Default to INFO
 
     // Map log level strings to numeric values
     // ERROR = 0, WARNING = 1, INFO = 2, DEBUG = 3
     if (strcmp(log_level, "error") == 0) {
-        level_value = LOG_LEVEL_ERROR;
+        level_value = SYSLOG_LEVEL_ERROR;
     } else if (strcmp(log_level, "warning") == 0) {
-        level_value = LOG_LEVEL_WARNING;
+        level_value = SYSLOG_LEVEL_WARNING;
     } else if (strcmp(log_level, "info") == 0) {
-        level_value = LOG_LEVEL_INFO;
+        level_value = SYSLOG_LEVEL_INFO;
     } else if (strcmp(log_level, "debug") == 0) {
-        level_value = LOG_LEVEL_DEBUG;
+        level_value = SYSLOG_LEVEL_DEBUG;
     }
 
     if (strcmp(min_level, "error") == 0) {
-        min_value = LOG_LEVEL_ERROR;
+        min_value = SYSLOG_LEVEL_ERROR;
     } else if (strcmp(min_level, "warning") == 0) {
-        min_value = LOG_LEVEL_WARNING;
+        min_value = SYSLOG_LEVEL_WARNING;
     } else if (strcmp(min_level, "info") == 0) {
-        min_value = LOG_LEVEL_INFO;
+        min_value = SYSLOG_LEVEL_INFO;
     } else if (strcmp(min_level, "debug") == 0) {
-        min_value = LOG_LEVEL_DEBUG;
+        min_value = SYSLOG_LEVEL_DEBUG;
     }
 
     // NOTE: Lower numeric values represent *higher* severity:
-    //   error   = LOG_LEVEL_ERROR   (0, most severe)
-    //   warning = LOG_LEVEL_WARNING (1)
-    //   info    = LOG_LEVEL_INFO    (2)
-    //   debug   = LOG_LEVEL_DEBUG   (3, least severe)
+    //   error   = SYSLOG_LEVEL_ERROR   (0, most severe)
+    //   warning = SYSLOG_LEVEL_WARNING (1)
+    //   info    = SYSLOG_LEVEL_INFO    (2)
+    //   debug   = SYSLOG_LEVEL_DEBUG   (3, least severe)
     //
     // The min_level parameter represents the least severe messages we still
     // want to include. A log entry should be included if its severity is
