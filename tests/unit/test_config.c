@@ -269,28 +269,30 @@ void test_validate_config_swap_disabled_size_zero_ok(void) {
  * set_custom_config_path / get_custom_config_path
  * ================================================================ */
 
-void test_custom_config_path_roundtrip(void) {
-    set_custom_config_path("/tmp/test_lightnvr.ini");
-    const char *path = get_custom_config_path();
-    TEST_ASSERT_NOT_NULL(path);
-    TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", path);
-    /* Reset */
-    set_custom_config_path("");
-}
-
 void test_custom_config_path_empty_not_stored(void) {
-    /* Clear any prior value first */
+    /* set_custom_config_path ignores empty strings (does not overwrite). */
+    /* At the start of the test binary, g_custom_config_path is zeroed.   */
+    /* This test must run before any test that sets a non-empty path.     */
     set_custom_config_path("");
+    /* getter returns NULL when nothing has been stored yet */
     const char *path = get_custom_config_path();
-    /* Empty path should cause getter to return NULL */
     TEST_ASSERT_NULL(path);
 }
 
 void test_custom_config_path_null_not_stored(void) {
-    set_custom_config_path("");      /* ensure clean state */
-    set_custom_config_path(NULL);   /* NULL must not crash */
+    /* NULL is also silently ignored — must not crash and must not store. */
+    set_custom_config_path(NULL);
     const char *path = get_custom_config_path();
     TEST_ASSERT_NULL(path);
+}
+
+void test_custom_config_path_roundtrip(void) {
+    /* Run AFTER the empty/null tests so that g_custom_config_path is still
+       empty when those tests run.  Here we confirm a valid path is stored. */
+    set_custom_config_path("/tmp/test_lightnvr.ini");
+    const char *path = get_custom_config_path();
+    TEST_ASSERT_NOT_NULL(path);
+    TEST_ASSERT_EQUAL_STRING("/tmp/test_lightnvr.ini", path);
 }
 
 /* ================================================================
@@ -355,9 +357,9 @@ int main(void) {
     RUN_TEST(test_validate_config_swap_size_zero_with_use_swap);
     RUN_TEST(test_validate_config_swap_disabled_size_zero_ok);
 
-    RUN_TEST(test_custom_config_path_roundtrip);
     RUN_TEST(test_custom_config_path_empty_not_stored);
     RUN_TEST(test_custom_config_path_null_not_stored);
+    RUN_TEST(test_custom_config_path_roundtrip);
     RUN_TEST(test_get_loaded_config_path_initially);
 
     int result = UNITY_END();
