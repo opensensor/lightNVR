@@ -222,6 +222,91 @@ static int validate_migration_file_security(const char *filepath) {
 }
 
 /**
+ * Validate that SQL from a migration file only contains allowlisted statement
+ * types (DDL + safe DML).  This acts as a sanitization boundary between the
+ * raw file content produced by read_sql_file()/extract_sql_section() and the
+ * sqlite3_exec() call inside execute_sql(), preventing injection of dangerous
+ * commands such as ATTACH DATABASE, PRAGMA key=..., LOAD_EXTENSION, etc.
+ *
+ * Returns 0 if every statement is in the allowlist, -1 if any is rejected.
+ */
+static int validate_migration_sql(const char *sql) {
+    if (!sql || *sql == '\0') return 0;
+
+    /* Allowlist of permitted SQL statement prefixes, ordered longest-first so
+     * that shorter prefixes (e.g. "INSERT") do not shadow longer ones
+     * (e.g. "INSERT OR REPLACE").                                           */
+    static const struct { const char *kw; size_t len; } allowed[] = {
+        { "CREATE UNIQUE INDEX", 18 },
+        { "CREATE TRIGGER",      14 },
+        { "CREATE TABLE",        12 },
+        { "CREATE INDEX",        12 },
+        { "CREATE VIEW",         11 },
+        { "ALTER TABLE",         11 },
+        { "DROP TRIGGER",        12 },
+        { "DROP TABLE",          10 },
+        { "DROP INDEX",          10 },
+        { "DROP VIEW",            9 },
+        { "INSERT OR REPLACE",   18 },
+        { "INSERT OR IGNORE",    16 },
+        { "INSERT",               6 },
+        { "REPLACE",              7 },
+        { "UPDATE",               6 },
+        { "DELETE",               6 },
+        { "SELECT",               6 },
+        { NULL, 0 }
+    };
+
+    const char *p = sql;
+    while (*p) {
+        /* Skip whitespace */
+        while (*p && isspace((unsigned char)*p)) p++;
+        if (*p == '\0') break;
+
+        /* Skip -- line comments */
+        if (p[0] == '-' && p[1] == '-') {
+            while (*p && *p != '\n') p++;
+            continue;
+        }
+
+        /* Check statement start against allowlist */
+        int found = 0;
+        for (int i = 0; allowed[i].kw != NULL; i++) {
+            if (strncasecmp(p, allowed[i].kw, allowed[i].len) == 0) {
+                char next = p[allowed[i].len];
+                if (next == '\0' || isspace((unsigned char)next) ||
+                    next == ';'  || next == '(') {
+                    found = 1;
+                    break;
+                }
+            }
+        }
+
+        if (!found) {
+            char snippet[61] = {0};
+            int n = 0;
+            const char *q = p;
+            while (*q && *q != ';' && *q != '\n' && n < 60)
+                snippet[n++] = *q++;
+            log_error("Migration SQL rejected disallowed statement: %.60s", snippet);
+            return -1;
+        }
+
+        /* Advance past this statement (to the next semicolon),
+         * respecting single-quoted string literals.              */
+        int in_str = 0;
+        while (*p) {
+            if (*p == '\'' && !in_str) { in_str = 1; p++; continue; }
+            if (*p == '\'' &&  in_str) { in_str = 0; p++; continue; }
+            if (*p == ';'  && !in_str) { p++; break; }
+            p++;
+        }
+    }
+
+    return 0;
+}
+
+/**
  * Read SQL file content
  */
 static char *read_sql_file(const char *filepath) {
@@ -734,11 +819,12 @@ static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Execute the migration.
-    // lgtm[cpp/sql-injection] - sql_up is read from a system-managed migration
-    // file that has been validated: path is confined to the migrations directory,
-    // the file must not be world-writable, and only the 'migrate:up' section is
-    // extracted.  Migration files are never derived from user-supplied input.
+    // Validate SQL content against allowlist before executing
+    if (validate_migration_sql(sql_up) != 0) {
+        execute_sql(ctx->db, "ROLLBACK;");
+        if (allocated_sql) free(allocated_sql);
+        return -1;
+    }
     int result = execute_sql(ctx->db, sql_up);
 
     if (result == 0) {
@@ -800,11 +886,12 @@ static int rollback_migration(sqlite_migrate_t *ctx, migration_t *m) {
         return -1;
     }
 
-    // Execute the rollback.
-    // lgtm[cpp/sql-injection] - sql_down is read from a system-managed migration
-    // file that has been validated: path is confined to the migrations directory,
-    // the file must not be world-writable, and only the 'migrate:down' section is
-    // extracted.  Migration files are never derived from user-supplied input.
+    // Validate SQL content against allowlist before executing
+    if (validate_migration_sql(sql_down) != 0) {
+        execute_sql(ctx->db, "ROLLBACK;");
+        if (allocated_sql) free(allocated_sql);
+        return -1;
+    }
     int result = execute_sql(ctx->db, sql_down);
 
     if (result == 0) {
