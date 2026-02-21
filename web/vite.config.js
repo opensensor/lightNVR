@@ -8,6 +8,8 @@ import legacy from '@vitejs/plugin-legacy';
 import preact from '@preact/preset-vite';
 import viteCompression from 'vite-plugin-compression';
 import themeInjectPlugin from './vite-plugin-theme-inject.js';
+import * as fsPromises from 'fs/promises';
+import * as nodePath from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -20,8 +22,9 @@ const removeUseClientDirective = () => {
     transform(code, id) {
       // Only target files from @preact-signals/query package
       if (id.includes('@preact-signals/query')) {
-        // Check for "use client" directive with various possible formats, allowing leading whitespace
-        const useClientRegex = /^\s*(?:'use client'|"use client")/m;
+        // Check for "use client" directive with various possible formats, allowing leading whitespace,
+        // and remove the entire directive line including an optional semicolon and trailing whitespace.
+        const useClientRegex = /^\s*(?:'use client'|"use client");?\s*$/gm;
         if (useClientRegex.test(code)) {
           // Remove the "use client" directive and return the modified code
           const transformedCode = code.replace(useClientRegex, '');
@@ -161,16 +164,13 @@ export default defineConfig({
     {
       name: 'copy-css-files',
       async writeBundle() {
-        const fs = await import('fs/promises');
-        const path = await import('path');
-
         try {
           // Create dist/css directory if it doesn't exist
-          await fs.mkdir('dist/css', { recursive: true });
+          await fsPromises.mkdir('dist/css', { recursive: true });
 
           // Ensure source css directory exists before reading
           try {
-            await fs.access('css');
+            await fsPromises.access('css');
           } catch (err) {
             if (err.code === 'ENOENT') {
               console.warn('Source CSS directory does not exist; skipping CSS copy.');
@@ -179,17 +179,25 @@ export default defineConfig({
             throw err;
           }
 
-          // Read all files from web/css
-          const cssFiles = await fs.readdir('css');
+          // Read all directory entries from css, including type information
+          const cssEntries = await fsPromises.readdir('css', { withFileTypes: true });
 
-          // Copy each CSS file to dist/css
-          for (const file of cssFiles) {
-            if (file.endsWith('.css')) {
-              await fs.copyFile(
-                  path.join('css', file),
-                  path.join('dist/css', file)
-              );
-              console.log(`Copied ${file} to dist/css/`);
+          // Copy each regular CSS file to dist/css
+          for (const entry of cssEntries) {
+            // Skip anything that isn't a regular file or doesn't end with .css
+            if (!entry.isFile() || !entry.name.endsWith('.css')) {
+              continue;
+            }
+
+            const srcPath = nodePath.join('css', entry.name);
+            const destPath = nodePath.join('dist/css', entry.name);
+
+            try {
+              await fsPromises.copyFile(srcPath, destPath);
+              console.log(`Copied ${entry.name} to dist/css/`);
+            } catch (copyError) {
+              // Log and continue copying other files
+              console.error(`Error copying CSS file ${srcPath} to ${destPath}:`, copyError);
             }
           }
         } catch (error) {
@@ -201,16 +209,13 @@ export default defineConfig({
     {
       name: 'copy-img-files',
       async writeBundle() {
-        const fs = await import('fs/promises');
-        const path = await import('path');
-
         try {
           // Create dist/img directory if it doesn't exist
-          await fs.mkdir('dist/img', { recursive: true });
+          await fsPromises.mkdir('dist/img', { recursive: true });
 
           // Check if img directory exists
           try {
-            await fs.access('img');
+            await fsPromises.access('img');
           } catch (err) {
             // If the directory truly doesn't exist, skip copying.
             if (err.code === 'ENOENT') {
@@ -221,14 +226,18 @@ export default defineConfig({
             throw err;
           }
 
-          // Read all files from web/img
-          const imgFiles = await fs.readdir('img');
+          // Read all entries from img (files and possibly subdirectories)
+          const imgEntries = await fsPromises.readdir('img', { withFileTypes: true });
 
-          // Copy each image file to dist/img
-          for (const file of imgFiles) {
-            await fs.copyFile(
-                path.join('img', file),
-                path.join('dist/img', file)
+          // Copy each image file to dist/img, skipping subdirectories and non-file entries
+          for (const entry of imgEntries) {
+            if (!entry.isFile()) {
+              continue;
+            }
+            const file = entry.name;
+            await fsPromises.copyFile(
+                nodePath.join('img', file),
+                nodePath.join('dist/img', file)
             );
             console.log(`Copied ${file} to dist/img/`);
           }
