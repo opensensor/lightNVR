@@ -18,6 +18,8 @@
 #include "core/logger.h"
 #include "core/config.h"
 
+static const char *DEFAULT_LOG_FILE = "/var/log/lightnvr.log";
+static const char *FALLBACK_LOG_FILE = "./lightnvr.log";
 
 /**
  * @brief Get system logs
@@ -49,8 +51,17 @@ int get_system_logs(char ***logs, int *count) {
     }
 
     // Get file size
-    fseek(log_file, 0, SEEK_END);
+    if (fseek(log_file, 0, SEEK_END) != 0) {
+        log_error("Failed to seek to end of log file: %s", g_config.log_file);
+        fclose(log_file);
+        return -1;
+    }
     long file_size = ftell(log_file);
+    if (file_size < 0) {
+        log_error("Failed to determine size of log file: %s", g_config.log_file);
+        fclose(log_file);
+        return -1;
+    }
 
     // Limit to last 100KB if file is larger
     const long max_size = 100 * 1024;
@@ -101,13 +112,14 @@ int get_system_logs(char ***logs, int *count) {
 
     // Limit the maximum number of lines to prevent excessive memory usage
     const int max_lines = 500;
-    if (line_count > max_lines) {
+    int alloc_lines = line_count;
+    if (alloc_lines > max_lines) {
         log_info("Limiting log lines from %d to %d to prevent excessive memory usage", line_count, max_lines);
-        line_count = max_lines;
+        alloc_lines = max_lines;
     }
 
     // Allocate array of log strings
-    char **log_lines = calloc(line_count, sizeof(char *));
+    char **log_lines = calloc(alloc_lines, sizeof(char *));
     if (!log_lines) {
         log_error("Failed to allocate memory for log lines");
         free(buffer);
@@ -119,7 +131,7 @@ int get_system_logs(char ***logs, int *count) {
     char *line = strtok_r(buffer, "\n", &saveptr);
     int log_index = 0;
 
-    while (line != NULL && log_index < line_count) {
+    while (line != NULL && log_index < alloc_lines) {
         // Skip empty lines
         if (*line == '\0') {
             line = strtok_r(NULL, "\n", &saveptr);
@@ -148,9 +160,9 @@ int get_system_logs(char ***logs, int *count) {
     }
 
     // If we didn't read as many lines as expected, adjust the count
-    if (log_index < line_count) {
+    if (log_index < alloc_lines) {
         // Ensure any unused slots are NULL
-        for (int i = log_index; i < line_count; i++) {
+        for (int i = log_index; i < alloc_lines; i++) {
             log_lines[i] = NULL;
         }
     }
@@ -173,6 +185,13 @@ int get_system_logs(char ***logs, int *count) {
  * @return int 1 if the log level meets the minimum, 0 otherwise
  */
 int log_level_meets_minimum(const char *log_level, const char *min_level) {
+    // Validate input pointers to avoid passing NULL to strcmp
+    if (log_level == NULL || min_level == NULL) {
+        log_error("log_level_meets_minimum called with NULL argument: log_level=%p, min_level=%p",
+                  (void *)log_level, (void *)min_level);
+        return 0;
+    }
+
     // Convert log levels to numeric values for comparison
     int level_value = 2; // Default to INFO (2)
     int min_value = 2;   // Default to INFO (2)
@@ -199,13 +218,25 @@ int log_level_meets_minimum(const char *log_level, const char *min_level) {
         min_value = 3;
     }
 
-    // IMPORTANT: The logic here is inverted from what you might expect
-    // When min_level is "error" (0), we only want to include error logs (0)
-    // When min_level is "warning" (1), we want to include error (0) and warning (1)
-    // When min_level is "info" (2), we want to include error (0), warning (1), and info (2)
-    // When min_level is "debug" (3), we want to include all logs
-
-    // So we return true if the log level value is LESS THAN OR EQUAL TO the minimum level value
+    // NOTE: Lower numeric values represent *higher* severity:
+    //   error   = 0 (most severe)
+    //   warning = 1
+    //   info    = 2
+    //   debug   = 3 (least severe)
+    //
+    // The min_level parameter represents the least severe messages we still
+    // want to include. A log entry should be included if its severity is
+    // greater than or equal to this minimum severity (i.e., numerically
+    // less than or equal to min_value).
+    //
+    // Examples:
+    //   min_level = "error"  (0) -> include only "error"      (0)
+    //   min_level = "warning"(1) -> include "error"(0) and "warning"(1)
+    //   min_level = "info"   (2) -> include error(0), warning(1), info(2)
+    //   min_level = "debug"  (3) -> include all levels
+    //
+    // Therefore, we return true if the log level value is LESS THAN OR EQUAL
+    // TO the minimum level value.
     return level_value <= min_value;
 }
 
@@ -356,8 +387,8 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
     log_info("Handling POST /api/system/logs/clear request");
 
     // Get log file path
-    const char* log_file = "/var/log/lightnvr.log"; // Default log file path
-    const char* fallback_log_file = "./lightnvr.log"; // Fallback log file in current directory
+    const char* log_file = DEFAULT_LOG_FILE; // Default log file path
+    const char* fallback_log_file = FALLBACK_LOG_FILE; // Fallback log file in current directory
 
     // Check if config has a log file path
     if (g_config.log_file[0] != '\0') {
