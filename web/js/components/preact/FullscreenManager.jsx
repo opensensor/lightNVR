@@ -2,7 +2,6 @@
  * Fullscreen functionality for LiveView
  * React component for managing fullscreen mode
  */
-import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 

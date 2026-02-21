@@ -2,8 +2,6 @@
  * API Key Modal Component
  */
 
-import { h } from 'preact';
-
 /**
  * API Key Modal Component
  * @param {Object} props - Component props

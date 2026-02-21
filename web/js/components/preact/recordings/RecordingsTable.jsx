@@ -2,7 +2,6 @@
  * RecordingsTable component for RecordingsView
  */
 
-import { h } from 'preact';
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
 

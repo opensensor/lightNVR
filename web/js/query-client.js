@@ -3,9 +3,7 @@
  * TanStack Query (Preact Query) integration for Preact
  */
 
-// Import from preact/compat to ensure Preact compatibility
-import {h, createElement} from 'preact';
-import { 
+import {
   QueryClient, 
   QueryClientProvider,
   useQuery as originalUseQuery,

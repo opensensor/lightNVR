@@ -3,7 +3,6 @@
  * Preact component for displaying progress of batch delete operations
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 

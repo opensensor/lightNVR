@@ -2,7 +2,6 @@
  * Detection overlay component for LiveView
  * Renders a canvas overlay for displaying detection boxes on video streams
  */
-import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 

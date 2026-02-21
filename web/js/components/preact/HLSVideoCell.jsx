@@ -3,7 +3,6 @@
  * A self-contained component for displaying an HLS video stream
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';

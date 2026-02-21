@@ -4,7 +4,6 @@
  * with optional two-way audio (backchannel) support
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';

@@ -4,7 +4,6 @@
  * using WebSocket connection to go2rtc for low-latency streaming
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';

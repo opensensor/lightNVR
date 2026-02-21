@@ -2,7 +2,6 @@
  * Add User Modal Component
  */
 
-import { h } from 'preact';
 import { USER_ROLES } from './UserRoles.js';
 
 /**

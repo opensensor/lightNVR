@@ -3,7 +3,7 @@
  * JSX version of UI components
  */
 
-import { h, createContext } from 'preact';
+import { createContext } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.jsx';

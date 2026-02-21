@@ -2,7 +2,6 @@
  * Snapshot functionality for LiveView
  * React component for managing snapshots
  */
-import { h } from 'preact';
 import { useState, useCallback, useEffect } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showSnapshotPreview } from './UI.jsx';

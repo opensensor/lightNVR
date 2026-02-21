@@ -2,8 +2,6 @@
  * Delete User Modal Component
  */
 
-import { h } from 'preact';
-
 /**
  * Delete User Modal Component
  * @param {Object} props - Component props

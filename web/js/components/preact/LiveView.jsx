@@ -3,7 +3,6 @@
  * Preact component for the HLS live view page
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';

@@ -2,7 +2,6 @@
  * TOTP MFA Setup Modal Component
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import QRCode from 'qrcode';
 

@@ -4,7 +4,6 @@
  * Based on the accounting app's theme customization system
  */
 
-import { h } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { COLOR_THEMES, applyThemeColors } from '../../utils/theme-init.js';
 

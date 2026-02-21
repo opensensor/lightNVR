@@ -4,7 +4,6 @@
  * On hover, cycles through 3 thumbnail frames (start, middle, end).
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
 import { queueThumbnailLoad, Priority } from '../../../request-queue.js';

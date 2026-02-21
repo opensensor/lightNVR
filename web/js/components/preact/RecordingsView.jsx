@@ -3,7 +3,6 @@
  * Preact component for the recordings page
  */
 
-import { h } from 'preact';
 import { useState, useEffect, useRef, useContext } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';

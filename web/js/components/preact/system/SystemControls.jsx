@@ -3,7 +3,6 @@
  * Provides system restart control with a styled modal
  */
 
-import { h } from 'preact';
 import { useState } from 'preact/hooks';
 import { RestartModal } from './RestartModal.jsx';
 
