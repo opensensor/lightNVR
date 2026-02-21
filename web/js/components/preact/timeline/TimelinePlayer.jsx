@@ -15,7 +15,6 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 export function TimelinePlayer() {
   // Local state
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [segments, setSegments] = useState([]);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
@@ -29,7 +28,6 @@ export function TimelinePlayer() {
     const listener = state => {
       // Update local state
       setCurrentSegmentIndex(state.currentSegmentIndex);
-      setIsPlaying(state.isPlaying);
       setSegments(state.timelineSegments || []);
       setPlaybackSpeed(state.playbackSpeed);
 

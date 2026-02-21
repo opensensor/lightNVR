@@ -95,8 +95,7 @@ export function StreamsView() {
   // Fetch streams data
   const {
     data: streamsResponse = [],
-    isLoading,
-    error
+    isLoading
   } = useQuery(['streams'], '/api/streams', {
     timeout: 10000,
     retries: 2,

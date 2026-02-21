@@ -101,7 +101,6 @@ export function WebRTCVideoCell({
     // Store cleanup functions
     let connectionTimeout = null;
     let videoDataTimeout = null;
-    let statsInterval = null;
     let go2rtcBaseUrl = null;
 
     // Async function to initialize WebRTC

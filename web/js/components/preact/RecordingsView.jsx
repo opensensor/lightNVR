@@ -258,41 +258,6 @@ export function RecordingsView() {
     }
   }, [recordingsError]);
 
-  // Load filters from URL
-  const loadFiltersFromUrl = () => {
-    const urlFilters = urlUtils.getFiltersFromUrl();
-    if (urlFilters) {
-      // Check specifically for detection parameter
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-        // Ensure recordingType is set to 'detection'
-        urlFilters.filters.recordingType = 'detection';
-      }
-
-      setFilters(urlFilters.filters);
-      setPagination(prev => ({
-        ...prev,
-        currentPage: urlFilters.page || 1,
-        pageSize: urlFilters.limit || 20
-      }));
-      setSortField(urlFilters.sort || 'start_time');
-      setSortDirection(urlFilters.order || 'desc');
-
-      // If detection parameter is present, ensure it's included in the URL when we update it
-      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-        setTimeout(() => {
-          const currentUrl = new URL(window.location.href);
-          if (!currentUrl.searchParams.has('detection')) {
-            currentUrl.searchParams.set('detection', '1');
-            window.history.replaceState({ path: currentUrl.href }, '', currentUrl.href);
-          }
-        }, 0);
-      }
-
-      return urlFilters; // Return the filters so we can use them directly
-    }
-    return null;
-  };
 
   // State for data status
   const [hasData, setHasData] = useState(false);
@@ -626,7 +591,7 @@ export function RecordingsView() {
       }
     } else {
       // Use the recordingsAPI to delete all filtered recordings
-      const result = await recordingsAPI.deleteAllFilteredRecordings(filters);
+      await recordingsAPI.deleteAllFilteredRecordings(filters);
 
       // Reset selection
       setSelectedRecordings({});

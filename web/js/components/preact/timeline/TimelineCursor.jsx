@@ -16,7 +16,6 @@ export function TimelineCursor() {
   const [visible, setVisible] = useState(false);
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
-  const [currentTime, setCurrentTime] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // Refs
@@ -50,7 +49,6 @@ export function TimelineCursor() {
 
       // Only update current time if not dragging
       if (!isDragging && !state.userControllingCursor) {
-        setCurrentTime(state.currentTime);
         updateTimeDisplay(state.currentTime);
         debouncedUpdateCursorPosition(state.currentTime, state.timelineStartHour || 0, state.timelineEndHour || 24);
       }
@@ -99,9 +97,6 @@ export function TimelineCursor() {
 
       // Convert hour to timestamp using the utility function
       const timestamp = timelineState.timelineHourToTimestamp(hour, timelineState.selectedDate);
-
-      // Store the current time locally but don't update the global state yet
-      setCurrentTime(timestamp);
 
       // Update time display
       updateTimeDisplay(timestamp);

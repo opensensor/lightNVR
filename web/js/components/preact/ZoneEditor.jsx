@@ -418,15 +418,6 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     setCurrentZone(null);
   };
 
-  // Delete selected zone
-  const deleteSelectedZone = () => {
-    if (selectedZoneIndex !== null) {
-      const newZones = zoneList.filter((_, i) => i !== selectedZoneIndex);
-      setZoneList(newZones);
-      setSelectedZoneIndex(null);
-    }
-  };
-
   // Save zones
   const handleSave = async () => {
     try {

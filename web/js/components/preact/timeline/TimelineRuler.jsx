@@ -25,7 +25,6 @@ export function TimelineRuler() {
   // Generate hour markers and labels
   const generateHourMarkers = () => {
     const markers = [];
-    const hourWidth = 100 / (endHour - startHour);
 
     // Add hour markers and labels
     for (let hour = Math.floor(startHour); hour <= Math.ceil(endHour); hour++) {

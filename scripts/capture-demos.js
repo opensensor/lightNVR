@@ -71,19 +71,6 @@ async function login(page, username, password) {
   console.log('Login successful');
 }
 
-async function recordVideo(page, name, recordingFn) {
-  console.log(`\n=== Recording: ${name} ===`);
-  
-  // Start recording
-  const videoPath = path.join(config.outputDir, `${name}.webm`);
-  
-  // Playwright records video automatically if configured in context
-  // We'll use the page's video() method
-  await recordingFn(page);
-  
-  console.log(`✓ Recorded: ${videoPath}`);
-}
-
 async function demoZoneCreation(page) {
   console.log('\n=== Demo: Zone Creation ===');
   

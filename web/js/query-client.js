@@ -11,7 +11,7 @@ import {
   useQueryClient as originalUseQueryClient
 } from '@preact-signals/query';
 
-import { fetchJSON, enhancedFetch, createRequestController } from './fetch-utils.js';
+import { fetchJSON, createRequestController } from './fetch-utils.js';
 
 // Export QueryClient class, QueryClientProvider, and fetchJSON
 export { QueryClient, QueryClientProvider, fetchJSON };

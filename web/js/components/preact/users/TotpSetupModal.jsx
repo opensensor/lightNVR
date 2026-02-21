@@ -21,7 +21,6 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
   const [verifyCode, setVerifyCode] = useState('');
   const [error, setError] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
-  const [totpConfigured, setTotpConfigured] = useState(false);
   const canvasRef = useRef(null);
 
   const stopPropagation = (e) => e.stopPropagation();
@@ -50,12 +49,10 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
       if (res.ok) {
         const data = await res.json();
         setTotpEnabled(data.totp_enabled);
-        setTotpConfigured(data.totp_configured);
         setStep('status');
       } else {
         // TOTP columns may not exist yet
         setTotpEnabled(false);
-        setTotpConfigured(false);
         setStep('status');
       }
     } catch (err) {
@@ -120,7 +117,6 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
       });
       if (res.ok) {
         setTotpEnabled(false);
-        setTotpConfigured(false);
         setStep('status');
         if (onSuccess) onSuccess();
       } else {

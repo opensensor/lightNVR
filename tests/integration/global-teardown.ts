@@ -7,7 +7,6 @@
  */
 
 import { existsSync, readFileSync, rmSync } from 'fs';
-import { execSync } from 'child_process';
 
 const TEST_DIR = '/tmp/lightnvr-test';
 

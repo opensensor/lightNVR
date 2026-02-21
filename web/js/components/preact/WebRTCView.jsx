@@ -3,7 +3,7 @@
  * Preact component for the WebRTC view page
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';

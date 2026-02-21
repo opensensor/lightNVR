@@ -5,7 +5,7 @@
  * @tags @ui @roles @rbac
  */
 
-import { test, expect, APIRequestContext } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { LoginPage } from '../pages/LoginPage';
 import { CONFIG, USERS, login, sleep, getAuthHeader } from '../fixtures/test-fixtures';
 
