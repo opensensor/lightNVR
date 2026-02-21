@@ -327,15 +327,14 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Get system logs
     char **logs = NULL;
-    // log_count is used as both input (maximum number of logs requested)
-    // and output (actual number of logs returned) by get_json_logs_tail().
-    int log_count = DEFAULT_MAX_LOG_ENTRIES;  // Input: maximum number of logs to return
+    // max_log_count is the input (maximum number of logs requested)
+    // actual_log_count is the output (actual number of logs returned) by get_json_logs_tail().
+    int max_log_count = DEFAULT_MAX_LOG_ENTRIES;  // Input: maximum number of logs to return
+    int actual_log_count = max_log_count;         // Will be updated by get_json_logs_tail()
 
     // Second argument is the optional source/filter/context; NULL means "no specific filter" (use default system logs)
-    // Note: log_count is updated by get_json_logs_tail() to the actual number of logs returned.
-    const int result = get_json_logs_tail(level, NULL, &logs, &log_count);
-
-    int count = log_count;
+    // Note: actual_log_count is updated by get_json_logs_tail() to the actual number of logs returned.
+    const int result = get_json_logs_tail(level, NULL, &logs, &actual_log_count);
 
     if (result != 0 || !logs) {
         http_response_set_json_error(res, 500, "Failed to get system logs");
@@ -349,7 +348,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
         // Free logs
         if (logs) {
-            for (int i = 0; i < count; i++) {
+            for (int i = 0; i < actual_log_count; i++) {
                 if (logs[i]) {
                     free(logs[i]);
                 }
@@ -368,7 +367,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
         // Free logs
         if (logs) {
-            for (int i = 0; i < count; i++) {
+            for (int i = 0; i < actual_log_count; i++) {
                 if (logs[i]) {
                     free(logs[i]);
                 }
@@ -383,7 +382,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Parse and add logs to array as objects
     // Note: get_json_logs_tail returns JSON-formatted strings, so we need to parse them
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < actual_log_count; i++) {
         if (logs[i] != NULL) {
             // Parse the JSON string
             cJSON *log_json = cJSON_Parse(logs[i]);
@@ -431,7 +430,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
 
     // Clean up
     if (logs) {
-        for (int i = 0; i < count; i++) {
+        for (int i = 0; i < actual_log_count; i++) {
             if (logs[i]) {
                 free(logs[i]);
             }
