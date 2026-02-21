@@ -168,6 +168,7 @@ add_layer2_test(test_db_auth)
 add_layer2_test(test_db_transactions)
 add_layer2_test(test_db_maintenance)
 add_layer2_test(test_db_query_builder)
+add_layer2_test(test_logger_json)
 
 # ====================================================================
 # Layer 3: Integration tests — lightnvr_lib + FFmpeg
