@@ -19,9 +19,13 @@ const removeUseClientDirective = () => {
         const useClientRegex = /^\s*(['"])use client\1/m;
         if (useClientRegex.test(code)) {
           // Remove the "use client" directive and return the modified code
+          const transformedCode = code.replace(useClientRegex, '');
           return {
-            code: code.replace(useClientRegex, ''),
-            map: null // We're not generating a sourcemap for this transformation
+            code: transformedCode,
+            // Provide a basic sourcemap when sourcemaps are enabled; otherwise, disable it
+            map: process.env.BUILD_SOURCEMAPS === 'true'
+              ? { mappings: '' }
+              : null
           };
         }
       }
@@ -92,7 +96,7 @@ export default defineConfig({
           if (/\.css$/i.test(assetInfo.name)) {
             return `css/[name]-[hash][extname]`;
           }
-          return `assets/[name][extname]`;
+          return `assets/[name]-[hash][extname]`;
         },
       },
     },

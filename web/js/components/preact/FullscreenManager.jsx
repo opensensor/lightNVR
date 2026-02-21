@@ -31,9 +31,12 @@ export function useFullscreenManager() {
    * Toggle fullscreen mode
    */
   const toggleFullscreen = useCallback(() => {
-    console.log("Toggle fullscreen called, current state:", isFullscreen);
-    setIsFullscreen(prevState => !prevState);
-  }, [isFullscreen]);
+    setIsFullscreen(prevState => {
+      const nextState = !prevState;
+      console.log("Toggle fullscreen called, new state:", nextState);
+      return nextState;
+    });
+  }, []);
 
   return {
     isFullscreen,
@@ -86,9 +89,9 @@ export function FullscreenButton({ isFullscreen, onToggle }) {
         viewBox="0 0 24 24" 
         fill="none" 
         stroke="currentColor" 
-        stroke-width="2" 
-        stroke-linecap="round" 
-        stroke-linejoin="round"
+        strokeWidth="2" 
+        strokeLinecap="round" 
+        strokeLinejoin="round"
       >
         <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
       </svg>
@@ -152,3 +155,19 @@ export function FullscreenManager({ isFullscreen, setIsFullscreen, targetId = 'l
         setIsFullscreen(prev => !prev);
       }
     };
+
+    // Expose the wrapper globally for backward compatibility with existing code
+    if (typeof window !== 'undefined') {
+      window.toggleFullscreen = toggleFullscreenWrapper;
+    }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (typeof window !== 'undefined' && window.toggleFullscreen === toggleFullscreenWrapper) {
+        delete window.toggleFullscreen;
+      }
+    };
+  }, [setIsFullscreen]);
+
+  return null;
+}
