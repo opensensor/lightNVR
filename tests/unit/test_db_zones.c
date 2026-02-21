@@ -17,6 +17,7 @@
 #include "unity.h"
 #include "database/db_core.h"
 #include "database/db_zones.h"
+#include "database/db_streams.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_zones_test.db"
 
@@ -43,7 +44,25 @@ static void clear_zones(void) {
     sqlite3_exec(get_db_handle(), "DELETE FROM detection_zones;", NULL, NULL, NULL);
 }
 
-void setUp(void)    { clear_zones(); }
+/* Insert a stream row so FK constraints are satisfied for zone tests */
+static void ensure_test_stream(const char *stream_name) {
+    stream_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    strncpy(cfg.name, stream_name, sizeof(cfg.name) - 1);
+    strncpy(cfg.url, "rtsp://localhost/test", sizeof(cfg.url) - 1);
+    cfg.enabled = true;
+    cfg.width   = 1920;
+    cfg.height  = 1080;
+    cfg.fps     = 30;
+    cfg.protocol = STREAM_PROTOCOL_TCP;
+    add_stream_config(&cfg);
+}
+
+void setUp(void) {
+    sqlite3_exec(get_db_handle(), "DELETE FROM detection_zones;", NULL, NULL, NULL);
+    sqlite3_exec(get_db_handle(), "DELETE FROM streams;",         NULL, NULL, NULL);
+    ensure_test_stream("cam1");
+}
 void tearDown(void) {}
 
 /* save and get round-trip */

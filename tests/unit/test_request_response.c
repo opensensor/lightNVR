@@ -128,7 +128,8 @@ void test_extract_path_param(void) {
 void test_response_init_and_free(void) {
     http_response_t res;
     http_response_init(&res);
-    TEST_ASSERT_EQUAL_INT(0, res.status_code);
+    /* http_response_init sets default status_code to 200 */
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
     http_response_free(&res);
     TEST_PASS();
 }

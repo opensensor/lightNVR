@@ -20,6 +20,7 @@
 #include "unity.h"
 #include "database/db_core.h"
 #include "database/db_detections.h"
+#include "database/db_recordings.h"
 #include "video/detection_result.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_detections_test.db"
@@ -114,7 +115,26 @@ void test_update_detections_recording_id(void) {
     detection_result_t r = make_result("person", 0.95f);
     store_detections_in_db("cam6", &r, now - 5, 0);
 
-    int updated = update_detections_recording_id("cam6", 42, now - 10);
+    /* Create a real recording entry to satisfy the FK constraint */
+    recording_metadata_t rec;
+    memset(&rec, 0, sizeof(rec));
+    strncpy(rec.stream_name, "cam6",        sizeof(rec.stream_name) - 1);
+    strncpy(rec.file_path,   "/tmp/t.mp4",  sizeof(rec.file_path)   - 1);
+    strncpy(rec.codec,       "h264",        sizeof(rec.codec)        - 1);
+    strncpy(rec.trigger_type,"detection",   sizeof(rec.trigger_type) - 1);
+    rec.start_time   = now - 10;
+    rec.end_time     = now;
+    rec.size_bytes   = 1000;
+    rec.width        = 1920;
+    rec.height       = 1080;
+    rec.fps          = 30;
+    rec.is_complete  = true;
+    rec.retention_tier = RETENTION_TIER_STANDARD;
+
+    uint64_t rec_id = add_recording_metadata(&rec);
+    TEST_ASSERT_NOT_EQUAL(0, rec_id);
+
+    int updated = update_detections_recording_id("cam6", rec_id, now - 10);
     TEST_ASSERT_GREATER_OR_EQUAL(0, updated);
 }
 

@@ -13,6 +13,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <string.h>
 #include "unity.h"
 #include "storage/storage_manager.h"
 
@@ -29,10 +30,10 @@ void test_pressure_str_unknown_enum_value(void) {
     const char *s = disk_pressure_level_str((disk_pressure_level_t)999);
     TEST_ASSERT_NOT_NULL(s);
     /* It should not return one of the known strings */
-    TEST_ASSERT_NOT_EQUAL_STRING("Normal",    s);
-    TEST_ASSERT_NOT_EQUAL_STRING("Warning",   s);
-    TEST_ASSERT_NOT_EQUAL_STRING("Critical",  s);
-    TEST_ASSERT_NOT_EQUAL_STRING("Emergency", s);
+    TEST_ASSERT_TRUE(strcmp("Normal",    s) != 0);
+    TEST_ASSERT_TRUE(strcmp("Warning",   s) != 0);
+    TEST_ASSERT_TRUE(strcmp("Critical",  s) != 0);
+    TEST_ASSERT_TRUE(strcmp("Emergency", s) != 0);
 }
 
 /* ================================================================

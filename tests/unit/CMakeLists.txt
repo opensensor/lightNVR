@@ -117,6 +117,7 @@ macro(add_layer3_test TEST_NAME)
         lightnvr_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
+        ${CURL_LIBRARIES}
         ${SSL_LIBRARIES}
         ${HTTP_BACKEND_LIBS}
         inih_lib

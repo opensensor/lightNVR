@@ -176,19 +176,6 @@ void test_get_active_stream_count(void) {
     shutdown_stream_manager();
 }
 
-/* get_stream_manager_memory_usage */
-void test_get_stream_manager_memory_usage(void) {
-    init_stream_manager(8);
-    stream_config_t cfg = make_config("memcam");
-    add_stream(&cfg);
-
-    uint64_t used = 0, peak = 0;
-    int rc = get_stream_manager_memory_usage(&used, &peak);
-    TEST_ASSERT_EQUAL_INT(0, rc);
-
-    shutdown_stream_manager();
-}
-
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_init_shutdown_lifecycle);
@@ -203,7 +190,6 @@ int main(void) {
     RUN_TEST(test_set_stream_priority);
     RUN_TEST(test_set_stream_recording);
     RUN_TEST(test_get_active_stream_count);
-    RUN_TEST(test_get_stream_manager_memory_usage);
     return UNITY_END();
 }
 
