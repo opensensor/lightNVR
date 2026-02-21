@@ -1033,7 +1033,7 @@ export function StreamsView() {
       )}
 
       {onvifModalVisible && (
-        <div id="onvif-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
+        <div id="stream-onvif-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-4 border-b border-border">
               <h3 className="text-lg font-medium">{isEditing ? 'Edit Stream' : 'Add Stream'}</h3>

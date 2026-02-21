@@ -123,8 +123,8 @@ export function RecordingsView() {
   // Role is still loading if null
   const roleLoading = userRole === null;
   // Check if user can delete recordings (admin or user role, not viewer)
-  // While loading, default to enabled so admin/user doesn't see hidden buttons
-  const canDelete = roleLoading || userRole === 'admin' || userRole === 'user';
+  // While loading, keep delete disabled until authentication is verified
+  const canDelete = !roleLoading && (userRole === 'admin' || userRole === 'user');
 
   // Store modal context in window for global access
   useEffect(() => {
