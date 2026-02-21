@@ -221,14 +221,15 @@ export default defineConfig({
       async writeBundle() {
         try {
           // Create dist/css directory if it doesn't exist
-          await fsPromises.mkdir('dist/css', { recursive: true });
+          const distCssDir = resolve(__dirname, 'dist/css');
+          await fsPromises.mkdir(distCssDir, { recursive: true });
 
           // Ensure source css directory exists before reading
-          const srcCssDir = 'css';
+          const srcCssDir = resolve(__dirname, 'css');
           const cssDirExists = await pathExists(srcCssDir);
           if (!cssDirExists) {
             console.warn(
-              `Source CSS directory "${srcCssDir}" (resolved to "${resolve(__dirname, srcCssDir)}") does not exist; skipping CSS copy.`
+              `Source CSS directory "css" (resolved to "${srcCssDir}") does not exist; skipping CSS copy.`
             );
             return;
           }
@@ -243,8 +244,8 @@ export default defineConfig({
               continue;
             }
 
-            const srcPath = join('css', entry.name);
-            const destPath = join('dist/css', entry.name);
+            const srcPath = resolve(__dirname, 'css', entry.name);
+            const destPath = resolve(__dirname, 'dist/css', entry.name);
 
             try {
               await fsPromises.copyFile(srcPath, destPath);
@@ -265,17 +266,17 @@ export default defineConfig({
       async writeBundle() {
         try {
           // Create dist/img directory if it doesn't exist
-          await fsPromises.mkdir('dist/img', { recursive: true });
+          await fsPromises.mkdir(resolve(__dirname, 'dist/img'), { recursive: true });
 
           // Check if img directory exists using shared helper
-          const imgDirExists = await pathExists('img');
+          const imgDirExists = await pathExists(resolve(__dirname, 'img'));
           if (!imgDirExists) {
             console.log('No img directory found, skipping');
             return;
           }
 
           // Read all entries from img (files and possibly subdirectories)
-          const imgEntries = await fsPromises.readdir('img', { withFileTypes: true });
+          const imgEntries = await fsPromises.readdir(resolve(__dirname, 'img'), { withFileTypes: true });
 
           // Copy each image file to dist/img, skipping subdirectories and non-file entries
           for (const entry of imgEntries) {
@@ -285,8 +286,8 @@ export default defineConfig({
             const file = entry.name;
             try {
               await fsPromises.copyFile(
-                  join('img', file),
-                  join('dist/img', file)
+                  resolve(__dirname, 'img', file),
+                  resolve(__dirname, 'dist/img', file)
               );
               console.log(`Copied ${file} to dist/img/`);
             } catch (err) {
