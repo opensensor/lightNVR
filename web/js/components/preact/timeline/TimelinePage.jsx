@@ -179,7 +179,6 @@ export function TimelinePage() {
   // Load streams using preact-query
   const {
     data: streamsData,
-    isLoading: isLoadingStreams,
     error: streamsError
   } = useQuery('streams', '/api/streams', {
     timeout: 15000, // 15 second timeout
