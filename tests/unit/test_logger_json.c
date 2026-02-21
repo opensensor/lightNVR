@@ -122,9 +122,18 @@ void test_get_json_logs_error_level_filters_lower(void) {
     int count = 0;
     int rc = get_json_logs("error", "", &logs, &count);
     TEST_ASSERT_EQUAL_INT(0, rc);
-    /* Only ERROR (level_value==0) satisfies level_value <= min_value(0) */
-    /* +1 for the startup marker (INFO level) which may or may not appear */
+    /* At least one ERROR-level entry written in this test must be present. */
     TEST_ASSERT_GREATER_OR_EQUAL(1, count);
+
+    /* Verify that the ERROR-level log written in this test is present. */
+    int found_error_entry = 0;
+    for (int i = 0; i < count; i++) {
+        if (logs[i] != NULL && strstr(logs[i], "2025-01-01T00:01:00") != NULL) {
+            found_error_entry = 1;
+            break;
+        }
+    }
+    TEST_ASSERT_TRUE(found_error_entry);
 
     for (int i = 0; i < count; i++) free(logs[i]);
     free(logs);

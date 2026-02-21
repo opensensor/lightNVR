@@ -101,9 +101,9 @@ void test_safe_strcpy_truncation_returns_error(void) {
     char buf[4];
     int rc = safe_strcpy(buf, "hello_world", sizeof(buf));
     TEST_ASSERT_NOT_EQUAL(0, rc);
-    /* buf should still be null-terminated */
-    buf[sizeof(buf) - 1] = '\0';
-    TEST_ASSERT_NOT_NULL(buf);
+    /* buf should still be null-terminated and contain truncated data */
+    TEST_ASSERT_EQUAL_INT('\0', buf[sizeof(buf) - 1]);
+    TEST_ASSERT_EQUAL_STRING("hel", buf);
 }
 
 /* ================================================================

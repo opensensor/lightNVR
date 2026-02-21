@@ -300,13 +300,9 @@ void test_custom_config_path_roundtrip(void) {
  * ================================================================ */
 
 void test_get_loaded_config_path_initially(void) {
-    /* Without calling load_config(), the loaded path should be NULL or empty */
+    /* Without calling load_config(), the loaded path should be NULL */
     const char *path = get_loaded_config_path();
-    /* Either NULL or an empty-equivalent string is acceptable */
-    if (path != NULL) {
-        /* If non-NULL, it was set by a previous test; just pass */
-    }
-    TEST_PASS();
+    TEST_ASSERT_NULL(path);
 }
 
 /* ================================================================

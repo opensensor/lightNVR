@@ -114,18 +114,31 @@ void test_log_rotate_no_file_returns_error(void) {
  * ================================================================ */
 
 void test_set_log_file_with_temp_file(void) {
-    char template[] = "/tmp/lightnvr_test_XXXXXX";
-    int fd = mkstemp(template);
+    char file_template[] = "/tmp/lightnvr_test_XXXXXX";
+    int fd = mkstemp(file_template);
     TEST_ASSERT_NOT_EQUAL(-1, fd);
     close(fd);
 
-    int rc = set_log_file(template);
+    int rc = set_log_file(file_template);
     TEST_ASSERT_EQUAL_INT(0, rc);
 
-    /* After setting the file, logging should still work */
-    log_info("test_set_log_file_with_temp_file: log line");
+    /* After setting the file, logging should still work and write to the file */
+    const char *msg = "test_set_log_file_with_temp_file: log line";
+    log_info("%s", msg);
 
-    unlink(template);
+    /* Verify that the log message was actually written to the file */
+    FILE *fp = fopen(file_template, "r");
+    TEST_ASSERT_NOT_NULL(fp);
+
+    char buf[4096];
+    size_t nread = fread(buf, 1, sizeof(buf) - 1, fp);
+    TEST_ASSERT_TRUE(nread > 0);
+    buf[nread] = '\0';
+
+    TEST_ASSERT_NOT_NULL(strstr(buf, msg));
+
+    fclose(fp);
+    unlink(file_template);
 }
 
 void test_set_log_file_null_returns_error(void) {
@@ -138,19 +151,19 @@ void test_set_log_file_null_returns_error(void) {
  * ================================================================ */
 
 void test_log_rotate_below_threshold(void) {
-    char template[] = "/tmp/lightnvr_rotate_XXXXXX";
-    int fd = mkstemp(template);
+    char file_template[] = "/tmp/lightnvr_rotate_XXXXXX";
+    int fd = mkstemp(file_template);
     TEST_ASSERT_NOT_EQUAL(-1, fd);
     close(fd);
 
-    int rc = set_log_file(template);
+    int rc = set_log_file(file_template);
     TEST_ASSERT_EQUAL_INT(0, rc);
 
-    /* File is tiny; well above any reasonable threshold → no rotation */
+    /* File is tiny; well below the 1MB threshold → no rotation */
     rc = log_rotate(1024 * 1024, 3);
     TEST_ASSERT_EQUAL_INT(0, rc);
 
-    unlink(template);
+    unlink(file_template);
 }
 
 /* ================================================================
