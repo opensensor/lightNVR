@@ -139,8 +139,14 @@ export default defineConfig({
     },
     {
       name: 'handle-missing-app-js',
+      // List of HTML files that import a missing ./js/app.js and should be treated as external
+      MISSING_APP_JS_IMPORTERS: ['streams.html'],
       resolveId(id, importer) {
-        if (id === './js/app.js' && importer && basename(importer) === 'streams.html') {
+        if (
+          id === './js/app.js' &&
+          importer &&
+          this.MISSING_APP_JS_IMPORTERS.includes(basename(importer))
+        ) {
           // Return false to signal that this import should be treated as external
           // This will prevent Vite from trying to resolve it during build
           return false;
@@ -163,7 +169,7 @@ export default defineConfig({
             await fs.access('css');
           } catch (accessError) {
             if (accessError.code === 'ENOENT') {
-              console.warn('Source css directory does not exist; skipping CSS copy.');
+              console.warn('Source CSS directory does not exist; skipping CSS copy.');
               return;
             }
             throw accessError;

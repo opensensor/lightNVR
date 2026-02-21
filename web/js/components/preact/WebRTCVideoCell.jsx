@@ -13,6 +13,30 @@ import { PTZControls } from './PTZControls.jsx';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import 'webrtc-adapter';
 
+// Retry configuration for sending WebRTC offers to go2rtc.
+// Adjust these values to tune reliability vs. latency.
+const MAX_OFFER_RETRIES = 4;
+const BASE_RETRY_DELAY_MS = 1500; // 1.5s, 3s, 6s, 12s
+
+// Connection quality classification thresholds
+// Packet loss values are percentages (0-100), RTT and jitter are in seconds.
+const CONNECTION_QUALITY_THRESHOLDS = {
+  good: {
+    maxLossPercent: 2,
+    maxRttSeconds: 0.1,
+    maxJitterSeconds: 0.03
+  },
+  fair: {
+    maxLossPercent: 5,
+    maxRttSeconds: 0.3,
+    maxJitterSeconds: 0.1
+  },
+  poor: {
+    maxLossPercent: 15,
+    maxRttSeconds: 1
+  }
+};
+
 /**
  * WebRTCVideoCell component
  * @param {Object} props - Component props
@@ -450,8 +474,8 @@ export function WebRTCVideoCell({
         // On slower devices, go2rtc may not have the stream ready yet when we
         // first try to send the offer, resulting in a 404. We retry with
         // exponential backoff to give it time.
-        const maxOfferRetries = 4;
-        const baseRetryDelayMs = 1500; // 1.5s, 3s, 6s, 12s
+        const maxOfferRetries = MAX_OFFER_RETRIES;
+        const baseRetryDelayMs = BASE_RETRY_DELAY_MS;
 
         const sendOfferWithRetry = async (attempt) => {
           const response = await fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
@@ -544,11 +568,22 @@ export function WebRTCVideoCell({
           let quality = 'unknown';
           
           if (packetsReceived > 0) {
-            if (lossPercentage < 2 && currentRtt < 0.1 && jitter < 0.03) {
+            if (
+              lossPercentage < CONNECTION_QUALITY_THRESHOLDS.good.maxLossPercent &&
+              currentRtt < CONNECTION_QUALITY_THRESHOLDS.good.maxRttSeconds &&
+              jitter < CONNECTION_QUALITY_THRESHOLDS.good.maxJitterSeconds
+            ) {
               quality = 'good';
-            } else if (lossPercentage < 5 && currentRtt < 0.3 && jitter < 0.1) {
+            } else if (
+              lossPercentage < CONNECTION_QUALITY_THRESHOLDS.fair.maxLossPercent &&
+              currentRtt < CONNECTION_QUALITY_THRESHOLDS.fair.maxRttSeconds &&
+              jitter < CONNECTION_QUALITY_THRESHOLDS.fair.maxJitterSeconds
+            ) {
               quality = 'fair';
-            } else if (lossPercentage < 15 && currentRtt < 1) {
+            } else if (
+              lossPercentage < CONNECTION_QUALITY_THRESHOLDS.poor.maxLossPercent &&
+              currentRtt < CONNECTION_QUALITY_THRESHOLDS.poor.maxRttSeconds
+            ) {
               quality = 'poor';
             } else {
               quality = 'bad';
