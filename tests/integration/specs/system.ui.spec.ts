@@ -7,7 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 import { SystemPage } from '../pages/SystemPage';
-import { CONFIG, USERS, login, sleep } from '../fixtures/test-fixtures';
+import { USERS, login, sleep } from '../fixtures/test-fixtures';
 
 test.describe('System Page @ui @system', () => {
   
