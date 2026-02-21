@@ -144,11 +144,7 @@ export function FullscreenManager({ isFullscreen, setIsFullscreen, targetId = 'l
     const toggleFullscreenWrapper = (currentIsFullscreen, setterFunc) => {
       // If setterFunc is provided, use it (for backward compatibility)
       if (typeof setterFunc === 'function') {
-        if (!currentIsFullscreen) {
-          setterFunc(true);
-        } else {
-          setterFunc(false);
-        }
+        setterFunc(!currentIsFullscreen);
       } else {
         // Otherwise toggle our internal state
         setIsFullscreen(prev => !prev);
