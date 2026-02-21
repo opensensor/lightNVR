@@ -37,7 +37,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
       return;
     }
 
-    console.log('Fetching logs via HTTP API with level: debug (to get all logs, will filter on frontend)');
+    console.log('Fetching logs via HTTP API with level=debug (debug and above); additional filtering will be applied on the frontend');
 
     try {
       // Fetch logs from the API
