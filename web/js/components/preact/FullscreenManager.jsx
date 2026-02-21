@@ -152,13 +152,3 @@ export function FullscreenManager({ isFullscreen, setIsFullscreen, targetId = 'l
         setIsFullscreen(prev => !prev);
       }
     };
-  }, [setIsFullscreen]);
-
-  // Render the exit button if in fullscreen mode
-  return isFullscreen ? (
-    <FullscreenExitButton 
-      isFullscreen={isFullscreen} 
-      onExit={() => setIsFullscreen(false)} 
-    />
-  ) : null;
-}
