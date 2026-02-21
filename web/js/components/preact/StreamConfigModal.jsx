@@ -64,7 +64,6 @@ export function StreamConfigModal({
 }) {
   const [showZoneEditor, setShowZoneEditor] = useState(false);
   const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
-  const [zonesLoading, setZonesLoading] = useState(false);
 
   // Load zones from API when modal opens for existing stream
   useEffect(() => {
@@ -73,7 +72,6 @@ export function StreamConfigModal({
         return;
       }
 
-      setZonesLoading(true);
       try {
         const response = await fetch(`/api/streams/${encodeURIComponent(currentStream.name)}/zones`);
         if (response.ok) {
@@ -89,8 +87,6 @@ export function StreamConfigModal({
         }
       } catch (error) {
         console.error('Error loading zones:', error);
-      } finally {
-        setZonesLoading(false);
       }
     };
 
