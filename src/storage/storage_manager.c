@@ -21,10 +21,6 @@
 #include "core/logger.h"
 #include "core/mqtt_client.h"
 
-// Forward declarations for stream configuration
-typedef struct stream_config_t stream_config_t;
-int get_stream_config_by_name(const char *stream_name, stream_config_t *config);
-
 // Maximum number of streams to process at once
 #define MAX_STREAMS_BATCH 64
 // Maximum recordings to delete per stream per run
