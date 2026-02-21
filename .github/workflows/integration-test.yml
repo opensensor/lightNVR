@@ -77,7 +77,8 @@ jobs:
             test_db_auth \
             test_db_transactions \
             test_db_maintenance \
-            test_db_query_builder
+            test_db_query_builder \
+            test_logger_json
           echo "Unity test binaries built:"
           ls -la bin/test_*
 
@@ -85,7 +86,7 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure -V \
-            -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder"
+            -R "test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite|test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json"
 
       - name: Generate coverage report
         if: always()
