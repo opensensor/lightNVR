@@ -116,8 +116,6 @@ export function LoginView() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
 
     setIsLoggingIn(true);
     setErrorMessage('');
@@ -133,6 +131,7 @@ export function LoginView() {
 
       // Make login request with an explicit timeout using AbortController
       const controller = new AbortController();
+      abortControllerRef.current = controller;
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       let response;
@@ -165,9 +164,6 @@ export function LoginView() {
         // Successful login (no TOTP required or force MFA verified)
         console.log('Login successful, proceeding to redirect');
 
-        // Store credentials in localStorage for future requests, now that authentication succeeded
-        localStorage.setItem('auth', authString);
-
         // Redirect to the requested page, or the index if none / unsafe.
         const urlParams = new URLSearchParams(window.location.search);
         window.location.href = safeRedirectPath(urlParams.get('redirect'));
@@ -179,7 +175,6 @@ export function LoginView() {
         } else {
           setErrorMessage('Invalid credentials');
         }
-        localStorage.removeItem('auth');
         if (forceMfaEnabled) {
           setForceMfaTotpCode('');
         }
@@ -189,7 +184,6 @@ export function LoginView() {
       // Reset login state on error
       setIsLoggingIn(false);
       setErrorMessage('An error occurred during login. Please try again.');
-      localStorage.removeItem('auth');
     }
   };
 
