@@ -449,28 +449,6 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
     return 0;
 }
 
-/**
- * Check if recording is currently within the scheduled window for a stream config.
- * Returns true when recording should be active:
- *   - schedule mode is off (record_on_schedule == false), OR
- *   - the current local day-of-week / hour is enabled in the 168-slot schedule.
- * Day index: 0=Sunday … 6=Saturday  (matches tm_wday and the frontend DAYS array).
- */
-static bool is_recording_scheduled(const stream_config_t *config) {
-    if (!config->record_on_schedule) {
-        return true;
-    }
-
-    time_t now = time(NULL);
-    struct tm tm_info;
-    localtime_r(&now, &tm_info);
-
-    int index = tm_info.tm_wday * 24 + tm_info.tm_hour;
-    if (index < 0 || index >= 168) {
-        return true;  // Safety fallback
-    }
-    return config->recording_schedule[index] != 0;
-}
 
 /**
  * Start stream with state

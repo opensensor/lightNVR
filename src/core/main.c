@@ -1650,24 +1650,37 @@ static void check_and_ensure_services(void) {
         }
 
         if (current_config->streams[i].name[0] != '\0' && current_config->streams[i].enabled && current_config->streams[i].record) {
-            // Check if MP4 recording is active for this stream
-            int recording_state = get_recording_state(current_config->streams[i].name);
-            log_info("Recording state for stream %s: %d (1=active, 0=inactive)", current_config->streams[i].name, recording_state);
+            // Respect recording schedules: if record_on_schedule is enabled and the current
+            // time is outside the configured window, skip the recording start and let the
+            // schedule monitor thread (schedule_monitor_func) handle it at the right time.
+            // NOTE: we must NOT use "continue" here because the HLS and detection blocks
+            // below still need to run for this stream.
+            bool skip_scheduled_recording = current_config->streams[i].record_on_schedule &&
+                                            !is_recording_scheduled(&current_config->streams[i]);
 
-            if (recording_state == 0) {
-                // Recording is not active, start it
-                log_info("Ensuring MP4 recording is active for stream: %s", current_config->streams[i].name);
+            if (skip_scheduled_recording) {
+                log_debug("Service check: stream '%s' has record_on_schedule=true but current time is outside scheduled window — skipping recording",
+                         current_config->streams[i].name);
+            } else {
+                // Check if MP4 recording is active for this stream
+                int recording_state = get_recording_state(current_config->streams[i].name);
+                log_info("Recording state for stream %s: %d (1=active, 0=inactive)", current_config->streams[i].name, recording_state);
 
-                // Start MP4 recording (go2rtc integration handles runtime fallback)
-                #ifdef USE_GO2RTC
-                int rec_result = go2rtc_integration_start_recording(current_config->streams[i].name);
-                #else
-                int rec_result = start_mp4_recording(current_config->streams[i].name);
-                #endif
-                if (rec_result != 0) {
-                    log_warn("Failed to start MP4 recording for stream: %s", current_config->streams[i].name);
-                } else {
-                    log_info("Successfully started MP4 recording for stream: %s", current_config->streams[i].name);
+                if (recording_state == 0) {
+                    // Recording is not active, start it
+                    log_info("Ensuring MP4 recording is active for stream: %s", current_config->streams[i].name);
+
+                    // Start MP4 recording (go2rtc integration handles runtime fallback)
+                    #ifdef USE_GO2RTC
+                    int rec_result = go2rtc_integration_start_recording(current_config->streams[i].name);
+                    #else
+                    int rec_result = start_mp4_recording(current_config->streams[i].name);
+                    #endif
+                    if (rec_result != 0) {
+                        log_warn("Failed to start MP4 recording for stream: %s", current_config->streams[i].name);
+                    } else {
+                        log_info("Successfully started MP4 recording for stream: %s", current_config->streams[i].name);
+                    }
                 }
             }
         }

@@ -91,7 +91,7 @@ static pthread_cond_t  schedule_monitor_cond  = PTHREAD_COND_INITIALIZER;
  *   - schedule mode is disabled (record_on_schedule == false), OR
  *   - the current local day-of-week / hour is enabled in the 168-slot schedule.
  */
-static bool is_recording_scheduled(const stream_config_t *config) {
+bool is_recording_scheduled(const stream_config_t *config) {
     if (!config->record_on_schedule) {
         return true;  // No schedule restriction — always record when record=true
     }
@@ -133,38 +133,48 @@ static void *schedule_monitor_func(void *arg) {
             break;
         }
 
-        /* Check each stream */
-        for (int i = 0; i < MAX_STREAMS; i++) {
-            pthread_mutex_lock(&streams[i].mutex);
+        /* Read fresh stream configs from the database so that runtime
+         * schedule changes made through the web UI are picked up
+         * immediately, rather than relying on the stale in-memory
+         * streams[] array that was loaded at boot time. */
+        stream_config_t db_streams[MAX_STREAMS];
+        int count = get_all_stream_configs(db_streams, MAX_STREAMS);
 
+        for (int i = 0; i < count; i++) {
             /* Skip streams that don't need schedule management */
-            if (streams[i].config.name[0] == '\0' ||
-                !streams[i].config.record ||
-                !streams[i].config.record_on_schedule ||
-                streams[i].status != STREAM_STATUS_RUNNING) {
-                pthread_mutex_unlock(&streams[i].mutex);
+            if (db_streams[i].name[0] == '\0' ||
+                !db_streams[i].enabled ||
+                !db_streams[i].record ||
+                !db_streams[i].record_on_schedule) {
                 continue;
             }
 
-            char stream_name[MAX_STREAM_NAME];
-            strncpy(stream_name, streams[i].config.name, MAX_STREAM_NAME - 1);
-            stream_name[MAX_STREAM_NAME - 1] = '\0';
+            /* No "is stream running?" gate here.  After a reboot the
+             * state manager stays STREAM_STATE_INACTIVE because
+             * check_and_ensure_services() starts HLS / recording
+             * directly without calling start_stream().  If we gated
+             * on the state we would never fire.  Instead we just
+             * attempt the start/stop and let the underlying functions
+             * fail gracefully when the stream isn't actually up. */
 
-            stream_config_t config_copy;
-            memcpy(&config_copy, &streams[i].config, sizeof(stream_config_t));
-
-            pthread_mutex_unlock(&streams[i].mutex);
-
-            bool should_record = is_recording_scheduled(&config_copy);
-            bool is_recording  = (get_mp4_writer_for_stream(stream_name) != NULL);
+            bool should_record = is_recording_scheduled(&db_streams[i]);
+            bool is_recording  = (get_mp4_writer_for_stream(db_streams[i].name) != NULL);
 
             if (should_record && !is_recording) {
-                log_info("Schedule: starting recording for stream '%s'", stream_name);
-                start_mp4_recording_with_trigger(stream_name, "scheduled");
+                log_info("Schedule: starting recording for stream '%s'", db_streams[i].name);
+                #ifdef USE_GO2RTC
+                go2rtc_integration_start_recording(db_streams[i].name);
+                #else
+                start_mp4_recording_with_trigger(db_streams[i].name, "scheduled");
+                #endif
             } else if (!should_record && is_recording) {
-                log_info("Schedule: stopping recording for stream '%s'", stream_name);
-                stop_mp4_recording(stream_name);
-                stop_recording(stream_name);
+                log_info("Schedule: stopping recording for stream '%s'", db_streams[i].name);
+                #ifdef USE_GO2RTC
+                go2rtc_integration_stop_recording(db_streams[i].name);
+                #else
+                stop_mp4_recording(db_streams[i].name);
+                #endif
+                stop_recording(db_streams[i].name);
             }
         }
     }
