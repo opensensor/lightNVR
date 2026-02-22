@@ -757,8 +757,12 @@ int start_stream(stream_handle_t handle) {
     // Start recording if enabled - completely independent of streaming status
     int mp4_result = 0;
     if (recording_enabled) {
-        // Start MP4 recording directly
+        // Route through go2rtc integration when available
+        #ifdef USE_GO2RTC
+        mp4_result = go2rtc_integration_start_recording(stream_name);
+        #else
         mp4_result = start_mp4_recording(stream_name);
+        #endif
         if (mp4_result != 0) {
             log_error("Failed to start MP4 recording for '%s'", stream_name);
         } else {

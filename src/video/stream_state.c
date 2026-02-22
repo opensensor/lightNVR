@@ -15,6 +15,9 @@
 #include "video/detection.h"
 #include "video/stream_transcoding.h"
 #include "video/streams.h"
+#ifdef USE_GO2RTC
+#include "video/go2rtc/go2rtc_integration.h"
+#endif
 
 /**
  * BUGFIX: Modified stop_stream_with_state to always stop HLS streaming and MP4 recording
@@ -427,9 +430,13 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
                 }
             } else if (strcmp(feature, "recording") == 0) {
                 if (enabled) {
-                    // Start recording
-                    log_info("Calling start_mp4_recording for stream '%s'", state->name);
+                    // Start recording — route through go2rtc when available
+                    log_info("Starting recording for stream '%s'", state->name);
+                    #ifdef USE_GO2RTC
+                    go2rtc_integration_start_recording(state->name);
+                    #else
                     start_mp4_recording(state->name);
+                    #endif
                 } else {
                     // Stop recording
                     log_info("Calling stop_mp4_recording for stream '%s'", state->name);
@@ -513,7 +520,11 @@ int start_stream_with_state(stream_state_manager_t *state) {
             // The schedule monitor will start recording when the window opens
             any_component_started = true; // Stream itself is still considered started
         } else {
+            #ifdef USE_GO2RTC
+            int mp4_result = go2rtc_integration_start_recording(state->name);
+            #else
             int mp4_result = start_mp4_recording(state->name);
+            #endif
             if (mp4_result != 0) {
                 log_error("Failed to start MP4 recording for '%s'", state->name);
             } else {
