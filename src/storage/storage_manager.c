@@ -821,12 +821,21 @@ static void standard_cleanup_cycle(void) {
             if (base_retention <= 0) base_retention = 30;
 
             // Build tier multipliers array: [critical, important, standard, ephemeral]
+            // Guard against 0.0 values (streams created before migration or via old API)
+            // to prevent immediate deletion of all recordings.
             double tier_mults[4] = {
-                sconfig.tier_critical_multiplier,   // RETENTION_TIER_CRITICAL = 0
-                sconfig.tier_important_multiplier,  // RETENTION_TIER_IMPORTANT = 1
+                sconfig.tier_critical_multiplier  > 0.0 ? sconfig.tier_critical_multiplier  : 3.0,
+                sconfig.tier_important_multiplier > 0.0 ? sconfig.tier_important_multiplier : 2.0,
                 1.0,                                // RETENTION_TIER_STANDARD = 2
-                sconfig.tier_ephemeral_multiplier   // RETENTION_TIER_EPHEMERAL = 3
+                sconfig.tier_ephemeral_multiplier > 0.0 ? sconfig.tier_ephemeral_multiplier : 0.25
             };
+            if (sconfig.tier_critical_multiplier  <= 0.0 ||
+                sconfig.tier_important_multiplier <= 0.0 ||
+                sconfig.tier_ephemeral_multiplier <= 0.0) {
+                log_warn("Stream '%s' has zero tier multipliers in database – using defaults (3.0/2.0/0.25). "
+                         "Update the stream via the API to persist correct values.",
+                         stream_names[s]);
+            }
 
             int count = get_recordings_for_tiered_retention(
                 stream_names[s], base_retention,

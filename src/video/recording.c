@@ -101,6 +101,11 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     recording_metadata_t metadata;
     memset(&metadata, 0, sizeof(recording_metadata_t));
 
+    // Default to STANDARD tier so recordings aren't deleted immediately;
+    // RETENTION_TIER_CRITICAL (0) would use 3× multiplier but the zero
+    // from memset would make them look critical AND hit the 0-multiplier bug.
+    metadata.retention_tier = RETENTION_TIER_STANDARD;
+
     strncpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name) - 1);
 
     // Format paths for the recording - MAKE SURE THIS POINTS TO REAL FILES
