@@ -19,6 +19,7 @@
 #include "video/detection_result.h"
 #include "video/detection_model.h"
 #include "video/sod_detection.h"
+#ifdef SOD_ENABLED
 #include "sod/sod.h"
 
 // SOD library function pointers for dynamic loading
@@ -38,6 +39,7 @@ typedef struct {
 
 // Global SOD functions
 static sod_functions_t sod_funcs = {0};
+#endif /* SOD_ENABLED */
 static bool sod_available = false;
 
 // SOD model structure
@@ -175,7 +177,12 @@ void cleanup_sod_model(detection_model_t model) {
             // which is what was causing the Valgrind errors
             void *temp = sod_model_ptr;
             sod_model_ptr = NULL;
+#ifdef SOD_ENABLED
             sod_cnn_destroy(temp);
+#else
+            log_error("SOD support not enabled, cannot destroy SOD model");
+            (void)temp;
+#endif
         }
     }
 
@@ -200,13 +207,6 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
         log_error("SOD library not available");
         return NULL;
     }
-
-    // Load the model using SOD API
-    void *sod_model = NULL;
-    const char *err_msg = NULL;
-
-    // Create CNN model
-    int rc;
 
     // Check if this is a face detection model based on filename or path
     const char *arch = "default";
@@ -238,6 +238,12 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
         log_info("Could not determine model architecture from name, defaulting to :face for: %s", model_path);
         arch = ":face";
     }
+
+#ifdef SOD_ENABLED
+    // Load the model using SOD API
+    void *sod_model = NULL;
+    const char *err_msg = NULL;
+    int rc;
 
     // Use static linking
     sod_cnn *cnn_model = NULL;
@@ -279,6 +285,11 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
 
     log_info("SOD model loaded: %s with threshold %.2f", model_path, threshold);
     return model;
+#else
+    (void)arch;
+    log_error("SOD support not enabled, cannot load SOD model");
+    return NULL;
+#endif /* SOD_ENABLED */
 }
 
 /**
@@ -310,6 +321,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         return -1;
     }
 
+#ifdef SOD_ENABLED
     // Step 1: Create a SOD image
     log_info("Step 1: Creating SOD image from frame data (dimensions: %dx%d, channels: %d)",
             width, height, channels);
@@ -566,4 +578,8 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // It's automatically freed when we call sod_free_image(img)
 
     return 0;
+#else
+    log_error("SOD support not enabled");
+    return -1;
+#endif /* SOD_ENABLED */
 }

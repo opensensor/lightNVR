@@ -21,7 +21,9 @@
 #include "video/sod_realnet.h"
 #include "video/api_detection.h"
 #include "video/onvif_detection.h"
+#ifdef SOD_ENABLED
 #include "sod/sod.h"  // For sod_cnn_destroy
+#endif
 
 // Static variable to track if we're in shutdown mode
 static bool in_shutdown_mode = false;
@@ -517,7 +519,11 @@ void unload_detection_model(detection_model_t model) {
             void *sod_model = m->sod;
             if (sod_model) {
                 log_info("Destroying SOD model");
+#ifdef SOD_ENABLED
                 sod_cnn_destroy(sod_model);
+#else
+                log_error("SOD support not enabled, cannot destroy SOD model");
+#endif
                 // Set the model pointer to NULL to prevent double-free
                 m->sod = NULL;
             }
