@@ -439,6 +439,13 @@ static const char migration_0025_down[] =
     "DROP INDEX IF EXISTS idx_events_timestamp;\n"
     "DROP INDEX IF EXISTS idx_detections_recording_id;";
 
+static const char migration_0026_up[] =
+    "ALTER TABLE streams ADD COLUMN record_on_schedule INTEGER NOT NULL DEFAULT 0;\n"
+    "ALTER TABLE streams ADD COLUMN recording_schedule TEXT DEFAULT NULL;";
+
+static const char migration_0026_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -615,8 +622,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0025_down,
         .is_embedded = true
     },
+    {
+        .version = "0026",
+        .description = "add_recording_schedule",
+        .sql_up = migration_0026_up,
+        .sql_down = migration_0026_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 25
+#define EMBEDDED_MIGRATIONS_COUNT 26
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

@@ -450,6 +450,29 @@ int set_stream_feature(stream_state_manager_t *state, const char *feature, bool 
 }
 
 /**
+ * Check if recording is currently within the scheduled window for a stream config.
+ * Returns true when recording should be active:
+ *   - schedule mode is off (record_on_schedule == false), OR
+ *   - the current local day-of-week / hour is enabled in the 168-slot schedule.
+ * Day index: 0=Sunday … 6=Saturday  (matches tm_wday and the frontend DAYS array).
+ */
+static bool is_recording_scheduled(const stream_config_t *config) {
+    if (!config->record_on_schedule) {
+        return true;
+    }
+
+    time_t now = time(NULL);
+    struct tm tm_info;
+    localtime_r(&now, &tm_info);
+
+    int index = tm_info.tm_wday * 24 + tm_info.tm_hour;
+    if (index < 0 || index >= 168) {
+        return true;  // Safety fallback
+    }
+    return config->recording_schedule[index] != 0;
+}
+
+/**
  * Start stream with state
  */
 int start_stream_with_state(stream_state_manager_t *state) {
@@ -504,14 +527,21 @@ int start_stream_with_state(stream_state_manager_t *state) {
         }
     }
 
-    // Start recording if enabled
+    // Start recording if enabled and within the scheduled window (if configured)
     if (recording_enabled) {
-        int mp4_result = start_mp4_recording(state->name);
-        if (mp4_result != 0) {
-            log_error("Failed to start MP4 recording for '%s'", state->name);
+        bool schedule_ok = is_recording_scheduled(&state->config);
+        if (!schedule_ok) {
+            log_info("Stream '%s': recording deferred — outside scheduled window", state->name);
+            // The schedule monitor will start recording when the window opens
+            any_component_started = true; // Stream itself is still considered started
         } else {
-            log_info("Started recording for '%s'", state->name);
-            any_component_started = true;
+            int mp4_result = start_mp4_recording(state->name);
+            if (mp4_result != 0) {
+                log_error("Failed to start MP4 recording for '%s'", state->name);
+            } else {
+                log_info("Started recording for '%s'", state->name);
+                any_component_started = true;
+            }
         }
     }
 

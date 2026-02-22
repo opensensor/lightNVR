@@ -72,7 +72,14 @@ typedef struct {
     int ptz_max_y;                   // Maximum Y (tilt) position (0 = no limit)
     int ptz_max_z;                   // Maximum Z (zoom) position (0 = no limit)
     bool ptz_has_home;               // Whether the camera supports home position
+
+    // Recording schedule configuration
+    bool record_on_schedule;         // When true, only record during scheduled hours
+    uint8_t recording_schedule[168]; // 7 days x 24 hours: [day*24+hour] = 1 to record, 0 to skip
 } stream_config_t;
+
+// Size of recording schedule text buffer: 168 values + 167 commas + null terminator
+#define RECORDING_SCHEDULE_TEXT_SIZE 512
 
 // Main configuration structure
 typedef struct {

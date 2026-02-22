@@ -17,6 +17,52 @@
 #include "core/config.h"
 
 /**
+ * Serialize recording_schedule uint8_t[168] to comma-separated text string.
+ * Output: "1,0,1,1,..." (168 values)
+ * Buffer must be at least RECORDING_SCHEDULE_TEXT_SIZE bytes.
+ */
+static void serialize_recording_schedule(const uint8_t *schedule, char *buf, size_t buf_size) {
+    if (!schedule || !buf || buf_size < 4) {
+        if (buf && buf_size > 0) buf[0] = '\0';
+        return;
+    }
+    int pos = 0;
+    for (int i = 0; i < 168; i++) {
+        int written = snprintf(buf + pos, buf_size - pos, "%s%d",
+                               (i > 0) ? "," : "", schedule[i] ? 1 : 0);
+        if (written < 0 || (size_t)(pos + written) >= buf_size) break;
+        pos += written;
+    }
+}
+
+/**
+ * Deserialize recording_schedule from comma-separated text string to uint8_t[168].
+ * If the text is NULL/empty/invalid, all hours default to 1 (always record).
+ */
+static void deserialize_recording_schedule(const char *text, uint8_t *schedule) {
+    if (!schedule) return;
+    if (!text || text[0] == '\0') {
+        // Default: always record
+        memset(schedule, 1, 168);
+        return;
+    }
+    char buf[RECORDING_SCHEDULE_TEXT_SIZE];
+    strncpy(buf, text, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+
+    int idx = 0;
+    char *token = strtok(buf, ",");
+    while (token && idx < 168) {
+        schedule[idx++] = (uint8_t)(atoi(token) ? 1 : 0);
+        token = strtok(NULL, ",");
+    }
+    // Fill remaining slots with 1 if string was short
+    while (idx < 168) {
+        schedule[idx++] = 1;
+    }
+}
+
+/**
  * Add a stream configuration to the database
  *
  * @param stream Stream configuration to add
@@ -75,7 +121,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, "
                                 "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                                 "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
-                                "onvif_username = ?, onvif_password = ?, onvif_profile = ? "
+                                "onvif_username = ?, onvif_password = ?, onvif_profile = ?, "
+                                "record_on_schedule = ?, recording_schedule = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -145,8 +192,14 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         sqlite3_bind_text(stmt, 37, stream->onvif_password, -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 38, stream->onvif_profile, -1, SQLITE_STATIC);
 
+        // Bind recording schedule parameters
+        sqlite3_bind_int(stmt, 39, stream->record_on_schedule ? 1 : 0);
+        char schedule_buf[RECORDING_SCHEDULE_TEXT_SIZE];
+        serialize_recording_schedule(stream->recording_schedule, schedule_buf, sizeof(schedule_buf));
+        sqlite3_bind_text(stmt, 40, schedule_buf, -1, SQLITE_TRANSIENT);
+
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 39, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 41, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -193,8 +246,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "retention_days, detection_retention_days, max_storage_mb, "
           "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
           "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
-          "onvif_username, onvif_password, onvif_profile) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "onvif_username, onvif_password, onvif_profile, "
+          "record_on_schedule, recording_schedule) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -264,6 +318,12 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 38, stream->onvif_password, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 39, stream->onvif_profile, -1, SQLITE_STATIC);
 
+    // Bind recording schedule parameters
+    sqlite3_bind_int(stmt, 40, stream->record_on_schedule ? 1 : 0);
+    char insert_schedule_buf[RECORDING_SCHEDULE_TEXT_SIZE];
+    serialize_recording_schedule(stream->recording_schedule, insert_schedule_buf, sizeof(insert_schedule_buf));
+    sqlite3_bind_text(stmt, 41, insert_schedule_buf, -1, SQLITE_TRANSIENT);
+
     // Execute statement
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
@@ -320,7 +380,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Schema migrations should have already been run during database initialization
     // No need to check for columns here anymore
 
-    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, PTZ, and ONVIF credentials
+    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, PTZ, ONVIF credentials, and recording schedule
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
@@ -331,7 +391,8 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "backchannel_enabled = ?, retention_days = ?, detection_retention_days = ?, max_storage_mb = ?, "
                       "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                       "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
-                      "onvif_username = ?, onvif_password = ?, onvif_profile = ? "
+                      "onvif_username = ?, onvif_password = ?, onvif_profile = ?, "
+                      "record_on_schedule = ?, recording_schedule = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -402,8 +463,14 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 38, stream->onvif_password, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 39, stream->onvif_profile, -1, SQLITE_STATIC);
 
+    // Bind recording schedule parameters
+    sqlite3_bind_int(stmt, 40, stream->record_on_schedule ? 1 : 0);
+    char update_schedule_buf[RECORDING_SCHEDULE_TEXT_SIZE];
+    serialize_recording_schedule(stream->recording_schedule, update_schedule_buf, sizeof(update_schedule_buf));
+    sqlite3_bind_text(stmt, 41, update_schedule_buf, -1, SQLITE_TRANSIENT);
+
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 40, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 42, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -630,7 +697,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "retention_days, detection_retention_days, max_storage_mb, "
         "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
-        "onvif_username, onvif_password, onvif_profile "
+        "onvif_username, onvif_password, onvif_profile, "
+        "record_on_schedule, recording_schedule "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -644,7 +712,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
         COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
-        COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE
+        COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE,
+        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -781,6 +850,11 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
             stream->onvif_profile[sizeof(stream->onvif_profile) - 1] = '\0';
         }
 
+        // Recording schedule
+        stream->record_on_schedule = sqlite3_column_int(stmt, COL_RECORD_ON_SCHEDULE) != 0;
+        const char *recording_schedule_text = (const char *)sqlite3_column_text(stmt, COL_RECORDING_SCHEDULE);
+        deserialize_recording_schedule(recording_schedule_text, stream->recording_schedule);
+
         result = 0;
     }
 
@@ -830,7 +904,8 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         "protocol, is_onvif, record_audio, backchannel_enabled, "
         "retention_days, detection_retention_days, max_storage_mb, "
         "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
-        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home "
+        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
+        "record_on_schedule, recording_schedule "
         "FROM streams ORDER BY name;";
 
     // Column index constants (same as get_stream_config_by_name, minus ONVIF creds)
@@ -843,7 +918,8 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         COL_PROTOCOL, COL_IS_ONVIF, COL_RECORD_AUDIO, COL_BACKCHANNEL_ENABLED,
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
         COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
-        COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME
+        COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
+        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -959,6 +1035,11 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         s->ptz_max_z = (sqlite3_column_type(stmt, COL_PTZ_MAX_Z) != SQLITE_NULL)
             ? sqlite3_column_int(stmt, COL_PTZ_MAX_Z) : 0;
         s->ptz_has_home = sqlite3_column_int(stmt, COL_PTZ_HAS_HOME) != 0;
+
+        // Recording schedule
+        s->record_on_schedule = sqlite3_column_int(stmt, COL_RECORD_ON_SCHEDULE) != 0;
+        const char *recording_schedule_text = (const char *)sqlite3_column_text(stmt, COL_RECORDING_SCHEDULE);
+        deserialize_recording_schedule(recording_schedule_text, s->recording_schedule);
 
         count++;
     }

@@ -528,6 +528,26 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.ptz_has_home = cJSON_IsTrue(ptz_has_home);
     }
 
+    // Parse recording schedule settings
+    cJSON *record_on_schedule = cJSON_GetObjectItem(stream_json, "record_on_schedule");
+    if (record_on_schedule && cJSON_IsBool(record_on_schedule)) {
+        config.record_on_schedule = cJSON_IsTrue(record_on_schedule);
+    }
+
+    cJSON *recording_schedule = cJSON_GetObjectItem(stream_json, "recording_schedule");
+    if (recording_schedule && cJSON_IsArray(recording_schedule)) {
+        int arr_size = cJSON_GetArraySize(recording_schedule);
+        if (arr_size == 168) {
+            for (int j = 0; j < 168; j++) {
+                cJSON *item = cJSON_GetArrayItem(recording_schedule, j);
+                config.recording_schedule[j] = (item && cJSON_IsTrue(item)) ? 1 : 0;
+            }
+        }
+    } else {
+        // Default: all hours enabled
+        memset(config.recording_schedule, 1, sizeof(config.recording_schedule));
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -1012,6 +1032,38 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config.ptz_has_home = new_ptz_has_home;
             config_changed = true;
             // PTZ is metadata only, doesn't require restart
+        }
+    }
+
+    // Parse recording schedule settings - metadata only, don't require restart
+    cJSON *record_on_schedule = cJSON_GetObjectItem(stream_json, "record_on_schedule");
+    if (record_on_schedule && cJSON_IsBool(record_on_schedule)) {
+        bool new_ros = cJSON_IsTrue(record_on_schedule);
+        if (config.record_on_schedule != new_ros) {
+            config.record_on_schedule = new_ros;
+            config_changed = true;
+            log_info("Recording schedule mode changed to %s for stream %s",
+                    new_ros ? "enabled" : "disabled", config.name);
+        }
+    }
+
+    cJSON *recording_schedule = cJSON_GetObjectItem(stream_json, "recording_schedule");
+    if (recording_schedule && cJSON_IsArray(recording_schedule)) {
+        int arr_size = cJSON_GetArraySize(recording_schedule);
+        if (arr_size == 168) {
+            bool schedule_changed = false;
+            for (int j = 0; j < 168; j++) {
+                cJSON *item = cJSON_GetArrayItem(recording_schedule, j);
+                uint8_t new_val = (item && cJSON_IsTrue(item)) ? 1 : 0;
+                if (config.recording_schedule[j] != new_val) {
+                    config.recording_schedule[j] = new_val;
+                    schedule_changed = true;
+                }
+            }
+            if (schedule_changed) {
+                config_changed = true;
+                log_info("Recording schedule updated for stream %s", config.name);
+            }
         }
     }
 
