@@ -3,7 +3,7 @@
  * Handles polling for logs via HTTP API
  */
 
-import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import { useEffect, useRef, useCallback } from 'preact/hooks';
 import { fetchJSON } from '../../../fetch-utils.js';
 import { log_level_meets_minimum } from './SystemUtils.js';
 
@@ -17,11 +17,17 @@ import { log_level_meets_minimum } from './SystemUtils.js';
  * @returns {JSX.Element} LogsPoller component (invisible)
  */
 export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsReceived }) {
-  const [isPolling, setIsPolling] = useState(false);
-  const pollingIntervalRef = useRef(null);
   const lastTimestampRef = useRef(null);
 
-  // Try to load the last timestamp from localStorage on initial render
+  // Keep refs to the latest prop values so fetchLogs never needs to be recreated.
+  // Assigning directly in render (not in an effect) ensures they are always current
+  // before the next fetch fires.
+  const onLogsReceivedRef = useRef(onLogsReceived);
+  const logLevelRef = useRef(logLevel);
+  onLogsReceivedRef.current = onLogsReceived;
+  logLevelRef.current = logLevel;
+
+  // Load saved timestamp from localStorage on mount
   useEffect(() => {
     const savedTimestamp = localStorage.getItem('lastLogTimestamp');
     if (savedTimestamp) {
@@ -30,9 +36,10 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
     }
   }, []);
 
-  // Function to fetch logs via HTTP API
+  // Stable fetch function — created once, reads latest values via refs.
+  // No dependency on logLevel or onLogsReceived, so it never recreates and
+  // never causes the polling interval to restart unexpectedly.
   const fetchLogs = useCallback(async () => {
-    // Only fetch if we're on the system page
     if (!document.getElementById('system-page')) {
       console.log('Not on system page, skipping log fetch');
       return;
@@ -41,7 +48,6 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
     console.log('Fetching logs via HTTP API with level=debug (debug and above); additional filtering will be applied on the frontend');
 
     try {
-      // Fetch logs from the API
       const response = await fetchJSON('/api/system/logs?level=debug', {
         timeout: 10000,
         retries: 1
@@ -52,27 +58,18 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
         const cleanedLogs = response.logs.map(log => {
           const normalizedLog = {
             timestamp: log.timestamp || 'Unknown',
-            level: log.level || 'info',
+            level: String(log.level || 'info').toLowerCase(),
             message: log.message || ''
           };
-
-          // Convert level to lowercase for consistency
-          if (normalizedLog.level) {
-            normalizedLog.level = normalizedLog.level.toLowerCase();
-          }
-
           // Normalize 'warn' to 'warning'
           if (normalizedLog.level === 'warn') {
             normalizedLog.level = 'warning';
           }
-
           return normalizedLog;
         });
 
         // Sort logs by timestamp (newest first)
-        cleanedLogs.sort((a, b) => {
-          return new Date(b.timestamp) - new Date(a.timestamp);
-        });
+        cleanedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         // Update last timestamp for future reference
         if (cleanedLogs.length > 0 && cleanedLogs[0].timestamp) {
@@ -81,26 +78,23 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
           console.log('Updated and saved last log timestamp:', cleanedLogs[0].timestamp);
         }
 
-        // Filter logs on the frontend according to the provided logLevel (if any)
-        // Use hierarchical comparison: logLevel='debug' includes all levels,
-        // logLevel='info' includes info/warning/error, etc.
+        // Filter using the latest logLevel from the ref (hierarchical: 'debug' = all)
+        const currentLevel = logLevelRef.current;
         let filteredLogs = cleanedLogs;
-        if (logLevel) {
-          const normalizedLevel = String(logLevel).toLowerCase();
+        if (currentLevel) {
+          const normalizedLevel = String(currentLevel).toLowerCase();
           filteredLogs = cleanedLogs.filter(log => log_level_meets_minimum(log.level, normalizedLevel));
         }
 
-        // Call the callback with the (optionally filtered) logs
         console.log(`Received ${filteredLogs.length} logs via HTTP API after filtering`);
-        onLogsReceived(filteredLogs);
+        onLogsReceivedRef.current(filteredLogs);
       } else {
         console.log('No logs received from API');
       }
     } catch (error) {
       console.error('Error fetching logs:', error);
-      // Don't throw - just log the error and continue polling
     }
-  }, [logLevel, onLogsReceived]);
+  }, []); // stable — refs keep it up-to-date without recreation
 
   // Listen for manual refresh events
   useEffect(() => {
@@ -108,64 +102,29 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
       console.log('Received refresh-logs event, triggering fetch');
       fetchLogs();
     };
-
     window.addEventListener('refresh-logs', handleRefreshEvent);
-
-    return () => {
-      window.removeEventListener('refresh-logs', handleRefreshEvent);
-    };
+    return () => window.removeEventListener('refresh-logs', handleRefreshEvent);
   }, [fetchLogs]);
 
-  // Start/stop polling when isPolling or pollingInterval changes
+  // Start polling and restart ONLY when pollingInterval changes.
+  // logLevel / logCount changes do NOT restart the interval — the next scheduled
+  // fetch will automatically use the latest values via refs.
   useEffect(() => {
-    // Clear any existing interval
-    if (pollingIntervalRef.current) {
-      console.log('Clearing existing polling interval');
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
+    console.log(`LogsPoller: Starting polling with interval: ${pollingInterval}ms`);
 
-    // Start polling if enabled
-    if (isPolling) {
-      console.log(`Starting log polling with interval: ${pollingInterval}ms`);
+    // Fetch immediately on mount or when interval time changes
+    fetchLogs();
 
-      // Fetch logs immediately
+    const intervalId = setInterval(() => {
+      console.log('Polling interval triggered, fetching logs...');
       fetchLogs();
+    }, pollingInterval);
 
-      // Set up polling interval
-      pollingIntervalRef.current = setInterval(() => {
-        console.log('Polling interval triggered, fetching logs...');
-        fetchLogs();
-      }, pollingInterval);
-    }
-
-    // Clean up on unmount or when dependencies change
     return () => {
-      if (pollingIntervalRef.current) {
-        console.log('Cleaning up polling interval');
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+      console.log('LogsPoller: Cleaning up polling interval');
+      clearInterval(intervalId);
     };
-  }, [isPolling, pollingInterval, fetchLogs]);
-
-  // Start polling when component mounts and update when log level or count changes
-  useEffect(() => {
-    console.log(`LogsPoller: Setting up polling with log level ${logLevel}, count ${logCount}`);
-    setIsPolling(false); // Stop any existing polling
-
-    // Small delay to ensure any previous polling is cleaned up
-    const timeoutId = setTimeout(() => {
-      setIsPolling(true); // Start polling with new parameters
-    }, 100);
-
-    // Clean up on unmount
-    return () => {
-      console.log('LogsPoller: Cleaning up on unmount');
-      clearTimeout(timeoutId);
-      setIsPolling(false);
-    };
-  }, [logLevel, logCount]);
+  }, [pollingInterval, fetchLogs]); // fetchLogs is stable; pollingInterval is the only real trigger
 
   // This component doesn't render anything visible
   return null;

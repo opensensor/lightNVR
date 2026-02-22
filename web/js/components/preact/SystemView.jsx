@@ -3,7 +3,7 @@
  * Preact component for the system page
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
@@ -154,12 +154,14 @@ export function SystemView() {
     logLevelRef.current = newLevel;
   };
 
-  const handleLogsReceived = (newLogs) => {
+  // useCallback with [] because it only reads logLevelRef.current (a ref, not state),
+  // giving a stable reference that won't trigger downstream effects on every render.
+  const handleLogsReceived = useCallback((newLogs) => {
     console.log('SystemView received new logs:', newLogs.length);
     const currentLogLevel = logLevelRef.current;
     const filteredLogs = newLogs.filter(log => log_level_meets_minimum(log.level, currentLogLevel));
     setLogs(filteredLogs);
-  };
+  }, []);
 
   // Update hasData based on systemInfoData
   useEffect(() => {
