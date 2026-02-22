@@ -3,9 +3,183 @@
  * Expanded, responsive modal with accordion sections for stream configuration
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ZoneEditor } from './ZoneEditor.jsx';
 import { obfuscateUrlCredentials } from '../../utils/url-utils.js';
+
+/**
+ * Recording Schedule Grid Component
+ * Interactive 7-day × 24-hour weekly grid for scheduling continuous recording
+ */
+function RecordingScheduleGrid({ schedule, onChange }) {
+  const isDragging = useRef(false);
+  const dragValue = useRef(true);
+
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const HOURS = Array.from({ length: 24 }, (_, i) => {
+    if (i === 0) return '12am';
+    if (i < 12) return `${i}am`;
+    if (i === 12) return '12pm';
+    return `${i - 12}pm`;
+  });
+
+  useEffect(() => {
+    const handleMouseUp = () => { isDragging.current = false; };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  const handleCellMouseDown = useCallback((e, dayIdx, hourIdx) => {
+    e.preventDefault();
+    const newVal = !schedule[dayIdx * 24 + hourIdx];
+    dragValue.current = newVal;
+    isDragging.current = true;
+    const s = schedule.slice();
+    s[dayIdx * 24 + hourIdx] = newVal;
+    onChange(s);
+  }, [schedule, onChange]);
+
+  const handleCellMouseEnter = useCallback((dayIdx, hourIdx) => {
+    if (!isDragging.current) return;
+    const s = schedule.slice();
+    s[dayIdx * 24 + hourIdx] = dragValue.current;
+    onChange(s);
+  }, [schedule, onChange]);
+
+  const toggleDay = useCallback((dayIdx) => {
+    const allOn = HOURS.every((_, h) => schedule[dayIdx * 24 + h]);
+    const s = schedule.slice();
+    for (let h = 0; h < 24; h++) s[dayIdx * 24 + h] = !allOn;
+    onChange(s);
+  }, [schedule, onChange]);
+
+  const toggleHour = useCallback((hourIdx) => {
+    const allOn = DAYS.every((_, d) => schedule[d * 24 + hourIdx]);
+    const s = schedule.slice();
+    for (let d = 0; d < 7; d++) s[d * 24 + hourIdx] = !allOn;
+    onChange(s);
+  }, [schedule, onChange]);
+
+  const applyPreset = useCallback((preset) => {
+    let s = Array(168).fill(false);
+    if (preset === 'all') {
+      s = Array(168).fill(true);
+    } else if (preset === 'weekdays') {
+      for (let d = 1; d <= 5; d++) for (let h = 0; h < 24; h++) s[d * 24 + h] = true;
+    } else if (preset === 'business') {
+      for (let d = 1; d <= 5; d++) for (let h = 8; h < 18; h++) s[d * 24 + h] = true;
+    } else if (preset === 'nights') {
+      for (let d = 0; d < 7; d++) {
+        for (let h = 0; h < 6; h++) s[d * 24 + h] = true;
+        for (let h = 20; h < 24; h++) s[d * 24 + h] = true;
+      }
+    } else if (preset === 'weekends') {
+      for (const d of [0, 6]) for (let h = 0; h < 24; h++) s[d * 24 + h] = true;
+    }
+    onChange(s);
+  }, [onChange]);
+
+  const scheduledHours = schedule.filter(Boolean).length;
+  const PRESETS = [
+    { key: 'all', label: '24/7' },
+    { key: 'weekdays', label: 'Weekdays' },
+    { key: 'business', label: 'Business Hours' },
+    { key: 'nights', label: 'Nights' },
+    { key: 'weekends', label: 'Weekends' },
+    { key: 'none', label: 'Clear All' },
+  ];
+
+  return (
+    <div className="space-y-2 select-none" style={{ userSelect: 'none' }}>
+      {/* Presets & counter */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-muted-foreground font-medium">Quick select:</span>
+        {PRESETS.map(p => (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => applyPreset(p.key)}
+            className="px-2 py-0.5 text-xs rounded-full border border-border hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-all duration-150 font-medium"
+          >
+            {p.label}
+          </button>
+        ))}
+        <span className="ml-auto text-xs font-semibold text-primary tabular-nums">
+          {scheduledHours}h<span className="text-muted-foreground font-normal">/week</span>
+        </span>
+      </div>
+
+      {/* Grid */}
+      <div className="overflow-x-auto rounded-lg border border-border bg-card p-3">
+        <div style={{ minWidth: '340px' }}>
+          {/* Day header row */}
+          <div className="flex mb-1">
+            <div className="flex-shrink-0" style={{ width: '28px' }} />
+            {DAYS.map((day, dayIdx) => (
+              <button
+                key={day}
+                type="button"
+                title={`Toggle all ${day}`}
+                onClick={() => toggleDay(dayIdx)}
+                className="flex-1 text-center text-[10px] font-semibold text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors py-0.5 leading-none"
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+
+          {/* Hour rows */}
+          {HOURS.map((hourLabel, hourIdx) => (
+            <div key={hourIdx} className="flex items-center" style={{ height: '13px', marginBottom: '1px' }}>
+              {/* Hour label — clickable to toggle row */}
+              <button
+                type="button"
+                title={`Toggle ${hourLabel} for all days`}
+                onClick={() => toggleHour(hourIdx)}
+                className="flex-shrink-0 flex items-center justify-end pr-1.5 hover:text-primary transition-colors"
+                style={{ width: '28px', height: '13px' }}
+              >
+                {hourIdx % 3 === 0 && (
+                  <span className="text-[9px] text-muted-foreground leading-none">{hourLabel}</span>
+                )}
+              </button>
+              {/* Day cells */}
+              {DAYS.map((_, dayIdx) => {
+                const isActive = !!schedule[dayIdx * 24 + hourIdx];
+                return (
+                  <div
+                    key={dayIdx}
+                    className={`flex-1 rounded-sm cursor-pointer transition-colors ${
+                      isActive
+                        ? 'bg-primary/70 hover:bg-primary'
+                        : 'bg-muted/40 hover:bg-muted/80'
+                    }`}
+                    style={{ height: '12px', margin: '0 1px' }}
+                    onMouseDown={(e) => handleCellMouseDown(e, dayIdx, hourIdx)}
+                    onMouseEnter={() => handleCellMouseEnter(dayIdx, hourIdx)}
+                  />
+                );
+              })}
+            </div>
+          ))}
+
+          {/* Legend */}
+          <div className="flex items-center justify-end gap-3 mt-2 pt-2 border-t border-border/50">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-2.5 rounded-sm bg-muted/40 border border-border/30" />
+              <span className="text-[10px] text-muted-foreground">No recording</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-2.5 rounded-sm bg-primary/70" />
+              <span className="text-[10px] text-muted-foreground">Recording active</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground italic">Click headers or drag cells</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Accordion Section Component
@@ -325,23 +499,64 @@ export function StreamConfigModal({
                 <div className="space-y-3">
                   <h5 className="text-sm font-semibold">Recording Mode</h5>
                   <div className="space-y-2">
-                    <label className="flex items-start space-x-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
-                      <input
-                        type="checkbox"
-                        id="stream-record"
-                        name="record"
-                        className="h-4 w-4 mt-0.5 rounded border-gray-300"
-                        style={{accentColor: 'hsl(var(--primary))'}}
-                        checked={currentStream.record}
-                        onChange={onInputChange}
-                      />
-                      <div>
-                        <span className="text-sm font-medium">Enable Continuous Recording</span>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Record all video continuously to disk
-                        </p>
-                      </div>
-                    </label>
+                    {/* Continuous Recording block (with optional schedule sub-option) */}
+                    <div className={`rounded-lg border transition-colors ${currentStream.record ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+                      <label className="flex items-start space-x-3 cursor-pointer p-3 hover:bg-muted/30 transition-colors rounded-lg">
+                        <input
+                          type="checkbox"
+                          id="stream-record"
+                          name="record"
+                          className="h-4 w-4 mt-0.5 rounded border-gray-300"
+                          style={{accentColor: 'hsl(var(--primary))'}}
+                          checked={currentStream.record}
+                          onChange={onInputChange}
+                        />
+                        <div>
+                          <span className="text-sm font-medium">Enable Continuous Recording</span>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {currentStream.record && currentStream.recordOnSchedule
+                              ? 'Recording only during configured schedule windows'
+                              : 'Record all video continuously to disk'}
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* On a Schedule sub-option — visible when continuous recording is enabled */}
+                      {currentStream.record && (
+                        <div className="px-3 pb-3 ml-7 space-y-2">
+                          <label className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-primary/10 transition-colors group w-fit border border-transparent hover:border-primary/20">
+                            <input
+                              type="checkbox"
+                              id="stream-record-on-schedule"
+                              name="recordOnSchedule"
+                              className="h-3.5 w-3.5 rounded border-gray-300"
+                              style={{accentColor: 'hsl(var(--primary))'}}
+                              checked={currentStream.recordOnSchedule || false}
+                              onChange={onInputChange}
+                            />
+                            <span className="text-xs font-semibold group-hover:text-primary transition-colors">
+                              📅 On a Schedule
+                            </span>
+                            <span className="text-xs text-muted-foreground">— restrict recording to specific days &amp; hours</span>
+                          </label>
+
+                          {currentStream.recordOnSchedule && (
+                            <div className="rounded-xl border border-primary/25 bg-background p-3 shadow-sm">
+                              <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
+                                <span className="text-primary">●</span>
+                                Click day/hour headers to toggle columns or rows. Drag across cells to paint a range.
+                              </p>
+                              <RecordingScheduleGrid
+                                schedule={currentStream.recordingSchedule && currentStream.recordingSchedule.length === 168
+                                  ? currentStream.recordingSchedule
+                                  : Array(168).fill(true)}
+                                onChange={(s) => onInputChange({ target: { name: 'recordingSchedule', value: s } })}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <label className="flex items-start space-x-3 cursor-pointer p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
                       <input
                         type="checkbox"
