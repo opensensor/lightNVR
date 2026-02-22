@@ -169,12 +169,19 @@ add_layer2_test(test_db_transactions)
 add_layer2_test(test_db_maintenance)
 add_layer2_test(test_db_query_builder)
 add_layer2_test(test_logger_json)
+add_layer2_test(test_batch_delete_progress)
+add_layer2_test(test_db_motion_config)
+add_layer2_test(test_db_recordings_sync)
+add_layer2_test(test_httpd_utils)
+add_layer2_test(test_zone_filter)
 
 # ====================================================================
 # Layer 3: Integration tests — lightnvr_lib + FFmpeg
 # ====================================================================
 add_layer3_test(test_stream_manager)
 add_layer3_test(test_stream_state)
+add_layer3_test(test_packet_buffer)
+add_layer3_test(test_timestamp_manager)
 
 message(STATUS "Building Unity unit tests (Layer 1 + Layer 2 + Layer 3)")
 
