@@ -265,7 +265,7 @@ export function StreamConfigModal({
     };
 
     loadZones();
-  }, [isEditing, currentStream.name, onInputChange]);
+  }, [isEditing, currentStream.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleZonesChange = (zones) => {
     setDetectionZones(zones);
