@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -265,25 +266,26 @@ int log_level_meets_minimum(const char *log_level, const char *min_level) {
     int level_value = SYSLOG_LEVEL_INFO; // Default to INFO
     int min_value = SYSLOG_LEVEL_INFO;   // Default to INFO
 
-    // Map log level strings to numeric values
+    // Map log level strings to numeric values (case-insensitive).
+    // "WARN" (written by the logger) is accepted as an alias for "WARNING".
     // ERROR = 0, WARNING = 1, INFO = 2, DEBUG = 3
-    if (strcmp(log_level, "error") == 0) {
+    if (strcasecmp(log_level, "error") == 0) {
         level_value = SYSLOG_LEVEL_ERROR;
-    } else if (strcmp(log_level, "warning") == 0) {
+    } else if (strcasecmp(log_level, "warning") == 0 || strcasecmp(log_level, "warn") == 0) {
         level_value = SYSLOG_LEVEL_WARNING;
-    } else if (strcmp(log_level, "info") == 0) {
+    } else if (strcasecmp(log_level, "info") == 0) {
         level_value = SYSLOG_LEVEL_INFO;
-    } else if (strcmp(log_level, "debug") == 0) {
+    } else if (strcasecmp(log_level, "debug") == 0) {
         level_value = SYSLOG_LEVEL_DEBUG;
     }
 
-    if (strcmp(min_level, "error") == 0) {
+    if (strcasecmp(min_level, "error") == 0) {
         min_value = SYSLOG_LEVEL_ERROR;
-    } else if (strcmp(min_level, "warning") == 0) {
+    } else if (strcasecmp(min_level, "warning") == 0 || strcasecmp(min_level, "warn") == 0) {
         min_value = SYSLOG_LEVEL_WARNING;
-    } else if (strcmp(min_level, "info") == 0) {
+    } else if (strcasecmp(min_level, "info") == 0) {
         min_value = SYSLOG_LEVEL_INFO;
-    } else if (strcmp(min_level, "debug") == 0) {
+    } else if (strcasecmp(min_level, "debug") == 0) {
         min_value = SYSLOG_LEVEL_DEBUG;
     }
 

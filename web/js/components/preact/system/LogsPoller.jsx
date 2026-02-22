@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { fetchJSON } from '../../../fetch-utils.js';
+import { log_level_meets_minimum } from './SystemUtils.js';
 
 /**
  * LogsPoller component
@@ -81,10 +82,12 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
         }
 
         // Filter logs on the frontend according to the provided logLevel (if any)
+        // Use hierarchical comparison: logLevel='debug' includes all levels,
+        // logLevel='info' includes info/warning/error, etc.
         let filteredLogs = cleanedLogs;
         if (logLevel) {
           const normalizedLevel = String(logLevel).toLowerCase();
-          filteredLogs = cleanedLogs.filter(log => log.level === normalizedLevel);
+          filteredLogs = cleanedLogs.filter(log => log_level_meets_minimum(log.level, normalizedLevel));
         }
 
         // Call the callback with the (optionally filtered) logs
