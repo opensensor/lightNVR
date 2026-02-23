@@ -40,13 +40,11 @@ int init_packet_buffer_pool(size_t memory_limit_mb) {
     buffer_pool.total_memory_limit = memory_limit_mb * 1024 * 1024; // Convert MB to bytes
     buffer_pool.current_memory_usage = 0;
     buffer_pool.active_buffers = 0;
-    
-    // Initialize all buffers as inactive
-    for (int i = 0; i < 16; i++) {
-        buffer_pool.buffers[i].active = false;
-        pthread_mutex_init(&buffer_pool.buffers[i].mutex, NULL);
-    }
-    
+
+    // Buffers start inactive and without mutexes — mutexes are lazily initialized
+    // per slot when first used (see create_packet_buffer).
+    // memset already zeroed active and mutex_initialized fields above.
+
     pool_initialized = true;
     log_info("Packet buffer pool initialized (memory limit: %zu MB)", memory_limit_mb);
     
@@ -61,19 +59,12 @@ void cleanup_packet_buffer_pool(void) {
         return;
     }
 
-    // First pass: destroy all active buffers (this needs pool_mutex unlocked)
-    for (int i = 0; i < 16; i++) {
+    // Destroy all active buffers — destroy_packet_buffer handles per-slot mutex cleanup
+    for (int i = 0; i < MAX_STREAMS; i++) {
         if (buffer_pool.buffers[i].active) {
             destroy_packet_buffer(&buffer_pool.buffers[i]);
         }
     }
-
-    // Second pass: destroy all mutexes (now that buffers are inactive)
-    pthread_mutex_lock(&buffer_pool.pool_mutex);
-    for (int i = 0; i < 16; i++) {
-        pthread_mutex_destroy(&buffer_pool.buffers[i].mutex);
-    }
-    pthread_mutex_unlock(&buffer_pool.pool_mutex);
 
     pthread_mutex_destroy(&buffer_pool.pool_mutex);
 
@@ -87,6 +78,117 @@ void cleanup_packet_buffer_pool(void) {
 int packet_buffer_estimate_packet_count(int fps, int duration_seconds) {
     // Add 20% overhead for audio packets and variations
     return (int)((fps * duration_seconds) * 1.2);
+}
+
+/**
+ * Estimate the buffer memory (in MB) needed for one detection stream.
+ *
+ * Uses a conservative H.264 compressed-bitrate model:
+ *   bytes/sec ≈ (width × height × fps × 0.1 bpp) / 8
+ * plus ~64 kbps for an optional audio track.
+ *
+ * Falls back to sensible defaults when parameters are 0.
+ */
+static size_t estimate_stream_buffer_mb(int width, int height, int fps, int pre_buffer_seconds) {
+    if (width <= 0)  width  = 1280;
+    if (height <= 0) height = 720;
+    if (fps <= 0)    fps    = 15;
+    if (pre_buffer_seconds <= 0) pre_buffer_seconds = DEFAULT_BUFFER_SECONDS;
+    if (pre_buffer_seconds > MAX_BUFFER_SECONDS) pre_buffer_seconds = MAX_BUFFER_SECONDS;
+
+    // H.264 compressed: ~0.1 bits-per-pixel is a conservative midpoint
+    double bytes_per_sec = ((double)width * height * fps * 0.1) / 8.0;
+
+    // Add ~64 kbps for audio overhead
+    bytes_per_sec += 8000.0;
+
+    // Total for the pre-buffer window with 25% structural overhead
+    double total_bytes = bytes_per_sec * pre_buffer_seconds * 1.25;
+
+    // Convert to MB, enforce minimum of 2 MB per stream
+    size_t mb = (size_t)(total_bytes / (1024.0 * 1024.0));
+    return mb < 2 ? 2 : mb;
+}
+
+/**
+ * Calculate the total packet buffer pool size (in MB) based on all active
+ * streams that use detection-based recording.
+ *
+ * Iterates over the current stream configuration and sums the estimated
+ * per-stream buffer requirements.  A minimum of 16 MB is always returned
+ * so the pool is useful even when no detection streams are configured yet.
+ */
+size_t calculate_packet_buffer_pool_size(void) {
+    config_t *cfg = get_streaming_config();
+    if (!cfg) {
+        log_warn("calculate_packet_buffer_pool_size: config unavailable, using 32 MB default");
+        return 32;
+    }
+
+    size_t total_mb = 0;
+    int detection_streams = 0;
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        const stream_config_t *s = &cfg->streams[i];
+        if (!s->enabled || !s->detection_based_recording) {
+            continue;
+        }
+
+        int pre_buf = s->pre_detection_buffer > 0
+                      ? s->pre_detection_buffer
+                      : (cfg->default_pre_detection_buffer > 0
+                         ? cfg->default_pre_detection_buffer
+                         : DEFAULT_BUFFER_SECONDS);
+
+        total_mb += estimate_stream_buffer_mb(s->width, s->height, s->fps, pre_buf);
+        detection_streams++;
+    }
+
+    if (detection_streams == 0) {
+        // No detection streams configured yet — reserve a small pool
+        return 16;
+    }
+
+    // Add 20% pool-level headroom
+    total_mb = (size_t)(total_mb * 1.2);
+
+    // Sanity clamp: 16 MB minimum, 512 MB maximum
+    if (total_mb < 16)  total_mb = 16;
+    if (total_mb > 512) total_mb = 512;
+
+    log_info("Calculated packet buffer pool size: %zu MB for %d detection stream(s)",
+             total_mb, detection_streams);
+    return total_mb;
+}
+
+/**
+ * Reinitialize the packet buffer pool with a new memory limit.
+ *
+ * If the pool is not yet initialized, delegates to init_packet_buffer_pool().
+ * If the limit is unchanged, returns immediately.  Active buffers are NOT
+ * disrupted — only the pool-level accounting ceiling is updated.
+ */
+int reinit_packet_buffer_pool(size_t new_memory_limit_mb) {
+    if (!pool_initialized) {
+        return init_packet_buffer_pool(new_memory_limit_mb);
+    }
+
+    pthread_mutex_lock(&buffer_pool.pool_mutex);
+
+    size_t old_limit_mb = buffer_pool.total_memory_limit / (1024 * 1024);
+
+    if (old_limit_mb == new_memory_limit_mb) {
+        pthread_mutex_unlock(&buffer_pool.pool_mutex);
+        return 0;  // No change needed
+    }
+
+    buffer_pool.total_memory_limit = new_memory_limit_mb * 1024 * 1024;
+
+    pthread_mutex_unlock(&buffer_pool.pool_mutex);
+
+    log_info("Packet buffer pool memory limit updated: %zu MB -> %zu MB",
+             old_limit_mb, new_memory_limit_mb);
+    return 0;
 }
 
 /**
@@ -104,50 +206,59 @@ packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_second
     }
     
     pthread_mutex_lock(&buffer_pool.pool_mutex);
-    
+
     // Find a free buffer slot
     packet_buffer_t *buffer = NULL;
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < MAX_STREAMS; i++) {
         if (!buffer_pool.buffers[i].active) {
             buffer = &buffer_pool.buffers[i];
             break;
         }
     }
-    
+
     if (!buffer) {
         pthread_mutex_unlock(&buffer_pool.pool_mutex);
         log_error("No free buffer slots available");
         return NULL;
     }
-    
-    // Initialize buffer
-    pthread_mutex_lock(&buffer->mutex);
-    
+
+    // Reset slot and lazily initialize the per-slot mutex.
+    // The pool_mutex protects this entire initialization, so no need to
+    // hold the per-buffer mutex here.  Doing memset BEFORE mutex_init also
+    // avoids the prior bug of zeroing an already-locked mutex.
     memset(buffer, 0, sizeof(packet_buffer_t));
+
+    if (pthread_mutex_init(&buffer->mutex, NULL) != 0) {
+        log_error("Failed to initialize mutex for packet buffer");
+        pthread_mutex_unlock(&buffer_pool.pool_mutex);
+        return NULL;
+    }
+    buffer->mutex_initialized = true;
+
     strncpy(buffer->stream_name, stream_name, sizeof(buffer->stream_name) - 1);
     buffer->buffer_seconds = buffer_seconds;
     buffer->mode = mode;
-    
+
     // Estimate packet count (assume 15 FPS average)
     buffer->max_packets = packet_buffer_estimate_packet_count(15, buffer_seconds);
-    
+
     // Allocate packet array
     buffer->packets = (buffered_packet_t *)calloc(buffer->max_packets, sizeof(buffered_packet_t));
     if (!buffer->packets) {
         log_error("Failed to allocate packet array for buffer");
-        pthread_mutex_unlock(&buffer->mutex);
+        pthread_mutex_destroy(&buffer->mutex);
+        buffer->mutex_initialized = false;
         pthread_mutex_unlock(&buffer_pool.pool_mutex);
         return NULL;
     }
-    
+
     buffer->head = 0;
     buffer->tail = 0;
     buffer->count = 0;
     buffer->active = true;
-    
-    // Initialize disk buffer if needed
+
+    // Initialize disk buffer path if needed
     if (mode == BUFFER_MODE_DISK || mode == BUFFER_MODE_HYBRID) {
-        extern config_t* get_streaming_config(void);
         config_t *config = get_streaming_config();
         if (config) {
             snprintf(buffer->disk_buffer_path, sizeof(buffer->disk_buffer_path),
@@ -158,7 +269,6 @@ packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_second
 
     buffer_pool.active_buffers++;
 
-    pthread_mutex_unlock(&buffer->mutex);
     pthread_mutex_unlock(&buffer_pool.pool_mutex);
 
     log_info("Created packet buffer for stream: %s (duration: %ds, max packets: %d, mode: %d)",
@@ -175,7 +285,10 @@ void destroy_packet_buffer(packet_buffer_t *buffer) {
         return;
     }
 
-    pthread_mutex_lock(&buffer->mutex);
+    // Only lock if mutex was actually initialized (lazy allocation)
+    if (buffer->mutex_initialized) {
+        pthread_mutex_lock(&buffer->mutex);
+    }
 
     // Free all buffered packets
     if (buffer->packets) {
@@ -200,11 +313,19 @@ void destroy_packet_buffer(packet_buffer_t *buffer) {
     buffer_pool.active_buffers--;
     pthread_mutex_unlock(&buffer_pool.pool_mutex);
 
+    char stream_name_copy[256];
+    strncpy(stream_name_copy, buffer->stream_name, sizeof(stream_name_copy) - 1);
+    stream_name_copy[sizeof(stream_name_copy) - 1] = '\0';
+
     buffer->active = false;
 
-    pthread_mutex_unlock(&buffer->mutex);
+    if (buffer->mutex_initialized) {
+        pthread_mutex_unlock(&buffer->mutex);
+        pthread_mutex_destroy(&buffer->mutex);
+        buffer->mutex_initialized = false;
+    }
 
-    log_info("Destroyed packet buffer for stream: %s", buffer->stream_name);
+    log_info("Destroyed packet buffer for stream: %s", stream_name_copy);
 }
 
 /**
@@ -442,7 +563,7 @@ packet_buffer_t* get_packet_buffer(const char *stream_name) {
 
     pthread_mutex_lock(&buffer_pool.pool_mutex);
 
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < MAX_STREAMS; i++) {
         if (buffer_pool.buffers[i].active &&
             strcmp(buffer_pool.buffers[i].stream_name, stream_name) == 0) {
             pthread_mutex_unlock(&buffer_pool.pool_mutex);

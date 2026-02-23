@@ -51,35 +51,36 @@ typedef struct {
 // Circular buffer structure
 typedef struct {
     char stream_name[256];      // Stream name for this buffer
-    
+
     // Buffer configuration
     int buffer_seconds;         // Buffer duration in seconds
     int max_packets;            // Maximum number of packets to store
     buffer_mode_t mode;         // Storage mode
-    
+
     // Circular buffer
     buffered_packet_t *packets; // Array of buffered packets
     int head;                   // Write position
     int tail;                   // Read position
     int count;                  // Number of packets in buffer
-    
+
     // Statistics
     uint64_t total_packets_buffered;    // Total packets buffered
     uint64_t total_packets_dropped;     // Packets dropped due to full buffer
     uint64_t total_bytes_buffered;      // Total bytes buffered
     size_t current_memory_usage;        // Current memory usage in bytes
     size_t peak_memory_usage;           // Peak memory usage in bytes
-    
+
     // Timing information
     time_t oldest_packet_time;  // Timestamp of oldest packet in buffer
     time_t newest_packet_time;  // Timestamp of newest packet in buffer
-    
+
     // Disk-based buffer (if mode is DISK or HYBRID)
     char disk_buffer_path[512]; // Path to disk buffer directory
     FILE *disk_buffer_file;     // File handle for disk buffer
-    
+
     // Thread safety
     pthread_mutex_t mutex;
+    bool mutex_initialized;     // Whether mutex has been initialized (lazy allocation)
     bool active;                // Whether this buffer is in use
 } packet_buffer_t;
 
@@ -94,11 +95,36 @@ typedef struct {
 
 /**
  * Initialize the packet buffer pool
- * 
+ *
  * @param memory_limit_mb Total memory limit in MB for all buffers (0 = unlimited)
  * @return 0 on success, non-zero on failure
  */
 int init_packet_buffer_pool(size_t memory_limit_mb);
+
+/**
+ * Reinitialize the packet buffer pool with a new memory limit.
+ *
+ * Safe to call while the pool is running — only updates the ceiling used for
+ * future pool-level admission checks.  Active per-stream buffers are not
+ * disrupted.  If the pool has not been initialized yet, delegates to
+ * init_packet_buffer_pool().
+ *
+ * @param new_memory_limit_mb New total memory limit in MB
+ * @return 0 on success, non-zero on failure
+ */
+int reinit_packet_buffer_pool(size_t new_memory_limit_mb);
+
+/**
+ * Calculate the packet buffer pool size (in MB) needed for all currently
+ * configured detection streams.
+ *
+ * Iterates over the global stream configuration and sums per-stream estimates
+ * based on resolution, fps, and pre_detection_buffer.  Falls back to 16 MB
+ * when no detection streams are configured.
+ *
+ * @return Recommended pool size in MB
+ */
+size_t calculate_packet_buffer_pool_size(void);
 
 /**
  * Cleanup the packet buffer pool

@@ -134,9 +134,8 @@ int init_unified_detection_system(void) {
     // Clear all context slots
     memset(detection_contexts, 0, sizeof(detection_contexts));
 
-    // Initialize packet buffer pool if not already done
-    extern config_t g_config;
-    size_t memory_limit = 256;  // Default 256MB for all buffers
+    // Initialize packet buffer pool sized to actual detection-stream requirements
+    size_t memory_limit = calculate_packet_buffer_pool_size();
     if (init_packet_buffer_pool(memory_limit) != 0) {
         log_error("Failed to initialize packet buffer pool");
         pthread_mutex_unlock(&contexts_mutex);

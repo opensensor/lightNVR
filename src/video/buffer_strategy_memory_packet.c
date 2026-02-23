@@ -294,14 +294,15 @@ static int memory_packet_strategy_flush_to_callback(pre_buffer_strategy_t *self,
 
 pre_buffer_strategy_t* create_memory_packet_strategy(const char *stream_name,
                                                       const buffer_config_t *config) {
-    // Ensure packet buffer pool is initialized
-    static bool pool_init_attempted = false;
-    if (!pool_init_attempted) {
-        extern config_t g_config;
-        size_t memory_limit = config->memory_limit_bytes > 0 ?
-                              config->memory_limit_bytes / (1024 * 1024) : 256;
-        init_packet_buffer_pool(memory_limit);
-        pool_init_attempted = true;
+    // Ensure packet buffer pool is initialized (or resized if settings changed).
+    // calculate_packet_buffer_pool_size() derives the limit from actual stream
+    // configuration, falling back gracefully when config is not yet available.
+    {
+        size_t memory_limit = config->memory_limit_bytes > 0
+                              ? config->memory_limit_bytes / (1024 * 1024)
+                              : calculate_packet_buffer_pool_size();
+        // reinit_packet_buffer_pool handles both first-time init and resize
+        reinit_packet_buffer_pool(memory_limit);
     }
 
     pre_buffer_strategy_t *strategy = calloc(1, sizeof(pre_buffer_strategy_t));
