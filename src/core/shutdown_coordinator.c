@@ -70,35 +70,57 @@ int register_component(const char *name, component_type_t type, void *context, i
         log_error("Cannot register component with NULL name");
         return -1;
     }
-    
+
     pthread_mutex_lock(&g_coordinator.mutex);
-    
-    // Check if we've reached the maximum number of components
+
     int count = atomic_load(&g_coordinator.component_count);
-    if (count >= MAX_COMPONENTS) {
+
+    // First, try to reuse a STOPPED slot.  Dead recordings mark their slot
+    // STOPPED but the old code never freed it, so repeated restart cycles
+    // would exhaust all MAX_COMPONENTS slots.  Prefer a slot with the same
+    // name (natural for stream restarts), otherwise take any STOPPED slot.
+    int reuse_idx = -1;
+    for (int i = 0; i < count; i++) {
+        if (atomic_load(&g_coordinator.components[i].state) == COMPONENT_STOPPED) {
+            if (reuse_idx < 0) {
+                reuse_idx = i;  // remember first available STOPPED slot
+            }
+            if (strcmp(g_coordinator.components[i].name, name) == 0) {
+                reuse_idx = i;  // same-name slot is preferred
+                break;
+            }
+        }
+    }
+
+    int slot;
+    if (reuse_idx >= 0) {
+        slot = reuse_idx;
+        log_info("Reusing STOPPED component slot %d (was '%s') for new component %s",
+                 slot, g_coordinator.components[slot].name, name);
+    } else if (count < MAX_COMPONENTS) {
+        slot = count;
+        atomic_store(&g_coordinator.component_count, count + 1);
+    } else {
         log_error("Cannot register component %s: maximum number of components reached", name);
         pthread_mutex_unlock(&g_coordinator.mutex);
         return -1;
     }
-    
-    // Initialize the component
-    component_info_t *component = &g_coordinator.components[count];
+
+    // Initialize the component slot
+    component_info_t *component = &g_coordinator.components[slot];
     strncpy(component->name, name, sizeof(component->name) - 1);
     component->name[sizeof(component->name) - 1] = '\0';
     component->type = type;
     atomic_store(&component->state, COMPONENT_RUNNING);
     component->context = context;
     component->priority = priority;
-    
-    // Increment the component count
-    atomic_store(&g_coordinator.component_count, count + 1);
-    
+
     pthread_mutex_unlock(&g_coordinator.mutex);
-    
-    log_info("Registered component %s (ID: %d, type: %d, priority: %d)", 
-             name, count, type, priority);
-    
-    return count;
+
+    log_info("Registered component %s (ID: %d, type: %d, priority: %d)",
+             name, slot, type, priority);
+
+    return slot;
 }
 
 // Update a component's state

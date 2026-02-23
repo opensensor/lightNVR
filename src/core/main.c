@@ -1053,6 +1053,17 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Give go2rtc a few seconds to fully settle after stream registration
+    // before we start recording threads that will attempt RTSP connections
+    // through it.  Without this delay, all cameras try to connect
+    // simultaneously and can overwhelm go2rtc at startup.
+    #ifdef USE_GO2RTC
+    if (config.go2rtc_enabled) {
+        log_info("Waiting 5 seconds for go2rtc to settle before starting recordings...");
+        sleep(5);
+    }
+    #endif
+
     check_and_ensure_services();
     print_detection_stream_status();
     log_info("LightNVR initialized successfully");
@@ -1638,6 +1649,11 @@ static void check_and_ensure_services(void) {
 
     log_info("Running periodic service check (%d max streams)", MAX_STREAMS);
 
+    // Track how many new recordings we've started in this check cycle.
+    // Used to stagger recording starts so we don't overwhelm go2rtc with
+    // simultaneous RTSP connections to multiple cameras.
+    int recordings_started = 0;
+
     for (int i = 0; i < MAX_STREAMS; i++) {
         // Log the record flag for debugging
         if (current_config->streams[i].name[0] != '\0') {
@@ -1666,6 +1682,18 @@ static void check_and_ensure_services(void) {
                 log_info("Recording state for stream %s: %d (1=active, 0=inactive)", current_config->streams[i].name, recording_state);
 
                 if (recording_state == 0) {
+                    // Stagger recording starts: if we've already started one or more
+                    // recordings in this check cycle, wait a few seconds before starting
+                    // the next one.  This gives go2rtc time to establish each RTSP
+                    // connection and avoids overwhelming it (and the cameras) with
+                    // simultaneous connection attempts.
+                    if (recordings_started > 0) {
+                        log_info("Staggering recording start for stream '%s' — waiting 3 seconds "
+                                 "after previous recording start (%d started so far)",
+                                 current_config->streams[i].name, recordings_started);
+                        sleep(3);
+                    }
+
                     // Recording is not active, start it
                     log_info("Ensuring MP4 recording is active for stream: %s", current_config->streams[i].name);
 
@@ -1679,17 +1707,7 @@ static void check_and_ensure_services(void) {
                         log_warn("Failed to start MP4 recording for stream: %s", current_config->streams[i].name);
                     } else {
                         log_info("Successfully started MP4 recording for stream: %s", current_config->streams[i].name);
-
-                        // BUGFIX: Stagger parallel recording starts to avoid overwhelming
-                        // go2rtc with simultaneous RTSP connections.  When all streams try
-                        // to connect at once, go2rtc's ffmpeg producers can fail with EOF
-                        // errors due to resource contention, causing recordings to never
-                        // receive packets and eventually be detected as dead after 60s.
-                        // A 2-second delay gives go2rtc time to establish each connection
-                        // and stabilise its producers before the next one starts.
-                        if (!is_shutdown_initiated()) {
-                            sleep(2);
-                        }
+                        recordings_started++;
                     }
                 }
             }

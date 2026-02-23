@@ -228,23 +228,65 @@ export function WebRTCVideoCell({
             });
         };
 
-        // Set a timeout to detect if no video data is received
-        // This handles the case where go2rtc hasn't connected to the source camera yet
+        // Set a timeout to detect if no video data is received.
+        // When ICE is connected but no video frames have arrived, go2rtc is
+        // likely still establishing the RTSP connection to the camera.  We
+        // keep the loading indicator up and periodically re-check instead of
+        // immediately showing an error.
         if (videoDataTimeout) {
           clearTimeout(videoDataTimeout);
         }
-        videoDataTimeout = setTimeout(() => {
-          // Check if video is actually playing by checking if we have video dimensions
-          if (videoElement && (!videoElement.videoWidth || videoElement.videoWidth === 0)) {
-            console.warn(`No video data received for stream ${stream.name} within 30 seconds, may need retry`);
-            // Check if video is not playing (paused or no data)
-            if (videoElement.paused || videoElement.readyState < 2) {
-              console.error(`Stream ${stream.name} connected but no video data - source may not be ready`);
+        let videoDataCheckCount = 0;
+        const maxVideoDataChecks = 6; // 6 checks × 15s = 90s total
+        const videoDataCheckInterval = 15000; // 15 seconds between checks
+
+        const scheduleVideoDataCheck = () => {
+          videoDataTimeout = setTimeout(() => {
+            videoDataCheckCount++;
+
+            // Video is playing or has dimensions — nothing to do
+            if (videoElement && videoElement.videoWidth > 0 && !videoElement.paused) {
+              return;
+            }
+
+            // Determine current ICE state (may be null if pc was cleaned up)
+            const iceState = peerConnectionRef.current
+              ? peerConnectionRef.current.iceConnectionState
+              : 'closed';
+
+            console.warn(
+              `No video data for stream ${stream.name} after ${videoDataCheckCount * videoDataCheckInterval / 1000}s ` +
+              `(check ${videoDataCheckCount}/${maxVideoDataChecks}, ICE: ${iceState}, ` +
+              `readyState: ${videoElement ? videoElement.readyState : 'N/A'})`
+            );
+
+            // ICE itself failed or closed — show error immediately
+            if (iceState === 'failed' || iceState === 'closed') {
+              setError('WebRTC connection lost. Click Retry to reconnect.');
+              setIsLoading(false);
+              return;
+            }
+
+            // ICE is still connected/checking — camera stream may still be
+            // coming up.  Keep loading state and schedule another check unless
+            // we've exceeded the maximum wait time.
+            if (videoDataCheckCount < maxVideoDataChecks) {
+              console.log(`ICE still ${iceState} for stream ${stream.name}, waiting for camera stream...`);
+              // Re-attempt play() in case the element got stuck
+              if (videoElement && videoElement.paused) {
+                videoElement.play().catch(() => {});
+              }
+              scheduleVideoDataCheck();
+            } else {
+              // Exceeded 90 seconds — give up and show error
+              console.error(`Stream ${stream.name} connected but no video data after ${maxVideoDataChecks * videoDataCheckInterval / 1000}s`);
               setError('Stream connected but no video data. Click Retry to reconnect.');
               setIsLoading(false);
             }
-          }
-        }, 30000); // 30 second timeout for video data
+          }, videoDataCheckInterval);
+        };
+
+        scheduleVideoDataCheck();
 
         // Add event handlers
         videoElement.onloadedmetadata = () => {
