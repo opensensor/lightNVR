@@ -104,6 +104,20 @@ export function SettingsView() {
     fetchUserRole();
   }, []);
 
+  // Session-level toggle for Appearance section (persisted to sessionStorage)
+  const [showAppearance, setShowAppearance] = useState(() => {
+    const stored = sessionStorage.getItem('lightnvr-show-appearance');
+    return stored === null ? true : stored !== 'false';
+  });
+
+  const toggleAppearance = () => {
+    setShowAppearance(prev => {
+      const next = !prev;
+      sessionStorage.setItem('lightnvr-show-appearance', next.toString());
+      return next;
+    });
+  };
+
   // Role is still loading if null
   const roleLoading = userRole === null;
   // Check if user can modify system settings (admin only)
@@ -347,8 +361,22 @@ export function SettingsView() {
         <div class="settings-container space-y-6">
           {/* Appearance Settings - available to all users */}
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Appearance</h3>
-            <ThemeCustomizer />
+            <button
+              onClick={toggleAppearance}
+              class="w-full flex items-center justify-between pb-2 border-b border-border mb-4 group"
+              aria-expanded={showAppearance}
+              aria-controls="appearance-settings-content"
+            >
+              <h3 class="text-lg font-semibold">Appearance</h3>
+              <span class={`text-muted-foreground transition-transform duration-200 ${showAppearance ? 'rotate-0' : '-rotate-90'}`}>
+                ▾
+              </span>
+            </button>
+            {showAppearance && (
+              <div id="appearance-settings-content">
+                <ThemeCustomizer />
+              </div>
+            )}
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
@@ -383,8 +411,22 @@ export function SettingsView() {
         <div class="settings-container space-y-6">
           {/* Appearance Settings - available to all users */}
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Appearance</h3>
-            <ThemeCustomizer />
+            <button
+              onClick={toggleAppearance}
+              class="w-full flex items-center justify-between pb-2 border-b border-border mb-4 group"
+              aria-expanded={showAppearance}
+              aria-controls="appearance-settings-content"
+            >
+              <h3 class="text-lg font-semibold">Appearance</h3>
+              <span class={`text-muted-foreground transition-transform duration-200 ${showAppearance ? 'rotate-0' : '-rotate-90'}`}>
+                ▾
+              </span>
+            </button>
+            {showAppearance && (
+              <div id="appearance-settings-content">
+                <ThemeCustomizer />
+              </div>
+            )}
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
