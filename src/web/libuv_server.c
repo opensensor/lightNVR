@@ -321,39 +321,46 @@ static void server_thread_func(void *arg) {
     // pthread_t, so we use pthread_self() for portability.
     set_web_server_thread_id(pthread_self());
 
-    // Run the event loop until stopped
+    // Run the event loop until stopped.
     // Use UV_RUN_DEFAULT which blocks until there are no more active handles
-    // or until uv_stop() is called. The stop_async handle ensures we can wake
-    // up the loop from another thread to signal shutdown.
-    //
-    // The event loop will keep running as long as:
-    // 1. The TCP listener is active (accepting connections)
-    // 2. The stop_async handle is active (for cross-thread signaling)
-    // 3. Any client connections are active
-    //
-    // When libuv_server_stop() is called:
-    // 1. server->running is set to false
-    // 2. uv_async_send() wakes up the loop
-    // 3. uv_stop() causes uv_run() to return
-    // 4. This thread exits
+    // or until uv_stop() is called.
     //
     // If uv_run() returns unexpectedly while server->running is still true,
-    // it means handles were unexpectedly closed (e.g., resource exhaustion).
-    // We log a warning so this can be diagnosed from logs.
-    int run_result = uv_run(server->loop, UV_RUN_DEFAULT);
+    // it means handles were unexpectedly closed (e.g., resource exhaustion,
+    // handle leak). Rather than letting the thread die (which leaves the
+    // server completely unresponsive for 90+ seconds until the health check
+    // thread detects the failure and restarts), we attempt to keep the event
+    // loop alive by running it again after a brief delay.
+    const int MAX_UNEXPECTED_RESTARTS = 5;
+    const int RESTART_DELAY_SEC = 2;
+    int unexpected_restarts = 0;
 
-    if (server->running) {
-        // uv_run returned but we didn't request shutdown - unexpected exit
-        log_error("libuv_server: Event loop exited UNEXPECTEDLY (running=true, "
-                  "uv_run returned %d) - this indicates handles were lost", run_result);
+    while (server->running) {
+        int run_result = uv_run(server->loop, UV_RUN_DEFAULT);
 
-        // Count remaining active handles for diagnostics
+        if (!server->running) {
+            log_info("libuv_server: Event loop thread exiting normally (shutdown requested)");
+            break;
+        }
+
+        // uv_run returned but we didn't request shutdown — unexpected exit
+        unexpected_restarts++;
         int active_handles = 0;
         uv_walk(server->loop, count_handles_cb, &active_handles);
-        log_error("libuv_server: %d handles still registered at unexpected exit",
-                  active_handles);
-    } else {
-        log_info("libuv_server: Event loop thread exiting normally (shutdown requested)");
+        log_error("libuv_server: Event loop exited UNEXPECTEDLY (running=true, "
+                  "uv_run returned %d, active_handles=%d, restart_attempt=%d/%d)",
+                  run_result, active_handles, unexpected_restarts, MAX_UNEXPECTED_RESTARTS);
+
+        if (unexpected_restarts > MAX_UNEXPECTED_RESTARTS) {
+            log_error("libuv_server: Too many unexpected restarts (%d), giving up — "
+                      "health check thread will handle recovery",
+                      unexpected_restarts);
+            break;
+        }
+
+        // Brief delay before retrying to avoid a tight spin loop
+        log_warn("libuv_server: Retrying uv_run() in %d seconds...", RESTART_DELAY_SEC);
+        sleep(RESTART_DELAY_SEC);
     }
 
     // CRITICAL: Mark thread as no longer running so restart logic works correctly.

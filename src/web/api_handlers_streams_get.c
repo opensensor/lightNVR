@@ -136,6 +136,18 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         const char *status = "Unknown";
         if (stream) {
             stream_status_t stream_status = get_stream_status(stream);
+
+            // When go2rtc manages streams, the state manager is never updated
+            // from INACTIVE (start_stream_with_state is not called during startup).
+            // Override STOPPED → RUNNING for enabled streams when go2rtc is initialized.
+            // NOTE: We use go2rtc_integration_is_initialized() (non-blocking boolean check)
+            // instead of go2rtc_integration_check_health() (blocking curl call, up to 7s)
+            // to avoid saturating the libuv thread pool and deadlocking the server.
+            if (stream_status == STREAM_STATUS_STOPPED && db_streams[i].enabled
+                && go2rtc_integration_is_initialized()) {
+                stream_status = STREAM_STATUS_RUNNING;
+            }
+
             switch (stream_status) {
                 case STREAM_STATUS_STOPPED:
                     status = "Stopped";
@@ -434,6 +446,18 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
 
     // Status
     stream_status_t stream_status = get_stream_status(stream);
+
+    // When go2rtc manages streams, the state manager is never updated
+    // from INACTIVE (start_stream_with_state is not called during startup).
+    // Override STOPPED → RUNNING for enabled streams when go2rtc is initialized.
+    // NOTE: We use go2rtc_integration_is_initialized() (non-blocking boolean check)
+    // instead of go2rtc_integration_check_health() (blocking curl call, up to 7s)
+    // to avoid saturating the libuv thread pool and deadlocking the server.
+    if (stream_status == STREAM_STATUS_STOPPED && config.enabled
+        && go2rtc_integration_is_initialized()) {
+        stream_status = STREAM_STATUS_RUNNING;
+    }
+
     const char *status = "Unknown";
     switch (stream_status) {
         case STREAM_STATUS_STOPPED:  status = "Stopped";  break;
