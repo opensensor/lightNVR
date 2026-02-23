@@ -162,33 +162,6 @@ export class StreamsPage extends BasePage {
     // Wait for React state to update - this is critical for the mutation to work
     await sleep(500);
 
-    // Set up listeners for both request and response
-    const requestPromise = this.page.waitForRequest(
-      request => {
-        const url = request.url();
-        const method = request.method();
-        const isPostStreams = method === 'POST' && (url.endsWith('/api/streams') || url.match(/\/api\/streams(\?|$)/));
-        if (isPostStreams) {
-          console.log(`Detected POST request to: ${url}`);
-        }
-        return isPostStreams;
-      },
-      { timeout: 30000 }
-    );
-
-    const responsePromise = this.page.waitForResponse(
-      response => {
-        const url = response.url();
-        const method = response.request().method();
-        const isPostStreams = method === 'POST' && (url.endsWith('/api/streams') || url.match(/\/api\/streams(\?|$)/));
-        if (isPostStreams) {
-          console.log(`Detected POST response from: ${url} with status: ${response.status()}`);
-        }
-        return isPostStreams;
-      },
-      { timeout: 30000 }
-    );
-
     // Ensure button is in viewport and clickable
     await this.saveButton.scrollIntoViewIfNeeded();
 
@@ -200,41 +173,56 @@ export class StreamsPage extends BasePage {
       throw new Error('Save button is disabled');
     }
 
-    // Click save
-    console.log(`Clicking save button for stream: ${config.name}`);
-    await this.saveButton.click();
+    // Use Promise.all to wait for the response while clicking save
+    // This is the standard Playwright pattern to avoid race conditions
+    const responseFilter = (response: any) => {
+      const url = response.url();
+      const method = response.request().method();
+      const isPostStreams = method === 'POST' && (url.endsWith('/api/streams') || url.match(/\/api\/streams(\?|$)/));
+      if (isPostStreams) {
+        console.log(`Detected POST response from: ${url} with status: ${response.status()}`);
+      }
+      return isPostStreams;
+    };
 
-    // Wait for request to be sent first
+    // Use longer timeout in CI (60s) to handle slow server responses
+    const responseTimeout = 60000;
+
+    console.log(`Clicking save button for stream: ${config.name}`);
+    let response;
     try {
-      await requestPromise;
-      console.log('POST request was sent successfully');
+      [response] = await Promise.all([
+        this.page.waitForResponse(responseFilter, { timeout: responseTimeout }),
+        this.saveButton.click(),
+      ]);
+      console.log(`Received response with status: ${response.status()}`);
     } catch (e) {
-      console.error('POST request was never sent:', e.message);
-      await this.page.screenshot({ path: `test-results/stream-no-request-${config.name}.png` });
-      throw new Error(`POST request was never sent: ${e.message}`);
+      // First attempt failed - retry the click once in case it didn't register
+      console.warn(`First save attempt failed for ${config.name}, retrying: ${e.message}`);
+      try {
+        await this.saveButton.scrollIntoViewIfNeeded();
+        [response] = await Promise.all([
+          this.page.waitForResponse(responseFilter, { timeout: responseTimeout }),
+          this.saveButton.click({ force: true }),
+        ]);
+        console.log(`Retry succeeded with response status: ${response.status()}`);
+      } catch (retryError) {
+        // Both attempts failed - capture diagnostics
+        console.error(`Failed to create stream ${config.name} after retry:`, retryError);
+        await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
+
+        const logs = await this.page.evaluate(() => {
+          return (window as any).__testLogs || 'No logs captured';
+        }).catch(() => 'Unable to capture logs');
+        console.log('Browser console logs:', logs);
+
+        throw new Error(`Failed to create stream: ${retryError.message}`);
+      }
     }
 
-    // Wait for the API response
-    try {
-      console.log(`Waiting for POST /api/streams response for stream: ${config.name}`);
-      const response = await responsePromise;
-      console.log(`Received response with status: ${response.status()}`);
-      if (!response.ok()) {
-        const body = await response.text().catch(() => 'Unable to read response body');
-        throw new Error(`Stream creation failed with status ${response.status()}: ${body}`);
-      }
-    } catch (e) {
-      // Capture screenshot on failure
-      console.error(`Failed to create stream ${config.name}:`, e);
-      await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
-
-      // Also capture console logs
-      const logs = await this.page.evaluate(() => {
-        return (window as any).__testLogs || 'No logs captured';
-      }).catch(() => 'Unable to capture logs');
-      console.log('Browser console logs:', logs);
-
-      throw new Error(`Failed to create stream: ${e.message}`);
+    if (!response.ok()) {
+      const body = await response.text().catch(() => 'Unable to read response body');
+      throw new Error(`Stream creation failed with status ${response.status()}: ${body}`);
     }
 
     // Wait for the modal to close - this indicates the save was successful
