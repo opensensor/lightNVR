@@ -45,13 +45,13 @@ static bool g_server_needs_restart = false;
 static time_t g_last_restart_attempt = 0;
 static int g_restart_attempts = 0;
 static const int MAX_RESTART_ATTEMPTS = 5;
-static const int RESTART_COOLDOWN_SECONDS = 60;
+static const int RESTART_COOLDOWN_SECONDS = 30;
 
 // Health check thread variables
 static pthread_t g_health_check_thread;
 static volatile bool g_health_thread_running = false;
 static volatile bool g_health_thread_exited = false;  // Flag to indicate thread has exited
-static int g_health_check_interval = 30; // seconds
+static int g_health_check_interval = 10; // seconds
 static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health";
 
 // Web server thread tracking
@@ -275,8 +275,12 @@ static bool is_web_server_thread_running(void) {
     pthread_mutex_lock(&g_web_server_thread_mutex);
 
     if (!g_web_server_thread_id_set) {
+        // Thread ID has not been registered yet.  This happens during initial
+        // startup and briefly after a restart while the new event-loop thread
+        // is initialising.  Treat as "running" to avoid a spurious restart
+        // attempt before the server has had a chance to start.
         pthread_mutex_unlock(&g_web_server_thread_mutex);
-        return false;
+        return true;
     }
 
     // Use pthread_kill with signal 0 to check if thread exists
@@ -350,6 +354,13 @@ static bool restart_web_server(void) {
     // Small delay to ensure resources are released
     usleep(500000);  // 500ms
 
+    // Clear the stale thread ID so is_web_server_thread_running() returns
+    // true (= "starting up") during the brief window between http_server_start()
+    // returning and the new event-loop thread calling set_web_server_thread_id().
+    pthread_mutex_lock(&g_web_server_thread_mutex);
+    g_web_server_thread_id_set = false;
+    pthread_mutex_unlock(&g_web_server_thread_mutex);
+
     // Now start the server again - this will create a new event loop thread
     if (http_server_start(http_server) != 0) {
         log_error("Failed to restart web server");
@@ -405,7 +416,7 @@ static void *health_check_thread_func(void *arg) {
             }
 
             // If we've had multiple consecutive failures, try to restart
-            if (g_failed_health_checks >= 3 || g_server_needs_restart) {
+            if (g_failed_health_checks >= 2 || g_server_needs_restart) {
                 log_warn("Multiple health check failures or server thread dead, attempting restart");
 
                 if (restart_web_server()) {

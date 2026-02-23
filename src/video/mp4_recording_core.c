@@ -258,6 +258,17 @@ static void *mp4_recording_thread(void *arg) {
 
     log_info("Started self-managing RTSP recording thread for %s", stream_name);
 
+    // Keep a copy of the recording URL for self-healing restarts
+    char restart_url[MAX_PATH_LENGTH];
+    strncpy(restart_url, actual_url, sizeof(restart_url) - 1);
+    restart_url[sizeof(restart_url) - 1] = '\0';
+
+    // Dead-detection state for the inner RTSP writer thread
+    int dead_check_seconds  = 0;   // consecutive seconds mp4_writer_is_recording() == 0
+    int self_restart_count  = 0;   // how many self-heals we've attempted
+    const int DEAD_RESTART_THRESHOLD_SECS = 5;
+    const int MAX_SELF_RESTARTS           = 5;
+
     // Main loop to monitor the recording thread
     while (ctx->running && !shutdown_in_progress) {
         // Check if shutdown has been initiated
@@ -267,8 +278,55 @@ static void *mp4_recording_thread(void *arg) {
             break;
         }
 
-        // Sleep for a bit to avoid busy waiting
         sleep(1);
+
+        // Self-healing: detect and restart a dead inner RTSP writer thread
+        if (ctx->mp4_writer) {
+            if (!mp4_writer_is_recording(ctx->mp4_writer)) {
+                dead_check_seconds++;
+                if (dead_check_seconds >= DEAD_RESTART_THRESHOLD_SECS) {
+                    if (self_restart_count >= MAX_SELF_RESTARTS) {
+                        log_error("Inner RTSP thread for stream %s dead for %d+ s, already restarted %d times — giving up",
+                                  stream_name, dead_check_seconds, self_restart_count);
+                        ctx->running = 0;
+                        break;
+                    }
+
+                    log_warn("Inner RTSP thread for stream %s dead for %d+ s, restarting (attempt %d/%d)",
+                             stream_name, dead_check_seconds,
+                             self_restart_count + 1, MAX_SELF_RESTARTS);
+
+                    // Try to get a fresh go2rtc URL — go2rtc may have restarted
+                    if (using_go2rtc) {
+                        char fresh_url[MAX_PATH_LENGTH];
+                        if (go2rtc_get_rtsp_url(stream_name, fresh_url, sizeof(fresh_url))) {
+                            strncpy(restart_url, fresh_url, sizeof(restart_url) - 1);
+                            restart_url[sizeof(restart_url) - 1] = '\0';
+                            log_info("Refreshed go2rtc URL for stream %s: %s", stream_name, restart_url);
+                        }
+                    }
+
+                    // Stop the stalled inner thread (join with up-to-10 s timeout)
+                    mp4_writer_stop_recording_thread(ctx->mp4_writer);
+
+                    // Restart it
+                    int restart_ret = mp4_writer_start_recording_thread(ctx->mp4_writer, restart_url);
+                    if (restart_ret < 0) {
+                        log_error("Failed to restart inner RTSP thread for stream %s, exiting outer thread",
+                                  stream_name);
+                        ctx->running = 0;
+                        break;
+                    }
+
+                    log_info("Inner RTSP thread for stream %s restarted successfully", stream_name);
+                    self_restart_count++;
+                    dead_check_seconds = 0;
+                }
+            } else {
+                // Thread is healthy — clear the stale-detection counter
+                dead_check_seconds = 0;
+            }
+        }
     }
 
     // When done, stop the RTSP recording thread and close the writer

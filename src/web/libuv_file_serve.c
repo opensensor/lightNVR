@@ -351,7 +351,13 @@ static void on_file_stat(uv_fs_t *req) {
     }
     memcpy(header_buf, headers, len);
 
-    libuv_connection_send(ctx->conn, header_buf, len, true);
+    if (libuv_connection_send(ctx->conn, header_buf, len, true) != 0) {
+        // Send failed; libuv_connection_send already closed the connection.
+        // Clear the pending flag so on_file_close won't try to manage it again.
+        conn->async_response_pending = false;
+        uv_fs_close(conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
+        return;
+    }
     ctx->headers_sent = true;
 
     // Start sending file content
@@ -407,6 +413,8 @@ static void on_chunk_write_complete(uv_write_t *req, int status) {
 
     if (status < 0) {
         log_error("on_chunk_write_complete: Write error: %s", uv_strerror(status));
+        // Signal on_file_close to force CLOSE rather than keep-alive
+        ctx->write_error = true;
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }
@@ -492,7 +500,10 @@ static void on_file_close(uv_fs_t *req) {
     // If async_response_pending is false, the error handler already managed the connection
     bool should_manage_connection = conn->async_response_pending;
 
-    uv_fs_req_cleanup(req);
+    // Read write_error before file_serve_cleanup frees ctx
+    bool write_error = ctx->write_error;
+
+    // file_serve_cleanup cleans up all four uv_fs_t requests (including close_req)
     file_serve_cleanup(ctx);
 
     // Clear async response flag
@@ -515,13 +526,14 @@ static void on_file_close(uv_fs_t *req) {
     extern void libuv_connection_reset(libuv_connection_t *conn);
 
     if (!uv_is_closing((uv_handle_t *)&conn->handle)) {
-        if (conn->keep_alive && llhttp_should_keep_alive(&conn->parser)) {
+        if (!write_error && conn->keep_alive && llhttp_should_keep_alive(&conn->parser)) {
             // Keep connection alive for next request
             log_debug("on_file_close: Keeping connection alive for reuse");
             libuv_connection_reset(conn);
         } else {
-            // Close connection
-            log_debug("on_file_close: Closing connection (keep_alive=%d)", conn->keep_alive);
+            // Close connection (write error mid-transfer or keep-alive disabled)
+            log_debug("on_file_close: Closing connection (keep_alive=%d, write_error=%d)",
+                      conn->keep_alive, (int)write_error);
             libuv_connection_close(conn);
         }
     }

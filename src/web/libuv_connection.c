@@ -16,6 +16,7 @@
 #include "utils/memory.h"
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
+#include "web/go2rtc_proxy_thread.h"
 #include "core/logger.h"
 
 // Forward declarations for llhttp callbacks
@@ -105,6 +106,11 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     // Reset thread pool offloading state
     conn->handler_on_worker = false;
     conn->deferred_file_serve = false;
+
+    // Reset async response state — stale true values here silently drop the
+    // response for the next request in handler_after_work_cb.
+    conn->async_response_pending = false;
+    conn->deferred_action = WRITE_ACTION_NONE;
 
     conn->requests_handled++;
 
@@ -512,6 +518,60 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
     libuv_send_response_ex(conn, &conn->response, action);
 }
 
+/**
+ * @brief Static file resolution handler — runs on the libuv thread pool.
+ *
+ * Performs blocking stat() calls to resolve the requested static file.
+ * Sets conn->deferred_file_serve so handler_after_work_cb can call
+ * libuv_serve_file() from the event-loop thread (required by libuv async I/O).
+ */
+static void static_file_resolve_handler(const http_request_t *req, http_response_t *res) {
+    libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
+    libuv_server_t *server = conn->server;
+
+    char file_path[1024];
+    snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, req->path);
+
+    struct stat st;
+    if (stat(file_path, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) {
+            snprintf(file_path, sizeof(file_path), "%s%s/index.html",
+                     server->config.web_root, req->path);
+            if (stat(file_path, &st) != 0) {
+                log_debug("Directory index not found: %s", file_path);
+                http_response_set_json_error(res, 404, "Directory index not found");
+                return;
+            }
+        }
+        log_debug("Serving static file: %s", file_path);
+        strncpy(conn->deferred_file_path, file_path, sizeof(conn->deferred_file_path) - 1);
+        conn->deferred_file_path[sizeof(conn->deferred_file_path) - 1] = '\0';
+        conn->deferred_content_type[0] = '\0';
+        conn->deferred_extra_headers[0] = '\0';
+        conn->deferred_file_serve = true;
+    } else {
+        char gz_path[1080];
+        snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
+        if (stat(gz_path, &st) == 0 && S_ISREG(st.st_mode)) {
+            log_debug("Serving gzip static file: %s", gz_path);
+            extern const char *libuv_get_mime_type(const char *path);
+            const char *mime_type = libuv_get_mime_type(file_path);
+            strncpy(conn->deferred_file_path, gz_path, sizeof(conn->deferred_file_path) - 1);
+            conn->deferred_file_path[sizeof(conn->deferred_file_path) - 1] = '\0';
+            strncpy(conn->deferred_content_type, mime_type,
+                    sizeof(conn->deferred_content_type) - 1);
+            conn->deferred_content_type[sizeof(conn->deferred_content_type) - 1] = '\0';
+            strncpy(conn->deferred_extra_headers, "Content-Encoding: gzip\r\n",
+                    sizeof(conn->deferred_extra_headers) - 1);
+            conn->deferred_extra_headers[sizeof(conn->deferred_extra_headers) - 1] = '\0';
+            conn->deferred_file_serve = true;
+        } else {
+            log_debug("Static file not found: %s", file_path);
+            http_response_set_json_error(res, 404, "Not Found");
+        }
+    }
+}
+
 static int on_message_complete(llhttp_t *parser) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
     conn->message_complete = true;
@@ -543,8 +603,23 @@ static int on_message_complete(llhttp_t *parser) {
             ? WRITE_ACTION_KEEP_ALIVE
             : WRITE_ACTION_CLOSE;
 
-    // Set user_data to point to connection (needed for file serving)
+    // Set user_data to point to connection (needed for file serving and proxy)
     conn->request.user_data = conn;
+
+    // Go2rtc proxy paths use dedicated detached threads to avoid starving the
+    // shared libuv thread pool with 30-second blocking curl calls.
+    if (go2rtc_proxy_path_matches(conn->request.path)) {
+        uv_read_stop((uv_stream_t *)&conn->handle);
+        if (go2rtc_proxy_thread_submit(conn, action) == 0) {
+            return HPE_PAUSED;
+        }
+        // Submit failed — fall back to a 503 error response
+        log_error("on_message_complete: go2rtc proxy thread submit failed for %s",
+                  conn->request.path);
+        http_response_set_json_error(&conn->response, 503, "Service temporarily unavailable");
+        libuv_send_response_ex(conn, &conn->response, action);
+        return HPE_OK;
+    }
 
     if (handler) {
         // Stop reading to prevent new data from arriving while the
@@ -587,63 +662,38 @@ static int on_message_complete(llhttp_t *parser) {
         // libuv_connection_reset (which calls llhttp_reset).
         return HPE_PAUSED;
     } else {
-        // No handler matched - try to serve static file
-        // Build file path
-        char file_path[1024];
-        snprintf(file_path, sizeof(file_path), "%s%s",
-                 server->config.web_root, conn->request.path);
+        // No handler matched — offload static file resolution to the thread pool
+        // to avoid blocking stat() calls on the event-loop thread.
+        uv_read_stop((uv_stream_t *)&conn->handle);
 
-        // Check if file exists
-        struct stat st;
-        if (stat(file_path, &st) == 0) {
-            // If it's a directory, try to serve index.html
-            if (S_ISDIR(st.st_mode)) {
-                snprintf(file_path, sizeof(file_path), "%s%s/index.html",
-                         server->config.web_root, conn->request.path);
-                if (stat(file_path, &st) != 0) {
-                    log_debug("Directory index not found: %s", file_path);
-                    http_response_set_json_error(&conn->response, 404, "Directory index not found");
-                    libuv_send_response_ex(conn, &conn->response, action);
-                    return 0;
-                }
-            }
-
-            // Serve the file asynchronously
-            log_debug("Serving static file: %s", file_path);
-            if (libuv_serve_file(conn, file_path, NULL, NULL) == 0) {
-                // File serving started successfully - don't send response here
-                // The file serve callbacks will handle the response
-                return 0;
-            } else {
-                log_error("Failed to serve file: %s", file_path);
-                http_response_set_json_error(&conn->response, 500, "Failed to serve file");
-                libuv_send_response_ex(conn, &conn->response, action);
-            }
-        } else {
-            // File not found - try .gz version for pre-compressed assets
-            // (embedded devices may only have gzip-compressed files)
-            char gz_path[1080];
-            snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
-            if (stat(gz_path, &st) == 0 && S_ISREG(st.st_mode)) {
-                // Found gzip version - serve with Content-Encoding header
-                // Use MIME type from original (non-.gz) path
-                log_debug("Serving gzip static file: %s", gz_path);
-                extern const char *libuv_get_mime_type(const char *path);
-                const char *mime_type = libuv_get_mime_type(file_path);
-                if (libuv_serve_file(conn, gz_path, mime_type,
-                                     "Content-Encoding: gzip\r\n") == 0) {
-                    return 0;
-                } else {
-                    log_error("Failed to serve gzip file: %s", gz_path);
-                    http_response_set_json_error(&conn->response, 500, "Failed to serve file");
-                    libuv_send_response_ex(conn, &conn->response, action);
-                }
-            } else {
-                log_debug("Static file not found: %s", file_path);
-                http_response_set_json_error(&conn->response, 404, "Not Found");
-                libuv_send_response_ex(conn, &conn->response, action);
-            }
+        handler_work_t *hw = safe_malloc(sizeof(handler_work_t));
+        if (!hw) {
+            log_error("on_message_complete: Failed to allocate static file work context");
+            http_response_set_json_error(&conn->response, 500, "Internal Server Error");
+            libuv_send_response_ex(conn, &conn->response, action);
+            return HPE_OK;
         }
+
+        hw->work.data = hw;
+        hw->conn = conn;
+        hw->handler = static_file_resolve_handler;
+        hw->action = action;
+        conn->handler_on_worker = true;
+        conn->deferred_action = action;
+
+        int r = uv_queue_work(server->loop, &hw->work,
+                              handler_work_cb, handler_after_work_cb);
+        if (r != 0) {
+            log_error("on_message_complete: uv_queue_work failed for static file: %s",
+                      uv_strerror(r));
+            conn->handler_on_worker = false;
+            safe_free(hw);
+            http_response_set_json_error(&conn->response, 500, "Internal Server Error");
+            libuv_send_response_ex(conn, &conn->response, action);
+            return HPE_OK;
+        }
+
+        return HPE_PAUSED;
     }
 
     return 0;

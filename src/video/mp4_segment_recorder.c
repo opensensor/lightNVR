@@ -757,8 +757,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 int64_t wait_time = (av_gettime() - waiting_start_time) / 1000000;
 
 				// Prefer ending on a keyframe to avoid gaps in the next segment.
-				// Only allow ending on a non-keyframe when we're shutting down.
-				if (is_keyframe || (shutdown_detected && wait_time > 1)) {
+				// Allow ending without a keyframe on shutdown OR after a 5-second
+				// hard timeout so cameras with long keyframe intervals (e.g. low-FPS
+				// enclosure cameras) cannot push segments past their configured length.
+				if (is_keyframe || (shutdown_detected && wait_time > 1) || wait_time >= 5) {
                     if (is_keyframe) {
                         log_info("Found final key frame, ending recording");
                         // Set flag to indicate the last frame was a key frame
@@ -784,7 +786,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 							log_warn("Failed to allocate pending keyframe packet for overlap mode");
 						}
                     } else {
-						log_info("Shutdown: waited %lld seconds for key frame, ending recording with non-key frame", (long long)wait_time);
+                        if (wait_time >= 5 && !shutdown_detected) {
+                            log_warn("Keyframe wait timeout after %lld s — camera has long keyframe interval? "
+                                     "Cutting segment without final keyframe to enforce configured segment length.",
+                                     (long long)wait_time);
+                        } else {
+                            log_info("Shutdown: waited %lld seconds for key frame, ending recording with non-key frame",
+                                     (long long)wait_time);
+                        }
                         // Clear flag since the last frame was not a key frame
                         segment_info_ptr->last_frame_was_key = false;
                         log_debug("Last frame was NOT a key frame, next segment will wait for a keyframe");

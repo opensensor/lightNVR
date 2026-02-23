@@ -119,6 +119,8 @@ int libuv_connection_send(libuv_connection_t *conn, char *data, size_t len,
             safe_free(data);
         }
         safe_free(ctx);
+        // Close the connection so it doesn't sit as a zombie handle
+        libuv_connection_close(conn);
         return -1;
     }
 
@@ -166,6 +168,8 @@ int libuv_connection_send_ex(libuv_connection_t *conn, char *data, size_t len,
             safe_free(data);
         }
         safe_free(ctx);
+        // Close the connection so it doesn't sit as a zombie handle
+        libuv_connection_close(conn);
         return -1;
     }
 
