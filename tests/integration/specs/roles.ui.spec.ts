@@ -105,8 +105,7 @@ test.describe('Role-Based Access Control @ui @roles @rbac', () => {
 
   test.describe('Viewer Role Access', () => {
     test('viewer can access live view', async ({ page }) => {
-      const loginPage = new LoginPage(page);
-      await loginPage.login(TEST_USERS.viewer.username, TEST_USERS.viewer.password);
+      await login(page, TEST_USERS.viewer);
       
       await sleep(2000);
       
@@ -123,8 +122,7 @@ test.describe('Role-Based Access Control @ui @roles @rbac', () => {
     });
 
     test('viewer has limited navigation options', async ({ page }) => {
-      const loginPage = new LoginPage(page);
-      await loginPage.login(TEST_USERS.viewer.username, TEST_USERS.viewer.password);
+      await login(page, TEST_USERS.viewer);
       
       await sleep(2000);
       
