@@ -216,6 +216,9 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
    git clone https://github.com/opensensor/lightnvr.git
    cd lightnvr
 
+   # Initialize submodules (required for go2rtc)
+   git submodule update --init --recursive
+
    # Build web assets (requires Node.js/npm)
    cd web
    npm install
@@ -295,6 +298,26 @@ sudo systemctl restart lightnvr
 
 See [Web Interface Troubleshooting Guide](docs/TROUBLESHOOTING_WEB_INTERFACE.md) for detailed instructions.
 
+### WebRTC Streams Not Connecting
+
+If live streams fail with ICE connection errors, set your machine's local IP as `external_ip` in `lightnvr.ini`:
+
+```ini
+[go2rtc]
+external_ip = 192.168.1.100  ; Replace with your machine's local IP
+```
+
+To find your local IP:
+```bash
+# Linux
+hostname -I | awk '{print $1}'
+
+# macOS
+ipconfig getifaddr en0    # or en1 for Wi-Fi
+```
+
+Then restart LightNVR (or `docker compose restart` for Docker). See the [Docker Deployment Guide](docs/DOCKER.md#webrtc-not-working) for more WebRTC troubleshooting.
+
 ### General Troubleshooting
 
 For other issues, see the [General Troubleshooting Guide](docs/TROUBLESHOOTING.md).
@@ -308,7 +331,10 @@ For other issues, see the [General Troubleshooting Guide](docs/TROUBLESHOOTING.m
 git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
 
-# Start the container
+# Initialize submodules (required for go2rtc build)
+git submodule update --init --recursive
+
+# Start the container (first run will build the image)
 docker compose up -d
 
 # View logs

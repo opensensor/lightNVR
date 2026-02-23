@@ -40,6 +40,9 @@ Building from source is the recommended method for most installations, as it ens
 ```bash
 git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
+
+# Initialize submodules (required for go2rtc)
+git submodule update --init --recursive
 ```
 
 #### 2. Install Dependencies
@@ -90,7 +93,10 @@ Docker Compose simplifies the deployment and ensures proper volume configuration
 git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
 
-# Start the container
+# Initialize submodules (required for go2rtc build)
+git submodule update --init --recursive
+
+# Start the container (first run will build the image)
 docker compose up -d
 ```
 
@@ -301,6 +307,9 @@ cd ingenic-dependencies
 git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
 
+# Initialize submodules (required for go2rtc)
+git submodule update --init --recursive
+
 # Build using the cross-compilation script
 ./scripts/build-ingenic.sh
 ```
@@ -352,6 +361,9 @@ sudo apt-get install -y \
 # Clone the repository
 git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
+
+# Initialize submodules (required for go2rtc)
+git submodule update --init --recursive
 
 # Build with Raspberry Pi optimizations
 ./scripts/build.sh --release --platform=raspberry-pi

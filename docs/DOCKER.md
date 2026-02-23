@@ -23,7 +23,10 @@ This guide provides comprehensive information about deploying LightNVR using Doc
 git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
 
-# Start the container
+# Initialize submodules (required for go2rtc build)
+git submodule update --init --recursive
+
+# Start the container (first run will build the image)
 docker compose up -d
 
 # View logs
@@ -387,14 +390,38 @@ docker inspect lightnvr | grep -A 10 Mounts
 
 ### WebRTC Not Working
 
-**Symptom:** WebRTC streams fail to connect
+**Symptom:** WebRTC streams fail to connect (ICE connection failures)
 
 **Causes:**
-1. UDP port 8555 not forwarded
-2. Firewall blocking WebRTC
-3. STUN server not reachable
+1. ICE candidates not resolving to the correct host IP address
+2. UDP port 8555 not forwarded
+3. Firewall blocking WebRTC
+4. STUN server not reachable
 
 **Solution:**
+
+The most common fix is setting your host machine's local IP as `external_ip` in `./config/lightnvr.ini`:
+
+```ini
+[go2rtc]
+external_ip = 192.168.1.100  ; Replace with your machine's local IP
+```
+
+To find your local IP:
+```bash
+# Linux
+hostname -I | awk '{print $1}'
+
+# macOS
+ipconfig getifaddr en0    # or en1 for Wi-Fi
+```
+
+Then restart the container:
+```bash
+docker compose restart
+```
+
+If that doesn't resolve it, check go2rtc connectivity:
 ```bash
 # Check if go2rtc is running
 docker exec lightnvr ps aux | grep go2rtc
@@ -492,6 +519,9 @@ If you're upgrading from an older version that mounted `/var/lib/lightnvr` direc
 # Clone repository
 git clone https://github.com/opensensor/lightNVR.git
 cd lightNVR
+
+# Initialize submodules (required for go2rtc)
+git submodule update --init --recursive
 
 # Build image
 docker build -t lightnvr:local .

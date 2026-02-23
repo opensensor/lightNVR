@@ -73,6 +73,9 @@ LightNVR includes a build script that simplifies the build process. To build the
 git clone https://github.com/opensensor/lightnvr.git
 cd lightnvr
 
+# Initialize submodules (required for go2rtc)
+git submodule update --init --recursive
+
 # Build in debug mode (default)
 ./scripts/build.sh
 
