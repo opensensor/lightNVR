@@ -444,6 +444,25 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->video_params_detected = false;
             }
 
+            // Refresh the output path so the next attempt writes to a new file.
+            // Without this the same timestamp-based filename from writer creation is
+            // reused on every retry, producing "Output file already exists" warnings
+            // for every attempt after the first partial (261-byte) file is written.
+            if (thread_ctx->writer && thread_ctx->writer->output_dir[0] != '\0') {
+                time_t retry_ts = time(NULL);
+                struct tm retry_tm_buf;
+                struct tm *retry_tm = localtime_r(&retry_ts, &retry_tm_buf);
+                if (retry_tm) {
+                    char retry_ts_str[32];
+                    strftime(retry_ts_str, sizeof(retry_ts_str), "%Y%m%d_%H%M%S", retry_tm);
+                    snprintf(thread_ctx->writer->output_path, MAX_PATH_LENGTH,
+                             "%s/recording_%s.mp4",
+                             thread_ctx->writer->output_dir, retry_ts_str);
+                    log_debug("Updated output path for retry attempt: %s",
+                              thread_ctx->writer->output_path);
+                }
+            }
+
             log_info("Waiting %d seconds before retrying segment recording for %s (retry #%d)",
                     backoff_seconds, stream_name, thread_ctx->retry_count);
 

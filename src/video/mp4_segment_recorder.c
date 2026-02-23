@@ -319,7 +319,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         AVStream *vstream = input_ctx->streams[video_stream_idx];
         if (vstream->codecpar->width == 0 || vstream->codecpar->height == 0) {
             log_info("Video dimensions 0x0 after stream probe — attempting decoder-based "
-                     "dimension detection from bitstream (up to 10s)...");
+                     "dimension detection from bitstream (up to 60s)...");
 
             const AVCodec *probe_decoder = avcodec_find_decoder(vstream->codecpar->codec_id);
             if (probe_decoder) {
@@ -331,16 +331,55 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         AVFrame *probe_frame = av_frame_alloc();
                         if (probe_pkt && probe_frame) {
                             int64_t probe_start = av_gettime();
-                            int64_t probe_timeout = 10000000; // 10 seconds
+                            // 60-second ceiling: go2rtc withholds video until it
+                            // receives the first keyframe from the upstream camera.
+                            // IP cameras often have 30-60 s GOP intervals, so a
+                            // 10-second probe was almost always too short. Staying on
+                            // the same connection is better than a fresh reconnect
+                            // because reconnecting resets go2rtc's keyframe wait.
+                            // If the network or go2rtc dies, av_read_frame returns an
+                            // error and we exit the loop early.
+                            int64_t probe_timeout = 60000000; // 60 seconds
                             bool dimensions_found = false;
                             int probe_packets = 0;
                             int probe_other_packets = 0;
+                            bool audio_only_warned = false;
+                            int64_t last_progress_log = probe_start;
 
                             while (!dimensions_found &&
                                    av_gettime() - probe_start < probe_timeout) {
                                 if (interrupt_callback(shutdown_flag)) {
                                     log_info("Dimension probe interrupted by shutdown");
                                     break;
+                                }
+
+                                int64_t now = av_gettime();
+                                int64_t elapsed_us = now - probe_start;
+
+                                // After 10 s with audio flowing but no video, warn once:
+                                // this is the signature of go2rtc waiting for a keyframe
+                                // from the upstream source.  Staying on this connection
+                                // is the right strategy — a fresh connect just resets the
+                                // keyframe wait on the go2rtc side.
+                                if (!audio_only_warned &&
+                                    elapsed_us >= 10000000 &&
+                                    probe_packets == 0 &&
+                                    probe_other_packets > 0) {
+                                    log_warn("Dimension probe: %d audio packets received but "
+                                             "0 video packets after 10s — go2rtc is likely "
+                                             "waiting for a keyframe from the upstream camera. "
+                                             "Continuing to probe on this connection (up to 60s total)...",
+                                             probe_other_packets);
+                                    audio_only_warned = true;
+                                }
+
+                                // Periodic progress log every 5 s
+                                if (now - last_progress_log >= 5000000) {
+                                    log_info("Dimension probe: %d video pkts, %d other pkts, "
+                                             "%.0fs elapsed",
+                                             probe_packets, probe_other_packets,
+                                             elapsed_us / 1000000.0);
+                                    last_progress_log = now;
                                 }
 
                                 int probe_ret = av_read_frame(input_ctx, probe_pkt);

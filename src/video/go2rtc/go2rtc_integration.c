@@ -713,6 +713,15 @@ static void *unified_health_monitor_thread(void *arg) {
         // =====================================================================
         // Phase 1: Process-level health check (check go2rtc API itself)
         // =====================================================================
+        // Guard against calling go2rtc_stream_is_ready() when the stream module
+        // has already been cleaned up (g_initialized == false).  Without this
+        // guard the health monitor thread — which only checks g_monitor_running,
+        // not g_initialized — would keep calling go2rtc_stream_is_ready() after
+        // go2rtc_stream_cleanup() runs and would spam "not initialized" warnings.
+        if (!go2rtc_stream_is_initialized()) {
+            log_debug("go2rtc stream module not initialized, skipping health check");
+            continue;
+        }
         bool api_healthy = go2rtc_stream_is_ready();
         bool process_restarted = false;
 
@@ -1079,18 +1088,23 @@ int go2rtc_integration_stop_recording(const char *stream_name) {
     // Check if the stream is using go2rtc for recording
     go2rtc_stream_tracking_t *tracking = find_tracked_stream(stream_name);
     if (tracking && tracking->using_go2rtc_for_recording) {
-        log_info("Stopping recording for stream %s using go2rtc", stream_name);
+        // Recording was started via start_mp4_recording_with_url() using go2rtc's
+        // RTSP output — the native FFmpeg recording path.  The go2rtc *consumer*
+        // API was never involved, so go2rtc_consumer_stop_recording() cannot find
+        // the stream in its tracking array and logs "Recording not active".
+        // Use stop_mp4_recording() to stop the actual recording thread instead.
+        log_info("Stopping recording for stream %s (go2rtc RTSP path)", stream_name);
 
-        // Stop recording using go2rtc consumer
-        if (!go2rtc_consumer_stop_recording(stream_name)) {
-            log_error("Failed to stop recording for stream %s using go2rtc", stream_name);
-            return -1;
+        int ret = stop_mp4_recording(stream_name);
+        if (ret != 0) {
+            log_error("Failed to stop recording for stream %s (error: %d)", stream_name, ret);
+            return ret;
         }
 
         // Update tracking
         tracking->using_go2rtc_for_recording = false;
 
-        log_info("Stopped recording for stream %s using go2rtc", stream_name);
+        log_info("Stopped recording for stream %s", stream_name);
         return 0;
     } else {
         // Fall back to default recording
