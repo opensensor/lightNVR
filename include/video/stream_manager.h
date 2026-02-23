@@ -213,11 +213,23 @@ int get_stream_snapshot(stream_handle_t handle, const char *path);
 
 /**
  * Get memory usage statistics for the stream manager
- * 
+ *
  * @param used_memory Pointer to store used memory in bytes
  * @param peak_memory Pointer to store peak memory usage in bytes
  * @return 0 on success, non-zero on failure
  */
 int get_stream_manager_memory_usage(uint64_t *used_memory, uint64_t *peak_memory);
+
+/**
+ * Check if recording is currently within the scheduled window for a stream.
+ *
+ * Returns true if recording should be active:
+ *   - schedule mode is disabled (record_on_schedule == false), OR
+ *   - the current local day-of-week / hour is enabled in the 168-slot schedule.
+ *
+ * @param config Stream configuration containing record_on_schedule and recording_schedule
+ * @return true if recording should be active now, false if outside the scheduled window
+ */
+bool is_recording_scheduled(const stream_config_t *config);
 
 #endif // LIGHTNVR_STREAM_MANAGER_H

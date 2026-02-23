@@ -3,6 +3,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "video/stream_manager.h"
 #include "core/logger.h"
@@ -13,6 +14,7 @@
 #include "video/stream_state.h"
 #include "database/db_streams.h"
 #include "video/unified_detection_thread.h"
+#include "video/mp4_recording.h"
 #ifdef USE_GO2RTC
 #include "video/go2rtc/go2rtc_integration.h"
 #endif
@@ -77,6 +79,110 @@ static const char* recording_mode_to_string(recording_mode_t mode) {
 static stream_t streams[MAX_STREAMS];
 static bool initialized = false;
 
+// Schedule monitor thread state
+static pthread_t schedule_monitor_thread;
+static bool schedule_monitor_running = false;
+static pthread_mutex_t schedule_monitor_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  schedule_monitor_cond  = PTHREAD_COND_INITIALIZER;
+
+/**
+ * Check if recording is currently within the scheduled window for a stream.
+ * Returns true if recording should be active:
+ *   - schedule mode is disabled (record_on_schedule == false), OR
+ *   - the current local day-of-week / hour is enabled in the 168-slot schedule.
+ */
+bool is_recording_scheduled(const stream_config_t *config) {
+    if (!config->record_on_schedule) {
+        return true;  // No schedule restriction — always record when record=true
+    }
+
+    time_t now = time(NULL);
+    struct tm tm_info;
+    localtime_r(&now, &tm_info);
+
+    /* tm_wday: 0=Sunday … 6=Saturday  (matches frontend DAYS array order) */
+    int index = tm_info.tm_wday * 24 + tm_info.tm_hour;
+    if (index < 0 || index >= 168) {
+        return true;  // Safety fallback
+    }
+    return config->recording_schedule[index] != 0;
+}
+
+/**
+ * Background thread that enforces recording schedules.
+ * Wakes every 60 seconds, iterates running streams with record_on_schedule=true,
+ * and starts/stops MP4 recording to match the configured weekly schedule.
+ */
+static void *schedule_monitor_func(void *arg) {
+    (void)arg;
+    log_info("Recording schedule monitor thread started");
+
+    while (schedule_monitor_running) {
+        /* Sleep up to 60 seconds, but wake immediately on shutdown signal */
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += 60;
+
+        pthread_mutex_lock(&schedule_monitor_mutex);
+        if (schedule_monitor_running) {
+            pthread_cond_timedwait(&schedule_monitor_cond, &schedule_monitor_mutex, &ts);
+        }
+        pthread_mutex_unlock(&schedule_monitor_mutex);
+
+        if (!schedule_monitor_running || !initialized) {
+            break;
+        }
+
+        /* Read fresh stream configs from the database so that runtime
+         * schedule changes made through the web UI are picked up
+         * immediately, rather than relying on the stale in-memory
+         * streams[] array that was loaded at boot time. */
+        stream_config_t db_streams[MAX_STREAMS];
+        int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+
+        for (int i = 0; i < count; i++) {
+            /* Skip streams that don't need schedule management */
+            if (db_streams[i].name[0] == '\0' ||
+                !db_streams[i].enabled ||
+                !db_streams[i].record ||
+                !db_streams[i].record_on_schedule) {
+                continue;
+            }
+
+            /* No "is stream running?" gate here.  After a reboot the
+             * state manager stays STREAM_STATE_INACTIVE because
+             * check_and_ensure_services() starts HLS / recording
+             * directly without calling start_stream().  If we gated
+             * on the state we would never fire.  Instead we just
+             * attempt the start/stop and let the underlying functions
+             * fail gracefully when the stream isn't actually up. */
+
+            bool should_record = is_recording_scheduled(&db_streams[i]);
+            bool is_recording  = (get_mp4_writer_for_stream(db_streams[i].name) != NULL);
+
+            if (should_record && !is_recording) {
+                log_info("Schedule: starting recording for stream '%s'", db_streams[i].name);
+                #ifdef USE_GO2RTC
+                go2rtc_integration_start_recording(db_streams[i].name);
+                #else
+                start_mp4_recording_with_trigger(db_streams[i].name, "scheduled");
+                #endif
+            } else if (!should_record && is_recording) {
+                log_info("Schedule: stopping recording for stream '%s'", db_streams[i].name);
+                #ifdef USE_GO2RTC
+                go2rtc_integration_stop_recording(db_streams[i].name);
+                #else
+                stop_mp4_recording(db_streams[i].name);
+                #endif
+                stop_recording(db_streams[i].name);
+            }
+        }
+    }
+
+    log_info("Recording schedule monitor thread exiting");
+    return NULL;
+}
+
 /**
  * Initialize stream manager
  */
@@ -131,6 +237,13 @@ int init_stream_manager(int max_streams) {
         }
     }
 
+    // Start the recording schedule monitor thread
+    schedule_monitor_running = true;
+    if (pthread_create(&schedule_monitor_thread, NULL, schedule_monitor_func, NULL) != 0) {
+        log_warn("Failed to create recording schedule monitor thread");
+        schedule_monitor_running = false;
+    }
+
     log_info("Stream manager initialized");
     return 0;
 }
@@ -141,6 +254,16 @@ int init_stream_manager(int max_streams) {
 void shutdown_stream_manager(void) {
     if (!initialized) {
         return;
+    }
+
+    // Stop the recording schedule monitor thread before tearing down streams
+    if (schedule_monitor_running) {
+        schedule_monitor_running = false;
+        pthread_mutex_lock(&schedule_monitor_mutex);
+        pthread_cond_signal(&schedule_monitor_cond);
+        pthread_mutex_unlock(&schedule_monitor_mutex);
+        pthread_join(schedule_monitor_thread, NULL);
+        log_info("Recording schedule monitor thread stopped");
     }
 
     // Stop all streams
@@ -594,8 +717,11 @@ int start_stream(stream_handle_t handle) {
     // Get streaming_enabled flag
     bool streaming_enabled = s->config.streaming_enabled;
 
-    // Get recording_enabled flag
-    bool recording_enabled = s->config.record;
+    // Get recording_enabled flag — honour schedule if configured
+    bool recording_enabled = s->config.record && is_recording_scheduled(&s->config);
+    if (s->config.record && !recording_enabled) {
+        log_info("Stream '%s': recording deferred — outside scheduled window", s->config.name);
+    }
 
     // Get detection_based_recording flag
     bool detection_enabled = s->config.detection_based_recording;
@@ -631,8 +757,12 @@ int start_stream(stream_handle_t handle) {
     // Start recording if enabled - completely independent of streaming status
     int mp4_result = 0;
     if (recording_enabled) {
-        // Start MP4 recording directly
+        // Route through go2rtc integration when available
+        #ifdef USE_GO2RTC
+        mp4_result = go2rtc_integration_start_recording(stream_name);
+        #else
         mp4_result = start_mp4_recording(stream_name);
+        #endif
         if (mp4_result != 0) {
             log_error("Failed to start MP4 recording for '%s'", stream_name);
         } else {

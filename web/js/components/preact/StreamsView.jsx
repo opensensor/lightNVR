@@ -171,7 +171,10 @@ export function StreamsView() {
     // Retention policy settings
     retentionDays: 0,
     detectionRetentionDays: 0,
-    maxStorageMb: 0
+    maxStorageMb: 0,
+    // Recording schedule
+    recordOnSchedule: false,
+    recordingSchedule: Array(168).fill(true)
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -375,7 +378,14 @@ export function StreamsView() {
       // Retention policy settings
       retention_days: parseInt(currentStream.retentionDays, 10) || 0,
       detection_retention_days: parseInt(currentStream.detectionRetentionDays, 10) || 0,
-      max_storage_mb: parseInt(currentStream.maxStorageMb, 10) || 0
+      max_storage_mb: parseInt(currentStream.maxStorageMb, 10) || 0,
+      // Recording schedule
+      record_on_schedule: !!currentStream.recordOnSchedule,
+      recording_schedule: currentStream.recordOnSchedule
+        ? (Array.isArray(currentStream.recordingSchedule) && currentStream.recordingSchedule.length === 168
+            ? currentStream.recordingSchedule
+            : Array(168).fill(true))
+        : Array(168).fill(true)
     };
 
     // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -540,7 +550,10 @@ export function StreamsView() {
       ptzHasHome: false,
       retentionDays: 0,
       detectionRetentionDays: 0,
-      maxStorageMb: 0
+      maxStorageMb: 0,
+      // Recording schedule
+      recordOnSchedule: false,
+      recordingSchedule: Array(168).fill(true)
     });
     setIsEditing(false);
     setModalVisible(true);
@@ -612,7 +625,12 @@ export function StreamsView() {
         // Retention policy settings
         retentionDays: stream.retention_days || 0,
         detectionRetentionDays: stream.detection_retention_days || 0,
-        maxStorageMb: stream.max_storage_mb || 0
+        maxStorageMb: stream.max_storage_mb || 0,
+        // Recording schedule
+        recordOnSchedule: stream.record_on_schedule || false,
+        recordingSchedule: (Array.isArray(stream.recording_schedule) && stream.recording_schedule.length === 168)
+          ? stream.recording_schedule
+          : Array(168).fill(true)
       });
       setIsEditing(true);
       setModalVisible(true);
