@@ -210,16 +210,22 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
     // If audio recording is enabled, add FFmpeg transcoding sources
     // This creates a stream with multiple sources:
-    // 1. Primary RTSP source (video copy, original audio)
+    // 1. Primary RTSP source (video pass-through, original audio)
     // 2. FFmpeg source that transcodes audio to AAC for MP4 recording compatibility
     // 3. FFmpeg source that transcodes audio to OPUS for WebRTC compatibility
+    // NOTE: The FFmpeg sources are audio-only.  Do NOT add #video=copy — see
+    //       the comment on ffmpeg_aac_source below for the full explanation.
     if (record_audio) {
         log_info("Audio recording enabled for stream %s, adding FFmpeg audio transcoding sources", stream_id);
 
-        // Build the FFmpeg AAC transcoding source URL for recording
-        // Format: ffmpeg:stream_id#video=copy#audio=aac
+        // Build the FFmpeg AAC transcoding source URL for recording.
+        // Audio-only: no #video=copy — that would cause FFmpeg to reconnect to
+        // go2rtc's own RTSP output to copy video, which triggers a recursive
+        // SPS/PPS probe deadlock on cameras that omit sprop-parameter-sets (e.g.
+        // Thingino/Ingenic).  Video is served directly from the camera RTSP URL
+        // (source 1) and does not need FFmpeg's involvement.
         char ffmpeg_aac_source[URL_BUFFER_SIZE];
-        snprintf(ffmpeg_aac_source, URL_BUFFER_SIZE, "ffmpeg:%s#video=copy#audio=aac", stream_id);
+        snprintf(ffmpeg_aac_source, URL_BUFFER_SIZE, "ffmpeg:%s#audio=aac", stream_id);
 
         // Build the FFmpeg OPUS transcoding source URL for WebRTC
         // Format: ffmpeg:stream_id#audio=opus

@@ -333,6 +333,8 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
         return -1;
     }
 
+    // Forward the full path as-is. go2rtc is configured with base_path: /go2rtc
+    // (see GO2RTC_BASE_PATH), so it serves /go2rtc/api/streams directly.
     if (req->query_string[0] != '\0') {
         snprintf(ctx->url, sizeof(ctx->url), "http://127.0.0.1:%d%s?%s",
                  port, req->path, req->query_string);

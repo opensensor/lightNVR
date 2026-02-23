@@ -387,12 +387,6 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             log_error("Failed to record segment for stream %s (error: %d), implementing retry strategy...",
                      stream_name, ret);
 
-            // BUGFIX: Check if input_ctx is NULL after a failed record_segment call
-            // This can happen if the connection failed and avformat_open_input failed
-            if (thread_ctx->input_ctx == NULL) {
-                log_warn("Input context is NULL after record_segment failure for stream %s", stream_name);
-            }
-
             // Calculate backoff time based on retry count (exponential backoff with max of 30 seconds)
             int backoff_seconds = 1 << (thread_ctx->retry_count > 4 ? 4 : thread_ctx->retry_count); // 1, 2, 4, 8, 16, 16, ...
             if (backoff_seconds > 30) backoff_seconds = 30;
@@ -412,10 +406,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 thread_ctx->writer->last_packet_time = time(NULL);
             }
 
-            // If input context was closed, set it to NULL so it will be reopened
-            if (!thread_ctx->input_ctx) {
-                log_info("Input context was closed, will reopen on next attempt");
-            }
+            // Input context is always NULL after a record_segment failure — it is
+            // closed and freed on every error path inside record_segment.  This is
+            // expected: the next attempt will open a fresh RTSP connection.
+            log_debug("Input context is NULL after segment failure for stream %s"
+                      " (expected — will reopen on next attempt)", stream_name);
 
             // If we've had too many consecutive failures, try more aggressive recovery
             if (thread_ctx->retry_count > 5) {

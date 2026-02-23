@@ -334,6 +334,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                             int64_t probe_timeout = 10000000; // 10 seconds
                             bool dimensions_found = false;
                             int probe_packets = 0;
+                            int probe_other_packets = 0;
 
                             while (!dimensions_found &&
                                    av_gettime() - probe_start < probe_timeout) {
@@ -378,6 +379,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                             }
                                         }
                                     }
+                                } else {
+                                    probe_other_packets++;
                                 }
                                 av_packet_unref(probe_pkt);
                             }
@@ -392,8 +395,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                 vstream->codecpar->height = probe_ctx->height;
                             } else {
                                 log_warn("Failed to probe video dimensions after "
-                                         "%d video packets, %.1fs",
-                                         probe_packets,
+                                         "%d video packets (%d other-stream), %.1fs",
+                                         probe_packets, probe_other_packets,
                                          (av_gettime() - probe_start) / 1000000.0);
                             }
 
@@ -719,23 +722,23 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             if (!found_first_keyframe) {
                 // BUGFIX: Always wait for a keyframe to start recording, regardless of previous segment state
                 if (is_keyframe) {
-                    log_info("Found first key frame, starting recording");
                     found_first_keyframe = true;
 
-                        // Notify caller that segment has officially started (aligned to keyframe)
-                        if (!started_cb_called && started_cb) {
-                            started_cb(cb_ctx);
-                            started_cb_called = true;
-                        }
+                    // Note overlap context before announcing segment start
+                    if (segment_info_ptr->last_frame_was_key && segment_index > 0) {
+                        log_info("Previous segment ended with a key frame — starting new segment with overlap keyframe");
+                    }
 
+                    log_info("Found first key frame, starting recording");
+
+                    // Notify caller that segment has officially started (aligned to keyframe)
+                    if (!started_cb_called && started_cb) {
+                        started_cb(cb_ctx);
+                        started_cb_called = true;
+                    }
 
                     // Reset start time to when we found the first key frame
                     start_time = av_gettime();
-
-                    // Note if we had a keyframe at the end of the previous segment
-                    if (segment_info_ptr->last_frame_was_key && segment_index > 0) {
-                        log_info("Previous segment ended with a key frame, and we're starting with a new keyframe");
-                    }
                 } else {
                     // Always wait for a key frame
                     // Skip this frame as we're waiting for a key frame

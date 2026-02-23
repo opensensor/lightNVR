@@ -695,8 +695,6 @@ static int on_message_complete(llhttp_t *parser) {
 
         return HPE_PAUSED;
     }
-
-    return 0;
 }
 
 #endif /* HTTP_BACKEND_LIBUV */
