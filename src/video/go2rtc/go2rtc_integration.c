@@ -440,21 +440,14 @@ static go2rtc_stream_tracking_t *add_tracked_stream(const char *stream_name) {
 static bool is_stream_registered_with_go2rtc(const char *stream_name) {
     // Check if go2rtc is ready
     if (!go2rtc_stream_is_ready()) {
-        log_warn("go2rtc service is not ready, cannot check if stream is registered");
+        log_debug("go2rtc service is not ready, cannot check if stream is registered");
         return false;
     }
 
-    // Actually query go2rtc's /api/streams endpoint to check if the stream exists
-    // This replaces the old broken check that just formatted a WebRTC URL without
-    // ever querying go2rtc
+    // Query go2rtc's /api/streams endpoint to check if the stream exists
     bool exists = go2rtc_api_stream_exists(stream_name);
-
-    if (exists) {
-        log_info("Stream %s is registered with go2rtc (verified via API)", stream_name);
-    } else {
-        log_info("Stream %s is NOT registered with go2rtc (verified via API)", stream_name);
-    }
-
+    log_debug("Stream %s %s registered with go2rtc", stream_name,
+              exists ? "is" : "is NOT");
     return exists;
 }
 
@@ -995,23 +988,17 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
             return false;
         }
 
-        // Poll for stream registration (up to 5 seconds, checking every 500ms)
-        log_info("Polling for stream %s to be fully registered with go2rtc", stream_name);
-        bool confirmed = false;
-        for (int i = 0; i < 10; i++) {
-            usleep(500000); // 500ms
-            if (is_stream_registered_with_go2rtc(stream_name)) {
-                confirmed = true;
-                break;
-            }
-        }
+        // Brief wait for go2rtc to fully process the registration
+        usleep(500000); // 500ms
 
-        if (!confirmed) {
-            log_error("Stream %s still not registered with go2rtc after registration attempt", stream_name);
-            return false;
+        // Verify registration, but don't treat failure as fatal since the
+        // PUT /api/streams already returned 200 in ensure_stream_registered_with_go2rtc
+        if (!is_stream_registered_with_go2rtc(stream_name)) {
+            log_warn("Stream %s not yet visible in go2rtc /api/streams after registration "
+                     "(may be transient), proceeding anyway", stream_name);
+        } else {
+            log_info("Stream %s confirmed registered with go2rtc", stream_name);
         }
-
-        log_info("Stream %s successfully registered with go2rtc", stream_name);
     }
 
     return true;
@@ -1472,44 +1459,20 @@ bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size) {
     if (!is_stream_registered_with_go2rtc(stream_name)) {
         log_info("Stream %s is not registered with go2rtc, attempting to register...", stream_name);
 
-        // Try to register the stream with go2rtc with retry logic
-        int register_retries = 3;
-        bool registered = false;
-
-        while (!registered && register_retries > 0) {
-            if (ensure_stream_registered_with_go2rtc(stream_name)) {
-                registered = true;
-                break;
-            }
-
-            log_warn("Failed to register stream %s with go2rtc, retrying... (%d attempts left)",
-                    stream_name, register_retries - 1);
-            register_retries--;
-            sleep(2);
-        }
-
-        if (!registered) {
-            log_error("Failed to register stream %s with go2rtc after multiple attempts", stream_name);
+        if (!ensure_stream_registered_with_go2rtc(stream_name)) {
+            log_error("Failed to register stream %s with go2rtc", stream_name);
             return false;
         }
 
-        // Poll for stream registration (up to 5 seconds, checking every 500ms)
-        log_info("Polling for stream %s to be fully registered with go2rtc", stream_name);
-        bool confirmed = false;
-        for (int i = 0; i < 10; i++) {
-            usleep(500000); // 500ms
-            if (is_stream_registered_with_go2rtc(stream_name)) {
-                confirmed = true;
-                break;
-            }
+        // Brief wait then verify — but don't treat check failure as fatal since
+        // the PUT /api/streams already succeeded inside ensure_stream_registered
+        usleep(500000); // 500ms
+        if (!is_stream_registered_with_go2rtc(stream_name)) {
+            log_warn("Stream %s not yet visible in go2rtc /api/streams after registration "
+                     "(may be transient), proceeding to get RTSP URL anyway", stream_name);
+        } else {
+            log_info("Stream %s confirmed registered with go2rtc", stream_name);
         }
-
-        if (!confirmed) {
-            log_error("Stream %s still not registered with go2rtc after registration attempt", stream_name);
-            return false;
-        }
-
-        log_info("Stream %s successfully registered with go2rtc", stream_name);
     }
 
     // Use the stream module to get the RTSP URL with the correct port
@@ -1518,7 +1481,7 @@ bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size) {
         return false;
     }
 
-    log_info("Successfully got RTSP URL for stream %s: %s", stream_name, url);
+    log_debug("Got RTSP URL for stream %s: %s", stream_name, url);
     return true;
 }
 
