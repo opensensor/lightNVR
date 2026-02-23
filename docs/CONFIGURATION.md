@@ -96,7 +96,7 @@ stun_enabled = true
 stun_server = stun.l.google.com:19302
 ; external_ip =
 ; ice_servers =
-; proxy_max_inflight = 12
+; proxy_max_inflight = 16
 
 [mqtt]
 enabled = false
@@ -306,7 +306,7 @@ stun_enabled = true
 stun_server = stun.l.google.com:19302
 ; external_ip =
 ; ice_servers =
-; proxy_max_inflight = 12
+; proxy_max_inflight = 16
 ```
 
 - `webrtc_enabled`: Enable WebRTC streaming (default: true)
@@ -315,7 +315,7 @@ stun_server = stun.l.google.com:19302
 - `stun_server`: Primary STUN server address
 - `external_ip`: External IP for complex NAT scenarios (leave empty for auto-detection)
 - `ice_servers`: Custom ICE servers, comma-separated (format: `stun:host:port` or `turn:host:port`)
-- `proxy_max_inflight`: Maximum concurrent HLS/snapshot proxy requests (default: 12, range: 1-128)
+- `proxy_max_inflight`: Maximum concurrent HLS/snapshot proxy requests (default: 16, range: 1-128)
 
 ### MQTT Settings
 

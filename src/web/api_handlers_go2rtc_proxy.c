@@ -44,7 +44,7 @@ typedef struct {
  */
 static void init_proxy_semaphore(void) {
     int max_inflight = g_config.go2rtc_proxy_max_inflight;
-    if (max_inflight < 1) max_inflight = 12;
+    if (max_inflight < 1) max_inflight = 16;
 
     g_proxy_semaphore = safe_malloc(sizeof(sem_t));
     if (!g_proxy_semaphore) {

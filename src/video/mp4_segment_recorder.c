@@ -217,17 +217,16 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         av_dict_set(&opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
         av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
 
-        // BUGFIX: Set analyzeduration and probesize to help FFmpeg detect stream
-        // parameters quickly from go2rtc's RTSP output.  Without these, FFmpeg
-        // may spend up to 5 seconds probing — during which time the 60-second
-        // dead-recording timer is ticking.  With multiple streams connecting in
-        // parallel through go2rtc, the cumulative probe time can push recordings
-        // past the dead-recording threshold before a single packet is written.
-        av_dict_set(&opts, "analyzeduration", "2000000", 0);  // 2 seconds (default 5s)
-        av_dict_set(&opts, "probesize", "1000000", 0);        // 1 MB (default 5 MB)
+        // Set analyzeduration and probesize to help FFmpeg detect stream
+        // parameters from go2rtc's RTSP output.  Use the FFmpeg defaults (5s / 5MB)
+        // to give go2rtc enough time to connect to the upstream camera and start
+        // forwarding frames — the dead-recording timer issue is separately handled
+        // by updating last_packet_time during retries.
+        av_dict_set(&opts, "analyzeduration", "5000000", 0);  // 5 seconds (FFmpeg default)
+        av_dict_set(&opts, "probesize", "5000000", 0);        // 5 MB (FFmpeg default)
 
         // Open input
-        log_info("Opening RTSP connection to %s (analyzeduration=2s, probesize=1MB)", rtsp_url);
+        log_info("Opening RTSP connection to %s (analyzeduration=5s, probesize=5MB)", rtsp_url);
         ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
         if (ret < 0) {
             char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -280,16 +279,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             log_debug("Found video stream: %d", i);
             log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
 
-            // CRITICAL FIX: Check for unspecified dimensions and log a warning
+            // Check for unspecified dimensions — if 0x0, the decoder-based probe
+            // below (after the stream discovery loop) will attempt to extract
+            // dimensions from the actual bitstream.
             if (stream->codecpar->width == 0 || stream->codecpar->height == 0) {
-                log_warn("Video stream has unspecified dimensions (width=%d, height=%d)",
+                log_warn("Video stream has unspecified dimensions (width=%d, height=%d)"
+                         " — will attempt decoder-based probing",
                         stream->codecpar->width, stream->codecpar->height);
-
-                // Try to extract dimensions from extradata if available
-                if (stream->codecpar->extradata_size > 0 && stream->codecpar->codec_id == AV_CODEC_ID_H264) {
-                    log_info("Attempting to extract dimensions from H.264 extradata");
-                    // This would require SPS parsing which is complex - we'll use defaults instead
-                }
             } else {
                 log_debug("  Resolution: %dx%d", stream->codecpar->width, stream->codecpar->height);
             }
@@ -311,6 +307,109 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         log_error("No video stream found");
         ret = -1;
         goto cleanup;
+    }
+
+    // If video dimensions are still 0x0 after avformat_find_stream_info(), try to
+    // probe dimensions by reading packets and using a decoder.  This handles the
+    // common case where go2rtc's SDP lacks dimension info because it hasn't fully
+    // connected to the upstream camera yet, but starts forwarding frames shortly
+    // after the RTSP handshake completes.  The H.264/H.265 SPS NAL units in the
+    // first keyframe contain the exact resolution.
+    {
+        AVStream *vstream = input_ctx->streams[video_stream_idx];
+        if (vstream->codecpar->width == 0 || vstream->codecpar->height == 0) {
+            log_info("Video dimensions 0x0 after stream probe — attempting decoder-based "
+                     "dimension detection from bitstream (up to 10s)...");
+
+            const AVCodec *probe_decoder = avcodec_find_decoder(vstream->codecpar->codec_id);
+            if (probe_decoder) {
+                AVCodecContext *probe_ctx = avcodec_alloc_context3(probe_decoder);
+                if (probe_ctx) {
+                    avcodec_parameters_to_context(probe_ctx, vstream->codecpar);
+                    if (avcodec_open2(probe_ctx, probe_decoder, NULL) >= 0) {
+                        AVPacket *probe_pkt = av_packet_alloc();
+                        AVFrame *probe_frame = av_frame_alloc();
+                        if (probe_pkt && probe_frame) {
+                            int64_t probe_start = av_gettime();
+                            int64_t probe_timeout = 10000000; // 10 seconds
+                            bool dimensions_found = false;
+                            int probe_packets = 0;
+
+                            while (!dimensions_found &&
+                                   av_gettime() - probe_start < probe_timeout) {
+                                if (interrupt_callback(shutdown_flag)) {
+                                    log_info("Dimension probe interrupted by shutdown");
+                                    break;
+                                }
+
+                                int probe_ret = av_read_frame(input_ctx, probe_pkt);
+                                if (probe_ret < 0) {
+                                    if (probe_ret == AVERROR(EAGAIN)) {
+                                        av_usleep(10000);
+                                        continue;
+                                    }
+                                    char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+                                    av_strerror(probe_ret, err_buf, sizeof(err_buf));
+                                    log_warn("Error reading packet during dimension "
+                                             "probe: %s", err_buf);
+                                    break;
+                                }
+
+                                if (probe_pkt->stream_index == video_stream_idx) {
+                                    probe_packets++;
+                                    int send_ret = avcodec_send_packet(probe_ctx,
+                                                                       probe_pkt);
+                                    if (send_ret >= 0) {
+                                        // Check if decoder detected dims from headers
+                                        if (probe_ctx->width > 0 &&
+                                            probe_ctx->height > 0) {
+                                            dimensions_found = true;
+                                        } else {
+                                            // Try receiving a frame to trigger full
+                                            // header parsing
+                                            int recv_ret = avcodec_receive_frame(
+                                                probe_ctx, probe_frame);
+                                            if (recv_ret >= 0) {
+                                                if (probe_ctx->width > 0 &&
+                                                    probe_ctx->height > 0) {
+                                                    dimensions_found = true;
+                                                }
+                                                av_frame_unref(probe_frame);
+                                            }
+                                        }
+                                    }
+                                }
+                                av_packet_unref(probe_pkt);
+                            }
+
+                            if (dimensions_found) {
+                                log_info("Probed video dimensions from bitstream: "
+                                         "%dx%d (after %d video packets, %.1fs)",
+                                         probe_ctx->width, probe_ctx->height,
+                                         probe_packets,
+                                         (av_gettime() - probe_start) / 1000000.0);
+                                vstream->codecpar->width = probe_ctx->width;
+                                vstream->codecpar->height = probe_ctx->height;
+                            } else {
+                                log_warn("Failed to probe video dimensions after "
+                                         "%d video packets, %.1fs",
+                                         probe_packets,
+                                         (av_gettime() - probe_start) / 1000000.0);
+                            }
+
+                            av_frame_free(&probe_frame);
+                        }
+                        if (probe_pkt) av_packet_free(&probe_pkt);
+                    } else {
+                        log_warn("Failed to open probe decoder for dimension detection");
+                    }
+                    avcodec_free_context(&probe_ctx);
+                }
+            } else {
+                log_warn("No decoder found for codec %s, cannot probe dimensions",
+                         avcodec_get_name(vstream->codecpar->codec_id));
+            }
+        }
     }
 
     // Create output context

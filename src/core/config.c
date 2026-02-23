@@ -305,7 +305,7 @@ void load_default_config(config_t *config) {
     config->go2rtc_api_port = 1984;
     config->go2rtc_rtsp_port = 8554;  // Default RTSP listen port
     config->go2rtc_force_native_hls = false;  // Use go2rtc HLS by default
-    config->go2rtc_proxy_max_inflight = 12;  // Default: 12 concurrent proxy requests
+    config->go2rtc_proxy_max_inflight = 16;  // Default: 16 concurrent proxy requests
 
     // go2rtc WebRTC settings for NAT traversal
     config->go2rtc_webrtc_enabled = true;  // Enable WebRTC by default
