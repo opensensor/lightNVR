@@ -85,10 +85,12 @@ function RecordingCard({
 }) {
   const [currentFrame, setCurrentFrame] = useState(1); // Start with middle frame
   const [isHovering, setIsHovering] = useState(false);
+  const [framesReady, setFramesReady] = useState(false); // true once frames 0+2 are loaded
   const [loadState, setLoadState] = useState('loading'); // 'loading', 'loaded', 'error'
   const intervalRef = useRef(null);
   const preloadedRef = useRef(false);
   const imgErrorCountRef = useRef(0);
+  const hoverTimerRef = useRef(null); // debounce timer for hover
 
   /** Load (or reload) the middle-frame thumbnail. */
   const loadThumbnail = useCallback(() => {
@@ -117,22 +119,46 @@ function RecordingCard({
     loadThumbnail();
   }, [loadThumbnail]);
 
-  // Preload the other two frames when user first hovers (LOW priority background task)
+  // Debounced mouse handlers — only set isHovering after sustained hover
+  const handleMouseEnter = useCallback(() => {
+    hoverTimerRef.current = setTimeout(() => setIsHovering(true), 200);
+  }, []);
+  const handleMouseLeave = useCallback(() => {
+    clearTimeout(hoverTimerRef.current);
+    setIsHovering(false);
+  }, []);
+  // Cleanup debounce timer on unmount
+  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
+
+  // Preload the other two frames when user first hovers (LOW priority background task).
+  // Only start cycling once both frames are loaded so the <img> src never
+  // points at a URL the browser hasn't fetched yet (which would bypass the
+  // request queue and cause a stampede).
   useEffect(() => {
     if (isHovering && !preloadedRef.current) {
       preloadedRef.current = true;
-      for (const i of [0, 2]) {
+      const promises = [0, 2].map(i => {
         const url = `/api/recordings/thumbnail/${recording.id}/${i}`;
-        queueThumbnailLoad(url, Priority.LOW).catch(() => {
-          // Silently ignore preload failures
+        return queueThumbnailLoad(url, Priority.LOW);
+      });
+      Promise.all(promises)
+        .then(() => setFramesReady(true))
+        .catch(() => {
+          // Even if one fails, allow cycling with whatever is available
+          setFramesReady(true);
         });
-      }
     }
   }, [isHovering, recording.id]);
 
-  // Cycle through frames on hover
+  // Reset framesReady when no longer hovering
+  // (preloadedRef stays true so we don't re-fetch on next hover)
   useEffect(() => {
-    if (isHovering) {
+    if (!isHovering) setFramesReady(false);
+  }, [isHovering]);
+
+  // Cycle through frames on hover — only after preloaded frames are ready
+  useEffect(() => {
+    if (isHovering && framesReady) {
       intervalRef.current = setInterval(() => {
         setCurrentFrame(prev => (prev + 1) % 3);
       }, 800);
@@ -141,12 +167,12 @@ function RecordingCard({
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      setCurrentFrame(1); // Reset to middle frame
+      if (!isHovering) setCurrentFrame(1); // Reset to middle frame
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isHovering]);
+  }, [isHovering, framesReady]);
 
   const thumbnailUrl = `/api/recordings/thumbnail/${recording.id}/${currentFrame}`;
   const isSelected = !!selectedRecordings[recording.id];
@@ -156,8 +182,8 @@ function RecordingCard({
     <div
       class={`recording-card relative bg-card text-card-foreground rounded-lg shadow overflow-hidden cursor-pointer group transition-all duration-200 hover:shadow-lg ${isSelected ? 'ring-2' : ''}`}
       style={isSelected ? { ringColor: 'hsl(var(--primary))' } : {}}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Thumbnail area */}
       <div
