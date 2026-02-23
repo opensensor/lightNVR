@@ -60,24 +60,44 @@ function RecordingScheduleGrid({ schedule, onChange }) {
     onChange(s);
   }, [schedule, onChange]);
 
-  const applyPreset = useCallback((preset) => {
-    let s = Array(168).fill(false);
-    if (preset === 'all') {
-      s = Array(168).fill(true);
-    } else if (preset === 'weekdays') {
-      for (let d = 1; d <= 5; d++) for (let h = 0; h < 24; h++) s[d * 24 + h] = true;
+  /** Build the boolean pattern array for a given preset key */
+  const getPresetPattern = useCallback((preset) => {
+    const p = Array(168).fill(false);
+    if (preset === 'weekdays') {
+      for (let d = 1; d <= 5; d++) for (let h = 0; h < 24; h++) p[d * 24 + h] = true;
     } else if (preset === 'business') {
-      for (let d = 1; d <= 5; d++) for (let h = 8; h < 18; h++) s[d * 24 + h] = true;
+      for (let d = 1; d <= 5; d++) for (let h = 8; h < 18; h++) p[d * 24 + h] = true;
     } else if (preset === 'nights') {
       for (let d = 0; d < 7; d++) {
-        for (let h = 0; h < 6; h++) s[d * 24 + h] = true;
-        for (let h = 20; h < 24; h++) s[d * 24 + h] = true;
+        for (let h = 0; h < 6; h++) p[d * 24 + h] = true;
+        for (let h = 20; h < 24; h++) p[d * 24 + h] = true;
       }
     } else if (preset === 'weekends') {
-      for (const d of [0, 6]) for (let h = 0; h < 24; h++) s[d * 24 + h] = true;
+      for (const d of [0, 6]) for (let h = 0; h < 24; h++) p[d * 24 + h] = true;
+    }
+    return p;
+  }, []);
+
+  /** Check if every hour in a preset's pattern is currently enabled */
+  const isPresetActive = useCallback((presetKey) => {
+    const pattern = getPresetPattern(presetKey);
+    return pattern.some(Boolean) && pattern.every((on, i) => !on || schedule[i]);
+  }, [schedule, getPresetPattern]);
+
+  const applyPreset = useCallback((preset) => {
+    // Absolute presets — always replace the entire schedule
+    if (preset === 'all') { onChange(Array(168).fill(true)); return; }
+    if (preset === 'none') { onChange(Array(168).fill(false)); return; }
+
+    // Toggleable presets — OR on / remove off
+    const pattern = getPresetPattern(preset);
+    const active = isPresetActive(preset);
+    const s = schedule.slice();
+    for (let i = 0; i < 168; i++) {
+      if (pattern[i]) s[i] = !active;
     }
     onChange(s);
-  }, [onChange]);
+  }, [schedule, onChange, getPresetPattern, isPresetActive]);
 
   const scheduledHours = schedule.filter(Boolean).length;
   const PRESETS = [
@@ -94,16 +114,24 @@ function RecordingScheduleGrid({ schedule, onChange }) {
       {/* Presets & counter */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs text-muted-foreground font-medium">Quick select:</span>
-        {PRESETS.map(p => (
-          <button
-            key={p.key}
-            type="button"
-            onClick={() => applyPreset(p.key)}
-            className="px-2 py-0.5 text-xs rounded-full border border-border hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-all duration-150 font-medium"
-          >
-            {p.label}
-          </button>
-        ))}
+        {PRESETS.map(p => {
+          const toggleable = p.key !== 'all' && p.key !== 'none';
+          const active = toggleable && isPresetActive(p.key);
+          return (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => applyPreset(p.key)}
+              className={`px-2 py-0.5 text-xs rounded-full border transition-all duration-150 font-medium ${
+                active
+                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                  : 'border-border hover:bg-primary/10 hover:border-primary/40 hover:text-primary'
+              }`}
+            >
+              {p.label}
+            </button>
+          );
+        })}
         <span className="ml-auto text-xs font-semibold text-primary tabular-nums">
           {scheduledHours}h<span className="text-muted-foreground font-normal">/week</span>
         </span>
