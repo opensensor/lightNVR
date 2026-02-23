@@ -354,9 +354,12 @@ int get_stream_config(stream_handle_t stream, stream_config_t *config) {
         return 0;
     }
 
-    // Return error if database query fails
-    log_error("Failed to get stream configuration from database for stream %s", s->config.name);
-    return -1;
+    // Fall back to the in-memory configuration when the database is unavailable
+    log_warn("Database unavailable for stream %s, using in-memory configuration", s->config.name);
+    pthread_mutex_lock(&s->mutex);
+    memcpy(config, &s->config, sizeof(stream_config_t));
+    pthread_mutex_unlock(&s->mutex);
+    return 0;
 }
 
 /**
@@ -973,10 +976,9 @@ int set_stream_priority(stream_handle_t handle, int priority) {
 
     pthread_mutex_unlock(&s->mutex);
 
-    // Update the database directly
+    // Persist to the database; log a warning if unavailable but keep the in-memory update
     if (update_stream_config(config_copy.name, &config_copy) != 0) {
-        log_error("Failed to update stream configuration in database for stream %s", config_copy.name);
-        return -1;
+        log_warn("Failed to update stream configuration in database for stream %s (in-memory updated)", config_copy.name);
     }
 
     // Also update the stream state manager if it exists

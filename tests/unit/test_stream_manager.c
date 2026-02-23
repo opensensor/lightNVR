@@ -17,6 +17,7 @@
 #include "unity.h"
 #include "core/config.h"
 #include "video/stream_manager.h"
+#include "video/stream_state.h"
 
 static stream_config_t make_config(const char *name) {
     stream_config_t cfg;
@@ -31,8 +32,8 @@ static stream_config_t make_config(const char *name) {
     return cfg;
 }
 
-void setUp(void)    {}
-void tearDown(void) {}
+void setUp(void)    { init_stream_state_manager(MAX_STREAMS); }
+void tearDown(void) { shutdown_stream_state_manager(); }
 
 /* init + shutdown lifecycle */
 void test_init_shutdown_lifecycle(void) {
