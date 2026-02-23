@@ -104,19 +104,6 @@ bool go2rtc_api_get_server_info(int *rtsp_port);
 bool go2rtc_api_preload_stream(const char *stream_id);
 
 /**
- * @brief Preload a stream in go2rtc to keep it active
- *
- * This keeps a persistent consumer connected to the stream, ensuring
- * the producer (camera connection) stays active. This is essential for
- * detection-based recording, as it ensures snapshots are always available
- * without needing an active WebRTC viewer.
- *
- * @param stream_id Identifier of the stream to preload
- * @return true if stream was preloaded successfully, false otherwise
- */
-bool go2rtc_api_preload_stream(const char *stream_id);
-
-/**
  * @brief Clean up resources used by the go2rtc API client
  */
 void go2rtc_api_cleanup(void);

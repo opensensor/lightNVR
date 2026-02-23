@@ -336,18 +336,20 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
-    // CRITICAL FIX: Check for unspecified video dimensions (0x0) and set default values
-    // This prevents the "dimensions not set" error and segmentation fault
+    // BUGFIX: When video dimensions are 0x0 the upstream (go2rtc) has not yet
+    // connected to the camera and cannot report the real resolution.  Proceeding
+    // with dummy 640x480 dimensions causes an immediate mismatch with the actual
+    // encoded data (e.g. 1280x720), leading to I/O errors on every av_read_frame
+    // and an infinite death-loop where the recording is killed and restarted every
+    // 60 seconds.  Instead, fail fast so the caller can retry with a fresh RTSP
+    // connection after a backoff — by which time go2rtc may have established the
+    // camera link and can advertise the correct dimensions.
     if (out_video_stream->codecpar->width == 0 || out_video_stream->codecpar->height == 0) {
-        log_warn("Video dimensions not set (width=%d, height=%d), using default values",
+        log_warn("Video dimensions not set (width=%d, height=%d) — stream source not ready, "
+                 "closing connection and returning error so caller can retry with a fresh connection",
                 out_video_stream->codecpar->width, out_video_stream->codecpar->height);
-
-        // Set default dimensions (640x480 is a safe choice)
-        out_video_stream->codecpar->width = 640;
-        out_video_stream->codecpar->height = 480;
-
-        log_info("Set default video dimensions to %dx%d",
-                out_video_stream->codecpar->width, out_video_stream->codecpar->height);
+        ret = -1;
+        goto cleanup;
     }
 
     // Set video stream time base
@@ -441,11 +443,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
     log_debug("Successfully opened output file: %s", output_file);
 
-    // CRITICAL FIX: Double-check video dimensions before writing header
+    // Defensive: if we somehow reach here with 0x0 dimensions (should be caught
+    // above), fail rather than writing a broken MP4 header.
     if (out_video_stream->codecpar->width == 0 || out_video_stream->codecpar->height == 0) {
-        log_error("Video dimensions still not set after fix attempt, setting emergency defaults");
-        out_video_stream->codecpar->width = 640;
-        out_video_stream->codecpar->height = 480;
+        log_error("Video dimensions still 0x0 before header write — aborting segment");
+        ret = -1;
+        goto cleanup;
     }
 
     // Write file header

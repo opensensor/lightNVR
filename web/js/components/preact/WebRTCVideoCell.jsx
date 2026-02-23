@@ -1273,8 +1273,8 @@ export function WebRTCVideoCell({
             </svg>
           </button>
         )}
-        {/* Force refresh stream button */}
-        {isPlaying && (
+        {/* Force refresh stream button - show during connecting (isLoading) or playing */}
+        {(isPlaying || isLoading) && (
           <button
             className="force-refresh-btn"
             title="Force Refresh Stream"

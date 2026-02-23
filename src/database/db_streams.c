@@ -507,7 +507,11 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
 
 /**
  * Update auto-detected video parameters for a stream.
- * Only updates fields that are currently 0 or empty in the database.
+ * Always updates to the detected values so the database stays in sync with the
+ * actual stream resolution (which may change if the camera firmware is updated,
+ * the user switches sub-stream / main-stream, etc.).
+ *
+ * A resolution change is logged at INFO level so operators can spot it.
  */
 int update_stream_video_params(const char *stream_name, int width, int height, int fps, const char *codec) {
     int rc;
@@ -528,13 +532,45 @@ int update_stream_video_params(const char *stream_name, int width, int height, i
 
     pthread_mutex_lock(db_mutex);
 
-    // Only overwrite fields that are currently 0 / empty
+    // First, read the current values so we can log meaningful changes
+    int old_width = 0, old_height = 0, old_fps = 0;
+    char old_codec[16] = {0};
+
+    const char *select_sql =
+        "SELECT width, height, fps, codec FROM streams WHERE name = ?;";
+    rc = sqlite3_prepare_v2(db, select_sql, -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            old_width  = sqlite3_column_int(stmt, 0);
+            old_height = sqlite3_column_int(stmt, 1);
+            old_fps    = sqlite3_column_int(stmt, 2);
+            const char *c = (const char *)sqlite3_column_text(stmt, 3);
+            if (c) {
+                strncpy(old_codec, c, sizeof(old_codec) - 1);
+            }
+        }
+        sqlite3_finalize(stmt);
+        stmt = NULL;
+    }
+
+    // Skip the UPDATE entirely if nothing changed — avoids unnecessary writes
+    bool same = (old_width == width && old_height == height && old_fps == fps);
+    if (same && codec) {
+        same = (strcmp(old_codec, codec) == 0);
+    }
+    if (same) {
+        pthread_mutex_unlock(db_mutex);
+        return 0;   // nothing to do
+    }
+
+    // Always overwrite with the freshly-detected values
     const char *sql =
         "UPDATE streams SET "
-        "width  = CASE WHEN width  = 0 OR width  IS NULL THEN ? ELSE width  END, "
-        "height = CASE WHEN height = 0 OR height IS NULL THEN ? ELSE height END, "
-        "fps    = CASE WHEN fps    = 0 OR fps    IS NULL THEN ? ELSE fps    END, "
-        "codec  = CASE WHEN codec  = '' OR codec IS NULL THEN ? ELSE codec  END "
+        "width  = ?, "
+        "height = ?, "
+        "fps    = ?, "
+        "codec  = ? "
         "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -563,8 +599,16 @@ int update_stream_video_params(const char *stream_name, int width, int height, i
     pthread_mutex_unlock(db_mutex);
 
     if (changes > 0) {
-        log_info("Auto-detected video params for stream %s: %dx%d @ %d fps, codec=%s",
-                 stream_name, width, height, fps, codec ? codec : "unknown");
+        if (old_width != width || old_height != height) {
+            log_info("Stream %s resolution changed: %dx%d -> %dx%d (fps %d->%d, codec %s->%s)",
+                     stream_name, old_width, old_height, width, height,
+                     old_fps, fps,
+                     old_codec[0] ? old_codec : "?",
+                     codec ? codec : "?");
+        } else {
+            log_info("Auto-detected video params for stream %s: %dx%d @ %d fps, codec=%s",
+                     stream_name, width, height, fps, codec ? codec : "unknown");
+        }
     }
 
     return 0;

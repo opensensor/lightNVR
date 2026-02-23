@@ -169,6 +169,10 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             // Reset retry count to give the reconnection a clean slate
             thread_ctx->retry_count = 0;
 
+            // Re-detect video params after reconnect — the stream resolution
+            // may have changed (e.g., camera firmware update, stream switch).
+            thread_ctx->video_params_detected = false;
+
             // Wait a moment for the upstream to be ready (go2rtc may still be initializing streams)
             // Check for shutdown every 500ms during the wait
             for (int wait_i = 0; wait_i < 6; wait_i++) {
@@ -351,6 +355,9 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 // Continue anyway, the next iteration will try again
             }
 
+            // Re-detect video params after reset — resolution may have changed
+            thread_ctx->video_params_detected = false;
+
             // Log that we've reset all FFmpeg resources
             log_info("Successfully reset all FFmpeg resources for stream %s", stream_name);
         }
@@ -394,6 +401,17 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             thread_ctx->retry_count++;
             thread_ctx->last_retry_time = time(NULL);
 
+            // BUGFIX: Signal to the death detector that this thread is still
+            // alive and actively retrying.  Without this, a stream whose
+            // upstream (go2rtc) takes >60 s to connect to the camera will be
+            // killed by mp4_writer_is_recording() ("never wrote any packets")
+            // and restarted in an infinite death-loop.  Setting last_packet_time
+            // resets the 45-second inactivity timer; the thread's own retry
+            // backoff ensures we don't spin.
+            if (thread_ctx->writer) {
+                thread_ctx->writer->last_packet_time = time(NULL);
+            }
+
             // If input context was closed, set it to NULL so it will be reopened
             if (!thread_ctx->input_ctx) {
                 log_info("Input context was closed, will reopen on next attempt");
@@ -410,6 +428,9 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                     thread_ctx->input_ctx = NULL;
                     log_info("Forcibly closed input context to ensure fresh connection on next attempt");
                 }
+
+                // Re-detect video params on next successful segment
+                thread_ctx->video_params_detected = false;
 
                 // Sleep longer for aggressive recovery
                 backoff_seconds = 5;
