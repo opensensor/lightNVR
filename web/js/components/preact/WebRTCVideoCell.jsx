@@ -105,6 +105,7 @@ export function WebRTCVideoCell({
   const connectionMonitorRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const refreshRequestedRef = useRef(false);  // Track if we've already requested a refresh for this connection attempt
+  const noDataReconnectAttemptsRef = useRef(0); // Separate counter for ICE-connected-but-no-data retries
   const localStreamRef = useRef(null);
   const audioSenderRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -282,16 +283,19 @@ export function WebRTCVideoCell({
               // source issues (camera offline, stale state, etc.) without
               // requiring the user to click Retry manually.  Mirrors the
               // existing ICE-failure auto-retry at oniceconnectionstatechange.
+              // Uses a dedicated counter (noDataReconnectAttemptsRef) so that
+              // the ICE-connected reset of reconnectAttemptsRef doesn't
+              // inadvertently allow infinite no-data retries.
               if (videoDataCheckCount >= 2 &&
                   (iceState === 'connected' || iceState === 'completed') &&
                   !refreshRequestedRef.current &&
-                  reconnectAttemptsRef.current < 3) {
+                  noDataReconnectAttemptsRef.current < 3) {
                 refreshRequestedRef.current = true;
-                reconnectAttemptsRef.current++;
+                noDataReconnectAttemptsRef.current++;
                 console.log(
                   `Auto-reconnecting stream ${stream.name}: ICE connected but no video data ` +
                   `after ${videoDataCheckCount * videoDataCheckInterval / 1000}s ` +
-                  `(attempt ${reconnectAttemptsRef.current}/3)`
+                  `(attempt ${noDataReconnectAttemptsRef.current}/3)`
                 );
                 (async () => {
                   try {
@@ -338,6 +342,9 @@ export function WebRTCVideoCell({
           setIsPlaying(true);
           // Clear any error (e.g., if video starts playing after timeout error was shown)
           setError(null);
+          // Video is genuinely playing — reset the no-data retry counter so
+          // future interruptions get a fresh set of auto-reconnect attempts.
+          noDataReconnectAttemptsRef.current = 0;
           // Clear timeouts since video is playing
           if (videoDataTimeout) {
             clearTimeout(videoDataTimeout);
@@ -829,6 +836,7 @@ export function WebRTCVideoCell({
     // Reset auto-retry counters on manual retry (user gets fresh attempts)
     reconnectAttemptsRef.current = 0;
     refreshRequestedRef.current = false;
+    noDataReconnectAttemptsRef.current = 0;
 
     // Refresh the stream's go2rtc registration before retrying
     // This helps recover from stale go2rtc state that causes WebRTC failures
