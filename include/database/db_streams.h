@@ -126,8 +126,10 @@ uint64_t get_stream_storage_usage_db(const char *stream_name);
 
 /**
  * Update auto-detected video parameters (width, height, fps, codec) for a stream.
- * Only updates fields that are currently 0 or empty in the database, so manually
- * configured values are not overwritten.
+ * Always overwrites the stored values with the freshly detected ones so the
+ * database stays in sync with the actual stream (resolution may change after
+ * camera firmware updates, stream switches, etc.).  Skips the write if the
+ * values are already identical.
  *
  * @param stream_name Stream name to update
  * @param width Detected video width
