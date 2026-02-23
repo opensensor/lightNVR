@@ -106,9 +106,9 @@ export function LoginView() {
       return;
     }
 
-    // When force MFA is enabled, require TOTP code in the same step
-    if (forceMfaEnabled && (!forceMfaTotpCode || forceMfaTotpCode.length !== 6)) {
-      setErrorMessage('Please enter your 6-digit verification code');
+    // When force MFA is enabled and a TOTP code is provided, validate it's 6 digits
+    if (forceMfaEnabled && forceMfaTotpCode && forceMfaTotpCode.length > 0 && forceMfaTotpCode.length !== 6) {
+      setErrorMessage('Verification code must be exactly 6 digits');
       return;
     }
 
@@ -303,16 +303,15 @@ export function LoginView() {
                     maxLength="6"
                     pattern="[0-9]{6}"
                     autoComplete="one-time-code"
-                    required
                 />
-                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app</span>
+                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app (leave blank if not yet configured)</span>
               </div>
             )}
             <div className="form-group">
               <button
                   type="submit"
                   className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isLoggingIn || (forceMfaEnabled && forceMfaTotpCode.length !== 6)}
+                  disabled={isLoggingIn}
               >
                 {isLoggingIn ? 'Signing in...' : 'Sign In'}
               </button>
