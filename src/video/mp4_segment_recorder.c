@@ -153,11 +153,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     bool trailer_written = false;
 
 
-    // CRITICAL FIX: Initialize static variable for tracking waiting time for keyframes
-    // This variable is used to track how long we've been waiting for a keyframe
-    // It must be properly initialized to prevent using uninitialized values
-    static int64_t waiting_start_time = 0;
-    waiting_start_time = 0;  // Reset for each new segment to prevent using stale values
+    // Track how long we've been waiting for the final keyframe to end a segment.
+    // BUGFIX: Changed from static to local.  The old static variable was shared
+    // across ALL concurrent recording threads, causing race conditions when
+    // multiple cameras record in parallel (one thread could see another's stale
+    // timestamp and make incorrect timing decisions).
+    int64_t waiting_start_time = 0;
 
     // BUGFIX: Validate input parameters
     if (!input_ctx_ptr || !segment_info_ptr) {
@@ -216,12 +217,27 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         av_dict_set(&opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
         av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
 
+        // BUGFIX: Set analyzeduration and probesize to help FFmpeg detect stream
+        // parameters quickly from go2rtc's RTSP output.  Without these, FFmpeg
+        // may spend up to 5 seconds probing — during which time the 60-second
+        // dead-recording timer is ticking.  With multiple streams connecting in
+        // parallel through go2rtc, the cumulative probe time can push recordings
+        // past the dead-recording threshold before a single packet is written.
+        av_dict_set(&opts, "analyzeduration", "2000000", 0);  // 2 seconds (default 5s)
+        av_dict_set(&opts, "probesize", "1000000", 0);        // 1 MB (default 5 MB)
+
         // Open input
+        log_info("Opening RTSP connection to %s (analyzeduration=2s, probesize=1MB)", rtsp_url);
         ret = avformat_open_input(&input_ctx, rtsp_url, NULL, &opts);
         if (ret < 0) {
             char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
             av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
-            log_error("Failed to open input: %d (%s)", ret, error_buf);
+            if (ret == AVERROR_EXIT) {
+                log_warn("RTSP open interrupted (AVERROR_EXIT) for %s — "
+                         "thread shutdown was requested during connection", rtsp_url);
+            } else {
+                log_error("Failed to open RTSP input %s: %d (%s)", rtsp_url, ret, error_buf);
+            }
 
             // Ensure input_ctx is NULL after a failed open
             if (input_ctx) {
@@ -234,11 +250,15 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         }
 
         // Find stream info
+        log_info("Probing stream info for %s ...", rtsp_url);
         ret = avformat_find_stream_info(input_ctx, NULL);
         if (ret < 0) {
-            log_error("Failed to find stream info: %d", ret);
+            char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+            av_strerror(ret, err_buf, sizeof(err_buf));
+            log_error("Failed to find stream info for %s: %d (%s)", rtsp_url, ret, err_buf);
             goto cleanup;
         }
+        log_info("Stream info detected for %s: %d streams", rtsp_url, input_ctx->nb_streams);
     }
 
     // Log input stream info
@@ -567,10 +587,20 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
 		if (ret < 0) {
 			if (ret == AVERROR_EOF) {
-				log_info("End of stream reached");
+				log_info("End of stream reached for %s", output_file);
+				break;
+			} else if (ret == AVERROR_EXIT) {
+				// AVERROR_EXIT means the interrupt callback returned 1.
+				// This happens when shutdown_requested is set (e.g., during
+				// dead-recording cleanup) or during global shutdown.
+				log_warn("RTSP read interrupted (AVERROR_EXIT) for %s — "
+				         "recording thread is being stopped", output_file);
 				break;
 			} else if (ret != AVERROR(EAGAIN)) {
-				log_error("Error reading frame: %d", ret);
+				char err_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
+				av_strerror(ret, err_buf, sizeof(err_buf));
+				log_error("Error reading frame for %s: %d (%s)",
+				          output_file, ret, err_buf);
 				break;
 			}
 			// EAGAIN means try again, so we continue

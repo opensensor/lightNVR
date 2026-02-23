@@ -1679,6 +1679,17 @@ static void check_and_ensure_services(void) {
                         log_warn("Failed to start MP4 recording for stream: %s", current_config->streams[i].name);
                     } else {
                         log_info("Successfully started MP4 recording for stream: %s", current_config->streams[i].name);
+
+                        // BUGFIX: Stagger parallel recording starts to avoid overwhelming
+                        // go2rtc with simultaneous RTSP connections.  When all streams try
+                        // to connect at once, go2rtc's ffmpeg producers can fail with EOF
+                        // errors due to resource contention, causing recordings to never
+                        // receive packets and eventually be detected as dead after 60s.
+                        // A 2-second delay gives go2rtc time to establish each connection
+                        // and stabilise its producers before the next one starts.
+                        if (!is_shutdown_initiated()) {
+                            sleep(2);
+                        }
                     }
                 }
             }
