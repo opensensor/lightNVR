@@ -56,7 +56,8 @@ export function RecordingsView() {
   const [selectedRecordings, setSelectedRecordings] = useState({});
   const [selectAll, setSelectAll] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deleteMode, setDeleteMode] = useState('selected'); // 'selected' or 'all'
+  const [deleteMode, setDeleteMode] = useState('selected'); // 'single', 'selected' or 'all'
+  const [pendingDeleteRecording, setPendingDeleteRecording] = useState(null); // recording awaiting single-delete confirmation
   const recordingsTableBodyRef = useRef(null);
 
   // View mode: 'table' or 'grid'
@@ -568,11 +569,21 @@ export function RecordingsView() {
   // Close delete confirmation modal
   const closeDeleteModal = () => {
     setIsDeleteModalOpen(false);
+    setPendingDeleteRecording(null);
   };
 
   // Handle delete confirmation
   const handleDeleteConfirm = async () => {
     closeDeleteModal();
+
+    if (deleteMode === 'single' && pendingDeleteRecording) {
+      // Single recording delete via mutation; reload list on success
+      deleteRecordingMutation(pendingDeleteRecording.id, {
+        onSuccess: () => loadRecordings()
+      });
+      setPendingDeleteRecording(null);
+      return;
+    }
 
     // Save current URL parameters before deletion
     const currentUrlParams = new URLSearchParams(window.location.search);
@@ -651,14 +662,11 @@ export function RecordingsView() {
   // Delete recording using preact-query mutation
   const { mutate: deleteRecordingMutation } = recordingsAPI.hooks.useDeleteRecording();
 
-  // Delete a single recording
+  // Delete a single recording — opens the confirmation modal instead of window.confirm()
   const deleteRecording = (recording) => {
-    if (!confirm(`Are you sure you want to delete this recording from ${recording.stream}?`)) {
-      return;
-    }
-
-    // Call the mutation with the recording ID
-    deleteRecordingMutation(recording.id);
+    setPendingDeleteRecording(recording);
+    setDeleteMode('single');
+    setIsDeleteModalOpen(true);
   };
 
   // Toggle recording protection
@@ -848,6 +856,7 @@ export function RecordingsView() {
         onConfirm={handleDeleteConfirm}
         mode={deleteMode}
         count={getSelectedCount()}
+        recordingName={pendingDeleteRecording?.stream}
       />
     </section>
   );

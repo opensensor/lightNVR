@@ -363,7 +363,7 @@ export function BatchDeleteModal() {
   return (
     <div 
       id="batch-delete-modal" 
-      className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/50 overflow-y-auto h-full w-full flex items-center justify-center z-50"
     >
       <div className="relative bg-card text-card-foreground rounded-lg shadow-xl max-w-md mx-auto p-6 w-full">
         <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">

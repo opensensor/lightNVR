@@ -45,12 +45,13 @@ export const ModalContext = createContext({
  * @param {boolean} props.isOpen - Whether the modal is open
  * @param {Function} props.onClose - Function to call when the modal is closed
  * @param {Function} props.onConfirm - Function to call when delete is confirmed
- * @param {string} props.mode - Delete mode ('selected' or 'all')
+ * @param {string} props.mode - Delete mode ('single', 'selected' or 'all')
  * @param {number} props.count - Number of items selected (for 'selected' mode)
+ * @param {string} [props.recordingName] - Stream name of the recording (for 'single' mode)
  * @returns {JSX.Element} DeleteConfirmationModal component
  */
 export function DeleteConfirmationModal(props) {
-  const { isOpen, onClose, onConfirm, mode, count } = props;
+  const { isOpen, onClose, onConfirm, mode, count, recordingName } = props;
 
   if (!isOpen) return null;
 
@@ -58,7 +59,10 @@ export function DeleteConfirmationModal(props) {
   let title = 'Confirm Delete';
   let message = 'Are you sure you want to delete this item?';
 
-  if (mode === 'selected') {
+  if (mode === 'single') {
+    title = 'Delete Recording';
+    message = `Are you sure you want to delete this recording from ${recordingName || 'this stream'}? This action cannot be undone.`;
+  } else if (mode === 'selected') {
     title = 'Delete Selected Recordings';
     message = `Are you sure you want to delete ${count} selected recording${count !== 1 ? 's' : ''}?`;
   } else if (mode === 'all') {
@@ -82,7 +86,7 @@ export function DeleteConfirmationModal(props) {
 
   return (
     <div
-      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
       onKeyDown={handleKeyDown}
     >
