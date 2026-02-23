@@ -19,6 +19,7 @@ import { NetworkInfo } from './system/NetworkInfo.jsx';
 import { StreamsInfo } from './system/StreamsInfo.jsx';
 import { LogsView } from './system/LogsView.jsx';
 import { LogsPoller } from './system/LogsPoller.jsx';
+import { ClearLogsModal } from './system/ClearLogsModal.jsx';
 
 // Import utility functions
 import { formatBytes, formatUptime, log_level_meets_minimum } from './system/SystemUtils.js';
@@ -85,6 +86,7 @@ export function SystemView() {
   const [logCount, setLogCount] = useState(100);
   const [pollingInterval, setPollingInterval] = useState(5000); // Default to 5 seconds
   const [isRestarting, setIsRestarting] = useState(false);
+  const [showClearLogsModal, setShowClearLogsModal] = useState(false);
   const [hasData, setHasData] = useState(false);
 
   // User role state for permission-based UI
@@ -215,10 +217,10 @@ export function SystemView() {
 
   // Clear logs function
   const clearLogs = () => {
-    if (!confirm('Are you sure you want to clear all logs?')) {
-      return;
-    }
+    setShowClearLogsModal(true);
+  };
 
+  const handleClearLogsConfirm = () => {
     clearLogsMutation.mutate();
   };
 
@@ -289,6 +291,12 @@ export function SystemView() {
           onLogsReceived={handleLogsReceived}
         />
       </ContentLoader>
+
+      <ClearLogsModal
+        isOpen={showClearLogsModal}
+        onClose={() => setShowClearLogsModal(false)}
+        onConfirm={handleClearLogsConfirm}
+      />
     </section>
   );
 }

@@ -791,7 +791,7 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
     if (last_packet == 0) {
         time_t creation_time = writer->creation_time;
         if (creation_time > 0 && (now - creation_time) > 60) {
-            log_warn("MP4 recording for stream %s has been running for %ld seconds but never wrote any packets - considering it dead",
+            log_debug("MP4 recording for stream %s has been running for %ld seconds but never wrote any packets - considering it dead",
                     writer->stream_name, (long)(now - creation_time));
             return 0;
         }
@@ -802,7 +802,7 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
     // Check if packets have been written recently
     long seconds_since_last_packet = (long)(now - last_packet);
     if (seconds_since_last_packet > 45) {
-        log_warn("MP4 recording for stream %s hasn't written packets in %ld seconds - considering it dead",
+        log_debug("MP4 recording for stream %s hasn't written packets in %ld seconds - considering it dead",
                 writer->stream_name, seconds_since_last_packet);
         return 0;
     }
