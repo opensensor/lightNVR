@@ -6,6 +6,12 @@
 /* Use existing v3-style config for theme/content */
 @config "../tailwind.config.js";
 
+/* daisyUI v5 — structural component classes only; themes disabled so our
+   own HSL CSS-variable theme system stays in full control. */
+@plugin "daisyui" {
+  themes: false;
+}
+
 /* Add this to your CSS file */
 @layer utilities {
   .top-4 {

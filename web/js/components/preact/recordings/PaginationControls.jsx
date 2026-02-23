@@ -1,22 +1,9 @@
 /**
  * PaginationControls component for RecordingsView
+ * Uses daisyUI join + btn for a clean, theme-aware button group.
  */
 
-/* shared base for every clickable element */
-const BASE = "h-8 inline-flex items-center justify-center text-sm rounded cursor-pointer select-none border border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed";
-/* nav arrows (‹ ›) — square */
-const NAV = `${BASE} w-8 bg-secondary text-secondary-foreground hover:bg-secondary/80`;
-/* page number — square */
-const PAGE = `${BASE} min-w-8 px-1`;
-const PAGE_ON = "bg-primary text-primary-foreground";
-const PAGE_OFF = "bg-secondary text-secondary-foreground hover:bg-secondary/80";
-/* edge hybrid (1« / »N) — slightly wider */
-const EDGE = `${BASE} px-2 gap-0.5`;
-
-/**
- * Interior page numbers (excluding first & last).
- * Up to 3 each side of current page.
- */
+/** Interior page numbers (excluding first & last), ±2 of current. */
 function getMiddlePages(current, total) {
   if (total <= 2) return [];
   const pages = [];
@@ -26,6 +13,13 @@ function getMiddlePages(current, total) {
   return pages;
 }
 
+/** Shared base for every button in the group */
+const BTN = "join-item btn btn-sm";
+/** Inactive: ghost-style using existing theme tokens */
+const INACTIVE = `${BTN} bg-secondary text-secondary-foreground border-border hover:bg-accent hover:text-accent-foreground`;
+/** Active: highlight using primary theme token */
+const ACTIVE = `${BTN} bg-primary text-primary-foreground border-primary`;
+
 /**
  * PaginationControls component
  */
@@ -33,46 +27,46 @@ export function PaginationControls({ pagination, goToPage }) {
   const { currentPage, totalPages } = pagination;
   const middle = getMiddlePages(currentPage, totalPages);
 
-  const pageCls = (p) => `${PAGE} ${p === currentPage ? PAGE_ON : PAGE_OFF}`;
-  const edgeCls = (p) => `${EDGE} ${p === currentPage ? PAGE_ON : PAGE_OFF}`;
+  const cls = (p) => (p === currentPage ? ACTIVE : INACTIVE);
 
   return (
     <div className="pagination-controls flex flex-col sm:flex-row justify-between items-center p-4 border-t border-border">
       <div className="pagination-info text-sm text-muted-foreground mb-2 sm:mb-0">
-        Showing {pagination.startItem}-{pagination.endItem} of {pagination.totalItems} recordings
+        Showing {pagination.startItem}–{pagination.endItem} of {pagination.totalItems} recordings
       </div>
 
-      <div className="flex items-center gap-1">
-        {/* First page — hybrid: 1 « */}
-        <button className={edgeCls(1)} onClick={() => goToPage(1)} title="First Page">
-          <span>1</span><span className="text-xs opacity-60">«</span>
+      <div className="join">
+        {/* First page */}
+        <button className={cls(1)} onClick={() => goToPage(1)} title="First page"
+                disabled={currentPage === 1}>
+          «
         </button>
 
-        {/* Previous — hidden on first page */}
-        {currentPage > 1 && (
-          <button className={NAV} onClick={() => goToPage(currentPage - 1)}
-                  title="Previous Page">‹</button>
-        )}
+        {/* Previous */}
+        <button className={INACTIVE} onClick={() => goToPage(currentPage - 1)}
+                title="Previous page" disabled={currentPage === 1}>
+          ‹
+        </button>
 
-        {/* Middle pages */}
+        {/* Middle page numbers */}
         {middle.map((p) => (
-          <button key={p} className={pageCls(p)} onClick={() => goToPage(p)}
-                  title={`Page ${p}`}>{p}</button>
+          <button key={p} className={cls(p)} onClick={() => goToPage(p)}
+                  title={`Page ${p}`}>
+            {p}
+          </button>
         ))}
 
-        {/* Next — hidden on last page */}
-        {currentPage < totalPages && (
-          <button className={NAV} onClick={() => goToPage(currentPage + 1)}
-                  title="Next Page">›</button>
-        )}
+        {/* Next */}
+        <button className={INACTIVE} onClick={() => goToPage(currentPage + 1)}
+                title="Next page" disabled={currentPage === totalPages}>
+          ›
+        </button>
 
-        {/* Last page — hybrid: » N */}
-        {totalPages > 1 && (
-          <button className={edgeCls(totalPages)} onClick={() => goToPage(totalPages)}
-                  title="Last Page">
-            <span className="text-xs opacity-60">»</span><span>{totalPages}</span>
-          </button>
-        )}
+        {/* Last page */}
+        <button className={cls(totalPages)} onClick={() => goToPage(totalPages)}
+                title="Last page" disabled={currentPage === totalPages}>
+          »
+        </button>
       </div>
     </div>
   );

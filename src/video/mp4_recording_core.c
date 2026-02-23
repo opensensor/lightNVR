@@ -241,6 +241,9 @@ static void *mp4_recording_thread(void *arg) {
     int ret = mp4_writer_start_recording_thread(ctx->mp4_writer, actual_url);
     if (ret < 0) {
         log_error("Failed to start RTSP recording thread for %s", stream_name);
+        // Unregister BEFORE closing: prevents close_all_mp4_writers() from
+        // holding a dangling pointer and attempting a second free (double-free).
+        unregister_mp4_writer_for_stream(stream_name);
         mp4_writer_close(ctx->mp4_writer);
         ctx->mp4_writer = NULL;
         ctx->running = 0;

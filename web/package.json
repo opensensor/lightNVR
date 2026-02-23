@@ -17,6 +17,7 @@
     "@preact-signals/query": "^2.1.2",
     "@preact/compat": "^18.x",
     "@tailwindcss/postcss": "^4.1.18",
+    "daisyui": "^5.5.19",
     "dayjs": "^1.11.19",
     "hls.js": "^1.6.15",
     "htm": "^3.1.1",
