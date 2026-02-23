@@ -2370,8 +2370,15 @@ int start_hls_unified_stream(const char *stream_name) {
     // Set protocol information in the context
     ctx->protocol = config.protocol;
 
-    // Set segment duration
-    ctx->segment_duration = config.segment_duration > 0 ? config.segment_duration : 2;
+    // Set HLS segment duration.
+    // config.segment_duration is the MP4/recording segment duration (often 900s = 15 min).
+    // For HLS, we need short segments (1-10s). Use 2s default unless the configured
+    // value is already in a reasonable HLS range.
+    if (config.segment_duration > 0 && config.segment_duration <= 10) {
+        ctx->segment_duration = config.segment_duration;
+    } else {
+        ctx->segment_duration = 2; // Default HLS segment duration
+    }
 
     // Create output paths
     config_t *global_config = get_streaming_config();

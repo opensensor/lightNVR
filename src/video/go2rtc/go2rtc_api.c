@@ -93,10 +93,12 @@ static int send_http_request(const char *method, const char *path, const char *d
         return -1;
     }
     
-    // Prepare HTTP request
+    // Use HTTP/1.0 to prevent chunked transfer encoding in responses.
+    // Go's net/http server uses chunked encoding for HTTP/1.1 by default,
+    // and this simple client doesn't handle chunk decoding.
     if (data) {
         snprintf(request, sizeof(request),
-                 "%s %s HTTP/1.1\r\n"
+                 "%s %s HTTP/1.0\r\n"
                  "Host: %s:%d\r\n"
                  "Content-Type: application/json\r\n"
                  "Content-Length: %zu\r\n"
@@ -106,36 +108,37 @@ static int send_http_request(const char *method, const char *path, const char *d
                  method, path, g_api_host, g_api_port, strlen(data), data);
     } else {
         snprintf(request, sizeof(request),
-                 "%s %s HTTP/1.1\r\n"
+                 "%s %s HTTP/1.0\r\n"
                  "Host: %s:%d\r\n"
                  "Connection: close\r\n"
                  "\r\n",
                  method, path, g_api_host, g_api_port);
     }
-    
+
     // Send request
     if (send(sockfd, request, strlen(request), 0) < 0) {
         log_error("Failed to send HTTP request: %s", strerror(errno));
         close(sockfd);
         return -1;
     }
-    
+
     // Receive response
     memset(response, 0, response_size);
     size_t total_bytes = 0;
-    
+
     while ((bytes = recv(sockfd, buffer, sizeof(buffer) - 1, 0)) > 0) {
         buffer[bytes] = '\0';
-        
+
         // Extract status code from first line of response
+        // Handle both HTTP/1.0 and HTTP/1.1 response status lines
         if (status_code == -1) {
-            if (sscanf(buffer, "HTTP/1.1 %d", &status_code) != 1) {
-                log_error("Failed to parse HTTP status code");
+            if (sscanf(buffer, "HTTP/%*d.%*d %d", &status_code) != 1) {
+                log_error("Failed to parse HTTP status code from response");
                 close(sockfd);
                 return -1;
             }
         }
-        
+
         // Append to response buffer if there's space
         if (total_bytes + bytes < response_size) {
             memcpy(response + total_bytes, buffer, bytes);
@@ -145,7 +148,7 @@ static int send_http_request(const char *method, const char *path, const char *d
             break;
         }
     }
-    
+
     close(sockfd);
     return status_code;
 }
@@ -566,10 +569,21 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
                     log_debug("Stream %s exists in go2rtc", stream_id);
                     return true;
                 }
+                log_debug("Stream %s not found in go2rtc JSON response (stream not a key)", stream_id);
             } else {
-                log_warn("Failed to parse go2rtc /api/streams response as JSON");
+                // Log first 200 chars of body to help diagnose parsing issues
+                // (e.g., chunked encoding remnants, truncation, etc.)
+                char preview[201];
+                strncpy(preview, body, 200);
+                preview[200] = '\0';
+                log_warn("Failed to parse go2rtc /api/streams response as JSON. "
+                         "Body preview (first 200 chars): %.200s", preview);
             }
+        } else {
+            log_warn("go2rtc /api/streams returned 200 but no body found");
         }
+    } else {
+        log_debug("go2rtc /api/streams returned status=%d for stream %s check", status, stream_id);
     }
 
     log_debug("Stream %s not found in go2rtc (status=%d)", stream_id, status);
