@@ -276,6 +276,36 @@ export function WebRTCVideoCell({
               if (videoElement && videoElement.paused) {
                 videoElement.play().catch(() => {});
               }
+
+              // After 30 s with ICE connected but no video data, auto-retry
+              // the entire WebRTC connection.  This recovers from go2rtc RTSP
+              // source issues (camera offline, stale state, etc.) without
+              // requiring the user to click Retry manually.  Mirrors the
+              // existing ICE-failure auto-retry at oniceconnectionstatechange.
+              if (videoDataCheckCount >= 2 &&
+                  (iceState === 'connected' || iceState === 'completed') &&
+                  !refreshRequestedRef.current &&
+                  reconnectAttemptsRef.current < 3) {
+                refreshRequestedRef.current = true;
+                reconnectAttemptsRef.current++;
+                console.log(
+                  `Auto-reconnecting stream ${stream.name}: ICE connected but no video data ` +
+                  `after ${videoDataCheckCount * videoDataCheckInterval / 1000}s ` +
+                  `(attempt ${reconnectAttemptsRef.current}/3)`
+                );
+                (async () => {
+                  try {
+                    await refreshStreamRegistration();
+                    // Give go2rtc time to fully re-register the RTSP source
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                  } catch (err) {
+                    console.error(`Error refreshing stream ${stream.name} during auto-reconnect:`, err);
+                  }
+                  setRetryCount(prev => prev + 1);
+                })();
+                return; // Stop check chain; the retry useEffect run starts fresh
+              }
+
               scheduleVideoDataCheck();
             } else {
               // Exceeded 90 seconds — give up and show error
