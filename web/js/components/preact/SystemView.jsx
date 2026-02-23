@@ -81,10 +81,13 @@ export function SystemView() {
     }
   });
   const [logs, setLogs] = useState([]);
-  const [logLevel, setLogLevel] = useState('debug');
-  const logLevelRef = useRef('debug');
+  const [logLevel, setLogLevel] = useState(() => localStorage.getItem('lightnvr_system_logLevel') || 'debug');
+  const logLevelRef = useRef(localStorage.getItem('lightnvr_system_logLevel') || 'debug');
   const [logCount, setLogCount] = useState(100);
-  const [pollingInterval, setPollingInterval] = useState(5000); // Default to 5 seconds
+  const [pollingInterval, setPollingInterval] = useState(() => {
+    const saved = localStorage.getItem('lightnvr_system_pollingInterval');
+    return saved ? parseInt(saved, 10) : 5000;
+  });
   const [isRestarting, setIsRestarting] = useState(false);
   const [showClearLogsModal, setShowClearLogsModal] = useState(false);
   const [hasData, setHasData] = useState(false);
@@ -154,6 +157,12 @@ export function SystemView() {
     console.log(`SystemView: Setting log level from ${logLevel} to ${newLevel}`);
     setLogLevel(newLevel);
     logLevelRef.current = newLevel;
+    localStorage.setItem('lightnvr_system_logLevel', newLevel);
+  };
+
+  const handleSetPollingInterval = (newInterval) => {
+    setPollingInterval(newInterval);
+    localStorage.setItem('lightnvr_system_pollingInterval', String(newInterval));
   };
 
   // useCallback with [] because it only reads logLevelRef.current (a ref, not state),
@@ -274,7 +283,7 @@ export function SystemView() {
           pollingInterval={pollingInterval}
           setLogLevel={handleSetLogLevel}
           setLogCount={setLogCount}
-          setPollingInterval={setPollingInterval}
+          setPollingInterval={handleSetPollingInterval}
           loadLogs={() => {
             // Trigger a manual log refresh
             console.log('Manually triggering log refresh');
