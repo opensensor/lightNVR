@@ -75,7 +75,7 @@ void test_force_sync_with_nonexistent_file_returns_zero(void) {
     recording_metadata_t m = make_zero_size_rec(
         "sync_cam", "/tmp/lightnvr_unit_no_such_file.mp4", now);
     uint64_t id = add_recording_metadata(&m);
-    TEST_ASSERT_NOT_EQUAL_UINT64(0, id);
+    TEST_ASSERT_TRUE(id != 0);
 
     /* sync_recording_file_size() will stat() the path, find it missing,
        and return -1.  force_recording_sync() returns updated_count (0). */

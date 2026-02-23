@@ -184,7 +184,7 @@ void test_add_recording_and_stats(void) {
                                            &total_recs, &total_bytes,
                                            &oldest, &newest);
     TEST_ASSERT_EQUAL_INT(0, rc);
-    TEST_ASSERT_EQUAL_UINT64(1, total_recs);
+    TEST_ASSERT_EQUAL_UINT(1, (unsigned int)total_recs);
 }
 
 /* ================================================================
@@ -214,7 +214,7 @@ void test_disk_usage_sums_sizes(void) {
     mark_motion_recording_complete("/rec/du2.mp4", now + 120, 4096);
 
     int64_t usage = get_motion_recordings_disk_usage("cam_du");
-    TEST_ASSERT_EQUAL_INT64(6144, usage);
+    TEST_ASSERT_EQUAL_INT(6144, (int)usage);
 }
 
 /* ================================================================
