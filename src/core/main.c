@@ -779,7 +779,6 @@ int main(int argc, char *argv[]) {
 
     init_hls_streaming_backend();
     init_mp4_recording_backend();
-    log_info("MP4 writer shutdown system initialized");
 
     // Initialize ONVIF motion recording system
     if (init_onvif_motion_recording() != 0) {
