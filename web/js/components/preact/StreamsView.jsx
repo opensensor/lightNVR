@@ -971,6 +971,7 @@ export function StreamsView() {
                   <td className="px-6 py-4 whitespace-nowrap">{stream.fps}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {stream.record ? 'Enabled' : 'Disabled'}
+                    {stream.record && stream.record_on_schedule ? ' (Schedule)' : ''}
                     {stream.detection_based_recording ? ' (Detection)' : ''}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
