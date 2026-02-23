@@ -563,7 +563,7 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
                 bool exists = cJSON_HasObjectItem(json, stream_id);
                 cJSON_Delete(json);
                 if (exists) {
-                    log_info("Stream %s exists in go2rtc", stream_id);
+                    log_debug("Stream %s exists in go2rtc", stream_id);
                     return true;
                 }
             } else {
@@ -572,7 +572,7 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
         }
     }
 
-    log_info("Stream %s not found in go2rtc (status=%d)", stream_id, status);
+    log_debug("Stream %s not found in go2rtc (status=%d)", stream_id, status);
     return false;
 }
 

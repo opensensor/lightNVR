@@ -468,7 +468,7 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
         // Wait for service to start
         int retries = 10;
         while (retries > 0 && !go2rtc_stream_is_ready()) {
-            log_info("Waiting for go2rtc service to start... (%d retries left)", retries);
+            log_debug("Waiting for go2rtc service to start... (%d retries left)", retries);
             sleep(1);
             retries--;
         }
@@ -964,11 +964,11 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
             return false;
         }
 
-        // Wait for service to start with increased retries and timeout
-        int retries = 20; // Increased from 10 to 20
+        // Wait for service to start
+        int retries = 20;
         while (retries > 0 && !go2rtc_stream_is_ready()) {
-            log_info("Waiting for go2rtc service to start... (%d retries left)", retries);
-            sleep(2); // Increased from 1 to 2 seconds
+            log_debug("Waiting for go2rtc service to start... (%d retries left)", retries);
+            sleep(2);
             retries--;
         }
 
@@ -1437,7 +1437,7 @@ bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size) {
         // Wait for service to start
         int wait_retries = 5;
         while (wait_retries > 0 && !go2rtc_stream_is_ready()) {
-            log_info("Waiting for go2rtc service to start... (%d retries left)", wait_retries);
+            log_debug("Waiting for go2rtc service to start... (%d retries left)", wait_retries);
             sleep(2);
             wait_retries--;
         }
@@ -1648,7 +1648,7 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
     // Check if stream is already registered with go2rtc
     // This prevents re-registering streams that were pre-registered (e.g., in tests)
     if (is_stream_registered_with_go2rtc(stream_name)) {
-        log_info("Stream %s is already registered with go2rtc, skipping re-registration", stream_name);
+        log_debug("Stream %s is already registered with go2rtc, skipping re-registration", stream_name);
         return true;
     }
 
