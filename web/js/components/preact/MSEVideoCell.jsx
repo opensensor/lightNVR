@@ -35,6 +35,11 @@ export function MSEVideoCell({
   const [isPlaying, setIsPlaying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
+  // Auto-retry tracking (separate from manual retryCount to avoid infinite loops)
+  const autoRetryCountRef = useRef(0);
+  const autoRetryTimeoutRef = useRef(null);
+  const MAX_AUTO_RETRIES = 3; // auto-retry up to 3 times before showing error
+
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
 
@@ -155,7 +160,7 @@ export function MSEVideoCell({
       });
 
       ws.addEventListener('close', () => handleClose());
-      ws.addEventListener('error', () => setError('WebSocket connection error'));
+      ws.addEventListener('error', () => handleWsError());
 
     } catch (err) {
       console.error(`[MSE ${stream.name}] Init error:`, err);
@@ -236,6 +241,8 @@ export function MSEVideoCell({
 
       setIsLoading(false);
       setIsPlaying(true);
+      // Reset auto-retry counter on successful stream setup
+      autoRetryCountRef.current = 0;
     } catch (err) {
       console.error(`[MSE ${stream.name}] SourceBuffer error:`, err);
       setError('Failed to create media buffer');
@@ -250,6 +257,29 @@ export function MSEVideoCell({
   const handleBinaryData = (data) => {
     if (dataHandlerRef.current) {
       dataHandlerRef.current(data);
+    }
+  };
+
+  /**
+   * Handle WebSocket errors with auto-retry before surfacing to user.
+   * Initial load races (e.g., go2rtc not yet ready for a stream) are common
+   * when multiple streams start simultaneously; a few retries resolve them.
+   */
+  const handleWsError = () => {
+    autoRetryCountRef.current += 1;
+    if (autoRetryCountRef.current <= MAX_AUTO_RETRIES) {
+      // Exponential back-off: 2s, 4s, 8s
+      const delay = Math.min(2000 * Math.pow(2, autoRetryCountRef.current - 1), 8000);
+      console.warn(`[MSE ${stream.name}] WS error, auto-retry ${autoRetryCountRef.current}/${MAX_AUTO_RETRIES} in ${delay}ms`);
+      autoRetryTimeoutRef.current = setTimeout(() => {
+        autoRetryTimeoutRef.current = null;
+        if (videoRef.current) {
+          cleanup();
+          initMSE();
+        }
+      }, delay);
+    } else {
+      setError('WebSocket connection error');
     }
   };
 
@@ -280,6 +310,10 @@ export function MSEVideoCell({
     if (initTimeoutRef.current) {
       clearTimeout(initTimeoutRef.current);
       initTimeoutRef.current = null;
+    }
+    if (autoRetryTimeoutRef.current) {
+      clearTimeout(autoRetryTimeoutRef.current);
+      autoRetryTimeoutRef.current = null;
     }
 
     // Close WebSocket
@@ -319,6 +353,7 @@ export function MSEVideoCell({
    * Handle retry button click
    */
   const handleRetry = () => {
+    autoRetryCountRef.current = 0; // Reset auto-retry on manual retry
     setRetryCount(prev => prev + 1);
     setError(null);
     setIsLoading(true);

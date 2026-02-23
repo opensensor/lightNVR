@@ -26,6 +26,9 @@ export function LiveView({isWebRTCDisabled}) {
   // State for streams and layout
   const [streams, setStreams] = useState([]);
 
+  // Incrementing this key remounts all VideoCell components (equivalent to retry-all)
+  const [streamRetryKey, setStreamRetryKey] = useState(0);
+
   // State for toggling stream labels and controls visibility
   const [showLabels, setShowLabels] = useState(() => {
     const stored = localStorage.getItem('lightnvr-show-labels');
@@ -162,8 +165,15 @@ export function LiveView({isWebRTCDisabled}) {
             }
           };
 
-          // Fetch details for all streams
-          const detailedStreams = await Promise.all(streamsData.map(fetchStreamDetails));
+          // Fetch stream details with bounded concurrency (max 3 at a time) to avoid
+          // overwhelming the backend with simultaneous /api/streams/{id} requests.
+          const BATCH_SIZE = 3;
+          const detailedStreams = [];
+          for (let i = 0; i < streamsData.length; i += BATCH_SIZE) {
+            const batch = streamsData.slice(i, i + BATCH_SIZE);
+            const batchResults = await Promise.all(batch.map(fetchStreamDetails));
+            detailedStreams.push(...batchResults);
+          }
           console.log('Loaded detailed streams for HLS view:', detailedStreams);
 
           // Filter out streams that are soft deleted, inactive, or not configured for streaming
@@ -406,6 +416,16 @@ export function LiveView({isWebRTCDisabled}) {
               {useMSE ? 'HLS View' : 'MSE View'}
             </button>
                 )}
+            {streams.length > 0 && (
+            <button
+              className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
+              style={{ position: 'relative', zIndex: 50 }}
+              title="Restart all stream connections on the current page"
+              onClick={() => setStreamRetryKey(k => k + 1)}
+            >
+              Retry All
+            </button>
+            )}
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
@@ -552,15 +572,16 @@ export function LiveView({isWebRTCDisabled}) {
             </div>
           ) : (
             // Render video cells using MSEVideoCell (when go2rtc enabled) or HLSVideoCell (fallback)
-            // MSE mode: Lower latency via WebSocket, no stagger delay needed
-            // HLS mode: Stagger initialization to avoid overwhelming the server
+            // Both modes stagger initialization to avoid a thundering-herd on go2rtc/backend:
+            //   MSE:  300ms per stream (WebSocket + codec negotiation burst is lighter)
+            //   HLS:  600ms per stream (manifest + segment fetches need more breathing room)
             streamsToShow.map((stream, index) => {
               const VideoCell = useMSE ? MSEVideoCell : HLSVideoCell;
-              const initDelay = useMSE ? 0 : (index * 500); // No delay for MSE, 500ms stagger for HLS
+              const initDelay = useMSE ? (index * 300) : (index * 600);
 
               return (
                 <VideoCell
-                  key={stream.name}
+                  key={`${stream.name}-${streamRetryKey}`}
                   stream={stream}
                   onToggleFullscreen={toggleStreamFullscreen}
                   streamId={stream.name}

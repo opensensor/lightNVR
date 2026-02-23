@@ -10,6 +10,10 @@ let settingsCache = null;
 let settingsCacheTime = 0;
 const CACHE_TTL = 60000; // 1 minute cache TTL
 
+// In-flight promise deduplication: prevents N concurrent callers from each
+// firing a separate /api/settings request before the first response returns.
+let settingsInflight = null;
+
 /**
  * Fetch settings from the server with caching
  * @param {boolean} forceRefresh - Force refresh the cache
@@ -17,36 +21,42 @@ const CACHE_TTL = 60000; // 1 minute cache TTL
  */
 export async function getSettings(forceRefresh = false) {
   const now = Date.now();
-  
+
   // Return cached settings if still valid
   if (!forceRefresh && settingsCache && (now - settingsCacheTime) < CACHE_TTL) {
     return settingsCache;
   }
-  
-  try {
-    const settings = await fetchJSON('/api/settings', {
-      timeout: 10000,
-      retries: 1,
-      retryDelay: 500
-    });
-    
-    // Update cache
+
+  // If a fetch is already in-flight, return the same promise so all concurrent
+  // callers share one request instead of firing N parallel requests.
+  if (!forceRefresh && settingsInflight) {
+    return settingsInflight;
+  }
+
+  settingsInflight = fetchJSON('/api/settings', {
+    timeout: 10000,
+    retries: 1,
+    retryDelay: 500
+  }).then(settings => {
     settingsCache = settings;
-    settingsCacheTime = now;
-    
+    settingsCacheTime = Date.now();
+    settingsInflight = null;
     return settings;
-  } catch (error) {
+  }).catch(error => {
+    settingsInflight = null;
     console.error('Failed to fetch settings:', error);
-    
+
     // Return cached settings if available, even if stale
     if (settingsCache) {
       console.warn('Using stale cached settings');
       return settingsCache;
     }
-    
+
     // Return defaults if no cache available
     return getDefaultSettings();
-  }
+  });
+
+  return settingsInflight;
 }
 
 /**
@@ -128,6 +138,9 @@ let go2rtcAvailableCache = null;
 let go2rtcAvailableCacheTime = 0;
 const GO2RTC_CACHE_TTL = 30000; // 30 second cache TTL for availability check
 
+// In-flight promise deduplication for go2rtc availability checks
+let go2rtcAvailableInflight = null;
+
 /**
  * Check if go2rtc is available and responding
  * Tries to reach go2rtc's API endpoint with a short timeout
@@ -142,31 +155,42 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
     return go2rtcAvailableCache;
   }
 
-  try {
-    const baseUrl = await getGo2rtcBaseUrl();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-    const response = await fetch(`${baseUrl}/api/streams`, {
-      method: 'GET',
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    const available = response.ok;
-    go2rtcAvailableCache = available;
-    go2rtcAvailableCacheTime = now;
-
-    if (!available) {
-      console.warn(`go2rtc API responded with status ${response.status}`);
-    }
-    return available;
-  } catch (error) {
-    console.warn('go2rtc is not available:', error.message);
-    go2rtcAvailableCache = false;
-    go2rtcAvailableCacheTime = now;
-    return false;
+  // Share a single in-flight request among all concurrent callers
+  if (!forceRefresh && go2rtcAvailableInflight) {
+    return go2rtcAvailableInflight;
   }
+
+  go2rtcAvailableInflight = (async () => {
+    try {
+      const baseUrl = await getGo2rtcBaseUrl();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+
+      const response = await fetch(`${baseUrl}/api/streams`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      const available = response.ok;
+      go2rtcAvailableCache = available;
+      go2rtcAvailableCacheTime = Date.now();
+
+      if (!available) {
+        console.warn(`go2rtc API responded with status ${response.status}`);
+      }
+      return available;
+    } catch (error) {
+      console.warn('go2rtc is not available:', error.message);
+      go2rtcAvailableCache = false;
+      go2rtcAvailableCacheTime = Date.now();
+      return false;
+    } finally {
+      go2rtcAvailableInflight = null;
+    }
+  })();
+
+  return go2rtcAvailableInflight;
 }
 
 /**
@@ -197,7 +221,9 @@ export async function isForceNativeHls() {
 export function clearSettingsCache() {
   settingsCache = null;
   settingsCacheTime = 0;
+  settingsInflight = null;
   go2rtcAvailableCache = null;
   go2rtcAvailableCacheTime = 0;
+  go2rtcAvailableInflight = null;
 }
 
