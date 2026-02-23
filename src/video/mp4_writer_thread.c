@@ -387,9 +387,20 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             log_error("Failed to record segment for stream %s (error: %d), implementing retry strategy...",
                      stream_name, ret);
 
-            // Calculate backoff time based on retry count (exponential backoff with max of 30 seconds)
-            int backoff_seconds = 1 << (thread_ctx->retry_count > 4 ? 4 : thread_ctx->retry_count); // 1, 2, 4, 8, 16, 16, ...
-            if (backoff_seconds > 30) backoff_seconds = 30;
+            // Tiered backoff: give the stream progressively more time to heal.
+            // Exponential for the first few retries (1 s → 16 s), then hold at
+            // 30 s, and finally 60 s once the failure is clearly persistent.
+            // This replaces the previous aggressive-recovery override that was
+            // incorrectly shrinking the wait down to 5 s after many retries,
+            // which produced a tight 10 s probe + 5 s wait spin-loop.
+            int backoff_seconds;
+            if (thread_ctx->retry_count >= 10) {
+                backoff_seconds = 60;   // stream clearly not ready — back off 1 min
+            } else if (thread_ctx->retry_count >= 5) {
+                backoff_seconds = 30;   // repeated failure — give it 30 s
+            } else {
+                backoff_seconds = 1 << thread_ctx->retry_count; // 1, 2, 4, 8, 16
+            }
 
             // Record the retry attempt
             thread_ctx->retry_count++;
@@ -412,23 +423,25 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             log_debug("Input context is NULL after segment failure for stream %s"
                       " (expected — will reopen on next attempt)", stream_name);
 
-            // If we've had too many consecutive failures, try more aggressive recovery
+            // If we've had too many consecutive failures, force a full reconnect
+            // so the next attempt gets a completely fresh RTSP connection.
+            // The backoff is already lengthened by the tiered calculation above;
+            // do NOT shorten it here.
             if (thread_ctx->retry_count > 5) {
-                log_warn("Multiple segment recording failures for %s (%d retries), attempting aggressive recovery",
-                        stream_name, thread_ctx->retry_count);
+                log_warn("Multiple segment recording failures for %s (%d retries), "
+                         "forcing fresh connection and waiting %d s before next attempt",
+                        stream_name, thread_ctx->retry_count, backoff_seconds);
 
-                // BUGFIX: Force input context to be recreated
+                // Force input context to be recreated
                 if (thread_ctx->input_ctx) {
                     avformat_close_input(&thread_ctx->input_ctx);
                     thread_ctx->input_ctx = NULL;
-                    log_info("Forcibly closed input context to ensure fresh connection on next attempt");
+                    log_info("Closed stale input context for %s — will reopen on next attempt",
+                             stream_name);
                 }
 
                 // Re-detect video params on next successful segment
                 thread_ctx->video_params_detected = false;
-
-                // Sleep longer for aggressive recovery
-                backoff_seconds = 5;
             }
 
             log_info("Waiting %d seconds before retrying segment recording for %s (retry #%d)",
