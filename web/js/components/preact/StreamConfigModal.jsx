@@ -239,7 +239,14 @@ export function StreamConfigModal({
   const [showZoneEditor, setShowZoneEditor] = useState(false);
   const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
 
-  // Load zones from API when modal opens for existing stream
+  // Keep a ref to onInputChange so the zones-load effect never needs it as a
+  // dependency (avoids an infinite fetch loop: calling onInputChange triggers a
+  // parent re-render which produces a new function reference → effect re-fires).
+  const onInputChangeRef = useRef(onInputChange);
+  onInputChangeRef.current = onInputChange;
+
+  // Load zones from API when modal opens for existing stream.
+  // Depends only on isEditing / currentStream.name – NOT on onInputChange.
   useEffect(() => {
     const loadZones = async () => {
       if (!isEditing || !currentStream.name) {
@@ -253,8 +260,9 @@ export function StreamConfigModal({
           if (data.zones && Array.isArray(data.zones)) {
             console.log('Loaded zones for stream config modal:', data.zones);
             setDetectionZones(data.zones);
-            // Also update parent component
-            onInputChange({ target: { name: 'detectionZones', value: data.zones } });
+            // Use ref so we always call the latest callback without making it
+            // a dependency of this effect.
+            onInputChangeRef.current({ target: { name: 'detectionZones', value: data.zones } });
           }
         } else {
           console.warn('Failed to load zones:', response.status);
@@ -265,7 +273,7 @@ export function StreamConfigModal({
     };
 
     loadZones();
-  }, [isEditing, currentStream.name, onInputChange]);
+  }, [isEditing, currentStream.name]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleZonesChange = (zones) => {
     setDetectionZones(zones);
