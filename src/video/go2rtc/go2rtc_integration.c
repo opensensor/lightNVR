@@ -1044,25 +1044,21 @@ int go2rtc_integration_start_recording(const char *stream_name) {
     if (using_go2rtc) {
         log_info("Using go2rtc's RTSP output as input for MP4 recording of stream %s", stream_name);
 
-        // Get the go2rtc RTSP URL for this stream
-        char rtsp_url[MAX_PATH_LENGTH];
-        if (!go2rtc_get_rtsp_url(stream_name, rtsp_url, sizeof(rtsp_url))) {
-            log_error("Failed to get go2rtc RTSP URL for stream %s", stream_name);
-            // Fall back to default recording
-            log_info("Falling back to default recording for stream %s", stream_name);
-            return start_mp4_recording(stream_name);
+        // Set tracking BEFORE starting recording so mp4_recording_thread
+        // can see the go2rtc flag and route through go2rtc's RTSP output.
+        go2rtc_stream_tracking_t *tracking = add_tracked_stream(stream_name);
+        if (tracking) {
+            tracking->using_go2rtc_for_recording = true;
         }
 
-        // Start MP4 recording using the go2rtc RTSP URL
-        int result = start_mp4_recording_with_url(stream_name, rtsp_url);
-
-        // Update tracking if successful
+        // Use start_mp4_recording() (NOT _with_url) so ctx->config.url
+        // keeps the original camera RTSP URL.  mp4_recording_thread will
+        // detect the go2rtc tracking flag and get the go2rtc RTSP URL at
+        // runtime.  If go2rtc fails, the thread falls back to the original
+        // camera URL — critical for legacy cameras that work with direct
+        // connections but not through go2rtc's proxy.
+        int result = start_mp4_recording(stream_name);
         if (result == 0) {
-            go2rtc_stream_tracking_t *tracking = add_tracked_stream(stream_name);
-            if (tracking) {
-                tracking->using_go2rtc_for_recording = true;
-            }
-
             log_info("Started MP4 recording for stream %s using go2rtc's RTSP output", stream_name);
         }
 
@@ -1088,8 +1084,8 @@ int go2rtc_integration_stop_recording(const char *stream_name) {
     // Check if the stream is using go2rtc for recording
     go2rtc_stream_tracking_t *tracking = find_tracked_stream(stream_name);
     if (tracking && tracking->using_go2rtc_for_recording) {
-        // Recording was started via start_mp4_recording_with_url() using go2rtc's
-        // RTSP output — the native FFmpeg recording path.  The go2rtc *consumer*
+        // Recording was started via start_mp4_recording() with go2rtc tracking
+        // enabled — the native FFmpeg recording path.  The go2rtc *consumer*
         // API was never involved, so go2rtc_consumer_stop_recording() cannot find
         // the stream in its tracking array and logs "Recording not active".
         // Use stop_mp4_recording() to stop the actual recording thread instead.
