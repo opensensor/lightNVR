@@ -35,6 +35,30 @@ export const formatUtils = {
   },
   
   /**
+   * Build a timeline URL for a recording, converting the UTC start_time to local date/time.
+   * The API returns start_time as "YYYY-MM-DD HH:MM:SS UTC". TimelinePage interprets the
+   * date/time URL params as local time, so we must convert before building the URL.
+   * @param {string} stream - Stream name
+   * @param {string} startTime - UTC timestamp string from API ("YYYY-MM-DD HH:MM:SS UTC")
+   * @returns {string} Timeline URL with local date and time params
+   */
+  getTimelineUrl: (stream, startTime) => {
+    const base = `timeline.html?stream=${encodeURIComponent(stream || '')}`;
+    if (!startTime) return `${base}&date=&time=`;
+    const utcMatch = startTime.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (!utcMatch) return `${base}&date=&time=`;
+    const [, year, month, day, hours, minutes, seconds] = utcMatch;
+    // Create a Date from explicit UTC components so JS converts to local automatically
+    const utcDate = new Date(Date.UTC(
+      parseInt(year), parseInt(month) - 1, parseInt(day),
+      parseInt(hours), parseInt(minutes), parseInt(seconds)
+    ));
+    const date = `${utcDate.getFullYear()}-${String(utcDate.getMonth() + 1).padStart(2, '0')}-${String(utcDate.getDate()).padStart(2, '0')}`;
+    const time = `${String(utcDate.getHours()).padStart(2, '0')}:${String(utcDate.getMinutes()).padStart(2, '0')}:${String(utcDate.getSeconds()).padStart(2, '0')}`;
+    return `${base}&date=${date}&time=${time}`;
+  },
+
+  /**
    * Format file size
    * @param {number} bytes Size in bytes
    * @returns {string} Formatted file size
