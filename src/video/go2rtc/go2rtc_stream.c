@@ -198,16 +198,6 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#backchannel=1");
     }
 
-    // Save the camera URL (with credentials) BEFORE appending go2rtc-specific
-    // fragment parameters.  This URL is used for FFmpeg sources so that FFmpeg
-    // connects directly to the camera rather than looping through go2rtc's own
-    // RTSP server — avoiding the recursive SPS/PPS probe deadlock that occurs
-    // with stream-name-based FFmpeg sources on cameras that omit
-    // sprop-parameter-sets in their SDP (e.g. Thingino/Ingenic).
-    char camera_url_for_ffmpeg[URL_BUFFER_SIZE];
-    strncpy(camera_url_for_ffmpeg, modified_url, URL_BUFFER_SIZE - 1);
-    camera_url_for_ffmpeg[URL_BUFFER_SIZE - 1] = '\0';
-
     // Append fragment parameters to URL
     char new_url[URL_BUFFER_SIZE];
     snprintf(new_url, URL_BUFFER_SIZE, "%s%s", modified_url, fragment_params);
@@ -220,23 +210,23 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
     // If audio recording is enabled, add FFmpeg transcoding sources
     // This creates a stream with multiple sources:
-    // 1. Primary RTSP source (raw camera connection with go2rtc params)
-    // 2. FFmpeg source that copies video + transcodes audio to AAC (for MP4 recording)
-    // 3. FFmpeg source that transcodes audio to OPUS (for WebRTC)
-    //
-    // The FFmpeg AAC source uses the direct camera URL (not the stream name) so
-    // that FFmpeg connects directly to the camera.  Using a stream name would
-    // make FFmpeg loop back through go2rtc's RTSP server, creating a circular
-    // dependency that deadlocks on cameras without sprop-parameter-sets.
-    // The #video=copy flag ensures FFmpeg remuxes the H264 stream, normalizing
-    // non-standard H264 from legacy cameras for reliable MP4 recording.
+    // 1. Primary RTSP source (video pass-through, original audio)
+    // 2. FFmpeg source that transcodes audio to AAC for MP4 recording compatibility
+    // 3. FFmpeg source that transcodes audio to OPUS for WebRTC compatibility
+    // NOTE: The FFmpeg sources are audio-only.  Do NOT add #video=copy — that
+    //       would make FFmpeg open a second connection to the camera (or loop
+    //       through go2rtc's own RTSP), creating duplicate video producers and
+    //       causing RTSP 404 errors when the redundant producer fails.  Video
+    //       is served directly from the primary RTSP source and does not need
+    //       FFmpeg's involvement.
     if (record_audio) {
         log_info("Audio recording enabled for stream %s, adding FFmpeg audio transcoding sources", stream_id);
 
         // Build the FFmpeg AAC transcoding source URL for recording.
-        // Uses direct camera URL with #video=copy to remux video + transcode audio.
+        // Audio-only: FFmpeg loops through go2rtc's RTSP to get the audio track,
+        // transcodes it to AAC, and publishes back.  No #video=copy needed.
         char ffmpeg_aac_source[URL_BUFFER_SIZE];
-        snprintf(ffmpeg_aac_source, URL_BUFFER_SIZE, "ffmpeg:%s#video=copy#audio=aac", camera_url_for_ffmpeg);
+        snprintf(ffmpeg_aac_source, URL_BUFFER_SIZE, "ffmpeg:%s#audio=aac", stream_id);
 
         // Build the FFmpeg OPUS transcoding source URL for WebRTC
         // Format: ffmpeg:stream_id#audio=opus
