@@ -89,6 +89,13 @@ void libuv_connection_reset(libuv_connection_t *conn) {
     // Free any allocated response body
     http_response_free(&conn->response);
 
+    // Free heap-allocated request body (copied by on_body to avoid dangling
+    // pointers when recv_buffer is realloc'd across multiple reads).
+    if (conn->request.body) {
+        free(conn->request.body);
+        conn->request.body = NULL;
+    }
+
     // Reset request/response
     http_request_init(&conn->request);
     http_response_init(&conn->response);
@@ -139,13 +146,19 @@ void libuv_connection_close(libuv_connection_t *conn) {
  */
 void libuv_connection_destroy(libuv_connection_t *conn) {
     if (!conn) return;
-    
+
     http_response_free(&conn->response);
-    
+
+    // Free heap-allocated request body (copied by on_body)
+    if (conn->request.body) {
+        free(conn->request.body);
+        conn->request.body = NULL;
+    }
+
     if (conn->recv_buffer) {
         safe_free(conn->recv_buffer);
     }
-    
+
     safe_free(conn);
 }
 
@@ -370,15 +383,20 @@ static int on_headers_complete(llhttp_t *parser) {
 static int on_body(llhttp_t *parser, const char *at, size_t length) {
     libuv_connection_t *conn = (libuv_connection_t *)parser->data;
 
-    // For now, just point to the body in the receive buffer
-    // (works because we keep the buffer until request is processed)
-    if (!conn->request.body) {
-        conn->request.body = (void *)at;
-        conn->request.body_len = length;
-    } else {
-        // Continuation of body - update length
-        conn->request.body_len += length;
+    // Copy body data into a separately heap-allocated buffer rather than
+    // storing a raw pointer into conn->recv_buffer.  The recv_buffer can be
+    // moved by safe_realloc() inside libuv_alloc_cb() on the next read call,
+    // which would leave the stored pointer dangling and cause a use-after-free
+    // when the handler later passes req->body to curl_mime_data() or similar.
+    char *new_body = realloc(conn->request.body, conn->request.body_len + length);
+    if (!new_body) {
+        log_error("on_body: Failed to allocate %zu bytes for request body",
+                  conn->request.body_len + length);
+        return -1;  // Signal allocation failure to llhttp
     }
+    memcpy(new_body + conn->request.body_len, at, length);
+    conn->request.body = new_body;
+    conn->request.body_len += length;
 
     return 0;
 }

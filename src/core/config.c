@@ -251,6 +251,7 @@ void load_default_config(config_t *config) {
     // API detection settings
     snprintf(config->api_detection_url, MAX_URL_LENGTH, "http://localhost:8000/detect");
     snprintf(config->api_detection_backend, 32, "onnx"); // Default to ONNX backend
+    snprintf(config->api_describe_backend, 32, "moondream"); // Default VLM describe backend
 
     // Global detection defaults
     config->default_detection_threshold = 50;  // 50% confidence threshold
@@ -590,6 +591,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "backend") == 0) {
             strncpy(config->api_detection_backend, value, 31);
             config->api_detection_backend[31] = '\0';
+        } else if (strcmp(name, "describe_backend") == 0) {
+            strncpy(config->api_describe_backend, value, 31);
+            config->api_describe_backend[31] = '\0';
         } else if (strcmp(name, "detection_threshold") == 0) {
             config->default_detection_threshold = atoi(value);
             // Clamp to valid range
@@ -1315,6 +1319,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "[api_detection]\n");
     fprintf(file, "url = %s\n", config->api_detection_url);
     fprintf(file, "backend = %s\n", config->api_detection_backend);
+    fprintf(file, "describe_backend = %s\n", config->api_describe_backend);
     fprintf(file, "detection_threshold = %d  ; Default confidence threshold (0-100%%)\n", config->default_detection_threshold);
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
     fprintf(file, "post_detection_buffer = %d\n", config->default_post_detection_buffer);

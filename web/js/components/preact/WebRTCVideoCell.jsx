@@ -96,12 +96,24 @@ export function WebRTCVideoCell({
   // Detection overlay visibility state
   const [showDetections, setShowDetections] = useState(true);
 
+  // Describe image state
+  const [isDescribing, setIsDescribing] = useState(false);
+  const [describeResult, setDescribeResult] = useState(null);
+  const [describeElapsed, setDescribeElapsed] = useState(0);
+
+  // Capture split-button dropdown state
+  const [showCaptureMenu, setShowCaptureMenu] = useState(false);
+
   // Refs
   const videoRef = useRef(null);
   const cellRef = useRef(null);
+  const captureMenuRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const detectionOverlayRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const describeAbortRef = useRef(null);   // AbortController for describe fetch
+  const describeTimerRef = useRef(null);   // setTimeout handle for 300s timeout
+  const describeIntervalRef = useRef(null); // setInterval handle for elapsed counter
   const connectionMonitorRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
   const refreshRequestedRef = useRef(false);  // Track if we've already requested a refresh for this connection attempt
@@ -849,6 +861,124 @@ export function WebRTCVideoCell({
     setRetryCount(prev => prev + 1);
   };
 
+  // Capture current video frame and send to the describe endpoint
+  const handleDescribeImage = async () => {
+    if (!videoRef.current || !isPlaying) return;
+    setIsDescribing(true);
+    setDescribeResult(null);
+    setDescribeElapsed(0);
+
+    // Set up abort controller with a 300-second hard limit (matches server-side curl timeout)
+    const controller = new AbortController();
+    describeAbortRef.current = controller;
+
+    // Hard timeout: abort after 300 s so the UI never hangs indefinitely
+    describeTimerRef.current = setTimeout(() => {
+      controller.abort();
+    }, 300000);
+
+    // Elapsed-time ticker so the user sees progress
+    let elapsed = 0;
+    describeIntervalRef.current = setInterval(() => {
+      elapsed += 1;
+      setDescribeElapsed(elapsed);
+    }, 1000);
+
+    try {
+      const video = videoRef.current;
+      if (!video.videoWidth || !video.videoHeight) {
+        throw new Error('Video not ready — try again in a moment');
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Failed to get canvas context');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+      if (!blob) throw new Error('Failed to capture frame');
+
+      const resp = await fetch('/api/detection/describe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: blob,
+        signal: controller.signal,
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      setDescribeResult(data.description || 'No description returned.');
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.warn('Describe image: request timed out after 300 s');
+        setDescribeResult('Error: Request timed out (inference took too long).');
+      } else {
+        console.error('Describe image error:', err);
+        setDescribeResult(`Error: ${err.message}`);
+      }
+    } finally {
+      clearTimeout(describeTimerRef.current);
+      clearInterval(describeIntervalRef.current);
+      describeTimerRef.current = null;
+      describeIntervalRef.current = null;
+      describeAbortRef.current = null;
+      setIsDescribing(false);
+    }
+  };
+
+  // Take snapshot of current video frame (used by both the snapshot button and handleSnapshot)
+  const handleSnapshot = useCallback(() => {
+    if (!videoRef.current) return;
+    const videoElement = videoRef.current;
+    if (!videoElement.videoWidth || !videoElement.videoHeight) {
+      showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = videoElement.videoWidth;
+    canvas.height = videoElement.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+    if (detectionOverlayRef.current && typeof detectionOverlayRef.current.getDetections === 'function') {
+      const detections = detectionOverlayRef.current.getDetections();
+      if (detections && detections.length > 0) {
+        drawDetectionsOnCanvas(ctx, canvas.width, canvas.height, detections);
+      }
+    }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+    canvas.toBlob((blob) => {
+      if (!blob) { showStatusMessage('Failed to create snapshot', 'error'); return; }
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+      showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+    }, 'image/jpeg', 0.95);
+  }, [stream.name]);
+
+  // Close capture dropdown when clicking outside
+  useEffect(() => {
+    if (!showCaptureMenu) return;
+    const handleClickOutside = (e) => {
+      if (captureMenuRef.current && !captureMenuRef.current.contains(e.target)) {
+        setShowCaptureMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showCaptureMenu]);
+
   // Start audio level monitoring
   const startAudioLevelMonitoring = useCallback((localStream) => {
     try {
@@ -1012,351 +1142,187 @@ export function WebRTCVideoCell({
         />
       )}
 
-      {/* Stream name overlay with connection quality indicator */}
-      {showLabels && (
-        <div
-          className="stream-name-overlay"
-          style={{
-            position: 'absolute',
-            top: '10px',
-            left: '10px',
-            padding: '5px 10px',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            color: 'white',
-            borderRadius: '4px',
-            fontSize: '14px',
-            zIndex: 3,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          {stream.name}
-
-          {/* Connection quality indicator - only show when we have quality data and stream is playing */}
-          {isPlaying && connectionQuality !== 'unknown' && (
-            <div
-              className={`connection-quality-indicator quality-${connectionQuality}`}
-              title={`Connection Quality: ${connectionQuality.charAt(0).toUpperCase() + connectionQuality.slice(1)}`}
-              style={{
-                width: '10px',
-                height: '10px',
-                borderRadius: '50%',
-                backgroundColor:
-                  connectionQuality === 'good' ? '#10B981' :  // Green
-                  connectionQuality === 'fair' ? '#FBBF24' :  // Yellow
-                  connectionQuality === 'poor' ? '#F97316' :  // Orange
-                  connectionQuality === 'bad' ? '#EF4444' :   // Red
-                  '#6B7280',                                  // Gray (unknown)
-                boxShadow: '0 0 4px rgba(0, 0, 0, 0.3)'
-              }}
-            />
-          )}
-        </div>
-      )}
-
-      {/* Stream controls */}
-      {showControls && (
-      <div
-        className="stream-controls"
-        style={{
-          position: 'absolute',
-          bottom: '10px',
-          right: '10px',
-          display: 'flex',
-          gap: '10px',
-          zIndex: 5,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          padding: '5px',
-          borderRadius: '4px'
-        }}
-      >
-        <div
-          style={{
-            backgroundColor: 'transparent',
-            padding: '5px',
-            borderRadius: '4px'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          <SnapshotButton
-            streamId={streamId}
-            streamName={stream.name}
-            onSnapshot={() => {
-              if (!videoRef.current) return;
-
-              const videoElement = videoRef.current;
-
-              // Ensure valid video dimensions for native resolution capture
-              if (!videoElement.videoWidth || !videoElement.videoHeight) {
-                showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
-                return;
-              }
-
-              // Create canvas at native video resolution
-              const canvas = document.createElement('canvas');
-              canvas.width = videoElement.videoWidth;
-              canvas.height = videoElement.videoHeight;
-              const ctx = canvas.getContext('2d');
-
-              // Draw video frame at native resolution
-              ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-
-              // Draw detections at native resolution if available (fixes boundary shift)
-              if (detectionOverlayRef.current && typeof detectionOverlayRef.current.getDetections === 'function') {
-                const detections = detectionOverlayRef.current.getDetections();
-                if (detections && detections.length > 0) {
-                  drawDetectionsOnCanvas(ctx, canvas.width, canvas.height, detections);
-                }
-              }
-
-              // Auto-download for rapid-fire capability (also works in fullscreen)
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
-
-              canvas.toBlob((blob) => {
-                if (!blob) {
-                  showStatusMessage('Failed to create snapshot', 'error');
-                  return;
-                }
-
-                const blobUrl = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = blobUrl;
-                link.download = fileName;
-                document.body.appendChild(link);
-                link.click();
-
-                setTimeout(() => {
-                  if (document.body.contains(link)) {
-                    document.body.removeChild(link);
-                  }
-                  URL.revokeObjectURL(blobUrl);
-                }, 1000);
-
-                showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
-              }, 'image/jpeg', 0.95);
-            }}
-          />
-        </div>
-        {/* Audio playback toggle button (for hearing camera audio) */}
-        {isPlaying && (
-          <button
-            className={`audio-toggle-btn ${audioEnabled ? 'active' : ''}`}
-            title={audioEnabled ? 'Mute camera audio' : 'Unmute camera audio'}
-            onClick={() => setAudioEnabled(!audioEnabled)}
-            style={{
-              backgroundColor: audioEnabled ? 'rgba(34, 197, 94, 0.8)' : 'transparent',
-              border: 'none',
-              padding: '5px',
-              borderRadius: '4px',
-              color: 'white',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseOver={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
-            onMouseOut={(e) => !audioEnabled && (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            {/* Speaker icon - different icon based on muted state */}
-            {audioEnabled ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                <line x1="23" y1="9" x2="17" y2="15"></line>
-                <line x1="17" y1="9" x2="23" y2="15"></line>
-              </svg>
-            )}
-          </button>
-        )}
-        {/* Two-way audio controls for backchannel */}
-        {stream.backchannel_enabled && isPlaying && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
-            {/* Mode toggle button */}
-            <button
-              className="talk-mode-btn"
-              title={talkMode === 'ptt' ? 'Switch to Toggle Mode' : 'Switch to Push-to-Talk'}
-              onClick={() => setTalkMode(talkMode === 'ptt' ? 'toggle' : 'ptt')}
-              style={{
-                backgroundColor: 'transparent',
-                border: 'none',
-                padding: '3px',
-                borderRadius: '4px',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '10px',
-                opacity: 0.7
-              }}
-            >
-              {talkMode === 'ptt' ? 'PTT' : 'TOG'}
-            </button>
-            {/* Main microphone button */}
-            <button
-              className={`ptt-btn ${isTalking ? 'talking' : ''}`}
-              title={talkMode === 'ptt'
-                ? (isTalking ? 'Release to stop talking' : 'Hold to talk')
-                : (isTalking ? 'Click to stop talking' : 'Click to start talking')}
-              onMouseDown={talkMode === 'ptt' ? startTalking : undefined}
-              onMouseUp={talkMode === 'ptt' ? stopTalking : undefined}
-              onMouseLeave={talkMode === 'ptt' ? stopTalking : undefined}
-              onTouchStart={talkMode === 'ptt' ? (e) => { e.preventDefault(); startTalking(); } : undefined}
-              onTouchEnd={talkMode === 'ptt' ? (e) => { e.preventDefault(); stopTalking(); } : undefined}
-              onClick={talkMode === 'toggle' ? handleTalkToggle : undefined}
-              style={{
-                backgroundColor: isTalking ? 'rgba(239, 68, 68, 0.8)' : 'transparent',
-                border: 'none',
-                padding: '5px',
-                borderRadius: '4px',
-                color: 'white',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s ease',
-                position: 'relative'
-              }}
-              onMouseOver={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
-              onMouseOut={(e) => !isTalking && (e.currentTarget.style.backgroundColor = 'transparent')}
-            >
-              {/* Microphone icon */}
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isTalking ? 'white' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" x2="12" y1="19" y2="22"></line>
-              </svg>
-              {/* Audio level indicator */}
-              {isTalking && audioLevel > 0 && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: '-4px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: '20px',
-                    height: '3px',
-                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                    borderRadius: '2px',
-                    overflow: 'hidden'
-                  }}
-                >
-                  <div
+      {/* Hover-reveal info bar: stream name (left) + controls (right) */}
+      {(showLabels || showControls) && (
+        <div className="stream-info-bar">
+          {showLabels && (
+            <div className="stream-details">
+              <span className="stream-name">{stream.name}</span>
+              {isPlaying && connectionQuality !== 'unknown' && (
+                <span className="stream-resolution">
+                  <span
+                    className={`connection-quality-indicator quality-${connectionQuality}`}
+                    title={`Connection: ${connectionQuality}`}
                     style={{
-                      width: `${audioLevel}%`,
-                      height: '100%',
-                      backgroundColor: audioLevel > 70 ? '#22c55e' : audioLevel > 30 ? '#eab308' : '#ef4444',
-                      transition: 'width 0.05s ease-out'
+                      display: 'inline-block',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      marginRight: '4px',
+                      backgroundColor:
+                        connectionQuality === 'good' ? '#10B981' :
+                        connectionQuality === 'fair' ? '#FBBF24' :
+                        connectionQuality === 'poor' ? '#F97316' :
+                        connectionQuality === 'bad' ? '#EF4444' : '#6B7280',
                     }}
                   />
+                  {connectionQuality}
+                </span>
+              )}
+            </div>
+          )}
+
+          {showControls && (
+            <div className="stream-controls">
+              {/* Capture split-button: Snapshot (primary) + Describe Image (dropdown) */}
+              <div className="capture-split-btn" ref={captureMenuRef}>
+                <SnapshotButton
+                  streamId={streamId}
+                  streamName={stream.name}
+                  onSnapshot={handleSnapshot}
+                />
+                {isPlaying && (
+                  <button
+                    className="capture-chevron-btn"
+                    title="More capture options"
+                    onClick={(e) => { e.stopPropagation(); setShowCaptureMenu(m => !m); }}
+                  >▾</button>
+                )}
+                {showCaptureMenu && isPlaying && (
+                  <div className="capture-menu">
+                    <button
+                      className="capture-menu-item"
+                      onClick={() => { setShowCaptureMenu(false); handleDescribeImage(); }}
+                      disabled={isDescribing}
+                    >
+                      🔍 Describe Image
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* Audio playback toggle */}
+              {isPlaying && (
+                <button
+                  className={`audio-toggle-btn ${audioEnabled ? 'active' : ''}`}
+                  title={audioEnabled ? 'Mute camera audio' : 'Unmute camera audio'}
+                  onClick={() => setAudioEnabled(!audioEnabled)}
+                >
+                  {audioEnabled ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                      <line x1="23" y1="9" x2="17" y2="15"></line>
+                      <line x1="17" y1="9" x2="23" y2="15"></line>
+                    </svg>
+                  )}
+                </button>
+              )}
+
+              {/* Two-way audio controls for backchannel */}
+              {stream.backchannel_enabled && isPlaying && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+                  <button
+                    className="talk-mode-btn"
+                    title={talkMode === 'ptt' ? 'Switch to Toggle Mode' : 'Switch to Push-to-Talk'}
+                    onClick={() => setTalkMode(talkMode === 'ptt' ? 'toggle' : 'ptt')}
+                    style={{ fontSize: '10px', opacity: 0.7, width: 'auto', padding: '3px 5px' }}
+                  >
+                    {talkMode === 'ptt' ? 'PTT' : 'TOG'}
+                  </button>
+                  <button
+                    className={`ptt-btn ${isTalking ? 'talking' : ''}`}
+                    title={talkMode === 'ptt'
+                      ? (isTalking ? 'Release to stop talking' : 'Hold to talk')
+                      : (isTalking ? 'Click to stop talking' : 'Click to start talking')}
+                    onMouseDown={talkMode === 'ptt' ? startTalking : undefined}
+                    onMouseUp={talkMode === 'ptt' ? stopTalking : undefined}
+                    onMouseLeave={talkMode === 'ptt' ? stopTalking : undefined}
+                    onTouchStart={talkMode === 'ptt' ? (e) => { e.preventDefault(); startTalking(); } : undefined}
+                    onTouchEnd={talkMode === 'ptt' ? (e) => { e.preventDefault(); stopTalking(); } : undefined}
+                    onClick={talkMode === 'toggle' ? handleTalkToggle : undefined}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={isTalking ? 'white' : 'none'} stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                      <line x1="12" x2="12" y1="19" y2="22"></line>
+                    </svg>
+                    {isTalking && audioLevel > 0 && (
+                      <div style={{ position: 'absolute', bottom: '-4px', left: '50%', transform: 'translateX(-50%)', width: '20px', height: '3px', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ width: `${audioLevel}%`, height: '100%', backgroundColor: audioLevel > 70 ? '#22c55e' : audioLevel > 30 ? '#eab308' : '#ef4444', transition: 'width 0.05s ease-out' }} />
+                      </div>
+                    )}
+                  </button>
                 </div>
               )}
-            </button>
-          </div>
-        )}
-        {/* Detection overlay toggle button */}
-        {stream.detection_based_recording && stream.detection_model && isPlaying && (
-          <button
-            className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
-            title={showDetections ? 'Hide Detections' : 'Show Detections'}
-            onClick={() => setShowDetections(!showDetections)}
-            style={{
-              backgroundColor: 'transparent',
-              border: 'none',
-              padding: '5px',
-              borderRadius: '4px',
-              color: 'white',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            {showDetections ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
-              </svg>
-            )}
-          </button>
-        )}
-        {/* PTZ control toggle button */}
-        {stream.ptz_enabled && isPlaying && (
-          <button
-            className={`ptz-toggle-btn ${showPTZControls ? 'active' : ''}`}
-            title={showPTZControls ? 'Hide PTZ Controls' : 'Show PTZ Controls'}
-            onClick={() => setShowPTZControls(!showPTZControls)}
-            style={{
-              backgroundColor: showPTZControls ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
-              border: 'none',
-              padding: '5px',
-              borderRadius: '4px',
-              color: 'white',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseOver={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
-            onMouseOut={(e) => !showPTZControls && (e.currentTarget.style.backgroundColor = 'transparent')}
-          >
-            {/* PTZ/Joystick icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
-              <path d="M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-            </svg>
-          </button>
-        )}
-        {/* Force refresh stream button - show during connecting (isLoading) or playing */}
-        {(isPlaying || isLoading) && (
-          <button
-            className="force-refresh-btn"
-            title="Force Refresh Stream"
-            onClick={handleRetry}
-            style={{
-              backgroundColor: 'transparent',
-              border: 'none',
-              padding: '5px',
-              borderRadius: '4px',
-              color: 'white',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease'
-            }}
-            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
-            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-          >
-            {/* Refresh/reload icon */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 4 23 10 17 10"></polyline>
-              <polyline points="1 20 1 14 7 14"></polyline>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-            </svg>
-          </button>
-        )}
-        <button
-          className="fullscreen-btn"
-          title="Toggle Fullscreen"
-          data-id={streamId}
-          data-name={stream.name}
-          onClick={(e) => onToggleFullscreen(stream.name, e, cellRef.current)}
-          style={{
-            backgroundColor: 'transparent',
-            border: 'none',
-            padding: '5px',
-            borderRadius: '4px',
-            color: 'white',
-            cursor: 'pointer'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
-        </button>
-      </div>
+              {/* Detection overlay toggle */}
+              {stream.detection_based_recording && stream.detection_model && isPlaying && (
+                <button
+                  className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
+                  title={showDetections ? 'Hide Detections' : 'Show Detections'}
+                  onClick={() => setShowDetections(!showDetections)}
+                >
+                  {showDetections ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                      <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                      <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                  )}
+                </button>
+              )}
+
+              {/* PTZ control toggle */}
+              {stream.ptz_enabled && isPlaying && (
+                <button
+                  className={`ptz-toggle-btn ${showPTZControls ? 'active' : ''}`}
+                  title={showPTZControls ? 'Hide PTZ Controls' : 'Show PTZ Controls'}
+                  onClick={() => setShowPTZControls(!showPTZControls)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+                    <path d="M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                  </svg>
+                </button>
+              )}
+
+              {/* Force refresh */}
+              {(isPlaying || isLoading) && (
+                <button
+                  className="force-refresh-btn"
+                  title="Force Refresh Stream"
+                  onClick={handleRetry}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                </button>
+              )}
+
+              {/* Fullscreen */}
+              <button
+                className="fullscreen-btn"
+                title="Toggle Fullscreen"
+                data-id={streamId}
+                data-name={stream.name}
+                onClick={(e) => onToggleFullscreen(stream.name, e, cellRef.current)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* PTZ Controls overlay */}
@@ -1365,6 +1331,50 @@ export function WebRTCVideoCell({
         isVisible={showPTZControls}
         onClose={() => setShowPTZControls(false)}
       />
+
+      {/* Describe Image result overlay */}
+      {(isDescribing || describeResult) && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '70px',
+            left: '8px',
+            right: '8px',
+            backgroundColor: 'rgba(0, 0, 0, 0.82)',
+            color: 'white',
+            padding: '10px 14px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            lineHeight: '1.5',
+            zIndex: 7,
+            maxHeight: '40%',
+            overflowY: 'auto',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+            <span style={{ fontWeight: 600, marginBottom: '4px', display: 'block', flexShrink: 0 }}>
+              {isDescribing ? `⏳ Describing… (${describeElapsed}s)` : '🔍 Description'}
+            </span>
+            {!isDescribing && (
+              <button
+                onClick={() => setDescribeResult(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'rgba(255,255,255,0.7)',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  lineHeight: 1,
+                  padding: '0',
+                  flexShrink: 0,
+                }}
+                title="Dismiss"
+              >✕</button>
+            )}
+          </div>
+          {describeResult && <p style={{ margin: 0 }}>{describeResult}</p>}
+        </div>
+      )}
 
       {/* Microphone error indicator */}
       {microphoneError && (

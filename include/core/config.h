@@ -115,6 +115,7 @@ typedef struct {
     // API detection settings
     char api_detection_url[MAX_URL_LENGTH]; // URL for the detection API
     char api_detection_backend[32];        // Backend to use: onnx, tflite, opencv (default: onnx)
+    char api_describe_backend[32];         // Backend to use for VLM describe: moondream (default: moondream)
 
     // Global detection defaults (used when per-stream settings are not specified)
     int default_detection_threshold;       // Default confidence threshold for detection (0-100)

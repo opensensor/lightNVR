@@ -98,6 +98,12 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
 void handle_get_detection_models(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Handler for POST /api/detection/describe
+ * Accepts a raw JPEG body and proxies it to the VLM describe endpoint.
+ */
+void handle_post_detection_describe(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief Handler for direct HLS requests
  * Endpoint: /hls/{stream_name}/{file}
  */

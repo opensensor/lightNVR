@@ -309,6 +309,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     // API detection settings
     cJSON_AddStringToObject(settings, "api_detection_url", g_config.api_detection_url);
     cJSON_AddStringToObject(settings, "api_detection_backend", g_config.api_detection_backend);
+    cJSON_AddStringToObject(settings, "api_describe_backend", g_config.api_describe_backend);
 
     // Detection defaults
     cJSON_AddNumberToObject(settings, "default_detection_threshold", g_config.default_detection_threshold);
@@ -747,6 +748,15 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.api_detection_backend[sizeof(g_config.api_detection_backend) - 1] = '\0';
         settings_changed = true;
         log_info("Updated api_detection_backend: %s", g_config.api_detection_backend);
+    }
+
+    // API describe backend (VLM)
+    cJSON *api_describe_backend = cJSON_GetObjectItem(settings, "api_describe_backend");
+    if (api_describe_backend && cJSON_IsString(api_describe_backend)) {
+        strncpy(g_config.api_describe_backend, api_describe_backend->valuestring, sizeof(g_config.api_describe_backend) - 1);
+        g_config.api_describe_backend[sizeof(g_config.api_describe_backend) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated api_describe_backend: %s", g_config.api_describe_backend);
     }
 
     // go2rtc settings

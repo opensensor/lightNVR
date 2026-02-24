@@ -114,6 +114,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Detection API
     http_server_register_handler(server, "/api/detection/results/#", "GET", handle_get_detection_results);
     http_server_register_handler(server, "/api/detection/models", "GET", handle_get_detection_models);
+    http_server_register_handler(server, "/api/detection/describe", "POST", handle_post_detection_describe);
 
     // Motion Recording API
     http_server_register_handler(server, "/api/motion/config/", "GET", handle_get_motion_config);

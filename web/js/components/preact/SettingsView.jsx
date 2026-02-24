@@ -44,6 +44,7 @@ export function SettingsView() {
     detectionModelsPath: '',
     apiDetectionUrl: 'http://localhost:8000/detect',
     apiDetectionBackend: 'onnx',
+    apiDescribeBackend: 'moondream',
     defaultDetectionThreshold: 50,
     defaultPreBuffer: 5,
     defaultPostBuffer: 10,
@@ -200,6 +201,7 @@ export function SettingsView() {
         detectionModelsPath: settingsData.models_path || '',
         apiDetectionUrl: settingsData.api_detection_url || 'http://localhost:8000/detect',
         apiDetectionBackend: settingsData.api_detection_backend || 'onnx',
+        apiDescribeBackend: settingsData.api_describe_backend || 'moondream',
         defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
         defaultPreBuffer: settingsData.pre_detection_buffer ?? 5,
         defaultPostBuffer: settingsData.post_detection_buffer ?? 10,
@@ -283,6 +285,7 @@ export function SettingsView() {
       models_path: settings.detectionModelsPath,
       api_detection_url: settings.apiDetectionUrl,
       api_detection_backend: settings.apiDetectionBackend,
+      api_describe_backend: settings.apiDescribeBackend,
       default_detection_threshold: settings.defaultDetectionThreshold,
       pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
       post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
@@ -870,6 +873,22 @@ export function SettingsView() {
                 <option value="opencv">OpenCV DNN</option>
               </select>
               <span class="hint text-sm text-muted-foreground block mt-1">Inference backend used by the detection API</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-api-describe-backend" class="font-medium">Image Describe Backend</label>
+            <div class="col-span-2">
+              <select
+                id="setting-api-describe-backend"
+                name="apiDescribeBackend"
+                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.apiDescribeBackend}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              >
+                <option value="moondream">Moondream (VLM)</option>
+              </select>
+              <span class="hint text-sm text-muted-foreground block mt-1">VLM backend used for one-off image description (requires light-object-detect with moondream)</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
