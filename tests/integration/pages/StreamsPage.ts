@@ -185,8 +185,8 @@ export class StreamsPage extends BasePage {
       return isPostStreams;
     };
 
-    // Use longer timeout in CI (60s) to handle slow server responses
-    const responseTimeout = 60000;
+    // Use 40s timeout - leaves budget for retries within the extended test timeout (120s)
+    const responseTimeout = 40000;
 
     console.log(`Clicking save button for stream: ${config.name}`);
     let response;
@@ -209,7 +209,11 @@ export class StreamsPage extends BasePage {
       } catch (retryError) {
         // Both attempts failed - capture diagnostics
         console.error(`Failed to create stream ${config.name} after retry:`, retryError);
-        await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
+        try {
+          await this.page.screenshot({ path: `test-results/stream-add-failed-${config.name}.png` });
+        } catch (screenshotError) {
+          console.error('Failed to take screenshot (page may be closed):', (screenshotError as Error).message);
+        }
 
         const logs = await this.page.evaluate(() => {
           return (window as any).__testLogs || 'No logs captured';
@@ -234,7 +238,11 @@ export class StreamsPage extends BasePage {
       // Modal might have already closed, check if it's still visible
       const modalVisible = await this.addStreamModal.isVisible().catch(() => false);
       if (modalVisible) {
-        await this.page.screenshot({ path: `test-results/stream-modal-stuck-${config.name}.png` });
+        try {
+          await this.page.screenshot({ path: `test-results/stream-modal-stuck-${config.name}.png` });
+        } catch (screenshotError) {
+          console.error('Failed to take screenshot (page may be closed):', (screenshotError as Error).message);
+        }
         throw new Error(`Modal did not close after successful save - UI may be stuck`);
       }
       // If modal is not visible, it closed successfully

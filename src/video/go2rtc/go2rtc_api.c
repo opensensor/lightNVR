@@ -156,6 +156,9 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -271,6 +274,9 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -719,6 +725,9 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
 
     // Perform the request
     res = curl_easy_perform(curl);

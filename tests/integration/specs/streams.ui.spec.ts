@@ -140,6 +140,10 @@ test.describe('Streams Page @ui @streams', () => {
     });
 
     test('should add a new stream via UI', async ({ page }) => {
+      // Stream creation is slow in CI: the server makes multiple synchronous curl
+      // calls to go2rtc for stream registration + preloading before it responds.
+      // 120s gives plenty of headroom even on a loaded runner.
+      test.setTimeout(120000);
       const streamsPage = new StreamsPage(page);
       await streamsPage.goto({ waitForNetworkIdle: true });
 

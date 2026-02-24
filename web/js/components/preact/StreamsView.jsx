@@ -203,7 +203,9 @@ export function StreamsView() {
     '/api/streams',
 
     {
-      timeout: 15000,
+      // 45s gives the server enough time to complete go2rtc registration
+      // (multiple synchronous curl calls) before the client aborts the request.
+      timeout: 45000,
       retries: 1,
       retryDelay: 1000
     },
