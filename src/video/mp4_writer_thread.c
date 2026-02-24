@@ -377,7 +377,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                            segment_duration, thread_ctx->writer->has_audio,
                            &thread_ctx->input_ctx, &thread_ctx->segment_info,
                            on_segment_started_cb, thread_ctx,
-                           &thread_ctx->shutdown_requested);
+                           &thread_ctx->shutdown_requested,
+                           &thread_ctx->writer->last_packet_time);
 
         log_info("Finished segment recording with info: index=%d, has_audio=%d, last_frame_was_key=%d",
                 thread_ctx->segment_info.segment_index, thread_ctx->segment_info.has_audio,

@@ -122,7 +122,7 @@ void mp4_segment_recorder_init(void) {
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
                    AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr,
                    record_segment_started_cb started_cb, void *cb_ctx,
-                   atomic_int *shutdown_flag) {
+                   atomic_int *shutdown_flag, time_t *activity_time) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
     AVFormatContext *output_ctx = NULL;
@@ -393,6 +393,15 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                     log_warn("Error reading packet during dimension "
                                              "probe: %s", err_buf);
                                     break;
+                                }
+
+                                // Heartbeat: let the outer monitor know this thread
+                                // is alive even though no output packets have been
+                                // written yet.  Without this, the 45 s inactivity
+                                // check in mp4_writer_is_recording() fires while
+                                // we are still waiting for a keyframe from go2rtc.
+                                if (activity_time) {
+                                    *activity_time = time(NULL);
                                 }
 
                                 if (probe_pkt->stream_index == video_stream_idx) {

@@ -309,6 +309,17 @@ static void *mp4_recording_thread(void *arg) {
                     // Stop the stalled inner thread (join with up-to-10 s timeout)
                     mp4_writer_stop_recording_thread(ctx->mp4_writer);
 
+                    // Reset writer timestamps so the new inner thread receives the
+                    // full 60-second initialization grace period from
+                    // mp4_writer_is_recording().  Without this reset,
+                    // last_packet_time retains its old non-zero value (set by the
+                    // inner thread's retry logic to suppress false-dead signals),
+                    // which causes the 45 s inactivity check to fire immediately
+                    // and kill the new thread while it is still doing its dimension
+                    // probe — reproducing the exact death loop we are trying to fix.
+                    ctx->mp4_writer->last_packet_time = 0;
+                    ctx->mp4_writer->creation_time = time(NULL);
+
                     // Restart it
                     int restart_ret = mp4_writer_start_recording_thread(ctx->mp4_writer, restart_url);
                     if (restart_ret < 0) {
