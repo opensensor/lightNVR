@@ -117,6 +117,73 @@ export function DeleteConfirmationModal(props) {
 }
 
 /**
+ * ConfirmDialog - A generic warning confirmation dialog
+ * @param {Object} props
+ * @param {boolean} props.isOpen - Whether the dialog is open
+ * @param {Function} props.onClose - Called when the dialog is dismissed (Cancel or backdrop)
+ * @param {Function} props.onConfirm - Called when the user confirms
+ * @param {string} props.title - Dialog heading
+ * @param {string} props.message - Dialog body text
+ * @param {string} [props.confirmLabel='Continue'] - Label for the confirm button
+ */
+export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'Continue' }) {
+  const backdropRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const handleBackdropClick = (e) => {
+    if (e.target === backdropRef.current) onClose();
+  };
+
+  const handleConfirm = () => {
+    onConfirm();
+    onClose();
+  };
+
+  return createPortal(
+    <div
+      ref={backdropRef}
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={handleBackdropClick}
+    >
+      <div className="bg-card text-card-foreground rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+        <div className="flex items-start mb-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mr-3 mt-0.5">
+            <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold pt-2">{title}</h3>
+        </div>
+        <p className="text-sm text-muted-foreground mb-6 ml-13">{message}</p>
+        <div className="flex justify-end space-x-3">
+          <button
+            className="px-4 py-2 border border-border rounded-md text-sm font-medium hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-gray-800"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+            onClick={handleConfirm}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+/**
  * SnapshotPreviewModal component
  * @param {Object} props - Component props
  * @param {boolean} props.isOpen - Whether the modal is open

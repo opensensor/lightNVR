@@ -793,6 +793,10 @@ static void *unified_health_monitor_thread(void *arg) {
                         atomic_store(&state->protocol_state.last_reconnect_time, time(NULL));
                         atomic_store(&state->protocol_state.reconnect_attempts, 0);
                     }
+
+                    // Signal the recording thread to reconnect cleanly rather than
+                    // discovering the stale RTSP connection through av_read_frame errors.
+                    signal_mp4_recording_reconnect(config.name);
                 } else {
                     log_error("Failed to re-register stream %s", config.name);
                 }
@@ -808,6 +812,9 @@ static void *unified_health_monitor_thread(void *arg) {
                 if (go2rtc_integration_reload_stream(config.name)) {
                     log_info("Successfully reloaded stuck stream %s", config.name);
                     reset_stuck_tracker(config.name);  // Reset tracking after reload
+
+                    // Signal the recording thread to reconnect cleanly after the reload.
+                    signal_mp4_recording_reconnect(config.name);
                 } else {
                     log_error("Failed to reload stuck stream %s", config.name);
                 }

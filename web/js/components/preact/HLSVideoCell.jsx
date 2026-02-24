@@ -9,6 +9,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
+import { ConfirmDialog } from './UI.jsx';
 import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled, isForceNativeHls } from '../../utils/settings-utils.js';
 import Hls from 'hls.js';
 
@@ -34,6 +35,7 @@ export function HLSVideoCell({
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
 
   // HLS source state: 'go2rtc' (go2rtc's dynamic HLS), 'native' (lightNVR FFmpeg-based HLS), or 'failed'
   // Default to native lightNVR HLS (reliable, always running when streaming enabled)
@@ -697,7 +699,7 @@ export function HLSVideoCell({
           <button
             className="force-refresh-btn"
             title="Force Refresh Stream"
-            onClick={handleRetry}
+            onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleRetry()}
             style={{
               backgroundColor: 'transparent',
               border: 'none',
@@ -876,6 +878,14 @@ export function HLSVideoCell({
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={showRefreshConfirm}
+        onClose={() => setShowRefreshConfirm(false)}
+        onConfirm={handleRetry}
+        title="Force Refresh Stream"
+        message="This will briefly interrupt the go2rtc connection, breaking the active recording. The recording will resume automatically."
+        confirmLabel="Refresh"
+      />
     </div>
   );
 }

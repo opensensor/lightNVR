@@ -25,6 +25,7 @@
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_api.h"
+#include "video/mp4_recording.h"
 
 
 /**
@@ -1519,6 +1520,10 @@ static void refresh_stream_worker(refresh_stream_task_t *task) {
 
     if (success) {
         log_info("Successfully refreshed go2rtc registration for stream: %s", task->stream_name);
+
+        // Signal the recording thread to reconnect cleanly rather than
+        // discovering the stale RTSP connection through av_read_frame errors.
+        signal_mp4_recording_reconnect(task->stream_name);
 
         // Also restart the unified detection thread if detection-based recording is enabled
         stream_handle_t stream = get_stream_by_name(task->stream_name);

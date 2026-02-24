@@ -153,4 +153,15 @@ void close_all_mp4_writers(void);
  */
 void signal_all_mp4_recordings_reconnect(void);
 
+/**
+ * Signal the MP4 recording thread for a specific stream to force reconnection
+ *
+ * This is useful when a single stream's go2rtc registration has been reloaded
+ * (e.g., by the health monitor or a manual stream refresh) and only that
+ * stream's recording thread needs to reconnect with a fresh RTSP connection.
+ *
+ * @param stream_name Name of the stream whose recording should reconnect
+ */
+void signal_mp4_recording_reconnect(const char *stream_name);
+
 #endif /* MP4_RECORDING_H */

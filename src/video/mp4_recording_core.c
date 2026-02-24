@@ -1148,3 +1148,32 @@ void signal_all_mp4_recordings_reconnect(void) {
 
     log_info("Signaled %d active MP4 recordings to reconnect", signaled_count);
 }
+
+/**
+ * Signal the MP4 recording thread for a specific stream to force reconnection
+ *
+ * Used after a single stream's go2rtc registration is reloaded so that only
+ * that stream's inner RTSP thread reconnects cleanly instead of discovering
+ * the stale connection through av_read_frame errors.
+ */
+void signal_mp4_recording_reconnect(const char *stream_name) {
+    if (!stream_name || stream_name[0] == '\0') {
+        return;
+    }
+
+    log_info("Signaling reconnect for MP4 recording of stream: %s", stream_name);
+
+    pthread_mutex_lock(&recording_contexts_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        if (recording_contexts[i] && recording_contexts[i]->running &&
+            strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
+            mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
+            if (writer) {
+                mp4_writer_signal_reconnect(writer);
+                log_info("Signaled reconnect for recording: %s", stream_name);
+            }
+            break;
+        }
+    }
+    pthread_mutex_unlock(&recording_contexts_mutex);
+}

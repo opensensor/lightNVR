@@ -10,6 +10,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
+import { ConfirmDialog } from './UI.jsx';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import 'webrtc-adapter';
 
@@ -58,6 +59,7 @@ export function WebRTCVideoCell({
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'poor', 'bad'
   const [retryCount, setRetryCount] = useState(0); // Used to trigger WebRTC re-initialization
+  const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
 
   // Backchannel (two-way audio) state
   const [isTalking, setIsTalking] = useState(false);
@@ -1316,7 +1318,7 @@ export function WebRTCVideoCell({
           <button
             className="force-refresh-btn"
             title="Force Refresh Stream"
-            onClick={handleRetry}
+            onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleRetry()}
             style={{
               backgroundColor: 'transparent',
               border: 'none',
@@ -1485,6 +1487,14 @@ export function WebRTCVideoCell({
           </div>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={showRefreshConfirm}
+        onClose={() => setShowRefreshConfirm(false)}
+        onConfirm={handleRetry}
+        title="Force Refresh Stream"
+        message="This will briefly interrupt the go2rtc connection, breaking the active recording. The recording will resume automatically."
+        confirmLabel="Refresh"
+      />
     </div>
   );
 }
