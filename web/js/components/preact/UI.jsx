@@ -7,7 +7,6 @@ import { createContext } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.jsx';
-import { useSnapshotManager } from './SnapshotManager.jsx';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -859,9 +858,6 @@ export function ModalProvider({ children }) {
     }, 50);
   }, []);
 
-  // Use the snapshot manager hook for download functionality
-  const { downloadSnapshot } = useSnapshotManager();
-
   // Handle snapshot download
   const handleSnapshotDownload = useCallback(() => {
     try {
@@ -873,13 +869,6 @@ export function ModalProvider({ children }) {
         return;
       }
 
-      // Use the downloadSnapshot function from the hook if available
-      if (downloadSnapshot) {
-        downloadSnapshot();
-        return;
-      }
-
-      // Fallback to the old implementation
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
 
@@ -891,7 +880,9 @@ export function ModalProvider({ children }) {
 
       // Clean up
       setTimeout(() => {
-        document.body.removeChild(link);
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
       }, 100);
 
       showStatusMessage('Snapshot downloaded successfully', 'success', 3000);
@@ -899,7 +890,7 @@ export function ModalProvider({ children }) {
       console.error('Error in snapshot download process:', error);
       showStatusMessage('Download failed: ' + error.message, 'error', 5000);
     }
-  }, [snapshotModal, downloadSnapshot]);
+  }, [snapshotModal]);
 
   // Close snapshot modal
   const closeSnapshotModal = useCallback(() => {

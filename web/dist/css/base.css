@@ -171,23 +171,6 @@
     @apply text-foreground;
   }
 
-  /* Video Grid Layouts */
-  .video-container.layout-1 {
-    @apply grid-cols-1;
-  }
-
-  .video-container.layout-4 {
-    @apply grid-cols-1 sm:grid-cols-2;
-  }
-
-  .video-container.layout-9 {
-    @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-3;
-  }
-
-  .video-container.layout-16 {
-    @apply grid-cols-1 sm:grid-cols-2 lg:grid-cols-4;
-  }
-
   /* Button Styles - Theme-aware */
   .btn-primary {
     @apply px-4 py-2 rounded transition-colors;

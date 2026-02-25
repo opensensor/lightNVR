@@ -12,100 +12,34 @@
 /* Video grid styles */
 .video-container {
     display: grid;
-    gap: 0.5rem; /* Reduce gap to maximize video space */
-    height: calc(100vh - 180px); /* Increase height */
+    gap: 0.5rem;
+    height: calc(100vh - 180px);
     min-height: 450px;
     transition: all 0.3s ease;
     width: 100%;
-    padding: 0.25rem; /* Reduce padding */
+    padding: 0.25rem;
+    /* Column/row counts are injected as CSS custom properties by the component */
+    grid-template-columns: repeat(var(--grid-cols, 2), 1fr);
+    grid-template-rows: repeat(var(--grid-rows, 2), 1fr);
 }
 
-/* Base layout styles with auto-fit for better responsiveness */
-.video-container.layout-1 {
-    grid-template-columns: 1fr;
-}
-
-.video-container.layout-2 {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
-    grid-auto-rows: 1fr;
-}
-
-/* Ensure all layouts work properly in fullscreen mode */
-.fullscreen-mode .video-container.layout-1 {
-    grid-template-columns: 1fr;
-    grid-template-rows: 1fr;
-}
-
-.fullscreen-mode .video-container.layout-2 {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: 1fr;
-}
-
-.fullscreen-mode .video-container.layout-4 {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(2, 1fr);
-}
-
-.fullscreen-mode .video-container.layout-6 {
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(2, 1fr);
-}
-
-.fullscreen-mode .video-container.layout-9 {
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
-}
-
-.fullscreen-mode .video-container.layout-16 {
-    grid-template-columns: repeat(4, 1fr);
-    grid-template-rows: repeat(4, 1fr);
-}
-
-.video-container.layout-4 {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
-    grid-auto-rows: 1fr;
-}
-
-.video-container.layout-6 {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
-    grid-auto-rows: 1fr;
-}
-
-.video-container.layout-9 {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr));
-    grid-auto-rows: 1fr;
-}
-
-.video-container.layout-16 {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
-    grid-auto-rows: 1fr;
-}
-
-/* Force specific layouts on larger screens */
-@media (min-width: 1200px) {
-    .video-container.layout-2 {
-        grid-template-columns: repeat(2, 1fr);
-        grid-template-rows: 1fr;
+/* Tablet (769px – 1199px): cap at 2 columns so cells stay watchable */
+@media (min-width: 769px) and (max-width: 1199px) {
+    .video-container {
+        grid-template-columns: repeat(min(var(--grid-cols, 2), 2), 1fr);
+        grid-template-rows: auto;
+        grid-auto-rows: 1fr;
     }
+}
 
-    .video-container.layout-4 {
-        grid-template-columns: repeat(2, 1fr);
-        grid-template-rows: repeat(2, 1fr);
-    }
-
-    .video-container.layout-6 {
-        grid-template-columns: repeat(2, 1fr);
-        grid-template-rows: repeat(3, 1fr);
-    }
-
-    .video-container.layout-9 {
-        grid-template-columns: repeat(3, 1fr);
-        grid-template-rows: repeat(3, 1fr);
-    }
-
-    .video-container.layout-16 {
-        grid-template-columns: repeat(4, 1fr);
-        grid-template-rows: repeat(4, 1fr);
+/* Mobile: single column, natural height per cell */
+@media (max-width: 768px) {
+    .video-container {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        grid-auto-rows: auto;
+        height: auto;
+        min-height: auto;
     }
 }
 
