@@ -32,25 +32,63 @@ export function RecordingsView() {
   const [userRole, setUserRole] = useState(null);
   const [recordings, setRecordings] = useState([]);
   const [streams, setStreams] = useState([]);
-  const [sortField, setSortField] = useState('start_time');
-  const [sortDirection, setSortDirection] = useState('desc');
-  const [filters, setFilters] = useState({
-    dateRange: 'last7days',
-    startDate: '',
-    startTime: '00:00',
-    endDate: '',
-    endTime: '23:59',
-    streamId: 'all',
-    recordingType: 'all',
-    detectionLabel: ''
+
+  // Initialize sort state from URL params (lazy — no double render)
+  const [sortField, setSortField] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('sort') || 'start_time';
   });
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    pageSize: 20,
-    totalItems: 0,
-    totalPages: 1,
-    startItem: 0,
-    endItem: 0
+  const [sortDirection, setSortDirection] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('order') || 'desc';
+  });
+
+  // Initialize filter state from URL params (lazy — no double render)
+  const [filters, setFilters] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const hasUrlParams = p.has('dateRange') || p.has('page') || p.has('sort') ||
+      p.has('detection') || p.has('stream') || p.has('detection_label');
+
+    if (!hasUrlParams) {
+      // No URL params — use defaults with current date range
+      const now = new Date();
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      return {
+        dateRange: 'last7days',
+        startDate: sevenDaysAgo.toISOString().split('T')[0],
+        startTime: '00:00',
+        endDate: now.toISOString().split('T')[0],
+        endTime: '23:59',
+        streamId: 'all',
+        recordingType: 'all',
+        detectionLabel: ''
+      };
+    }
+
+    return {
+      dateRange: p.get('dateRange') || 'last7days',
+      startDate: p.get('startDate') || '',
+      startTime: p.get('startTime') || '00:00',
+      endDate: p.get('endDate') || '',
+      endTime: p.get('endTime') || '23:59',
+      streamId: p.get('stream') || 'all',
+      recordingType: p.get('detection') === '1' ? 'detection' : 'all',
+      detectionLabel: p.get('detection_label') || ''
+    };
+  });
+
+  // Initialize pagination state from URL params (lazy — no double render)
+  const [pagination, setPagination] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return {
+      currentPage: parseInt(p.get('page') || '1', 10),
+      pageSize: parseInt(p.get('limit') || '20', 10),
+      totalItems: 0,
+      totalPages: 1,
+      startItem: 0,
+      endItem: 0
+    };
   });
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [activeFiltersDisplay, setActiveFiltersDisplay] = useState([]);
@@ -62,8 +100,13 @@ export function RecordingsView() {
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const recordingsTableBodyRef = useRef(null);
 
-  // View mode: 'table' or 'grid'
-  const [viewMode, setViewMode] = useState(() => localStorage.getItem('recordings_view_mode') || 'table');
+  // View mode: 'table' or 'grid' — initialized from URL, then localStorage, then default
+  const [viewMode, setViewMode] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    const urlView = p.get('view');
+    if (urlView === 'grid' || urlView === 'table') return urlView;
+    return localStorage.getItem('recordings_view_mode') || 'table';
+  });
   const [thumbnailsEnabled, setThumbnailsEnabled] = useState(true);
 
   // Column visibility for table view
@@ -169,37 +212,6 @@ export function RecordingsView() {
     }
   }, [streamsError]);
 
-  // Initialize component
-  useEffect(() => {
-    // Set default date range
-    setDefaultDateRange();
-
-    // Check for URL parameters
-    const urlFilters = urlUtils.getFiltersFromUrl();
-
-    if (urlFilters) {
-      console.log('Found URL filters:', urlFilters);
-
-      // Check specifically for detection parameter
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-        // Ensure recordingType is set to 'detection'
-        urlFilters.filters.recordingType = 'detection';
-      }
-
-      // Update state with URL filters
-      setFilters(urlFilters.filters);
-      setPagination(prev => ({
-        ...prev,
-        currentPage: urlFilters.page || 1,
-        pageSize: urlFilters.limit || 20
-      }));
-      setSortField(urlFilters.sort || 'start_time');
-      setSortDirection(urlFilters.order || 'desc');
-    }
-
-  }, []);
-
   // Clear thumbnail queue when component unmounts (user navigates away)
   useEffect(() => {
     return () => {
@@ -212,7 +224,53 @@ export function RecordingsView() {
     updateActiveFilters();
   }, [filters]);
 
-  // Set default date range
+  // Reactively sync all view state to URL via replaceState (no browser history entries).
+  // This mirrors the approach used in LiveView and ensures refresh always preserves state.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+
+    // Filters
+    url.searchParams.set('dateRange', filters.dateRange);
+    if (filters.dateRange === 'custom') {
+      url.searchParams.set('startDate', filters.startDate);
+      url.searchParams.set('startTime', filters.startTime);
+      url.searchParams.set('endDate', filters.endDate);
+      url.searchParams.set('endTime', filters.endTime);
+    } else {
+      url.searchParams.delete('startDate');
+      url.searchParams.delete('startTime');
+      url.searchParams.delete('endDate');
+      url.searchParams.delete('endTime');
+    }
+
+    if (filters.streamId !== 'all') url.searchParams.set('stream', filters.streamId);
+    else url.searchParams.delete('stream');
+
+    if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');
+    else url.searchParams.delete('detection');
+
+    if (filters.detectionLabel && filters.detectionLabel.trim()) {
+      url.searchParams.set('detection_label', filters.detectionLabel.trim());
+    } else {
+      url.searchParams.delete('detection_label');
+    }
+
+    // Pagination
+    url.searchParams.set('page', pagination.currentPage.toString());
+    url.searchParams.set('limit', pagination.pageSize.toString());
+
+    // Sort
+    url.searchParams.set('sort', sortField);
+    url.searchParams.set('order', sortDirection);
+
+    // View mode — omit param when 'table' (the default) to keep URLs clean
+    if (viewMode !== 'table') url.searchParams.set('view', viewMode);
+    else url.searchParams.delete('view');
+
+    window.history.replaceState({}, '', url);
+  }, [filters, pagination.currentPage, pagination.pageSize, sortField, sortDirection, viewMode]);
+
+  // Set default date range (used when switching to 'custom' with no existing dates)
   const setDefaultDateRange = () => {
     const now = new Date();
     const sevenDaysAgo = new Date(now);
@@ -269,24 +327,9 @@ export function RecordingsView() {
   // State for data status
   const [hasData, setHasData] = useState(false);
 
-  // Load recordings (now just updates pagination and URL)
-  const loadRecordings = (page = pagination.currentPage, updateUrl = true) => {
-    // Debug log to check filters
-    console.log('Loading recordings with filters:', JSON.stringify(filters));
-
-    // Create a pagination object with the specified page
-    const paginationWithPage = {
-      ...pagination,
-      currentPage: page
-    };
-
-    // Update pagination state
-    setPagination(paginationWithPage);
-
-    // Update URL with filters if requested
-    if (updateUrl) {
-      urlUtils.updateUrlWithFilters(filters, paginationWithPage, sortField, sortDirection);
-    }
+  // Load recordings — updates page in state; URL sync is handled by the reactive useEffect
+  const loadRecordings = (page = pagination.currentPage) => {
+    setPagination(prev => ({ ...prev, currentPage: page }));
   };
 
   // Update pagination from API response
@@ -393,63 +436,34 @@ export function RecordingsView() {
     setActiveFiltersDisplay(activeFilters);
   };
 
-  // Apply filters
+  // Apply filters — resets to page 1; URL sync is handled by the reactive useEffect
   const applyFilters = (resetToFirstPage = true) => {
-    // Reset to first page when applying filters (unless specified otherwise)
     if (resetToFirstPage) {
-      setPagination(prev => ({
-        ...prev,
-        currentPage: 1
-      }));
+      setPagination(prev => ({ ...prev, currentPage: 1 }));
     }
-
-    // Update URL with filters
-    urlUtils.updateUrlWithFilters(
-      filters,
-      resetToFirstPage ? {...pagination, currentPage: 1} : pagination,
-      sortField,
-      sortDirection
-    );
+    // URL sync handled by the reactive useEffect
   };
 
-  // Reset filters
+  // Reset filters — resets all state to defaults; URL sync is handled by the reactive useEffect
   const resetFilters = () => {
-    // Create default filters
-    const defaultFilters = {
-      dateRange: 'last7days',
-      startDate: '',
-      startTime: '00:00',
-      endDate: '',
-      endTime: '23:59',
-      streamId: 'all',
-      recordingType: 'all',
-      detectionLabel: ''
-    };
-
-    // Get default date range
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
 
-    defaultFilters.endDate = now.toISOString().split('T')[0];
-    defaultFilters.startDate = sevenDaysAgo.toISOString().split('T')[0];
-
-    // Reset filter state
-    setFilters(defaultFilters);
-
-    // Reset pagination to first page
-    setPagination(prev => ({
-      ...prev,
-      currentPage: 1
-    }));
-
-    // Reset sort
+    setFilters({
+      dateRange: 'last7days',
+      startDate: sevenDaysAgo.toISOString().split('T')[0],
+      startTime: '00:00',
+      endDate: now.toISOString().split('T')[0],
+      endTime: '23:59',
+      streamId: 'all',
+      recordingType: 'all',
+      detectionLabel: ''
+    });
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
     setSortField('start_time');
     setSortDirection('desc');
-
-    // Clear all URL parameters by replacing the current URL with the base URL
-    const baseUrl = window.location.pathname;
-    window.history.pushState({ path: baseUrl }, '', baseUrl);
+    // URL sync handled by the reactive useEffect
   };
 
   // Remove filter
@@ -484,47 +498,24 @@ export function RecordingsView() {
     applyFilters();
   };
 
-  // Sort by field
+  // Sort by field — URL sync is handled by the reactive useEffect
   const sortBy = (field) => {
     if (sortField === field) {
-      // Toggle direction if already sorting by this field
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      // Default to descending for start_time, ascending for others
       setSortDirection(field === 'start_time' ? 'desc' : 'asc');
       setSortField(field);
     }
-
-    // Reset to first page
-    setPagination(prev => ({
-      ...prev,
-      currentPage: 1
-    }));
-
-    // Update URL with new sort parameters
-    urlUtils.updateUrlWithFilters(
-      filters,
-      {...pagination, currentPage: 1},
-      field,
-      field === sortField ? (sortDirection === 'asc' ? 'desc' : 'asc') : (field === 'start_time' ? 'desc' : 'asc')
-    );
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+    // URL sync handled by the reactive useEffect
   };
 
-  // Go to page
+  // Go to page — URL sync is handled by the reactive useEffect
   const goToPage = (page) => {
     if (page < 1 || page > pagination.totalPages) return;
-
-    // Clear thumbnail queue when changing pages
     clearThumbnailQueue();
-
-    // Set the current page in pagination state
-    setPagination(prev => ({
-      ...prev,
-      currentPage: page
-    }));
-
-    // Update URL with all filters and the new page
-    urlUtils.updateUrlWithFilters(filters, {...pagination, currentPage: page}, sortField, sortDirection);
+    setPagination(prev => ({ ...prev, currentPage: page }));
+    // URL sync handled by the reactive useEffect
   };
 
   // Toggle selection of a recording
@@ -635,26 +626,13 @@ export function RecordingsView() {
       currentPage: page
     }));
 
-    // Wait for state to update
+    // Load recordings from API with the updated parameters
     setTimeout(() => {
-      // Create a new pagination object with the updated page
-      const updatedPagination = {
-        ...pagination,
-        currentPage: page
-      };
-
-      // Update URL with all filters and the preserved parameters
-      urlUtils.updateUrlWithFilters(filters, updatedPagination, sortField, sortDirection);
-
-      // Load recordings from API
+      const updatedPagination = { ...pagination, currentPage: page };
+      // URL sync handled by the reactive useEffect
       recordingsAPI.loadRecordings(filters, updatedPagination, sortField, sortDirection)
         .then(data => {
-          console.log('Recordings data received:', data);
-
-          // Store recordings in the component state
           setRecordings(data.recordings || []);
-
-          // Update pagination without changing the current page
           updatePaginationFromResponse(data, page);
         })
         .catch(error => {

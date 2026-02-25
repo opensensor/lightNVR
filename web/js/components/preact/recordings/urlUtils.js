@@ -227,68 +227,45 @@ export const urlUtils = {
    * @param {string} sortDirection Current sort direction
    */
   updateUrlWithFilters: (filters, pagination, sortField, sortDirection) => {
-    // Create URL parameters object based on current URL to preserve any existing parameters
-    const params = new URLSearchParams(window.location.search);
-    
-    // Add a timestamp parameter to prevent caching issues
-    params.set('t', Date.now().toString());
-    
-    // Update or add date range parameters
-    params.set('dateRange', filters.dateRange);
-    
-    // Handle custom date range
+    const url = new URL(window.location.href);
+
+    // Date range
+    url.searchParams.set('dateRange', filters.dateRange);
     if (filters.dateRange === 'custom') {
-      params.set('startDate', filters.startDate);
-      params.set('startTime', filters.startTime);
-      params.set('endDate', filters.endDate);
-      params.set('endTime', filters.endTime);
+      url.searchParams.set('startDate', filters.startDate);
+      url.searchParams.set('startTime', filters.startTime);
+      url.searchParams.set('endDate', filters.endDate);
+      url.searchParams.set('endTime', filters.endTime);
     } else {
-      // Remove custom date parameters if not using custom date range
-      params.delete('startDate');
-      params.delete('startTime');
-      params.delete('endDate');
-      params.delete('endTime');
-    }
-    
-    // Update stream filter
-    if (filters.streamId !== 'all') {
-      params.set('stream', filters.streamId);
-    } else {
-      params.delete('stream');
-    }
-    
-    // Update recording type filter
-    if (filters.recordingType === 'detection') {
-      params.set('detection', '1');
-    } else {
-      params.delete('detection');
+      url.searchParams.delete('startDate');
+      url.searchParams.delete('startTime');
+      url.searchParams.delete('endDate');
+      url.searchParams.delete('endTime');
     }
 
-    // Update detection label filter
+    // Stream filter
+    if (filters.streamId !== 'all') url.searchParams.set('stream', filters.streamId);
+    else url.searchParams.delete('stream');
+
+    // Recording type filter
+    if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');
+    else url.searchParams.delete('detection');
+
+    // Detection label filter
     if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
-      params.set('detection_label', filters.detectionLabel.trim());
+      url.searchParams.set('detection_label', filters.detectionLabel.trim());
     } else {
-      params.delete('detection_label');
+      url.searchParams.delete('detection_label');
     }
 
-    // Update pagination
-    params.set('page', pagination.currentPage.toString());
-    params.set('limit', pagination.pageSize.toString());
-    
-    // Update sorting
-    params.set('sort', sortField);
-    params.set('order', sortDirection);
-    
-    // Update URL without reloading the page
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.pushState({ path: newUrl }, '', newUrl);
-    
-    // Also update the reload behavior to maintain URL parameters
-    // This is the key to preserving parameters during page reload
-    const reloadUrl = newUrl;
-    window.onbeforeunload = function() {
-      // Replace the current URL with our preserved URL just before reload
-      window.history.replaceState({ path: reloadUrl }, '', reloadUrl);
-    };
+    // Pagination
+    url.searchParams.set('page', pagination.currentPage.toString());
+    url.searchParams.set('limit', pagination.pageSize.toString());
+
+    // Sorting
+    url.searchParams.set('sort', sortField);
+    url.searchParams.set('order', sortDirection);
+
+    window.history.replaceState({}, '', url);
   }
 };
