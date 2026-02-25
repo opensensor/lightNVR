@@ -123,7 +123,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                                 "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
                                 "onvif_username = ?, onvif_password = ?, onvif_profile = ?, "
-                                "record_on_schedule = ?, recording_schedule = ?, group_name = ?, tags = ? "
+                                "record_on_schedule = ?, recording_schedule = ?, tags = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -199,14 +199,11 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         serialize_recording_schedule(stream->recording_schedule, schedule_buf, sizeof(schedule_buf));
         sqlite3_bind_text(stmt, 40, schedule_buf, -1, SQLITE_TRANSIENT);
 
-        // Bind group_name parameter
-        sqlite3_bind_text(stmt, 41, stream->group_name, -1, SQLITE_STATIC);
-
         // Bind tags parameter
-        sqlite3_bind_text(stmt, 42, stream->tags, -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 41, stream->tags, -1, SQLITE_STATIC);
 
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 43, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 42, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -254,8 +251,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
           "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
           "onvif_username, onvif_password, onvif_profile, "
-          "record_on_schedule, recording_schedule, group_name, tags) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "record_on_schedule, recording_schedule, tags) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -331,11 +328,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     serialize_recording_schedule(stream->recording_schedule, insert_schedule_buf, sizeof(insert_schedule_buf));
     sqlite3_bind_text(stmt, 41, insert_schedule_buf, -1, SQLITE_TRANSIENT);
 
-    // Bind group_name parameter
-    sqlite3_bind_text(stmt, 42, stream->group_name, -1, SQLITE_STATIC);
-
     // Bind tags parameter
-    sqlite3_bind_text(stmt, 43, stream->tags, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 42, stream->tags, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -405,7 +399,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                       "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
                       "onvif_username = ?, onvif_password = ?, onvif_profile = ?, "
-                      "record_on_schedule = ?, recording_schedule = ?, group_name = ?, tags = ? "
+                      "record_on_schedule = ?, recording_schedule = ?, tags = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -482,14 +476,11 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     serialize_recording_schedule(stream->recording_schedule, update_schedule_buf, sizeof(update_schedule_buf));
     sqlite3_bind_text(stmt, 41, update_schedule_buf, -1, SQLITE_TRANSIENT);
 
-    // Bind group_name parameter
-    sqlite3_bind_text(stmt, 42, stream->group_name, -1, SQLITE_STATIC);
-
     // Bind tags parameter
-    sqlite3_bind_text(stmt, 43, stream->tags, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 42, stream->tags, -1, SQLITE_STATIC);
 
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 44, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 43, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -761,7 +752,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
         "onvif_username, onvif_password, onvif_profile, "
-        "record_on_schedule, recording_schedule, group_name, tags "
+        "record_on_schedule, recording_schedule, tags "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -776,7 +767,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
         COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE,
-        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_GROUP_NAME, COL_TAGS
+        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_TAGS
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -918,15 +909,6 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         const char *recording_schedule_text = (const char *)sqlite3_column_text(stmt, COL_RECORDING_SCHEDULE);
         deserialize_recording_schedule(recording_schedule_text, stream->recording_schedule);
 
-        // Group name
-        const char *group_name_val = (const char *)sqlite3_column_text(stmt, COL_GROUP_NAME);
-        if (group_name_val) {
-            strncpy(stream->group_name, group_name_val, sizeof(stream->group_name) - 1);
-            stream->group_name[sizeof(stream->group_name) - 1] = '\0';
-        } else {
-            stream->group_name[0] = '\0';
-        }
-
         // Tags
         const char *tags_val = (const char *)sqlite3_column_text(stmt, COL_TAGS);
         if (tags_val) {
@@ -986,7 +968,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         "retention_days, detection_retention_days, max_storage_mb, "
         "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
-        "record_on_schedule, recording_schedule, group_name, tags "
+        "record_on_schedule, recording_schedule, tags "
         "FROM streams ORDER BY name;";
 
     // Column index constants (same as get_stream_config_by_name, minus ONVIF creds)
@@ -1000,7 +982,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
         COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
-        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_GROUP_NAME, COL_TAGS
+        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_TAGS
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1121,15 +1103,6 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         s->record_on_schedule = sqlite3_column_int(stmt, COL_RECORD_ON_SCHEDULE) != 0;
         const char *recording_schedule_text = (const char *)sqlite3_column_text(stmt, COL_RECORDING_SCHEDULE);
         deserialize_recording_schedule(recording_schedule_text, s->recording_schedule);
-
-        // Group name
-        const char *group_name_val = (const char *)sqlite3_column_text(stmt, COL_GROUP_NAME);
-        if (group_name_val) {
-            strncpy(s->group_name, group_name_val, sizeof(s->group_name) - 1);
-            s->group_name[sizeof(s->group_name) - 1] = '\0';
-        } else {
-            s->group_name[0] = '\0';
-        }
 
         // Tags
         const char *tags_val = (const char *)sqlite3_column_text(stmt, COL_TAGS);

@@ -453,10 +453,14 @@ static const char migration_0027_down[] =
     "SELECT 1;";
 
 static const char migration_0028_up[] =
-    "ALTER TABLE streams ADD COLUMN tags TEXT NOT NULL DEFAULT '';";
+    "ALTER TABLE streams ADD COLUMN tags TEXT NOT NULL DEFAULT '';"
+    "UPDATE streams SET tags = group_name WHERE (tags = '' OR tags IS NULL) AND group_name IS NOT NULL AND group_name != '';"
+    "ALTER TABLE streams DROP COLUMN group_name;";
 
 static const char migration_0028_down[] =
-    "SELECT 1;";
+    "ALTER TABLE streams ADD COLUMN group_name TEXT NOT NULL DEFAULT '';"
+    "UPDATE streams SET group_name = CASE WHEN instr(tags, ',') > 0 THEN substr(tags, 1, instr(tags, ',') - 1) ELSE tags END WHERE tags != '';"
+    "ALTER TABLE streams DROP COLUMN tags;";
 
 static const char migration_0029_up[] =
     "ALTER TABLE users ADD COLUMN allowed_tags TEXT DEFAULT NULL;";

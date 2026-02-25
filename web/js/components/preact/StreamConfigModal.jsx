@@ -392,25 +392,6 @@ export function StreamConfigModal({
                 </div>
 
                 <div>
-                  <label htmlFor="stream-group-name" className="block text-sm font-medium mb-2">
-                    Camera Group
-                  </label>
-                  <input
-                    type="text"
-                    id="stream-group-name"
-                    name="group_name"
-                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                    placeholder="e.g., Indoor, Outdoor, Front"
-                    value={currentStream.group_name || ''}
-                    onChange={onInputChange}
-                    maxLength={63}
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Optional label to group cameras together for filtering in the live view
-                  </p>
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium mb-1" htmlFor="stream-tags">
                     Tags
                   </label>

@@ -77,11 +77,9 @@ typedef struct {
     bool record_on_schedule;         // When true, only record during scheduled hours
     uint8_t recording_schedule[168]; // 7 days x 24 hours: [day*24+hour] = 1 to record, 0 to skip
 
-    // Camera grouping / labelling
-    char group_name[64];             // Optional group label (e.g. "Indoor", "Front", etc.)
-
     // Camera tags (comma-separated, e.g. "outdoor,critical,entrance")
-    char tags[256];                  // Optional tag list for multi-label filtering and RBAC
+    // Replaces the former single group_name field — supports multi-label filtering and RBAC
+    char tags[256];
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator

@@ -185,8 +185,8 @@ export function StreamsView() {
     // Recording schedule
     recordOnSchedule: false,
     recordingSchedule: Array(168).fill(true),
-    // Camera group / label
-    group_name: ''
+    // Tags
+    tags: ''
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -400,8 +400,8 @@ export function StreamsView() {
             ? currentStream.recordingSchedule
             : Array(168).fill(true))
         : Array(168).fill(true),
-      // Camera group / label
-      group_name: currentStream.group_name || ''
+      // Tags
+      tags: currentStream.tags || ''
     };
 
     // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -570,8 +570,8 @@ export function StreamsView() {
       // Recording schedule
       recordOnSchedule: false,
       recordingSchedule: Array(168).fill(true),
-      // Camera group / label
-      group_name: ''
+      // Tags
+      tags: ''
     });
     setIsEditing(false);
     setModalVisible(true);
@@ -649,8 +649,8 @@ export function StreamsView() {
         recordingSchedule: (Array.isArray(stream.recording_schedule) && stream.recording_schedule.length === 168)
           ? stream.recording_schedule
           : Array(168).fill(true),
-        // Camera group / label
-        group_name: stream.group_name || ''
+        // Tags
+        tags: stream.tags || ''
       });
       setIsEditing(true);
       setModalVisible(true);
