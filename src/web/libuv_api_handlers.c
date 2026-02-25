@@ -23,6 +23,7 @@
 #include "web/api_handlers_recordings_playback.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "web/api_handlers_recordings.h"
+#include "web/api_handlers_recordings_batch_download.h"
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_users.h"
@@ -171,6 +172,9 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/recordings/files", "DELETE", handle_delete_recording_file);
     http_server_register_handler(server, "/api/recordings/batch-delete/progress/#", "GET", handle_batch_delete_progress);
     http_server_register_handler(server, "/api/recordings/batch-delete", "POST", handle_batch_delete_recordings);
+    http_server_register_handler(server, "/api/recordings/batch-download/status/#", "GET", handle_batch_download_status);
+    http_server_register_handler(server, "/api/recordings/batch-download/result/#", "GET", handle_batch_download_result);
+    http_server_register_handler(server, "/api/recordings/batch-download", "POST", handle_batch_download_recordings);
     http_server_register_handler(server, "/api/recordings/protected", "GET", handle_get_protected_recordings);
     http_server_register_handler(server, "/api/recordings/batch-protect", "POST", handle_batch_protect_recordings);
     http_server_register_handler(server, "/api/recordings/sync", "POST", handle_post_recordings_sync);

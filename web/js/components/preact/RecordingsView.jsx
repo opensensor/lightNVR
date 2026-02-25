@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useContext } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
+import { BatchDownloadModal } from './BatchDownloadModal.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { clearThumbnailQueue } from '../../request-queue.js';
 
@@ -58,6 +59,7 @@ export function RecordingsView() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState('selected'); // 'single', 'selected' or 'all'
   const [pendingDeleteRecording, setPendingDeleteRecording] = useState(null); // recording awaiting single-delete confirmation
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const recordingsTableBodyRef = useRef(null);
 
   // View mode: 'table' or 'grid'
@@ -560,6 +562,9 @@ export function RecordingsView() {
     setSelectAll(false);
   };
 
+  // Open download modal
+  const openDownloadModal = () => setIsDownloadModalOpen(true);
+
   // Open delete confirmation modal
   const openDeleteModal = (mode) => {
     setDeleteMode(mode);
@@ -808,6 +813,7 @@ export function RecordingsView() {
                 toggleSelectAll={toggleSelectAll}
                 getSelectedCount={getSelectedCount}
                 openDeleteModal={openDeleteModal}
+                openDownloadModal={openDownloadModal}
                 playRecording={playRecording}
                 downloadRecording={downloadRecording}
                 deleteRecording={deleteRecording}
@@ -830,6 +836,7 @@ export function RecordingsView() {
                 toggleSelectAll={toggleSelectAll}
                 getSelectedCount={getSelectedCount}
                 openDeleteModal={openDeleteModal}
+                openDownloadModal={openDownloadModal}
                 playRecording={playRecording}
                 downloadRecording={downloadRecording}
                 deleteRecording={deleteRecording}
@@ -857,6 +864,13 @@ export function RecordingsView() {
         mode={deleteMode}
         count={getSelectedCount()}
         recordingName={pendingDeleteRecording?.stream}
+      />
+
+      <BatchDownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        recordings={recordings}
+        selectedIds={selectedRecordings}
       />
     </section>
   );

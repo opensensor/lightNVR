@@ -376,6 +376,7 @@ export function RecordingsGrid({
   toggleSelectAll,
   getSelectedCount,
   openDeleteModal,
+  openDownloadModal,
   playRecording,
   downloadRecording,
   deleteRecording,
@@ -425,6 +426,14 @@ export function RecordingsGrid({
                 </button>
                 <button class="btn-danger text-xs px-2 py-1" onClick={() => openDeleteModal('all')}>
                   Delete All Filtered
+                </button>
+                <button
+                  class="btn-primary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={getSelectedCount() === 0}
+                  onClick={() => openDownloadModal && openDownloadModal()}
+                  title="Download selected recordings"
+                >
+                  Download Selected
                 </button>
                 <button
                   class="text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
