@@ -57,6 +57,7 @@ export function HLSVideoCell({
   const detectionOverlayRef = useRef(null);
   const fatalErrorCountRef = useRef(0);  // Track consecutive fatal error recovery attempts
   const recoveringRef = useRef(false);   // True when we're in the middle of error recovery (prevents counter reset)
+  const hlsUrlRef = useRef(null);        // Master manifest URL — stored for session-expiry recovery
 
   /**
    * Refresh the stream's go2rtc registration
@@ -196,6 +197,11 @@ export function HLSVideoCell({
       }
       } // end of !forceNative else block
 
+      // Store master manifest URL so network-error recovery can reload from it
+      // (go2rtc sessions expire after 5 s of inactivity; reloading the master
+      // manifest creates a fresh session instead of retrying the stale one).
+      hlsUrlRef.current = hlsStreamUrl;
+
       // Check if HLS.js is supported
       if (Hls.isSupported()) {
         console.log(`Using HLS.js for stream ${stream.name} (mode: ${usingGo2rtc ? 'go2rtc' : 'native'})`);
@@ -303,7 +309,17 @@ export function HLSVideoCell({
             console.warn(`[HLS ${stream.name}] Network error recovery attempt ${attemptNum}/${MAX_RECOVERY}`);
             setTimeout(() => {
               if (isMounted && hlsPlayerRef.current) {
-                hlsPlayerRef.current.startLoad();
+                if (usingGo2rtc && hlsUrlRef.current) {
+                  // go2rtc sessions expire after 5 s of inactivity. Simply
+                  // calling startLoad() retries the same (now-expired) session
+                  // ID and keeps 404-ing. Re-fetching the master manifest via
+                  // loadSource() creates a brand-new go2rtc session.
+                  console.log(`[HLS ${stream.name}] Reloading master manifest to create fresh go2rtc session`);
+                  hlsPlayerRef.current.loadSource(hlsUrlRef.current);
+                  hlsPlayerRef.current.startLoad();
+                } else {
+                  hlsPlayerRef.current.startLoad();
+                }
               }
             }, delay);
           } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {

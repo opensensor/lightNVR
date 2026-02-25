@@ -910,6 +910,19 @@ export function StreamsView() {
     setShowCustomNameInput(true);
   };
 
+  // Check if a discovered ONVIF device is already added as a stream
+  const isDeviceAlreadyAdded = (device) => {
+    return streams.some(stream => {
+      if (!stream.url || !device.ip_address) return false;
+      try {
+        const url = new URL(stream.url);
+        return url.hostname === device.ip_address;
+      } catch {
+        return stream.url.includes(device.ip_address);
+      }
+    });
+  };
+
   // Test ONVIF connection
   const testOnvifConnection = (device) => {
     // Store the selected device first
@@ -1546,32 +1559,44 @@ export function StreamsView() {
                         ) : 'No devices discovered yet. Click "Start Discovery" to scan your network.'}
                       </td>
                     </tr>
-                  ) : discoveredDevices.map(device => (
-                    <tr key={device.ip_address} className="hover:bg-muted/50">
-                      <td className="px-6 py-4 whitespace-nowrap">{device.ip_address}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{device.manufacturer || 'Unknown'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{device.model || 'Unknown'}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                            className="btn-primary focus:outline-none"
-                            onClick={() => testOnvifConnection(device)}
-                            disabled={isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address}
-                            type="button"
-                        >
-                          {isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address ? (
-                            <span className="flex items-center">
-                                Loading
-                                <span className="ml-1 flex space-x-1">
-                                  <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
-                                  <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
-                                  <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>
+                  ) : discoveredDevices.map(device => {
+                    const alreadyAdded = isDeviceAlreadyAdded(device);
+                    const isConnecting = isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address;
+                    return (
+                      <tr key={device.ip_address} className={`hover:bg-muted/50 transition-opacity${alreadyAdded ? ' opacity-60' : ''}`}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span>{device.ip_address}</span>
+                          {alreadyAdded && (
+                            <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-muted text-muted-foreground border border-border">
+                              Already Added
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">{device.manufacturer || 'Unknown'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">{device.model || 'Unknown'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                              className={alreadyAdded ? 'btn-secondary focus:outline-none' : 'btn-primary focus:outline-none'}
+                              onClick={() => testOnvifConnection(device)}
+                              disabled={isConnecting}
+                              type="button"
+                              title={alreadyAdded ? 'This IP is already in use by an existing stream. Click to connect anyway.' : undefined}
+                          >
+                            {isConnecting ? (
+                              <span className="flex items-center">
+                                  Loading
+                                  <span className="ml-1 flex space-x-1">
+                                    <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-current rounded-full"></span>
+                                    <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-current rounded-full"></span>
+                                    <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-current rounded-full"></span>
+                                  </span>
                                 </span>
-                              </span>
-                          ) : 'Connect'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                            ) : alreadyAdded ? 'Connect Anyway' : 'Connect'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
