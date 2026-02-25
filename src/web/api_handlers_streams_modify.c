@@ -558,6 +558,15 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.group_name[0] = '\0';
     }
 
+    // Parse tags setting (comma-separated list, e.g. "outdoor,critical,entrance")
+    cJSON *tags_post = cJSON_GetObjectItem(stream_json, "tags");
+    if (tags_post && cJSON_IsString(tags_post)) {
+        strncpy(config.tags, tags_post->valuestring, sizeof(config.tags) - 1);
+        config.tags[sizeof(config.tags) - 1] = '\0';
+    } else {
+        config.tags[0] = '\0';
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -1102,6 +1111,22 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     } else if (group_name_put && cJSON_IsNull(group_name_put)) {
         if (config.group_name[0] != '\0') {
             config.group_name[0] = '\0';
+            config_changed = true;
+        }
+    }
+
+    // Parse tags setting (metadata only, no restart needed)
+    cJSON *tags_put = cJSON_GetObjectItem(stream_json, "tags");
+    if (tags_put && cJSON_IsString(tags_put)) {
+        if (strncmp(config.tags, tags_put->valuestring, sizeof(config.tags) - 1) != 0) {
+            strncpy(config.tags, tags_put->valuestring, sizeof(config.tags) - 1);
+            config.tags[sizeof(config.tags) - 1] = '\0';
+            config_changed = true;
+            log_info("Tags changed to '%s' for stream %s", config.tags, config.name);
+        }
+    } else if (tags_put && cJSON_IsNull(tags_put)) {
+        if (config.tags[0] != '\0') {
+            config.tags[0] = '\0';
             config_changed = true;
         }
     }

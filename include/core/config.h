@@ -79,6 +79,9 @@ typedef struct {
 
     // Camera grouping / labelling
     char group_name[64];             // Optional group label (e.g. "Indoor", "Front", etc.)
+
+    // Camera tags (comma-separated, e.g. "outdoor,critical,entrance")
+    char tags[256];                  // Optional tag list for multi-label filtering and RBAC
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator

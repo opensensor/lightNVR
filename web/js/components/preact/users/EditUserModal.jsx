@@ -203,6 +203,34 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
             </p>
           </div>
 
+          <div className="mb-4">
+            <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
+              Allowed Tags <span className="font-normal text-gray-500">(RBAC)</span>
+            </label>
+            <input
+              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              id="allowed_tags"
+              type="text"
+              name="allowed_tags"
+              value={formData.allowed_tags || ''}
+              onChange={handleInputChange}
+              placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
+              maxLength={255}
+            />
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+              Comma-separated tags. When set, this user can only see streams that share at least one matching tag. Leave blank to allow access to all streams.
+            </p>
+            {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(tag => (
+                  <span key={tag.trim()} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                    #{tag.trim()}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end mt-6">
             <button
               type="button"

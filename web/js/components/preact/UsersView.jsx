@@ -35,7 +35,8 @@ export function UsersView() {
     email: '',
     role: 1,
     is_active: true,
-    password_change_locked: false
+    password_change_locked: false,
+    allowed_tags: ''  // empty string = no tag restriction
   });
 
   /**
@@ -77,7 +78,8 @@ export function UsersView() {
       email: '',
       role: 1,
       is_active: true,
-      password_change_locked: false
+      password_change_locked: false,
+      allowed_tags: ''
     });
     setActiveModal('add');
   }, []);
@@ -221,7 +223,9 @@ export function UsersView() {
     if (e) e.preventDefault();
 
     console.log('Adding user:', formData.username);
-    addUserMutate(formData);
+    // Send allowed_tags as null when empty (means no restriction)
+    const userData = { ...formData, allowed_tags: formData.allowed_tags?.trim() || null };
+    addUserMutate(userData);
   }, [formData, addUserMutate]);
 
   /**
@@ -232,9 +236,11 @@ export function UsersView() {
     if (e) e.preventDefault();
 
     console.log('Editing user:', selectedUser.id, selectedUser.username);
+    // Send allowed_tags as null when empty (means no restriction)
+    const userData = { ...formData, allowed_tags: formData.allowed_tags?.trim() || null };
     editUserMutation.mutate({
       userId: selectedUser.id,
-      userData: formData
+      userData
     });
   }, [selectedUser, formData, editUserMutation]);
 
@@ -280,7 +286,9 @@ export function UsersView() {
       email: user.email || '',
       role: user.role,
       is_active: user.is_active,
-      password_change_locked: user.password_change_locked || false
+      password_change_locked: user.password_change_locked || false,
+      // allowed_tags: null from API means no restriction, convert to '' for the text input
+      allowed_tags: user.allowed_tags || ''
     });
     setActiveModal('edit');
   }, []);

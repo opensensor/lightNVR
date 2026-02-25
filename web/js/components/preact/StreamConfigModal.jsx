@@ -410,6 +410,34 @@ export function StreamConfigModal({
                   </p>
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="stream-tags">
+                    Tags
+                  </label>
+                  <input
+                    type="text"
+                    id="stream-tags"
+                    name="tags"
+                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                    placeholder="e.g., outdoor,critical,entrance"
+                    value={currentStream.tags || ''}
+                    onChange={onInputChange}
+                    maxLength={255}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Comma-separated tags for filtering and access control (e.g. <span className="font-mono">outdoor,critical</span>). Used for dynamic dashboard filters and user permission restrictions.
+                  </p>
+                  {(currentStream.tags || '').split(',').filter(t => t.trim()).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(currentStream.tags || '').split(',').filter(t => t.trim()).map(tag => (
+                        <span key={tag.trim()} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                          #{tag.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex items-center space-x-6">
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input

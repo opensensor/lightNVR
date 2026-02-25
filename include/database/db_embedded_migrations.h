@@ -452,6 +452,18 @@ static const char migration_0027_up[] =
 static const char migration_0027_down[] =
     "SELECT 1;";
 
+static const char migration_0028_up[] =
+    "ALTER TABLE streams ADD COLUMN tags TEXT NOT NULL DEFAULT '';";
+
+static const char migration_0028_down[] =
+    "SELECT 1;";
+
+static const char migration_0029_up[] =
+    "ALTER TABLE users ADD COLUMN allowed_tags TEXT DEFAULT NULL;";
+
+static const char migration_0029_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -642,8 +654,22 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0027_down,
         .is_embedded = true
     },
+    {
+        .version = "0028",
+        .description = "add_stream_tags",
+        .sql_up = migration_0028_up,
+        .sql_down = migration_0028_down,
+        .is_embedded = true
+    },
+    {
+        .version = "0029",
+        .description = "add_user_allowed_tags",
+        .sql_up = migration_0029_up,
+        .sql_down = migration_0029_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 27
+#define EMBEDDED_MIGRATIONS_COUNT 29
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

@@ -50,6 +50,12 @@ export function WebRTCView() {
     return p.get('group') || localStorage.getItem('lightnvr-webrtc-group-filter') || '';
   });
 
+  // Tag filter: '' means "All tags", or a single tag value to filter by
+  const [tagFilter, setTagFilter] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('tag') || localStorage.getItem('lightnvr-webrtc-tag-filter') || '';
+  });
+
   // State for toggling stream labels and controls visibility
   const [showLabels, setShowLabels] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -253,13 +259,16 @@ export function WebRTCView() {
     else sessionStorage.removeItem('webrtc_selected_stream');
   }, [currentPage, cols, rows, isSingleStream, selectedStream, streams.length]);
 
-  // Sync UI preference controls (group, labels, controls) to URL and localStorage.
+  // Sync UI preference controls (group, tag, labels, controls) to URL and localStorage.
   // Runs independently of streams-loaded state so the URL is always accurate.
   useEffect(() => {
     const url = new URL(window.location);
 
     if (groupFilter) url.searchParams.set('group', groupFilter);
     else url.searchParams.delete('group');
+
+    if (tagFilter) url.searchParams.set('tag', tagFilter);
+    else url.searchParams.delete('tag');
 
     // Omit params when at their defaults (true) to keep URL clean
     if (!showLabels) url.searchParams.set('labels', '0');
@@ -273,9 +282,11 @@ export function WebRTCView() {
     // Persist to localStorage for sessions without URL
     if (groupFilter) localStorage.setItem('lightnvr-webrtc-group-filter', groupFilter);
     else localStorage.removeItem('lightnvr-webrtc-group-filter');
+    if (tagFilter) localStorage.setItem('lightnvr-webrtc-tag-filter', tagFilter);
+    else localStorage.removeItem('lightnvr-webrtc-tag-filter');
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
-  }, [groupFilter, showLabels, showControls]);
+  }, [groupFilter, tagFilter, showLabels, showControls]);
 
   /**
    * Filter streams for WebRTC view
@@ -357,11 +368,29 @@ export function WebRTCView() {
     return Array.from(groups).sort();
   }, [streams]);
 
-  // Apply group filter before passing to the order hook
+  // Derive unique tags from all streams for clickable tag filter buttons
+  const availableTags = useMemo(() => {
+    const tags = new Set();
+    streams.forEach(s => {
+      if (s.tags) {
+        s.tags.split(',').forEach(t => { const trimmed = t.trim(); if (trimmed) tags.add(trimmed); });
+      }
+    });
+    return Array.from(tags).sort();
+  }, [streams]);
+
+  // Apply group and tag filters before passing to the order hook
   const groupFilteredStreams = useMemo(() => {
-    if (!groupFilter) return streams;
-    return streams.filter(s => s.group_name === groupFilter);
-  }, [streams, groupFilter]);
+    let result = streams;
+    if (groupFilter) result = result.filter(s => s.group_name === groupFilter);
+    if (tagFilter) {
+      result = result.filter(s => {
+        if (!s.tags) return false;
+        return s.tags.split(',').some(t => t.trim() === tagFilter);
+      });
+    }
+    return result;
+  }, [streams, groupFilter, tagFilter]);
 
   // Camera ordering hook (operates on group-filtered streams)
   const {
@@ -495,6 +524,28 @@ export function WebRTCView() {
                 <option value="">All Groups</option>
                 {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
+            </div>
+          )}
+
+          {availableTags.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-sm whitespace-nowrap">Tags:</span>
+              <button
+                className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${!tagFilter ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:border-primary'}`}
+                onClick={() => { setTagFilter(''); setCurrentPage(0); }}
+              >
+                All
+              </button>
+              {availableTags.map(tag => (
+                <button
+                  key={tag}
+                  className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${tagFilter === tag ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:border-primary'}`}
+                  onClick={() => { setTagFilter(tagFilter === tag ? '' : tag); setCurrentPage(0); }}
+                  title={`Filter by tag: ${tag}`}
+                >
+                  #{tag}
+                </button>
+              ))}
             </div>
           )}
 

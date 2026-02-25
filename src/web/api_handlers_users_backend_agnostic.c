@@ -43,6 +43,13 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
     cJSON_AddBoolToObject(json, "password_change_locked", user->password_change_locked);
     cJSON_AddBoolToObject(json, "totp_enabled", user->totp_enabled);
 
+    // Tag-based RBAC: include allowed_tags (null when unrestricted, string when restricted)
+    if (user->has_tag_restriction) {
+        cJSON_AddStringToObject(json, "allowed_tags", user->allowed_tags);
+    } else {
+        cJSON_AddNullToObject(json, "allowed_tags");
+    }
+
     return json;
 }
 
@@ -156,13 +163,20 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Check if TOTP column exists for backward compatibility
+    // Check if TOTP and allowed_tags columns exist for backward compatibility
     bool has_totp = cached_column_exists("users", "totp_enabled");
+    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
 
     // Query all users
     sqlite3_stmt *stmt;
     int rc;
-    if (has_totp) {
+    if (has_totp && has_allowed_tags) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
+                                "FROM users ORDER BY id;",
+                                -1, &stmt, NULL);
+    } else if (has_totp) {
         rc = sqlite3_prepare_v2(db,
                                 "SELECT id, username, email, role, api_key, created_at, "
                                 "updated_at, last_login, is_active, password_change_locked, totp_enabled "
@@ -217,6 +231,20 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
         user.is_active = sqlite3_column_int(stmt, 8) != 0;
         user.password_change_locked = sqlite3_column_int(stmt, 9) != 0;
         user.totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
+        if (has_allowed_tags && has_totp) {
+            const char *at = (const char *)sqlite3_column_text(stmt, 11);
+            if (at && at[0] != '\0') {
+                strncpy(user.allowed_tags, at, sizeof(user.allowed_tags) - 1);
+                user.allowed_tags[sizeof(user.allowed_tags) - 1] = '\0';
+                user.has_tag_restriction = true;
+            } else {
+                user.allowed_tags[0] = '\0';
+                user.has_tag_restriction = false;
+            }
+        } else {
+            user.allowed_tags[0] = '\0';
+            user.has_tag_restriction = false;
+        }
 
         // Add user to array
         cJSON_AddItemToArray(users_array, user_to_json(&user, 1));
@@ -271,13 +299,20 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Check if TOTP column exists for backward compatibility
+    // Check if TOTP and allowed_tags columns exist for backward compatibility
     bool has_totp = cached_column_exists("users", "totp_enabled");
+    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
 
     // Query user by ID
     sqlite3_stmt *stmt;
     int rc;
-    if (has_totp) {
+    if (has_totp && has_allowed_tags) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
+                                "FROM users WHERE id = ?;",
+                                -1, &stmt, NULL);
+    } else if (has_totp) {
         rc = sqlite3_prepare_v2(db,
                                 "SELECT id, username, email, role, api_key, created_at, "
                                 "updated_at, last_login, is_active, password_change_locked, totp_enabled "
@@ -335,6 +370,20 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
     user.is_active = sqlite3_column_int(stmt, 8) != 0;
     user.password_change_locked = sqlite3_column_int(stmt, 9) != 0;
     user.totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
+    if (has_allowed_tags && has_totp) {
+        const char *at = (const char *)sqlite3_column_text(stmt, 11);
+        if (at && at[0] != '\0') {
+            strncpy(user.allowed_tags, at, sizeof(user.allowed_tags) - 1);
+            user.allowed_tags[sizeof(user.allowed_tags) - 1] = '\0';
+            user.has_tag_restriction = true;
+        } else {
+            user.allowed_tags[0] = '\0';
+            user.has_tag_restriction = false;
+        }
+    } else {
+        user.allowed_tags[0] = '\0';
+        user.has_tag_restriction = false;
+    }
 
     sqlite3_finalize(stmt);
 
@@ -377,6 +426,7 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
     cJSON *email_json = cJSON_GetObjectItem(json_req, "email");
     cJSON *role_json = cJSON_GetObjectItem(json_req, "role");
     cJSON *is_active_json = cJSON_GetObjectItem(json_req, "is_active");
+    cJSON *allowed_tags_create_json = cJSON_GetObjectItem(json_req, "allowed_tags");
 
     // Validate required fields
     if (!username_json || !cJSON_IsString(username_json) ||
@@ -417,6 +467,20 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    // Extract allowed_tags before freeing JSON
+    char allowed_tags_buf[256] = {0};
+    bool has_at_create = false;
+    bool at_create_is_null = false;
+    if (allowed_tags_create_json) {
+        if (cJSON_IsNull(allowed_tags_create_json)) {
+            has_at_create = true;
+            at_create_is_null = true;
+        } else if (cJSON_IsString(allowed_tags_create_json)) {
+            strncpy(allowed_tags_buf, allowed_tags_create_json->valuestring, sizeof(allowed_tags_buf) - 1);
+            has_at_create = true;
+        }
+    }
+
     // Create the user
     int64_t user_id;
     int rc = db_auth_create_user(username, password, email, role, is_active, &user_id);
@@ -426,6 +490,11 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
     if (rc != 0) {
         http_response_set_json_error(res, 500, "Failed to create user");
         return;
+    }
+
+    // Set allowed_tags if provided
+    if (has_at_create) {
+        db_auth_set_allowed_tags(user_id, at_create_is_null ? NULL : allowed_tags_buf);
     }
 
     // Get the created user
@@ -493,6 +562,7 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     cJSON *email_json = cJSON_GetObjectItem(json_req, "email");
     cJSON *role_json = cJSON_GetObjectItem(json_req, "role");
     cJSON *is_active_json = cJSON_GetObjectItem(json_req, "is_active");
+    cJSON *allowed_tags_json = cJSON_GetObjectItem(json_req, "allowed_tags");
 
     // Update password if provided and not empty
     if (password_json && cJSON_IsString(password_json)) {
@@ -534,6 +604,22 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     }
 
     rc = db_auth_update_user(user_id, email, role, is_active);
+
+    if (rc == 0 && allowed_tags_json) {
+        // allowed_tags: JSON null removes restriction; string sets it
+        const char *at = NULL;
+        bool set_tags = false;
+        if (cJSON_IsNull(allowed_tags_json)) {
+            at = NULL;    // Remove restriction
+            set_tags = true;
+        } else if (cJSON_IsString(allowed_tags_json)) {
+            at = allowed_tags_json->valuestring;
+            set_tags = true;
+        }
+        if (set_tags) {
+            db_auth_set_allowed_tags(user_id, at);
+        }
+    }
 
     cJSON_Delete(json_req);
 

@@ -630,13 +630,20 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
         return -1;
     }
 
-    // Check if TOTP column exists for backward compatibility
+    // Check if TOTP and allowed_tags columns exist for backward compatibility
     bool has_totp = cached_column_exists("users", "totp_enabled");
+    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
 
     // Query the user
     sqlite3_stmt *stmt;
     int rc;
-    if (has_totp) {
+    if (has_totp && has_allowed_tags) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
+                                "FROM users WHERE id = ?;",
+                                -1, &stmt, NULL);
+    } else if (has_totp) {
         rc = sqlite3_prepare_v2(db,
                                 "SELECT id, username, email, role, api_key, created_at, "
                                 "updated_at, last_login, is_active, password_change_locked, totp_enabled "
@@ -691,6 +698,20 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
     user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
+    if (has_allowed_tags && has_totp) {
+        const char *at = (const char *)sqlite3_column_text(stmt, 11);
+        if (at && at[0] != '\0') {
+            strncpy(user->allowed_tags, at, sizeof(user->allowed_tags) - 1);
+            user->allowed_tags[sizeof(user->allowed_tags) - 1] = '\0';
+            user->has_tag_restriction = true;
+        } else {
+            user->allowed_tags[0] = '\0';
+            user->has_tag_restriction = (sqlite3_column_type(stmt, 11) != SQLITE_NULL && at && at[0] == '\0');
+        }
+    } else {
+        user->allowed_tags[0] = '\0';
+        user->has_tag_restriction = false;
+    }
 
     sqlite3_finalize(stmt);
 
@@ -712,13 +733,20 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
         return -1;
     }
 
-    // Check if TOTP column exists for backward compatibility
+    // Check if TOTP and allowed_tags columns exist for backward compatibility
     bool has_totp = cached_column_exists("users", "totp_enabled");
+    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
 
     // Query the user
     sqlite3_stmt *stmt;
     int rc;
-    if (has_totp) {
+    if (has_totp && has_allowed_tags) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
+                                "FROM users WHERE username = ?;",
+                                -1, &stmt, NULL);
+    } else if (has_totp) {
         rc = sqlite3_prepare_v2(db,
                                 "SELECT id, username, email, role, api_key, created_at, "
                                 "updated_at, last_login, is_active, password_change_locked, totp_enabled "
@@ -773,6 +801,20 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
     user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
+    if (has_allowed_tags && has_totp) {
+        const char *at = (const char *)sqlite3_column_text(stmt, 11);
+        if (at && at[0] != '\0') {
+            strncpy(user->allowed_tags, at, sizeof(user->allowed_tags) - 1);
+            user->allowed_tags[sizeof(user->allowed_tags) - 1] = '\0';
+            user->has_tag_restriction = true;
+        } else {
+            user->allowed_tags[0] = '\0';
+            user->has_tag_restriction = false;
+        }
+    } else {
+        user->allowed_tags[0] = '\0';
+        user->has_tag_restriction = false;
+    }
 
     sqlite3_finalize(stmt);
 
@@ -794,13 +836,20 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
         return -1;
     }
 
-    // Check if TOTP column exists for backward compatibility
+    // Check if TOTP and allowed_tags columns exist for backward compatibility
     bool has_totp = cached_column_exists("users", "totp_enabled");
+    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
 
     // Query the user
     sqlite3_stmt *stmt;
     int rc;
-    if (has_totp) {
+    if (has_totp && has_allowed_tags) {
+        rc = sqlite3_prepare_v2(db,
+                                "SELECT id, username, email, role, api_key, created_at, "
+                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
+                                "FROM users WHERE api_key = ?;",
+                                -1, &stmt, NULL);
+    } else if (has_totp) {
         rc = sqlite3_prepare_v2(db,
                                 "SELECT id, username, email, role, api_key, created_at, "
                                 "updated_at, last_login, is_active, password_change_locked, totp_enabled "
@@ -855,6 +904,20 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
     user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
+    if (has_allowed_tags && has_totp) {
+        const char *at = (const char *)sqlite3_column_text(stmt, 11);
+        if (at && at[0] != '\0') {
+            strncpy(user->allowed_tags, at, sizeof(user->allowed_tags) - 1);
+            user->allowed_tags[sizeof(user->allowed_tags) - 1] = '\0';
+            user->has_tag_restriction = true;
+        } else {
+            user->allowed_tags[0] = '\0';
+            user->has_tag_restriction = false;
+        }
+    } else {
+        user->allowed_tags[0] = '\0';
+        user->has_tag_restriction = false;
+    }
 
     sqlite3_finalize(stmt);
 
@@ -1611,4 +1674,104 @@ int db_auth_enable_totp(int64_t user_id, bool enabled) {
 
     log_info("TOTP %s for user %lld", enabled ? "enabled" : "disabled", (long long)user_id);
     return 0;
+}
+
+/**
+ * Set the allowed_tags restriction for a user.
+ * Pass NULL to remove any tag restriction (user can see all streams).
+ * Pass an empty string to restrict to streams with NO tags (edge-case, generally use NULL for unrestricted).
+ */
+int db_auth_set_allowed_tags(int64_t user_id, const char *allowed_tags) {
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!cached_column_exists("users", "allowed_tags")) {
+        log_error("allowed_tags column not available");
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+        "UPDATE users SET allowed_tags = ?, updated_at = ? WHERE id = ?;",
+        -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare allowed_tags update: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    if (allowed_tags) {
+        sqlite3_bind_text(stmt, 1, allowed_tags, -1, SQLITE_STATIC);
+    } else {
+        sqlite3_bind_null(stmt, 1);
+    }
+    sqlite3_bind_int64(stmt, 2, (int64_t)time(NULL));
+    sqlite3_bind_int64(stmt, 3, user_id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to update allowed_tags: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    log_info("allowed_tags updated for user %lld: %s", (long long)user_id,
+             allowed_tags ? allowed_tags : "(unrestricted)");
+    return 0;
+}
+
+/**
+ * Check whether a stream's tags satisfy a user's allowed_tags restriction.
+ *
+ * Returns true when:
+ *   - The user has no tag restriction (has_tag_restriction == false), OR
+ *   - The stream's tag list contains at least one tag that appears in the user's allowed_tags list
+ */
+bool db_auth_stream_allowed_for_user(const user_t *user, const char *stream_tags) {
+    if (!user) return false;
+
+    // No restriction: allow all streams
+    if (!user->has_tag_restriction) return true;
+
+    // Stream has no tags: deny access (user requires at least one matching tag)
+    if (!stream_tags || stream_tags[0] == '\0') return false;
+
+    // Tokenize stream_tags and check each against user's allowed_tags
+    char stream_copy[256];
+    strncpy(stream_copy, stream_tags, sizeof(stream_copy) - 1);
+    stream_copy[sizeof(stream_copy) - 1] = '\0';
+
+    char *saveptr = NULL;
+    char *token = strtok_r(stream_copy, ",", &saveptr);
+    while (token) {
+        // Trim leading/trailing whitespace from token
+        while (*token == ' ') token++;
+        char *end = token + strlen(token) - 1;
+        while (end > token && *end == ' ') { *end = '\0'; end--; }
+
+        // Check if this stream tag appears in allowed_tags
+        const char *p = user->allowed_tags;
+        size_t tlen = strlen(token);
+        while (*p) {
+            // Skip leading spaces in allowed list
+            while (*p == ' ') p++;
+            // Compare tag
+            if (strncmp(p, token, tlen) == 0) {
+                char next = p[tlen];
+                if (next == ',' || next == '\0' || next == ' ') {
+                    return true;
+                }
+            }
+            // Advance to next comma
+            while (*p && *p != ',') p++;
+            if (*p == ',') p++;
+        }
+
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+
+    return false;
 }

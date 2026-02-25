@@ -35,6 +35,8 @@ typedef struct {
     bool is_active;          /**< Whether the user is active */
     bool password_change_locked; /**< Whether password changes are locked (for demo accounts) */
     bool totp_enabled;       /**< Whether TOTP MFA is enabled */
+    char allowed_tags[256];  /**< Comma-separated tag whitelist for RBAC (empty = no restriction) */
+    bool has_tag_restriction; /**< Whether allowed_tags is set (true) or NULL/unrestricted (false) */
 } user_t;
 
 /**
@@ -257,5 +259,27 @@ int db_auth_set_totp_secret(int64_t user_id, const char *secret);
  * @return 0 on success, non-zero on failure
  */
 int db_auth_enable_totp(int64_t user_id, bool enabled);
+
+/**
+ * @brief Set the allowed_tags restriction for a user
+ *
+ * @param user_id User ID
+ * @param allowed_tags Comma-separated tag list, or NULL to remove restriction
+ * @return 0 on success, non-zero on failure
+ */
+int db_auth_set_allowed_tags(int64_t user_id, const char *allowed_tags);
+
+/**
+ * @brief Check whether a stream's tags satisfy a user's allowed_tags restriction
+ *
+ * Returns true when:
+ *   - The user has no tag restriction (has_tag_restriction == false), OR
+ *   - The stream has at least one tag that appears in the user's allowed_tags list
+ *
+ * @param user Pointer to the authenticated user
+ * @param stream_tags Comma-separated tags from the stream (may be empty)
+ * @return true if access is permitted, false otherwise
+ */
+bool db_auth_stream_allowed_for_user(const user_t *user, const char *stream_tags);
 
 #endif /* LIGHTNVR_DB_AUTH_H */

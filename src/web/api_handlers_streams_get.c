@@ -18,6 +18,7 @@
 #include "database/database_manager.h"
 
 #include "database/db_motion_config.h"
+#include "database/db_auth.h"
 #include "video/go2rtc/go2rtc_integration.h"
 
 /**
@@ -26,25 +27,31 @@
 void handle_get_streams(const http_request_t *req, http_response_t *res) {
 	log_info("Handling GET /api/streams request");
 
+	// Capture the authenticated user so we can apply tag-based RBAC filtering
+	user_t auth_user;
+	memset(&auth_user, 0, sizeof(auth_user));
+	bool have_auth_user = false;
+
 	// When web authentication is enabled, require a valid authenticated user
 	// for access to the streams list. In demo mode, unauthenticated users
 	// get viewer access.
 	if (g_config.web_auth_enabled) {
-		user_t user;
 		// In demo mode, allow unauthenticated viewer access
 		if (g_config.demo_mode) {
-			if (!httpd_check_viewer_access(req, &user)) {
+			if (!httpd_check_viewer_access(req, &auth_user)) {
 				log_error("Authentication failed for GET /api/streams request");
 				http_response_set_json_error(res, 401, "Unauthorized");
 				return;
 			}
+			have_auth_user = true;
 		} else {
 			// Normal mode: require authentication
-			if (!httpd_get_authenticated_user(req, &user)) {
+			if (!httpd_get_authenticated_user(req, &auth_user)) {
 				log_error("Authentication failed for GET /api/streams request");
 				http_response_set_json_error(res, 401, "Unauthorized");
 				return;
 			}
+			have_auth_user = true;
 		}
 	}
 
@@ -66,8 +73,17 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Add each stream to the array
+    // Add each stream to the array, applying tag-based RBAC if user has a restriction
     for (int i = 0; i < count; i++) {
+        // Skip streams that don't match the user's allowed_tags restriction
+        if (have_auth_user && auth_user.has_tag_restriction) {
+            if (!db_auth_stream_allowed_for_user(&auth_user, db_streams[i].tags)) {
+                log_debug("Stream '%s' hidden from user '%s' (tag restriction)",
+                          db_streams[i].name, auth_user.username);
+                continue;
+            }
+        }
+
         cJSON *stream_obj = cJSON_CreateObject();
         if (!stream_obj) {
             log_error("Failed to create stream JSON object");
@@ -131,6 +147,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
             cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_i);
         }
         cJSON_AddStringToObject(stream_obj, "group_name", db_streams[i].group_name);
+        cJSON_AddStringToObject(stream_obj, "tags", db_streams[i].tags);
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -296,6 +313,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_get);
     }
     cJSON_AddStringToObject(stream_obj, "group_name", config.group_name);
+    cJSON_AddStringToObject(stream_obj, "tags", config.tags);
 
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);
@@ -446,6 +464,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_full);
     }
     cJSON_AddStringToObject(stream_obj, "group_name", config.group_name);
+    cJSON_AddStringToObject(stream_obj, "tags", config.tags);
 
     // Status
     stream_status_t stream_status = get_stream_status(stream);

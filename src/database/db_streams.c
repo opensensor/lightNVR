@@ -123,7 +123,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                                 "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
                                 "onvif_username = ?, onvif_password = ?, onvif_profile = ?, "
-                                "record_on_schedule = ?, recording_schedule = ?, group_name = ? "
+                                "record_on_schedule = ?, recording_schedule = ?, group_name = ?, tags = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -202,8 +202,11 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         // Bind group_name parameter
         sqlite3_bind_text(stmt, 41, stream->group_name, -1, SQLITE_STATIC);
 
+        // Bind tags parameter
+        sqlite3_bind_text(stmt, 42, stream->tags, -1, SQLITE_STATIC);
+
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 42, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 43, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -251,8 +254,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
           "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
           "onvif_username, onvif_password, onvif_profile, "
-          "record_on_schedule, recording_schedule, group_name) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "record_on_schedule, recording_schedule, group_name, tags) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -331,6 +334,9 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     // Bind group_name parameter
     sqlite3_bind_text(stmt, 42, stream->group_name, -1, SQLITE_STATIC);
 
+    // Bind tags parameter
+    sqlite3_bind_text(stmt, 43, stream->tags, -1, SQLITE_STATIC);
+
     // Execute statement
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
@@ -399,7 +405,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "tier_critical_multiplier = ?, tier_important_multiplier = ?, tier_ephemeral_multiplier = ?, storage_priority = ?, "
                       "ptz_enabled = ?, ptz_max_x = ?, ptz_max_y = ?, ptz_max_z = ?, ptz_has_home = ?, "
                       "onvif_username = ?, onvif_password = ?, onvif_profile = ?, "
-                      "record_on_schedule = ?, recording_schedule = ?, group_name = ? "
+                      "record_on_schedule = ?, recording_schedule = ?, group_name = ?, tags = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -479,8 +485,11 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Bind group_name parameter
     sqlite3_bind_text(stmt, 42, stream->group_name, -1, SQLITE_STATIC);
 
+    // Bind tags parameter
+    sqlite3_bind_text(stmt, 43, stream->tags, -1, SQLITE_STATIC);
+
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 43, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 44, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -752,7 +761,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
         "onvif_username, onvif_password, onvif_profile, "
-        "record_on_schedule, recording_schedule, group_name "
+        "record_on_schedule, recording_schedule, group_name, tags "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -767,7 +776,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
         COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE,
-        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_GROUP_NAME
+        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_GROUP_NAME, COL_TAGS
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -918,6 +927,15 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
             stream->group_name[0] = '\0';
         }
 
+        // Tags
+        const char *tags_val = (const char *)sqlite3_column_text(stmt, COL_TAGS);
+        if (tags_val) {
+            strncpy(stream->tags, tags_val, sizeof(stream->tags) - 1);
+            stream->tags[sizeof(stream->tags) - 1] = '\0';
+        } else {
+            stream->tags[0] = '\0';
+        }
+
         result = 0;
     }
 
@@ -968,7 +986,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         "retention_days, detection_retention_days, max_storage_mb, "
         "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
-        "record_on_schedule, recording_schedule, group_name "
+        "record_on_schedule, recording_schedule, group_name, tags "
         "FROM streams ORDER BY name;";
 
     // Column index constants (same as get_stream_config_by_name, minus ONVIF creds)
@@ -982,7 +1000,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
         COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
-        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_GROUP_NAME
+        COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_GROUP_NAME, COL_TAGS
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1111,6 +1129,15 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             s->group_name[sizeof(s->group_name) - 1] = '\0';
         } else {
             s->group_name[0] = '\0';
+        }
+
+        // Tags
+        const char *tags_val = (const char *)sqlite3_column_text(stmt, COL_TAGS);
+        if (tags_val) {
+            strncpy(s->tags, tags_val, sizeof(s->tags) - 1);
+            s->tags[sizeof(s->tags) - 1] = '\0';
+        } else {
+            s->tags[0] = '\0';
         }
 
         count++;
