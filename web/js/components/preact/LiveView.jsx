@@ -32,9 +32,6 @@ export function LiveView({isWebRTCDisabled}) {
     localStorage.getItem('lightnvr-hls-group-filter') || ''
   );
 
-  // Incrementing this key remounts all VideoCell components (equivalent to retry-all)
-  const [streamRetryKey, setStreamRetryKey] = useState(0);
-
   // State for toggling stream labels and controls visibility
   const [showLabels, setShowLabels] = useState(() => {
     const stored = localStorage.getItem('lightnvr-show-labels');
@@ -447,16 +444,6 @@ export function LiveView({isWebRTCDisabled}) {
               {useMSE ? 'HLS View' : 'MSE View'}
             </button>
                 )}
-            {streams.length > 0 && (
-            <button
-              className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
-              style={{ position: 'relative', zIndex: 50 }}
-              title="Restart all stream connections on the current page"
-              onClick={() => setStreamRetryKey(k => k + 1)}
-            >
-              Retry All
-            </button>
-            )}
             {orderedStreams.length > 1 && (
               <button
                 className={`btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center ${reorderMode ? 'ring-2 ring-primary' : ''}`}
@@ -654,7 +641,7 @@ export function LiveView({isWebRTCDisabled}) {
 
               return (
                 <div
-                  key={`${stream.name}-${streamRetryKey}`}
+                  key={stream.name}
                   style={{ position: 'relative' }}
                   draggable={reorderMode}
                   onDragStart={reorderMode ? () => handleDragStart(globalIndex) : undefined}
