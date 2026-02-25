@@ -301,6 +301,43 @@ export function WebRTCView() {
     }
   }, [layout]);
 
+  // Derive unique group names from all streams for the filter dropdown
+  const availableGroups = useMemo(() => {
+    const groups = new Set();
+    streams.forEach(s => { if (s.group_name) groups.add(s.group_name); });
+    return Array.from(groups).sort();
+  }, [streams]);
+
+  // Apply group filter before passing to the order hook
+  const groupFilteredStreams = useMemo(() => {
+    if (!groupFilter) return streams;
+    return streams.filter(s => s.group_name === groupFilter);
+  }, [streams, groupFilter]);
+
+  // Camera ordering hook (operates on group-filtered streams)
+  const {
+    orderedStreams,
+    reorderMode,
+    toggleReorderMode,
+    resetOrder,
+    handleDragStart,
+    handleDragOver,
+    handleDrop,
+    handleDragEnd,
+  } = useCameraOrder(groupFilteredStreams, 'webrtc');
+
+  // Ensure current page is valid when orderedStreams or layout changes
+  useEffect(() => {
+    if (orderedStreams.length === 0) return;
+
+    const maxStreams = getMaxStreamsForLayout();
+    const totalPages = Math.ceil(orderedStreams.length / maxStreams);
+
+    if (currentPage >= totalPages) {
+      setCurrentPage(Math.max(0, totalPages - 1));
+    }
+  }, [orderedStreams.length, layout, currentPage, getMaxStreamsForLayout]);
+
   /**
    * Get streams to show based on layout, selected stream, and pagination
    * @returns {Array} Streams to show
@@ -308,12 +345,12 @@ export function WebRTCView() {
   const getStreamsToShow = useCallback(() => {
     // Filter streams based on layout and selected stream
     if (layout === '1' && selectedStream) {
-      return streams.filter(stream => stream.name === selectedStream);
+      return orderedStreams.filter(stream => stream.name === selectedStream);
     }
 
     // Apply pagination
     const maxStreams = getMaxStreamsForLayout();
-    const totalPages = Math.ceil(streams.length / maxStreams);
+    const totalPages = Math.ceil(orderedStreams.length / maxStreams);
 
     // Ensure current page is valid
     if (currentPage >= totalPages && totalPages > 0) {
@@ -322,21 +359,9 @@ export function WebRTCView() {
 
     // Get streams for current page
     const startIdx = currentPage * maxStreams;
-    const endIdx = Math.min(startIdx + maxStreams, streams.length);
-    return streams.slice(startIdx, endIdx);
-  }, [streams, layout, selectedStream, currentPage, getMaxStreamsForLayout]);
-
-  // Ensure current page is valid when streams or layout changes
-  useEffect(() => {
-    if (streams.length === 0) return;
-
-    const maxStreams = getMaxStreamsForLayout();
-    const totalPages = Math.ceil(streams.length / maxStreams);
-
-    if (currentPage >= totalPages) {
-      setCurrentPage(Math.max(0, totalPages - 1));
-    }
-  }, [streams, layout, currentPage, getMaxStreamsForLayout]);
+    const endIdx = Math.min(startIdx + maxStreams, orderedStreams.length);
+    return orderedStreams.slice(startIdx, endIdx);
+  }, [orderedStreams, layout, selectedStream, currentPage, getMaxStreamsForLayout]);
 
   /**
    * Toggle fullscreen mode for a specific stream
@@ -420,9 +445,49 @@ export function WebRTCView() {
               MSE View
             </a>
                 )}
+            {orderedStreams.length > 1 && (
+              <button
+                className={`btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center ${reorderMode ? 'ring-2 ring-primary' : ''}`}
+                style={{ position: 'relative', zIndex: 50 }}
+                title={reorderMode ? 'Exit reorder mode' : 'Drag to reorder cameras'}
+                onClick={toggleReorderMode}
+              >
+                {reorderMode ? 'Done Reordering' : 'Reorder'}
+              </button>
+            )}
+            {reorderMode && (
+              <button
+                className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
+                style={{ position: 'relative', zIndex: 50 }}
+                title="Reset camera order to default"
+                onClick={resetOrder}
+              >
+                Reset Order
+              </button>
+            )}
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
+          {availableGroups.length > 0 && (
+            <div className="flex items-center">
+              <label htmlFor="group-filter" className="mr-2">Group:</label>
+              <select
+                id="group-filter"
+                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                value={groupFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setGroupFilter(val);
+                  setCurrentPage(0);
+                  if (val) localStorage.setItem('lightnvr-webrtc-group-filter', val);
+                  else localStorage.removeItem('lightnvr-webrtc-group-filter');
+                }}
+              >
+                <option value="">All Groups</option>
+                {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+          )}
           <div className="flex items-center">
             <label htmlFor="layout-selector" className="mr-2">Layout:</label>
             <select
@@ -456,7 +521,7 @@ export function WebRTCView() {
                   setSelectedStream(newStream);
                 }}
               >
-                {streams.map(stream => (
+                {orderedStreams.map(stream => (
                   <option key={stream.name} value={stream.name}>{stream.name}</option>
                 ))}
               </select>
@@ -566,20 +631,50 @@ export function WebRTCView() {
             </div>
           ) : (
             // Render video cells using our self-contained WebRTCVideoCell component
-            streamsToShow.map(stream => (
-              <WebRTCVideoCell
-                key={stream.name}
-                stream={stream}
-                onToggleFullscreen={toggleStreamFullscreen}
-                streamId={stream.name} // Add explicit streamId prop to prevent re-renders
-                showLabels={showLabels}
-                showControls={showControls}
-              />
-            ))
+            streamsToShow.map((stream, index) => {
+              const maxStreams = getMaxStreamsForLayout();
+              const globalIndex = currentPage * maxStreams + index;
+              return (
+                <div
+                  key={stream.name}
+                  style={{ position: 'relative' }}
+                  draggable={reorderMode}
+                  onDragStart={reorderMode ? () => handleDragStart(globalIndex) : undefined}
+                  onDragOver={reorderMode ? (e) => handleDragOver(e, globalIndex) : undefined}
+                  onDrop={reorderMode ? handleDrop : undefined}
+                  onDragEnd={reorderMode ? handleDragEnd : undefined}
+                >
+                  {reorderMode && (
+                    <div
+                      style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+                        background: 'rgba(0,0,0,0.55)', color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '6px 8px', cursor: 'grab', fontSize: '13px', gap: '6px',
+                        userSelect: 'none',
+                      }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                           fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+                      </svg>
+                      Drag to reorder
+                    </div>
+                  )}
+                  <WebRTCVideoCell
+                    stream={stream}
+                    onToggleFullscreen={toggleStreamFullscreen}
+                    streamId={stream.name}
+                    showLabels={showLabels}
+                    showControls={showControls}
+                  />
+                </div>
+              );
+            })
           )}
         </div>
 
-        {layout !== '1' && streams.length > getMaxStreamsForLayout() ? (
+        {layout !== '1' && orderedStreams.length > getMaxStreamsForLayout() ? (
           <div className="pagination-controls flex justify-center items-center space-x-4 mt-4">
             <button
               className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
@@ -593,17 +688,17 @@ export function WebRTCView() {
             </button>
 
             <span className="text-foreground">
-              Page {currentPage + 1} of {Math.ceil(streams.length / getMaxStreamsForLayout())}
+              Page {currentPage + 1} of {Math.ceil(orderedStreams.length / getMaxStreamsForLayout())}
             </span>
 
             <button
               className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to next page');
-                const totalPages = Math.ceil(streams.length / getMaxStreamsForLayout());
+                const totalPages = Math.ceil(orderedStreams.length / getMaxStreamsForLayout());
                 setCurrentPage(Math.min(totalPages - 1, currentPage + 1));
               }}
-              disabled={currentPage >= Math.ceil(streams.length / getMaxStreamsForLayout()) - 1}
+              disabled={currentPage >= Math.ceil(orderedStreams.length / getMaxStreamsForLayout()) - 1}
             >
               Next
             </button>
