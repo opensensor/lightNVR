@@ -130,6 +130,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
             }
             cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_i);
         }
+        cJSON_AddStringToObject(stream_obj, "group_name", db_streams[i].group_name);
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -294,6 +295,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_get);
     }
+    cJSON_AddStringToObject(stream_obj, "group_name", config.group_name);
 
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);
@@ -443,6 +445,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_full);
     }
+    cJSON_AddStringToObject(stream_obj, "group_name", config.group_name);
 
     // Status
     stream_status_t stream_status = get_stream_status(stream);

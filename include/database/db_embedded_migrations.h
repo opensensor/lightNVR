@@ -446,6 +446,12 @@ static const char migration_0026_up[] =
 static const char migration_0026_down[] =
     "SELECT 1;";
 
+static const char migration_0027_up[] =
+    "ALTER TABLE streams ADD COLUMN group_name TEXT NOT NULL DEFAULT '';";
+
+static const char migration_0027_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -629,8 +635,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0026_down,
         .is_embedded = true
     },
+    {
+        .version = "0027",
+        .description = "add_stream_group",
+        .sql_up = migration_0027_up,
+        .sql_down = migration_0027_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 26
+#define EMBEDDED_MIGRATIONS_COUNT 27
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

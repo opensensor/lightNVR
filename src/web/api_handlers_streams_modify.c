@@ -549,6 +549,15 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         memset(config.recording_schedule, 1, sizeof(config.recording_schedule));
     }
 
+    // Parse group_name setting
+    cJSON *group_name_post = cJSON_GetObjectItem(stream_json, "group_name");
+    if (group_name_post && cJSON_IsString(group_name_post)) {
+        strncpy(config.group_name, group_name_post->valuestring, sizeof(config.group_name) - 1);
+        config.group_name[sizeof(config.group_name) - 1] = '\0';
+    } else {
+        config.group_name[0] = '\0';
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -1078,6 +1087,22 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             requires_restart = true;  // Protocol changes always require restart
             log_info("Protocol changed from %d to %d - restart required",
                     original_protocol, config.protocol);
+        }
+    }
+
+    // Parse group_name setting (metadata only, no restart needed)
+    cJSON *group_name_put = cJSON_GetObjectItem(stream_json, "group_name");
+    if (group_name_put && cJSON_IsString(group_name_put)) {
+        if (strncmp(config.group_name, group_name_put->valuestring, sizeof(config.group_name) - 1) != 0) {
+            strncpy(config.group_name, group_name_put->valuestring, sizeof(config.group_name) - 1);
+            config.group_name[sizeof(config.group_name) - 1] = '\0';
+            config_changed = true;
+            log_info("Group name changed to '%s' for stream %s", config.group_name, config.name);
+        }
+    } else if (group_name_put && cJSON_IsNull(group_name_put)) {
+        if (config.group_name[0] != '\0') {
+            config.group_name[0] = '\0';
+            config_changed = true;
         }
     }
 
