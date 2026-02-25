@@ -496,8 +496,22 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                         int det_fps = 0;
                         const char *det_codec = NULL;
 
-                        if (vs->avg_frame_rate.den > 0) {
-                            det_fps = vs->avg_frame_rate.num / vs->avg_frame_rate.den;
+                        if (vs->avg_frame_rate.den > 0 && vs->avg_frame_rate.num > 0) {
+                            det_fps = (int)(vs->avg_frame_rate.num / vs->avg_frame_rate.den);
+                        }
+                        // Fallback: older cameras (e.g. Axis M1011) omit avg_frame_rate
+                        // in SDP; use r_frame_rate, then a conservative default.
+                        if (det_fps <= 0 && vs->r_frame_rate.den > 0 && vs->r_frame_rate.num > 0) {
+                            det_fps = (int)(vs->r_frame_rate.num / vs->r_frame_rate.den);
+                            if (det_fps > 0) {
+                                log_debug("[%s] avg_frame_rate unavailable; using r_frame_rate: %d fps",
+                                          stream_name, det_fps);
+                            }
+                        }
+                        if (det_fps <= 0) {
+                            det_fps = 15;
+                            log_debug("[%s] FPS unknown from SDP; defaulting to %d fps",
+                                      stream_name, det_fps);
                         }
 
                         const AVCodecDescriptor *desc = avcodec_descriptor_get(vs->codecpar->codec_id);

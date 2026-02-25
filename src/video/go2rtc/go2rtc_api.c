@@ -686,6 +686,55 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
     return success;
 }
 
+/**
+ * Internal helper: attempt a single preload PUT request with a given query string.
+ * Returns true on HTTP 200, false on any other outcome.
+ */
+static bool preload_attempt(const char *stream_id, const char *query, long timeout_sec) {
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL for preload attempt");
+        return false;
+    }
+
+    char url[URL_BUFFER_SIZE];
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s&%s", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, stream_id, query);
+
+    log_info("Preloading stream with URL: %s", url);
+
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+
+    bool success = false;
+    CURLcode res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+        log_warn("CURL preload attempt (%s) failed: %s", query, curl_easy_strerror(res));
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+        if (http_code == 200) {
+            log_info("Successfully preloaded stream in go2rtc: %s (query=%s)", stream_id, query);
+            success = true;
+        } else {
+            log_warn("Failed to preload stream in go2rtc (status %ld, query=%s): %s",
+                     http_code, query, resp.buffer);
+        }
+    }
+
+    curl_easy_cleanup(curl);
+    return success;
+}
+
 bool go2rtc_api_preload_stream(const char *stream_id) {
     if (!g_initialized) {
         log_error("go2rtc API client not initialized");
@@ -697,60 +746,19 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
         return false;
     }
 
-    CURL *curl;
-    CURLcode res;
-    char url[URL_BUFFER_SIZE];
-    bool success = false;
-
-    // Initialize CURL
-    curl = curl_easy_init();
-    if (!curl) {
-        log_error("Failed to initialize CURL");
-        return false;
+    // First attempt: video+audio (10 s timeout).
+    // Cameras with an incompatible or absent audio track cause go2rtc to stall
+    // negotiating audio, making this call time out.  If that happens, fall back
+    // to video-only preload so the producer is at least kept alive for HLS and
+    // motion/object detection (which only need video frames).
+    if (preload_attempt(stream_id, "video&audio", 10L)) {
+        return true;
     }
 
-    // Per-request response buffer (no global mutex needed)
-    response_buffer_t resp = { .size = 0 };
-    resp.buffer[0] = '\0';
+    log_warn("video+audio preload timed out or failed for stream %s — retrying with video-only "
+             "(camera may lack a compatible audio track)", stream_id);
 
-    // Build the preload URL: PUT /go2rtc/api/preload?src={stream_id}&video&audio
-    // This tells go2rtc to keep a persistent consumer connected to the stream
-    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/preload?src=%s&video&audio", // codeql[cpp/non-https-url] - localhost-only internal API
-            g_api_host, g_api_port, stream_id);
-
-    log_info("Preloading stream with URL: %s", url);
-
-    // Set CURL options for PUT request
-    curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
-
-    // Perform the request
-    res = curl_easy_perform(curl);
-
-    // Check for errors
-    if (res != CURLE_OK) {
-        log_error("CURL request failed for preload: %s", curl_easy_strerror(res));
-    } else {
-        long http_code = 0;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-
-        if (http_code == 200) {
-            log_info("Successfully preloaded stream in go2rtc: %s", stream_id);
-            success = true;
-        } else {
-            log_error("Failed to preload stream in go2rtc (status %ld): %s", http_code, resp.buffer);
-        }
-    }
-
-    // Clean up
-    curl_easy_cleanup(curl);
-
-    return success;
+    return preload_attempt(stream_id, "video", 10L);
 }
 
 void go2rtc_api_cleanup(void) {

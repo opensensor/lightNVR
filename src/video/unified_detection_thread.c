@@ -663,8 +663,22 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         int det_fps = 0;
         const char *det_codec = NULL;
 
-        if (vs->avg_frame_rate.den > 0) {
-            det_fps = vs->avg_frame_rate.num / vs->avg_frame_rate.den;
+        if (vs->avg_frame_rate.den > 0 && vs->avg_frame_rate.num > 0) {
+            det_fps = (int)(vs->avg_frame_rate.num / vs->avg_frame_rate.den);
+        }
+        // avg_frame_rate is 0 for many older cameras (e.g. Axis M1011) — fall back
+        // to the container's r_frame_rate, then to a safe default so the stored
+        // value is always meaningful.
+        if (det_fps <= 0 && vs->r_frame_rate.den > 0 && vs->r_frame_rate.num > 0) {
+            det_fps = (int)(vs->r_frame_rate.num / vs->r_frame_rate.den);
+            if (det_fps > 0) {
+                log_debug("[%s] avg_frame_rate unavailable; using r_frame_rate: %d fps",
+                          ctx->stream_name, det_fps);
+            }
+        }
+        if (det_fps <= 0) {
+            det_fps = 15; // conservative default for cameras that omit FPS in SDP
+            log_debug("[%s] FPS unknown from SDP; defaulting to %d fps", ctx->stream_name, det_fps);
         }
 
         const AVCodecDescriptor *desc = avcodec_descriptor_get(cp->codec_id);
