@@ -549,20 +549,23 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated storage_path: %s", g_config.storage_path);
     }
 
-    // Storage path for HLS segments — same validation
+    // Storage path for HLS segments — optional field, empty string means "use storage_path"
     cJSON *storage_path_hls = cJSON_GetObjectItem(settings, "storage_path_hls");
     if (storage_path_hls && cJSON_IsString(storage_path_hls)) {
-        if (!is_safe_storage_path(storage_path_hls->valuestring)) {
-            log_warn("Rejected unsafe storage_path_hls: %s", storage_path_hls->valuestring);
+        const char *hls_path_val = storage_path_hls->valuestring;
+        // Only validate when non-empty; empty string clears the override
+        if (hls_path_val[0] != '\0' && !is_safe_storage_path(hls_path_val)) {
+            log_warn("Rejected unsafe storage_path_hls: %s", hls_path_val);
             cJSON_Delete(settings);
             http_response_set_json_error(res, 400,
                 "Invalid storage_path_hls: must be an absolute path without shell metacharacters");
             return;
         }
-        strncpy(g_config.storage_path_hls, storage_path_hls->valuestring, sizeof(g_config.storage_path_hls) - 1);
+        strncpy(g_config.storage_path_hls, hls_path_val, sizeof(g_config.storage_path_hls) - 1);
         g_config.storage_path_hls[sizeof(g_config.storage_path_hls) - 1] = '\0';
         settings_changed = true;
-        log_info("Updated storage_path_hls: %s", g_config.storage_path_hls);
+        log_info("Updated storage_path_hls: %s",
+                 hls_path_val[0] ? hls_path_val : "(cleared, will use storage_path)");
     }
     
     // Max storage size
