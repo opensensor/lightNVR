@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '../../query-client.js';
 import { WebRTCVideoCell } from './WebRTCVideoCell.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
+import { useCameraOrder } from './useCameraOrder.js';
 
 /**
  * WebRTCView component
@@ -24,6 +25,11 @@ export function WebRTCView() {
 
   // State for streams and layout
   const [streams, setStreams] = useState([]);
+
+  // Group filter: '' means "All groups"
+  const [groupFilter, setGroupFilter] = useState(() =>
+    localStorage.getItem('lightnvr-webrtc-group-filter') || ''
+  );
 
   // State for toggling stream labels and controls visibility
   const [showLabels, setShowLabels] = useState(() => {

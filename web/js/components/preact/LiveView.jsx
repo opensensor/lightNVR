@@ -11,6 +11,7 @@ import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { HLSVideoCell } from './HLSVideoCell.jsx';
 import { MSEVideoCell } from './MSEVideoCell.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
+import { useCameraOrder } from './useCameraOrder.js';
 
 /**
  * LiveView component
@@ -25,6 +26,11 @@ export function LiveView({isWebRTCDisabled}) {
 
   // State for streams and layout
   const [streams, setStreams] = useState([]);
+
+  // Group filter: '' means "All groups"
+  const [groupFilter, setGroupFilter] = useState(() =>
+    localStorage.getItem('lightnvr-hls-group-filter') || ''
+  );
 
   // Incrementing this key remounts all VideoCell components (equivalent to retry-all)
   const [streamRetryKey, setStreamRetryKey] = useState(0);
@@ -290,16 +296,41 @@ export function LiveView({isWebRTCDisabled}) {
     }
   }, [layout]);
 
-  // Ensure current page is valid when streams or layout changes
-  useEffect(() => {
-    if (streams.length === 0) return;
+  // Derive unique group names from all streams for the filter dropdown
+  const availableGroups = useMemo(() => {
+    const groups = new Set();
+    streams.forEach(s => { if (s.group_name) groups.add(s.group_name); });
+    return Array.from(groups).sort();
+  }, [streams]);
 
-    const totalPages = Math.ceil(streams.length / maxStreams);
+  // Apply group filter before passing to the order hook
+  const groupFilteredStreams = useMemo(() => {
+    if (!groupFilter) return streams;
+    return streams.filter(s => s.group_name === groupFilter);
+  }, [streams, groupFilter]);
+
+  // Camera ordering hook (operates on group-filtered streams)
+  const {
+    orderedStreams,
+    reorderMode,
+    toggleReorderMode,
+    resetOrder,
+    handleDragStart,
+    handleDragOver,
+    handleDrop,
+    handleDragEnd,
+  } = useCameraOrder(groupFilteredStreams, 'hls');
+
+  // Ensure current page is valid when orderedStreams or layout changes
+  useEffect(() => {
+    if (orderedStreams.length === 0) return;
+
+    const totalPages = Math.ceil(orderedStreams.length / maxStreams);
 
     if (currentPage >= totalPages) {
       setCurrentPage(Math.max(0, totalPages - 1));
     }
-  }, [streams, maxStreams, currentPage]);
+  }, [orderedStreams.length, maxStreams, currentPage]);
 
   /**
    * Toggle fullscreen mode for a specific stream
@@ -349,10 +380,10 @@ export function LiveView({isWebRTCDisabled}) {
     // Filter streams based on layout and selected stream
     let result;
     if (layout === '1' && selectedStream) {
-      result = streams.filter(stream => stream.name === selectedStream);
+      result = orderedStreams.filter(stream => stream.name === selectedStream);
     } else {
       // Apply pagination
-      const totalPages = Math.ceil(streams.length / maxStreams);
+      const totalPages = Math.ceil(orderedStreams.length / maxStreams);
 
       // Ensure current page is valid
       if (currentPage >= totalPages && totalPages > 0) {
@@ -360,15 +391,15 @@ export function LiveView({isWebRTCDisabled}) {
       } else {
         // Get streams for current page
         const startIdx = currentPage * maxStreams;
-        const endIdx = Math.min(startIdx + maxStreams, streams.length);
-        result = streams.slice(startIdx, endIdx);
+        const endIdx = Math.min(startIdx + maxStreams, orderedStreams.length);
+        result = orderedStreams.slice(startIdx, endIdx);
       }
     }
 
     console.log(`[LiveView] streamsToShow computed: ${result.length} streams`, result.map(s => s.name));
-    console.log(`[LiveView] layout=${layout}, currentPage=${currentPage}, totalStreams=${streams.length}`);
+    console.log(`[LiveView] layout=${layout}, currentPage=${currentPage}, totalStreams=${orderedStreams.length}`);
     return result;
-  }, [streams, layout, selectedStream, currentPage, maxStreams]);
+  }, [orderedStreams, layout, selectedStream, currentPage, maxStreams]);
 
   return (
     <section
@@ -426,9 +457,49 @@ export function LiveView({isWebRTCDisabled}) {
               Retry All
             </button>
             )}
+            {orderedStreams.length > 1 && (
+              <button
+                className={`btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center ${reorderMode ? 'ring-2 ring-primary' : ''}`}
+                style={{ position: 'relative', zIndex: 50 }}
+                title={reorderMode ? 'Exit reorder mode' : 'Drag to reorder cameras'}
+                onClick={toggleReorderMode}
+              >
+                {reorderMode ? 'Done Reordering' : 'Reorder'}
+              </button>
+            )}
+            {reorderMode && (
+              <button
+                className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
+                style={{ position: 'relative', zIndex: 50 }}
+                title="Reset camera order to default"
+                onClick={resetOrder}
+              >
+                Reset Order
+              </button>
+            )}
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
+          {availableGroups.length > 0 && (
+            <div className="flex items-center">
+              <label htmlFor="group-filter" className="mr-2">Group:</label>
+              <select
+                id="group-filter"
+                className="px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none bg-background text-foreground"
+                value={groupFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setGroupFilter(val);
+                  setCurrentPage(0);
+                  if (val) localStorage.setItem('lightnvr-hls-group-filter', val);
+                  else localStorage.removeItem('lightnvr-hls-group-filter');
+                }}
+              >
+                <option value="">All Groups</option>
+                {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+          )}
           <div className="flex items-center">
             <label htmlFor="layout-selector" className="mr-2">Layout:</label>
             <select
@@ -462,7 +533,7 @@ export function LiveView({isWebRTCDisabled}) {
                   setSelectedStream(newStream);
                 }}
               >
-                {streams.map(stream => (
+                {orderedStreams.map(stream => (
                   <option key={stream.name} value={stream.name}>{stream.name}</option>
                 ))}
               </select>
@@ -578,23 +649,52 @@ export function LiveView({isWebRTCDisabled}) {
             streamsToShow.map((stream, index) => {
               const VideoCell = useMSE ? MSEVideoCell : HLSVideoCell;
               const initDelay = useMSE ? (index * 300) : (index * 600);
+              // Global index in orderedStreams for drag-and-drop (pagination offset)
+              const globalIndex = currentPage * maxStreams + index;
 
               return (
-                <VideoCell
+                <div
                   key={`${stream.name}-${streamRetryKey}`}
-                  stream={stream}
-                  onToggleFullscreen={toggleStreamFullscreen}
-                  streamId={stream.name}
-                  initDelay={initDelay}
-                  showLabels={showLabels}
-                  showControls={showControls}
-                />
+                  style={{ position: 'relative' }}
+                  draggable={reorderMode}
+                  onDragStart={reorderMode ? () => handleDragStart(globalIndex) : undefined}
+                  onDragOver={reorderMode ? (e) => handleDragOver(e, globalIndex) : undefined}
+                  onDrop={reorderMode ? handleDrop : undefined}
+                  onDragEnd={reorderMode ? handleDragEnd : undefined}
+                >
+                  {reorderMode && (
+                    <div
+                      style={{
+                        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+                        background: 'rgba(0,0,0,0.55)', color: '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '6px 8px', cursor: 'grab', fontSize: '13px', gap: '6px',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {/* Drag handle bars icon */}
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                           fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
+                      </svg>
+                      Drag to reorder
+                    </div>
+                  )}
+                  <VideoCell
+                    stream={stream}
+                    onToggleFullscreen={toggleStreamFullscreen}
+                    streamId={stream.name}
+                    initDelay={initDelay}
+                    showLabels={showLabels}
+                    showControls={showControls}
+                  />
+                </div>
               );
             })
           )}
         </div>
 
-        {layout !== '1' && streams.length > maxStreams ? (
+        {layout !== '1' && orderedStreams.length > maxStreams ? (
           <div className="pagination-controls flex justify-center items-center space-x-4 mt-4">
             <button
               className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
@@ -608,17 +708,17 @@ export function LiveView({isWebRTCDisabled}) {
             </button>
 
             <span className="text-foreground">
-              Page {currentPage + 1} of {Math.ceil(streams.length / maxStreams)}
+              Page {currentPage + 1} of {Math.ceil(orderedStreams.length / maxStreams)}
             </span>
 
             <button
               className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
                 console.log('Changing to next page');
-                const totalPages = Math.ceil(streams.length / maxStreams);
+                const totalPages = Math.ceil(orderedStreams.length / maxStreams);
                 setCurrentPage(Math.min(totalPages - 1, currentPage + 1));
               }}
-              disabled={currentPage >= Math.ceil(streams.length / maxStreams) - 1}
+              disabled={currentPage >= Math.ceil(orderedStreams.length / maxStreams) - 1}
             >
               Next
             </button>
