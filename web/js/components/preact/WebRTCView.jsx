@@ -44,12 +44,6 @@ export function WebRTCView() {
   // State for streams and layout
   const [streams, setStreams] = useState([]);
 
-  // Group filter: '' means "All groups"
-  const [groupFilter, setGroupFilter] = useState(() => {
-    const p = new URLSearchParams(window.location.search);
-    return p.get('group') || localStorage.getItem('lightnvr-webrtc-group-filter') || '';
-  });
-
   // Tag filter: '' means "All tags", or a single tag value to filter by
   const [tagFilter, setTagFilter] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -264,9 +258,6 @@ export function WebRTCView() {
   useEffect(() => {
     const url = new URL(window.location);
 
-    if (groupFilter) url.searchParams.set('group', groupFilter);
-    else url.searchParams.delete('group');
-
     if (tagFilter) url.searchParams.set('tag', tagFilter);
     else url.searchParams.delete('tag');
 
@@ -280,13 +271,11 @@ export function WebRTCView() {
     window.history.replaceState({}, '', url);
 
     // Persist to localStorage for sessions without URL
-    if (groupFilter) localStorage.setItem('lightnvr-webrtc-group-filter', groupFilter);
-    else localStorage.removeItem('lightnvr-webrtc-group-filter');
     if (tagFilter) localStorage.setItem('lightnvr-webrtc-tag-filter', tagFilter);
     else localStorage.removeItem('lightnvr-webrtc-tag-filter');
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
-  }, [groupFilter, tagFilter, showLabels, showControls]);
+  }, [tagFilter, showLabels, showControls]);
 
   /**
    * Filter streams for WebRTC view
@@ -361,14 +350,7 @@ export function WebRTCView() {
     }
   };
 
-  // Derive unique group names from all streams for the filter dropdown
-  const availableGroups = useMemo(() => {
-    const groups = new Set();
-    streams.forEach(s => { if (s.group_name) groups.add(s.group_name); });
-    return Array.from(groups).sort();
-  }, [streams]);
-
-  // Derive unique tags from all streams for clickable tag filter buttons
+  // Derive unique tags from all streams for the filter dropdown
   const availableTags = useMemo(() => {
     const tags = new Set();
     streams.forEach(s => {
@@ -379,18 +361,11 @@ export function WebRTCView() {
     return Array.from(tags).sort();
   }, [streams]);
 
-  // Apply group and tag filters before passing to the order hook
-  const groupFilteredStreams = useMemo(() => {
-    let result = streams;
-    if (groupFilter) result = result.filter(s => s.group_name === groupFilter);
-    if (tagFilter) {
-      result = result.filter(s => {
-        if (!s.tags) return false;
-        return s.tags.split(',').some(t => t.trim() === tagFilter);
-      });
-    }
-    return result;
-  }, [streams, groupFilter, tagFilter]);
+  // Apply tag filter before passing to the order hook
+  const tagFilteredStreams = useMemo(() => {
+    if (!tagFilter) return streams;
+    return streams.filter(s => s.tags && s.tags.split(',').some(t => t.trim() === tagFilter));
+  }, [streams, tagFilter]);
 
   // Camera ordering hook (operates on group-filtered streams)
   const {
@@ -402,7 +377,7 @@ export function WebRTCView() {
     handleDragOver,
     handleDrop,
     handleDragEnd,
-  } = useCameraOrder(groupFilteredStreams, 'webrtc');
+  } = useCameraOrder(tagFilteredStreams, 'webrtc');
 
   // Ensure current page is valid when orderedStreams or maxStreams changes
   useEffect(() => {
@@ -512,21 +487,6 @@ export function WebRTCView() {
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
-          {availableGroups.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <label htmlFor="group-filter" className="text-sm whitespace-nowrap">Group:</label>
-              <select
-                id="group-filter"
-                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                value={groupFilter}
-                onChange={(e) => { setGroupFilter(e.target.value); setCurrentPage(0); }}
-              >
-                <option value="">All Groups</option>
-                {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </div>
-          )}
-
           {availableTags.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-sm whitespace-nowrap">Tags:</span>

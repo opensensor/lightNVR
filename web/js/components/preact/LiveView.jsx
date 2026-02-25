@@ -43,10 +43,10 @@ export function LiveView({isWebRTCDisabled}) {
   // State for streams and layout
   const [streams, setStreams] = useState([]);
 
-  // Group filter: '' means "All groups"
-  const [groupFilter, setGroupFilter] = useState(() => {
+  // Tag filter: '' means "All"
+  const [tagFilter, setTagFilter] = useState(() => {
     const p = new URLSearchParams(window.location.search);
-    return p.get('group') || localStorage.getItem('lightnvr-hls-group-filter') || '';
+    return p.get('tag') || localStorage.getItem('lightnvr-hls-tag-filter') || '';
   });
 
   // State for toggling stream labels and controls visibility
@@ -324,8 +324,8 @@ export function LiveView({isWebRTCDisabled}) {
   useEffect(() => {
     const url = new URL(window.location);
 
-    if (groupFilter) url.searchParams.set('group', groupFilter);
-    else url.searchParams.delete('group');
+    if (tagFilter) url.searchParams.set('tag', tagFilter);
+    else url.searchParams.delete('tag');
 
     // Omit params when at their defaults (true) to keep URL clean
     if (!showLabels) url.searchParams.set('labels', '0');
@@ -337,24 +337,26 @@ export function LiveView({isWebRTCDisabled}) {
     window.history.replaceState({}, '', url);
 
     // Persist to localStorage for sessions without URL
-    if (groupFilter) localStorage.setItem('lightnvr-hls-group-filter', groupFilter);
-    else localStorage.removeItem('lightnvr-hls-group-filter');
+    if (tagFilter) localStorage.setItem('lightnvr-hls-tag-filter', tagFilter);
+    else localStorage.removeItem('lightnvr-hls-tag-filter');
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
-  }, [groupFilter, showLabels, showControls]);
+  }, [tagFilter, showLabels, showControls]);
 
-  // Derive unique group names from all streams for the filter dropdown
-  const availableGroups = useMemo(() => {
-    const groups = new Set();
-    streams.forEach(s => { if (s.group_name) groups.add(s.group_name); });
-    return Array.from(groups).sort();
+  // Derive unique tags from all streams for the filter dropdown
+  const availableTags = useMemo(() => {
+    const tags = new Set();
+    streams.forEach(s => {
+      if (s.tags) s.tags.split(',').forEach(t => { const v = t.trim(); if (v) tags.add(v); });
+    });
+    return Array.from(tags).sort();
   }, [streams]);
 
-  // Apply group filter before passing to the order hook
-  const groupFilteredStreams = useMemo(() => {
-    if (!groupFilter) return streams;
-    return streams.filter(s => s.group_name === groupFilter);
-  }, [streams, groupFilter]);
+  // Apply tag filter before passing to the order hook
+  const tagFilteredStreams = useMemo(() => {
+    if (!tagFilter) return streams;
+    return streams.filter(s => s.tags && s.tags.split(',').map(t => t.trim()).includes(tagFilter));
+  }, [streams, tagFilter]);
 
   // Camera ordering hook (operates on group-filtered streams)
   const {
@@ -366,7 +368,7 @@ export function LiveView({isWebRTCDisabled}) {
     handleDragOver,
     handleDrop,
     handleDragEnd,
-  } = useCameraOrder(groupFilteredStreams, 'hls');
+  } = useCameraOrder(tagFilteredStreams, 'hls');
 
   // Ensure current page is valid when orderedStreams or layout changes
   useEffect(() => {
@@ -498,17 +500,17 @@ export function LiveView({isWebRTCDisabled}) {
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
-          {availableGroups.length > 0 && (
+          {availableTags.length > 0 && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="group-filter" className="text-sm whitespace-nowrap">Group:</label>
+              <label htmlFor="tag-filter" className="text-sm whitespace-nowrap">Tag:</label>
               <select
-                id="group-filter"
+                id="tag-filter"
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                value={groupFilter}
-                onChange={(e) => { setGroupFilter(e.target.value); setCurrentPage(0); }}
+                value={tagFilter}
+                onChange={(e) => { setTagFilter(e.target.value); setCurrentPage(0); }}
               >
-                <option value="">All Groups</option>
-                {availableGroups.map(g => <option key={g} value={g}>{g}</option>)}
+                <option value="">All Tags</option>
+                {availableTags.map(t => <option key={t} value={t}>#{t}</option>)}
               </select>
             </div>
           )}

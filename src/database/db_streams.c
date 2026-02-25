@@ -387,7 +387,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Schema migrations should have already been run during database initialization
     // No need to check for columns here anymore
 
-    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, PTZ, ONVIF credentials, recording schedule, and group_name
+    // Now update the stream with all fields including detection settings, protocol, is_onvif, record_audio, backchannel_enabled, retention settings, PTZ, ONVIF credentials, recording schedule, and tags
     const char *sql = "UPDATE streams SET "
                       "name = ?, url = ?, enabled = ?, streaming_enabled = ?, width = ?, height = ?, "
                       "fps = ?, codec = ?, priority = ?, record = ?, segment_duration = ?, "
