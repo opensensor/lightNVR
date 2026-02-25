@@ -16,19 +16,16 @@ dayjs.extend(utc);
 dayjs.extend(customParseFormat);
 
 /**
- * Parse recording timestamp to Unix seconds
- * Handles the "YYYY-MM-DD HH:mm:ss UTC" format returned by the API
- * @param {string} timeStr - Timestamp string from API
+ * Parse a recording timestamp to Unix seconds.
+ * Accepts a Unix epoch number (seconds), an ISO 8601 string ("2026-02-18T05:00:00Z"),
+ * or the legacy "YYYY-MM-DD HH:mm:ss UTC" string from older server versions.
+ * @param {number|string} value - Timestamp value
  * @returns {number} Unix timestamp in seconds, or 0 if parsing fails
  */
-const parseRecordingTimestamp = (timeStr) => {
-  if (!timeStr) return 0;
-  // Try parsing with the expected format first
-  let parsed = dayjs.utc(timeStr, 'YYYY-MM-DD HH:mm:ss [UTC]');
-  if (!parsed.isValid()) {
-    // Fallback to auto-detection
-    parsed = dayjs.utc(timeStr);
-  }
+const parseRecordingTimestamp = (value) => {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return value > 0 ? value : 0;
+  const parsed = dayjs.utc(value);
   return parsed.isValid() ? parsed.unix() : 0;
 };
 
@@ -765,25 +762,15 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   Download Video
                 </a>
               )}
-              {recordingData && recordingData.stream && recordingData.start_time && (() => {
-                // Parse "YYYY-MM-DD HH:MM:SS UTC" format and convert to local time
-                const utcMatch = recordingData.start_time.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-                if (!utcMatch) return null;
-                const [, year, month, day, hours, minutes, seconds] = utcMatch;
-                // Create Date from UTC components
-                const utcDate = new Date(Date.UTC(
-                  parseInt(year), parseInt(month) - 1, parseInt(day),
-                  parseInt(hours), parseInt(minutes), parseInt(seconds)
-                ));
-                // Extract local date and time (the Date object automatically converts to local)
-                const localYear = utcDate.getFullYear();
-                const localMonth = String(utcDate.getMonth() + 1).padStart(2, '0');
-                const localDay = String(utcDate.getDate()).padStart(2, '0');
-                const localHours = String(utcDate.getHours()).padStart(2, '0');
-                const localMinutes = String(utcDate.getMinutes()).padStart(2, '0');
-                const localSeconds = String(utcDate.getSeconds()).padStart(2, '0');
-                const date = `${localYear}-${localMonth}-${localDay}`;
-                const time = `${localHours}:${localMinutes}:${localSeconds}`;
+              {recordingData && recordingData.stream && (recordingData.start_time_unix || recordingData.start_time) && (() => {
+                // Use Unix epoch when available (preferred), fall back to ISO string
+                const tsValue = recordingData.start_time_unix ?? recordingData.start_time;
+                const local = typeof tsValue === 'number'
+                  ? dayjs.unix(tsValue).local()
+                  : dayjs.utc(tsValue).local();
+                if (!local.isValid()) return null;
+                const date = local.format('YYYY-MM-DD');
+                const time = local.format('HH:mm:ss');
                 const timelineUrl = `timeline.html?stream=${encodeURIComponent(recordingData.stream)}&date=${date}&time=${time}`;
                 return (
                   <a

@@ -74,19 +74,19 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
         return;
     }
     
-    // Format timestamps in UTC
+    // Format timestamps as ISO 8601 UTC (compatible with all browsers including Safari)
     char start_time_str[32] = {0};
     char end_time_str[32] = {0};
     struct tm *tm_info;
-    
+
     tm_info = gmtime(&recording.start_time);
     if (tm_info) {
-        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+        strftime(start_time_str, sizeof(start_time_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
     }
-    
+
     tm_info = gmtime(&recording.end_time);
     if (tm_info) {
-        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%d %H:%M:%S UTC", tm_info);
+        strftime(end_time_str, sizeof(end_time_str), "%Y-%m-%dT%H:%M:%SZ", tm_info);
     }
     
     // Calculate duration in seconds
@@ -110,6 +110,8 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(recording_obj, "file_path", recording.file_path);
     cJSON_AddStringToObject(recording_obj, "start_time", start_time_str);
     cJSON_AddStringToObject(recording_obj, "end_time", end_time_str);
+    cJSON_AddNumberToObject(recording_obj, "start_time_unix", (double)recording.start_time);
+    cJSON_AddNumberToObject(recording_obj, "end_time_unix", (double)recording.end_time);
     cJSON_AddNumberToObject(recording_obj, "duration", duration);
     cJSON_AddStringToObject(recording_obj, "size", size_str);
 

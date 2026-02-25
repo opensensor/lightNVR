@@ -275,7 +275,7 @@ function RecordingCard({
                 {recording.stream || 'Unknown'}
               </span>
               <span class="text-xs text-muted-foreground ml-2 whitespace-nowrap">
-                {formatUtils.formatDateTime(recording.start_time)}
+                {formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}
               </span>
             </div>
           )}
@@ -322,7 +322,7 @@ function RecordingCard({
               <a
                 class="p-1 rounded-full focus:outline-none inline-flex"
                 style={{ color: 'hsl(var(--info))' }}
-                href={formatUtils.getTimelineUrl(recording.stream, recording.start_time)}
+                href={formatUtils.getTimelineUrl(recording.stream, recording.start_time_unix ?? recording.start_time)}
                 title="View in Timeline"
               >
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

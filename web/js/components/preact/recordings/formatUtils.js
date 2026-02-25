@@ -2,17 +2,32 @@
  * Formatting utility functions for RecordingsView
  */
 
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+
+dayjs.extend(utc);
+
 export const formatUtils = {
   /**
-   * Format date time
-   * @param {string} isoString ISO date string
-   * @returns {string} Formatted date time
+   * Format a timestamp for display in the user's local timezone.
+   * Accepts a Unix epoch number (seconds), an ISO 8601 string, or the legacy
+   * "YYYY-MM-DD HH:mm:ss UTC" string returned by older server versions.
+   * @param {number|string} value Unix epoch (s), ISO string, or legacy UTC string
+   * @returns {string} Localised date/time string
    */
-  formatDateTime: (isoString) => {
-    if (!isoString) return '';
-    
-    const date = new Date(isoString);
-    return date.toLocaleString();
+  formatDateTime: (value) => {
+    if (value === null || value === undefined || value === '') return '';
+
+    let d;
+    if (typeof value === 'number') {
+      // Unix epoch in seconds
+      d = dayjs.unix(value);
+    } else {
+      // ISO 8601 (e.g. "2026-02-18T05:00:00Z") or legacy "YYYY-MM-DD HH:mm:ss UTC"
+      d = dayjs.utc(value);
+    }
+
+    return d.isValid() ? d.local().format('YYYY-MM-DD HH:mm:ss') : '';
   },
   
   /**
@@ -36,25 +51,28 @@ export const formatUtils = {
   
   /**
    * Build a timeline URL for a recording, converting the UTC start_time to local date/time.
-   * The API returns start_time as "YYYY-MM-DD HH:MM:SS UTC". TimelinePage interprets the
-   * date/time URL params as local time, so we must convert before building the URL.
+   * Accepts a Unix epoch number (seconds), an ISO 8601 string, or the legacy
+   * "YYYY-MM-DD HH:mm:ss UTC" string. TimelinePage interprets the date/time URL params
+   * as local time, so we convert to local before building the URL.
    * @param {string} stream - Stream name
-   * @param {string} startTime - UTC timestamp string from API ("YYYY-MM-DD HH:MM:SS UTC")
+   * @param {number|string} startTime - Unix epoch (s), ISO string, or legacy UTC string
    * @returns {string} Timeline URL with local date and time params
    */
   getTimelineUrl: (stream, startTime) => {
     const base = `timeline.html?stream=${encodeURIComponent(stream || '')}`;
-    if (!startTime) return `${base}&date=&time=`;
-    const utcMatch = startTime.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-    if (!utcMatch) return `${base}&date=&time=`;
-    const [, year, month, day, hours, minutes, seconds] = utcMatch;
-    // Create a Date from explicit UTC components so JS converts to local automatically
-    const utcDate = new Date(Date.UTC(
-      parseInt(year), parseInt(month) - 1, parseInt(day),
-      parseInt(hours), parseInt(minutes), parseInt(seconds)
-    ));
-    const date = `${utcDate.getFullYear()}-${String(utcDate.getMonth() + 1).padStart(2, '0')}-${String(utcDate.getDate()).padStart(2, '0')}`;
-    const time = `${String(utcDate.getHours()).padStart(2, '0')}:${String(utcDate.getMinutes()).padStart(2, '0')}:${String(utcDate.getSeconds()).padStart(2, '0')}`;
+    if (startTime === null || startTime === undefined || startTime === '') return `${base}&date=&time=`;
+
+    let local;
+    if (typeof startTime === 'number') {
+      local = dayjs.unix(startTime).local();
+    } else {
+      local = dayjs.utc(startTime).local();
+    }
+
+    if (!local.isValid()) return `${base}&date=&time=`;
+
+    const date = local.format('YYYY-MM-DD');
+    const time = local.format('HH:mm:ss');
     return `${base}&date=${date}&time=${time}`;
   },
 

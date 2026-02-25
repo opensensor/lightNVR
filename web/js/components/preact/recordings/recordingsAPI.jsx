@@ -20,19 +20,17 @@ dayjs.extend(utc);
 dayjs.extend(customParseFormat);
 
 /**
- * Parse recording timestamp to Unix seconds
- * Handles the "YYYY-MM-DD HH:mm:ss UTC" format returned by the API
- * @param {string} timeStr - Timestamp string from API
+ * Parse a recording timestamp to Unix seconds.
+ * Accepts a Unix epoch number (already in seconds), an ISO 8601 string
+ * (e.g. "2026-02-18T05:00:00Z"), or the legacy "YYYY-MM-DD HH:mm:ss UTC" string.
+ * @param {number|string} value - Unix epoch (s), ISO string, or legacy UTC string
  * @returns {number} Unix timestamp in seconds, or 0 if parsing fails
  */
-const parseRecordingTimestamp = (timeStr) => {
-  if (!timeStr) return 0;
-  // Try parsing with the expected format first
-  let parsed = dayjs.utc(timeStr, 'YYYY-MM-DD HH:mm:ss [UTC]');
-  if (!parsed.isValid()) {
-    // Fallback to auto-detection
-    parsed = dayjs.utc(timeStr);
-  }
+const parseRecordingTimestamp = (value) => {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return value > 0 ? value : 0;
+  // String: ISO 8601 or legacy format — dayjs.utc handles both
+  const parsed = dayjs.utc(value);
   return parsed.isValid() ? parsed.unix() : 0;
 };
 
@@ -74,8 +72,9 @@ export const recordingsAPI = {
 
       // Add date range filters
       if (filters.dateRange === 'custom') {
-        params.append('start', `${filters.startDate}T${filters.startTime}:00`);
-        params.append('end', `${filters.endDate}T${filters.endTime}:00`);
+        // User enters local date/time — parse as local then convert to UTC ISO 8601
+        params.append('start', dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString());
+        params.append('end', dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString());
       } else {
         // Convert predefined range to actual dates
         const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
@@ -204,48 +203,38 @@ export const recordingsAPI = {
   },
 
   /**
-   * Get date range from preset
+   * Get date range from preset.
+   * Returns ISO 8601 UTC strings that the backend's ISO 8601 parser understands.
    * @param {string} preset Preset name
-   * @returns {Object} Start and end dates
+   * @returns {Object} Start and end ISO 8601 strings in UTC
    */
   getDateRangeFromPreset: (preset) => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    // Use dayjs to build date boundaries in the local timezone, then convert to UTC ISO strings.
+    const startOfToday = dayjs().startOf('day');
+    const endOfToday   = dayjs().endOf('day');
 
     let start, end;
 
     switch (preset) {
       case 'today':
-        start = todayStart.toISOString();
-        end = today.toISOString();
+        start = startOfToday.toISOString();
+        end   = endOfToday.toISOString();
         break;
       case 'yesterday':
-        const yesterday = new Date(todayStart);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayEnd = new Date(yesterday);
-        yesterdayEnd.setHours(23, 59, 59);
-        start = yesterday.toISOString();
-        end = yesterdayEnd.toISOString();
+        start = startOfToday.subtract(1, 'day').toISOString();
+        end   = endOfToday.subtract(1, 'day').toISOString();
         break;
       case 'last7days':
-        const sevenDaysAgo = new Date(todayStart);
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        start = sevenDaysAgo.toISOString();
-        end = today.toISOString();
+        start = startOfToday.subtract(7, 'day').toISOString();
+        end   = endOfToday.toISOString();
         break;
       case 'last30days':
-        const thirtyDaysAgo = new Date(todayStart);
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        start = thirtyDaysAgo.toISOString();
-        end = today.toISOString();
+        start = startOfToday.subtract(30, 'day').toISOString();
+        end   = endOfToday.toISOString();
         break;
       default:
-        // Default to last 7 days
-        const defaultStart = new Date(todayStart);
-        defaultStart.setDate(defaultStart.getDate() - 7);
-        start = defaultStart.toISOString();
-        end = today.toISOString();
+        start = startOfToday.subtract(7, 'day').toISOString();
+        end   = endOfToday.toISOString();
     }
 
     return { start, end };
@@ -270,8 +259,9 @@ export const recordingsAPI = {
 
       // Add date range filters
       if (filters.dateRange === 'custom') {
-        params.append('start', `${filters.startDate}T${filters.startTime}:00`);
-        params.append('end', `${filters.endDate}T${filters.endTime}:00`);
+        // User enters local date/time — parse as local then convert to UTC ISO 8601
+        params.append('start', dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString());
+        params.append('end', dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString());
       } else {
         // Convert predefined range to actual dates
         const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
@@ -511,8 +501,9 @@ export const recordingsAPI = {
 
       // Add date range filters
       if (filters.dateRange === 'custom') {
-        filter.start = `${filters.startDate}T${filters.startTime}:00`;
-        filter.end = `${filters.endDate}T${filters.endTime}:00`;
+        // User enters local date/time — parse as local then convert to UTC ISO 8601
+        filter.start = dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString();
+        filter.end = dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString();
       } else {
         // Convert predefined range to actual dates
         const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
@@ -777,7 +768,7 @@ export const recordingsAPI = {
 
     // Build video URL
     const videoUrl = `/api/recordings/play/${recording.id}`;
-    const title = `${recording.stream} - ${formatUtils.formatDateTime(recording.start_time)}`;
+    const title = `${recording.stream} - ${formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}`;
     const downloadUrl = `/api/recordings/download/${recording.id}`;
 
     console.log('Video URL:', videoUrl);
@@ -805,10 +796,13 @@ export const recordingsAPI = {
     const downloadUrl = `/api/recordings/download/${recording.id}`;
     const link = document.createElement('a');
     link.href = downloadUrl;
-    // Use dayjs to parse and format the timestamp for the filename
-    const timestamp = dayjs.utc(recording.start_time, 'YYYY-MM-DD HH:mm:ss [UTC]');
+    // Use dayjs to build a filename timestamp from Unix epoch or ISO string
+    const tsValue = recording.start_time_unix ?? recording.start_time;
+    const timestamp = typeof tsValue === 'number'
+      ? dayjs.unix(tsValue)
+      : dayjs.utc(tsValue);
     const formattedTime = timestamp.isValid()
-      ? timestamp.format('YYYY-MM-DDTHH-mm-ss')
+      ? timestamp.local().format('YYYY-MM-DDTHH-mm-ss')
       : 'unknown';
     link.download = `${recording.stream}_${formattedTime}.mp4`;
     document.body.appendChild(link);
