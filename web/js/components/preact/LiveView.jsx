@@ -494,26 +494,7 @@ export function LiveView({isWebRTCDisabled}) {
               {useMSE ? 'HLS View' : 'MSE View'}
             </button>
                 )}
-            {orderedStreams.length > 1 && (
-              <button
-                className={`btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center ${reorderMode ? 'ring-2 ring-primary' : ''}`}
-                style={{ position: 'relative', zIndex: 50 }}
-                title={reorderMode ? 'Exit reorder mode' : 'Drag to reorder cameras'}
-                onClick={toggleReorderMode}
-              >
-                {reorderMode ? 'Done Reordering' : 'Reorder'}
-              </button>
-            )}
-            {reorderMode && (
-              <button
-                className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
-                style={{ position: 'relative', zIndex: 50 }}
-                title="Reset camera order to default"
-                onClick={resetOrder}
-              >
-                Reset Order
-              </button>
-            )}
+
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
@@ -590,6 +571,37 @@ export function LiveView({isWebRTCDisabled}) {
               {!showControls && <line x1="2" y1="22" x2="22" y2="2" stroke="currentColor" strokeWidth="2"></line>}
             </svg>
           </button>
+
+          {orderedStreams.length > 1 && (
+            <button
+              className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
+              onClick={toggleReorderMode}
+              title={reorderMode ? 'Exit reorder mode' : 'Drag to reorder cameras'}
+            >
+              {/* Drag-handle dots icon */}
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                   fill="currentColor" stroke="none">
+                <circle cx="9"  cy="5"  r="1.6"/><circle cx="15" cy="5"  r="1.6"/>
+                <circle cx="9"  cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/>
+                <circle cx="9"  cy="19" r="1.6"/><circle cx="15" cy="19" r="1.6"/>
+              </svg>
+            </button>
+          )}
+
+          {reorderMode && (
+            <button
+              className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              onClick={resetOrder}
+              title="Reset camera order to default"
+            >
+              {/* Reset / circular-arrow icon */}
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                   fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10"/>
+                <path d="M3.51 15a9 9 0 1 0 .49-4.95"/>
+              </svg>
+            </button>
+          )}
 
           <button
             id="fullscreen-btn"
