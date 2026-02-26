@@ -62,14 +62,16 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
         return NULL;
     }
 
-    // Increase libuv's thread pool size for handler offloading.
+    // Set libuv's thread pool size for handler offloading.
     // All HTTP handlers run on the thread pool via uv_queue_work, so the
     // default of 4 threads is too small — slow handlers (ONVIF discovery,
     // recording sync) would starve fast handlers (config reads, stream CRUD).
     // Must be set before the first uv_loop_init / uv_queue_work call.
+    // 8 threads is sufficient for typical workloads (was 16, reduced to cut
+    // per-thread stack RSS, especially important in memory-constrained pods).
     if (!getenv("UV_THREADPOOL_SIZE")) {
-        setenv("UV_THREADPOOL_SIZE", "16", 1);
-        log_info("libuv_server_init: Set UV_THREADPOOL_SIZE=16 for handler offloading");
+        setenv("UV_THREADPOOL_SIZE", "8", 1);
+        log_info("libuv_server_init: Set UV_THREADPOOL_SIZE=8 for handler offloading");
     }
 
     libuv_server_t *server = safe_calloc(1, sizeof(libuv_server_t));

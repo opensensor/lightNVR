@@ -13,6 +13,7 @@
 #include <sys/time.h>
 #include <sys/utsname.h>
 #include <sys/socket.h>
+#include <sys/prctl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <limits.h>
@@ -499,6 +500,17 @@ bool is_restart_requested(void) {
 
 int main(int argc, char *argv[]) {
     int pid_fd = -1;
+
+    // Disable Transparent Huge Pages (THP) for this process.
+    // The host kernel default of THP=always causes the kernel to promote 4 kB
+    // anonymous pages to 2 MB huge pages, which dramatically inflates RSS for
+    // processes like lightnvr that have many small, scattered allocations.
+    // PR_SET_THP_DISABLE must be set per-process and cannot be inherited, so
+    // we do it as the very first thing in main().
+    if (prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0) != 0) {
+        // Non-fatal – older kernels (< 3.15) don't support this.
+        fprintf(stderr, "Note: prctl(PR_SET_THP_DISABLE) not supported on this kernel\n");
+    }
 
     // Save argc/argv for potential restart
     saved_argc = argc;

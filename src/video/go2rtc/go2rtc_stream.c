@@ -208,73 +208,55 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
     bool result;
 
-    // If audio recording is enabled, add FFmpeg transcoding sources
-    // This creates a stream with multiple sources:
-    // 1. Primary RTSP source (video pass-through, original audio)
-    // 2. FFmpeg source that transcodes audio to AAC for MP4 recording compatibility
-    // 3. FFmpeg source that transcodes audio to OPUS for WebRTC compatibility
-    // NOTE: The FFmpeg sources are audio-only.  Do NOT add #video=copy — that
-    //       would make FFmpeg open a second connection to the camera (or loop
-    //       through go2rtc's own RTSP), creating duplicate video producers and
-    //       causing RTSP 404 errors when the redundant producer fails.  Video
-    //       is served directly from the primary RTSP source and does not need
-    //       FFmpeg's involvement.
+    // Register the stream with go2rtc.
+    //
+    // Audio strategy: rely on go2rtc's built-in on-demand transcoding rather
+    // than spawning persistent ffmpeg producer processes.  When a WebRTC viewer
+    // connects, go2rtc transcodes audio to OPUS in-process on the fly; no
+    // long-lived ffmpeg process is needed just to keep OPUS available.
+    //
+    // When audio recording is enabled we still need a persistent AAC producer
+    // so that the MP4 recording muxer gets an AAC audio track.  In that case
+    // we register two sources: primary RTSP + ffmpeg AAC.  go2rtc will
+    // transcode to OPUS for WebRTC viewers on demand from the AAC feed.
+    //
+    // NOTE: The FFmpeg AAC source is audio-only.  Do NOT add #video=copy —
+    //       that would open a second connection to the camera, creating a
+    //       duplicate video producer and RTSP 404 errors.  Video is served
+    //       directly from the primary RTSP source.
     if (record_audio) {
-        log_info("Audio recording enabled for stream %s, adding FFmpeg audio transcoding sources", stream_id);
+        log_info("Audio recording enabled for stream %s, adding FFmpeg AAC source for MP4 recording", stream_id);
 
         // Build the FFmpeg AAC transcoding source URL for recording.
-        // Audio-only: FFmpeg loops through go2rtc's RTSP to get the audio track,
-        // transcodes it to AAC, and publishes back.  No #video=copy needed.
+        // Audio-only: FFmpeg reads from go2rtc's internal RTSP, transcodes to
+        // AAC, and publishes back.  go2rtc will transcode to OPUS for WebRTC
+        // on demand without a separate persistent ffmpeg process.
         char ffmpeg_aac_source[URL_BUFFER_SIZE];
         snprintf(ffmpeg_aac_source, URL_BUFFER_SIZE, "ffmpeg:%s#audio=aac", stream_id);
 
-        // Build the FFmpeg OPUS transcoding source URL for WebRTC
-        // Format: ffmpeg:stream_id#audio=opus
-        // OPUS is required for WebRTC audio playback in browsers
-        char ffmpeg_opus_source[URL_BUFFER_SIZE];
-        snprintf(ffmpeg_opus_source, URL_BUFFER_SIZE, "ffmpeg:%s#audio=opus", stream_id);
-
-        // Register with all three sources
-        const char *sources[3] = { modified_url, ffmpeg_aac_source, ffmpeg_opus_source };
-        result = go2rtc_api_add_stream_multi(encoded_stream_id, sources, 3);
-
-        if (result) {
-            log_info("Successfully registered stream with go2rtc (with AAC and OPUS audio transcoding): %s", encoded_stream_id);
-        } else {
-            log_error("Failed to register stream with go2rtc (with audio transcoding): %s", encoded_stream_id);
-            // Fall back to two sources (AAC only)
-            log_warn("Falling back to AAC-only audio transcoding");
-            const char *sources_aac[2] = { modified_url, ffmpeg_aac_source };
-            result = go2rtc_api_add_stream_multi(encoded_stream_id, sources_aac, 2);
-            if (!result) {
-                // Fall back to single source registration
-                log_warn("Falling back to single source registration without audio transcoding");
-                result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
-            }
-        }
-    } else {
-        // Even without audio recording, add OPUS transcoding for WebRTC audio playback
-        // This allows users to hear camera audio in the live view
-        log_info("Adding OPUS audio transcoding for WebRTC on stream %s", stream_id);
-
-        char ffmpeg_opus_source[URL_BUFFER_SIZE];
-        snprintf(ffmpeg_opus_source, URL_BUFFER_SIZE, "ffmpeg:%s#audio=opus", stream_id);
-
-        const char *sources[2] = { modified_url, ffmpeg_opus_source };
+        const char *sources[2] = { modified_url, ffmpeg_aac_source };
         result = go2rtc_api_add_stream_multi(encoded_stream_id, sources, 2);
 
         if (result) {
-            log_info("Successfully registered stream with go2rtc (with OPUS audio): %s", encoded_stream_id);
+            log_info("Successfully registered stream with go2rtc (with AAC audio for recording): %s", encoded_stream_id);
         } else {
-            log_warn("Failed to add OPUS audio, falling back to single source: %s", encoded_stream_id);
-            // Fall back to single source registration
+            log_error("Failed to register stream with go2rtc (with AAC audio): %s", encoded_stream_id);
+            // Fall back to primary RTSP source only
+            log_warn("Falling back to single source registration without audio transcoding");
             result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+        }
+    } else {
+        // No audio recording: register only the primary RTSP source.
+        // go2rtc transcodes audio to OPUS for WebRTC viewers on demand
+        // without requiring a persistent ffmpeg process.
+        log_info("Registering stream %s with primary RTSP source only (on-demand OPUS transcoding by go2rtc)", stream_id);
 
-            if (result) {
-                log_info("Successfully registered stream with go2rtc: %s", encoded_stream_id);
-            } else {
-                log_error("Failed to register stream with go2rtc: %s", encoded_stream_id);
-            }
+        result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+
+        if (result) {
+            log_info("Successfully registered stream with go2rtc: %s", encoded_stream_id);
+        } else {
+            log_error("Failed to register stream with go2rtc: %s", encoded_stream_id);
         }
     }
 
