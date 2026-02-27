@@ -2361,6 +2361,23 @@ int start_hls_unified_stream(const char *stream_name) {
         if (!rtsp_url_success) {
             log_warn("Failed to get go2rtc RTSP URL for stream %s after multiple attempts, falling back to original URL", stream_name);
         }
+
+        // When audio recording is disabled, append ?video to the go2rtc RTSP URL
+        // to request only the video track. Without this, go2rtc defaults to
+        // serving video+audio which triggers phantom audio track issues (FFmpeg
+        // sub-processes trying to transcode Opus audio) that corrupt the stream.
+        if (rtsp_url_success && !config.record_audio) {
+            size_t url_len = strlen(actual_url);
+            const char *suffix = "?video";
+            size_t suffix_len = strlen(suffix);
+            if (url_len + suffix_len < sizeof(actual_url)) {
+                strncat(actual_url, suffix, sizeof(actual_url) - url_len - 1);
+                log_info("Audio recording disabled for %s, using video-only RTSP URL for HLS: %s",
+                         stream_name, actual_url);
+            } else {
+                log_warn("RTSP URL too long to append ?video selector for stream %s", stream_name);
+            }
+        }
     }
 
     // Copy the URL to the context
