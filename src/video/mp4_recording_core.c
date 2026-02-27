@@ -233,6 +233,23 @@ static void *mp4_recording_thread(void *arg) {
             strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
             actual_url[sizeof(actual_url) - 1] = '\0';
         }
+
+        // When audio recording is disabled, append ?video to the go2rtc RTSP URL
+        // to request only the video track. Without this, go2rtc defaults to
+        // serving video+audio which triggers phantom audio track issues (FFmpeg
+        // sub-processes trying to transcode Opus audio) that corrupt the MP4.
+        if (success && !ctx->config.record_audio) {
+            size_t url_len = strlen(actual_url);
+            const char *suffix = "?video";
+            size_t suffix_len = strlen(suffix);
+            if (url_len + suffix_len < sizeof(actual_url)) {
+                strncat(actual_url, suffix, sizeof(actual_url) - url_len - 1);
+                log_info("Audio recording disabled for %s, using video-only RTSP URL: %s",
+                         stream_name, actual_url);
+            } else {
+                log_warn("RTSP URL too long to append ?video selector for stream %s", stream_name);
+            }
+        }
     } else {
         // Use the original URL
         strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
