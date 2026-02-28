@@ -806,6 +806,11 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
             return -1;
         }
 
+        // BUGFIX: Zero out codec_tag so the MP4 muxer selects the correct tag.
+        // RTSP/RTP uses different codec tags than MP4; carrying over the input
+        // tag produces a malformed moov atom (grey screen in players).
+        out_stream->codecpar->codec_tag = 0;
+
         // CRITICAL FIX: Check for unspecified video dimensions (0x0) and set default values
         // This prevents the "dimensions not set" error and segmentation fault
         if (out_stream->codecpar->width == 0 || out_stream->codecpar->height == 0) {
@@ -822,19 +827,15 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
                     writer->stream_name ? writer->stream_name : "unknown");
         }
 
-        //  Apply h264_mp4toannexb bitstream filter for H.264 streams
-        // This fixes the "h264 bitstream malformed, no startcode found" error
+        // Log H.264 codec info and extradata status for diagnostics
         if (input_stream->codecpar->codec_id == AV_CODEC_ID_H264) {
-            log_info("Set correct codec parameters for H.264 in MP4 for stream %s",
-                    writer->stream_name ? writer->stream_name : "unknown");
-
-            // Set the correct extradata for H.264 streams
-            // This is equivalent to using the h264_mp4toannexb bitstream filter
-            if (out_stream->codecpar->extradata) {
-                av_free(out_stream->codecpar->extradata);
-                out_stream->codecpar->extradata = NULL;
-                out_stream->codecpar->extradata_size = 0;
-            }
+            log_info("H.264 video stream for %s — extradata (SPS/PPS) %s (%d bytes)",
+                    writer->stream_name ? writer->stream_name : "unknown",
+                    out_stream->codecpar->extradata ? "present" : "MISSING",
+                    out_stream->codecpar->extradata_size);
+            // NOTE: Do NOT delete extradata here.  The MP4 container requires
+            // SPS/PPS in the avcC box for decoders to initialize.  Removing it
+            // produces unplayable grey-screen files.
         }
 
         // Set stream time base

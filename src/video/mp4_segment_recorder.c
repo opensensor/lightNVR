@@ -212,7 +212,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
         // Set up RTSP options for low latency
         av_dict_set(&opts, "rtsp_transport", "tcp", 0);  // Use TCP for RTSP (more reliable than UDP)
-        av_dict_set(&opts, "fflags", "nobuffer", 0);     // Reduce buffering
+        // BUGFIX: Add genpts to regenerate presentation timestamps from the actual
+        // frame data.  When go2rtc proxies the RTSP stream, the original SDP
+        // framerate (e.g. 15fps) may not be propagated, causing FFmpeg to assume
+        // a wrong framerate and produce incorrect timestamps.  genpts fixes this
+        // by computing PTS from DTS and packet duration.
+        av_dict_set(&opts, "fflags", "nobuffer+genpts", 0);
         av_dict_set(&opts, "flags", "low_delay", 0);     // Low delay mode
         av_dict_set(&opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
         av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
@@ -477,6 +482,20 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         goto cleanup;
     }
 
+    // BUGFIX: Zero out codec_tag so the MP4 muxer selects the correct tag for the
+    // container.  RTSP/RTP uses different codec tags than MP4; carrying over the
+    // input tag produces a malformed moov atom that many players cannot decode
+    // (grey screen).  The HLS writer already does this — the MP4 path was missing it.
+    out_video_stream->codecpar->codec_tag = 0;
+
+    // Check for missing extradata (SPS/PPS for H.264, VPS/SPS/PPS for H.265).
+    // Without these headers in the MP4 container's avcC/hvcC box, decoders cannot
+    // initialize and the video shows as a grey screen.
+    if (out_video_stream->codecpar->extradata == NULL || out_video_stream->codecpar->extradata_size <= 0) {
+        log_warn("Video stream has no extradata (SPS/PPS headers) — MP4 may be unplayable. "
+                 "This can happen when go2rtc has not yet received a keyframe from the camera.");
+    }
+
     // BUGFIX: When video dimensions are 0x0 the upstream (go2rtc) has not yet
     // connected to the camera and cannot report the real resolution.  Proceeding
     // with dummy 640x480 dimensions causes an immediate mismatch with the actual
@@ -513,6 +532,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             log_error("Failed to copy audio codec parameters: %d", ret);
             goto cleanup;
         }
+
+        // Zero out codec_tag for audio as well (same reason as video above)
+        out_audio_stream->codecpar->codec_tag = 0;
 
         // Set audio stream time base
         out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
