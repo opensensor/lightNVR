@@ -241,6 +241,7 @@ static char *g_config_path = NULL;
 static pid_t g_process_pid = -1;
 static bool g_initialized = false;
 static int g_rtsp_port = 8554; // Default RTSP port
+static int g_api_port = 1984;  // Configured API port (updated during init)
 
 // Callback function for libcurl to discard response data
 static size_t discard_response_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
@@ -344,7 +345,7 @@ static bool check_go2rtc_in_path(char *binary_path, size_t buffer_size) {
     return true;
 }
 
-bool go2rtc_process_init(const char *binary_path, const char *config_dir) {
+bool go2rtc_process_init(const char *binary_path, const char *config_dir, int api_port) {
     if (g_initialized) {
         log_warn("go2rtc process manager already initialized");
         return false;
@@ -378,8 +379,11 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir) {
 
     snprintf(g_config_path, config_path_len, "%s/go2rtc.yaml", config_dir);
 
+    // Store the configured API port so all runtime checks use the right port
+    g_api_port = api_port > 0 ? api_port : 1984;
+
     // Check if go2rtc is already running as a service
-    if (is_go2rtc_running_as_service(1984)) {
+    if (is_go2rtc_running_as_service(g_api_port)) {
         log_info("go2rtc is already running as a service, will use the existing service");
         // Set an empty binary path to indicate we're using an existing service
         g_binary_path = strdup("");
@@ -921,7 +925,7 @@ bool go2rtc_process_is_running(void) {
 
     // If we're using an existing service, check if the service is running
     if (g_binary_path && g_binary_path[0] == '\0') {
-        return is_go2rtc_running_as_service(1984); // Default API port
+        return is_go2rtc_running_as_service(g_api_port);
     }
 
     // Check if our tracked process is running
@@ -959,11 +963,11 @@ bool go2rtc_process_is_running(void) {
 
     // If we didn't find any go2rtc processes, also check if the port is in use
     if (!found) {
-        if (check_tcp_port_open(1984)) {
-            log_warn("Port 1984 is in use but no go2rtc process found in /proc");
+        if (check_tcp_port_open(g_api_port)) {
+            log_warn("Port %d is in use but no go2rtc process found in /proc", g_api_port);
             // Check if it responds like go2rtc
-            if (is_go2rtc_running_as_service(1984)) {
-                log_info("Port 1984 is responding like go2rtc, assuming it's running as a service");
+            if (is_go2rtc_running_as_service(g_api_port)) {
+                log_info("Port %d is responding like go2rtc, assuming it's running as a service", g_api_port);
                 found = true;
             }
         }
@@ -1306,6 +1310,7 @@ void go2rtc_process_cleanup(void) {
     g_config_dir = NULL;
     g_config_path = NULL;
     g_process_pid = -1;
+    g_api_port = 1984;
     g_initialized = false;
 
     log_info("go2rtc process manager cleaned up");

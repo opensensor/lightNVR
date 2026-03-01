@@ -660,7 +660,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     // Use trigger_type and/or detections table to filter detection-based recordings
     snprintf(sql, sizeof(sql),
             "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
-            "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type "
+            "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
+            "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible "
             "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection) {
@@ -800,6 +801,19 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             } else {
                 strncpy(metadata[count].trigger_type, "scheduled", sizeof(metadata[count].trigger_type) - 1);
             }
+
+            metadata[count].protected = sqlite3_column_int(stmt, 12) != 0;
+
+            if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
+                metadata[count].retention_override_days = sqlite3_column_int(stmt, 13);
+            } else {
+                metadata[count].retention_override_days = -1;
+            }
+
+            metadata[count].retention_tier = (sqlite3_column_type(stmt, 14) != SQLITE_NULL)
+                ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
+            metadata[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
+                ? (sqlite3_column_int(stmt, 15) != 0) : true;
 
             count++;
         }

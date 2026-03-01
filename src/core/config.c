@@ -340,15 +340,21 @@ void load_default_config(config_t *config) {
     
     // go2rtc settings
     config->go2rtc_enabled = true;  // Enable go2rtc by default
-    // Use the cmake-compiled-in path when available (set via -DGO2RTC_BINARY_PATH at build time),
+    // Use the cmake-compiled-in path when available (set via -DGO2RTC_BINARY_PATH_RAW at build time),
     // falling back to the conventional system install location.
-#ifdef GO2RTC_BINARY_PATH
-    strncpy(config->go2rtc_binary_path, GO2RTC_BINARY_PATH, MAX_PATH_LENGTH - 1);
-    config->go2rtc_binary_path[MAX_PATH_LENGTH - 1] = '\0';
+    // Stringification macros to convert the raw token from -D into a C string literal.
+#define STRINGIFY_HELPER(x) #x
+#define STRINGIFY(x) STRINGIFY_HELPER(x)
+#ifdef GO2RTC_BINARY_PATH_RAW
+    snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "%s", STRINGIFY(GO2RTC_BINARY_PATH_RAW));
 #else
     snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "/usr/local/bin/go2rtc");
 #endif
+#ifdef GO2RTC_CONFIG_DIR_RAW
+    snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "%s", STRINGIFY(GO2RTC_CONFIG_DIR_RAW));
+#else
     snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "/etc/lightnvr/go2rtc");
+#endif
     config->go2rtc_api_port = 1984;
     config->go2rtc_rtsp_port = 8554;  // Default RTSP listen port
     config->go2rtc_force_native_hls = false;  // Use go2rtc HLS by default

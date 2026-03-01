@@ -13,9 +13,10 @@
  * 
  * @param binary_path Path to the go2rtc binary
  * @param config_dir Directory to store go2rtc configuration files
+ * @param api_port Port for the go2rtc HTTP API (used for service detection)
  * @return true if initialization was successful, false otherwise
  */
-bool go2rtc_process_init(const char *binary_path, const char *config_dir);
+bool go2rtc_process_init(const char *binary_path, const char *config_dir, int api_port);
 
 /**
  * @brief Start the go2rtc process

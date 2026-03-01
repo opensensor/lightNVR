@@ -12,9 +12,9 @@ option(SOD_DYNAMIC_LINK "Dynamically link SOD library instead of static linking"
 
 # go2rtc integration options
 option(ENABLE_GO2RTC "Enable go2rtc integration for WebRTC streaming" ON)
-option(GO2RTC_BINARY_PATH "Path to go2rtc binary" "/usr/local/bin/go2rtc")
-option(GO2RTC_CONFIG_DIR "Directory for go2rtc configuration files" "/etc/lightnvr/go2rtc")
-option(GO2RTC_API_PORT "Port for go2rtc HTTP API" 1984)
+set(GO2RTC_BINARY_PATH "/usr/local/bin/go2rtc" CACHE STRING "Path to go2rtc binary")
+set(GO2RTC_CONFIG_DIR "/etc/lightnvr/go2rtc" CACHE STRING "Directory for go2rtc configuration files")
+set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
 
 # SSL/TLS options
 option(ENABLE_SSL "Enable SSL/TLS support" OFF)
@@ -389,8 +389,8 @@ set(GO2RTC_SOURCES "")
 if(ENABLE_GO2RTC)
     add_subdirectory(src/video/go2rtc)
     add_definitions(-DUSE_GO2RTC)
-    add_definitions(-DGO2RTC_BINARY_PATH="${GO2RTC_BINARY_PATH}")
-    add_definitions(-DGO2RTC_CONFIG_DIR="${GO2RTC_CONFIG_DIR}")
+    add_definitions(-DGO2RTC_BINARY_PATH_RAW=${GO2RTC_BINARY_PATH})
+    add_definitions(-DGO2RTC_CONFIG_DIR_RAW=${GO2RTC_CONFIG_DIR})
     add_definitions(-DGO2RTC_API_PORT=${GO2RTC_API_PORT})
     message(STATUS "go2rtc integration enabled with binary path: ${GO2RTC_BINARY_PATH}")
     message(STATUS "go2rtc config directory: ${GO2RTC_CONFIG_DIR}")

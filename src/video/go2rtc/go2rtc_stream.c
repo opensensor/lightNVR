@@ -63,7 +63,7 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
 
     // Initialize process manager - binary_path can be NULL, in which case
     // go2rtc_process_init will try to find the binary or use an existing service
-    if (!go2rtc_process_init(binary_path, config_dir)) {
+    if (!go2rtc_process_init(binary_path, config_dir, api_port)) {
         log_error("Failed to initialize go2rtc process manager");
         free(g_config_dir);
         g_config_dir = NULL;
