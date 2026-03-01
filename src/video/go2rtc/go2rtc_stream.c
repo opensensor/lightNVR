@@ -634,7 +634,7 @@ bool go2rtc_stream_is_ready(void) {
         }
 
         // Receive response with safety checks
-        int bytes = recv(sockfd, response, sizeof(response) - 1, 0);
+        ssize_t bytes = recv(sockfd, response, sizeof(response) - 1, 0);
         if (bytes <= 0) {
             log_warn("go2rtc_stream_is_ready: socket recv failed: %s", strerror(errno));
             close(sockfd);
@@ -895,7 +895,7 @@ bool go2rtc_stream_start_service(void) {
                     while (pos > 0 && lines < 10) {
                         pos--;
                         fseek(fp, pos, SEEK_SET);
-                        char c = fgetc(fp);
+                        int c = fgetc(fp);
                         if (c == '\n' && pos > 0) {
                             lines++;
                         }

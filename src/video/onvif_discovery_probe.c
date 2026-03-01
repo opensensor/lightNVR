@@ -17,7 +17,7 @@ int send_discovery_probe(const char *ip_addr) {
     char uuid[64];
     char message[1024];
     int message_len;
-    int ret;
+    ssize_t ret;
     int success = 0;
     
     // Create socket
@@ -136,8 +136,8 @@ int send_all_discovery_probes(int sock, const char *ip_addr, struct sockaddr_in 
     char uuid[64];
     char message[1024];
     int message_len;
-    int ret;
-    
+    ssize_t ret;
+
     // Generate UUID for standard message
     generate_uuid(uuid, sizeof(uuid));
     message_len = snprintf(message, sizeof(message), ONVIF_DISCOVERY_MSG, uuid);

@@ -898,7 +898,7 @@ int delete_old_recording_metadata(uint64_t max_age) {
     }
 
     // Calculate cutoff time
-    time_t cutoff_time = time(NULL) - max_age;
+    time_t cutoff_time = time(NULL) - (time_t)max_age;
 
     pthread_mutex_lock(db_mutex);
 

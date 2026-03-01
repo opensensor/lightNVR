@@ -888,7 +888,7 @@ static int check_rtsp_connection(const char *rtsp_url, char *host, int *port) {
 
     // Receive the response
     char response[1024] = {0};
-    int bytes_received = recv(sock, response, sizeof(response) - 1, 0);
+    ssize_t bytes_received = recv(sock, response, sizeof(response) - 1, 0);
     close(sock);
 
     if (bytes_received <= 0) {

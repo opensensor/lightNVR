@@ -477,7 +477,7 @@ static void sanitize_stream_name(const char *input, char *output, size_t output_
         if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
             output[i] = c;
         } else if (c >= 'A' && c <= 'Z') {
-            output[i] = c + ('a' - 'A');
+            output[i] = (char)(c + ('a' - 'A'));
         } else {
             output[i] = '_';
         }

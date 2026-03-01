@@ -225,7 +225,7 @@ static bool check_rtsp_stream_exists(const char *url) {
 
     // Receive the response
     char response[1024] = {0};
-    int bytes_received = recv(sock, response, sizeof(response) - 1, 0);
+    ssize_t bytes_received = recv(sock, response, sizeof(response) - 1, 0);
     close(sock);
 
     if (bytes_received <= 0) {

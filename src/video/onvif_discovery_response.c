@@ -194,7 +194,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     socklen_t addr_len = sizeof(addr);
     char *buffer = NULL;
     int buffer_size = 8192; // Buffer size for responses
-    int ret;
+    ssize_t ret;
     int count = 0;
     
     // Allocate buffer dynamically to avoid stack overflow on embedded devices
@@ -476,9 +476,9 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     socklen_t addr_len = sizeof(addr);
     char *buffer = NULL;
     int buffer_size = 8192; // Buffer size for responses
-    int ret;
+    ssize_t ret;
     int count = 0;
-    
+
     // Allocate buffer dynamically to avoid stack overflow on embedded devices
     buffer = (char *)malloc(buffer_size);
     if (!buffer) {

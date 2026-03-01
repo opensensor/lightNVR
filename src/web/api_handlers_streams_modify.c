@@ -841,7 +841,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     bool has_detection_threshold = false;
     if (detection_threshold_json && cJSON_IsNumber(detection_threshold_json)) {
         // Convert from percentage (0-100) to float (0.0-1.0)
-        detection_threshold_value = detection_threshold_json->valuedouble / 100.0f;
+        detection_threshold_value = (float)(detection_threshold_json->valuedouble / 100.0);
         has_detection_threshold = true;
         config.detection_threshold = detection_threshold_value;
         config_changed = true;

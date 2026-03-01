@@ -269,7 +269,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
     } else if (max_age > 0) {
         // Max age filter
         // Calculate cutoff time
-        time_t cutoff_time = time(NULL) - max_age;
+        time_t cutoff_time = time(NULL) - (time_t)max_age;
 
         log_debug("Getting detections for stream %s since %lld (max age %llu seconds)",
                 stream_name, (long long)cutoff_time, (unsigned long long)max_age);
@@ -452,7 +452,7 @@ int get_detection_timestamps(const char *stream_name, detection_result_t *result
     } else if (max_age > 0) {
         // Max age filter
         // Calculate cutoff time
-        time_t cutoff_time = time(NULL) - max_age;
+        time_t cutoff_time = time(NULL) - (time_t)max_age;
         
         // First get the latest timestamp
         snprintf(sql, sizeof(sql), 
@@ -617,7 +617,7 @@ int delete_old_detections(uint64_t max_age) {
     }
     
     // Calculate cutoff time
-    time_t cutoff_time = time(NULL) - max_age;
+    time_t cutoff_time = time(NULL) - (time_t)max_age;
     
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff_time);

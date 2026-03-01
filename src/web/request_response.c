@@ -27,7 +27,7 @@ int url_decode(const char *src, char *dst, size_t dst_size) {
         if (src[i] == '%' && i + 2 < src_len) {
             int value;
             if (sscanf(src + i + 1, "%2x", &value) == 1) {
-                dst[j++] = value;
+                dst[j++] = (char)value;
                 i += 2;
             } else {
                 dst[j++] = src[i];

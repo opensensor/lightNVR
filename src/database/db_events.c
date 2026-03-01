@@ -219,7 +219,7 @@ int delete_old_events(uint64_t max_age) {
     }
     
     // Calculate cutoff time
-    time_t cutoff_time = time(NULL) - max_age;
+    time_t cutoff_time = time(NULL) - (time_t)max_age;
     
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff_time);
