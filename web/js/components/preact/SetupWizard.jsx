@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import { showStatusMessage } from './UI.jsx';
+import { showStatusMessage } from './Toast.jsx';
 
 /* ─────────────────────────────────────────────
    Tiny shared sub-components
