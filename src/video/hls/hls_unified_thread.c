@@ -640,9 +640,7 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
         hls_writer_t *writer_to_free = NULL;
 
         // CRITICAL FIX: Add additional validation of the writer pointer
-        if (!writer) {
-            log_warn("Writer pointer is NULL during cleanup");
-        } else if (!*writer) {
+        if (!*writer) {
             log_debug("Writer is already NULL, nothing to clean up");
         } else {
             // CRITICAL FIX: Use atomic pointer exchange to safely get and clear the writer pointer
@@ -2283,7 +2281,7 @@ int start_hls_unified_stream(const char *stream_name) {
                     stream_name, best_context_idx);
         }
         // If no valid connection, keep the first one and stop all others
-        else if (running_count > 0) {
+        else {
             best_context_idx = running_indices[0];
             log_info("No valid connections found, keeping first HLS context for stream %s at index %d",
                     stream_name, best_context_idx);

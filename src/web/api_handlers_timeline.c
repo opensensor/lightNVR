@@ -269,7 +269,7 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         // Format file size for display (e.g., "1.8 MB")
         char size_str[32] = {0};
         if (segments[i].size_bytes < 1024) {
-            snprintf(size_str, sizeof(size_str), "%ld B", segments[i].size_bytes);
+            snprintf(size_str, sizeof(size_str), "%lu B", (unsigned long)segments[i].size_bytes);
         } else if (segments[i].size_bytes < (uint64_t)1024 * 1024) {
             snprintf(size_str, sizeof(size_str), "%.1f KB", (double)segments[i].size_bytes / 1024.0);
         } else if (segments[i].size_bytes < (uint64_t)1024 * 1024 * 1024) {

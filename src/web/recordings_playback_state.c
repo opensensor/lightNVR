@@ -21,18 +21,16 @@ static pthread_mutex_t playback_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Initialize playback sessions
 void init_playback_sessions(void) {
     static bool initialized = false;
-    
+
+    pthread_mutex_lock(&playback_mutex);
+
     if (!initialized) {
-        pthread_mutex_lock(&playback_mutex);
-        
-        if (!initialized) {
-            memset(playback_sessions, 0, sizeof(playback_sessions));
-            initialized = true;
-            log_info("Initialized recording playback session manager");
-        }
-        
-        pthread_mutex_unlock(&playback_mutex);
+        memset(playback_sessions, 0, sizeof(playback_sessions));
+        initialized = true;
+        log_info("Initialized recording playback session manager");
     }
+
+    pthread_mutex_unlock(&playback_mutex);
 }
 
 // Find a free playback session slot
