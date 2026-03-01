@@ -161,9 +161,10 @@ static char *create_onvif_request(const char *username, const char *password, co
     // Create timestamp in ISO 8601 format
     char created[32];
     time_t now;
+    struct tm tm_info_buf;
     struct tm *tm_info;
     time(&now);
-    tm_info = gmtime(&now);
+    tm_info = gmtime_r(&now, &tm_info_buf);
     strftime(created, sizeof(created), "%Y-%m-%dT%H:%M:%S.000Z", tm_info);
 
     // Create the raw digest string (nonce + created + password)

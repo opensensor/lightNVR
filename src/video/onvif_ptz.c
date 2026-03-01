@@ -60,9 +60,10 @@ static char* create_security_header(const char *username, const char *password, 
     snprintf(nonce, 64, "%s", base64_nonce);
     
     time_t now;
+    struct tm tm_now_buf;
     struct tm *tm_now;
     time(&now);
-    tm_now = gmtime(&now);
+    tm_now = gmtime_r(&now, &tm_now_buf);
     strftime(created, 30, "%Y-%m-%dT%H:%M:%S.000Z", tm_now);
     
     // Pre-compute lengths to avoid the bugprone-not-null-terminated-result lint pattern.
