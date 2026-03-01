@@ -49,8 +49,8 @@ jobs:
           clang-tidy --version
           echo "::endgroup::"
 
-          # Find all C source files under src/
-          find src/ -name '*.c' -not -path '*/sod/*' | sort > /tmp/source_files.txt
+          # Find all C source files under src/, excluding third-party code
+          find src/ -name '*.c' -not -path '*/sod/*' -not -path '*/ezxml/*' | sort > /tmp/source_files.txt
           echo "Scanning $(wc -l < /tmp/source_files.txt) source files..."
 
           # Run clang-tidy (non-blocking: always exit 0)

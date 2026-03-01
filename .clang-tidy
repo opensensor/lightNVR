@@ -17,7 +17,9 @@ Checks: >
   -bugprone-reserved-identifier,
   -cert-dcl37-c,
   -cert-dcl51-cpp,
-  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-optin.performance.Padding,
+  -concurrency-mt-unsafe
 
 # Start with no warnings-as-errors; flip this once the codebase is clean:
 # WarningsAsErrors: 'bugprone-*,cert-*,clang-analyzer-*,concurrency-*,security-*'
