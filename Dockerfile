@@ -4,40 +4,21 @@ FROM debian:sid-slim AS builder
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies including Node.js for web assets
-# Debian sid ships Node.js 22.x and npm natively
+# Install build dependencies including Node.js and FFmpeg dev libraries
+# Debian sid ships Go 1.26, Node.js 22.x, npm, and FFmpeg 8.0.1 natively
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
-    git cmake build-essential pkg-config file xz-utils \
-    nasm yasm \
+    git cmake build-essential pkg-config file \
+    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
     libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev \
     libmosquitto-dev libuv1-dev \
-    nodejs npm libsimdjson30 && \
+    nodejs npm libsimdjson30 \
+    golang-go && \
     # Verify installation
     node --version && \
     npm --version && \
+    go version && \
     rm -rf /var/lib/apt/lists/*
-
-# Build FFmpeg 8.0.1 from source
-RUN cd /tmp && \
-    wget -q https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz && \
-    tar xf ffmpeg-8.0.1.tar.xz && \
-    cd ffmpeg-8.0.1 && \
-    ./configure \
-        --prefix=/usr/local \
-        --enable-shared \
-        --disable-static \
-        --enable-gpl \
-        --disable-doc \
-        --disable-debug \
-        --disable-programs \
-        --enable-ffmpeg \
-        --disable-ffplay \
-        --disable-ffprobe && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    cd /tmp && rm -rf ffmpeg-8.0.1 ffmpeg-8.0.1.tar.xz
 
 # Fetch external dependencies
 RUN mkdir -p /opt/external && \

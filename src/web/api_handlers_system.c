@@ -496,9 +496,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Calculate free as the difference between total and used
         unsigned long long free = (total > used) ? (total - used) : 0;
 
-        cJSON_AddNumberToObject(memory, "total", total);
-        cJSON_AddNumberToObject(memory, "used", used);
-        cJSON_AddNumberToObject(memory, "free", free);
+        cJSON_AddNumberToObject(memory, "total", (double)total);
+        cJSON_AddNumberToObject(memory, "used", (double)used);
+        cJSON_AddNumberToObject(memory, "free", (double)free);
 
         // Add memory object to info
         cJSON_AddItemToObject(info, "memory", memory);
@@ -522,9 +522,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Calculate free as the difference between total and used
         unsigned long long free = (total > go2rtc_used) ? (total - go2rtc_used) : 0;
 
-        cJSON_AddNumberToObject(go2rtc_memory, "total", total);
-        cJSON_AddNumberToObject(go2rtc_memory, "used", go2rtc_used);
-        cJSON_AddNumberToObject(go2rtc_memory, "free", free);
+        cJSON_AddNumberToObject(go2rtc_memory, "total", (double)total);
+        cJSON_AddNumberToObject(go2rtc_memory, "used", (double)go2rtc_used);
+        cJSON_AddNumberToObject(go2rtc_memory, "free", (double)free);
 
         // Add go2rtc memory object to info
         cJSON_AddItemToObject(info, "go2rtcMemory", go2rtc_memory);
@@ -548,9 +548,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Calculate free as the difference between total and used
         unsigned long long free = (total > detector_used) ? (total - detector_used) : 0;
 
-        cJSON_AddNumberToObject(detector_memory, "total", total);
-        cJSON_AddNumberToObject(detector_memory, "used", detector_used);
-        cJSON_AddNumberToObject(detector_memory, "free", free);
+        cJSON_AddNumberToObject(detector_memory, "total", (double)total);
+        cJSON_AddNumberToObject(detector_memory, "used", (double)detector_used);
+        cJSON_AddNumberToObject(detector_memory, "free", (double)free);
 
         // Add detector memory object to info
         cJSON_AddItemToObject(info, "detectorMemory", detector_memory);
@@ -559,9 +559,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     // Get system-wide memory information
     cJSON *system_memory = cJSON_CreateObject();
     if (system_memory) {
-        cJSON_AddNumberToObject(system_memory, "total", system_total);
-        cJSON_AddNumberToObject(system_memory, "used", system_used);
-        cJSON_AddNumberToObject(system_memory, "free", system_free);
+        cJSON_AddNumberToObject(system_memory, "total", (double)system_total);
+        cJSON_AddNumberToObject(system_memory, "used", (double)system_used);
+        cJSON_AddNumberToObject(system_memory, "free", (double)system_free);
 
         // Add system memory object to info
         cJSON_AddItemToObject(info, "systemMemory", system_memory);
@@ -628,9 +628,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                 used = (disk_info.f_blocks - disk_info.f_bfree) * disk_info.f_frsize;
             }
 
-            cJSON_AddNumberToObject(disk, "total", total);
-            cJSON_AddNumberToObject(disk, "used", used);
-            cJSON_AddNumberToObject(disk, "free", free);
+            cJSON_AddNumberToObject(disk, "total", (double)total);
+            cJSON_AddNumberToObject(disk, "used", (double)used);
+            cJSON_AddNumberToObject(disk, "free", (double)free);
 
             // Add disk object to info
             cJSON_AddItemToObject(info, "disk", disk);
@@ -646,9 +646,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                 unsigned long long free = root_disk_info.f_bfree * root_disk_info.f_frsize;
                 unsigned long long used = total - free;
 
-                cJSON_AddNumberToObject(system_disk, "total", total);
-                cJSON_AddNumberToObject(system_disk, "used", used);
-                cJSON_AddNumberToObject(system_disk, "free", free);
+                cJSON_AddNumberToObject(system_disk, "total", (double)total);
+                cJSON_AddNumberToObject(system_disk, "used", (double)used);
+                cJSON_AddNumberToObject(system_disk, "free", (double)free);
             }
 
             // Add system disk object to info
@@ -870,7 +870,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         }
 
         cJSON_AddNumberToObject(recordings, "count", recording_count);
-        cJSON_AddNumberToObject(recordings, "size", recording_size);
+        cJSON_AddNumberToObject(recordings, "size", (double)recording_size);
 
         // Add recordings object to info
         cJSON_AddItemToObject(info, "recordings", recordings);
@@ -1097,7 +1097,7 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
     cJSON_AddStringToObject(config, "pid_file", g_config.pid_file);
     cJSON_AddStringToObject(config, "db_path", g_config.db_path);
     cJSON_AddStringToObject(config, "storage_path", g_config.storage_path);
-    cJSON_AddNumberToObject(config, "max_storage_size", g_config.max_storage_size);
+    cJSON_AddNumberToObject(config, "max_storage_size", (double)g_config.max_storage_size);
     cJSON_AddNumberToObject(config, "max_streams", g_config.max_streams);
 
     // Add streams array

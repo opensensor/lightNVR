@@ -278,7 +278,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     
     cJSON_AddStringToObject(settings, "storage_path", g_config.storage_path);
     cJSON_AddStringToObject(settings, "storage_path_hls", g_config.storage_path_hls);
-    cJSON_AddNumberToObject(settings, "max_storage_size", g_config.max_storage_size);
+    cJSON_AddNumberToObject(settings, "max_storage_size", (double)g_config.max_storage_size);
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
     cJSON_AddBoolToObject(settings, "generate_thumbnails", g_config.generate_thumbnails);

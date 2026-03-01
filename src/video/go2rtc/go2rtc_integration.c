@@ -700,6 +700,8 @@ static void *unified_health_monitor_thread(void *arg) {
 
     log_info("Unified go2rtc health monitor thread started");
 
+    bool process_restarted = false;
+
     while (g_monitor_running && !is_shutdown_initiated()) {
         // Sleep for the check interval (1 second at a time for responsiveness)
         for (int i = 0; i < HEALTH_CHECK_INTERVAL_SEC && g_monitor_running && !is_shutdown_initiated(); i++) {
@@ -740,6 +742,7 @@ static void *unified_health_monitor_thread(void *arg) {
                 if (can_restart_go2rtc()) {
                     if (restart_go2rtc_process()) {
                         log_info("go2rtc process successfully restarted");
+                        process_restarted = true;
                     } else {
                         log_error("Failed to restart go2rtc process");
                     }
@@ -760,6 +763,7 @@ static void *unified_health_monitor_thread(void *arg) {
         // =====================================================================
         if (process_restarted) {
             // Skip stream checks right after restart - give streams time to reconnect
+            process_restarted = false;
             continue;
         }
 

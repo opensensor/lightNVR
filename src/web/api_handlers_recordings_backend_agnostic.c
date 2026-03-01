@@ -97,15 +97,15 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     if (recording.size_bytes < 1024) {
         snprintf(size_str, sizeof(size_str), "%ld B", recording.size_bytes);
     } else if (recording.size_bytes < (uint64_t)1024 * 1024) {
-        snprintf(size_str, sizeof(size_str), "%.1f KB", recording.size_bytes / 1024.0);
+        snprintf(size_str, sizeof(size_str), "%.1f KB", (double)recording.size_bytes / 1024.0);
     } else if (recording.size_bytes < (uint64_t)1024 * 1024 * 1024) {
-        snprintf(size_str, sizeof(size_str), "%.1f MB", recording.size_bytes / (1024.0 * 1024.0));
+        snprintf(size_str, sizeof(size_str), "%.1f MB", (double)recording.size_bytes / (1024.0 * 1024.0));
     } else {
-        snprintf(size_str, sizeof(size_str), "%.1f GB", recording.size_bytes / (1024.0 * 1024.0 * 1024.0));
+        snprintf(size_str, sizeof(size_str), "%.1f GB", (double)recording.size_bytes / (1024.0 * 1024.0 * 1024.0));
     }
-    
+
     // Add recording properties
-    cJSON_AddNumberToObject(recording_obj, "id", recording.id);
+    cJSON_AddNumberToObject(recording_obj, "id", (double)recording.id);
     cJSON_AddStringToObject(recording_obj, "stream", recording.stream_name);
     cJSON_AddStringToObject(recording_obj, "file_path", recording.file_path);
     cJSON_AddStringToObject(recording_obj, "start_time", start_time_str);

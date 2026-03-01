@@ -243,7 +243,7 @@ void handle_get_motion_stats(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(response, "stream_name", stream_name);
     cJSON_AddNumberToObject(response, "total_recordings", (double)total_recordings);
     cJSON_AddNumberToObject(response, "total_size_bytes", (double)total_size_bytes);
-    cJSON_AddNumberToObject(response, "total_size_mb", (double)(total_size_bytes / 1024.0 / 1024.0));
+    cJSON_AddNumberToObject(response, "total_size_mb", (double)total_size_bytes / 1024.0 / 1024.0);
     cJSON_AddNumberToObject(response, "oldest_recording", (double)oldest_recording);
     cJSON_AddNumberToObject(response, "newest_recording", (double)newest_recording);
     cJSON_AddNumberToObject(response, "total_events", (double)total_events);
@@ -299,7 +299,7 @@ void handle_get_motion_recordings(const http_request_t *req, http_response_t *re
         cJSON_AddStringToObject(recording, "file_path", paths[i]);
         cJSON_AddNumberToObject(recording, "timestamp", (double)timestamps[i]);
         cJSON_AddNumberToObject(recording, "size_bytes", (double)sizes[i]);
-        cJSON_AddNumberToObject(recording, "size_mb", (double)(sizes[i] / 1024.0 / 1024.0));
+        cJSON_AddNumberToObject(recording, "size_mb", (double)sizes[i] / 1024.0 / 1024.0);
 
         cJSON_AddItemToArray(recordings, recording);
     }
@@ -436,14 +436,14 @@ void handle_get_motion_storage(const http_request_t *req, http_response_t *res) 
 
     cJSON_AddNumberToObject(response, "total_recordings", (double)stats.total_recordings);
     cJSON_AddNumberToObject(response, "total_size_bytes", (double)stats.total_size_bytes);
-    cJSON_AddNumberToObject(response, "total_size_mb", (double)(stats.total_size_bytes / 1024.0 / 1024.0));
-    cJSON_AddNumberToObject(response, "total_size_gb", (double)(stats.total_size_bytes / 1024.0 / 1024.0 / 1024.0));
+    cJSON_AddNumberToObject(response, "total_size_mb", (double)stats.total_size_bytes / 1024.0 / 1024.0);
+    cJSON_AddNumberToObject(response, "total_size_gb", (double)stats.total_size_bytes / 1024.0 / 1024.0 / 1024.0);
     cJSON_AddNumberToObject(response, "oldest_recording", (double)stats.oldest_recording);
     cJSON_AddNumberToObject(response, "newest_recording", (double)stats.newest_recording);
     cJSON_AddNumberToObject(response, "disk_space_total", (double)stats.disk_space_total);
     cJSON_AddNumberToObject(response, "disk_space_available", (double)stats.disk_space_available);
     cJSON_AddNumberToObject(response, "disk_space_used_percent",
-                           (double)((stats.disk_space_total - stats.disk_space_available) * 100.0 / stats.disk_space_total));
+                           ((double)stats.disk_space_total - (double)stats.disk_space_available) * 100.0 / (double)stats.disk_space_total);
 
     char *json_str = cJSON_PrintUnformatted(response);
     cJSON_Delete(response);

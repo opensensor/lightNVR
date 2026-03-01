@@ -66,8 +66,8 @@ static void zip_write_u16(FILE *f, uint16_t v) {
     fputc((v >> 8) & 0xFF, f);
 }
 static void zip_write_u32(FILE *f, uint32_t v) {
-    fputc(v & 0xFF, f); fputc((v >> 8) & 0xFF, f);
-    fputc((v >> 16) & 0xFF, f); fputc((v >> 24) & 0xFF, f);
+    fputc((int)(v & 0xFFU), f); fputc((int)((v >> 8) & 0xFFU), f);
+    fputc((int)((v >> 16) & 0xFFU), f); fputc((int)((v >> 24) & 0xFFU), f);
 }
 
 /* Write local file header; returns offset before writing */
