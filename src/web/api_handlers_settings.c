@@ -680,8 +680,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     cJSON *syslog_facility = cJSON_GetObjectItem(settings, "syslog_facility");
     if (syslog_facility && cJSON_IsString(syslog_facility)) {
         const char *val = syslog_facility->valuestring;
-        if (strcmp(val, "LOG_USER") == 0) g_config.syslog_facility = LOG_USER;
-        else if (strcmp(val, "LOG_DAEMON") == 0) g_config.syslog_facility = LOG_DAEMON;
+        if (strcmp(val, "LOG_DAEMON") == 0) g_config.syslog_facility = LOG_DAEMON;
         else if (strcmp(val, "LOG_LOCAL0") == 0) g_config.syslog_facility = LOG_LOCAL0;
         else if (strcmp(val, "LOG_LOCAL1") == 0) g_config.syslog_facility = LOG_LOCAL1;
         else if (strcmp(val, "LOG_LOCAL2") == 0) g_config.syslog_facility = LOG_LOCAL2;

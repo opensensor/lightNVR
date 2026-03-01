@@ -310,6 +310,24 @@ async function registerTestStreamsWithGo2rtc(): Promise<void> {
   }
 }
 
+async function markSetupComplete(): Promise<void> {
+  console.log('Marking setup wizard as complete...');
+  try {
+    const response = await fetch(`http://localhost:${LIGHTNVR_PORT}/api/setup/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ complete: true }),
+    });
+    if (response.ok) {
+      console.log('Setup wizard marked as complete');
+    } else {
+      console.warn(`Failed to mark setup as complete: ${response.status}`);
+    }
+  } catch (e) {
+    console.warn(`Error marking setup as complete: ${e}`);
+  }
+}
+
 async function addStreamsToLightNVR(): Promise<void> {
   console.log('Adding test streams to lightNVR...');
 
@@ -369,6 +387,7 @@ async function globalSetup(): Promise<void> {
 
   await setupTestDirectories();
   await startLightNVR();
+  await markSetupComplete();
   await waitForGo2rtc();
 
   // Register virtual streams with go2rtc first

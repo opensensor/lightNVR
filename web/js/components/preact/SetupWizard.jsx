@@ -265,7 +265,7 @@ export function SetupWizard({ onClose }) {
   const isConfirmStep  = step === TOTAL_STEPS - 1;
 
   return (
-    <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div data-testid="setup-wizard" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8">
         {step === 0 && <WelcomeStep />}
         {step === 1 && <StorageStep     form={form} onChange={handleChange} />}

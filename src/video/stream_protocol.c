@@ -61,9 +61,7 @@ bool is_multicast_url(const char *url) {
     const char *ip_start = NULL;
 
     // Skip protocol prefix with safer checks
-    if (strncmp(url, "udp://", 6) == 0) {
-        ip_start = url + 6;
-    } else if (strncmp(url, "rtp://", 6) == 0) {
+    if (strncmp(url, "udp://", 6) == 0 || strncmp(url, "rtp://", 6) == 0) {
         ip_start = url + 6;
     } else {
         // Not a UDP or RTP URL

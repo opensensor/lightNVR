@@ -577,9 +577,8 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (isdigit(value[0])) {
                 config->syslog_facility = safe_atoi(value, 0);
             } else {
-                // Map facility names to values
-                if (strcmp(value, "LOG_USER") == 0) config->syslog_facility = LOG_USER;
-                else if (strcmp(value, "LOG_DAEMON") == 0) config->syslog_facility = LOG_DAEMON;
+                // Map facility names to values (LOG_USER is also the default)
+                if (strcmp(value, "LOG_DAEMON") == 0) config->syslog_facility = LOG_DAEMON;
                 else if (strcmp(value, "LOG_LOCAL0") == 0) config->syslog_facility = LOG_LOCAL0;
                 else if (strcmp(value, "LOG_LOCAL1") == 0) config->syslog_facility = LOG_LOCAL1;
                 else if (strcmp(value, "LOG_LOCAL2") == 0) config->syslog_facility = LOG_LOCAL2;
@@ -765,12 +764,10 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->go2rtc_api_port = safe_atoi(value, 0);
         } else if (strcmp(name, "rtsp_port") == 0) {
             config->go2rtc_rtsp_port = safe_atoi(value, 0);
-        } else if (strcmp(name, "webrtc_port") == 0) {
+        } else if (strcmp(name, "webrtc_port") == 0 || strcmp(name, "webrtc_listen_port") == 0) {
             config->go2rtc_webrtc_listen_port = safe_atoi(value, 0);
         } else if (strcmp(name, "webrtc_enabled") == 0) {
             config->go2rtc_webrtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
-        } else if (strcmp(name, "webrtc_listen_port") == 0) {
-            config->go2rtc_webrtc_listen_port = safe_atoi(value, 0);
         } else if (strcmp(name, "stun_enabled") == 0) {
             config->go2rtc_stun_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "stun_server") == 0) {

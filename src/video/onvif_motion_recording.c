@@ -403,12 +403,9 @@ static void update_recording_state(motion_recording_context_t *ctx, time_t curre
 
     switch (ctx->state) {
         case RECORDING_STATE_IDLE:
-            // Nothing to do in idle state
-            break;
-
         case RECORDING_STATE_BUFFERING:
-            // Just buffering, waiting for motion
-            // Buffer is being filled by feed_packet_to_event_buffer()
+            // Nothing to do: IDLE is quiescent; BUFFERING waits for motion
+            // (buffer is filled by feed_packet_to_event_buffer())
             break;
 
         case RECORDING_STATE_RECORDING:

@@ -584,7 +584,7 @@ static bool kill_all_go2rtc_processes(void) {
         bool found_s6 = false;
 
         while (fgets(line, sizeof(line), fp)) {
-            pid_t pid = atoi(line);
+            pid_t pid = (pid_t)strtol(line, NULL, 10);
             if (pid > 0) {
                 found_s6 = true;
                 log_info("Killing s6-supervise process with PID: %d", pid);
@@ -614,7 +614,7 @@ static bool kill_all_go2rtc_processes(void) {
         bool found_s6 = false;
 
         while (fgets(line, sizeof(line), fp)) {
-            pid_t pid = atoi(line);
+            pid_t pid = (pid_t)strtol(line, NULL, 10);
             if (pid > 0) {
                 found_s6 = true;
                 log_info("Killing s6-supervise process with PID: %d", pid);
@@ -645,7 +645,7 @@ static bool kill_all_go2rtc_processes(void) {
         num_pids = 0;
 
         while (fgets(line, sizeof(line), fp) && num_pids < 64) {
-            pid_t pid = atoi(line);
+            pid_t pid = (pid_t)strtol(line, NULL, 10);
             if (pid > 0) {
                 // Verify this is actually a go2rtc process (not zombie)
                 if (is_go2rtc_process(pid)) {
@@ -687,7 +687,7 @@ static bool kill_all_go2rtc_processes(void) {
                     success = false;
                 } else {
                     while (fgets(line, sizeof(line), fp)) {
-                        pid_t pid = atoi(line);
+                        pid_t pid = (pid_t)strtol(line, NULL, 10);
                         if (pid > 0 && is_go2rtc_process(pid)) {
                             log_warn("go2rtc process %d still running, sending SIGKILL", pid);
                             if (kill(pid, SIGKILL) != 0) {
@@ -710,7 +710,7 @@ static bool kill_all_go2rtc_processes(void) {
             if (fp) {
                 bool still_running = false;
                 while (fgets(line, sizeof(line), fp)) {
-                    pid_t pid = atoi(line);
+                    pid_t pid = (pid_t)strtol(line, NULL, 10);
                     if (pid > 0 && is_go2rtc_process(pid)) {
                         // Double-check it's not a zombie
                         if (!is_zombie_process(pid)) {
@@ -736,7 +736,7 @@ static bool kill_all_go2rtc_processes(void) {
                     fp = popen("ps | grep go2rtc | grep -v grep | awk '{print $1}'", "r");
                     if (fp) {
                         while (fgets(line, sizeof(line), fp)) {
-                            pid_t pid = atoi(line);
+                            pid_t pid = (pid_t)strtol(line, NULL, 10);
                             if (pid > 0 && is_go2rtc_process(pid) && !is_zombie_process(pid)) {
                                 log_error("go2rtc process %d could not be killed", pid);
                                 success = false;
@@ -828,7 +828,7 @@ bool go2rtc_process_is_running(void) {
     bool found = false;
 
     while (fgets(line, sizeof(line), fp)) {
-        pid_t pid = atoi(line);
+        pid_t pid = (pid_t)strtol(line, NULL, 10);
         if (pid > 0) {
             // Verify this is actually a go2rtc process
             if (is_go2rtc_process(pid)) {
@@ -1287,7 +1287,7 @@ int go2rtc_process_get_pid(void) {
     pid_t found_pid = -1;
 
     while (fgets(line, sizeof(line), fp)) {
-        pid_t pid = atoi(line);
+        pid_t pid = (pid_t)strtol(line, NULL, 10);
         if (pid > 0 && is_go2rtc_process(pid)) {
             found_pid = pid;
             g_process_pid = pid;  // Update our tracked PID

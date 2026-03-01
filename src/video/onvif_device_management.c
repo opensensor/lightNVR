@@ -474,25 +474,25 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
             if (resolution) {
                 ezxml_t width = find_child(resolution, "tt:Width");
                 if (width) {
-                    profiles[i].width = atoi(ezxml_txt(width));
+                    profiles[i].width = (int)strtol(ezxml_txt(width), NULL, 10);
                 }
-                
+
                 ezxml_t height = find_child(resolution, "tt:Height");
                 if (height) {
-                    profiles[i].height = atoi(ezxml_txt(height));
+                    profiles[i].height = (int)strtol(ezxml_txt(height), NULL, 10);
                 }
             }
-            
+
             ezxml_t rate_control = find_child(video_encoder, "tt:RateControl");
             if (rate_control) {
                 ezxml_t fps = find_child(rate_control, "tt:FrameRateLimit");
                 if (fps) {
-                    profiles[i].fps = atoi(ezxml_txt(fps));
+                    profiles[i].fps = (int)strtol(ezxml_txt(fps), NULL, 10);
                 }
-                
+
                 ezxml_t bitrate = find_child(rate_control, "tt:BitrateLimit");
                 if (bitrate) {
-                    profiles[i].bitrate = atoi(ezxml_txt(bitrate));
+                    profiles[i].bitrate = (int)strtol(ezxml_txt(bitrate), NULL, 10);
                 }
             }
         }

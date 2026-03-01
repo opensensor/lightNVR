@@ -934,6 +934,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                             } else {
                                 pkt->pts = pkt->dts;
                             }
+                        }
                         // Additional check to ensure DTS is always within safe range
                         // This handles cases where DTS might be close to the limit
                         if (pkt->dts > 0x70000000) {  // ~75% of max value

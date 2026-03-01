@@ -655,7 +655,7 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
                             const char *listen_str = cJSON_GetStringValue(listen);
                             if (listen_str && listen_str[0] == ':') {
                                 // Parse port number from ":8554"
-                                *rtsp_port = atoi(listen_str + 1);
+                                *rtsp_port = (int)strtol(listen_str + 1, NULL, 10);
                                 log_info("Extracted RTSP port: %d", *rtsp_port);
                             } else {
                                 log_warn("Invalid RTSP listen format: %s", listen_str ? listen_str : "NULL");

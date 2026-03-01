@@ -54,7 +54,7 @@ static void deserialize_recording_schedule(const char *text, uint8_t *schedule) 
     char *saveptr = NULL;
     char *token = strtok_r(buf, ",", &saveptr);
     while (token && idx < 168) {
-        schedule[idx++] = (uint8_t)(atoi(token) ? 1 : 0);
+        schedule[idx++] = (uint8_t)(strtol(token, NULL, 10) ? 1 : 0);
         token = strtok_r(NULL, ",", &saveptr);
     }
     // Fill remaining slots with 1 if string was short
