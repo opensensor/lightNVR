@@ -17,6 +17,7 @@
 #include "utils/memory.h"  // For get_total_memory_allocated
 #include "utils/strings.h"
 #include "video/detection_model.h"
+#include "video/detection_model_internal.h"
 #include "video/sod_detection.h"
 #include "video/sod_realnet.h"
 #include "video/api_detection.h"
@@ -34,27 +35,7 @@ static bool in_shutdown_mode = false;
 // Global variables
 static bool initialized = false;
 
-// TFLite model structure
-typedef struct {
-    void *handle;                // Dynamic library handle
-    void *model;                 // TFLite model handle
-    float threshold;             // Detection threshold
-    void *(*load_model)(const char *);  // Function pointer for loading model
-    void (*free_model)(void *);  // Function pointer for freeing model
-    void *(*detect)(void *, const unsigned char *, int, int, int, int *, float); // Function pointer for detection
-} tflite_model_t;
-
-// Generic model structure
-typedef struct {
-    char type[16];               // Model type (sod, sod_realnet, tflite)
-    union {
-        void *sod;               // SOD model handle
-        void *sod_realnet;       // SOD RealNet model handle
-        tflite_model_t tflite;   // TFLite model handle
-    };
-    float threshold;             // Detection threshold
-    char path[MAX_PATH_LENGTH];  // Path to the model file (for reference)
-} model_t;
+/* model_t and tflite_model_t are defined in detection_model_internal.h */
 
 /**
  * Initialize the model system
