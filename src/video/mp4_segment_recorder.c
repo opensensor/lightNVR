@@ -562,17 +562,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     // Log the output file path for debugging
     log_debug("Attempting to open output file: %s", output_file);
 
-    // CRITICAL FIX: Check if the output file already exists and remove it
-    // This prevents issues with trying to open a file that's already being written to
-    struct stat st;
-    if (stat(output_file, &st) == 0) {
-        log_warn("Output file already exists: %s (size: %lld bytes), removing it",
-                output_file, (long long)st.st_size);
-        if (unlink(output_file) != 0) {
-            log_error("Failed to remove existing output file: %s (error: %s)",
-                    output_file, strerror(errno));
-            // Continue anyway, avio_open might overwrite it
-        }
+    // Remove any existing output file before opening.
+    // Call unlink() directly without a prior stat() check to avoid a
+    // time-of-check time-of-use (TOCTOU) race condition. ENOENT simply
+    // means the file did not exist, which is fine.
+    if (unlink(output_file) != 0 && errno != ENOENT) {
+        log_warn("Failed to remove existing output file: %s (error: %s)",
+                output_file, strerror(errno));
+        // Continue anyway, avio_open might still succeed (e.g. overwrite)
     }
 
     // Open output file
