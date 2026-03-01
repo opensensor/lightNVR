@@ -829,21 +829,27 @@ bool go2rtc_stream_start_service(void) {
             if (go2rtc_process_is_running()) {
                 log_warn("go2rtc process is running but not responding, checking port");
 
-                // Check if the port is in use
-                char cmd[128];
-                snprintf(cmd, sizeof(cmd), "netstat -tlpn 2>/dev/null | grep ':%d'", g_api_port);
-                FILE *fp = popen(cmd, "r");
-                if (fp) {
-                    char netstat_line[256];
+                // Check if the port is in use via /proc/net/tcp (no shell needed)
+                {
                     bool port_in_use = false;
-
-                    if (fgets(netstat_line, sizeof(netstat_line), fp)) {
-                        port_in_use = true;
-                        log_warn("Port %d is in use: %s", g_api_port, netstat_line);
+                    char hex_port[8];
+                    snprintf(hex_port, sizeof(hex_port), ":%04X", g_api_port);
+                    /* Check both IPv4 and IPv6 TCP tables */
+                    const char *tcp_files[] = {"/proc/net/tcp", "/proc/net/tcp6", NULL};
+                    for (int ti = 0; tcp_files[ti] && !port_in_use; ti++) {
+                        FILE *tcp_fp = fopen(tcp_files[ti], "r");
+                        if (!tcp_fp) continue;
+                        char tcp_line[256];
+                        fgets(tcp_line, sizeof(tcp_line), tcp_fp); /* skip header */
+                        while (fgets(tcp_line, sizeof(tcp_line), tcp_fp)) {
+                            if (strstr(tcp_line, hex_port)) {
+                                port_in_use = true;
+                                log_warn("Port %d is in use (found in %s)", g_api_port, tcp_files[ti]);
+                                break;
+                            }
+                        }
+                        fclose(tcp_fp);
                     }
-
-                    pclose(fp);
-
                     if (!port_in_use) {
                         log_error("go2rtc process is running but not listening on port %d", g_api_port);
                     }
