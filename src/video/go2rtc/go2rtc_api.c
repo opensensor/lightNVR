@@ -214,7 +214,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     // Build URL with multiple src parameters
     // Format: http://host:port/api/streams?src=url1&src=url2&name=stream_id
     // We need a larger buffer for multiple sources
-    char *url = malloc(URL_BUFFER_SIZE * (num_sources + 1));
+    char *url = malloc((size_t)URL_BUFFER_SIZE * (num_sources + 1));
     if (!url) {
         log_error("Failed to allocate memory for URL");
         curl_easy_cleanup(curl);

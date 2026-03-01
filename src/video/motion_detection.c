@@ -1114,14 +1114,14 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
 
         // Allocate grid scores array
         if (stream->use_grid_detection) {
-            stream->grid_scores = (float *)malloc(stream->grid_size * stream->grid_size * sizeof(float));
+            stream->grid_scores = (float *)malloc((size_t)stream->grid_size * stream->grid_size * sizeof(float));
             if (!stream->grid_scores) {
                 log_error("Failed to allocate memory for grid scores");
                 free(processing_frame);
                 pthread_mutex_unlock(&stream->mutex);
                 return -1;
             }
-            memset(stream->grid_scores, 0, stream->grid_size * stream->grid_size * sizeof(float));
+            memset(stream->grid_scores, 0, (size_t)stream->grid_size * stream->grid_size * sizeof(float));
         }
 
         // Allocate frame history buffer
