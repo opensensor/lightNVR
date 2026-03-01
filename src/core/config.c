@@ -705,52 +705,15 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             }
         }
     }
-    // Stream-specific settings (format: stream_name.setting)
+    // Stream-specific [stream.X] sections are no longer read from the INI file.
+    // All stream configuration is stored exclusively in the database.
+    // Warn once per section so operators know to clean up stale config files.
     else if (strstr(section, "stream.") == section) {
-        // Extract stream name from section (after "stream.")
-        const char *stream_name = section + 7; // Skip "stream."
-
-        // Find the stream with this name
-        int stream_idx = -1;
-        for (int i = 0; i < config->max_streams; i++) {
-            if (strcmp(config->streams[i].name, stream_name) == 0) {
-                stream_idx = i;
-                break;
-            }
-        }
-        
-        // If stream not found, log warning and skip
-        if (stream_idx == -1) {
-            log_warn("Configuration for unknown stream: %s", stream_name);
-            return 1; // Continue processing
-        }
-        
-        // Parse stream-specific settings
-        if (strcmp(name, "detection_based_recording") == 0) {
-            config->streams[stream_idx].detection_based_recording = 
-                (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
-        } else if (strcmp(name, "detection_model") == 0) {
-            strncpy(config->streams[stream_idx].detection_model, value, MAX_PATH_LENGTH - 1);
-        } else if (strcmp(name, "detection_interval") == 0) {
-            config->streams[stream_idx].detection_interval = atoi(value);
-        } else if (strcmp(name, "detection_threshold") == 0) {
-            config->streams[stream_idx].detection_threshold = atof(value);
-        } else if (strcmp(name, "pre_detection_buffer") == 0) {
-            config->streams[stream_idx].pre_detection_buffer = atoi(value);
-        } else if (strcmp(name, "post_detection_buffer") == 0) {
-            config->streams[stream_idx].post_detection_buffer = atoi(value);
-        } else if (strcmp(name, "detection_api_url") == 0) {
-            strncpy(config->streams[stream_idx].detection_api_url, value, MAX_URL_LENGTH - 1);
-            config->streams[stream_idx].detection_api_url[MAX_URL_LENGTH - 1] = '\0';
-        } else if (strcmp(name, "detection_object_filter") == 0) {
-            strncpy(config->streams[stream_idx].detection_object_filter, value, sizeof(config->streams[stream_idx].detection_object_filter) - 1);
-            config->streams[stream_idx].detection_object_filter[sizeof(config->streams[stream_idx].detection_object_filter) - 1] = '\0';
-        } else if (strcmp(name, "detection_object_filter_list") == 0) {
-            strncpy(config->streams[stream_idx].detection_object_filter_list, value, sizeof(config->streams[stream_idx].detection_object_filter_list) - 1);
-            config->streams[stream_idx].detection_object_filter_list[sizeof(config->streams[stream_idx].detection_object_filter_list) - 1] = '\0';
-        } else if (strcmp(name, "record_audio") == 0) {
-            config->streams[stream_idx].record_audio =
-                (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        static char last_warned_section[256] = {0};
+        if (strcmp(last_warned_section, section) != 0) {
+            log_warn("Ignoring stale INI section [%s]: stream config lives in the database. "
+                     "Remove this section from the config file.", section);
+            strncpy(last_warned_section, section, sizeof(last_warned_section) - 1);
         }
     }
     // Memory optimization
@@ -1502,46 +1465,8 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "discovery_interval = %d\n", config->onvif_discovery_interval);
     fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
 
-    // Write stream-specific settings
-    for (int i = 0; i < config->max_streams; i++) {
-        if (strlen(config->streams[i].name) > 0 &&
-            (config->streams[i].detection_based_recording || config->streams[i].record_audio)) {
-            fprintf(file, "\n[stream.%s]\n", config->streams[i].name);
-            
-            // Write detection-based recording settings if enabled
-            if (config->streams[i].detection_based_recording) {
-                fprintf(file, "detection_based_recording = %s\n",
-                        config->streams[i].detection_based_recording ? "true" : "false");
-
-                if (config->streams[i].detection_model[0] != '\0') {
-                    fprintf(file, "detection_model = %s\n", config->streams[i].detection_model);
-                }
-
-                fprintf(file, "detection_interval = %d\n", config->streams[i].detection_interval);
-                fprintf(file, "detection_threshold = %.2f\n", config->streams[i].detection_threshold);
-                fprintf(file, "pre_detection_buffer = %d\n", config->streams[i].pre_detection_buffer);
-                fprintf(file, "post_detection_buffer = %d\n", config->streams[i].post_detection_buffer);
-
-                if (config->streams[i].detection_api_url[0] != '\0') {
-                    fprintf(file, "detection_api_url = %s\n", config->streams[i].detection_api_url);
-                }
-
-                if (config->streams[i].detection_object_filter[0] != '\0' &&
-                    strcmp(config->streams[i].detection_object_filter, "none") != 0) {
-                    fprintf(file, "detection_object_filter = %s\n", config->streams[i].detection_object_filter);
-                    if (config->streams[i].detection_object_filter_list[0] != '\0') {
-                        fprintf(file, "detection_object_filter_list = %s\n", config->streams[i].detection_object_filter_list);
-                    }
-                }
-            }
-            
-            // Write audio recording setting
-            fprintf(file, "record_audio = %s\n", config->streams[i].record_audio ? "true" : "false");
-        }
-    }
-    
-    // Note: Stream configurations are stored in the database
-    fprintf(file, "\n; Note: Stream configurations are stored in the database\n");
+    // Stream configurations are stored exclusively in the database.
+    // Do NOT write [stream.X] sections here.
     
     fclose(file);
     
