@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useContext } from 'preact/hooks';
+import { useQueryClient } from '../../query-client.js';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
 import { BatchDownloadModal } from './BatchDownloadModal.jsx';
@@ -29,6 +30,7 @@ import { validateSession } from '../../utils/auth-utils.js';
  * @returns {JSX.Element} RecordingsView component
  */
 export function RecordingsView() {
+  const queryClient = useQueryClient();
   const [userRole, setUserRole] = useState(null);
   const [recordings, setRecordings] = useState([]);
   const [streams, setStreams] = useState([]);
@@ -608,9 +610,10 @@ export function RecordingsView() {
       setSelectedRecordings({});
       setSelectAll(false);
 
-      // Always reload to reflect the changes (even if all recordings were deleted)
-      // This ensures the UI shows the correct state
-      loadRecordings();
+      // Invalidate the recordings query cache so the list re-fetches immediately,
+      // regardless of staleTime. This is necessary because loadRecordings() is a
+      // no-op when the page hasn't changed, and the cache may still hold the old data.
+      queryClient.invalidateQueries({ queryKey: ['recordings'] });
     }
   };
 

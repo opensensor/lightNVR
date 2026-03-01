@@ -3122,7 +3122,7 @@ static void cleanup_freed_contexts_tracking(void) {
 
     // Clear the freed contexts array
     pthread_mutex_lock(&freed_contexts_mutex);
-    memset(freed_contexts, 0, sizeof(freed_contexts));
+    memset((void *)freed_contexts, 0, sizeof(freed_contexts));
     freed_contexts_count = 0;
     pthread_mutex_unlock(&freed_contexts_mutex);
 

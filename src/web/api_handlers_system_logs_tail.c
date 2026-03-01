@@ -69,19 +69,19 @@ int get_system_logs_tail(char ***logs, int *count, int max_lines) {
     }
     
     // Allocate array of log strings
-    char **log_lines = calloc(line_count, sizeof(char *));
+    char **log_lines = (char **)calloc(line_count, sizeof(char *));
     if (!log_lines) {
         log_error("Failed to allocate memory for log lines");
         pclose(fp);
         return -1;
     }
-    
+
     // Reopen the command to read the lines again
     pclose(fp);
     fp = popen(command, "r");
     if (!fp) {
         log_error("Failed to execute tail command (second time): %s", strerror(errno));
-        free(log_lines);
+        free((void *)log_lines);
         return -1;
     }
     
@@ -110,11 +110,11 @@ int get_system_logs_tail(char ***logs, int *count, int max_lines) {
                     free(log_lines[i]);
                 }
             }
-            free(log_lines);
+            free((void *)log_lines);
             pclose(fp);
             return -1;
         }
-        
+
         log_index++;
     }
     
@@ -165,7 +165,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
     // Allocate initial array of log strings
     // We'll resize it if needed
     int capacity = 100;
-    char **log_lines = calloc(capacity, sizeof(char *));
+    char **log_lines = (char **)calloc(capacity, sizeof(char *));
     if (!log_lines) {
         log_error("Failed to allocate memory for log lines");
         pclose(fp);
@@ -232,7 +232,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
         // Check if we need to resize the array
         if (log_index >= capacity) {
             capacity *= 2;
-            char **new_lines = realloc(log_lines, capacity * sizeof(char *));
+            char **new_lines = (char **)realloc((void *)log_lines, capacity * sizeof(char *));
             if (!new_lines) {
                 log_error("Failed to resize log lines array");
                 

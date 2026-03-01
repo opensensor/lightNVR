@@ -197,7 +197,7 @@ int get_system_logs(char ***logs, int *count) {
     }
 
     // Allocate array of log strings
-    char **log_lines = calloc(lines_to_allocate, sizeof(char *));
+    char **log_lines = (char **)calloc(lines_to_allocate, sizeof(char *));
     if (!log_lines) {
         log_error("Failed to allocate memory for log lines");
         free(buffer);
@@ -228,7 +228,7 @@ int get_system_logs(char ***logs, int *count) {
                     log_lines[i] = NULL;
                 }
             }
-            free(log_lines);
+            free((void *)log_lines);
             free(buffer);
             return -1;
         }
@@ -353,7 +353,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
                     free(logs[i]);
                 }
             }
-            free(logs);
+            free((void *)logs);
         }
 
         http_response_set_json_error(res, 500, "Failed to create logs JSON");
@@ -372,7 +372,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
                     free(logs[i]);
                 }
             }
-            free(logs);
+            free((void *)logs);
         }
 
         cJSON_Delete(logs_obj);
@@ -435,7 +435,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
                 free(logs[i]);
             }
         }
-        free(logs);
+        free((void *)logs);
     }
     cJSON_Delete(logs_obj);
 

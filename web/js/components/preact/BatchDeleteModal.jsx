@@ -5,12 +5,15 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { useQueryClient } from '../../query-client.js';
 
 /**
  * BatchDeleteModal component
  * @returns {JSX.Element} BatchDeleteModal component
  */
 export function BatchDeleteModal() {
+  const queryClient = useQueryClient();
+
   // State for modal visibility and progress
   const [isVisible, setIsVisible] = useState(false);
   const [progress, setProgress] = useState({
@@ -210,12 +213,8 @@ export function BatchDeleteModal() {
 
                 showStatusMessage(message, failed === 0 ? 'success' : 'warning', 5000);
 
-                // Reload recordings after a short delay
-                setTimeout(() => {
-                  if (typeof window.loadRecordings === 'function') {
-                    window.loadRecordings();
-                  }
-                }, 1000);
+                // Invalidate the recordings query cache so the list re-fetches immediately
+                queryClient.invalidateQueries({ queryKey: ['recordings'] });
 
                 resolve(progressData);
               }
