@@ -597,7 +597,7 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     int is_active = (is_active_json && cJSON_IsBool(is_active_json)) ? cJSON_IsTrue(is_active_json) : -1;
 
     // Validate role (role == -1 means "not provided", otherwise must be 0-3)
-    if (role >= 0 && role > 3) {
+    if (role > 3) {
         cJSON_Delete(json_req);
         http_response_set_json_error(res, 400, "Invalid role");
         return;

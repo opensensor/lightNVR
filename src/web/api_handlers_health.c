@@ -180,7 +180,7 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
     char timestamp[32];
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
     cJSON_AddStringToObject(health, "timestamp", timestamp);
 
@@ -245,7 +245,7 @@ void handle_get_hls_health(const http_request_t *req, http_response_t *res) {
     char timestamp[32];
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
     cJSON_AddStringToObject(health, "timestamp", timestamp);
 

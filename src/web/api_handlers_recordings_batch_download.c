@@ -207,10 +207,10 @@ typedef struct {
 } dl_thread_arg_t;
 
 /* DOS time helpers */
-static uint16_t to_dos_time(struct tm *t) {
+static uint16_t to_dos_time(const struct tm *t) {
     return (uint16_t)(((t->tm_hour & 0x1F) << 11) | ((t->tm_min & 0x3F) << 5) | ((t->tm_sec/2) & 0x1F));
 }
-static uint16_t to_dos_date(struct tm *t) {
+static uint16_t to_dos_date(const struct tm *t) {
     return (uint16_t)((((t->tm_year - 80) & 0x7F) << 9) | (((t->tm_mon+1) & 0x0F) << 5) | (t->tm_mday & 0x1F));
 }
 

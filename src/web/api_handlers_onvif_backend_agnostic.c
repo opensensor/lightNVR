@@ -403,7 +403,7 @@ void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_resp
     }
 
     // Find the requested profile
-    onvif_profile_t *profile = NULL;
+    const onvif_profile_t *profile = NULL;
     for (int i = 0; i < count; i++) {
         if (strcmp(profiles[i].token, profile_token) == 0) {
             profile = &profiles[i];
