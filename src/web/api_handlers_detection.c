@@ -113,7 +113,8 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
     // Add timestamp
     char timestamp[32];
     time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
+    struct tm tm_buf;
+    struct tm *tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
     cJSON_AddStringToObject(response, "timestamp", timestamp);
     

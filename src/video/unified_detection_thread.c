@@ -1176,7 +1176,8 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
 
     // Generate output filename with timestamp
     time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
+    struct tm tm_buf;
+    struct tm *tm_info = localtime_r(&now, &tm_buf);
     char timestamp[32];
     strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_info);
 

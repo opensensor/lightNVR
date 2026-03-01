@@ -224,14 +224,15 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
     // Format timestamps for display in local time
     char start_time_display[32] = {0};
     char end_time_display[32] = {0};
+    struct tm tm_buf;
     struct tm *tm_info;
-    
-    tm_info = localtime(&start_time);
+
+    tm_info = localtime_r(&start_time, &tm_buf);
     if (tm_info) {
         strftime(start_time_display, sizeof(start_time_display), "%Y-%m-%d %H:%M:%S", tm_info);
     }
-    
-    tm_info = localtime(&end_time);
+
+    tm_info = localtime_r(&end_time, &tm_buf);
     if (tm_info) {
         strftime(end_time_display, sizeof(end_time_display), "%Y-%m-%d %H:%M:%S", tm_info);
     }
@@ -252,12 +253,12 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         char segment_start_time[32] = {0};
         char segment_end_time[32] = {0};
         
-        tm_info = localtime(&segments[i].start_time);
+        tm_info = localtime_r(&segments[i].start_time, &tm_buf);
         if (tm_info) {
             strftime(segment_start_time, sizeof(segment_start_time), "%Y-%m-%d %H:%M:%S", tm_info);
         }
-        
-        tm_info = localtime(&segments[i].end_time);
+
+        tm_info = localtime_r(&segments[i].end_time, &tm_buf);
         if (tm_info) {
             strftime(segment_end_time, sizeof(segment_end_time), "%Y-%m-%d %H:%M:%S", tm_info);
         }

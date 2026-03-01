@@ -124,11 +124,12 @@ int init_json_logger(const char *filename) {
     
     // Write a startup marker to the log file
     time_t now;
+    struct tm tm_buf;
     struct tm *tm_info;
     char timestamp[32];
-    
+
     time(&now);
-    tm_info = localtime(&now);
+    tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%S", tm_info);
     
     write_json_log(LOG_LEVEL_INFO, timestamp, "JSON logger initialized");

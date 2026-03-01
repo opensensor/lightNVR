@@ -341,10 +341,11 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
         va_end(args_copy);
 
         time_t now;
+        struct tm tm_buf;
         struct tm *tm_info;
         char timestamp[32];
         time(&now);
-        tm_info = localtime(&now);
+        tm_info = localtime_r(&now, &tm_buf);
         strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
 
         FILE *console = (level == LOG_LEVEL_ERROR) ? stderr : stdout;
@@ -361,13 +362,14 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     }
 
     time_t now;
+    struct tm tm_buf;
     struct tm *tm_info;
     char timestamp[32];
     char iso_timestamp[32];
 
     // Get current time
     time(&now);
-    tm_info = localtime(&now);
+    tm_info = localtime_r(&now, &tm_buf);
 
     // Format timestamp for text log
     strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);

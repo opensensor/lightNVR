@@ -347,7 +347,8 @@ int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path
 
     // Format timestamp for pattern matching
     char timestamp_str[32];
-    struct tm *tm_info = localtime(&timestamp);
+    struct tm tm_buf;
+    struct tm *tm_info = localtime_r(&timestamp, &tm_buf);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M", tm_info);
 
     // Log what we're looking for

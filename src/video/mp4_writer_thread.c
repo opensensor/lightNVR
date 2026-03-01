@@ -230,7 +230,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
 
                 // Create timestamp for new MP4 filename
                 char timestamp_str[32];
-                struct tm *tm_info = localtime(&current_time);
+                struct tm tm_buf;
+                struct tm *tm_info = localtime_r(&current_time, &tm_buf);
                 strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
                 // Create new output path

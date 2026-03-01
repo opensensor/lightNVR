@@ -1011,7 +1011,8 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
 
     // Create a timestamp for the backup filename
     time_t now = time(NULL);
-    struct tm* tm_info = localtime(&now);
+    struct tm tm_buf;
+    struct tm* tm_info = localtime_r(&now, &tm_buf);
     char timestamp[20];
     strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_info);
 
