@@ -1172,6 +1172,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         // Simple frame differencing (original approach with improvements)
         int changed_pixels = 0;
         int total_diff = 0;
+        int pixel_count = processing_width * processing_height;
 
         #if EMBEDDED_DEVICE_OPTIMIZATION
         // For embedded devices, use sampling to reduce computation

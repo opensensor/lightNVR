@@ -174,12 +174,12 @@ static char *create_onvif_request(const char *username, const char *password, co
     memcpy(digest_raw, nonce_raw, sizeof(nonce_raw));
     digest_len += sizeof(nonce_raw);
 
-    // Copy created timestamp
-    memcpy(digest_raw + digest_len, created, strlen(created));
+    // Copy created timestamp (raw bytes for SHA-1 input, not a C string)
+    memcpy((void *)(digest_raw + digest_len), created, strlen(created));
     digest_len += strlen(created);
 
-    // Copy password
-    memcpy(digest_raw + digest_len, password, strlen(password));
+    // Copy password (raw bytes for SHA-1 input, not a C string)
+    memcpy((void *)(digest_raw + digest_len), password, strlen(password));
     digest_len += strlen(password);
 
     // Generate SHA-1 hash

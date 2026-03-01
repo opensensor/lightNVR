@@ -74,8 +74,9 @@ static char* create_security_header(const char *username, const char *password, 
     // For digest calculation, we need to use the raw nonce bytes, not the base64 encoded version
     concatenated = malloc(nonce_len + strlen(created) + strlen(password) + 1);
     memcpy(concatenated, nonce_bytes, nonce_len);
-    memcpy(concatenated + nonce_len, created, strlen(created));
-    memcpy(concatenated + nonce_len + strlen(created), password, strlen(password) + 1);
+    // Raw byte copies for SHA-1 input: intermediate parts are not C strings
+    memcpy((void *)(concatenated + nonce_len), created, strlen(created));
+    memcpy((void *)(concatenated + nonce_len + strlen(created)), password, strlen(password) + 1);
     
     // Calculate SHA1 digest
     mbedtls_sha1((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);

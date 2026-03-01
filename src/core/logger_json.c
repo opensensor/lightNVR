@@ -285,6 +285,12 @@ int get_json_logs(const char *min_level, const char *last_timestamp, char ***log
         line_count++;
     }
     
+    // Return early if no lines to process
+    if (line_count == 0) {
+        free(buffer);
+        return 0;
+    }
+
     // Allocate array of log strings
     char **log_lines = (char **)malloc(line_count * sizeof(char *));
     if (!log_lines) {
@@ -315,7 +321,6 @@ int get_json_logs(const char *min_level, const char *last_timestamp, char ***log
                 
                 const char *timestamp = timestamp_json->valuestring;
                 const char *level = level_json->valuestring;
-                const char *message = message_json->valuestring;
                 
                 // Skip entries with timestamp <= last_timestamp
                 if (compare_timestamp && strcmp(timestamp, last_timestamp) <= 0) {

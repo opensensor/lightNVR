@@ -946,19 +946,16 @@ int save_stream_configs(const config_t *config) {
     if (!config) return -1;
     
     int saved = 0;
-    int transaction_started = 0;
-    
+
     // We don't set an alarm here anymore - the caller should handle timeouts
     // The alarm is now set in handle_post_settings with a proper signal handler
-    
+
     // Begin transaction
     if (begin_transaction() != 0) {
         log_error("Failed to begin transaction for saving stream configurations");
         return -1;
     }
-    
-    transaction_started = 1;
-    
+
     // Get existing stream configurations from database
     int count = count_stream_configs();
     if (count < 0) {

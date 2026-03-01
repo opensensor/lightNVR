@@ -1305,7 +1305,6 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
 
                 // Update codec name for logging
                 codec_name = "AAC (transcoded from PCM)";
-                is_compatible = true;
             } else {
                 log_error("Failed to transcode %s audio to AAC: %d", codec_name, transcode_ret);
                 log_error("Audio stream parameters: codec_id=%d, sample_rate=%d, channels=%d",

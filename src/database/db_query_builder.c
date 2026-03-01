@@ -93,7 +93,6 @@ const char *qb_build_select(query_builder_t *qb, const char *where_clause, const
         remaining -= (size_t)written;
 
         col->index = result_idx++;
-        first = true;
         first = false;
     }
 
@@ -129,9 +128,7 @@ const char *qb_build_select(query_builder_t *qb, const char *where_clause, const
     // Add semicolon
     written = snprintf(ptr, remaining, ";");
     if (written < 0 || (size_t)written >= remaining) { return NULL; }
-    ptr += written;
-    remaining -= (size_t)written;
-    
+
     return qb->query;
 }
 
