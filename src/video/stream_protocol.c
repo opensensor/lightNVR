@@ -546,7 +546,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     // Create an array of option dictionaries, one for each stream
     AVDictionary **options = NULL;
     if ((*input_ctx)->nb_streams > 0) {
-        options = av_calloc((*input_ctx)->nb_streams, sizeof(*options));
+        options = (AVDictionary **)av_calloc((*input_ctx)->nb_streams, sizeof(*options));
         if (options) {
             // Set the same options for each stream
             for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
@@ -569,7 +569,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
         for (unsigned int i = 0; i < local_input_ctx->nb_streams; i++) {
             av_dict_free(&options[i]);
         }
-        av_free(options);
+        av_free((void *)options);
     }
     av_dict_free(&find_stream_options);
 

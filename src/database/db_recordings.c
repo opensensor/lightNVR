@@ -385,23 +385,23 @@ int get_recording_metadata(time_t start_time, time_t end_time,
 
     // Build query based on filters
     char sql[1024];
-    strcpy(sql, "SELECT id, stream_name, file_path, start_time, end_time, "
+    snprintf(sql, sizeof(sql), "SELECT id, stream_name, file_path, start_time, end_time, "
                  "size_bytes, width, height, fps, codec, is_complete "
                  "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL"); // Only complete recordings with end_time set
 
     if (start_time > 0) {
-        strcat(sql, " AND start_time >= ?");
+        strncat(sql, " AND start_time >= ?", sizeof(sql) - strlen(sql) - 1);
     }
 
     if (end_time > 0) {
-        strcat(sql, " AND start_time <= ?");
+        strncat(sql, " AND start_time <= ?", sizeof(sql) - strlen(sql) - 1);
     }
 
     if (stream_name) {
-        strcat(sql, " AND stream_name = ?");
+        strncat(sql, " AND stream_name = ?", sizeof(sql) - strlen(sql) - 1);
     }
 
-    strcat(sql, " ORDER BY start_time DESC LIMIT ?;");
+    strncat(sql, " ORDER BY start_time DESC LIMIT ?;", sizeof(sql) - strlen(sql) - 1);
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -513,39 +513,41 @@ int get_recording_count(time_t start_time, time_t end_time,
     char sql[2048];
 
     // Use trigger_type and/or detections table to filter detection-based recordings
-    strcpy(sql, "SELECT COUNT(*) FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
+    snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection) {
         // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)
         // Falls back to timestamp range scan for legacy detections without recording_id
-        strcat(sql, " AND (r.trigger_type = 'detection'"
+        strncat(sql, " AND (r.trigger_type = 'detection'"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))",
+                    sizeof(sql) - strlen(sql) - 1);
         log_debug("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
     }
 
     if (detection_label) {
         // Filter by specific detection label - prefer recording_id FK lookup, fall back to timestamp range
-        strcat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
+        strncat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
                     " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
-                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))");
+                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))",
+                    sizeof(sql) - strlen(sql) - 1);
         log_debug("Adding detection_label filter: %s", detection_label);
     }
 
     if (start_time > 0) {
-        strcat(sql, " AND r.start_time >= ?");
+        strncat(sql, " AND r.start_time >= ?", sizeof(sql) - strlen(sql) - 1);
         log_debug("Adding start_time filter: %ld", (long)start_time);
     }
 
     if (end_time > 0) {
-        strcat(sql, " AND r.start_time <= ?");
+        strncat(sql, " AND r.start_time <= ?", sizeof(sql) - strlen(sql) - 1);
         log_debug("Adding end_time filter: %ld", (long)end_time);
     }
 
     if (stream_name) {
-        strcat(sql, " AND r.stream_name = ?");
+        strncat(sql, " AND r.stream_name = ?", sizeof(sql) - strlen(sql) - 1);
     }
 
     log_debug("SQL query for get_recording_count: %s", sql);
@@ -664,45 +666,47 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     if (has_detection) {
         // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)
         // Falls back to timestamp range scan for legacy detections without recording_id
-        strcat(sql, " AND (r.trigger_type = 'detection'"
+        strncat(sql, " AND (r.trigger_type = 'detection'"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))");
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))",
+                    sizeof(sql) - strlen(sql) - 1);
         log_info("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
     }
 
     if (detection_label) {
         // Filter by specific detection label - prefer recording_id FK lookup, fall back to timestamp range
-        strcat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
+        strncat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
                     " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
-                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))");
+                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))",
+                    sizeof(sql) - strlen(sql) - 1);
         log_info("Adding detection_label filter: %s", detection_label);
     }
 
     if (start_time > 0) {
-        strcat(sql, " AND r.start_time >= ?");
+        strncat(sql, " AND r.start_time >= ?", sizeof(sql) - strlen(sql) - 1);
         log_info("Adding start_time filter to paginated query: %ld", (long)start_time);
     }
 
     if (end_time > 0) {
-        strcat(sql, " AND r.start_time <= ?");
+        strncat(sql, " AND r.start_time <= ?", sizeof(sql) - strlen(sql) - 1);
         log_info("Adding end_time filter to paginated query: %ld", (long)end_time);
     }
 
     if (stream_name) {
-        strcat(sql, " AND r.stream_name = ?");
+        strncat(sql, " AND r.stream_name = ?", sizeof(sql) - strlen(sql) - 1);
     }
 
     // Add ORDER BY clause with sanitized field and order
     char order_clause[64];
     snprintf(order_clause, sizeof(order_clause), " ORDER BY r.%s %s", safe_sort_field, safe_sort_order);
-    strcat(sql, order_clause);
+    strncat(sql, order_clause, sizeof(sql) - strlen(sql) - 1);
 
     // Add LIMIT and OFFSET for pagination
     char limit_clause[64];
     snprintf(limit_clause, sizeof(limit_clause), " LIMIT ? OFFSET ?");
-    strcat(sql, limit_clause);
+    strncat(sql, limit_clause, sizeof(sql) - strlen(sql) - 1);
 
     log_debug("SQL query for get_recording_metadata_paginated: %s", sql);
 

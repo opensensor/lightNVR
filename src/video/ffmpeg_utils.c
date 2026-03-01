@@ -1065,7 +1065,7 @@ int ffmpeg_concat_ts_to_mp4(const char **segment_paths, int segment_count,
     AVDictionary *opts = NULL;
 
     // Allocate array for input contexts
-    input_contexts = calloc(segment_count, sizeof(AVFormatContext *));
+    input_contexts = (AVFormatContext **)calloc(segment_count, sizeof(AVFormatContext *));
     if (!input_contexts) {
         log_error("Failed to allocate input contexts array");
         return -1;
@@ -1270,7 +1270,7 @@ cleanup:
                 avformat_close_input(&input_contexts[i]);
             }
         }
-        free(input_contexts);
+        free((void *)input_contexts);
     }
 
     // Close output

@@ -212,17 +212,19 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         log_error("Failed to create socket: %s", strerror(errno));
+        free(buffer);
         return -1;
     }
-    
+
     // Set socket options for address reuse
     int reuse = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
         log_error("Failed to set socket options (SO_REUSEADDR): %s", strerror(errno));
         close(sock);
+        free(buffer);
         return -1;
     }
-    
+
     // Set SO_REUSEPORT if available (not available on all systems)
     #ifdef SO_REUSEPORT
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
@@ -491,6 +493,7 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         log_error("Failed to create socket: %s", strerror(errno));
+        free(buffer);
         return -1;
     }
 
@@ -499,9 +502,10 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
         log_error("Failed to set socket options (SO_REUSEADDR): %s", strerror(errno));
         close(sock);
+        free(buffer);
         return -1;
     }
-    
+
     // Set SO_REUSEPORT if available (not available on all systems)
     #ifdef SO_REUSEPORT
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {

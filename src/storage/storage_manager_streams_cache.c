@@ -230,6 +230,7 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
         log_error("Failed to get cached stream storage usage");
         // Try to get the information directly without caching
         log_info("Attempting to get stream storage usage directly");
+        free(stream_info);  // NULL-safe; ensure no leak before reassigning
         stream_info = NULL;
         stream_count = get_all_stream_storage_usage(&stream_info);
 

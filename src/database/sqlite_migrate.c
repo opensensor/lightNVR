@@ -753,6 +753,10 @@ static int execute_sql(sqlite3 *db, const char *sql) {
             stmt_copy = new_copy;
         }
 
+        if (!stmt_copy) {
+            return -1;
+        }
+
         memcpy(stmt_copy, start, len);
         stmt_copy[len] = ';';
         stmt_copy[len + 1] = '\0';

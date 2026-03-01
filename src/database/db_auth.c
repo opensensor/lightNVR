@@ -386,21 +386,21 @@ int db_auth_update_user(int64_t user_id, const char *email, int role, int is_act
     int param_count = 1;
 
     if (email) {
-        strcat(query, ", email = ?");
+        strncat(query, ", email = ?", sizeof(query) - strlen(query) - 1);
         param_count++;
     }
 
     if (role >= 0) {
-        strcat(query, ", role = ?");
+        strncat(query, ", role = ?", sizeof(query) - strlen(query) - 1);
         param_count++;
     }
 
     if (is_active >= 0) {
-        strcat(query, ", is_active = ?");
+        strncat(query, ", is_active = ?", sizeof(query) - strlen(query) - 1);
         param_count++;
     }
 
-    strcat(query, " WHERE id = ?;");
+    strncat(query, " WHERE id = ?;", sizeof(query) - strlen(query) - 1);
 
     // Prepare the statement
     rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);

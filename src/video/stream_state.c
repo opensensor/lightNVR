@@ -45,7 +45,7 @@ int init_stream_state_manager(int max_streams) {
 
     pthread_mutex_lock(&states_mutex);
 
-    stream_states = calloc(max_streams, sizeof(stream_state_manager_t *));
+    stream_states = (stream_state_manager_t **)calloc(max_streams, sizeof(stream_state_manager_t *));
     if (!stream_states) {
         pthread_mutex_unlock(&states_mutex);
         log_error("init_stream_state_manager: failed to allocate states array");
@@ -95,7 +95,7 @@ void shutdown_stream_state_manager(void) {
         }
     }
 
-    free(stream_states);
+    free((void *)stream_states);
     stream_states = NULL;
     states_capacity = 0;
     initialized = false;

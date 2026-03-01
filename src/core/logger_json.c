@@ -286,7 +286,7 @@ int get_json_logs(const char *min_level, const char *last_timestamp, char ***log
     }
     
     // Allocate array of log strings
-    char **log_lines = malloc(line_count * sizeof(char *));
+    char **log_lines = (char **)malloc(line_count * sizeof(char *));
     if (!log_lines) {
         free(buffer);
         return -1;

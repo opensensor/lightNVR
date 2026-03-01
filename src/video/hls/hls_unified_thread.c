@@ -1230,6 +1230,15 @@ void *hls_unified_thread_func(void *arg) {
                     input_ctx->interrupt_callback.opaque = (void *)&ctx->running;
                 }
 
+                // Verify input_ctx is valid before proceeding
+                if (!input_ctx) {
+                    log_error("Input context is NULL for stream %s despite successful open", stream_name);
+                    atomic_store(&ctx->connection_valid, 0);
+                    reconnect_attempt++;
+                    reconnect_delay_ms = calculate_reconnect_delay(reconnect_attempt);
+                    break;
+                }
+
                 // Find video stream
                 video_stream_idx = find_video_stream_index(input_ctx);
                 if (video_stream_idx == -1) {
@@ -1620,6 +1629,14 @@ void *hls_unified_thread_func(void *arg) {
                 // This allows av_read_frame to be interrupted when stopping individual streams
                 if (input_ctx) {
                     input_ctx->interrupt_callback.opaque = (void *)&ctx->running;
+                }
+
+                // Verify input_ctx is valid before proceeding
+                if (!input_ctx) {
+                    log_error("Input context is NULL for stream %s despite successful reconnect", stream_name);
+                    reconnect_attempt++;
+                    reconnect_delay_ms = calculate_reconnect_delay(reconnect_attempt);
+                    break;
                 }
 
                 // Find video stream
@@ -3060,7 +3077,7 @@ static void init_freed_contexts_tracking(void) {
 
     // Initialize the freed contexts array
     pthread_mutex_lock(&freed_contexts_mutex);
-    memset(freed_contexts, 0, sizeof(freed_contexts));
+    memset((void *)freed_contexts, 0, sizeof(freed_contexts));
     freed_contexts_count = 0;
     pthread_mutex_unlock(&freed_contexts_mutex);
 

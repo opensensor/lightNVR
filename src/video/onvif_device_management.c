@@ -59,8 +59,8 @@ static char* create_security_header(const char *username, const char *password, 
     mbedtls_base64_encode((unsigned char*)base64_nonce, ((4 * nonce_len) / 3) + 5, &base64_len, nonce_bytes, nonce_len);
     base64_nonce[base64_len] = '\0'; // Ensure null termination
     
-    // Copy nonce to output parameter
-    strcpy(nonce, base64_nonce);
+    // Copy nonce to output parameter (base64_len is the actual encoded length without null terminator)
+    memcpy(nonce, base64_nonce, base64_len + 1);
     
     // Get current time
     time_t now;
@@ -368,7 +368,7 @@ static char* get_media_service_url(const char *device_url, const char *username,
                 if (media_url) {
                     strncpy(media_url, device_url, prefix_len);
                     media_url[prefix_len] = '\0';
-                    strcat(media_url, "/onvif/media_service");
+                    strncat(media_url, "/onvif/media_service", strlen("/onvif/media_service"));
                     log_info("Created fallback media URL: %s", media_url);
                 }
             } else {

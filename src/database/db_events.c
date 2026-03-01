@@ -103,25 +103,26 @@ int get_events(time_t start_time, time_t end_time, int type,
     
     // Build query based on filters
     char sql[1024];
-    strcpy(sql, "SELECT id, type, timestamp, stream_name, description, details FROM events WHERE 1=1");
+    strncpy(sql, "SELECT id, type, timestamp, stream_name, description, details FROM events WHERE 1=1", sizeof(sql) - 1);
+    sql[sizeof(sql) - 1] = '\0';
     
     if (start_time > 0) {
-        strcat(sql, " AND timestamp >= ?");
+        strncat(sql, " AND timestamp >= ?", sizeof(sql) - strlen(sql) - 1);
     }
-    
+
     if (end_time > 0) {
-        strcat(sql, " AND timestamp <= ?");
+        strncat(sql, " AND timestamp <= ?", sizeof(sql) - strlen(sql) - 1);
     }
-    
+
     if (type >= 0) {
-        strcat(sql, " AND type = ?");
+        strncat(sql, " AND type = ?", sizeof(sql) - strlen(sql) - 1);
     }
-    
+
     if (stream_name) {
-        strcat(sql, " AND stream_name = ?");
+        strncat(sql, " AND stream_name = ?", sizeof(sql) - strlen(sql) - 1);
     }
-    
-    strcat(sql, " ORDER BY timestamp DESC LIMIT ?;");
+
+    strncat(sql, " ORDER BY timestamp DESC LIMIT ?;", sizeof(sql) - strlen(sql) - 1);
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {

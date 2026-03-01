@@ -207,6 +207,7 @@ void initiate_shutdown(void) {
     } component_priority_t;
     
     component_priority_t priorities[MAX_COMPONENTS];
+    memset(priorities, 0, sizeof(priorities));
     int count = atomic_load(&g_coordinator.component_count);
     
     for (int i = 0; i < count; i++) {
