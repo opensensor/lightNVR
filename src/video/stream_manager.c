@@ -766,10 +766,9 @@ int start_stream(stream_handle_t handle) {
     // Start HLS stream if streaming is enabled OR if detection is enabled
     // When detection is enabled, HLS keeps the go2rtc stream alive so detection
     // snapshots work reliably even when no WebRTC viewers are connected.
-    int hls_result = 0;
     bool need_hls = streaming_enabled || detection_enabled;
     if (need_hls) {
-        hls_result = stream_start_hls(stream_name);
+        int hls_result = stream_start_hls(stream_name);
         if (hls_result != 0) {
             log_error("Failed to start HLS stream '%s'", stream_name);
         } else {
