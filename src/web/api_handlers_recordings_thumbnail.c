@@ -163,7 +163,7 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
     const char *index_str = slash + 1;
 
     uint64_t id = strtoull(id_str, NULL, 10);
-    int index = atoi(index_str);
+    int index = (int)strtol(index_str, NULL, 10);
 
     if (id == 0) {
         http_response_set_json_error(res, 400, "Invalid recording ID");

@@ -59,7 +59,7 @@ int parse_network(const char *network, uint32_t *base_addr, uint32_t *subnet_mas
     
     // Split the string
     *slash = '\0';
-    prefix_len = atoi(slash + 1);
+    prefix_len = (int)strtol(slash + 1, NULL, 10);
     
     // Validate prefix length
     if (prefix_len < 0 || prefix_len > 32) {

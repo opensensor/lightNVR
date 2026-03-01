@@ -149,7 +149,7 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         log_error("Failed to verify detections were stored: %s", err_msg);
         sqlite3_free(err_msg);
     } else if (rows > 0 && cols > 0) {
-        int count = atoi(query_result[1]); // First row, first column
+        int count = (int)strtol(query_result[1], NULL, 10); // First row, first column
         log_debug("Verified %d detections were stored in database for stream %s", count, stream_name);
         sqlite3_free_table(query_result);
     }

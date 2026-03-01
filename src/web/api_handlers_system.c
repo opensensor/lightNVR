@@ -61,7 +61,7 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
     char line[32];
     pid_t pid = -1;
     if (fgets(line, sizeof(line), fp)) {
-        pid = atoi(line);
+        pid = (pid_t)strtol(line, NULL, 10);
     }
     pclose(fp);
 

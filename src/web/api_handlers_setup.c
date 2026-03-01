@@ -28,7 +28,7 @@ void handle_get_setup_status(const http_request_t *req, http_response_t *res) {
     char ts_buf[32] = {0};
     long long completed_at = 0;
     if (db_get_system_setting("setup_completed_at", ts_buf, sizeof(ts_buf)) == 0) {
-        completed_at = atoll(ts_buf);
+        completed_at = strtoll(ts_buf, NULL, 10);
     }
 
     cJSON *obj = cJSON_CreateObject();

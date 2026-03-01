@@ -164,7 +164,7 @@ static int totp_generate(const char *secret_b32, uint64_t time_step) {
 int totp_verify(const char *secret_b32, const char *code_str) {
     if (!secret_b32 || !code_str || strlen(code_str) != 6) return -1;
 
-    int provided_code = atoi(code_str);
+    int provided_code = (int)strtol(code_str, NULL, 10);
     uint64_t current_time = (uint64_t)time(NULL);
     uint64_t time_step = current_time / 30;
 

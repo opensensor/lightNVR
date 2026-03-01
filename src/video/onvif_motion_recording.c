@@ -530,7 +530,7 @@ static void load_motion_configs_from_database(void) {
 
     // Allocate arrays for configurations and stream names
     motion_recording_config_t *configs = malloc(MAX_STREAMS * sizeof(motion_recording_config_t));
-    char (*stream_names)[256] = malloc(MAX_STREAMS * 256);
+    char (*stream_names)[256] = malloc((size_t)MAX_STREAMS * 256);
 
     if (!configs || !stream_names) {
         log_error("Failed to allocate memory for loading motion configs");

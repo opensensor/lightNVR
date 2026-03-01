@@ -89,9 +89,9 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     http_request_get_query_param(req, "detection_label", detection_label, sizeof(detection_label));
 
     // Parse numeric parameters
-    int page = page_str[0] ? atoi(page_str) : 1;
-    int limit = limit_str[0] ? atoi(limit_str) : 20;
-    int has_detection = has_detection_str[0] ? atoi(has_detection_str) : 0;
+    int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
+    int limit = limit_str[0] ? (int)strtol(limit_str, NULL, 10) : 20;
+    int has_detection = has_detection_str[0] ? (int)strtol(has_detection_str, NULL, 10) : 0;
 
     // Validate parameters
     if (page <= 0) page = 1;

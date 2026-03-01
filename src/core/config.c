@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <libgen.h>
 #include <ctype.h>
+#include <limits.h>
 #include <syslog.h>
 
 #include "ini.h"
@@ -19,6 +20,22 @@
 
 // Global configuration variable
 config_t g_config;
+
+/**
+ * Safe integer conversion from string using strtol.
+ * Returns the converted value, or fallback on failure (empty string, non-numeric, overflow).
+ * This replaces atoi() to satisfy cert-err34-c.
+ */
+static int safe_atoi(const char *str, int fallback) {
+    if (!str || !*str) return fallback;
+    char *end;
+    errno = 0;
+    long val = strtol(str, &end, 10);
+    if (end == str || errno == ERANGE || val < INT_MIN || val > INT_MAX) {
+        return fallback;
+    }
+    return (int)val;
+}
 
 // ============================================================================
 // Environment Variable Override Support
@@ -187,7 +204,7 @@ static void apply_env_overrides(config_t *config) {
             }
             case CONFIG_TYPE_INT: {
                 int *int_ptr = (int *)field_ptr;
-                int new_value = atoi(env_value);
+                int new_value = safe_atoi(env_value, 0);
                 *int_ptr = new_value;
                 log_info("Applied env override: %s=%s (int: %d)",
                          env_name, env_value, new_value);
@@ -550,7 +567,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "log_file") == 0) {
             strncpy(config->log_file, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "log_level") == 0) {
-            config->log_level = atoi(value);
+            config->log_level = safe_atoi(value, 0);
         } else if (strcmp(name, "syslog_enabled") == 0) {
             config->syslog_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "syslog_ident") == 0) {
@@ -558,7 +575,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "syslog_facility") == 0) {
             // Parse syslog facility - support both numeric and string values
             if (isdigit(value[0])) {
-                config->syslog_facility = atoi(value);
+                config->syslog_facility = safe_atoi(value, 0);
             } else {
                 // Map facility names to values
                 if (strcmp(value, "LOG_USER") == 0) config->syslog_facility = LOG_USER;
@@ -584,7 +601,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "max_size") == 0) {
             config->max_storage_size = strtoull(value, NULL, 10);
         } else if (strcmp(name, "retention_days") == 0) {
-            config->retention_days = atoi(value);
+            config->retention_days = safe_atoi(value, 0);
         } else if (strcmp(name, "auto_delete_oldest") == 0) {
             config->auto_delete_oldest = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "record_mp4_directly") == 0) {
@@ -593,9 +610,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->mp4_storage_path, value, sizeof(config->mp4_storage_path) - 1);
             config->mp4_storage_path[sizeof(config->mp4_storage_path) - 1] = '\0';
         } else if (strcmp(name, "mp4_segment_duration") == 0) {
-            config->mp4_segment_duration = atoi(value);
+            config->mp4_segment_duration = safe_atoi(value, 0);
         } else if (strcmp(name, "mp4_retention_days") == 0) {
-            config->mp4_retention_days = atoi(value);
+            config->mp4_retention_days = safe_atoi(value, 0);
         } else if (strcmp(name, "generate_thumbnails") == 0) {
             config->generate_thumbnails = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         }
@@ -614,17 +631,17 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->api_detection_backend, value, 31);
             config->api_detection_backend[31] = '\0';
         } else if (strcmp(name, "detection_threshold") == 0) {
-            config->default_detection_threshold = atoi(value);
+            config->default_detection_threshold = safe_atoi(value, 0);
             // Clamp to valid range
             if (config->default_detection_threshold < 0) config->default_detection_threshold = 0;
             if (config->default_detection_threshold > 100) config->default_detection_threshold = 100;
         } else if (strcmp(name, "pre_detection_buffer") == 0) {
-            config->default_pre_detection_buffer = atoi(value);
+            config->default_pre_detection_buffer = safe_atoi(value, 0);
             // Clamp to valid range
             if (config->default_pre_detection_buffer < 0) config->default_pre_detection_buffer = 0;
             if (config->default_pre_detection_buffer > 60) config->default_pre_detection_buffer = 60;
         } else if (strcmp(name, "post_detection_buffer") == 0) {
-            config->default_post_detection_buffer = atoi(value);
+            config->default_post_detection_buffer = safe_atoi(value, 0);
             // Clamp to valid range
             if (config->default_post_detection_buffer < 0) config->default_post_detection_buffer = 0;
             if (config->default_post_detection_buffer > 300) config->default_post_detection_buffer = 300;
@@ -642,7 +659,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     // Web server settings
     else if (strcmp(section, "web") == 0) {
         if (strcmp(name, "port") == 0) {
-            config->web_port = atoi(value);
+            config->web_port = safe_atoi(value, 0);
         } else if (strcmp(name, "root") == 0) {
             strncpy(config->web_root, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "auth_enabled") == 0) {
@@ -654,7 +671,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "webrtc_disabled") == 0) {
             config->webrtc_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "auth_timeout_hours") == 0) {
-            config->auth_timeout_hours = atoi(value);
+            config->auth_timeout_hours = safe_atoi(value, 0);
             if (config->auth_timeout_hours < 1) {
                 config->auth_timeout_hours = 1; // Minimum 1 hour
             }
@@ -665,17 +682,17 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "login_rate_limit_enabled") == 0) {
             config->login_rate_limit_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "login_rate_limit_max_attempts") == 0) {
-            config->login_rate_limit_max_attempts = atoi(value);
+            config->login_rate_limit_max_attempts = safe_atoi(value, 0);
             if (config->login_rate_limit_max_attempts < 1) {
                 config->login_rate_limit_max_attempts = 1;
             }
         } else if (strcmp(name, "login_rate_limit_window_seconds") == 0) {
-            config->login_rate_limit_window_seconds = atoi(value);
+            config->login_rate_limit_window_seconds = safe_atoi(value, 0);
             if (config->login_rate_limit_window_seconds < 10) {
                 config->login_rate_limit_window_seconds = 10; // Minimum 10 seconds
             }
         } else if (strcmp(name, "web_thread_pool_size") == 0) {
-            int v = atoi(value);
+            int v = safe_atoi(value, 0);
             if (v < 2)   v = 2;
             if (v > 128) v = 128;
             config->web_thread_pool_size = v;
@@ -684,7 +701,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     // Stream settings
     else if (strcmp(section, "streams") == 0) {
         if (strcmp(name, "max_streams") == 0) {
-            int new_max = atoi(value);
+            int new_max = safe_atoi(value, 0);
             if (new_max < 1)          new_max = 1;
             if (new_max > MAX_STREAMS) new_max = MAX_STREAMS;
             if (new_max != config->max_streams) {
@@ -719,7 +736,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     // Memory optimization
     else if (strcmp(section, "memory") == 0) {
         if (strcmp(name, "buffer_size") == 0) {
-            config->buffer_size = atoi(value);
+            config->buffer_size = safe_atoi(value, 0);
         } else if (strcmp(name, "use_swap") == 0) {
             config->use_swap = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "swap_file") == 0) {
@@ -745,15 +762,15 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "config_dir") == 0) {
             strncpy(config->go2rtc_config_dir, value, MAX_PATH_LENGTH - 1);
         } else if (strcmp(name, "api_port") == 0) {
-            config->go2rtc_api_port = atoi(value);
+            config->go2rtc_api_port = safe_atoi(value, 0);
         } else if (strcmp(name, "rtsp_port") == 0) {
-            config->go2rtc_rtsp_port = atoi(value);
+            config->go2rtc_rtsp_port = safe_atoi(value, 0);
         } else if (strcmp(name, "webrtc_port") == 0) {
-            config->go2rtc_webrtc_listen_port = atoi(value);
+            config->go2rtc_webrtc_listen_port = safe_atoi(value, 0);
         } else if (strcmp(name, "webrtc_enabled") == 0) {
             config->go2rtc_webrtc_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "webrtc_listen_port") == 0) {
-            config->go2rtc_webrtc_listen_port = atoi(value);
+            config->go2rtc_webrtc_listen_port = safe_atoi(value, 0);
         } else if (strcmp(name, "stun_enabled") == 0) {
             config->go2rtc_stun_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "stun_server") == 0) {
@@ -768,7 +785,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "force_native_hls") == 0) {
             config->go2rtc_force_native_hls = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "proxy_max_inflight") == 0) {
-            config->go2rtc_proxy_max_inflight = atoi(value);
+            config->go2rtc_proxy_max_inflight = safe_atoi(value, 0);
             if (config->go2rtc_proxy_max_inflight < 1) {
                 config->go2rtc_proxy_max_inflight = 1;  // Minimum 1
             }
@@ -793,7 +810,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         if (strcmp(name, "discovery_enabled") == 0) {
             config->onvif_discovery_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "discovery_interval") == 0) {
-            config->onvif_discovery_interval = atoi(value);
+            config->onvif_discovery_interval = safe_atoi(value, 0);
             // Clamp to reasonable range (30 seconds to 1 hour)
             if (config->onvif_discovery_interval < 30) {
                 config->onvif_discovery_interval = 30;
@@ -814,7 +831,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->mqtt_broker_host, value, sizeof(config->mqtt_broker_host) - 1);
             config->mqtt_broker_host[sizeof(config->mqtt_broker_host) - 1] = '\0';
         } else if (strcmp(name, "broker_port") == 0) {
-            config->mqtt_broker_port = atoi(value);
+            config->mqtt_broker_port = safe_atoi(value, 0);
             if (config->mqtt_broker_port <= 0 || config->mqtt_broker_port > 65535) {
                 config->mqtt_broker_port = 1883; // Default port
             }
@@ -833,7 +850,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         } else if (strcmp(name, "tls_enabled") == 0) {
             config->mqtt_tls_enabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "keepalive") == 0) {
-            config->mqtt_keepalive = atoi(value);
+            config->mqtt_keepalive = safe_atoi(value, 0);
             if (config->mqtt_keepalive < 5) {
                 config->mqtt_keepalive = 5; // Minimum 5 seconds
             }
@@ -841,7 +858,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
                 config->mqtt_keepalive = 3600; // Maximum 1 hour
             }
         } else if (strcmp(name, "qos") == 0) {
-            config->mqtt_qos = atoi(value);
+            config->mqtt_qos = safe_atoi(value, 0);
             if (config->mqtt_qos < 0 || config->mqtt_qos > 2) {
                 config->mqtt_qos = 1; // Default to QoS 1
             }
@@ -853,7 +870,7 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             strncpy(config->mqtt_ha_discovery_prefix, value, sizeof(config->mqtt_ha_discovery_prefix) - 1);
             config->mqtt_ha_discovery_prefix[sizeof(config->mqtt_ha_discovery_prefix) - 1] = '\0';
         } else if (strcmp(name, "ha_snapshot_interval") == 0) {
-            config->mqtt_ha_snapshot_interval = atoi(value);
+            config->mqtt_ha_snapshot_interval = safe_atoi(value, 0);
             if (config->mqtt_ha_snapshot_interval < 0) {
                 config->mqtt_ha_snapshot_interval = 0; // 0 = disabled
             }

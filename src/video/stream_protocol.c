@@ -158,7 +158,7 @@ static bool check_rtsp_stream_exists(const char *url) {
 
     // Extract the port if specified
     if (*host_end == ':') {
-        port = atoi(host_end + 1);
+        port = (int)strtol(host_end + 1, NULL, 10);
         if (port <= 0) {
             port = 554; // Default RTSP port
         }
