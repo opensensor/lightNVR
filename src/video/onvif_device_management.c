@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/random.h>
 #include <curl/curl.h>
 #include "ezxml.h"
 #include <mbedtls/sha1.h>
@@ -48,10 +49,15 @@ static char* create_security_header(const char *username, const char *password, 
     int nonce_len = 16;
     size_t base64_len;
     
-    // Generate random nonce
+    // Generate cryptographically secure random nonce
     unsigned char nonce_bytes[nonce_len];
-    for (int i = 0; i < nonce_len; i++) {
-        nonce_bytes[i] = rand() % 256;
+    if (getrandom(nonce_bytes, nonce_len, 0) < 0) {
+        // Fallback to /dev/urandom if getrandom fails
+        FILE *urandom = fopen("/dev/urandom", "rb");
+        if (urandom) {
+            (void)fread(nonce_bytes, 1, nonce_len, urandom);
+            fclose(urandom);
+        }
     }
     
     // Base64 encode the nonce

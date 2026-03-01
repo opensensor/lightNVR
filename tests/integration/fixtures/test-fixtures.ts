@@ -44,6 +44,30 @@ export function getAuthHeader(user: { username: string; password: string }): str
 }
 
 /**
+ * Dismiss the first-run setup wizard if it is visible.
+ * Calls POST /api/setup/status (no auth required) to mark setup complete,
+ * then reloads the page so the wizard doesn't block further interactions.
+ */
+export async function dismissSetupWizard(page: Page): Promise<void> {
+  try {
+    const wizard = page.locator('[data-testid="setup-wizard"]');
+    if (await wizard.isVisible({ timeout: 1500 }).catch(() => false)) {
+      console.log('Setup wizard detected – dismissing via API...');
+      await page.request.post('/api/setup/status', {
+        data: { complete: true },
+        headers: { 'Content-Type': 'application/json' },
+      });
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await sleep(CONFIG.COMPONENT_RENDER_DELAY);
+      console.log('Setup wizard dismissed');
+    }
+  } catch (e) {
+    // Non-fatal – log and continue
+    console.warn('dismissSetupWizard: error ignored –', (e as Error).message);
+  }
+}
+
+/**
  * Login to the web interface
  */
 export async function login(page: Page, user: { username: string; password: string } = USERS.admin): Promise<void> {
