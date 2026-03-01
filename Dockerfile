@@ -48,23 +48,12 @@ RUN mkdir -p /usr/lib/pkgconfig && \
     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
 # Build go2rtc from local submodule (AlexxIT/go2rtc v1.9.14)
-# Install Go for building go2rtc
-# Map dpkg architecture to Go architecture (armhf -> armv6l)
-RUN DPKG_ARCH=$(dpkg --print-architecture) && \
-    case "$DPKG_ARCH" in \
-        amd64) GO_ARCH="amd64" ;; \
-        arm64) GO_ARCH="arm64" ;; \
-        armhf) GO_ARCH="armv6l" ;; \
-        *) echo "Unsupported architecture: $DPKG_ARCH" && exit 1 ;; \
-    esac && \
-    curl -L "https://go.dev/dl/go1.26.0.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - && \
-    export PATH=$PATH:/usr/local/go/bin && \
-    mkdir -p /bin /etc/lightnvr/go2rtc && \
+# Go 1.26 is installed from Debian sid packages
+RUN mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Build go2rtc from local submodule (already copied by COPY . .)
     cd /opt/go2rtc && \
-    /usr/local/go/bin/go mod tidy && \
-    CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
-    cd /opt && rm -rf /usr/local/go && \
+    go mod tidy && \
+    CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
     chmod +x /bin/go2rtc && \
     # Create basic configuration file
     echo "# go2rtc configuration file" > /etc/lightnvr/go2rtc/go2rtc.yaml && \
@@ -116,7 +105,7 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
         *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
     esac && \
     # Build the application with go2rtc and SOD dynamic linking
-    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
+    PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
     ./scripts/build.sh --release --with-sod --sod-dynamic --with-go2rtc --go2rtc-binary=/bin/go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --go2rtc-api-port=1984 && \
     ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd
 
@@ -125,17 +114,15 @@ FROM debian:sid-slim AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install only necessary runtime dependencies (no Debian FFmpeg packages)
-# FFmpeg 8.0.1 built from source is copied from the builder stage
+# Install only necessary runtime dependencies
+# Debian sid ships FFmpeg 8.0.1: libavcodec62, libavformat62, libavutil60, libswscale9
+# ffmpeg CLI is needed by go2rtc for audio transcoding (AAC→OPUS for WebRTC)
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libavcodec62 libavformat62 libavutil60 libswscale9 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
     libmosquitto1 libuv1t64 && \
     rm -rf /var/lib/apt/lists/*
-
-# Copy FFmpeg 8.0.1 built from source (shared libraries + ffmpeg CLI binary)
-COPY --from=builder /usr/local/lib/lib*.so* /usr/local/lib/
-COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
-RUN ldconfig
 
 # Create directory structure
 RUN mkdir -p \
