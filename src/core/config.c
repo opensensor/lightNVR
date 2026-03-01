@@ -547,8 +547,8 @@ int validate_config(const config_t *config) {
         return -1;
     }
     
-    // Check swap size
-    if (config->use_swap && config->swap_size <= 0) {
+    // Check swap size (swap_size is unsigned, so only check for zero)
+    if (config->use_swap && config->swap_size == 0) {
         log_error("Invalid swap size: %llu", (unsigned long long)config->swap_size);
         return -1;
     }
