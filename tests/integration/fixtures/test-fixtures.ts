@@ -102,6 +102,10 @@ export async function login(page: Page, user: { username: string; password: stri
     // Wait a bit for the page to stabilize
     await sleep(CONFIG.COMPONENT_RENDER_DELAY);
 
+    // Dismiss the first-run setup wizard if it appeared (safety net – global
+    // setup marks it complete, but individual test runs may skip global setup)
+    await dismissSetupWizard(page);
+
     console.log(`Login successful as ${user.username}`);
   } catch (error) {
     // Take a screenshot on failure for debugging
