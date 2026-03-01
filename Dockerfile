@@ -6,8 +6,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies including Node.js for web assets
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
-    git cmake build-essential pkg-config file \
-    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+    git cmake build-essential pkg-config file xz-utils \
+    nasm yasm \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
     libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev \
     libmosquitto-dev libuv1-dev && \
@@ -25,6 +25,27 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     node --version && \
     npm --version && \
     rm -rf /var/lib/apt/lists/*
+
+# Build FFmpeg 8.0.1 from source
+RUN cd /tmp && \
+    wget -q https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz && \
+    tar xf ffmpeg-8.0.1.tar.xz && \
+    cd ffmpeg-8.0.1 && \
+    ./configure \
+        --prefix=/usr/local \
+        --enable-shared \
+        --disable-static \
+        --enable-gpl \
+        --disable-doc \
+        --disable-debug \
+        --disable-programs \
+        --enable-ffmpeg \
+        --disable-ffplay \
+        --disable-ffprobe && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    cd /tmp && rm -rf ffmpeg-8.0.1 ffmpeg-8.0.1.tar.xz
 
 # Fetch external dependencies
 RUN mkdir -p /opt/external && \
@@ -122,7 +143,7 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
         *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
     esac && \
     # Build the application with go2rtc and SOD dynamic linking
-    PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
+    PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
     ./scripts/build.sh --release --with-sod --sod-dynamic --with-go2rtc --go2rtc-binary=/bin/go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --go2rtc-api-port=1984 && \
     ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd
 
@@ -131,15 +152,17 @@ FROM debian:trixie-slim AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install only necessary runtime dependencies
-# Trixie has FFmpeg 7.x: libavcodec61, libavformat61, libavutil59, libswscale8
-# ffmpeg CLI is needed by go2rtc for audio transcoding (AAC→OPUS for WebRTC)
+# Install only necessary runtime dependencies (no Debian FFmpeg packages)
+# FFmpeg 8.0.1 built from source is copied from the builder stage
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libavcodec61 libavformat61 libavutil59 libswscale8 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
     libmosquitto1 libuv1t64 && \
     rm -rf /var/lib/apt/lists/*
+
+# Copy FFmpeg 8.0.1 built from source (shared libraries + ffmpeg CLI binary)
+COPY --from=builder /usr/local/lib/lib*.so* /usr/local/lib/
+COPY --from=builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+RUN ldconfig
 
 # Create directory structure
 RUN mkdir -p \
