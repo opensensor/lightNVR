@@ -244,7 +244,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         char start_time_formatted[32] = {0};
         char end_time_formatted[32] = {0};
         struct tm tm_info_buf;
-        struct tm *tm_info;
+        const struct tm *tm_info;
 
         tm_info = gmtime_r(&recordings[i].start_time, &tm_info_buf);
         if (tm_info) {

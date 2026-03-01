@@ -1296,7 +1296,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                 log_warn("Failed to get stream handle for: %s", active_streams[i]);
                 
                 // Try to find the stream configuration in the global config
-                stream_config_t *config = NULL;
+                const stream_config_t *config = NULL;
                 for (int j = 0; j < g_config.max_streams; j++) {
                     if (strcmp(g_config.streams[j].name, active_streams[i]) == 0) {
                         config = &g_config.streams[j];

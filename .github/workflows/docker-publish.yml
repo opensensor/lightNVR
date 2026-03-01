@@ -17,7 +17,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: opensensor/lightnvr
   REGISTRY_IMAGE: ghcr.io/opensensor/lightnvr
-  DOCKERHUB_IMAGE: matteius/lightnvr
+
 
 jobs:
   build:
@@ -109,57 +109,6 @@ jobs:
           path: ${{ runner.temp }}/digests/*.digest
           retention-days: 1
 
-      # ── Docker Hub (tagged releases only) ──────────────────────────────────
-
-      - name: Docker metadata (Docker Hub)
-        id: meta-dockerhub
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKERHUB_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=true
-          labels: |
-            org.opencontainers.image.title=LightNVR
-            org.opencontainers.image.description=Lightweight Network Video Recorder with go2rtc integration
-            org.opencontainers.image.vendor=OpenSensor
-
-      - name: Login to Docker Hub
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push to Docker Hub by digest
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        id: build-dockerhub
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta-dockerhub.outputs.labels }}
-          outputs: type=image,push-by-digest=true,name=${{ env.DOCKERHUB_IMAGE }},name-canonical=true,push=true
-
-      - name: Save Docker Hub digest
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        run: |
-          mkdir -p ${{ runner.temp }}/digests-dockerhub
-          platform="${{ matrix.platform }}"
-          digest="${{ steps.build-dockerhub.outputs.digest }}"
-          echo "$digest" > "${{ runner.temp }}/digests-dockerhub/${platform//\//-}.digest"
-          echo "Saved Docker Hub digest for $platform: $digest"
-
-      - name: Upload Docker Hub digest
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-dockerhub-${{ env.PLATFORM_PAIR }}
-          path: ${{ runner.temp }}/digests-dockerhub/*.digest
-          retention-days: 1
 
   manifest:
     needs: build
@@ -232,66 +181,3 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
 
-  manifest-dockerhub:
-    needs: build
-    runs-on: ubuntu-latest
-    # Only create and push Docker Hub manifest for tagged releases
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-
-    steps:
-      - name: Download all Docker Hub digests
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ runner.temp }}/digests-dockerhub
-          pattern: digests-dockerhub-*
-          merge-multiple: true
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker metadata (Docker Hub)
-        id: meta-dockerhub
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKERHUB_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=true
-          labels: |
-            org.opencontainers.image.title=LightNVR
-            org.opencontainers.image.description=Lightweight Network Video Recorder with go2rtc integration
-            org.opencontainers.image.vendor=OpenSensor
-
-      - name: Create and push Docker Hub manifest
-        run: |
-          DIGEST_DIR="${{ runner.temp }}/digests-dockerhub"
-          echo "Contents of digest directory: $(ls -la $DIGEST_DIR || echo 'Directory not found')"
-
-          DIGEST_ARGS=""
-          for file in $DIGEST_DIR/*.digest; do
-            if [ -f "$file" ]; then
-              DIGEST=$(cat "$file")
-              DIGEST_ARGS="$DIGEST_ARGS ${{ env.DOCKERHUB_IMAGE }}@$DIGEST"
-            else
-              echo "No digest files found in $DIGEST_DIR"
-              exit 1
-            fi
-          done
-
-          for tag in $(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON"); do
-            echo "Creating and pushing manifest: $tag"
-            echo "Using digests: $DIGEST_ARGS"
-            docker buildx imagetools create -t "$tag" $DIGEST_ARGS
-          done
-
-      - name: Inspect Docker Hub image
-        run: |
-          docker buildx imagetools inspect ${{ env.DOCKERHUB_IMAGE }}:${{ steps.meta-dockerhub.outputs.version }}
