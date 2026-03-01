@@ -74,7 +74,7 @@ void handle_direct_hls_request(const http_request_t *req, http_response_t *res) 
     }
 
     // Get the config to find the storage path - make a local copy of needed values
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
     if (!global_config) {
         log_error("Failed to get streaming configuration");
         http_response_set_json_error(res, 500, "Internal server error");

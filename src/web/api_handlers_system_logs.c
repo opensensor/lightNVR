@@ -206,7 +206,7 @@ int get_system_logs(char ***logs, int *count) {
 
     // Split buffer into lines
     char *saveptr;
-    char *line = strtok_r(buffer, "\n", &saveptr);
+    const char *line = strtok_r(buffer, "\n", &saveptr);
     int log_index = 0;
 
     while (line != NULL && log_index < lines_to_allocate) {

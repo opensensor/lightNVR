@@ -374,7 +374,7 @@ int hls_writer_initialize(hls_writer_t *writer, const AVStream *input_stream) {
  */
 static int ensure_output_directory(hls_writer_t *writer) {
     struct stat st;
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
 
     // Check if writer or global_config is NULL to prevent null pointer dereference
     if (!writer || !global_config) {
@@ -800,7 +800,7 @@ static void register_hls_writer(hls_writer_t *writer) {
     bool already_registered = false;
     int empty_slot = -1;
     bool duplicate_stream_name = false;
-    hls_writer_t *existing_writer = NULL;
+    const hls_writer_t *existing_writer = NULL;
 
     for (int i = 0; i < MAX_HLS_WRITERS; i++) {
         if (g_hls_writers[i] == writer) {

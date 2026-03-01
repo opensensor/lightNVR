@@ -246,7 +246,7 @@ static bool is_context_already_freed(void *ctx) {
 
         // Try to access the first few bytes to see if they're zeroed out
         // This might indicate that the memory has been freed
-        unsigned char *ptr = (unsigned char *)ctx;
+        const unsigned char *ptr = (const unsigned char *)ctx;
         bool all_zeros = true;
 
         // Use a try/catch-like approach with signal handling to prevent crashes
@@ -315,7 +315,7 @@ static void mark_context_pending_deletion(void *ctx) {
 }
 
 // Function to check if a context is pending deletion
-static bool is_context_pending_deletion(void *ctx) {
+static bool is_context_pending_deletion(const void *ctx) {
     if (!ctx) {
         return false;  // NULL context is not considered pending deletion
     }
@@ -394,7 +394,7 @@ static void mark_thread_exited(void *ctx) {
 }
 
 // Function to check if a thread has exited
-static bool has_thread_exited(void *ctx) {
+static bool has_thread_exited(const void *ctx) {
     bool result = false;
 
     pthread_mutex_lock(&pending_deletions_mutex);
@@ -484,7 +484,7 @@ static void wait_for_thread_exit(void *ctx) {
 }
 
 // Function to clear a context from the pending deletion list
-static void clear_context_pending_deletion(void *ctx) {
+static void clear_context_pending_deletion(const void *ctx) {
     pthread_mutex_lock(&pending_deletions_mutex);
 
     for (int i = 0; i < g_config.max_streams; i++) {
@@ -844,7 +844,7 @@ static int check_rtsp_connection(const char *rtsp_url, char *host, int *port) {
     server_addr.sin_port = htons(*port);
 
     // Convert hostname to IP address
-    struct hostent *he = gethostbyname(host);
+    const struct hostent *he = gethostbyname(host);
     if (!he) {
         close(sock);
         return -1;
@@ -1387,7 +1387,7 @@ void *hls_unified_thread_func(void *arg) {
                 }
 
                 // Get the stream for this packet
-                AVStream *input_stream = NULL;
+                const AVStream *input_stream = NULL;
                 if (pkt->stream_index >= 0 && pkt->stream_index < input_ctx->nb_streams) {
                     input_stream = input_ctx->streams[pkt->stream_index];
                 } else {
@@ -1477,8 +1477,8 @@ void *hls_unified_thread_func(void *arg) {
                     // For now, we'll just log it and skip processing
                     // This prevents the "Invalid packet stream index" errors
                     if (pkt->stream_index >= 0 && pkt->stream_index < input_ctx->nb_streams) {
-                        AVStream *stream = input_ctx->streams[pkt->stream_index];
-                        AVCodecParameters *codecpar = stream->codecpar;
+                        const AVStream *stream = input_ctx->streams[pkt->stream_index];
+                        const AVCodecParameters *codecpar = stream->codecpar;
 
                         if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
                             log_debug("Skipping audio packet for stream %s (stream index: %d)",
@@ -1877,7 +1877,7 @@ void *hls_unified_thread_func(void *arg) {
     // CRITICAL FIX: Add additional safety checks to prevent segfault
     if (state) {
         // Make a local copy of the writer pointer for safety
-        hls_writer_t *writer_ptr = NULL;
+        const hls_writer_t *writer_ptr = NULL;
 
         // Only access ctx members if the context is not already freed
         if (ctx && !is_context_already_freed(ctx)) {
@@ -1920,7 +1920,7 @@ void *hls_unified_thread_func(void *arg) {
     // Check if the context is valid before accessing its members
     if (ctx_local && !is_context_already_freed(ctx_local) && !is_context_pending_deletion(ctx_local)) {
         // Safely get the writer pointer
-        hls_writer_t *writer_ptr = NULL;
+        const hls_writer_t *writer_ptr = NULL;
 
         // Use atomic load to safely access the writer pointer
         writer_ptr = __atomic_load_n(&ctx_local->writer, __ATOMIC_SEQ_CST);
@@ -1933,8 +1933,8 @@ void *hls_unified_thread_func(void *arg) {
             writer_to_cleanup = __atomic_exchange_n(&ctx_local->writer, NULL, __ATOMIC_SEQ_CST);
 
             // CRITICAL FIX: Store a local copy of the stream name for logging
-            char writer_stream_name[MAX_STREAM_NAME] = {0};
             if (writer_to_cleanup && writer_to_cleanup->stream_name) {
+                char writer_stream_name[MAX_STREAM_NAME] = {0};
                 strncpy(writer_stream_name, writer_to_cleanup->stream_name, MAX_STREAM_NAME - 1);
                 writer_stream_name[MAX_STREAM_NAME - 1] = '\0';
                 log_info("Preparing to clean up HLS writer for stream %s", writer_stream_name);
@@ -2037,7 +2037,7 @@ void *hls_unified_thread_func(void *arg) {
         // Check if the context has already been freed (this is a heuristic)
         // We check if the first few bytes are zeroed out, which might indicate
         // that the memory has been freed or corrupted
-        unsigned char *ptr = (unsigned char *)ctx_to_free;
+        const unsigned char *ptr = (const unsigned char *)ctx_to_free;
         bool all_zeros = true;
         for (int i = 0; i < 16 && i < sizeof(hls_unified_thread_ctx_t); i++) {
             if (ptr[i] != 0) {
@@ -2401,7 +2401,7 @@ int start_hls_unified_stream(const char *stream_name) {
     }
 
     // Create output paths
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
 
     // Use storage_path_hls if specified, otherwise fall back to storage_path
     const char *base_storage_path = global_config->storage_path;
@@ -2555,7 +2555,7 @@ int restart_hls_unified_stream(const char *stream_name) {
     usleep(500000); // 500ms
 
     // Verify that the HLS directory exists and is writable
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
     if (global_config) {
         // Use storage_path_hls if specified, otherwise fall back to storage_path
         const char *base_storage_path = global_config->storage_path;
@@ -2732,7 +2732,7 @@ int stop_hls_unified_stream(const char *stream_name) {
             snprintf(writer_stream_name, sizeof(writer_stream_name), "%s", stream_name); // Use the stream_name we already have
 
             // Safely get and clear the writer pointer
-            hls_writer_t *writer_to_cleanup = NULL;
+            const hls_writer_t *writer_to_cleanup = NULL;
             if (ctx->writer) {
                 writer_to_cleanup = __atomic_exchange_n(&ctx->writer, NULL, __ATOMIC_SEQ_CST);
                 log_info("Clearing writer reference in context for stream %s", writer_stream_name);
@@ -2786,7 +2786,7 @@ int stop_hls_unified_stream(const char *stream_name) {
             // Check if the context has already been freed (this is a heuristic)
             // We check if the first few bytes are zeroed out, which might indicate
             // that the memory has been freed or corrupted
-            unsigned char *ptr = (unsigned char *)ctx_to_free;
+            const unsigned char *ptr = (const unsigned char *)ctx_to_free;
             bool all_zeros = true;
             for (int i = 0; i < 16 && i < sizeof(hls_unified_thread_ctx_t); i++) {
                 if (ptr[i] != 0) {

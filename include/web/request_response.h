@@ -187,7 +187,7 @@ int url_decode(const char *src, char *dst, size_t dst_size);
  * @param extra_headers Additional headers to include (or NULL)
  * @return 0 on success, -1 on error
  */
-int http_serve_file(const http_request_t *req, http_response_t *res,
+int http_serve_file(const http_request_t *req, const http_response_t *res,
                     const char *file_path, const char *content_type,
                     const char *extra_headers);
 

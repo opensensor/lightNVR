@@ -826,9 +826,9 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     }
 
     cJSON *detection_model_json = cJSON_GetObjectItem(stream_json, "detection_model");
-    char detection_model_value[256] = {0};
     bool has_detection_model = false;
     if (detection_model_json && cJSON_IsString(detection_model_json)) {
+        char detection_model_value[256] = {0};
         strncpy(detection_model_value, detection_model_json->valuestring, sizeof(detection_model_value) - 1);
         has_detection_model = true;
         strncpy(config.detection_model, detection_model_value, sizeof(config.detection_model) - 1);

@@ -147,11 +147,10 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     // If username and password are provided but not in the URL, add them
     if (username && password && strstr(modified_url, "@") == NULL) {
         // URL doesn't contain credentials, need to add them
-        char new_url[URL_BUFFER_SIZE];
-
         // Extract protocol and host parts
-        char *protocol_end = strstr(modified_url, "://");
+        const char *protocol_end = strstr(modified_url, "://");
         if (protocol_end) {
+            char new_url[URL_BUFFER_SIZE];
             // Format: protocol://username:password@rest_of_url
             char proto_str[16] = {0};
             size_t protocol_len = protocol_end - modified_url;
@@ -374,7 +373,6 @@ static size_t discard_response(void *ptr, size_t size, size_t nmemb, void *userd
  */
 static bool is_port_open(const char *host, int port, int timeout_ms) {
     struct addrinfo hints, *res = NULL, *rp;
-    int sockfd;
     fd_set fdset;
     struct timeval tv;
     bool result = false;
@@ -405,7 +403,7 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
     // Try each address until we successfully connect
     for (rp = res; rp != NULL; rp = rp->ai_next) {
         // Create socket
-        sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        int sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sockfd < 0) {
             continue; // Try next address
         }

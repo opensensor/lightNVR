@@ -50,7 +50,7 @@ static int scan_proc_for_cmdline(const char *pattern, pid_t *pids, int max_pids)
     DIR *proc_dir = opendir("/proc");
     if (!proc_dir) return 0;
 
-    struct dirent *entry;
+    const struct dirent *entry;
     while ((entry = readdir(proc_dir)) != NULL && found < max_pids) {
         // Only numeric directory names are processes
         const char *d = entry->d_name;
@@ -157,7 +157,7 @@ static void find_binary_in_path(const char *name, char *out, size_t out_size) {
     path_copy[sizeof(path_copy) - 1] = '\0';
 
     char *saveptr = NULL;
-    char *dir = strtok_r(path_copy, ":", &saveptr);
+    const char *dir = strtok_r(path_copy, ":", &saveptr);
     while (dir) {
         char candidate[PATH_MAX];
         int n = snprintf(candidate, sizeof(candidate), "%s/%s", dir, name);
@@ -221,7 +221,7 @@ static void recursive_remove_at(int parent_dfd, const char *name) {
         return;
     }
 
-    struct dirent *entry;
+    const struct dirent *entry;
     while ((entry = readdir(d)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
         recursive_remove_at(dirfd(d), entry->d_name);
@@ -650,7 +650,7 @@ static bool is_zombie_process(pid_t pid) {
         fclose(fp);
 
         // Find the closing paren of the command name, then the state is next
-        char *close_paren = strrchr(line, ')');
+        const char *close_paren = strrchr(line, ')');
         if (close_paren && close_paren[1] == ' ') {
             char state = close_paren[2];
             if (state == 'Z') {

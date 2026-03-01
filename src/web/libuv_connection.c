@@ -274,7 +274,7 @@ static int on_url(llhttp_t *parser, const char *at, size_t length) {
     conn->request.uri[uri_len] = '\0';
 
     // Split path and query string
-    char *query = strchr(conn->request.uri, '?');
+    const char *query = strchr(conn->request.uri, '?');
     if (query) {
         size_t path_len = query - conn->request.uri;
         if (path_len < sizeof(conn->request.path)) {
@@ -530,7 +530,7 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
  */
 static void static_file_resolve_handler(const http_request_t *req, http_response_t *res) {
     libuv_connection_t *conn = (libuv_connection_t *)req->user_data;
-    libuv_server_t *server = conn->server;
+    const libuv_server_t *server = conn->server;
 
     char file_path[1024];
     snprintf(file_path, sizeof(file_path), "%s%s", server->config.web_root, req->path);

@@ -330,7 +330,7 @@ bool go2rtc_consumer_start_recording(const char *stream_id, const char *output_p
     }
     
     // Add to our tracking array
-    consumer_state_t *consumer = add_consumer(g_recording_consumers, stream_id, output_path, segment_duration);
+    const consumer_state_t *consumer = add_consumer(g_recording_consumers, stream_id, output_path, segment_duration);
     if (!consumer) {
         log_error("Failed to track recording consumer for stream %s (max consumers reached)", stream_id);
         // Try to remove the consumer from go2rtc since we can't track it
@@ -430,7 +430,7 @@ bool go2rtc_consumer_start_hls(const char *stream_id, const char *output_path, i
     }
 
     // Add to our tracking array
-    consumer_state_t *consumer = add_consumer(g_hls_consumers, stream_id, output_path, segment_duration);
+    const consumer_state_t *consumer = add_consumer(g_hls_consumers, stream_id, output_path, segment_duration);
     if (!consumer) {
         log_error("Failed to track HLS consumer for stream %s (max consumers reached)", stream_id);
         return false;

@@ -228,7 +228,7 @@ int http_response_set_json_error(http_response_t *res, int status_code, const ch
     return ret;
 }
 
-int http_serve_file(const http_request_t *req, http_response_t *res,
+int http_serve_file(const http_request_t *req, const http_response_t *res,
                     const char *file_path, const char *content_type,
                     const char *extra_headers) {
     if (!req || !res || !file_path) {

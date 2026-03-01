@@ -62,7 +62,7 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
         return false;
     }
 
-    struct dirent *entry;
+    const struct dirent *entry;
     while ((entry = readdir(proc_dir)) != NULL) {
         const char *d = entry->d_name;
         if (*d < '1' || *d > '9') continue;
@@ -469,7 +469,7 @@ static unsigned long long sum_directory_size(const char *path, int depth) {
     if (!dir) return 0;
 
     unsigned long long total = 0;
-    struct dirent *entry;
+    const struct dirent *entry;
     char child[4096];
     struct stat st;
 
@@ -781,8 +781,6 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         if (interfaces) {
             // Get network interfaces with IP addresses using getifaddrs
             struct ifaddrs *ifaddr, *ifa;
-            int family;
-            char host[NI_MAXHOST];
 
             if (getifaddrs(&ifaddr) == 0) {
                 // Walk through linked list, maintaining head pointer so we can free list later
@@ -790,7 +788,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                     if (ifa->ifa_addr == NULL)
                         continue;
 
-                    family = ifa->ifa_addr->sa_family;
+                    int family = ifa->ifa_addr->sa_family;
 
                     // Skip loopback interface
                     if (strcmp(ifa->ifa_name, "lo") == 0)
@@ -799,6 +797,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                     // Check if this is an IPv4 address
                     if (family == AF_INET) {
                         // Get IP address
+                        char host[NI_MAXHOST];
                         int s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
                                            host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
                         if (s == 0) {
@@ -808,7 +807,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
                             for (int i = 0; i < cJSON_GetArraySize(interfaces); i++) {
                                 existing_iface = cJSON_GetArrayItem(interfaces, i);
-                                cJSON *name_obj = cJSON_GetObjectItem(existing_iface, "name");
+                                const cJSON *name_obj = cJSON_GetObjectItem(existing_iface, "name");
                                 if (name_obj && name_obj->valuestring && strcmp(name_obj->valuestring, ifa->ifa_name) == 0) {
                                     found = true;
                                     break;
@@ -1171,7 +1170,7 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
     // Create a timestamp for the backup filename
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm* tm_info = localtime_r(&now, &tm_buf);
+    const struct tm* tm_info = localtime_r(&now, &tm_buf);
     char timestamp[20];
     strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_info);
 

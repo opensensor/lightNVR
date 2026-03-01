@@ -35,7 +35,6 @@ typedef struct {
     size_t size_bytes;                  // File size
     bool protected;                     // Protected from cleanup
     bool valid;                         // Slot in use
-    int64_t sequence_number;            // HLS sequence number if known
 } tracked_segment_t;
 
 // Strategy private data

@@ -19,7 +19,7 @@
  */
 int ensure_hls_directory(const char *output_dir, const char *stream_name) {
     // Get the global config for storage path
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
     if (!global_config) {
         log_error("Failed to get global config for HLS directory");
         return -1;
@@ -120,9 +120,9 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
     }
 
     // Create a parent directory check file to ensure the parent directory exists
-    char parent_dir[MAX_PATH_LENGTH];
     const char *last_slash = strrchr(output_dir, '/');
     if (last_slash) {
+        char parent_dir[MAX_PATH_LENGTH];
         size_t parent_len = last_slash - output_dir;
         strncpy(parent_dir, output_dir, parent_len);
         parent_dir[parent_len] = '\0';
@@ -201,7 +201,7 @@ int clear_stream_hls_segments(const char *stream_name) {
         return -1;
     }
 
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
     if (!global_config || !global_config->storage_path) {
         log_error("Cannot clear HLS segments: global config or storage path is NULL");
         return -1;
@@ -230,7 +230,7 @@ int clear_stream_hls_segments(const char *stream_name) {
     // Remove all .ts segment files using direct C functions
     DIR *dir = opendir(stream_hls_dir);
     if (dir) {
-        struct dirent *entry;
+        const struct dirent *entry;
         int removed_count = 0;
 
         while ((entry = readdir(dir)) != NULL) {
@@ -258,7 +258,7 @@ int clear_stream_hls_segments(const char *stream_name) {
     // Remove all .m4s segment files (for fMP4) using direct C functions
     dir = opendir(stream_hls_dir);
     if (dir) {
-        struct dirent *entry;
+        const struct dirent *entry;
         int removed_count = 0;
 
         while ((entry = readdir(dir)) != NULL) {
@@ -297,7 +297,7 @@ int clear_stream_hls_segments(const char *stream_name) {
     // Remove all .m3u8 playlist files using direct C functions
     dir = opendir(stream_hls_dir);
     if (dir) {
-        struct dirent *entry;
+        const struct dirent *entry;
         int removed_count = 0;
 
         while ((entry = readdir(dir)) != NULL) {
@@ -335,7 +335,7 @@ int clear_stream_hls_segments(const char *stream_name) {
  * Clean up HLS directories during shutdown
  */
 void cleanup_hls_directories(void) {
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
 
     if (!global_config || !global_config->storage_path) {
         log_error("Cannot clean up HLS directories: global config or storage path is NULL");
@@ -370,7 +370,7 @@ void cleanup_hls_directories(void) {
     }
 
     // Iterate through each stream directory
-    struct dirent *entry;
+    const struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         // Skip . and .. directories
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {

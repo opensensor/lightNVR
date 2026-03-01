@@ -226,7 +226,7 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
     char start_time_display[32] = {0};
     char end_time_display[32] = {0};
     struct tm tm_buf;
-    struct tm *tm_info;
+    const struct tm *tm_info;
 
     tm_info = localtime_r(&start_time, &tm_buf);
     if (tm_info) {
