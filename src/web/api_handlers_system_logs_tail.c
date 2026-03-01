@@ -60,10 +60,10 @@ int get_system_logs_tail(char ***logs, int *count, int max_lines) {
             int ch;
             while ((ch = fgetc(fp)) != EOF && ch != '\n');
         } else {
-            rewind(fp);
+            (void)fseek(fp, 0, SEEK_SET);
         }
     } else {
-        rewind(fp);
+        (void)fseek(fp, 0, SEEK_SET);
     }
 
     // Allocate array of log strings (upper-bound capacity)
@@ -158,10 +158,10 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
             int ch;
             while ((ch = fgetc(fp)) != EOF && ch != '\n');
         } else {
-            rewind(fp);
+            (void)fseek(fp, 0, SEEK_SET);
         }
     } else {
-        rewind(fp);
+        (void)fseek(fp, 0, SEEK_SET);
     }
 
     // Allocate initial array of log strings — we'll resize it if needed
