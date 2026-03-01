@@ -1128,7 +1128,8 @@ int load_config(config_t *config) {
     if (!loaded) {
         // Try to load from config file - INI format only
         const char *config_paths[] = {
-            "./lightnvr.ini", // Current directory INI format
+            "./lightnvr.ini",            // Current directory INI format
+            "./config/lightnvr.ini",     // Subdirectory (dev/repo layout)
             "/etc/lightnvr/lightnvr.ini", // System directory INI format
             NULL
         };
@@ -1260,10 +1261,29 @@ int save_config(const config_t *config, const char *path) {
         return -1;
     }
     
-    // If no path is specified, use the loaded config path
+    // If no path is specified, try tracked paths then well-known defaults
     const char *save_path = path;
     if (!save_path || save_path[0] == '\0') {
         save_path = get_loaded_config_path();
+        if (!save_path) {
+            save_path = get_custom_config_path();
+        }
+        if (!save_path) {
+            // Fall back to well-known default locations (writable check)
+            static const char *defaults[] = {
+                "/etc/lightnvr/lightnvr.ini",
+                "./config/lightnvr.ini",
+                "./lightnvr.ini",
+                NULL
+            };
+            for (int i = 0; defaults[i]; i++) {
+                if (access(defaults[i], W_OK) == 0) {
+                    save_path = defaults[i];
+                    log_info("Using fallback config path for save: %s", save_path);
+                    break;
+                }
+            }
+        }
         if (!save_path) {
             log_error("No path specified and no loaded config path available");
             return -1;
