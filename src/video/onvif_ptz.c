@@ -65,13 +65,16 @@ static char* create_security_header(const char *username, const char *password, 
     tm_now = gmtime(&now);
     strftime(created, 30, "%Y-%m-%dT%H:%M:%S.000Z", tm_now);
     
-    concatenated = malloc(nonce_len + strlen(created) + strlen(password) + 1);
+    // Pre-compute lengths to avoid the bugprone-not-null-terminated-result lint pattern.
+    size_t created_len = strlen(created);
+    size_t password_len = strlen(password);
+    concatenated = malloc(nonce_len + created_len + password_len + 1);
     memcpy(concatenated, nonce_bytes, nonce_len);
     // Raw byte copies for SHA-1 input: intermediate parts are not C strings
-    memcpy((void *)(concatenated + nonce_len), created, strlen(created));
-    memcpy((void *)(concatenated + nonce_len + strlen(created)), password, strlen(password) + 1);
-    
-    mbedtls_sha1((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);
+    memcpy((void *)(concatenated + nonce_len), created, created_len);
+    memcpy((void *)(concatenated + nonce_len + created_len), password, password_len + 1);
+
+    mbedtls_sha1((unsigned char*)concatenated, nonce_len + created_len + password_len, digest);
 
     base64_digest = malloc(((4 * 20) / 3) + 5);
     mbedtls_base64_encode((unsigned char*)base64_digest, ((4 * 20) / 3) + 5, &base64_len, digest, 20);
