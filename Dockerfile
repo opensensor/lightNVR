@@ -1,5 +1,5 @@
 # Stage 1: Build image
-FROM debian:trixie-slim AS builder
+FROM debian:sid-slim AS builder
 
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
@@ -148,7 +148,7 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
     ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd
 
 # Stage 2: Minimal runtime image
-FROM debian:trixie-slim AS runtime
+FROM debian:sid-slim AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
