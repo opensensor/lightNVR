@@ -675,7 +675,9 @@ export function SettingsView() {
                 disabled={!canModifySettings}
               />
               <p class="text-xs text-muted-foreground mt-1">
-                Maximum concurrent stream slots (default 32, ceiling 256). Restart required.
+                Stream engine capacity — how many cameras can run simultaneously. Changing this
+                requires a <strong>service restart</strong>. Use the Streams page to add cameras
+                up to this limit.
               </p>
             </div>
           </div>
@@ -741,6 +743,35 @@ export function SettingsView() {
                 disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground block mt-1">How long authentication sessions remain valid (minimum 1 hour)</span>
+            </div>
+          </div>
+          {/* Setup Wizard reset */}
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label class="font-medium">Setup Wizard</label>
+            <div class="col-span-2">
+              <button
+                type="button"
+                class="px-4 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                disabled={!canModifySettings}
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/setup/status', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ complete: false }),
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    window.location.href = 'index.html';
+                  } catch (err) {
+                    showStatusMessage('Failed to reset wizard: ' + err.message, 'error');
+                  }
+                }}
+              >
+                Re-run Setup Wizard
+              </button>
+              <p class="text-xs text-muted-foreground mt-1">
+                Resets the first-run wizard so it appears again on the dashboard.
+              </p>
             </div>
           </div>
           </div>

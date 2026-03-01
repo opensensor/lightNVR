@@ -52,14 +52,35 @@ void handle_get_setup_status(const http_request_t *req, http_response_t *res) {
 }
 
 /**
- * POST /api/setup/complete
- * Body (optional): { "complete": true }
+ * POST /api/setup/status
+ * Body (optional): { "complete": true }   → mark setup done (default)
+ *                  { "complete": false }  → reset wizard so it shows again
  */
 void handle_post_setup_complete(const http_request_t *req, http_response_t *res) {
-    (void)req;
+    bool mark_complete = true;  /* default: mark done */
 
-    if (db_mark_setup_complete() != 0) {
-        log_error("handle_post_setup_complete: failed to persist setup_complete flag");
+    /* Parse optional body */
+    if (req->body && req->body_len > 0) {
+        cJSON *body = cJSON_ParseWithLength(req->body, req->body_len);
+        if (body) {
+            cJSON *complete_j = cJSON_GetObjectItem(body, "complete");
+            if (cJSON_IsBool(complete_j)) {
+                mark_complete = cJSON_IsTrue(complete_j);
+            }
+            cJSON_Delete(body);
+        }
+    }
+
+    int rc;
+    if (mark_complete) {
+        rc = db_mark_setup_complete();
+    } else {
+        rc = db_set_system_setting("setup_complete", "0");
+        if (rc == 0) log_info("Setup wizard reset — will show on next page load");
+    }
+
+    if (rc != 0) {
+        log_error("handle_post_setup_complete: failed to persist setup state");
         http_response_set_json_error(res, 500, "Failed to save setup state");
         return;
     }
