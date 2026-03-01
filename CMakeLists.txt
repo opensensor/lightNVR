@@ -29,6 +29,19 @@ set_property(CACHE HTTP_BACKEND PROPERTY STRINGS libuv)
 add_compile_options(-O2 -ffunction-sections -fdata-sections)
 add_link_options(-Wl,--gc-sections)
 
+# Security and quality warning flags
+add_compile_options(
+    -Wall
+    -Wextra
+    -Wformat=2
+    -Wshadow
+    -Werror=format-security
+    -Werror=implicit-function-declaration
+)
+
+# Export compile commands for clang-tidy and other static analysis tools
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Add ASan/UBSan flags for Debug builds with GCC/Clang
 if(CMAKE_BUILD_TYPE MATCHES "^[Dd][Ee][Bb][Uu][Gg]$")
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

@@ -1,0 +1,37 @@
+---
+# LightNVR clang-tidy configuration
+# Run: clang-tidy -p build/compile_commands.json src/**/*.c
+#
+# To promote from reporting-only to blocking, change WarningsAsErrors to match Checks.
+
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  performance-*,
+  portability-*,
+  security-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier,
+  -cert-dcl37-c,
+  -cert-dcl51-cpp,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
+
+# Start with no warnings-as-errors; flip this once the codebase is clean:
+# WarningsAsErrors: 'bugprone-*,cert-*,clang-analyzer-*,concurrency-*,security-*'
+WarningsAsErrors: ''
+
+HeaderFilterRegex: 'include/.*\.h$'
+
+CheckOptions:
+  - key:   bugprone-assert-side-effect.AssertMacros
+    value: 'assert,ASSERT'
+  - key:   bugprone-string-constructor.WarnOnLargeLength
+    value: 'true'
+  - key:   performance-unnecessary-value-param.AllowedTypes
+    value: ''
+  - key:   cert-err33-c.CheckedFunctions
+    value: ''
+

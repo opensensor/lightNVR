@@ -1,0 +1,147 @@
+name: Static Analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config clang-tidy \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libsqlite3-dev libuv1-dev libcurl4-openssl-dev \
+            libcjson-dev libmbedtls-dev libmosquitto-dev
+
+      - name: Generate compile_commands.json
+        run: |
+          mkdir -p build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DENABLE_SOD=OFF \
+            -DENABLE_GO2RTC=OFF \
+            -DBUILD_TESTS=OFF
+          # Copy to project root for clang-tidy
+          cp compile_commands.json ..
+
+      - name: Run clang-tidy
+        run: |
+          echo "::group::clang-tidy version"
+          clang-tidy --version
+          echo "::endgroup::"
+
+          # Find all C source files under src/
+          find src/ -name '*.c' -not -path '*/sod/*' | sort > /tmp/source_files.txt
+          echo "Scanning $(wc -l < /tmp/source_files.txt) source files..."
+
+          # Run clang-tidy (non-blocking: always exit 0)
+          set +e
+          clang-tidy \
+            -p compile_commands.json \
+            $(cat /tmp/source_files.txt) \
+            --quiet \
+            2>&1 | tee clang-tidy-report.txt
+          set -e
+
+          # Count warnings
+          WARNINGS=$(grep -c "warning:" clang-tidy-report.txt || true)
+          ERRORS=$(grep -c "error:" clang-tidy-report.txt || true)
+          echo "## clang-tidy Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Warnings**: ${WARNINGS}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Errors**: ${ERRORS}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload clang-tidy report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clang-tidy-report
+          path: clang-tidy-report.txt
+          retention-days: 30
+
+  cppcheck:
+    name: cppcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
+
+      - name: Run cppcheck
+        run: |
+          echo "::group::cppcheck version"
+          cppcheck --version
+          echo "::endgroup::"
+
+          # Run cppcheck with XML output (non-blocking: --error-exitcode=0)
+          cppcheck \
+            --enable=all \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --inline-suppr \
+            --error-exitcode=0 \
+            --xml \
+            --xml-version=2 \
+            -I include/ \
+            src/ \
+            2> cppcheck-report.xml
+
+          # Also generate a human-readable report
+          cppcheck \
+            --enable=all \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --inline-suppr \
+            --error-exitcode=0 \
+            --template='{file}:{line}: {severity}: {message} [{id}]' \
+            -I include/ \
+            src/ \
+            2> cppcheck-report.txt
+
+          # Summary
+          ERRORS=$(grep -c 'severity="error"' cppcheck-report.xml || true)
+          WARNINGS=$(grep -c 'severity="warning"' cppcheck-report.xml || true)
+          STYLE=$(grep -c 'severity="style"' cppcheck-report.xml || true)
+          PERF=$(grep -c 'severity="performance"' cppcheck-report.xml || true)
+          echo "## cppcheck Results" >> $GITHUB_STEP_SUMMARY
+          echo "- **Errors**: ${ERRORS}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Warnings**: ${WARNINGS}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Style**: ${STYLE}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Performance**: ${PERF}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload cppcheck reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cppcheck-reports
+          path: |
+            cppcheck-report.xml
+            cppcheck-report.txt
+          retention-days: 30
+

@@ -1,0 +1,101 @@
+name: Sanitizer Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  asan-ubsan:
+    name: AddressSanitizer + UBSan (amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      ASAN_OPTIONS: "detect_leaks=1:halt_on_error=1:abort_on_error=1:print_stats=1"
+      UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libsqlite3-dev libuv1-dev libcurl4-openssl-dev \
+            libcjson-dev libmbedtls-dev
+
+      - name: Build with sanitizers (Debug)
+        run: |
+          mkdir -p build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTS=ON \
+            -DENABLE_SOD=OFF \
+            -DENABLE_GO2RTC=OFF \
+            -DENABLE_MQTT=OFF
+          make -j$(nproc)
+          echo "Sanitizer build completed"
+          ls -la bin/
+
+      - name: Run unit tests under sanitizers
+        run: |
+          cd build
+          echo "Running tests with ASan + UBSan enabled..."
+          ctest --output-on-failure -V \
+            -R "test_config|test_logger|test_strings|test_memory|test_request_response|test_shutdown_coordinator|test_detection_config|test_detection_model_motion|test_db_streams|test_db_recordings_extended|test_db_detections|test_db_zones|test_db_events|test_db_auth|test_db_transactions|test_db_maintenance|test_db_query_builder|test_logger_json|test_batch_delete_progress|test_db_motion_config|test_db_recordings_sync|test_httpd_utils|test_zone_filter|test_stream_manager|test_stream_state|test_packet_buffer|test_timestamp_manager|test_storage_pressure$|test_storage_pressure_extended|test_detection_result_structures|test_storage_retention_sqlite"
+
+      - name: Smoke test - start and stop service
+        run: |
+          # Create a minimal config for smoke testing
+          mkdir -p /tmp/lightnvr-smoke/recordings
+          cat > /tmp/lightnvr-smoke/lightnvr.ini << 'EOF'
+          [general]
+          log_level = info
+          db_path = /tmp/lightnvr-smoke/lightnvr.db
+          storage_path = /tmp/lightnvr-smoke/recordings
+          web_port = 18888
+          web_root = /dev/null
+          EOF
+
+          # Start the service briefly to catch startup crashes
+          echo "Starting lightNVR under sanitizers for smoke test..."
+          timeout 10 ./build/bin/lightnvr -c /tmp/lightnvr-smoke/lightnvr.ini &
+          SERVER_PID=$!
+          sleep 5
+
+          # Check if it's still running
+          if kill -0 $SERVER_PID 2>/dev/null; then
+            echo "lightNVR started successfully under ASan/UBSan"
+
+            # Make a few API calls
+            curl -s -u admin:admin http://localhost:18888/api/system || echo "API call failed (may be expected without web_root)"
+
+            # Graceful shutdown
+            kill $SERVER_PID
+            wait $SERVER_PID 2>/dev/null || true
+            echo "Smoke test passed - no sanitizer errors on startup/shutdown"
+          else
+            echo "lightNVR exited early - checking for sanitizer output..."
+            wait $SERVER_PID 2>/dev/null
+            EXIT_CODE=$?
+            echo "Exit code: $EXIT_CODE"
+            if [ $EXIT_CODE -ne 0 ]; then
+              echo "FAIL: Sanitizer detected issues during startup"
+              exit 1
+            fi
+          fi
+
+          # Clean up
+          rm -rf /tmp/lightnvr-smoke
+

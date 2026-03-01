@@ -2,6 +2,11 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Docker Pulls](https://img.shields.io/docker/pulls/opensensor/lightnvr)](https://hub.docker.com/r/opensensor/lightnvr)
+[![Integration Tests](https://github.com/opensensor/lightNVR/actions/workflows/integration-test.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/integration-test.yml)
+[![Static Analysis](https://github.com/opensensor/lightNVR/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/static-analysis.yml)
+[![Sanitizer Build](https://github.com/opensensor/lightNVR/actions/workflows/sanitizer.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/sanitizer.yml)
+[![CodeQL](https://github.com/opensensor/lightNVR/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/codeql-analysis.yml)
+[![Container Scan](https://github.com/opensensor/lightNVR/actions/workflows/container-scan.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/container-scan.yml)
 
 LightNVR is a tiny, memory-optimized Network Video Recorder software written in C. While originally designed for resource-constrained devices like the Ingenic A1 SoC with only 256MB of RAM, it can run on any Linux system.
 
