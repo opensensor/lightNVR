@@ -110,7 +110,7 @@ static int go2rtc_init_session(go2rtc_strategy_data_t *data) {
     char *id_start = strstr(response, "id=");
     if (id_start) {
         id_start += 3;
-        char *id_end = strchr(id_start, '\n');
+        const char *id_end = strchr(id_start, '\n');
         if (!id_end) id_end = strchr(id_start, '\r');
         if (!id_end) id_end = id_start + strlen(id_start);
         
@@ -239,7 +239,7 @@ static int go2rtc_strategy_get_stats(pre_buffer_strategy_t *self, buffer_stats_t
 }
 
 static bool go2rtc_strategy_is_ready(pre_buffer_strategy_t *self) {
-    go2rtc_strategy_data_t *data = (go2rtc_strategy_data_t *)self->private_data;
+    const go2rtc_strategy_data_t *data = (const go2rtc_strategy_data_t *)self->private_data;
 
     if (!data->session_active) {
         return false;

@@ -98,10 +98,41 @@ static bool check_tcp_port_open(int port) {
     for (int i = 0; tcp_files[i]; i++) {
         FILE *fp = fopen(tcp_files[i], "r");
         if (!fp) continue;
-        char line[256];
+        char line[512];
         fgets(line, sizeof(line), fp); /* skip header */
         while (fgets(line, sizeof(line), fp)) {
-            if (strstr(line, hex_port)) {
+            /* /proc/net/tcp format (space-separated fields):
+             *   sl  local_address  rem_address  st  ...
+             *    0: 00000000:2EC0  00000000:0000 0A  ...
+             *
+             * We need to check:
+             *  1. The port appears in the LOCAL address (field 1, after "sl:")
+             *  2. The state (field 3) is 0A (TCP_LISTEN)
+             *
+             * Fields are separated by whitespace.  Field indices (0-based):
+             *   0 = "sl:"  1 = local_address  2 = rem_address  3 = state
+             */
+            char *fields[5] = {NULL};
+            char *saveptr = NULL;
+            char linecopy[512];
+            strncpy(linecopy, line, sizeof(linecopy) - 1);
+            linecopy[sizeof(linecopy) - 1] = '\0';
+
+            int f = 0;
+            char *tok = strtok_r(linecopy, " \t", &saveptr);
+            while (tok && f < 5) {
+                fields[f++] = tok;
+                tok = strtok_r(NULL, " \t", &saveptr);
+            }
+
+            /* Need at least 4 fields: sl, local_addr, rem_addr, state */
+            if (f < 4 || !fields[1] || !fields[3]) continue;
+
+            /* Check local address contains our port */
+            if (!strstr(fields[1], hex_port)) continue;
+
+            /* Check state is 0A (LISTEN) */
+            if (strcmp(fields[3], "0A") == 0) {
                 fclose(fp);
                 return true;
             }

@@ -232,7 +232,7 @@ static int mmap_strategy_add_packet(pre_buffer_strategy_t *self,
     if (data->header->entry_count >= data->max_entries) {
         // Remove oldest entry from stats
         size_t tail_offset = data->header->tail * data->entry_size;
-        mmap_packet_entry_t *tail_entry = (mmap_packet_entry_t *)(data->data_area + tail_offset);
+        const mmap_packet_entry_t *tail_entry = (const mmap_packet_entry_t *)(data->data_area + tail_offset);
         if (tail_entry->magic == MMAP_MAGIC) {
             data->current_bytes -= tail_entry->data_size;
             if (tail_entry->flags & AV_PKT_FLAG_KEY) {
@@ -299,7 +299,7 @@ static int mmap_strategy_get_stats(pre_buffer_strategy_t *self, buffer_stats_t *
 }
 
 static bool mmap_strategy_is_ready(pre_buffer_strategy_t *self) {
-    mmap_strategy_data_t *data = (mmap_strategy_data_t *)self->private_data;
+    const mmap_strategy_data_t *data = (const mmap_strategy_data_t *)self->private_data;
 
     // Ready if we have at least 1 second of content
     return (data->newest_timestamp - data->oldest_timestamp) >= 1;

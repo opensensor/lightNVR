@@ -179,8 +179,6 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
     char ip_addr[16];
     struct in_addr addr;
     int count = 0;
-    char detected_networks[MAX_DETECTED_NETWORKS][64];
-    int network_count = 0;
     char selected_network[64] = {0};
     int discovery_sock = -1;
     int broadcast_enabled = 1;
@@ -213,7 +211,8 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
             log_info("Auto-detecting networks for ONVIF discovery");
 
             // Detect local networks
-            network_count = detect_local_networks(detected_networks, MAX_DETECTED_NETWORKS);
+            char detected_networks[MAX_DETECTED_NETWORKS][64];
+            int network_count = detect_local_networks(detected_networks, MAX_DETECTED_NETWORKS);
 
             if (network_count <= 0) {
                 log_error("Failed to auto-detect networks for ONVIF discovery");

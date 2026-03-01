@@ -33,7 +33,7 @@ void ffmpeg_track_allocation(void *ptr, const char *type, const char *location, 
  * 
  * @param ptr Pointer to the freed object
  */
-void ffmpeg_untrack_allocation(void *ptr);
+void ffmpeg_untrack_allocation(const void *ptr);
 
 /**
  * Get the current number of tracked allocations

@@ -100,7 +100,7 @@ void ffmpeg_track_allocation(void *ptr, const char *type, const char *location, 
 }
 
 // Untrack an allocation when it's freed
-void ffmpeg_untrack_allocation(void *ptr) {
+void ffmpeg_untrack_allocation(const void *ptr) {
     if (!ptr) return;
 
     pthread_mutex_lock(&allocation_mutex);

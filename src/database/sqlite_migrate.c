@@ -608,7 +608,6 @@ static int execute_single_statement(sqlite3 *db, const char *sql) {
     if (strncasecmp(sql, "ALTER TABLE", 11) == 0) {
         // Parse: ALTER TABLE tablename ADD COLUMN colname ...
         char table[128] = {0};
-        char column[128] = {0};
 
         const char *p = sql + 11;
         while (*p && isspace((unsigned char)*p)) p++;
@@ -630,6 +629,7 @@ static int execute_single_statement(sqlite3 *db, const char *sql) {
                 while (*p && isspace((unsigned char)*p)) p++;
 
                 // Extract column name
+                char column[128] = {0};
                 i = 0;
                 while (*p && !isspace((unsigned char)*p) && i < 127) {
                     column[i++] = *p++;

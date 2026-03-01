@@ -54,24 +54,22 @@ static const char *LEGACY_VERSION_MAP[] = {
  * Checks multiple locations in order of preference
  */
 static const char *find_migrations_dir(void) {
-    static char migrations_path[512] = {0};
-    
     // Check environment variable first
     const char *env_path = getenv("LIGHTNVR_MIGRATIONS_DIR");
     if (env_path && access(env_path, R_OK) == 0) {
         return env_path;
     }
-    
+
     // Check local development path
     if (access(LOCAL_MIGRATIONS_DIR, R_OK) == 0) {
         return LOCAL_MIGRATIONS_DIR;
     }
-    
+
     // Check installed path
     if (access(DEFAULT_MIGRATIONS_DIR, R_OK) == 0) {
         return DEFAULT_MIGRATIONS_DIR;
     }
-    
+
     // Try relative to executable
     char exe_path[256];
     ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
@@ -81,7 +79,8 @@ static const char *find_migrations_dir(void) {
         char *last_slash = strrchr(exe_path, '/');
         if (last_slash) {
             *last_slash = '\0';
-            snprintf(migrations_path, sizeof(migrations_path), 
+            static char migrations_path[512] = {0};
+            snprintf(migrations_path, sizeof(migrations_path),
                      "%s/../share/lightnvr/migrations", exe_path);
             if (access(migrations_path, R_OK) == 0) {
                 return migrations_path;

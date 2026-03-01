@@ -302,7 +302,7 @@ static int hls_segment_strategy_get_segments(pre_buffer_strategy_t *self,
 
     for (int i = 0; i < data->count && count < max_segments; i++) {
         int idx = (start + i) % MAX_TRACKED_SEGMENTS;
-        tracked_segment_t *seg = &data->segments[idx];
+        const tracked_segment_t *seg = &data->segments[idx];
 
         if (seg->valid) {
             strncpy(segments[count].path, seg->path, sizeof(segments[count].path) - 1);
@@ -351,7 +351,7 @@ static int hls_segment_strategy_get_stats(pre_buffer_strategy_t *self, buffer_st
 }
 
 static bool hls_segment_strategy_is_ready(pre_buffer_strategy_t *self) {
-    hls_segment_strategy_data_t *data = (hls_segment_strategy_data_t *)self->private_data;
+    const hls_segment_strategy_data_t *data = (const hls_segment_strategy_data_t *)self->private_data;
 
     // Ready if we have at least 1 second of content
     return data->total_duration_seconds >= 1.0f;

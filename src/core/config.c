@@ -998,8 +998,8 @@ int save_stream_configs(const config_t *config) {
     }
 
     // Check if configurations are identical to avoid unnecessary updates
-    int identical = 1;
     if (loaded == count) {
+        int identical = 1;
         for (int i = 0; i < loaded && identical; i++) {
             if (strlen(config->streams[i].name) == 0 ||
                 strcmp(config->streams[i].name, db_streams[i].name) != 0) {
@@ -1364,11 +1364,19 @@ int save_config(const config_t *config, const char *path) {
 
         /* Validate the filename component: reject empty names, names
          * containing '/' (shouldn't happen after the split above, but
-         * defence-in-depth), and the special name ".." which would escape
-         * the resolved directory. */
+         * defence-in-depth), the special names ".." / "." which would escape
+         * the resolved directory, and names that don't end with ".ini" to
+         * prevent overwriting arbitrary files. */
         if (fname[0] == '\0' || strchr(fname, '/') != NULL ||
             strcmp(fname, "..") == 0 || strcmp(fname, ".") == 0) {
             log_error("Invalid config filename: '%s'", fname);
+            return -1;
+        }
+
+        /* Allowlist: only permit config files ending in ".ini". */
+        size_t fname_len = strlen(fname);
+        if (fname_len < 5 || strcmp(fname + fname_len - 4, ".ini") != 0) {
+            log_error("Config filename must end with .ini: '%s'", fname);
             return -1;
         }
 
@@ -1383,7 +1391,11 @@ int save_config(const config_t *config, const char *path) {
     // Open the config file with 0600 permissions so passwords written to it
     // are not world-readable. Using open()+fdopen() instead of fopen() lets us
     // specify the mode explicitly and avoid relying on the process umask.
-    int config_fd = open(canonical_save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    //
+    // Security: canonical_save_path is built from a realpath()-resolved directory
+    // joined with a validated filename (no path separators, no "..", must end in
+    // ".ini"). This ensures the path cannot escape the intended directory.
+    int config_fd = open(canonical_save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600); // lgtm[cpp/path-injection]
     if (config_fd < 0) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
         return -1;

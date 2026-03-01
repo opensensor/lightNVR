@@ -455,7 +455,7 @@ int chmod_recursive(const char *path, mode_t mode) {
     }
     // fd is now owned by dir; do not close it separately
 
-    struct dirent *entry;
+    const struct dirent *entry;
     char full_path[PATH_MAX];
     int result = 0;
 

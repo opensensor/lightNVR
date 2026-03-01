@@ -259,7 +259,7 @@ packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_second
 
     // Initialize disk buffer path if needed
     if (mode == BUFFER_MODE_DISK || mode == BUFFER_MODE_HYBRID) {
-        config_t *config = get_streaming_config();
+        const config_t *config = get_streaming_config();
         if (config) {
             snprintf(buffer->disk_buffer_path, sizeof(buffer->disk_buffer_path),
                     "%s/.packet_buffer_%s", config->storage_path, stream_name);

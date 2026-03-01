@@ -222,7 +222,7 @@ static int generate_recording_path(const char *stream_name, char *path, size_t p
 
     // Get storage path from config
     extern config_t* get_streaming_config(void);
-    config_t *config = get_streaming_config();
+    const config_t *config = get_streaming_config();
     if (!config) {
         log_error("Failed to get configuration");
         return -1;
@@ -231,7 +231,7 @@ static int generate_recording_path(const char *stream_name, char *path, size_t p
     // Create timestamp string
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     char timestamp[32];
     strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_info);
     

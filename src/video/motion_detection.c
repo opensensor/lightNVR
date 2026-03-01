@@ -608,7 +608,7 @@ static unsigned char *downscale_grayscale(const unsigned char *src, int width, i
 /**
  * Apply a fast box blur to reduce noise - optimized for embedded devices
  */
-static void apply_box_blur(unsigned char *src, unsigned char *dst, int width, int height, int radius) {
+static void apply_box_blur(const unsigned char *src, unsigned char *dst, int width, int height, int radius) {
     // Skip if radius is 0
     if (radius <= 0) {
         memcpy(dst, src, (size_t)width * height);

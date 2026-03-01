@@ -122,7 +122,7 @@ int parse_device_info(const char *response, onvif_device_info_t *device_info) {
     log_debug("Found XAddrs: %s", xaddrs);
     
     // Split multiple URLs if present (some devices return multiple space-separated URLs)
-    char *url = strtok(xaddrs, " \t\n\r");
+    const char *url = strtok(xaddrs, " \t\n\r");
     if (url) {
         strncpy(device_info->device_service, url, MAX_URL_LENGTH - 1);
         device_info->device_service[MAX_URL_LENGTH - 1] = '\0';

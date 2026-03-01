@@ -249,7 +249,7 @@ const char* get_model_path(detection_model_t model) {
     }
 
     // Return the path directly from the model structure
-    model_t *m = (model_t *)model;
+    const model_t *m = (const model_t *)model;
     return m->path;
 }
 
@@ -278,7 +278,7 @@ const char* get_model_type_from_handle(detection_model_t model) {
         return "unknown";
     }
 
-    model_t *m = (model_t *)model;
+    const model_t *m = (const model_t *)model;
     return m->type;
 }
 

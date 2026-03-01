@@ -61,7 +61,7 @@ static char* create_security_header(const char *username, const char *password, 
     
     time_t now;
     struct tm tm_now_buf;
-    struct tm *tm_now;
+    const struct tm *tm_now;
     time(&now);
     tm_now = gmtime_r(&now, &tm_now_buf);
     strftime(created, 30, "%Y-%m-%dT%H:%M:%S.000Z", tm_now);
