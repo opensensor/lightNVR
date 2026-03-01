@@ -32,7 +32,7 @@ bool is_embedded_device(void) {
         
         while (fgets(line, sizeof(line), meminfo)) {
             if (strncmp(line, "MemTotal:", 9) == 0) {
-                sscanf(line, "MemTotal: %lu", &total_mem_kb);
+                sscanf(line, "MemTotal: %lu", &total_mem_kb); // NOLINT(cert-err34-c)
                 break;
             }
         }
@@ -100,7 +100,7 @@ int get_downscale_factor(const char *model_type) {
             
             while (fgets(line, sizeof(line), meminfo)) {
                 if (strncmp(line, "MemAvailable:", 13) == 0) {
-                    sscanf(line, "MemAvailable: %lu", &available_mem_kb);
+                    sscanf(line, "MemAvailable: %lu", &available_mem_kb); // NOLINT(cert-err34-c)
                     break;
                 }
             }

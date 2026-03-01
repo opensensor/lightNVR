@@ -40,7 +40,7 @@ buffer_strategy_type_t get_recommended_strategy_type(void) {
         long available_kb = 0;
         while (fgets(line, sizeof(line), meminfo)) {
             if (strncmp(line, "MemAvailable:", 13) == 0) {
-                sscanf(line + 13, "%ld", &available_kb);
+                sscanf(line + 13, "%ld", &available_kb); // NOLINT(cert-err34-c)
                 break;
             }
         }
