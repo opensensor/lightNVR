@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies including Node.js and FFmpeg dev libraries
 # Debian sid ships Go 1.26, Node.js 22.x, npm, and FFmpeg 8.0.1 natively
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
@@ -117,7 +117,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install only necessary runtime dependencies
 # Debian sid ships FFmpeg 8.0.1: libavcodec62, libavformat62, libavutil60, libswscale9
 # ffmpeg CLI is needed by go2rtc for audio transcoding (AAC→OPUS for WebRTC)
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libavcodec62 libavformat62 libavutil60 libswscale9 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
