@@ -5,7 +5,7 @@ FROM debian:trixie-slim AS builder
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies including Node.js for web assets
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
@@ -63,11 +63,12 @@ RUN DPKG_ARCH=$(dpkg --print-architecture) && \
         armhf) GO_ARCH="armv6l" ;; \
         *) echo "Unsupported architecture: $DPKG_ARCH" && exit 1 ;; \
     esac && \
-    curl -L "https://go.dev/dl/go1.24.0.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - && \
+    curl -L "https://go.dev/dl/go1.26.0.linux-${GO_ARCH}.tar.gz" | tar -C /usr/local -xzf - && \
     export PATH=$PATH:/usr/local/go/bin && \
     mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Build go2rtc from local submodule (already copied by COPY . .)
     cd /opt/go2rtc && \
+    /usr/local/go/bin/go mod tidy && \
     CGO_ENABLED=0 /usr/local/go/bin/go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
     cd /opt && rm -rf /usr/local/go && \
     chmod +x /bin/go2rtc && \
@@ -133,7 +134,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install only necessary runtime dependencies
 # Trixie has FFmpeg 7.x: libavcodec61, libavformat61, libavutil59, libswscale8
 # ffmpeg CLI is needed by go2rtc for audio transcoding (AAC→OPUS for WebRTC)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     ffmpeg \
     libavcodec61 libavformat61 libavutil59 libswscale8 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
