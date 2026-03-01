@@ -120,8 +120,11 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
         return -1;
     }
     
-    FILE *dst = fopen(db_path, "wb");
+    // Open database file with restricted permissions (0600: owner rw only)
+    int dst_fd = open(db_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    FILE *dst = (dst_fd >= 0) ? fdopen(dst_fd, "wb") : NULL;
     if (!dst) {
+        if (dst_fd >= 0) close(dst_fd);
         log_error("Failed to open database file for writing: %s", strerror(errno));
         fclose(src);
         return -1;

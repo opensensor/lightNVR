@@ -495,16 +495,16 @@ static int ensure_directories(const config_t *config) {
         return -1;
     }
     
-    // Ensure log file is writable
-    FILE *test_file = fopen(config->log_file, "a");
-    if (!test_file) {
+    // Ensure log file is writable (use open() to set explicit permissions 0640)
+    int cfg_log_fd = open(config->log_file, O_WRONLY | O_CREAT | O_APPEND, 0640);
+    if (cfg_log_fd < 0) {
         log_warn("Log file %s is not writable: %s", config->log_file, strerror(errno));
         // Try to fix log directory permissions
         if (chmod(dir, 0755) != 0) {
             log_warn("Failed to change log directory permissions: %s", strerror(errno));
         }
     } else {
-        fclose(test_file);
+        close(cfg_log_fd);
     }
     
     return 0;
