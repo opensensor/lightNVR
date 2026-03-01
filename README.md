@@ -1,7 +1,7 @@
 # LightNVR - Lightweight Network Video Recorder
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Docker Pulls](https://img.shields.io/docker/pulls/opensensor/lightnvr)](https://hub.docker.com/r/opensensor/lightnvr)
+[![Docker Pulls](https://img.shields.io/docker/pulls/matteius/lightnvr)](https://hub.docker.com/r/matteius/lightnvr)
 [![Integration Tests](https://github.com/opensensor/lightNVR/actions/workflows/integration-test.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/integration-test.yml)
 [![Static Analysis](https://github.com/opensensor/lightNVR/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/static-analysis.yml)
 [![Sanitizer Build](https://github.com/opensensor/lightNVR/actions/workflows/sanitizer.yml/badge.svg)](https://github.com/opensensor/lightNVR/actions/workflows/sanitizer.yml)
@@ -356,9 +356,17 @@ Access the web UI at `http://localhost:8080` (default username: `admin`, passwor
 
 #### Using Docker Run
 
-```bash
-docker pull ghcr.io/opensensor/lightnvr:latest
+Images are published to both Docker Hub and GHCR on every tagged release:
 
+```bash
+# Docker Hub (recommended)
+docker pull matteius/lightnvr:latest
+
+# GitHub Container Registry
+docker pull ghcr.io/opensensor/lightnvr:latest
+```
+
+```bash
 docker run -d \
   --name lightnvr \
   --restart unless-stopped \
@@ -370,7 +378,7 @@ docker run -d \
   -v ./config:/etc/lightnvr \
   -v ./data:/var/lib/lightnvr/data \
   -e TZ=America/New_York \
-  ghcr.io/opensensor/lightnvr:latest
+  matteius/lightnvr:latest
 ```
 
 #### Volume Mounts Explained
