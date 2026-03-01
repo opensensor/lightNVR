@@ -84,7 +84,7 @@ static char* create_security_header(const char *username, const char *password, 
     concatenated = malloc(nonce_len + created_len + password_len + 1);
     memcpy(concatenated, nonce_bytes, nonce_len);
     // Raw byte copies for SHA-1 input: intermediate parts are not C strings
-    memcpy((void *)(concatenated + nonce_len), created, created_len);
+    memcpy((void *)(concatenated + nonce_len), created, created_len); // NOLINT(bugprone-not-null-terminated-result)
     memcpy((void *)(concatenated + nonce_len + created_len), password, password_len + 1);
 
     // Calculate SHA1 digest
