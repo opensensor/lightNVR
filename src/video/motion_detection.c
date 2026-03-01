@@ -595,8 +595,8 @@ static unsigned char *downscale_grayscale(const unsigned char *src, int width, i
                 }
             }
             
-            // Store the average
-            dst[y * new_width + x] = (unsigned char)(sum / count);
+            // Store the average (guard against divide-by-zero if no pixels in block)
+            dst[y * new_width + x] = (count > 0) ? (unsigned char)(sum / count) : 0;
         }
     }
     
@@ -820,7 +820,6 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
             }
 
             // Calculate cell motion score
-            float cell_area = (float)changed_pixels / (float)cell_pixels;
             float cell_score = (float)total_diff / (float)(cell_pixels * 255);
 
             // Store cell score
@@ -1171,7 +1170,6 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         motion_detected = (motion_area >= stream->min_motion_area) && (motion_score > 0.01f);
     } else {
         // Simple frame differencing (original approach with improvements)
-        int pixel_count = processing_width * processing_height;
         int changed_pixels = 0;
         int total_diff = 0;
 

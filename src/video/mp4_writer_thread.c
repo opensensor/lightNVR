@@ -93,13 +93,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     rtsp_url[sizeof(rtsp_url) - 1] = '\0';
 
     int segment_duration;
-    mp4_writer_t *writer = thread_ctx->writer;
 
     AVPacket *pkt = NULL;
     int video_stream_idx = -1;
     int audio_stream_idx = -1;
     int ret;
-    time_t start_time = time(NULL);  // Record when we started
 
     // BUGFIX: Initialize per-stream context and segment info
     // These are now stored in the thread context instead of global static variables

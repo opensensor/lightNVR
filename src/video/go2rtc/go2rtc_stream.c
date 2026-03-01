@@ -195,7 +195,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
     // Add backchannel parameter if enabled
     if (backchannel_enabled) {
-        offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#backchannel=1");
+        snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#backchannel=1");
     }
 
     // Append fragment parameters to URL

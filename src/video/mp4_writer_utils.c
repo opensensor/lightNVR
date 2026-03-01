@@ -739,6 +739,12 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
     // Initialize dir_path to empty string to avoid potential issues
     dir_path[0] = '\0';
 
+    if (!writer->output_path) {
+        log_error("MP4 writer output_path is NULL");
+        free(dir_path);
+        return -1;
+    }
+
     const char *last_slash = strrchr(writer->output_path, '/');
     if (last_slash) {
         size_t dir_len = last_slash - writer->output_path;
@@ -761,7 +767,8 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
         // No directory separator found, use current directory
         log_warn("No directory separator found in output path: %s, using current directory",
                 writer->output_path);
-        strcpy(dir_path, ".");
+        dir_path[0] = '.';
+        dir_path[1] = '\0';
     }
 
     // Log the full output path

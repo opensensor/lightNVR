@@ -666,7 +666,7 @@ void handle_ptz_capabilities(const http_request_t *req, http_response_t *res) {
 
     const char *profile_token = get_profile_token(&config);
     onvif_ptz_capabilities_t caps;
-    rc = onvif_ptz_get_capabilities(ptz_url, profile_token, config.onvif_username, config.onvif_password, &caps);
+    onvif_ptz_get_capabilities(ptz_url, profile_token, config.onvif_username, config.onvif_password, &caps);
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "ptz_enabled", config.ptz_enabled);

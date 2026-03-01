@@ -1235,7 +1235,6 @@ void *hls_unified_thread_func(void *arg) {
                     log_error("Input context is NULL for stream %s despite successful open", stream_name);
                     atomic_store(&ctx->connection_valid, 0);
                     reconnect_attempt++;
-                    reconnect_delay_ms = calculate_reconnect_delay(reconnect_attempt);
                     break;
                 }
 
@@ -1635,7 +1634,6 @@ void *hls_unified_thread_func(void *arg) {
                 if (!input_ctx) {
                     log_error("Input context is NULL for stream %s despite successful reconnect", stream_name);
                     reconnect_attempt++;
-                    reconnect_delay_ms = calculate_reconnect_delay(reconnect_attempt);
                     break;
                 }
 
@@ -2255,7 +2253,6 @@ int start_hls_unified_stream(const char *stream_name) {
     pthread_mutex_lock(&unified_contexts_mutex);
 
     // Check if already running and handle duplicate contexts
-    bool already_running = false;
     int running_count = 0;
     int running_indices[MAX_STREAMS];
     int valid_connection_idx = -1;
@@ -2265,7 +2262,6 @@ int start_hls_unified_stream(const char *stream_name) {
     for (int i = 0; i < g_config.max_streams; i++) {
         if (unified_contexts[i] && strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
             running_indices[running_count++] = i;
-            already_running = true;
 
             // Check if this context has a valid connection
             if (atomic_load(&unified_contexts[i]->connection_valid)) {

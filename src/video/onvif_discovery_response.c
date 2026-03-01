@@ -238,9 +238,10 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
     if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) < 0) {
         log_error("Failed to set socket options (SO_BROADCAST): %s", strerror(errno));
         close(sock);
+        free(buffer);
         return -1;
     }
-    
+
     // Increase socket buffer size (reduced for embedded devices)
     int rcvbuf = 256 * 1024; // 256KB buffer
     if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf)) < 0) {
@@ -519,6 +520,7 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast)) < 0) {
         log_error("Failed to set socket options (SO_BROADCAST): %s", strerror(errno));
         close(sock);
+        free(buffer);
         return -1;
     }
 

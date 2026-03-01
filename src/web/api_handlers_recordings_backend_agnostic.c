@@ -664,7 +664,7 @@ void handle_batch_delete_progress(const http_request_t *req, http_response_t *re
     cJSON_AddStringToObject(response, "job_id", progress.job_id);
 
     // Add status as string
-    const char *status_str = "unknown";
+    const char *status_str;
     switch (progress.status) {
         case BATCH_DELETE_STATUS_PENDING:
             status_str = "pending";
@@ -677,6 +677,9 @@ void handle_batch_delete_progress(const http_request_t *req, http_response_t *re
             break;
         case BATCH_DELETE_STATUS_ERROR:
             status_str = "error";
+            break;
+        default:
+            status_str = "unknown";
             break;
     }
     cJSON_AddStringToObject(response, "status", status_str);

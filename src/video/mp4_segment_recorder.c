@@ -934,11 +934,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                             } else {
                                 pkt->pts = pkt->dts;
                             }
-                            // Reset the tracking variables to prevent monotonic errors
-                            last_video_dts = pkt->dts;
-                            last_video_pts = pkt->pts;
-                        }
-
                         // Additional check to ensure DTS is always within safe range
                         // This handles cases where DTS might be close to the limit
                         if (pkt->dts > 0x70000000) {  // ~75% of max value
@@ -962,9 +957,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                             } else {
                                 pkt->pts = pkt->dts;
                             }
-                            // Reset the tracking variables to prevent monotonic errors
-                            last_video_dts = pkt->dts;
-                            last_video_pts = pkt->pts;
                         }
                     }
 

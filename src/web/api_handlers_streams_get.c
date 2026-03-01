@@ -323,7 +323,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
 
     // Get stream status
     stream_status_t stream_status = get_stream_status(stream);
-    const char *status = "Unknown";
+    const char *status;
     switch (stream_status) {
         case STREAM_STATUS_STOPPED:
             status = "Stopped";
@@ -485,7 +485,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         stream_status = STREAM_STATUS_RUNNING;
     }
 
-    const char *status = "Unknown";
+    const char *status;
     switch (stream_status) {
         case STREAM_STATUS_STOPPED:  status = "Stopped";  break;
         case STREAM_STATUS_STARTING: status = "Starting"; break;

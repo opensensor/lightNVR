@@ -209,7 +209,8 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
     }
 
     // Check if this is a face detection model based on filename or path
-    const char *arch = "default";
+    // Default to ":face" for unknown models
+    const char *arch = ":face";
 
     // Extract the filename from the path
     const char *filename = strrchr(model_path, '/');
@@ -223,7 +224,6 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
     if (strcmp(filename, "face_cnn.sod") == 0 ||
         strcmp(filename, "face.sod") == 0 ||
         strcmp(filename, "face_detection.sod") == 0) {
-        arch = ":face";
         log_info("Detected face model by exact filename match, using :face architecture: %s", filename);
     }
     else if (strcmp(filename, "tiny20.sod") == 0 ||
@@ -236,7 +236,6 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
         // If we couldn't determine the architecture, default to face for .sod files
         // This is a fallback to ensure face detection works even if the filename doesn't contain "face"
         log_info("Could not determine model architecture from name, defaulting to :face for: %s", model_path);
-        arch = ":face";
     }
 
 #ifdef SOD_ENABLED

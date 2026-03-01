@@ -133,10 +133,10 @@ int detect_local_networks(char networks[][64], int max_networks) {
             }
             
             // Skip Docker and virtual interfaces
-            if (strstr(ifa->ifa_name, "docker") || 
-                strstr(ifa->ifa_name, "veth") || 
+            if (ifa->ifa_name && (strstr(ifa->ifa_name, "docker") ||
+                strstr(ifa->ifa_name, "veth") ||
                 strstr(ifa->ifa_name, "br-") ||
-                strstr(ifa->ifa_name, "lxc")) {
+                strstr(ifa->ifa_name, "lxc"))) {
                 log_info("Skipping Docker/virtual interface: %s", ifa->ifa_name);
                 continue;
             }

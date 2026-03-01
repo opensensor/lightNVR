@@ -286,13 +286,6 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         cJSON_AddBoolToObject(segment, "has_detection", segments[i].has_detection);
         
         // Add Unix timestamps for easier frontend processing
-        // Convert to local timezone by adding the timezone offset
-        struct tm *tm_start = localtime(&segments[i].start_time);
-        struct tm *tm_end = localtime(&segments[i].end_time);
-        
-        // Calculate timezone offset in seconds
-        time_t timezone_offset = tm_start->tm_gmtoff;
-        
         // Add timestamps adjusted for local timezone
         cJSON_AddNumberToObject(segment, "start_timestamp", (double)segments[i].start_time);
         cJSON_AddNumberToObject(segment, "end_timestamp", (double)segments[i].end_time);
@@ -599,11 +592,6 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
                 break;
             }
         }
-    }
-    
-    // If still no segment found, use the first segment
-    if (start_segment_index == -1 && segment_count > 0) {
-        start_segment_index = 0;
     }
     
     // Create a single segment for the entire timeline

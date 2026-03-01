@@ -133,7 +133,6 @@ static void put_stream_worker(put_stream_task_t *task) {
     }
 
     // Handle detection thread management based on detection_based_recording setting
-    bool detection_enabled_changed = false;
     bool detection_was_enabled = false;
     bool detection_now_enabled = false;
 
@@ -141,13 +140,11 @@ static void put_stream_worker(put_stream_task_t *task) {
     if (task->has_detection_based_recording) {
         detection_was_enabled = task->original_detection_based_recording;
         detection_now_enabled = task->detection_based_recording_value;
-        detection_enabled_changed = (detection_was_enabled != detection_now_enabled);
     } else {
         detection_now_enabled = task->config.detection_based_recording;
         detection_was_enabled = is_unified_detection_running(task->config.name);
         if (detection_now_enabled && !detection_was_enabled) {
             log_info("Detection is enabled in config for stream %s but no thread is running", task->config.name);
-            detection_enabled_changed = true;
             detection_was_enabled = false;
         }
     }
@@ -1163,10 +1160,8 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
 
     // Check if there's a request to enable a disabled stream
     cJSON *enable_request = cJSON_GetObjectItem(stream_json, "enable_disabled");
-    bool enable_requested = false;
     if (enable_request && cJSON_IsBool(enable_request) && cJSON_IsTrue(enable_request)) {
         // Request to enable a disabled stream
-        enable_requested = true;
         log_info("Enable requested for disabled stream %s", decoded_id);
 
         // Check if the stream is currently disabled
