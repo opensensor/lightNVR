@@ -242,7 +242,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
                         free(log_lines[i]);
                     }
                 }
-                free(log_lines);
+                free((void *)log_lines);
                 pclose(fp);
                 return -1;
             }
@@ -260,7 +260,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
                     free(log_lines[i]);
                 }
             }
-            free(log_lines);
+            free((void *)log_lines);
             pclose(fp);
             return -1;
         }
@@ -281,7 +281,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
                     free(log_lines[i]);
                 }
             }
-            free(log_lines);
+            free((void *)log_lines);
             pclose(fp);
             return -1;
         }

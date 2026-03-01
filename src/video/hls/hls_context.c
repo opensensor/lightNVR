@@ -175,7 +175,7 @@ void unmark_stream_stopping(const char *stream_name) {
  */
 void init_hls_contexts(void) {
     // Initialize contexts array
-    memset(streaming_contexts, 0, sizeof(streaming_contexts));
+    memset((void *)streaming_contexts, 0, sizeof(streaming_contexts));
 
     // Initialize stopping streams array
     memset(stopping_streams, 0, sizeof(stopping_streams));
