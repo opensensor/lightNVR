@@ -45,7 +45,7 @@ extern "C" {
 /**
  * Maximum SQL content length (1MB should be plenty)
  */
-#define MIGRATE_SQL_MAX_LEN (1024 * 1024)
+#define MIGRATE_SQL_MAX_LEN (1024L * 1024L)
 
 /**
  * Migration status

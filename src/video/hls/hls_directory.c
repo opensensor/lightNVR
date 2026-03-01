@@ -437,7 +437,7 @@ void cleanup_hls_directories(void) {
                     struct dirent *file_entry;
                     int removed_count = 0;
                     time_t current_time = time(NULL);
-                    time_t five_minutes_ago = current_time - (5 * 60); // 5 minutes in seconds
+                    time_t five_minutes_ago = current_time - ((time_t)5 * 60); // 5 minutes in seconds
 
                     int dir_fd = dirfd(stream_dir);
                     while ((file_entry = readdir(stream_dir)) != NULL) {
@@ -474,7 +474,7 @@ void cleanup_hls_directories(void) {
                     struct dirent *file_entry;
                     int removed_count = 0;
                     time_t current_time = time(NULL);
-                    time_t five_minutes_ago = current_time - (5 * 60); // 5 minutes in seconds
+                    time_t five_minutes_ago = current_time - ((time_t)5 * 60); // 5 minutes in seconds
 
                     int dir_fd = dirfd(stream_dir);
                     while ((file_entry = readdir(stream_dir)) != NULL) {

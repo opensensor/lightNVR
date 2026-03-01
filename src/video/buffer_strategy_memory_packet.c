@@ -64,7 +64,7 @@ static int memory_packet_strategy_init(pre_buffer_strategy_t *self,
     // Set memory limit if specified
     if (config->memory_limit_bytes > 0) {
         packet_buffer_set_memory_limit(data->packet_buffer,
-                                        config->memory_limit_bytes / (1024 * 1024));
+                                        config->memory_limit_bytes / ((size_t)1024 * 1024));
     }
 
     self->initialized = true;
@@ -299,7 +299,7 @@ pre_buffer_strategy_t* create_memory_packet_strategy(const char *stream_name,
     // configuration, falling back gracefully when config is not yet available.
     {
         size_t memory_limit = config->memory_limit_bytes > 0
-                              ? config->memory_limit_bytes / (1024 * 1024)
+                              ? config->memory_limit_bytes / ((size_t)1024 * 1024)
                               : calculate_packet_buffer_pool_size();
         // reinit_packet_buffer_pool handles both first-time init and resize
         reinit_packet_buffer_pool(memory_limit);

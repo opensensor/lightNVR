@@ -1005,17 +1005,17 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
             pthread_mutex_unlock(&stream->mutex);
             return -1;
         }
-        current_memory += width * height;
+        current_memory += (size_t)width * height;
     } else if (channels == 1) {
         // If input is already grayscale, just make a copy
-        gray_frame = (unsigned char *)malloc(width * height);
+        gray_frame = (unsigned char *)malloc((size_t)width * height);
         if (!gray_frame) {
             log_error("Failed to allocate memory for gray frame");
             pthread_mutex_unlock(&stream->mutex);
             return -1;
         }
-        memcpy(gray_frame, frame_data, width * height);
-        current_memory += width * height;
+        memcpy(gray_frame, frame_data, (size_t)width * height);
+        current_memory += (size_t)width * height;
     } else {
         log_error("Unsupported number of channels: %d", channels);
         pthread_mutex_unlock(&stream->mutex);
@@ -1038,7 +1038,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
             processing_frame = downscaled;
             
             // Update memory tracking
-            current_memory = current_memory - (width * height) + (processing_width * processing_height);
+            current_memory = current_memory - (size_t)width * height + (size_t)processing_width * processing_height;
             
             log_debug("Downscaled frame from %dx%d to %dx%d for motion detection",
                      width, height, processing_width, processing_height);
@@ -1081,9 +1081,9 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         }
 
         // Allocate new resources
-        stream->prev_frame = (unsigned char *)malloc(processing_width * processing_height);
-        stream->blur_buffer = (unsigned char *)malloc(processing_width * processing_height);
-        stream->background = (unsigned char *)malloc(processing_width * processing_height);
+        stream->prev_frame = (unsigned char *)malloc((size_t)processing_width * processing_height);
+        stream->blur_buffer = (unsigned char *)malloc((size_t)processing_width * processing_height);
+        stream->background = (unsigned char *)malloc((size_t)processing_width * processing_height);
 
         if (!stream->prev_frame || !stream->blur_buffer || !stream->background) {
             log_error("Failed to allocate memory for motion detection buffers");
@@ -1109,8 +1109,8 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         }
 
         // Initialize the background with the current frame
-        memcpy(stream->background, processing_frame, processing_width * processing_height);
-        memcpy(stream->prev_frame, processing_frame, processing_width * processing_height);
+        memcpy(stream->background, processing_frame, (size_t)processing_width * processing_height);
+        memcpy(stream->prev_frame, processing_frame, (size_t)processing_width * processing_height);
 
         // Allocate grid scores array
         if (stream->use_grid_detection) {

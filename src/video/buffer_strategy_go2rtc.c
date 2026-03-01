@@ -277,7 +277,7 @@ static size_t segment_write_callback(void *contents, size_t size, size_t nmemb, 
     if (buf->size + total > buf->capacity) {
         size_t new_cap = buf->capacity * 2;
         if (new_cap < buf->size + total) {
-            new_cap = buf->size + total + 1024 * 1024;  // Add 1MB headroom
+            new_cap = buf->size + total + (size_t)1024 * 1024;  // Add 1MB headroom
         }
         uint8_t *new_data = realloc(buf->data, new_cap);
         if (!new_data) return 0;
@@ -312,7 +312,7 @@ static int go2rtc_strategy_flush_to_file(pre_buffer_strategy_t *self, const char
     }
 
     segment_buffer_t buf = {0};
-    buf.capacity = 4 * 1024 * 1024;  // Start with 4MB
+    buf.capacity = (size_t)4 * 1024 * 1024;  // Start with 4MB
     buf.data = malloc(buf.capacity);
     if (!buf.data) {
         curl_easy_cleanup(curl);

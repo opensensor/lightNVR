@@ -167,7 +167,7 @@ static pthread_mutex_t pending_deletions_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Function to allocate memory with guard bytes (HLS-specific with guard pattern)
 static void *hls_guarded_malloc(size_t size) {
     // Allocate extra space for guard bytes
-    size_t total_size = size + (2 * MEMORY_GUARD_SIZE);
+    size_t total_size = size + ((size_t)2 * MEMORY_GUARD_SIZE);
     unsigned char *mem = malloc(total_size);
 
     if (!mem) {
@@ -3235,7 +3235,7 @@ static bool is_thread_running(hls_unified_thread_ctx_t *ctx) {
     // Check if we've received a packet recently
     time_t last_packet = (time_t)atomic_load(&ctx->last_packet_time);
     time_t now = time(NULL);
-    if (now - last_packet > MAX_PACKET_TIMEOUT * 3) { // 3x the normal timeout for watchdog
+    if (now - last_packet > (time_t)MAX_PACKET_TIMEOUT * 3) { // 3x the normal timeout for watchdog
         log_warn("Thread for stream %s has not received a packet in %ld seconds",
                 ctx->stream_name, now - last_packet);
         return false;
@@ -3343,7 +3343,7 @@ static void *hls_watchdog_thread_func(void *arg) {
             } else {
                 // Thread is running, reset restart attempts if it's been running for a while
                 time_t now = time(NULL);
-                if (restart_attempts[i] > 0 && now - last_restart_time[i] > WATCHDOG_RESTART_COOLDOWN_SEC * 2) {
+                if (restart_attempts[i] > 0 && now - last_restart_time[i] > (time_t)WATCHDOG_RESTART_COOLDOWN_SEC * 2) {
                     log_info("Resetting restart attempts for stream %s after stable period", ctx->stream_name);
                     restart_attempts[i] = 0;
                 }

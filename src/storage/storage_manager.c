@@ -461,7 +461,7 @@ int apply_retention_policy(void) {
 static int apply_legacy_retention_policy(void) {
     // Calculate cutoff time for retention days
     time_t now = time(NULL);
-    time_t cutoff_time = now - (storage_manager.retention_days * 86400);
+    time_t cutoff_time = now - ((time_t)storage_manager.retention_days * 86400);
 
     int deleted_count = 0;
 
@@ -687,7 +687,7 @@ static void heartbeat_check_disk_pressure(void) {
         if (new_level > old_level) {
             log_warn("Disk pressure INCREASED: %s -> %s (%.1f%% free, %llu MB available)",
                      disk_pressure_level_str(old_level), disk_pressure_level_str(new_level),
-                     free_pct, (unsigned long long)(avail / (1024 * 1024)));
+                     free_pct, (unsigned long long)(avail / (1024ULL * 1024ULL)));
         } else {
             log_info("Disk pressure decreased: %s -> %s (%.1f%% free)",
                      disk_pressure_level_str(old_level), disk_pressure_level_str(new_level),
@@ -705,13 +705,13 @@ static void heartbeat_check_disk_pressure(void) {
                  disk_pressure_level_str(old_level),
                  disk_pressure_level_str(new_level),
                  free_pct,
-                 (unsigned long long)(avail / (1024 * 1024)),
-                 (unsigned long long)(total / (1024 * 1024)));
+                 (unsigned long long)(avail / (1024ULL * 1024ULL)),
+                 (unsigned long long)(total / (1024ULL * 1024ULL)));
         mqtt_publish_raw(mqtt_topic, mqtt_payload, true);
     }
 
     log_debug("Heartbeat: %.1f%% free (%llu MB), pressure=%s",
-              free_pct, (unsigned long long)(avail / (1024 * 1024)),
+              free_pct, (unsigned long long)(avail / (1024ULL * 1024ULL)),
               disk_pressure_level_str(new_level));
 }
 
@@ -777,7 +777,7 @@ static void emergency_cleanup(bool aggressive) {
     pthread_mutex_unlock(&unified_ctrl.mutex);
 
     log_warn("Emergency cleanup complete: deleted %d recordings, freed %llu MB",
-             deleted, (unsigned long long)(freed / (1024 * 1024)));
+             deleted, (unsigned long long)(freed / (1024ULL * 1024ULL)));
 
     // Re-check pressure after cleanup
     heartbeat_check_disk_pressure();
@@ -861,7 +861,7 @@ static void standard_cleanup_cycle(void) {
 
     if (tier_deleted > 0) {
         log_info("Standard cleanup: tiered retention deleted %d recordings, freed %llu MB",
-                 tier_deleted, (unsigned long long)(tier_freed / (1024 * 1024)));
+                 tier_deleted, (unsigned long long)(tier_freed / (1024ULL * 1024ULL)));
     }
 
     // 3. Refresh storage cache
