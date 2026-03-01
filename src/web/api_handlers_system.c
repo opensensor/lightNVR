@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <netdb.h>
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -86,7 +87,8 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
     while (fgets(status_line, sizeof(status_line), status_file)) {
         if (strncmp(status_line, "VmRSS:", 6) == 0) {
             // VmRSS is in kB - actual physical memory used
-            sscanf(status_line + 6, "%lu", &vm_rss);
+            char *endptr;
+            vm_rss = strtoul(status_line + 6, &endptr, 10);
             break;
         }
     }
@@ -115,7 +117,13 @@ extern int get_system_logs(char ***logs, int *count);
 static bool read_ull_from_file(const char *path, unsigned long long *out) {
     FILE *fp = fopen(path, "r");
     if (!fp) return false;
-    bool ok = (fscanf(fp, "%llu", out) == 1);
+    char buf[64] = {0};
+    bool ok = false;
+    if (fgets(buf, sizeof(buf), fp)) {
+        char *endptr;
+        *out = strtoull(buf, &endptr, 10);
+        ok = (endptr != buf);
+    }
     fclose(fp);
     return ok;
 }
@@ -139,7 +147,28 @@ static int get_effective_cpu_cores(int *out_millicores) {
     if (fp) {
         char quota_str[64] = {0};
         unsigned long long period = 0;
-        if (fscanf(fp, "%63s %llu", quota_str, &period) == 2 && period > 0) {
+        char cpu_max_line[128] = {0};
+        int cpu_max_parsed = 0;
+        if (fgets(cpu_max_line, sizeof(cpu_max_line), fp)) {
+            const char *p = cpu_max_line;
+            // Parse first token (quota: "max" or a number)
+            while (*p == ' ' || *p == '\t') p++;
+            const char *tok_end = p;
+            while (*tok_end && *tok_end != ' ' && *tok_end != '\t' && *tok_end != '\n') tok_end++;
+            size_t tok_len = (size_t)(tok_end - p);
+            if (tok_len > 0 && tok_len < sizeof(quota_str)) {
+                memcpy(quota_str, p, tok_len);
+                quota_str[tok_len] = '\0';
+                p = tok_end;
+                while (*p == ' ' || *p == '\t') p++;
+                if (*p && *p != '\n') {
+                    char *endptr;
+                    period = strtoull(p, &endptr, 10);
+                    if (endptr != p) cpu_max_parsed = 1;
+                }
+            }
+        }
+        if (cpu_max_parsed && period > 0) {
             fclose(fp);
             if (strcmp(quota_str, "max") != 0) {
                 // Quota is a number – compute effective cores
@@ -157,7 +186,7 @@ static int get_effective_cpu_cores(int *out_millicores) {
             log_debug("cgroup v2 cpu.max: unlimited");
             return host_cores;
         }
-        fclose(fp);
+        if (!cpu_max_parsed) fclose(fp);
     }
 
     // ── cgroup v1: cpu.cfs_quota_us / cpu.cfs_period_us
@@ -266,12 +295,24 @@ static bool has_cgroup_cpu_limit(void) {
     FILE *fp = fopen("/sys/fs/cgroup/cpu.max", "r");
     if (fp) {
         char quota_str[64] = {0};
-        unsigned long long period = 0;
-        if (fscanf(fp, "%63s %llu", quota_str, &period) == 2) {
-            fclose(fp);
-            return (strcmp(quota_str, "max") != 0);
+        char cpu_max_line[128] = {0};
+        bool parsed = false;
+        if (fgets(cpu_max_line, sizeof(cpu_max_line), fp)) {
+            const char *p = cpu_max_line;
+            while (*p == ' ' || *p == '\t') p++;
+            const char *tok_end = p;
+            while (*tok_end && *tok_end != ' ' && *tok_end != '\t' && *tok_end != '\n') tok_end++;
+            size_t tok_len = (size_t)(tok_end - p);
+            if (tok_len > 0 && tok_len < sizeof(quota_str)) {
+                memcpy(quota_str, p, tok_len);
+                quota_str[tok_len] = '\0';
+                parsed = true;
+            }
         }
         fclose(fp);
+        if (parsed) {
+            return (strcmp(quota_str, "max") != 0);
+        }
     }
     // cgroup v1: quota == -1 means unlimited
     unsigned long long quota = 0;
@@ -303,7 +344,10 @@ static double get_effective_cpu_usage(void) {
             unsigned long long usage1 = 0;
             while (fgets(line, sizeof(line), fp)) {
                 if (strncmp(line, "usage_usec", 10) == 0) {
-                    sscanf(line + 10, " %llu", &usage1);
+                    const char *ptr = line + 10;
+                    while (*ptr == ' ') ptr++;
+                    char *endptr;
+                    usage1 = strtoull(ptr, &endptr, 10);
                     break;
                 }
             }
@@ -317,7 +361,10 @@ static double get_effective_cpu_usage(void) {
                     unsigned long long usage2 = 0;
                     while (fgets(line, sizeof(line), fp)) {
                         if (strncmp(line, "usage_usec", 10) == 0) {
-                            sscanf(line + 10, " %llu", &usage2);
+                            const char *ptr2 = line + 10;
+                            while (*ptr2 == ' ') ptr2++;
+                            char *endptr2;
+                            usage2 = strtoull(ptr2, &endptr2, 10);
                             break;
                         }
                     }
@@ -351,12 +398,28 @@ static double get_effective_cpu_usage(void) {
     double cpu_usage = 0.0;
     FILE *fp = fopen("/proc/stat", "r");
     if (fp) {
-        unsigned long user, nice, system, idle, iowait, irq, softirq;
-        if (fscanf(fp, "cpu %lu %lu %lu %lu %lu %lu %lu",
-                  &user, &nice, &system, &idle, &iowait, &irq, &softirq) == 7) {
-            unsigned long total = user + nice + system + idle + iowait + irq + softirq;
-            unsigned long active = user + nice + system + irq + softirq;
-            cpu_usage = (double)active / (double)total * 100.0;
+        char stat_line[256] = {0};
+        while (fgets(stat_line, sizeof(stat_line), fp)) {
+            if (strncmp(stat_line, "cpu ", 4) == 0) {
+                unsigned long user = 0, nice = 0, sys = 0, idle = 0, iowait = 0, irq = 0, softirq = 0;
+                char *p = stat_line + 4;
+                char *ep;
+                int fields = 0;
+                unsigned long *targets[] = {&user, &nice, &sys, &idle, &iowait, &irq, &softirq};
+                for (int i = 0; i < 7; i++) {
+                    while (*p == ' ') p++;
+                    *targets[i] = strtoul(p, &ep, 10);
+                    if (ep == p) break;
+                    p = ep;
+                    fields++;
+                }
+                if (fields == 7) {
+                    unsigned long total = user + nice + sys + idle + iowait + irq + softirq;
+                    unsigned long active = user + nice + sys + irq + softirq;
+                    cpu_usage = (double)active / (double)total * 100.0;
+                }
+                break;
+            }
         }
         fclose(fp);
     }
@@ -479,7 +542,8 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
             while (fgets(line, sizeof(line), fp)) {
                 if (strncmp(line, "VmRSS:", 6) == 0) {
                     // VmRSS is in kB - actual physical memory used
-                    sscanf(line + 6, "%lu", &vm_rss);
+                    char *endptr;
+                    vm_rss = strtoul(line + 6, &endptr, 10);
                     break;
                 }
             }
@@ -571,37 +635,62 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     // Use /proc/self/stat to get process start time
     FILE *stat_file = fopen("/proc/self/stat", "r");
     if (stat_file) {
-        // Fields in /proc/self/stat
-        char comm[256];
-        char state;
-        int ppid, pgrp, session, tty_nr, tpgid;
-        unsigned long flags, minflt, cminflt, majflt, cmajflt, utime, stime;
-        long cutime, cstime, priority, nice, num_threads, itrealvalue;
-        unsigned long long starttime;
+        unsigned long long starttime = 0;
+        bool stat_ok = false;
 
-        // Read the stat file
-        fscanf(stat_file, "%*d %s %c %d %d %d %d %d %lu %lu %lu %lu %lu %lu %lu %ld %ld %ld %ld %ld %ld %llu",
-               comm, &state, &ppid, &pgrp, &session, &tty_nr, &tpgid,
-               &flags, &minflt, &cminflt, &majflt, &cmajflt, &utime, &stime,
-               &cutime, &cstime, &priority, &nice, &num_threads, &itrealvalue, &starttime);
+        // /proc/self/stat format: pid (comm) state ppid pgrp session tty_nr tpgid
+        //   flags minflt cminflt majflt cmajflt utime stime cutime cstime
+        //   priority nice num_threads itrealvalue starttime ...
+        // comm may contain spaces but is always enclosed in '( )'.
+        // Find the last ')' to handle that correctly.
+        char stat_line[1024] = {0};
+        if (fgets(stat_line, sizeof(stat_line), stat_file)) {
+            char *paren_end = strrchr(stat_line, ')');
+            if (paren_end) {
+                char *p = paren_end + 1;
+                // Skip the state field (single non-space char after whitespace)
+                while (*p == ' ') p++;
+                if (*p && *p != '\n') p++; // skip state
+                // Parse 19 numeric fields; starttime is the 20th (index 19)
+                for (int i = 0; i < 20; i++) {
+                    while (*p == ' ') p++;
+                    if (!*p || *p == '\n') break;
+                    char *ep;
+                    unsigned long long val = strtoull(p, &ep, 10);
+                    if (ep == p) break;
+                    if (i == 19) { starttime = val; stat_ok = true; }
+                    p = ep;
+                }
+            }
+        }
         fclose(stat_file);
 
         // Get system uptime
         FILE *uptime_file = fopen("/proc/uptime", "r");
         double system_uptime = 0;
         if (uptime_file) {
-            fscanf(uptime_file, "%lf", &system_uptime);
+            char uptime_buf[64] = {0};
+            if (fgets(uptime_buf, sizeof(uptime_buf), uptime_file)) {
+                char *ep;
+                system_uptime = strtod(uptime_buf, &ep);
+                if (ep == uptime_buf) system_uptime = 0;
+            }
             fclose(uptime_file);
         }
 
-        // Calculate process uptime in seconds
+        // Calculate process uptime in seconds only when starttime was read
         // starttime is in clock ticks since system boot
         // Convert to seconds by dividing by sysconf(_SC_CLK_TCK)
-        long clock_ticks = sysconf(_SC_CLK_TCK);
-        double process_uptime = system_uptime - ((double)starttime / (double)clock_ticks);
+        if (stat_ok) {
+            long clock_ticks = sysconf(_SC_CLK_TCK);
+            double process_uptime = system_uptime - ((double)starttime / (double)clock_ticks);
 
-        // Add process uptime to info
-        cJSON_AddNumberToObject(info, "uptime", process_uptime);
+            // Add process uptime to info
+            cJSON_AddNumberToObject(info, "uptime", process_uptime);
+        } else {
+            // Fallback to system uptime if stat fields couldn't be read
+            cJSON_AddNumberToObject(info, "uptime", system_uptime);
+        }
     } else {
         // Fallback to system uptime if process uptime can't be determined
         struct sysinfo sys_info;
@@ -754,17 +843,22 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                 if (iface) {
                                     cJSON_AddStringToObject(iface, "name", name);
 
-                                    // Try to get IP address using ip command
-                                    char ip_cmd[256];
-                                    char ip_addr[128] = "Unknown";
-                                    snprintf(ip_cmd, sizeof(ip_cmd), "ip -4 addr show %s | grep -oP '(?<=inet\\s)\\d+(\\.\\d+){3}'", name);
-                                    FILE *ip_fp = popen(ip_cmd, "r");
-                                    if (ip_fp) {
-                                        if (fgets(ip_addr, sizeof(ip_addr), ip_fp)) {
-                                            // Remove newline
-                                            ip_addr[strcspn(ip_addr, "\n")] = 0;
+                                    // Try to get IPv4 address using ioctl (no shell needed)
+                                    char ip_addr[INET_ADDRSTRLEN] = "Unknown";
+                                    int ioc_sock = socket(AF_INET, SOCK_DGRAM, 0);
+                                    if (ioc_sock >= 0) {
+                                        struct ifreq ifr;
+                                        memset(&ifr, 0, sizeof(ifr));
+                                        strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+                                        if (ioctl(ioc_sock, SIOCGIFADDR, &ifr) == 0) {
+                                            struct sockaddr_in *sin =
+                                                (struct sockaddr_in *)&ifr.ifr_addr;
+                                            if (inet_ntop(AF_INET, &sin->sin_addr,
+                                                          ip_addr, sizeof(ip_addr)) == NULL) {
+                                                strncpy(ip_addr, "Unknown", sizeof(ip_addr) - 1);
+                                            }
                                         }
-                                        pclose(ip_fp);
+                                        close(ioc_sock);
                                     }
 
                                     cJSON_AddStringToObject(iface, "address", ip_addr);
@@ -790,9 +884,13 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                     FILE *flags_file = fopen(flags_path, "r");
                                     bool is_up = false;
                                     if (flags_file) {
-                                        unsigned int flags;
-                                        if (fscanf(flags_file, "%x", &flags) == 1) {
-                                            is_up = (flags & 1) != 0; // IFF_UP is 0x1
+                                        char flags_buf[32] = {0};
+                                        if (fgets(flags_buf, sizeof(flags_buf), flags_file)) {
+                                            char *flags_ep;
+                                            unsigned long flags_val = strtoul(flags_buf, &flags_ep, 16);
+                                            if (flags_ep != flags_buf) {
+                                                is_up = ((unsigned int)flags_val & 1U) != 0; // IFF_UP is 0x1
+                                            }
                                         }
                                         fclose(flags_file);
                                     }

@@ -11,7 +11,10 @@
 #include <string.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <time.h>
 #include <errno.h>
 
 #include "web/thumbnail_thread.h"
@@ -54,27 +57,70 @@ static struct {
  */
 static int generate_thumbnail_internal(const char *input_path, const char *output_path,
                                        double seek_seconds) {
-    char cmd[1024];
-
     // Clamp seek time to 0 minimum
     if (seek_seconds < 0) seek_seconds = 0;
 
-    // Use -ss before -i for fast seeking (input seeking)
-    // -frames:v 1 to grab a single frame
-    // -vf scale=320:-1 to scale to 320px wide maintaining aspect ratio
-    // -q:v 8 for reasonable JPEG quality (~5-10KB)
-    // timeout 5s to prevent hanging on slow/corrupted files
-    snprintf(cmd, sizeof(cmd),
-             "timeout 5s ffmpeg -ss %.2f -i \"%s\" -frames:v 1 -vf scale=320:-1 "
-             "-q:v 8 -y \"%s\" 2>/dev/null",
-             seek_seconds, input_path, output_path);
+    char seek_str[32];
+    snprintf(seek_str, sizeof(seek_str), "%.2f", seek_seconds);
 
-    log_debug("Generating thumbnail: %s", cmd);
+    log_debug("Generating thumbnail: ffmpeg -ss %s -i \"%s\" -> \"%s\"",
+              seek_str, input_path, output_path);
 
-    int ret = system(cmd);
+    // Use fork/execvp instead of system() to avoid spawning a shell
+    pid_t pid = fork();
+    if (pid < 0) {
+        log_warn("fork() failed for thumbnail generation: %s", strerror(errno));
+        return -1;
+    }
+
+    if (pid == 0) {
+        // Child process: redirect stderr to /dev/null, then exec ffmpeg
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        const char *args[] = {
+            "ffmpeg", "-ss", seek_str,
+            "-i", input_path,
+            "-frames:v", "1",
+            "-vf", "scale=320:-1",
+            "-q:v", "8",
+            "-y", output_path,
+            NULL
+        };
+        execvp("ffmpeg", (char *const *)args);
+        // execvp only returns on failure
+        _exit(127);
+    }
+
+    // Parent: wait up to 5 seconds for child to complete
+    int ret = -1;
+    time_t deadline = time(NULL) + 5;
+    while (time(NULL) < deadline) {
+        int status = 0;
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid) {
+            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+                ret = 0;
+            }
+            pid = -1;
+            break;
+        }
+        if (result < 0) {
+            pid = -1;
+            break;
+        }
+        usleep(50000); // 50 ms polling interval
+    }
+    if (pid > 0) {
+        // Timeout — kill the child
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
+    }
+
     if (ret != 0) {
-        log_warn("ffmpeg thumbnail generation failed (exit code %d) for: %s",
-                 ret, input_path);
+        log_warn("ffmpeg thumbnail generation failed for: %s", input_path);
         return -1;
     }
 

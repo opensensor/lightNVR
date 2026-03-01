@@ -42,68 +42,59 @@ int get_system_logs_tail(char ***logs, int *count, int max_lines) {
         max_lines = 5000; // Cap at 5000 lines to prevent excessive memory usage
     }
 
-    // Use tail command to get the last N lines
-    // We request 2*max_lines to ensure we have enough lines after filtering by log level
-    char command[512];
-    snprintf(command, sizeof(command), "tail -n %d %s 2>/dev/null", max_lines * 2, g_config.log_file);
-    
-    FILE *fp = popen(command, "r");
+    // Open the log file directly — no shell or popen needed
+    FILE *fp = fopen(g_config.log_file, "r");
     if (!fp) {
-        log_error("Failed to execute tail command: %s", strerror(errno));
+        log_error("Failed to open log file %s: %s", g_config.log_file, strerror(errno));
         return -1;
     }
 
-    // Count lines first to allocate memory
-    int line_count = 0;
-    char line_buffer[4096]; // Increased buffer size for long log lines
-    
-    // Read all lines to count them
-    while (fgets(line_buffer, sizeof(line_buffer), fp) != NULL && line_count < max_lines * 2) {
-        line_count++;
+    // Seek to an approximate position that should contain the last max_lines*2 lines.
+    // Assume an average line length of 120 bytes as a heuristic.
+    long bytes_needed = (long)(max_lines * 2) * 120;
+    if (fseek(fp, 0, SEEK_END) == 0) {
+        long file_size = ftell(fp);
+        if (file_size > bytes_needed) {
+            fseek(fp, -bytes_needed, SEEK_END);
+            // Skip forward to the next newline so we start on a clean line boundary
+            int ch;
+            while ((ch = fgetc(fp)) != EOF && ch != '\n');
+        } else {
+            rewind(fp);
+        }
+    } else {
+        rewind(fp);
     }
-    
-    // If no lines, return empty result
-    if (line_count == 0) {
-        pclose(fp);
-        return 0;
-    }
-    
-    // Allocate array of log strings
-    char **log_lines = (char **)calloc(line_count, sizeof(char *));
+
+    // Allocate array of log strings (upper-bound capacity)
+    int capacity = max_lines * 2;
+    char **log_lines = (char **)calloc(capacity, sizeof(char *));
     if (!log_lines) {
         log_error("Failed to allocate memory for log lines");
-        pclose(fp);
+        fclose(fp);
         return -1;
     }
 
-    // Reopen the command to read the lines again
-    pclose(fp);
-    fp = popen(command, "r");
-    if (!fp) {
-        log_error("Failed to execute tail command (second time): %s", strerror(errno));
-        free((void *)log_lines);
-        return -1;
-    }
-    
     // Read lines and store them
     int log_index = 0;
-    while (fgets(line_buffer, sizeof(line_buffer), fp) != NULL && log_index < line_count) {
+    char line_buffer[4096];
+    while (fgets(line_buffer, sizeof(line_buffer), fp) != NULL && log_index < capacity) {
         // Remove trailing newline
         size_t len = strlen(line_buffer);
         if (len > 0 && line_buffer[len - 1] == '\n') {
             line_buffer[len - 1] = '\0';
         }
-        
+
         // Skip empty lines
         if (line_buffer[0] == '\0') {
             continue;
         }
-        
+
         // Allocate memory for the log line
         log_lines[log_index] = strdup(line_buffer);
         if (!log_lines[log_index]) {
             log_error("Failed to allocate memory for log line");
-            
+
             // Free previously allocated lines
             for (int i = 0; i < log_index; i++) {
                 if (log_lines[i]) {
@@ -111,20 +102,19 @@ int get_system_logs_tail(char ***logs, int *count, int max_lines) {
                 }
             }
             free((void *)log_lines);
-            pclose(fp);
+            fclose(fp);
             return -1;
         }
 
         log_index++;
     }
-    
-    // Close the command
-    pclose(fp);
-    
+
+    fclose(fp);
+
     // Set output parameters
     *logs = log_lines;
     *count = log_index;
-    
+
     return 0;
 }
 
@@ -150,25 +140,36 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
     
     // Default to 500 lines if not specified
     int max_lines = 500;
-    
-    // Use tail command to get the last N lines
-    // We request 2*max_lines to ensure we have enough lines after filtering by log level
-    char command[512];
-    snprintf(command, sizeof(command), "tail -n %d %s 2>/dev/null", max_lines * 2, g_config.log_file);
-    
-    FILE *fp = popen(command, "r");
+
+    // Open the log file directly — no shell or popen needed
+    FILE *fp = fopen(g_config.log_file, "r");
     if (!fp) {
-        log_error("Failed to execute tail command: %s", strerror(errno));
+        log_error("Failed to open log file %s: %s", g_config.log_file, strerror(errno));
         return -1;
     }
-    
-    // Allocate initial array of log strings
-    // We'll resize it if needed
+
+    // Seek to an approximate position that should contain the last max_lines*2 lines.
+    long bytes_needed = (long)(max_lines * 2) * 120;
+    if (fseek(fp, 0, SEEK_END) == 0) {
+        long file_size = ftell(fp);
+        if (file_size > bytes_needed) {
+            fseek(fp, -bytes_needed, SEEK_END);
+            // Skip forward to the next newline so we start on a clean line boundary
+            int ch;
+            while ((ch = fgetc(fp)) != EOF && ch != '\n');
+        } else {
+            rewind(fp);
+        }
+    } else {
+        rewind(fp);
+    }
+
+    // Allocate initial array of log strings — we'll resize it if needed
     int capacity = 100;
     char **log_lines = (char **)calloc(capacity, sizeof(char *));
     if (!log_lines) {
         log_error("Failed to allocate memory for log lines");
-        pclose(fp);
+        fclose(fp);
         return -1;
     }
     
@@ -243,7 +244,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
                     }
                 }
                 free((void *)log_lines);
-                pclose(fp);
+                fclose(fp);
                 return -1;
             }
             log_lines = new_lines;
@@ -261,7 +262,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
                 }
             }
             free((void *)log_lines);
-            pclose(fp);
+            fclose(fp);
             return -1;
         }
 
@@ -282,7 +283,7 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
                 }
             }
             free((void *)log_lines);
-            pclose(fp);
+            fclose(fp);
             return -1;
         }
 
@@ -290,10 +291,10 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
         log_lines[log_index] = json_str;
         log_index++;
     }
-    
-    // Close the command
-    pclose(fp);
-    
+
+    // Close the file
+    fclose(fp);
+
     // Set output parameters
     *logs = log_lines;
     *count = log_index;

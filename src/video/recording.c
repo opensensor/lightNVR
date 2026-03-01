@@ -326,6 +326,58 @@ int get_recording_state(const char *stream_name) {
 }
 
 /**
+ * @brief Scan a directory for the lexicographically first MP4 file whose name
+ *        starts with the given prefix.  No shell or popen is used.
+ *
+ * @param dir_path   Directory to scan (not recursive)
+ * @param prefix     Required filename prefix (e.g. "recording_20240101_1234")
+ * @param any_mp4    If true, match any "*.mp4"; if false, require the prefix
+ * @param out_path   Buffer to receive the full path of the first match
+ * @param out_size   Size of out_path
+ * @return true if a non-empty matching file was found
+ */
+static bool find_first_mp4_in_dir(const char *dir_path, const char *prefix,
+                                  bool any_mp4, char *out_path, size_t out_size) {
+    DIR *d = opendir(dir_path);
+    if (!d) return false;
+
+    char best[256] = {0}; /* lexicographically smallest match */
+    struct dirent *entry;
+
+    while ((entry = readdir(d)) != NULL) {
+        const char *name = entry->d_name;
+
+        /* Must end in .mp4 */
+        size_t nlen = strlen(name);
+        if (nlen < 5 || strcmp(name + nlen - 4, ".mp4") != 0) continue;
+
+        /* Apply prefix filter when requested */
+        if (!any_mp4 && strncmp(name, prefix, strlen(prefix)) != 0) continue;
+
+        /* Keep the lexicographically smallest name (mirrors "| sort | head -1") */
+        if (best[0] == '\0' || strcmp(name, best) < 0) {
+            strncpy(best, name, sizeof(best) - 1);
+            best[sizeof(best) - 1] = '\0';
+        }
+    }
+    closedir(d);
+
+    if (best[0] == '\0') return false;
+
+    /* Build full path and verify the file is non-empty */
+    char full[512];
+    int n = snprintf(full, sizeof(full), "%s/%s", dir_path, best);
+    if (n < 0 || n >= (int)sizeof(full)) return false;
+
+    struct stat st;
+    if (stat(full, &st) != 0 || st.st_size == 0) return false;
+
+    strncpy(out_path, full, out_size - 1);
+    out_path[out_size - 1] = '\0';
+    return true;
+}
+
+/**
  * Find MP4 recording for a stream based on timestamp
  * Returns 1 if found, 0 if not found, -1 on error
  */
@@ -339,138 +391,55 @@ int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path
     config_t *global_config = get_streaming_config();
     char base_path[256];
 
-    // Try different possible locations for the MP4 file
-
-    // 1. Try main recordings directory with stream subdirectory
-    snprintf(base_path, sizeof(base_path), "%s/recordings/%s",
-            global_config->storage_path, stream_name);
-
     // Format timestamp for pattern matching
     char timestamp_str[32];
     struct tm tm_buf;
     struct tm *tm_info = localtime_r(&timestamp, &tm_buf);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M", tm_info);
 
-    // Log what we're looking for
+    // Build the filename prefix used for all searches
+    char prefix[64];
+    snprintf(prefix, sizeof(prefix), "recording_%s", timestamp_str);
+
+    // 1. Try main recordings directory with stream subdirectory
+    snprintf(base_path, sizeof(base_path), "%s/recordings/%s",
+            global_config->storage_path, stream_name);
+
     log_info("Looking for MP4 recording for stream '%s' with timestamp around %s in %s",
             stream_name, timestamp_str, base_path);
 
-    // Use system command to find matching files
-    char find_cmd[512];
-    snprintf(find_cmd, sizeof(find_cmd),
-            "find %s -type f -name \"recording_%s*.mp4\" | sort",
-            base_path, timestamp_str);
-
-    FILE *cmd_pipe = popen(find_cmd, "r");
-    if (!cmd_pipe) {
-        log_error("Failed to execute find command: %s", find_cmd);
-
-        // Try fallback with ls and grep
-        snprintf(find_cmd, sizeof(find_cmd),
-                "ls -1 %s/recording_%s*.mp4 2>/dev/null | head -1",
-                base_path, timestamp_str);
-
-        cmd_pipe = popen(find_cmd, "r");
-        if (!cmd_pipe) {
-            log_error("Failed to execute fallback find command");
-            return -1;
-        }
-    }
-
-    char found_path[256] = {0};
-    if (fgets(found_path, sizeof(found_path), cmd_pipe)) {
-        // Remove trailing newline
-        size_t len = strlen(found_path);
-        if (len > 0 && found_path[len-1] == '\n') {
-            found_path[len-1] = '\0';
-        }
-
-        // Check if file exists and has content
+    if (find_first_mp4_in_dir(base_path, prefix, false, mp4_path, path_size)) {
         struct stat st;
-        if (stat(found_path, &st) == 0 && st.st_size > 0) {
-            log_info("Found MP4 file: %s (%lld bytes)",
-                    found_path, (long long)st.st_size);
-
-            strncpy(mp4_path, found_path, path_size - 1);
-            mp4_path[path_size - 1] = '\0';
-            pclose(cmd_pipe);
-            return 1;
-        }
+        stat(mp4_path, &st);
+        log_info("Found MP4 file: %s (%lld bytes)", mp4_path, (long long)st.st_size);
+        return 1;
     }
-
-    pclose(cmd_pipe);
 
     // 2. Try alternative location if MP4 direct storage is configured
     if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
         snprintf(base_path, sizeof(base_path), "%s/%s",
                 global_config->mp4_storage_path, stream_name);
-
         log_info("Looking in alternative MP4 location: %s", base_path);
 
-        // Same approach with alternative path
-        snprintf(find_cmd, sizeof(find_cmd),
-                "find %s -type f -name \"recording_%s*.mp4\" | sort",
-                base_path, timestamp_str);
-
-        cmd_pipe = popen(find_cmd, "r");
-        if (cmd_pipe) {
-            if (fgets(found_path, sizeof(found_path), cmd_pipe)) {
-                // Remove trailing newline
-                size_t len = strlen(found_path);
-                if (len > 0 && found_path[len-1] == '\n') {
-                    found_path[len-1] = '\0';
-                }
-
-                // Check if file exists and has content
-                struct stat st;
-                if (stat(found_path, &st) == 0 && st.st_size > 0) {
-                    log_info("Found MP4 file in alternative location: %s (%lld bytes)",
-                            found_path, (long long)st.st_size);
-
-                    strncpy(mp4_path, found_path, path_size - 1);
-                    mp4_path[path_size - 1] = '\0';
-                    pclose(cmd_pipe);
-                    return 1;
-                }
-            }
-            pclose(cmd_pipe);
+        if (find_first_mp4_in_dir(base_path, prefix, false, mp4_path, path_size)) {
+            struct stat st;
+            stat(mp4_path, &st);
+            log_info("Found MP4 file in alternative location: %s (%lld bytes)",
+                    mp4_path, (long long)st.st_size);
+            return 1;
         }
     }
 
-    // 3. Try less restrictive search in case the timestamp format is different
-    // This will look for any MP4 with the stream name in various directories
-
-    // Try in the HLS directory itself (sometimes MP4s are stored alongside HLS files)
+    // 3. Try the HLS directory (any .mp4 file)
     snprintf(base_path, sizeof(base_path), "%s/hls/%s",
             global_config->storage_path, stream_name);
-
     log_info("Looking in HLS directory: %s", base_path);
 
-    snprintf(find_cmd, sizeof(find_cmd),
-            "find %s -type f -name \"*.mp4\" | sort", base_path);
-
-    cmd_pipe = popen(find_cmd, "r");
-    if (cmd_pipe) {
-        if (fgets(found_path, sizeof(found_path), cmd_pipe)) {
-            // Remove trailing newline
-            size_t len = strlen(found_path);
-            if (len > 0 && found_path[len-1] == '\n') {
-                found_path[len-1] = '\0';
-            }
-
-            // Check if file exists and has content
-            struct stat st;
-            if (stat(found_path, &st) == 0 && st.st_size > 0) {
-                log_info("Found MP4 file in HLS directory: %s (%lld bytes)",
-                        found_path, (long long)st.st_size);
-
-                strncpy(mp4_path, found_path, path_size - 1);
-                mp4_path[path_size - 1] = '\0';
-                pclose(cmd_pipe);
-                return 1;
-            }
-        }
-        pclose(cmd_pipe);
+    if (find_first_mp4_in_dir(base_path, NULL, true, mp4_path, path_size)) {
+        struct stat st;
+        stat(mp4_path, &st);
+        log_info("Found MP4 file in HLS directory: %s (%lld bytes)", mp4_path, (long long)st.st_size);
+        return 1;
     }
 
     // No MP4 file found

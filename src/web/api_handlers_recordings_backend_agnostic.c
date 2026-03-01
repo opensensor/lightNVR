@@ -96,7 +96,7 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     // Format file size for display
     char size_str[32] = {0};
     if (recording.size_bytes < 1024) {
-        snprintf(size_str, sizeof(size_str), "%ld B", recording.size_bytes);
+        snprintf(size_str, sizeof(size_str), "%lu B", (unsigned long)recording.size_bytes);
     } else if (recording.size_bytes < (uint64_t)1024 * 1024) {
         snprintf(size_str, sizeof(size_str), "%.1f KB", (double)recording.size_bytes / 1024.0);
     } else if (recording.size_bytes < (uint64_t)1024 * 1024 * 1024) {

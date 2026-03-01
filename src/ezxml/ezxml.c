@@ -735,7 +735,7 @@ char *ezxml_toxml_r(ezxml_t xml, char **s, size_t *len, size_t *max,
 
     *len += sprintf(*s + *len, "</%s>", xml->name); // close tag
 
-    while (txt[off] && off < xml->off) off++; // make sure off is within bounds
+    while (off < xml->off && txt[off]) off++; // make sure off is within bounds
     return (xml->ordered) ? ezxml_toxml_r(xml->ordered, s, len, max, off, attr)
                           : ezxml_ampencode(txt + off, -1, s, len, max, 0);
 }

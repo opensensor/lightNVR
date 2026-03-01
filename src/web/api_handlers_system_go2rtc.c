@@ -53,7 +53,8 @@ bool get_go2rtc_memory_usage(unsigned long long *memory_usage) {
     while (fgets(line, sizeof(line), status_file)) {
         if (strncmp(line, "VmRSS:", 6) == 0) {
             // VmRSS is in kB - actual physical memory used
-            sscanf(line + 6, "%lu", &vm_rss);
+            char *endptr;
+            vm_rss = strtoul(line + 6, &endptr, 10);
             break;
         }
     }
