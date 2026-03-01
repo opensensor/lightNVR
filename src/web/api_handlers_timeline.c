@@ -575,25 +575,6 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
     int target_duration = (int)max_duration + 1;
     fprintf(manifest, "#EXT-X-TARGETDURATION:%d\n", target_duration);
     
-    // Find the segment that contains the start time
-    int start_segment_index = -1;
-    for (int i = 0; i < segment_count; i++) {
-        if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
-            start_segment_index = i;
-            break;
-        }
-    }
-    
-    // If no segment contains the start time, use the first segment after the start time
-    if (start_segment_index == -1) {
-        for (int i = 0; i < segment_count; i++) {
-            if (start_time < segments[i].start_time) {
-                start_segment_index = i;
-                break;
-            }
-        }
-    }
-    
     // Create a single segment for the entire timeline
     // This simplifies playback and avoids issues with segment transitions
     fprintf(manifest, "#EXTINF:%.6f,\n", max_duration);
