@@ -937,7 +937,7 @@ static void add_frame_to_history(motion_stream_t *stream, const unsigned char *f
 static float get_time_ms() {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (float)(ts.tv_sec * 1000.0 + ts.tv_nsec / 1000000.0);
+    return (float)((double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0);
 }
 
 /**
@@ -1191,7 +1191,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
                 // Apply noise threshold
                 if (diff > stream->noise_threshold) {
                     // Count pixels that changed more than the sensitivity threshold
-                    if (diff > (stream->sensitivity * 255.0f)) {
+                    if ((float)diff > (stream->sensitivity * 255.0f)) {
                         changed_pixels++;
                         total_diff += diff;
                     }
@@ -1273,18 +1273,18 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
     clock_gettime(CLOCK_MONOTONIC, &end_time);
     
     // Calculate processing time in milliseconds
-    float processing_time = 
-        (end_time.tv_sec - start_time.tv_sec) * 1000.0f + 
-        (end_time.tv_nsec - start_time.tv_nsec) / 1000000.0f;
-    
+    float processing_time =
+        (float)(end_time.tv_sec - start_time.tv_sec) * 1000.0f +
+        (float)(end_time.tv_nsec - start_time.tv_nsec) / 1000000.0f;
+
     // Update performance statistics
     stream->last_processing_time = processing_time;
     stream->frames_processed++;
-    
+
     // Update running average
-    stream->avg_processing_time = 
-        (stream->avg_processing_time * (stream->frames_processed - 1) + processing_time) / 
-        stream->frames_processed;
+    stream->avg_processing_time =
+        (stream->avg_processing_time * (float)(stream->frames_processed - 1) + processing_time) /
+        (float)stream->frames_processed;
     
     // Update peak processing time
     if (processing_time > stream->peak_processing_time) {

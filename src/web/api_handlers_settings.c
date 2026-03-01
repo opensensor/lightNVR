@@ -310,6 +310,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
             case LOG_LOCAL5: facility_name = "LOG_LOCAL5"; break;
             case LOG_LOCAL6: facility_name = "LOG_LOCAL6"; break;
             case LOG_LOCAL7: facility_name = "LOG_LOCAL7"; break;
+            default: facility_name = "LOG_USER"; break;
         }
         cJSON_AddStringToObject(settings, "syslog_facility", facility_name);
     }

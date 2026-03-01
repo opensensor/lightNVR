@@ -76,7 +76,7 @@ static int test_stream_connection(const char *url, int protocol,
     // Find video stream
     for (unsigned int i = 0; i < format_ctx->nb_streams; i++) {
         if (format_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            video_stream_index = i;
+            video_stream_index = (int)i;
             break;
         }
     }

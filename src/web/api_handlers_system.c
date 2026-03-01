@@ -131,7 +131,7 @@ static bool read_ull_from_file(const char *path, unsigned long long *out) {
  * use if it wants to show "0.5 CPUs" instead of "1 core".
  */
 static int get_effective_cpu_cores(int *out_millicores) {
-    int host_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    int host_cores = (int)sysconf(_SC_NPROCESSORS_ONLN);
     if (out_millicores) *out_millicores = 0;
 
     // ── cgroup v2: /sys/fs/cgroup/cpu.max  ("quota period" or "max period")
@@ -598,7 +598,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // starttime is in clock ticks since system boot
         // Convert to seconds by dividing by sysconf(_SC_CLK_TCK)
         long clock_ticks = sysconf(_SC_CLK_TCK);
-        double process_uptime = system_uptime - ((double)starttime / clock_ticks);
+        double process_uptime = system_uptime - ((double)starttime / (double)clock_ticks);
 
         // Add process uptime to info
         cJSON_AddNumberToObject(info, "uptime", process_uptime);
@@ -606,7 +606,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Fallback to system uptime if process uptime can't be determined
         struct sysinfo sys_info;
         if (sysinfo(&sys_info) == 0) {
-            cJSON_AddNumberToObject(info, "uptime", sys_info.uptime);
+            cJSON_AddNumberToObject(info, "uptime", (double)sys_info.uptime);
         }
     }
 

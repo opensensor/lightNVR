@@ -376,7 +376,7 @@ static void *mp4_recording_thread(void *arg) {
  */
 void init_mp4_recording_backend(void) {
     // Initialize contexts array
-    memset(recording_contexts, 0, sizeof(recording_contexts));
+    memset((void *)recording_contexts, 0, sizeof(recording_contexts));
 
     // Reset shutdown flag
     shutdown_in_progress = 0;

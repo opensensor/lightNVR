@@ -101,7 +101,7 @@ static int create_mmap_file(mmap_strategy_data_t *data, size_t size) {
     }
     
     // Truncate to desired size
-    if (ftruncate(data->fd, size) < 0) {
+    if (ftruncate(data->fd, (off_t)size) < 0) {
         log_error("Failed to resize mmap file: %s", strerror(errno));
         close(data->fd);
         data->fd = -1;
@@ -158,7 +158,7 @@ static int mmap_strategy_init(pre_buffer_strategy_t *self, const buffer_config_t
     // Cap at configured limit if specified
     if (config->disk_limit_bytes > 0 && total_size > config->disk_limit_bytes) {
         total_size = config->disk_limit_bytes;
-        data->max_entries = (total_size - sizeof(mmap_buffer_header_t)) / data->entry_size;
+        data->max_entries = (int)((total_size - sizeof(mmap_buffer_header_t)) / data->entry_size);
     }
 
     // Set up file path
@@ -258,7 +258,7 @@ static int mmap_strategy_add_packet(pre_buffer_strategy_t *self,
     // Update head
     data->header->head = (data->header->head + 1) % data->max_entries;
     data->header->entry_count++;
-    data->current_count = data->header->entry_count;
+    data->current_count = (int)data->header->entry_count;
     data->current_bytes += packet->size;
     data->newest_timestamp = timestamp;
 
@@ -349,7 +349,7 @@ static int mmap_strategy_flush_to_callback(pre_buffer_strategy_t *self,
             break;
         }
 
-        if (av_new_packet(pkt, entry->data_size) < 0) {
+        if (av_new_packet(pkt, (int)entry->data_size) < 0) {
             av_packet_free(&pkt);
             break;
         }
@@ -358,7 +358,7 @@ static int mmap_strategy_flush_to_callback(pre_buffer_strategy_t *self,
         pkt->pts = entry->pts;
         pkt->dts = entry->dts;
         pkt->stream_index = entry->stream_index;
-        pkt->flags = entry->flags;
+        pkt->flags = (int)entry->flags;
 
         int ret = callback(pkt, user_data);
         av_packet_free(&pkt);

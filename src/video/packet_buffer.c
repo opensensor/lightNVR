@@ -150,7 +150,7 @@ size_t calculate_packet_buffer_pool_size(void) {
     }
 
     // Add 20% pool-level headroom
-    total_mb = (size_t)(total_mb * 1.2);
+    total_mb = (size_t)((double)total_mb * 1.2);
 
     // Sanity clamp: 16 MB minimum, 512 MB maximum
     if (total_mb < 16)  total_mb = 16;

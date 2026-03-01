@@ -235,7 +235,7 @@ static void on_file_open(uv_fs_t *req) {
         return;
     }
 
-    ctx->fd = req->result;
+    ctx->fd = (uv_file)req->result;
     uv_fs_req_cleanup(req);
 
     // Get file stats
@@ -378,7 +378,7 @@ static void send_file_chunk(file_serve_ctx_t *ctx) {
 
     uv_buf_t buf = uv_buf_init(ctx->buffer, to_read);
     int r = uv_fs_read(ctx->conn->server->loop, &ctx->read_req, ctx->fd,
-                       &buf, 1, ctx->offset, on_file_read);
+                       &buf, 1, (int64_t)ctx->offset, on_file_read);
     if (r != 0) {
         log_error("send_file_chunk: Failed to start read: %s", uv_strerror(r));
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);

@@ -364,7 +364,7 @@ int mark_motion_recording_complete(const char *file_path, time_t end_time, uint6
     }
 
     sqlite3_bind_int64(stmt, 1, end_time);
-    sqlite3_bind_int64(stmt, 2, size_bytes);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)size_bytes);
     sqlite3_bind_text(stmt, 3, file_path, -1, SQLITE_STATIC);
 
     rc = sqlite3_step(stmt);

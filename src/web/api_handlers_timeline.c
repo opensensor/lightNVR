@@ -475,7 +475,7 @@ void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
     for (int i = 0; i < count; i++) {
         if (start_time >= segments[i].start_time && start_time <= segments[i].end_time) {
             // Found exact match
-            recording_id = segments[i].id;
+            recording_id = (int64_t)segments[i].id;
             break;
         }
 
@@ -489,7 +489,7 @@ void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
 
         if (distance < min_distance) {
             min_distance = distance;
-            recording_id = segments[i].id;
+            recording_id = (int64_t)segments[i].id;
         }
     }
 

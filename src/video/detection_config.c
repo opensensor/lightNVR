@@ -92,7 +92,7 @@ int init_detection_config(void) {
     }
 
     // Check number of CPU cores
-    int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    int num_cores = (int)sysconf(_SC_NPROCESSORS_ONLN);
     if (num_cores > 0 && num_cores <= 2) {
         log_info("Detected embedded device with %d CPU cores, using embedded configuration", num_cores);
         current_config = &embedded_config;

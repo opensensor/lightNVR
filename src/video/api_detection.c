@@ -421,7 +421,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Log the first few bytes of the response for debugging
     char preview[64] = {0};
-    int preview_len = chunk.size < 63 ? chunk.size : 63;
+    int preview_len = (int)(chunk.size < 63 ? chunk.size : 63);
     memcpy(preview, chunk.memory, preview_len);
     preview[preview_len] = '\0';
     // Replace non-printable characters with dots

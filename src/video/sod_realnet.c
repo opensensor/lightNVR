@@ -257,10 +257,10 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
         }
         
         // Normalize coordinates to 0.0-1.0 range
-        result->detections[valid_count].x = (float)x / width;
-        result->detections[valid_count].y = (float)y / height;
-        result->detections[valid_count].width = (float)w / width;
-        result->detections[valid_count].height = (float)h / height;
+        result->detections[valid_count].x = (float)x / (float)width;
+        result->detections[valid_count].y = (float)y / (float)height;
+        result->detections[valid_count].width = (float)w / (float)width;
+        result->detections[valid_count].height = (float)h / (float)height;
         
         valid_count++;
     }

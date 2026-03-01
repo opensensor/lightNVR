@@ -106,7 +106,7 @@ static int scan_existing_segments(hls_segment_strategy_data_t *data) {
     float accumulated_duration = 0;
     int added = 0;
     
-    for (int i = (int)glob_result.gl_pathc - 1; i >= 0 && accumulated_duration < data->buffer_seconds; i--) {
+    for (int i = (int)glob_result.gl_pathc - 1; i >= 0 && accumulated_duration < (float)data->buffer_seconds; i--) {
         const char *path = glob_result.gl_pathv[i];
         struct stat st;
         
@@ -223,7 +223,7 @@ static int hls_segment_strategy_add_segment(pre_buffer_strategy_t *self,
     }
 
     // If we have enough buffer duration, remove oldest
-    while (data->total_duration_seconds > data->buffer_seconds && data->count > 1) {
+    while (data->total_duration_seconds > (float)data->buffer_seconds && data->count > 1) {
         int oldest = (data->head - data->count + MAX_TRACKED_SEGMENTS) % MAX_TRACKED_SEGMENTS;
         data->total_duration_seconds -= data->segments[oldest].duration_seconds;
         data->total_size_bytes -= data->segments[oldest].size_bytes;

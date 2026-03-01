@@ -48,7 +48,7 @@ bool is_embedded_device(void) {
     }
     
     // Check number of CPU cores
-    int num_cores = sysconf(_SC_NPROCESSORS_ONLN);
+    int num_cores = (int)sysconf(_SC_NPROCESSORS_ONLN);
     if (num_cores > 0 && num_cores <= 2) {
         log_info("Detected embedded device with %d CPU cores", num_cores);
         is_embedded = true;
@@ -180,15 +180,15 @@ int downscale_frame(const uint8_t *src_data, int src_width, int src_height, int 
     }
     
     // Calculate scaling factors
-    float scale_x = (float)src_width / dst_width;
-    float scale_y = (float)src_height / dst_height;
-    
+    float scale_x = (float)src_width / (float)dst_width;
+    float scale_y = (float)src_height / (float)dst_height;
+
     // Perform downscaling
     for (int y = 0; y < dst_height; y++) {
         for (int x = 0; x < dst_width; x++) {
             // Calculate source coordinates
-            float src_x = x * scale_x;
-            float src_y = y * scale_y;
+            float src_x = (float)x * scale_x;
+            float src_y = (float)y * scale_y;
             
             // Calculate integer source coordinates
             int src_x_int = (int)src_x;
@@ -211,8 +211,8 @@ int downscale_frame(const uint8_t *src_data, int src_width, int src_height, int 
                 uint8_t p11 = src_data[(src_y_int_p1 * src_width + src_x_int_p1) * src_channels + c];
                 
                 // Bilinear interpolation
-                float top = p00 * (1 - src_x_frac) + p01 * src_x_frac;
-                float bottom = p10 * (1 - src_x_frac) + p11 * src_x_frac;
+                float top = (float)p00 * (1.0f - src_x_frac) + (float)p01 * src_x_frac;
+                float bottom = (float)p10 * (1.0f - src_x_frac) + (float)p11 * src_x_frac;
                 float value = top * (1 - src_y_frac) + bottom * src_y_frac;
                 
                 // Set the destination pixel

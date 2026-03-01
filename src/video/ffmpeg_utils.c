@@ -1093,7 +1093,7 @@ int ffmpeg_concat_ts_to_mp4(const char **segment_paths, int segment_count,
     }
 
     // Create output streams based on first input
-    output_stream_count = input_contexts[0]->nb_streams;
+    output_stream_count = (int)input_contexts[0]->nb_streams;
     stream_mapping = calloc(output_stream_count, sizeof(int));
     last_pts = calloc(output_stream_count, sizeof(int64_t));
     last_dts = calloc(output_stream_count, sizeof(int64_t));

@@ -1528,7 +1528,7 @@ int db_auth_get_role_id(const char *role_name) {
 
     for (size_t i = 0; i < sizeof(role_names) / sizeof(role_names[0]); i++) {
         if (strcmp(role_names[i], role_name) == 0) {
-            return i;
+            return (int)i;
         }
     }
 

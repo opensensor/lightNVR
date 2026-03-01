@@ -544,7 +544,7 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
     // Create an array of option dictionaries, one for each stream
     AVDictionary **options = NULL;
     if ((*input_ctx)->nb_streams > 0) {
-        options = (AVDictionary **)av_calloc((*input_ctx)->nb_streams, sizeof(*options));
+        options = (AVDictionary **)av_calloc((*input_ctx)->nb_streams, sizeof(AVDictionary *));
         if (options) {
             // Set the same options for each stream
             for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
@@ -695,7 +695,7 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 
     for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
         if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            return i;
+            return (int)i;
         }
     }
 
@@ -712,7 +712,7 @@ int find_audio_stream_index(AVFormatContext *input_ctx) {
 
     for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
         if (input_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            return i;
+            return (int)i;
         }
     }
 

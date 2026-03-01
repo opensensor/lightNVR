@@ -30,7 +30,7 @@ static void serialize_recording_schedule(const uint8_t *schedule, char *buf, siz
     for (int i = 0; i < 168; i++) {
         int written = snprintf(buf + pos, buf_size - pos, "%s%d",
                                (i > 0) ? "," : "", schedule[i] ? 1 : 0);
-        if (written < 0 || (size_t)(pos + written) >= buf_size) break;
+        if (written < 0 || (size_t)pos + (size_t)written >= buf_size) break;
         pos += written;
     }
 }

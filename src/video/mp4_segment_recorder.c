@@ -280,7 +280,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     for (unsigned int i = 0; i < input_ctx->nb_streams; i++) {
         AVStream *stream = input_ctx->streams[i];
         if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && video_stream_idx < 0) {
-            video_stream_idx = i;
+            video_stream_idx = (int)i;
             log_debug("Found video stream: %d", i);
             log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
 
@@ -297,10 +297,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
             if (stream->avg_frame_rate.num && stream->avg_frame_rate.den) {
                 log_debug("  Frame rate: %.2f fps",
-                       (float)stream->avg_frame_rate.num / stream->avg_frame_rate.den);
+                       (float)stream->avg_frame_rate.num / (float)stream->avg_frame_rate.den);
             }
         } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audio_stream_idx < 0) {
-            audio_stream_idx = i;
+            audio_stream_idx = (int)i;
             log_debug("Found audio stream: %d", i);
             log_debug("  Codec: %s", avcodec_get_name(stream->codecpar->codec_id));
             log_debug("  Sample rate: %d Hz", stream->codecpar->sample_rate);
@@ -383,7 +383,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                     log_info("Dimension probe: %d video pkts, %d other pkts, "
                                              "%.0fs elapsed",
                                              probe_packets, probe_other_packets,
-                                             elapsed_us / 1000000.0);
+                                             (double)elapsed_us / 1000000.0);
                                     last_progress_log = now;
                                 }
 
@@ -434,14 +434,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                          "%dx%d (after %d video packets, %.1fs)",
                                          probe_ctx->width, probe_ctx->height,
                                          probe_packets,
-                                         (av_gettime() - probe_start) / 1000000.0);
+                                         (double)(av_gettime() - probe_start) / 1000000.0);
                                 vstream->codecpar->width = probe_ctx->width;
                                 vstream->codecpar->height = probe_ctx->height;
                             } else {
                                 log_warn("Failed to probe video dimensions after "
                                          "%d video packets (%d other-stream), %.1fs",
                                          probe_packets, probe_other_packets,
-                                         (av_gettime() - probe_start) / 1000000.0);
+                                         (double)(av_gettime() - probe_start) / 1000000.0);
                             }
 
                             av_frame_free(&probe_frame);

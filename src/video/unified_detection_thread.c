@@ -607,9 +607,9 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
     for (unsigned int i = 0; i < ctx->input_ctx->nb_streams; i++) {
         AVCodecParameters *codecpar = ctx->input_ctx->streams[i]->codecpar;
         if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO && ctx->video_stream_idx < 0) {
-            ctx->video_stream_idx = i;
+            ctx->video_stream_idx = (int)i;
         } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_stream_idx < 0) {
-            ctx->audio_stream_idx = i;
+            ctx->audio_stream_idx = (int)i;
         }
     }
 
