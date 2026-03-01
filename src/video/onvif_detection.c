@@ -640,13 +640,9 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
             time_t timestamp = time(NULL);
             store_detections_in_db(stream_name, result, timestamp, 0);
 
-            // Publish to MQTT if enabled
+            // Publish to MQTT and trigger motion recording if detections remain after filtering
             if (result->count > 0) {
                 mqtt_publish_detection(stream_name, result, timestamp);
-            }
-
-            // Trigger motion recording if enabled (only if we still have detections after filtering)
-            if (result->count > 0) {
                 process_motion_event(stream_name, true, timestamp);
             }
         } else {
