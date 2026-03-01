@@ -178,7 +178,6 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
 // Check and repair database
 int check_and_repair_database(void) {
     int rc;
-    char *err_msg = NULL;
     sqlite3 *db = get_db_handle();
     
     log_info("Checking and repairing database");

@@ -175,7 +175,7 @@ static int hex_to_bin(const char *hex, unsigned char *data, size_t data_length) 
     }
 
     for (size_t i = 0; i < hex_length; i += 2) {
-        char byte[3] = {hex[i], hex[i + 1], '\0'};
+        const char byte[3] = {hex[i], hex[i + 1], '\0'};
         data[i / 2] = (unsigned char)strtol(byte, NULL, 16);
     }
 
@@ -383,21 +383,17 @@ int db_auth_update_user(int64_t user_id, const char *email, int role, int is_act
 
     // Build the update query
     char query[512] = "UPDATE users SET updated_at = ?";
-    int param_count = 1;
 
     if (email) {
         strncat(query, ", email = ?", sizeof(query) - strlen(query) - 1);
-        param_count++;
     }
 
     if (role >= 0) {
         strncat(query, ", role = ?", sizeof(query) - strlen(query) - 1);
-        param_count++;
     }
 
     if (is_active >= 0) {
         strncat(query, ", is_active = ?", sizeof(query) - strlen(query) - 1);
-        param_count++;
     }
 
     strncat(query, " WHERE id = ?;", sizeof(query) - strlen(query) - 1);
