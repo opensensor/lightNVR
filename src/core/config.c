@@ -1128,9 +1128,9 @@ int load_config(config_t *config) {
     if (!loaded) {
         // Try to load from config file - INI format only
         const char *config_paths[] = {
-            "./lightnvr.ini",            // Current directory INI format
-            "./config/lightnvr.ini",     // Subdirectory (dev/repo layout)
+            "./lightnvr.ini",             // Current directory INI format
             "/etc/lightnvr/lightnvr.ini", // System directory INI format
+            "./config/lightnvr.ini",      // Subdirectory (dev/repo layout)
             NULL
         };
 
@@ -1271,9 +1271,9 @@ int save_config(const config_t *config, const char *path) {
         if (!save_path) {
             // Fall back to well-known default locations (writable check)
             static const char *defaults[] = {
+                "./lightnvr.ini",
                 "/etc/lightnvr/lightnvr.ini",
                 "./config/lightnvr.ini",
-                "./lightnvr.ini",
                 NULL
             };
             for (int i = 0; defaults[i]; i++) {
