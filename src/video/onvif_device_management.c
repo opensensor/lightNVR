@@ -71,7 +71,7 @@ static char* create_security_header(const char *username, const char *password, 
     // Get current time
     time_t now;
     struct tm tm_now_buf;
-    struct tm *tm_now;
+    const struct tm *tm_now;
 
     time(&now);
     tm_now = gmtime_r(&now, &tm_now_buf);
@@ -284,7 +284,7 @@ static void find_elements_by_name(ezxml_t root, const char *name, ezxml_t *resul
 
 // Get media service URL from device service
 static char* get_media_service_url(const char *device_url, const char *username, const char *password) {
-    char *request_body = 
+    const char *request_body =
         "<GetServices xmlns=\"http://www.onvif.org/ver10/device/wsdl\">"
             "<IncludeCapability>false</IncludeCapability>"
         "</GetServices>";
@@ -372,7 +372,7 @@ static char* get_media_service_url(const char *device_url, const char *username,
         char *device_path = strstr(device_url, "/onvif/");
         if (device_path) {
             // Construct media URL by replacing "/device_service" with "/media_service"
-            char *media_path = strstr(device_path, "/device_service");
+            const char *media_path = strstr(device_path, "/device_service");
             if (media_path) {
                 size_t prefix_len = media_path - device_url;
                 media_url = malloc(prefix_len + strlen("/onvif/media_service") + 1);
@@ -409,7 +409,7 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
     
     log_info("Getting profiles for ONVIF device: %s (Media URL: %s)", device_url, media_url);
     
-    char *request_body = "<GetProfiles xmlns=\"http://www.onvif.org/ver10/media/wsdl\"/>";
+    const char *request_body = "<GetProfiles xmlns=\"http://www.onvif.org/ver10/media/wsdl\"/>";
     char *response = send_soap_request(media_url, NULL, request_body, username, password);
     if (!response) {
         log_error("Failed to get profiles");

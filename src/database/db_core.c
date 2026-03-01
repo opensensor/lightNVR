@@ -72,7 +72,7 @@ static int create_directory(const char *path) {
                 return -1;
             }
 
-            char *parent_dir = dirname(parent_path);
+            const char *parent_dir = dirname(parent_path);
             int ret = create_directory(parent_dir);
             free(parent_path);
 

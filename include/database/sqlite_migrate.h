@@ -169,7 +169,7 @@ int migrate_status(sqlite_migrate_t *ctx, migration_t *migrations, int max_count
  * @param version_len Size of version buffer
  * @return 0 on success, -1 on error
  */
-int migrate_get_version(sqlite_migrate_t *ctx, char *version, size_t version_len);
+int migrate_get_version(const sqlite_migrate_t *ctx, char *version, size_t version_len);
 
 #ifdef __cplusplus
 }

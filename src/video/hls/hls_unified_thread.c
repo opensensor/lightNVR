@@ -2450,8 +2450,8 @@ int start_hls_unified_stream(const char *stream_name) {
         }
     }
 
-    // Set full permissions to ensure FFmpeg can write files
-    if (chmod(ctx->output_path, 0777) != 0) {
+    // Set directory permissions to ensure FFmpeg can write files
+    if (chmod(ctx->output_path, 0755) != 0) {
         log_warn("Failed to set permissions on HLS directory: %s (error: %s)", ctx->output_path, strerror(errno));
     }
 
@@ -2467,7 +2467,7 @@ int start_hls_unified_stream(const char *stream_name) {
     }
 
     // Set permissions on parent directory
-    if (chmod(parent_dir, 0777) != 0) {
+    if (chmod(parent_dir, 0755) != 0) {
         log_warn("Failed to set permissions on parent HLS directory: %s (error: %s)", parent_dir, strerror(errno));
     }
 
@@ -2595,17 +2595,17 @@ int stop_hls_unified_stream(const char *stream_name) {
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (state) {
         // Only disable callbacks if we're actually stopping the stream
-        bool found = false;
+        bool ctx_found = false;
         pthread_mutex_lock(&unified_contexts_mutex);
         for (int i = 0; i < g_config.max_streams; i++) {
             if (unified_contexts[i] && strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
-                found = true;
+                ctx_found = true;
                 break;
             }
         }
         pthread_mutex_unlock(&unified_contexts_mutex);
 
-        if (found) {
+        if (ctx_found) {
             // Disable callbacks to prevent new packets from being processed
             set_stream_callbacks_enabled(state, false);
             log_info("Disabled callbacks for stream %s during HLS shutdown", stream_name);

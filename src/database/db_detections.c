@@ -365,7 +365,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
  * @param end_time End time filter (0 for no filter)
  * @return 0 on success, non-zero on failure
  */
-int get_detection_timestamps(const char *stream_name, detection_result_t *result, time_t *timestamps,
+int get_detection_timestamps(const char *stream_name, const detection_result_t *result, time_t *timestamps,
                            uint64_t max_age, time_t start_time, time_t end_time) {
     int rc;
     sqlite3_stmt *stmt;

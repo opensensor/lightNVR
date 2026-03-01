@@ -140,6 +140,7 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
         }
     }
     cJSON_AddBoolToObject(recording_obj, "has_detection", has_detection_flag);
+    cJSON_AddBoolToObject(recording_obj, "protected", recording.protected);
 
     // Add detection labels array if there are any detections
     if (label_count > 0) {

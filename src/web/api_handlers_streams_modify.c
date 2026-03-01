@@ -885,14 +885,14 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
 
     cJSON *record_audio = cJSON_GetObjectItem(stream_json, "record_audio");
     if (record_audio && cJSON_IsBool(record_audio)) {
-        bool original_record_audio = config.record_audio;
+        bool prev_record_audio = config.record_audio;
         config.record_audio = cJSON_IsTrue(record_audio);
-        if (original_record_audio != config.record_audio) {
+        if (prev_record_audio != config.record_audio) {
             config_changed = true;
             non_dynamic_config_changed = true;
             requires_restart = true;  // Audio recording changes require restart
             log_info("Audio recording changed from %s to %s - restart required",
-                    original_record_audio ? "enabled" : "disabled",
+                    prev_record_audio ? "enabled" : "disabled",
                     config.record_audio ? "enabled" : "disabled");
         }
     }
@@ -1176,8 +1176,8 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         }
 
         if (currently_disabled) {
-            // Enable the stream by setting enabled to 1
-            sqlite3 *db = get_db_handle();
+            // Enable the stream by setting enabled to 1 (reuse the same handle)
+            db = get_db_handle();
             if (db) {
                 sqlite3_stmt *stmt;
                 const char *sql = "UPDATE streams SET enabled = 1 WHERE name = ?;";

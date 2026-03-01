@@ -158,7 +158,7 @@ int get_storage_stats(storage_stats_t *stats) {
     // Scan the storage directory to get recording statistics
     DIR *dir = opendir(storage_manager.storage_path);
     if (dir) {
-        struct dirent *entry;
+        const struct dirent *entry;
         stats->total_recordings = 0;
         stats->total_recording_bytes = 0;
         stats->oldest_recording_time = UINT64_MAX;
@@ -179,7 +179,7 @@ int get_storage_stats(storage_stats_t *stats) {
                 // Scan stream directory for recordings
                 DIR *stream_dir = opendir(path);
                 if (stream_dir) {
-                    struct dirent *rec_entry;
+                    const struct dirent *rec_entry;
 
                     while ((rec_entry = readdir(stream_dir)) != NULL) {
                         // Skip . and ..
@@ -473,7 +473,7 @@ static int apply_legacy_retention_policy(void) {
         return 0;
     }
 
-    struct dirent *entry;
+    const struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         // Skip . and ..
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
@@ -824,7 +824,7 @@ static void standard_cleanup_cycle(void) {
             // Build tier multipliers array: [critical, important, standard, ephemeral]
             // Guard against 0.0 values (streams created before migration or via old API)
             // to prevent immediate deletion of all recordings.
-            double tier_mults[4] = {
+            const double tier_mults[4] = {
                 sconfig.tier_critical_multiplier  > 0.0 ? sconfig.tier_critical_multiplier  : 3.0,
                 sconfig.tier_important_multiplier > 0.0 ? sconfig.tier_important_multiplier : 2.0,
                 1.0,                                // RETENTION_TIER_STANDARD = 2

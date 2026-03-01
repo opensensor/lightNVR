@@ -475,7 +475,7 @@ static int ensure_output_directory(hls_writer_t *writer) {
 
         if (!(dir_st.st_mode & S_IWUSR)) {
             log_warn("HLS output directory may not be writable: %s, attempting permission fix", dir_path);
-            if (fchmod(dir_fd, 0777) != 0) {
+            if (fchmod(dir_fd, 0755) != 0) {
                 log_warn("Failed to set permissions on directory: %s (error: %s)",
                         dir_path, strerror(errno));
             }

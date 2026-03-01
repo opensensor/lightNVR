@@ -84,7 +84,7 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
         }
 
         // Use fchmod on the open fd to avoid TOCTOU race between stat and chmod (#32)
-        if (fchmod(dir_fd, 0777) != 0) {
+        if (fchmod(dir_fd, 0755) != 0) {
             log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
         }
         close(dir_fd);
@@ -111,7 +111,7 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
         // If the owner-write bit is missing, try to add full permissions via fd
         if (!(dir_st.st_mode & S_IWUSR)) {
             log_warn("Output directory may not be writable: %s, attempting permission fix", output_dir);
-            if (fchmod(dir_fd, 0777) != 0) {
+            if (fchmod(dir_fd, 0755) != 0) {
                 log_warn("Failed to set permissions on directory: %s (error: %s)", output_dir, strerror(errno));
             }
         }
@@ -161,27 +161,27 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
                     parent_dir, strerror(errno));
 
             // Try to create parent directory with full permissions using direct C functions
-            char temp_path[MAX_PATH_LENGTH];
-            strncpy(temp_path, parent_dir, MAX_PATH_LENGTH - 1);
-            temp_path[MAX_PATH_LENGTH - 1] = '\0';
+            char retry_path[MAX_PATH_LENGTH];
+            strncpy(retry_path, parent_dir, MAX_PATH_LENGTH - 1);
+            retry_path[MAX_PATH_LENGTH - 1] = '\0';
 
             // Create parent directories one by one
-            for (char *p = temp_path + 1; *p; p++) {
+            for (char *p = retry_path + 1; *p; p++) {
                 if (*p == '/') {
                     *p = '\0';
-                    if (mkdir(temp_path, 0755) != 0 && errno != EEXIST) {
-                        log_warn("Failed to create parent directory: %s (error: %s)", temp_path, strerror(errno));
+                    if (mkdir(retry_path, 0755) != 0 && errno != EEXIST) {
+                        log_warn("Failed to create parent directory: %s (error: %s)", retry_path, strerror(errno));
                     } else {
                         // Set permissions
-                        chmod(temp_path, 0777);
+                        chmod(retry_path, 0777);
                     }
                     *p = '/';
                 }
             }
 
             // Create the final directory
-            if (mkdir(temp_path, 0777) != 0 && errno != EEXIST) {
-                log_warn("Failed to create parent directory: %s (error: %s)", temp_path, strerror(errno));
+            if (mkdir(retry_path, 0777) != 0 && errno != EEXIST) {
+                log_warn("Failed to create parent directory: %s (error: %s)", retry_path, strerror(errno));
             }
 
             log_info("Attempted to recreate parent directory with full permissions: %s", parent_dir);
@@ -323,7 +323,7 @@ int clear_stream_hls_segments(const char *stream_name) {
     }
 
     // Ensure the directory has proper permissions using direct chmod
-    if (chmod(stream_hls_dir, 0777) != 0) {
+    if (chmod(stream_hls_dir, 0755) != 0) {
         log_warn("Failed to set permissions on directory: %s (error: %s)",
                 stream_hls_dir, strerror(errno));
     }
@@ -607,7 +607,7 @@ void cleanup_hls_directories(void) {
             }
 
             // Ensure the directory has proper permissions using direct chmod
-            if (chmod(stream_hls_dir, 0777) != 0) {
+            if (chmod(stream_hls_dir, 0755) != 0) {
                 log_warn("Failed to set permissions on directory: %s (error: %s)",
                         stream_hls_dir, strerror(errno));
             }

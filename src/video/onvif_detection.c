@@ -162,7 +162,7 @@ static char *create_onvif_request(const char *username, const char *password, co
     char created[32];
     time_t now;
     struct tm tm_info_buf;
-    struct tm *tm_info;
+    const struct tm *tm_info;
     time(&now);
     tm_info = gmtime_r(&now, &tm_info_buf);
     strftime(created, sizeof(created), "%Y-%m-%dT%H:%M:%S.000Z", tm_info);

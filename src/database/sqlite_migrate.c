@@ -403,7 +403,7 @@ static int scan_migrations_dir(sqlite_migrate_t *ctx) {
 
     // Count SQL files first
     int count = 0;
-    struct dirent *entry;
+    const struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_REG || entry->d_type == DT_UNKNOWN) {
             size_t len = strlen(entry->d_name);
@@ -1111,7 +1111,7 @@ int migrate_status(sqlite_migrate_t *ctx, migration_t *migrations, int max_count
     return count;
 }
 
-int migrate_get_version(sqlite_migrate_t *ctx, char *version, size_t version_len) {
+int migrate_get_version(const sqlite_migrate_t *ctx, char *version, size_t version_len) {
     if (!ctx || !version || version_len == 0) return -1;
 
     version[0] = '\0';
