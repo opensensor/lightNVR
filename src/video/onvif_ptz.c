@@ -52,7 +52,7 @@ static char* create_security_header(const char *username, const char *password, 
     base64_nonce = malloc(((4 * nonce_len) / 3) + 5);
     mbedtls_base64_encode((unsigned char*)base64_nonce, ((4 * nonce_len) / 3) + 5, &base64_len, nonce_bytes, nonce_len);
     base64_nonce[base64_len] = '\0';
-    strcpy(nonce, base64_nonce);
+    snprintf(nonce, 64, "%s", base64_nonce);
     
     time_t now;
     struct tm *tm_now;
@@ -179,7 +179,7 @@ int onvif_ptz_get_service_url(const char *device_url, const char *username,
         if (base_len + 20 < url_size) {
             strncpy(ptz_url, device_url, base_len);
             ptz_url[base_len] = '\0';
-            strcat(ptz_url, "/onvif/ptz_service");
+            snprintf(ptz_url + base_len, url_size - base_len, "/onvif/ptz_service");
             return 0;
         }
     }

@@ -175,7 +175,7 @@ int reinit_packet_buffer_pool(size_t new_memory_limit_mb) {
 
     pthread_mutex_lock(&buffer_pool.pool_mutex);
 
-    size_t old_limit_mb = buffer_pool.total_memory_limit / (1024 * 1024);
+    size_t old_limit_mb = buffer_pool.total_memory_limit / ((size_t)1024 * 1024);
 
     if (old_limit_mb == new_memory_limit_mb) {
         pthread_mutex_unlock(&buffer_pool.pool_mutex);

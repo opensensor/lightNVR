@@ -1429,7 +1429,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
                 return false;
             }
 
-            size_t rgb_buffer_size = width * height * channels;
+            size_t rgb_buffer_size = (size_t)width * height * channels;
             uint8_t *rgb_buffer = malloc(rgb_buffer_size);
             if (!rgb_buffer) {
                 log_error("[%s] Fallback: failed to allocate RGB buffer", ctx->stream_name);
@@ -1535,7 +1535,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             return false;
         }
 
-        size_t mot_buffer_size = mot_width * mot_height * mot_channels;
+        size_t mot_buffer_size = (size_t)mot_width * mot_height * mot_channels;
         uint8_t *mot_rgb_buffer = malloc(mot_buffer_size);
         if (!mot_rgb_buffer) {
             log_error("[%s] Failed to allocate RGB buffer for motion detection", ctx->stream_name);
@@ -1648,7 +1648,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
     }
 
     // Allocate RGB buffer
-    size_t rgb_buffer_size = width * height * channels;
+    size_t rgb_buffer_size = (size_t)width * height * channels;
     uint8_t *rgb_buffer = malloc(rgb_buffer_size);
     if (!rgb_buffer) {
         log_error("[%s] Failed to allocate RGB buffer", ctx->stream_name);

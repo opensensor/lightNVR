@@ -204,12 +204,12 @@ int detect_with_sod_realnet(void *model, const unsigned char *frame_data,
     result->count = 0;
     
     // Create a copy of the frame data for processing
-    unsigned char *blob = malloc(width * height * channels);
+    unsigned char *blob = malloc((size_t)width * height * channels);
     if (!blob) {
         log_error("Failed to allocate memory for frame blob");
         return -1;
     }
-    memcpy(blob, frame_data, width * height * channels);
+    memcpy(blob, frame_data, (size_t)width * height * channels);
     
     // Run detection
     void *boxes = NULL;

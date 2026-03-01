@@ -315,7 +315,7 @@ void load_default_config(config_t *config) {
     config->buffer_size = 1024; // 1MB buffer size
     config->use_swap = true;
     snprintf(config->swap_file, MAX_PATH_LENGTH, "/var/lib/lightnvr/swap");
-    config->swap_size = 128 * 1024 * 1024; // 128MB swap
+    config->swap_size = (uint64_t)128 * 1024 * 1024; // 128MB swap
     
     // Hardware acceleration
     config->hw_accel_enabled = false;

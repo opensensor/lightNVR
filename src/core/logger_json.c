@@ -248,7 +248,7 @@ int get_json_logs(const char *min_level, const char *last_timestamp, char ***log
     long file_size = ftell(file);
     
     // Limit to last 100KB if file is larger
-    const long max_size = 100 * 1024;
+    const long max_size = 100L * 1024;
     long read_size = file_size;
     long offset = 0;
     

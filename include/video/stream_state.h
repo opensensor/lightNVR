@@ -32,12 +32,16 @@ typedef struct {
 
 /**
  * Stream protocol state - contains protocol-specific settings and state
+ *
+ * reconnect_attempts and last_reconnect_time are declared _Atomic because
+ * they are read/written from multiple threads via atomic_load/atomic_store
+ * in the go2rtc health monitor (go2rtc_integration.c).
  */
 typedef struct {
     stream_protocol_t protocol;  // Current protocol (TCP or UDP)
     bool is_multicast;           // Whether this is a multicast stream
-    int reconnect_attempts;      // Number of reconnection attempts
-    int64_t last_reconnect_time; // Timestamp of last reconnection attempt
+    _Atomic int reconnect_attempts;      // Number of reconnection attempts
+    _Atomic int64_t last_reconnect_time; // Timestamp of last reconnection attempt
     int buffer_size;             // Protocol-specific buffer size
     int timeout_ms;              // Protocol-specific timeout in milliseconds
 } stream_protocol_state_t;

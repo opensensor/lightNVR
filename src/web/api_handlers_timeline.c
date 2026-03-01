@@ -162,7 +162,7 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         }
     } else {
         // Default to 24 hours ago
-        start_time = time(NULL) - (24 * 60 * 60);
+        start_time = time(NULL) - ((time_t)24 * 60 * 60);
     }
 
     if (end_time_str[0] != '\0') {
@@ -269,9 +269,9 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         char size_str[32] = {0};
         if (segments[i].size_bytes < 1024) {
             snprintf(size_str, sizeof(size_str), "%ld B", segments[i].size_bytes);
-        } else if (segments[i].size_bytes < 1024 * 1024) {
+        } else if (segments[i].size_bytes < (uint64_t)1024 * 1024) {
             snprintf(size_str, sizeof(size_str), "%.1f KB", segments[i].size_bytes / 1024.0);
-        } else if (segments[i].size_bytes < 1024 * 1024 * 1024) {
+        } else if (segments[i].size_bytes < (uint64_t)1024 * 1024 * 1024) {
             snprintf(size_str, sizeof(size_str), "%.1f MB", segments[i].size_bytes / (1024.0 * 1024.0));
         } else {
             snprintf(size_str, sizeof(size_str), "%.1f GB", segments[i].size_bytes / (1024.0 * 1024.0 * 1024.0));
@@ -358,7 +358,7 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         }
     } else {
         // Default to 24 hours ago
-        start_time = time(NULL) - (24 * 60 * 60);
+        start_time = time(NULL) - ((time_t)24 * 60 * 60);
     }
 
     if (end_time_str[0] != '\0') {

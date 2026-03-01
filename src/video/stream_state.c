@@ -996,7 +996,7 @@ int wait_for_stream_stop(stream_state_manager_t *state, int timeout_ms) {
 
     // Add timeout to end time
     end_time.tv_sec += timeout_ms / 1000;
-    end_time.tv_usec += (timeout_ms % 1000) * 1000;
+    end_time.tv_usec += (long)(timeout_ms % 1000) * 1000;
     if (end_time.tv_usec >= 1000000) {
         end_time.tv_sec += 1;
         end_time.tv_usec -= 1000000;

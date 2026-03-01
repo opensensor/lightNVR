@@ -54,7 +54,7 @@ void *discovery_thread_func(void *arg) {
         // Send discovery probes to all addresses in the range
         for (uint32_t ip = network + 1; ip < broadcast && thread_data->running; ip++) {
             addr.s_addr = htonl(ip);
-            strcpy(ip_addr, inet_ntoa(addr));
+            snprintf(ip_addr, sizeof(ip_addr), "%s", inet_ntoa(addr));
             
             // Send discovery probe
             send_discovery_probe(ip_addr);
@@ -65,7 +65,7 @@ void *discovery_thread_func(void *arg) {
         
         // Send multiple probes to broadcast address
         addr.s_addr = htonl(broadcast);
-        strcpy(ip_addr, inet_ntoa(addr));
+        snprintf(ip_addr, sizeof(ip_addr), "%s", inet_ntoa(addr));
         log_info("Sending multiple discovery probes to broadcast address: %s", ip_addr);
         
         for (int i = 0; i < 5; i++) {

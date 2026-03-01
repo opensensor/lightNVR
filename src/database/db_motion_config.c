@@ -510,7 +510,7 @@ int cleanup_old_motion_recordings(const char *stream_name, int retention_days) {
         return -1;
     }
 
-    time_t cutoff_time = time(NULL) - (retention_days * 24 * 60 * 60);
+    time_t cutoff_time = time(NULL) - ((time_t)retention_days * 24 * 60 * 60);
 
     pthread_mutex_lock(db_mutex);
 

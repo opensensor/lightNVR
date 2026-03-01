@@ -155,7 +155,7 @@ int init_database(const char *db_path) {
     }
 
     // Set a soft heap limit to prevent excessive memory usage
-    sqlite3_soft_heap_limit64(8 * 1024 * 1024); // 8MB soft limit
+    sqlite3_soft_heap_limit64((sqlite3_int64)8 * 1024 * 1024); // 8MB soft limit
 
     // Store the database path for backup/recovery operations
     strncpy(db_file_path, db_path, sizeof(db_file_path) - 1);

@@ -32,7 +32,7 @@ char* create_json_string(const config_t *config) {
     // Add config properties
     cJSON_AddNumberToObject(json, "log_level", config->log_level);
     cJSON_AddStringToObject(json, "storage_path", config->storage_path);
-    cJSON_AddNumberToObject(json, "max_storage", config->max_storage_size / (1024 * 1024 * 1024)); // Convert to GB
+    cJSON_AddNumberToObject(json, "max_storage", config->max_storage_size / ((uint64_t)1024 * 1024 * 1024)); // Convert to GB
     cJSON_AddNumberToObject(json, "retention", config->retention_days);
     cJSON_AddBoolToObject(json, "auto_delete", config->auto_delete_oldest);
     cJSON_AddNumberToObject(json, "web_port", config->web_port);
@@ -41,7 +41,7 @@ char* create_json_string(const config_t *config) {
     cJSON_AddStringToObject(json, "password", "********"); // Don't include actual password
     cJSON_AddNumberToObject(json, "buffer_size", config->buffer_size);
     cJSON_AddBoolToObject(json, "use_swap", config->use_swap);
-    cJSON_AddNumberToObject(json, "swap_size", config->swap_size / (1024 * 1024)); // Convert to MB
+    cJSON_AddNumberToObject(json, "swap_size", config->swap_size / ((uint64_t)1024 * 1024)); // Convert to MB
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(json);

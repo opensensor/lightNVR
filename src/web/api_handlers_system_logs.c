@@ -32,7 +32,7 @@ typedef enum {
 
 static const char *DEFAULT_LOG_FILE = "/var/log/lightnvr.log";
 static const char *FALLBACK_LOG_FILE = "./lightnvr.log";
-static const long MAX_LOG_TAIL_SIZE = 100 * 1024; // 100KB
+static const long MAX_LOG_TAIL_SIZE = 100L * 1024; // 100KB
 #define MAX_LOG_LEVEL_LENGTH 16
 static const int DEFAULT_MAX_LOG_ENTRIES = 250;
 

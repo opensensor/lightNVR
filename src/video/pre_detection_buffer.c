@@ -47,7 +47,7 @@ buffer_strategy_type_t get_recommended_strategy_type(void) {
         fclose(meminfo);
         
         // If less than 256MB available, prefer disk-based strategies
-        if (available_kb > 0 && available_kb < 256 * 1024) {
+        if (available_kb > 0 && available_kb < 256L * 1024) {
             log_info("Low memory detected (%ld KB), recommending HLS segment strategy", available_kb);
             return BUFFER_STRATEGY_HLS_SEGMENT;
         }

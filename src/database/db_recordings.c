@@ -1130,8 +1130,8 @@ int get_recordings_for_retention(const char *stream_name,
 
     // Calculate cutoff times
     time_t now = time(NULL);
-    time_t regular_cutoff = (retention_days > 0) ? now - (retention_days * 86400) : 0;
-    time_t detection_cutoff = (detection_retention_days > 0) ? now - (detection_retention_days * 86400) : 0;
+    time_t regular_cutoff = (retention_days > 0) ? now - ((time_t)retention_days * 86400) : 0;
+    time_t detection_cutoff = (detection_retention_days > 0) ? now - ((time_t)detection_retention_days * 86400) : 0;
 
     pthread_mutex_lock(db_mutex);
 

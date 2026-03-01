@@ -15,11 +15,11 @@
 #include <uv.h>
 #include "web/libuv_server.h"
 
-// Default buffer sizes
-#define LIBUV_RECV_BUFFER_INITIAL   4096
-#define LIBUV_RECV_BUFFER_MAX       (1024 * 1024)  // 1MB max request size
-#define LIBUV_FILE_BUFFER_SIZE      (64 * 1024)    // 64KB file read chunks
-#define LIBUV_SEND_BUFFER_SIZE      (64 * 1024)    // 64KB send buffer
+// Default buffer sizes (use size_t casts to avoid implicit widening warnings)
+#define LIBUV_RECV_BUFFER_INITIAL   ((size_t)4096)
+#define LIBUV_RECV_BUFFER_MAX       ((size_t)1024 * 1024)  // 1MB max request size
+#define LIBUV_FILE_BUFFER_SIZE      ((size_t)64 * 1024)    // 64KB file read chunks
+#define LIBUV_SEND_BUFFER_SIZE      ((size_t)64 * 1024)    // 64KB send buffer
 
 /**
  * @brief Context for async file serving
