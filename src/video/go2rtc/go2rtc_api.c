@@ -425,9 +425,9 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
         return false;
     }
 
-    // Per-request response buffer (no global mutex needed)
-    response_buffer_t resp = { .size = 0 };
-    resp.buffer[0] = '\0';
+    // Use dynamic memory so large /api/streams responses (many cameras) never
+    // overflow the buffer and trigger a CURLE_WRITE_ERROR false-negative.
+    struct MemoryStruct chunk = { .memory = NULL, .size = 0 };
 
     // Format the URL for the API endpoint
     snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams", // codeql[cpp/non-https-url] - localhost-only internal API
@@ -435,8 +435,8 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
 
     // Set CURL options for GET request
     curl_easy_setopt(curl, CURLOPT_URL, url);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &chunk);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -447,10 +447,10 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
-        if (http_code == 200) {
+        if (http_code == 200 && chunk.memory) {
             // Parse JSON response and check if stream_id exists as a key
             // The /api/streams response is a JSON object with stream names as keys
-            cJSON *json = cJSON_Parse(resp.buffer);
+            cJSON *json = cJSON_Parse(chunk.memory);
             if (json) {
                 exists = cJSON_HasObjectItem(json, stream_id);
                 cJSON_Delete(json);
@@ -462,7 +462,7 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
             } else {
                 // Log first 200 chars of body to help diagnose parsing issues
                 char preview[201];
-                strncpy(preview, resp.buffer, 200);
+                strncpy(preview, chunk.memory, 200);
                 preview[200] = '\0';
                 log_warn("Failed to parse go2rtc /api/streams response as JSON. "
                          "Body preview (first 200 chars): %.200s", preview);
@@ -473,6 +473,7 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
     }
 
     curl_easy_cleanup(curl);
+    free(chunk.memory);
 
     if (!exists) {
         log_debug("Stream %s not found in go2rtc", stream_id);
