@@ -44,14 +44,13 @@ async function downloadZip(ids, filename, onProgress, onComplete, onError) {
     const { token, total } = await resp.json();
 
     // Poll status
-    let done = false;
-    while (!done) {
+    while (true) {
       await new Promise(r => setTimeout(r, 800));
       const st = await fetch(`/api/recordings/batch-download/status/${token}`);
       if (!st.ok) throw new Error('Status poll failed');
       const { status, current } = await st.json();
       onProgress(current, total);
-      if (status === 'complete') { done = true; break; }
+      if (status === 'complete') break;
       if (status === 'error')   throw new Error('ZIP creation failed on server');
     }
 

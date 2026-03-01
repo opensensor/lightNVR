@@ -14,9 +14,8 @@
  */
 export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm, isWorking }) {
   const count = streamNames.length;
-  const isDelete  = action === 'delete';
-  const isEnable  = action === 'enable';
-  const isDisable = action === 'disable';
+  const isDelete = action === 'delete';
+  const isEnable = action === 'enable';
 
   // Show up to 5 names inline; collapse the rest into "+ N more"
   const MAX_LISTED = 5;
