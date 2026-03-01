@@ -584,8 +584,10 @@ thread_cleanup:
                 // Clear any cached packets
                 if (ctx_to_close->streams[i]->codecpar->extradata) {
                     log_debug("Clearing extradata for stream %d", i);
-                    // Make sure extradata is properly freed
-                    av_freep(&ctx_to_close->streams[i]->codecpar->extradata);
+                    // av_freep(&ptr) passes uint8_t** → void* (multi-level implicit
+                    // conversion). Use av_free + explicit NULL assignment instead.
+                    av_free(ctx_to_close->streams[i]->codecpar->extradata);
+                    ctx_to_close->streams[i]->codecpar->extradata = NULL;
                     ctx_to_close->streams[i]->codecpar->extradata_size = 0;
                 }
             }

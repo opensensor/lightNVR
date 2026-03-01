@@ -356,7 +356,7 @@ int get_json_logs(const char *min_level, const char *last_timestamp, char ***log
                         for (int i = 0; i < log_index; i++) {
                             free(log_lines[i]);
                         }
-                        free(log_lines);
+                        free((void *)log_lines);
                         free(buffer);
                         cJSON_Delete(log_entry);
                         return -1;

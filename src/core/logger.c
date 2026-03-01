@@ -324,13 +324,21 @@ const char *sanitize_for_logging(const char *str, size_t max_len) {
 
 // Log a message at the specified level with va_list
 void log_message_v(log_level_t level, const char *format, va_list args) {
+    // Copy va_list before use so each code path gets a fresh, initialized copy.
+    // A va_list parameter is only valid for a single traversal; copying it here
+    // satisfies static-analysis tools (clang-analyzer-valist.Uninitialized) and
+    // makes the intent explicit.
+    va_list args_copy;
+    va_copy(args_copy, args);
+
     // CRITICAL: Check if logger is shutting down or destroyed
     // If so, just write to console without mutex to avoid use-after-destroy
     if (logger.shutdown) {
         // Logger is shutting down or destroyed - use fallback console logging only
         // This is safe because we don't use the mutex
         char message[4096];
-        vsnprintf(message, sizeof(message), format, args);
+        vsnprintf(message, sizeof(message), format, args_copy);
+        va_end(args_copy);
 
         time_t now;
         struct tm *tm_info;
@@ -348,6 +356,7 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
     // Only log messages at or below the configured log level
     // For example, if log_level is INFO (2), we log ERROR (0), WARN (1), and INFO (2), but not DEBUG (3)
     if (level > logger.log_level) {
+        va_end(args_copy);
         return;
     }
 
@@ -368,7 +377,8 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
 
     // Format the log message
     char message[4096];
-    vsnprintf(message, sizeof(message), format, args);
+    vsnprintf(message, sizeof(message), format, args_copy);
+    va_end(args_copy);
 
     // Double-check shutdown flag before acquiring mutex
     if (logger.shutdown) {

@@ -723,7 +723,6 @@ static void *unified_health_monitor_thread(void *arg) {
             continue;
         }
         bool api_healthy = go2rtc_stream_is_ready();
-        bool process_restarted = false;
 
         if (!api_healthy) {
             g_consecutive_api_failures++;
@@ -741,7 +740,6 @@ static void *unified_health_monitor_thread(void *arg) {
                 if (can_restart_go2rtc()) {
                     if (restart_go2rtc_process()) {
                         log_info("go2rtc process successfully restarted");
-                        process_restarted = true;
                     } else {
                         log_error("Failed to restart go2rtc process");
                     }

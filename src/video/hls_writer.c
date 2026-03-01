@@ -68,15 +68,17 @@ static void cleanup_old_segments(const char *output_dir, int max_segments) {
         }
     }
 
-    // If we don't have more than the max, no cleanup needed
-    if (segment_count <= max_segments) {
+    // If we don't have more than the max, no cleanup needed.
+    // Also guard against segment_count == 0 (e.g. when max_segments is negative)
+    // to avoid a calloc(0, ...) call which has implementation-defined behaviour.
+    if (segment_count <= max_segments || segment_count <= 0) {
         closedir(dir);
         return;
     }
 
     // Allocate array for segment info with proper alignment
     // Use calloc instead of malloc to ensure memory is initialized to zero
-    segments = (segment_info_t *)calloc(segment_count, sizeof(segment_info_t));
+    segments = (segment_info_t *)calloc((size_t)segment_count, sizeof(segment_info_t));
     if (!segments) {
         log_error("Failed to allocate memory for segment cleanup");
         closedir(dir);

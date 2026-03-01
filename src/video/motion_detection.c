@@ -1172,9 +1172,9 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         // Simple frame differencing (original approach with improvements)
         int changed_pixels = 0;
         int total_diff = 0;
-        int pixel_count = processing_width * processing_height;
-
         #if EMBEDDED_DEVICE_OPTIMIZATION
+        // pixel_count adjusted after sampling loop (1/4 of pixels processed)
+        int pixel_count = 0;
         // For embedded devices, use sampling to reduce computation
         // Process every other pixel in both dimensions
         for (int y = 0; y < processing_height; y += 2) {
@@ -1203,6 +1203,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         pixel_count = (processing_width * processing_height) / 4;
         #else
         // Original implementation for non-embedded devices
+        int pixel_count = processing_width * processing_height;
         for (int i = 0; i < pixel_count; i++) {
             // Calculate differences from previous frame and background
             int frame_diff = abs((int)stream->blur_buffer[i] - (int)stream->prev_frame[i]);

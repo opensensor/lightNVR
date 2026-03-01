@@ -298,7 +298,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "syslog_ident", g_config.syslog_ident);
     // Convert facility number to name for the API
     {
-        const char *facility_name = "LOG_USER";
+        const char *facility_name;
         switch (g_config.syslog_facility) {
             case LOG_USER: facility_name = "LOG_USER"; break;
             case LOG_DAEMON: facility_name = "LOG_DAEMON"; break;
