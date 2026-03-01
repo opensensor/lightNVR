@@ -3,6 +3,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -107,9 +108,11 @@ int init_json_logger(const char *filename) {
     }
     free(dir_path);
     
-    // Open log file
-    json_logger.log_file = fopen(filename, "a");
+    // Open log file with restricted permissions (0640: owner rw, group r, others none)
+    int jlog_fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0640);
+    json_logger.log_file = (jlog_fd >= 0) ? fdopen(jlog_fd, "a") : NULL;
     if (!json_logger.log_file) {
+        if (jlog_fd >= 0) close(jlog_fd);
         pthread_mutex_unlock(&json_logger.mutex);
         return -1;
     }
@@ -435,13 +438,15 @@ int json_log_rotate(size_t max_size, int max_files) {
     snprintf(new_path, sizeof(new_path), "%s.1", json_logger.log_filename);
     rename(json_logger.log_filename, new_path);
     
-    // Open new log file
-    json_logger.log_file = fopen(json_logger.log_filename, "a");
+    // Open new log file with restricted permissions (0640: owner rw, group r, others none)
+    int jrot_fd = open(json_logger.log_filename, O_WRONLY | O_CREAT | O_APPEND, 0640);
+    json_logger.log_file = (jrot_fd >= 0) ? fdopen(jrot_fd, "a") : NULL;
     if (!json_logger.log_file) {
+        if (jrot_fd >= 0) close(jrot_fd);
         pthread_mutex_unlock(&json_logger.mutex);
         return -1;
     }
-    
+
     pthread_mutex_unlock(&json_logger.mutex);
     return 0;
 }

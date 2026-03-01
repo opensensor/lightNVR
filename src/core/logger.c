@@ -495,9 +495,11 @@ int log_rotate(size_t max_size, int max_files) {
     snprintf(new_path, sizeof(new_path), "%s.1", logger.log_filename);
     rename(logger.log_filename, new_path);
 
-    // Open new log file
-    logger.log_file = fopen(logger.log_filename, "a");
+    // Open new log file with restricted permissions (0640: owner rw, group r, others none)
+    int rot_fd = open(logger.log_filename, O_WRONLY | O_CREAT | O_APPEND, 0640);
+    logger.log_file = (rot_fd >= 0) ? fdopen(rot_fd, "a") : NULL;
     if (!logger.log_file) {
+        if (rot_fd >= 0) close(rot_fd);
         pthread_mutex_unlock(&logger.mutex);
         return -1;
     }
