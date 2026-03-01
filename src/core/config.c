@@ -1339,38 +1339,44 @@ int save_config(const config_t *config, const char *path) {
         char tmp[MAX_PATH_LENGTH];
         strncpy(tmp, save_path, MAX_PATH_LENGTH - 1);
         tmp[MAX_PATH_LENGTH - 1] = '\0';
+
+        const char *fname;
+        char resolved_dir[PATH_MAX];
+
         char *sl = strrchr(tmp, '/');
         if (sl) {
-            const char *fname = sl + 1;
+            fname = sl + 1;
             *sl = '\0'; /* tmp is now the directory portion */
-            char resolved_dir[PATH_MAX];
             if (realpath(tmp, resolved_dir) == NULL) {
                 log_error("Cannot resolve config directory '%s': %s", tmp, strerror(errno));
                 return -1;
             }
-            int n = snprintf(canonical_save_path, sizeof(canonical_save_path),
-                             "%s/%s", resolved_dir, fname);
-            if (n < 0 || (size_t)n >= sizeof(canonical_save_path)) {
-                log_error("Canonical config path too long");
-                return -1;
-            }
         } else {
-            /* No directory separator — relative filename in current directory.
-             * Resolve CWD with realpath() and prepend it to the filename so
-             * that the resulting path is fully canonical. */
+            fname = tmp;
+            /* No directory separator — resolve CWD as the directory. */
             char cwd[PATH_MAX];
-            char resolved_cwd[PATH_MAX];
             if (getcwd(cwd, sizeof(cwd)) == NULL ||
-                realpath(cwd, resolved_cwd) == NULL) {
+                realpath(cwd, resolved_dir) == NULL) {
                 log_error("Cannot resolve current working directory: %s", strerror(errno));
                 return -1;
             }
-            int n = snprintf(canonical_save_path, sizeof(canonical_save_path),
-                             "%s/%s", resolved_cwd, save_path);
-            if (n < 0 || (size_t)n >= sizeof(canonical_save_path)) {
-                log_error("Canonical config path too long");
-                return -1;
-            }
+        }
+
+        /* Validate the filename component: reject empty names, names
+         * containing '/' (shouldn't happen after the split above, but
+         * defence-in-depth), and the special name ".." which would escape
+         * the resolved directory. */
+        if (fname[0] == '\0' || strchr(fname, '/') != NULL ||
+            strcmp(fname, "..") == 0 || strcmp(fname, ".") == 0) {
+            log_error("Invalid config filename: '%s'", fname);
+            return -1;
+        }
+
+        int n = snprintf(canonical_save_path, sizeof(canonical_save_path),
+                         "%s/%s", resolved_dir, fname);
+        if (n < 0 || (size_t)n >= sizeof(canonical_save_path)) {
+            log_error("Canonical config path too long");
+            return -1;
         }
     }
 
