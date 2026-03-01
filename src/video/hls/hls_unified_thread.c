@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <time.h>
@@ -2476,13 +2477,14 @@ int start_hls_unified_stream(const char *stream_name) {
     // Check that we can actually write to this directory
     char test_file[MAX_PATH_LENGTH];
     snprintf(test_file, sizeof(test_file), "%s/.test_write", ctx->output_path);
-    FILE *test = fopen(test_file, "w");
-    if (!test) {
+    // Use open() with restricted permissions instead of fopen() to avoid world-readable file
+    int test_fd = open(test_file, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (test_fd < 0) {
         log_error("Directory is not writable: %s (error: %s)", ctx->output_path, strerror(errno));
         hls_guarded_free(ctx);
         return -1;
     }
-    fclose(test);
+    close(test_fd);
     remove(test_file);
     log_info("Verified HLS directory is writable: %s", ctx->output_path);
 

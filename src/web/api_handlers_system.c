@@ -863,6 +863,23 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
                             // Skip loopback
                             if (strcmp(name, "lo") != 0) {
+                                // Validate interface name: only allow safe characters to prevent
+                                // path traversal when building /sys/class/net/<name>/... paths.
+                                // POSIX interface names are at most IFNAMSIZ-1 chars and must not
+                                // contain '/', '..' sequences, or characters outside [a-zA-Z0-9._-].
+                                bool name_safe = (name[0] != '\0');
+                                for (const char *np = name; *np && name_safe; np++) {
+                                    if (!isalnum((unsigned char)*np) &&
+                                        *np != '_' && *np != '-' && *np != '.') {
+                                        name_safe = false;
+                                    }
+                                }
+                                if (name_safe && strstr(name, "..") != NULL) {
+                                    name_safe = false;
+                                }
+                                if (!name_safe) {
+                                    continue; /* skip interfaces with unsafe names */
+                                }
                                 cJSON *iface = cJSON_CreateObject();
                                 if (iface) {
                                     cJSON_AddStringToObject(iface, "name", name);

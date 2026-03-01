@@ -148,12 +148,12 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
             log_warn("Failed to create parent directory: %s (error: %s)", temp_path, strerror(errno));
         }
 
-        // Create a test file in the parent directory
+        // Create a test file in the parent directory (with restricted permissions 0644)
         char test_file[MAX_PATH_LENGTH];
         snprintf(test_file, sizeof(test_file), "%s/.hls_parent_check", parent_dir);
-        FILE *fp = fopen(test_file, "w");
-        if (fp) {
-            fclose(fp);
+        int test_fd = open(test_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (test_fd >= 0) {
+            close(test_fd);
             // Leave the file there as a marker
             log_info("Verified parent directory is writable: %s", parent_dir);
         } else {

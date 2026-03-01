@@ -19,6 +19,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <curl/curl.h>
 
 #include "video/pre_detection_buffer.h"
@@ -338,11 +341,13 @@ static int go2rtc_strategy_flush_to_file(pre_buffer_strategy_t *self, const char
         return -1;
     }
 
-    // Write to output file
+    // Write to output file with restricted permissions (0640: owner rw, group r)
     // Note: For TS segments, we may need to convert to MP4
     // For now, write raw TS and let caller convert if needed
-    FILE *fp = fopen(output_path, "wb");
+    int out_fd = open(output_path, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+    FILE *fp = (out_fd >= 0) ? fdopen(out_fd, "wb") : NULL;
     if (!fp) {
+        if (out_fd >= 0) close(out_fd);
         log_error("Failed to create output file: %s", output_path);
         free(buf.data);
         return -1;

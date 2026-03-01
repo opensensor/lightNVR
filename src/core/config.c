@@ -340,7 +340,13 @@ void load_default_config(config_t *config) {
     
     // go2rtc settings
     config->go2rtc_enabled = true;  // Enable go2rtc by default
+    // Use the cmake-compiled-in path when available (set via -DGO2RTC_BINARY_PATH at build time),
+    // falling back to the conventional system install location.
+#ifdef GO2RTC_BINARY_PATH
+    snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "%s", GO2RTC_BINARY_PATH);
+#else
     snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "/usr/local/bin/go2rtc");
+#endif
     snprintf(config->go2rtc_config_dir, MAX_PATH_LENGTH, "/etc/lightnvr/go2rtc");
     config->go2rtc_api_port = 1984;
     config->go2rtc_rtsp_port = 8554;  // Default RTSP listen port
@@ -1045,12 +1051,29 @@ static char g_custom_config_path[MAX_PATH_LENGTH] = {0};
 static char g_loaded_config_path[MAX_PATH_LENGTH] = {0};
 
 // Function to set the custom config path
+// Validates the path to reject null bytes and path-traversal sequences before storing.
 void set_custom_config_path(const char *path) {
-    if (path && path[0] != '\0') {
-        strncpy(g_custom_config_path, path, MAX_PATH_LENGTH - 1);
-        g_custom_config_path[MAX_PATH_LENGTH - 1] = '\0';
-        log_info("Custom config path set to: %s", g_custom_config_path);
+    if (!path || path[0] == '\0') return;
+
+    // Reject paths containing null bytes embedded before the terminator
+    size_t provided_len = strlen(path);
+    if (provided_len >= MAX_PATH_LENGTH) {
+        log_warn("Custom config path too long, ignoring");
+        return;
     }
+
+    // Reject path traversal sequences
+    if (strstr(path, "/../") != NULL ||
+        strstr(path, "/..") != NULL  ||
+        strncmp(path, "../", 3) == 0 ||
+        strcmp(path, "..") == 0) {
+        log_warn("Custom config path contains path traversal sequence, ignoring: %s", path);
+        return;
+    }
+
+    strncpy(g_custom_config_path, path, MAX_PATH_LENGTH - 1);
+    g_custom_config_path[MAX_PATH_LENGTH - 1] = '\0';
+    log_info("Custom config path set to: %s", g_custom_config_path);
 }
 
 // Function to get the custom config path

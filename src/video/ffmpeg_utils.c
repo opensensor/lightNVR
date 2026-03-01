@@ -604,12 +604,16 @@ int ffmpeg_encode_jpeg(const unsigned char *frame_data, int width, int height,
         goto cleanup;
     }
 
-    // Write the JPEG data to file
-    outfile = fopen(output_path, "wb");
-    if (!outfile) {
-        log_error("Failed to open output file %s: %s", output_path, strerror(errno));
-        ret = -1;
-        goto cleanup;
+    // Write the JPEG data to file with restricted permissions (0640: owner rw, group r)
+    {
+        int jpeg_fd = open(output_path, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+        outfile = (jpeg_fd >= 0) ? fdopen(jpeg_fd, "wb") : NULL;
+        if (!outfile) {
+            if (jpeg_fd >= 0) close(jpeg_fd);
+            log_error("Failed to open output file %s: %s", output_path, strerror(errno));
+            ret = -1;
+            goto cleanup;
+        }
     }
 
     if (fwrite(pkt->data, 1, pkt->size, outfile) != (size_t)pkt->size) {
@@ -822,12 +826,16 @@ int jpeg_encoder_cache_encode(jpeg_encoder_cache_t *encoder, const unsigned char
         return -1;
     }
 
-    // Write the JPEG data to file
-    outfile = fopen(output_path, "wb");
-    if (!outfile) {
-        log_error("Failed to open output file %s: %s", output_path, strerror(errno));
-        pthread_mutex_unlock(&encoder->mutex);
-        return -1;
+    // Write the JPEG data to file with restricted permissions (0640: owner rw, group r)
+    {
+        int jpeg_fd2 = open(output_path, O_WRONLY | O_CREAT | O_TRUNC, 0640);
+        outfile = (jpeg_fd2 >= 0) ? fdopen(jpeg_fd2, "wb") : NULL;
+        if (!outfile) {
+            if (jpeg_fd2 >= 0) close(jpeg_fd2);
+            log_error("Failed to open output file %s: %s", output_path, strerror(errno));
+            pthread_mutex_unlock(&encoder->mutex);
+            return -1;
+        }
     }
 
     if (fwrite(encoder->pkt->data, 1, encoder->pkt->size, outfile) != (size_t)encoder->pkt->size) {

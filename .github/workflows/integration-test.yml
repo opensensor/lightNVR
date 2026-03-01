@@ -288,10 +288,17 @@ jobs:
             echo "No log file at /tmp/lightnvr-test/lightnvr.log"
           fi
 
-          # Kill the manual instance
+          # Kill the manual instance and ALL child processes it spawned
+          # (lightNVR starts go2rtc as a child; killing only $MANUAL_PID leaves
+          #  go2rtc alive on port 11984, causing playwright's lightNVR to fail
+          #  with "Cannot start go2rtc because port 11984 is already in use")
           kill $MANUAL_PID 2>/dev/null || true
-          sleep 2
-          kill -9 $MANUAL_PID 2>/dev/null || true
+          pkill -TERM -f lightnvr 2>/dev/null || true
+          pkill -TERM -f go2rtc  2>/dev/null || true
+          sleep 3
+          pkill -KILL -f lightnvr 2>/dev/null || true
+          pkill -KILL -f go2rtc  2>/dev/null || true
+          sleep 1
 
           # Clean up for actual test run
           rm -rf /tmp/lightnvr-test
