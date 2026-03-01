@@ -318,7 +318,7 @@ void ezxml_proc_inst(ezxml_root_t root, char *s, size_t len)
 // called when the parser finds an internal doctype subset
 short ezxml_internal_dtd(ezxml_root_t root, char *s, size_t len)
 {
-    char q, *c, *t, *n = NULL, *v, **ent, **pe;
+    char q, *c, *t, *n = NULL, *v, **ent, **pe, **ent_tmp;
     int i, j;
     
     pe = memcpy(malloc(sizeof(EZXML_NIL)), EZXML_NIL, sizeof(EZXML_NIL));
@@ -339,9 +339,9 @@ short ezxml_internal_dtd(ezxml_root_t root, char *s, size_t len)
             }
 
             for (i = 0, ent = (*c == '%') ? pe : root->ent; ent[i]; i++);
-            { char **ent_tmp = realloc(ent, (i + 3) * sizeof(char *)); // space for next ent
-              if (!ent_tmp) { free(ent); break; }
-              ent = ent_tmp; }
+            ent_tmp = realloc(ent, (i + 3) * sizeof(char *)); // space for next ent
+            if (!ent_tmp) { free(ent); break; }
+            ent = ent_tmp;
             if (*c == '%') pe = ent;
             else root->ent = ent;
 
