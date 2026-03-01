@@ -172,15 +172,15 @@ int ensure_hls_directory(const char *output_dir, const char *stream_name) {
                     if (mkdir(retry_path, 0755) != 0 && errno != EEXIST) {
                         log_warn("Failed to create parent directory: %s (error: %s)", retry_path, strerror(errno));
                     } else {
-                        // Set permissions
-                        chmod(retry_path, 0777);
+                        // Set permissions (owner rwx, group/other rx)
+                        chmod(retry_path, 0755);
                     }
                     *p = '/';
                 }
             }
 
             // Create the final directory
-            if (mkdir(retry_path, 0777) != 0 && errno != EEXIST) {
+            if (mkdir(retry_path, 0755) != 0 && errno != EEXIST) {
                 log_warn("Failed to create parent directory: %s (error: %s)", retry_path, strerror(errno));
             }
 

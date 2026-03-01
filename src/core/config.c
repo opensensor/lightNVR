@@ -1355,9 +1355,22 @@ int save_config(const config_t *config, const char *path) {
                 return -1;
             }
         } else {
-            /* No directory separator — relative filename only */
-            strncpy(canonical_save_path, save_path, sizeof(canonical_save_path) - 1);
-            canonical_save_path[sizeof(canonical_save_path) - 1] = '\0';
+            /* No directory separator — relative filename in current directory.
+             * Resolve CWD with realpath() and prepend it to the filename so
+             * that the resulting path is fully canonical. */
+            char cwd[PATH_MAX];
+            char resolved_cwd[PATH_MAX];
+            if (getcwd(cwd, sizeof(cwd)) == NULL ||
+                realpath(cwd, resolved_cwd) == NULL) {
+                log_error("Cannot resolve current working directory: %s", strerror(errno));
+                return -1;
+            }
+            int n = snprintf(canonical_save_path, sizeof(canonical_save_path),
+                             "%s/%s", resolved_cwd, save_path);
+            if (n < 0 || (size_t)n >= sizeof(canonical_save_path)) {
+                log_error("Canonical config path too long");
+                return -1;
+            }
         }
     }
 

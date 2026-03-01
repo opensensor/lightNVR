@@ -1135,13 +1135,22 @@ bool go2rtc_process_start(int api_port) {
         dup2(log_fd, STDERR_FILENO);
         close(log_fd);
 
+        // Resolve the binary path to a canonical absolute path to prevent
+        // path traversal or symlink attacks (CWE-426 / CWE-78).
+        char resolved_binary[PATH_MAX];
+        if (realpath(g_binary_path, resolved_binary) == NULL) {
+            fprintf(stderr, "Failed to resolve go2rtc binary path '%s': %s\n",
+                    g_binary_path, strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
         // Execute go2rtc with explicit config path (using correct argument format).
         // Always use "go2rtc" as argv[0] (the process name visible in /proc/<pid>/cmdline
         // and /proc/<pid>/comm) regardless of the actual binary path, so that
         // scan_proc_for_cmdline("go2rtc") can reliably find the process even when
         // g_binary_path is a full path or an alternate filename.
-        log_info("Executing go2rtc with command: %s --config %s", g_binary_path, g_config_path);
-        execl(g_binary_path, "go2rtc", "--config", g_config_path, NULL);
+        log_info("Executing go2rtc with command: %s --config %s", resolved_binary, g_config_path);
+        execl(resolved_binary, "go2rtc", "--config", g_config_path, NULL);
 
         // If execl returns, it failed
         fprintf(stderr, "Failed to execute go2rtc: %s\n", strerror(errno));
