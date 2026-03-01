@@ -209,10 +209,10 @@ static void daemon_signal_handler(int sig) {
 // Write PID file
 static int write_pid_file(const char *pid_file) {
     // Make sure the directory exists
-    char dir_path[256] = {0};
-    char *last_slash = strrchr(pid_file, '/');
+    const char *last_slash = strrchr(pid_file, '/');
     if (last_slash) {
-        size_t dir_len = last_slash - pid_file;
+        char dir_path[256] = {0};
+        size_t dir_len = (size_t)(last_slash - pid_file);
         strncpy(dir_path, pid_file, dir_len);
         dir_path[dir_len] = '\0';
         

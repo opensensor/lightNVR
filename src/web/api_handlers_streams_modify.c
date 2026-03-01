@@ -837,24 +837,20 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     }
 
     cJSON *detection_threshold_json = cJSON_GetObjectItem(stream_json, "detection_threshold");
-    float detection_threshold_value = 0.0f;
     bool has_detection_threshold = false;
     if (detection_threshold_json && cJSON_IsNumber(detection_threshold_json)) {
         // Convert from percentage (0-100) to float (0.0-1.0)
-        detection_threshold_value = (float)(detection_threshold_json->valuedouble / 100.0);
         has_detection_threshold = true;
-        config.detection_threshold = detection_threshold_value;
+        config.detection_threshold = (float)(detection_threshold_json->valuedouble / 100.0);
         config_changed = true;
         non_dynamic_config_changed = true;
     }
 
     cJSON *detection_interval_json = cJSON_GetObjectItem(stream_json, "detection_interval");
-    int detection_interval_value = 0;
     bool has_detection_interval = false;
     if (detection_interval_json && cJSON_IsNumber(detection_interval_json)) {
-        detection_interval_value = detection_interval_json->valueint;
         has_detection_interval = true;
-        config.detection_interval = detection_interval_value;
+        config.detection_interval = detection_interval_json->valueint;
         config_changed = true;
         non_dynamic_config_changed = true;
     }
