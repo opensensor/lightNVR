@@ -12,6 +12,7 @@ import { Header } from "../components/preact/Header.jsx";
 import { Footer } from "../components/preact/Footer.jsx";
 import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 import { setupSessionValidation } from '../utils/auth-utils.js';
+import { SetupWizard } from '../components/preact/SetupWizard.jsx';
 
 /**
  * Main App component that conditionally renders WebRTCView or LiveView
@@ -20,36 +21,45 @@ import { setupSessionValidation } from '../utils/auth-utils.js';
 function App() {
     const [isWebRTCDisabled, setIsWebRTCDisabled] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [showWizard, setShowWizard] = useState(false);
 
     useEffect(() => {
-        // Check if WebRTC is disabled in settings
-        async function checkWebRTCStatus() {
+        // Check setup wizard status and WebRTC settings in parallel
+        async function init() {
             try {
-                const response = await fetch('/api/settings');
-                if (!response.ok) {
-                    console.error('Failed to fetch settings:', response.status, response.statusText);
-                    setIsLoading(false);
-                    return;
+                const [settingsRes, setupRes] = await Promise.all([
+                    fetch('/api/settings'),
+                    fetch('/api/setup/status'),
+                ]);
+
+                if (settingsRes.ok) {
+                    const settings = await settingsRes.json();
+                    if (settings.webrtc_disabled || settings.go2rtc_enabled === false) {
+                        console.log('WebRTC is disabled' + (settings.go2rtc_enabled === false ? ' (go2rtc disabled)' : '') + ', using HLS view');
+                        setIsWebRTCDisabled(true);
+                        document.title = 'HLS View - LightNVR';
+                    } else {
+                        console.log('WebRTC is enabled, using WebRTC view');
+                        setIsWebRTCDisabled(false);
+                    }
+                } else {
+                    console.error('Failed to fetch settings:', settingsRes.status, settingsRes.statusText);
                 }
 
-                const settings = await response.json();
-
-                if (settings.webrtc_disabled || settings.go2rtc_enabled === false) {
-                    console.log('WebRTC is disabled' + (settings.go2rtc_enabled === false ? ' (go2rtc disabled)' : '') + ', using HLS view');
-                    setIsWebRTCDisabled(true);
-                    document.title = 'HLS View - LightNVR';
-                } else {
-                    console.log('WebRTC is enabled, using WebRTC view');
-                    setIsWebRTCDisabled(false);
+                if (setupRes.ok) {
+                    const setupData = await setupRes.json();
+                    if (!setupData.complete) {
+                        setShowWizard(true);
+                    }
                 }
             } catch (error) {
-                console.error('Error checking WebRTC status:', error);
+                console.error('Error during init:', error);
             } finally {
                 setIsLoading(false);
             }
         }
 
-        checkWebRTCStatus();
+        init();
     }, []);
 
     if (isLoading) {
@@ -57,7 +67,10 @@ function App() {
     }
 
     return (
-            <>{isWebRTCDisabled ? <LiveView isWebRTCDisabled={true} /> : <WebRTCView />}</>
+        <>
+            {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
+            {isWebRTCDisabled ? <LiveView isWebRTCDisabled={true} /> : <WebRTCView />}
+        </>
     );
 }
 

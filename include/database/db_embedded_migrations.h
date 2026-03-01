@@ -468,6 +468,17 @@ static const char migration_0029_up[] =
 static const char migration_0029_down[] =
     "SELECT 1;";
 
+static const char migration_0030_up[] =
+    "CREATE TABLE IF NOT EXISTS system_settings (\n"
+    "    key   TEXT PRIMARY KEY,\n"
+    "    value TEXT NOT NULL DEFAULT '',\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "INSERT OR IGNORE INTO system_settings (key, value) VALUES ('setup_complete', '0');";
+
+static const char migration_0030_down[] =
+    "DROP TABLE IF EXISTS system_settings;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -672,8 +683,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0029_down,
         .is_embedded = true
     },
+    {
+        .version = "0030",
+        .description = "add_system_settings",
+        .sql_up = migration_0030_up,
+        .sql_down = migration_0030_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 29
+#define EMBEDDED_MIGRATIONS_COUNT 30
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

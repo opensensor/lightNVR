@@ -30,6 +30,7 @@
 #include "web/api_handlers_totp.h"
 #include "web/api_handlers_ice_servers.h"
 #include "web/api_handlers_go2rtc_proxy.h"
+#include "web/api_handlers_setup.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -54,6 +55,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     }
 
     log_info("Registering API handlers with libuv server");
+
+    // Setup wizard API (no authentication guard – must be accessible before auth is configured)
+    http_server_register_handler(server, "/api/setup/status", "GET",  handle_get_setup_status);
+    http_server_register_handler(server, "/api/setup/status", "POST", handle_post_setup_complete);
 
     // Health API
     http_server_register_handler(server, "/api/health", "GET", handle_get_health);
