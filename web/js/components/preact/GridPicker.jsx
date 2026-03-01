@@ -5,8 +5,13 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 
-const MAX_COLS = 8;
-const MAX_ROWS = 6;
+// Hard cap: more than 36 simultaneous HLS/MSE streams will exhaust tab memory.
+// Streams beyond this limit are handled via pagination.
+export const MAX_GRID_CELLS = 36;
+
+// Minimum picker dimensions when no stream count is known
+const DEFAULT_COLS = 6;
+const DEFAULT_ROWS = 6;
 
 /**
  * Return the best [cols, rows] to display N streams in a near-square grid.
@@ -22,9 +27,11 @@ export function computeOptimalGrid(n) {
   if (n <= 12) return [4, 3];
   if (n <= 16) return [4, 4];
   if (n <= 20) return [5, 4];
-  // Fallback: roughly square
-  const c = Math.ceil(Math.sqrt(n));
-  return [c, Math.ceil(n / c)];
+  if (n <= 24) return [6, 4];
+  if (n <= 28) return [7, 4];
+  if (n <= 32) return [8, 4];
+  // 33-36 and beyond: 9×4 = 36 per page (pagination handles the rest)
+  return [9, 4];
 }
 
 /**
@@ -34,11 +41,20 @@ export function computeOptimalGrid(n) {
  * @param {number}   props.cols      Current column count
  * @param {number}   props.rows      Current row count
  * @param {Function} props.onSelect  Called with (cols, rows) on cell click
+ * @param {number}   [props.maxCells]  Maximum selectable cells (= stream count).
+ *                                    Cells whose cols×rows would exceed this are
+ *                                    greyed out and unclickable.
  */
-export function GridPicker({ cols, rows, onSelect }) {
+export function GridPicker({ cols, rows, onSelect, maxCells }) {
   const [hover, setHover] = useState({ c: cols, r: rows });
   const [open, setOpen]   = useState(false);
   const containerRef      = useRef(null);
+
+  // Scale the picker grid to fit the stream count, capped at MAX_GRID_CELLS.
+  // e.g. 6 streams → 3×2, 20 → 5×4, 32+ → 6×6 (cells beyond 32 are greyed out)
+  const effectiveMax = Math.min(maxCells > 0 ? maxCells : DEFAULT_COLS * DEFAULT_ROWS, MAX_GRID_CELLS);
+  const gridCols = Math.max(2, Math.ceil(Math.sqrt(effectiveMax)));
+  const gridRows = Math.max(2, Math.ceil(effectiveMax / gridCols));
 
   // Keep hover in sync when external selection changes (e.g. auto-grid on load)
   useEffect(() => { setHover({ c: cols, r: rows }); }, [cols, rows]);
@@ -92,34 +108,39 @@ export function GridPicker({ cols, rows, onSelect }) {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: `repeat(${MAX_COLS}, 20px)`,
+              gridTemplateColumns: `repeat(${gridCols}, 20px)`,
               gap: '3px',
             }}
           >
-            {Array.from({ length: MAX_ROWS }, (_, r) =>
-              Array.from({ length: MAX_COLS }, (_, c) => {
-                const highlighted = r < hover.r && c < hover.c;
-                const isCurrent   = r < rows   && c < cols;
+            {Array.from({ length: gridRows }, (_, r) =>
+              Array.from({ length: gridCols }, (_, c) => {
+                const cellCount   = (c + 1) * (r + 1);
+                const overLimit   = cellCount > MAX_GRID_CELLS;
+                const highlighted = !overLimit && r < hover.r && c < hover.c;
+                const isCurrent   = !overLimit && r < rows   && c < cols;
                 return (
                   <div
                     key={`${r}-${c}`}
                     style={{ width: '20px', height: '20px' }}
-                    className={`rounded-sm border cursor-pointer transition-colors ${
-                      highlighted
-                        ? 'bg-primary border-primary'
-                        : isCurrent
-                          ? 'bg-primary/25 border-primary/40'
-                          : 'bg-muted border-border hover:border-primary/50 hover:bg-muted/80'
+                    title={overLimit ? `${c + 1}×${r + 1} — exceeds ${MAX_GRID_CELLS}-stream limit` : `${c + 1}×${r + 1}`}
+                    className={`rounded-sm border transition-colors ${
+                      overLimit
+                        ? 'bg-muted/30 border-border/30 opacity-30 cursor-not-allowed'
+                        : highlighted
+                          ? 'bg-primary border-primary cursor-pointer'
+                          : isCurrent
+                            ? 'bg-primary/25 border-primary/40 cursor-pointer'
+                            : 'bg-muted border-border hover:border-primary/50 hover:bg-muted/80 cursor-pointer'
                     }`}
-                    onMouseEnter={() => setHover({ c: c + 1, r: r + 1 })}
-                    onClick={() => { onSelect(c + 1, r + 1); setOpen(false); }}
+                    onMouseEnter={() => { if (!overLimit) setHover({ c: c + 1, r: r + 1 }); }}
+                    onClick={() => { if (!overLimit) { onSelect(c + 1, r + 1); setOpen(false); } }}
                   />
                 );
               })
             )}
           </div>
           <p className="text-xs text-center text-muted-foreground mt-2">
-            up to {MAX_COLS}×{MAX_ROWS}
+            {`max ${MAX_GRID_CELLS} streams per page`}
           </p>
         </div>
       )}

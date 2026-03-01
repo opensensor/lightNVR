@@ -7,6 +7,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { StreamDeleteModal } from './StreamDeleteModal.jsx';
+import { StreamBulkActionModal } from './StreamBulkActionModal.jsx';
 import { StreamConfigModal } from './StreamConfigModal.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
 import { conditionallyObfuscateUrl } from '../../utils/url-utils.js';
@@ -82,6 +83,36 @@ export function StreamsView() {
       ...prev,
       [streamName]: !prev[streamName]
     }));
+  };
+
+  // Bulk selection state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedStreams, setSelectedStreams] = useState(new Set());
+  const [isBulkWorking, setIsBulkWorking] = useState(false);
+  // null | 'disable' | 'delete' — which bulk confirmation modal is open
+  const [bulkActionModal, setBulkActionModal] = useState(null);
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedStreams(new Set());
+  };
+
+  const toggleSelect = (e, name) => {
+    e.stopPropagation();
+    setSelectedStreams(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (e) => {
+    e.stopPropagation();
+    if (selectedStreams.size > 0) {
+      setSelectedStreams(new Set());
+    } else {
+      setSelectedStreams(new Set((streams || []).map(s => s.name)));
+    }
   };
 
   // Accordion expanded state for StreamConfigModal sections
@@ -350,6 +381,93 @@ export function StreamsView() {
       closeDeleteModal();
     }
   });
+
+  // Bulk action handlers — open the confirmation modal instead of using alert()
+  const handleBulkEnable = () => {
+    if (selectedStreams.size === 0 || isBulkWorking) return;
+    setBulkActionModal('enable');
+  };
+
+  const handleBulkDisable = () => {
+    if (selectedStreams.size === 0 || isBulkWorking) return;
+    setBulkActionModal('disable');
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedStreams.size === 0 || isBulkWorking) return;
+    setBulkActionModal('delete');
+  };
+
+  // Execute bulk enable after modal confirmation
+  const executeBulkEnable = async () => {
+    const names = [...selectedStreams];
+    setIsBulkWorking(true);
+    const results = await Promise.allSettled(
+      names.map(name =>
+        fetchJSON(`/api/streams/${encodeURIComponent(name)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          // enabled:true must accompany enable_disabled:true so the worker thread
+          // writes enabled=1 to the DB; without it the worker overwrites the
+          // direct SQL enable with the stale enabled=0 from the config struct.
+          body: JSON.stringify({ enable_disabled: true, enabled: true }),
+          timeout: 15000,
+        })
+      )
+    );
+    setIsBulkWorking(false);
+    setBulkActionModal(null);
+    setSelectedStreams(new Set());
+    queryClient.invalidateQueries({ queryKey: ['streams'] });
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) {
+      showStatusMessage(`Enabled ${names.length - failed} streams; ${failed} failed.`, 'warning', 5000);
+    } else {
+      showStatusMessage(`Enabled ${names.length} stream${names.length !== 1 ? 's' : ''}.`, 'success');
+    }
+  };
+
+  // Execute bulk disable after modal confirmation
+  const executeBulkDisable = async () => {
+    const names = [...selectedStreams];
+    setIsBulkWorking(true);
+    const results = await Promise.allSettled(
+      names.map(name =>
+        fetchJSON(`/api/streams/${encodeURIComponent(name)}`, { method: 'DELETE', timeout: 15000 })
+      )
+    );
+    setIsBulkWorking(false);
+    setBulkActionModal(null);
+    setSelectedStreams(new Set());
+    queryClient.invalidateQueries({ queryKey: ['streams'] });
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) {
+      showStatusMessage(`Disabled ${names.length - failed} streams; ${failed} failed.`, 'warning', 5000);
+    } else {
+      showStatusMessage(`Disabled ${names.length} stream${names.length !== 1 ? 's' : ''}.`, 'success');
+    }
+  };
+
+  // Execute bulk delete after modal confirmation
+  const executeBulkDelete = async () => {
+    const names = [...selectedStreams];
+    setIsBulkWorking(true);
+    const results = await Promise.allSettled(
+      names.map(name =>
+        fetchJSON(`/api/streams/${encodeURIComponent(name)}?permanent=true`, { method: 'DELETE', timeout: 15000 })
+      )
+    );
+    setIsBulkWorking(false);
+    setBulkActionModal(null);
+    setSelectedStreams(new Set());
+    queryClient.invalidateQueries({ queryKey: ['streams'] });
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (failed > 0) {
+      showStatusMessage(`Deleted ${names.length - failed} streams; ${failed} failed.`, 'warning', 5000);
+    } else {
+      showStatusMessage(`Deleted ${names.length} stream${names.length !== 1 ? 's' : ''}.`, 'success');
+    }
+  };
 
   // Handle form submission
   const handleSubmit = (e) => {
@@ -952,6 +1070,19 @@ export function StreamsView() {
           )}
           {canModifyStreams && (
             <>
+              {!selectionMode && (
+                <button
+                  className="flex items-center gap-1.5 text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground focus:outline-none"
+                  onClick={() => setSelectionMode(true)}
+                  title="Enter selection mode"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                  Select
+                </button>
+              )}
               <button
                   id="discover-onvif-btn"
                   className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
@@ -978,10 +1109,65 @@ export function StreamsView() {
           emptyMessage={canModifyStreams ? "No streams configured yet. Click 'Add Stream' to create one." : "No streams configured yet."}
       >
         <div className="streams-container bg-card text-card-foreground rounded-lg shadow overflow-hidden">
+          {/* Bulk action toolbar — visible in selection mode */}
+          {canModifyStreams && selectionMode && (
+            <div className="flex items-center gap-3 px-4 py-2 border-b border-border">
+              <span className="text-sm text-muted-foreground">
+                {selectedStreams.size > 0
+                  ? `${selectedStreams.size} stream${selectedStreams.size !== 1 ? 's' : ''} selected`
+                  : 'Select streams'}
+              </span>
+              <button
+                className="px-3 py-1 text-sm rounded border transition-colors disabled:opacity-50"
+                style={{borderColor: 'hsl(var(--success))', color: 'hsl(var(--success))', background: 'transparent'}}
+                onMouseOver={e => e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'}
+                onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                disabled={isBulkWorking || selectedStreams.size === 0}
+                onClick={handleBulkEnable}
+              >
+                {isBulkWorking ? 'Working…' : 'Enable selected'}
+              </button>
+              <button
+                className="px-3 py-1 text-sm rounded border border-input bg-background hover:bg-accent transition-colors disabled:opacity-50"
+                disabled={isBulkWorking || selectedStreams.size === 0}
+                onClick={handleBulkDisable}
+              >
+                {isBulkWorking ? 'Working…' : 'Disable selected'}
+              </button>
+              <button
+                className="px-3 py-1 text-sm rounded border transition-colors disabled:opacity-50"
+                style={{borderColor: 'hsl(var(--danger))', color: 'hsl(var(--danger))', background: 'transparent'}}
+                onMouseOver={e => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
+                onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                disabled={isBulkWorking || selectedStreams.size === 0}
+                onClick={handleBulkDelete}
+              >
+                {isBulkWorking ? 'Working…' : 'Delete selected'}
+              </button>
+              <button
+                className="ml-auto text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={exitSelectionMode}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table id="streams-table" className="min-w-full divide-y divide-border">
               <thead className="bg-muted">
               <tr>
+                {canModifyStreams && selectionMode && (
+                  <th className="w-8 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded cursor-pointer"
+                      checked={selectedStreams.size > 0 && selectedStreams.size === (streams || []).length}
+                      ref={el => { if (el) el.indeterminate = selectedStreams.size > 0 && selectedStreams.size < (streams || []).length; }}
+                      onChange={toggleSelectAll}
+                      title="Select all"
+                    />
+                  </th>
+                )}
                 <th className="w-8 px-2 py-3"></th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
@@ -1006,6 +1192,17 @@ export function StreamsView() {
                 return (
                   <Fragment key={stream.name}>
                     <tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleStreamExpand(stream.name)}>
+                      {/* Bulk-select checkbox — only in selection mode */}
+                      {canModifyStreams && selectionMode && (
+                        <td className="w-8 px-3 py-4" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded cursor-pointer"
+                            checked={selectedStreams.has(stream.name)}
+                            onChange={e => toggleSelect(e, stream.name)}
+                          />
+                        </td>
+                      )}
                       {/* Expand/collapse chevron */}
                       <td className="w-8 px-2 py-4 text-center text-muted-foreground">
                         <svg
@@ -1084,7 +1281,7 @@ export function StreamsView() {
                     {/* Expandable detail row */}
                     {isExpanded && (
                       <tr className="bg-muted/30">
-                        <td colSpan="8" className="px-6 py-3">
+                        <td colSpan={canModifyStreams && selectionMode ? 9 : 8} className="px-6 py-3">
                           <div className="flex flex-wrap gap-4 text-sm">
                             {/* Enabled */}
                             <div className="flex items-center gap-1.5">
@@ -1161,6 +1358,20 @@ export function StreamsView() {
             onDelete={deleteStream}
             isDeleting={deleteStreamMutation.isPending}
             isDisabling={disableStreamMutation.isPending}
+        />
+      )}
+
+      {bulkActionModal && (
+        <StreamBulkActionModal
+            action={bulkActionModal}
+            streamNames={[...selectedStreams]}
+            onClose={() => setBulkActionModal(null)}
+            onConfirm={
+              bulkActionModal === 'delete'  ? executeBulkDelete  :
+              bulkActionModal === 'enable'  ? executeBulkEnable  :
+                                              executeBulkDisable
+            }
+            isWorking={isBulkWorking}
         />
       )}
 

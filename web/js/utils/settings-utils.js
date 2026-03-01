@@ -136,7 +136,11 @@ function getDefaultSettings() {
 // Cache for go2rtc availability check
 let go2rtcAvailableCache = null;
 let go2rtcAvailableCacheTime = 0;
-const GO2RTC_CACHE_TTL = 30000; // 30 second cache TTL for availability check
+// 5-minute TTL: go2rtc doesn't go up/down during normal viewing sessions.
+// A short TTL caused false-negative health checks when go2rtc was busy serving
+// many streams — the check timed out, flipped the cache to false, and caused
+// a stampede of re-registration requests from HLS.js error-recovery loops.
+const GO2RTC_CACHE_TTL = 300000;
 
 // In-flight promise deduplication for go2rtc availability checks
 let go2rtcAvailableInflight = null;
@@ -181,6 +185,15 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
       }
       return available;
     } catch (error) {
+      // If we previously confirmed go2rtc was up, treat a timeout/network error
+      // as a transient false positive rather than declaring the service down.
+      // go2rtc under load (e.g. 60+ simultaneous HLS streams) may be slow to
+      // respond to health checks even though it is serving streams correctly.
+      if (go2rtcAvailableCache === true) {
+        console.warn(`go2rtc health check failed (${error.message}) but was previously available — assuming still up`);
+        go2rtcAvailableCacheTime = Date.now(); // reset TTL so we don't spam retries
+        return true;
+      }
       console.warn('go2rtc is not available:', error.message);
       go2rtcAvailableCache = false;
       go2rtcAvailableCacheTime = Date.now();

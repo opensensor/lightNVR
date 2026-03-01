@@ -23,128 +23,102 @@ GO2RTC_API_PORT="${GO2RTC_API_PORT:-11984}"
 GO2RTC_RTSP_PORT="${GO2RTC_RTSP_PORT:-18554}"
 GO2RTC_HOST="${GO2RTC_HOST:-localhost}"
 
-# Test stream definitions for go2rtc.yaml
-# See config/go2rtc/go2rtc-test.yaml for the full configuration
-TEST_STREAMS_CONFIG='# Use config/go2rtc/go2rtc-test.yaml for the complete test configuration
-# Start with: ./go2rtc/go2rtc -config config/go2rtc/go2rtc-test.yaml
+# Path to the test config (relative to repo root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEST_CONFIG="${SCRIPT_DIR}/../config/go2rtc/go2rtc-test.yaml"
 
-streams:
-  # Test pattern with timestamp counter (720p)
-  test_pattern: ffmpeg:virtual?video&size=720#video=h264
-
-  # SMPTE color bars (720p)
-  test_colorbars: ffmpeg:virtual?video=smptebars&size=720#video=h264
-
-  # Solid colors (480p, low CPU)
-  test_red: "exec:ffmpeg -re -f lavfi -i color=red:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
-  test_blue: "exec:ffmpeg -re -f lavfi -i color=blue:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
-  test_green: "exec:ffmpeg -re -f lavfi -i color=green:s=640x480:r=10 -c:v libx264 -preset ultrafast -tune zerolatency -g 30 -f rtsp {output}"
-
-  # Moving pattern for motion detection testing (480p)
-  test_mandelbrot: ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264
-
-  # High resolution test pattern (1080p)
-  test_pattern2: ffmpeg:virtual?video=testsrc2&size=1080#video=h264
-
-  # Low framerate stream (5 fps, 480p)
-  test_lowfps: ffmpeg:virtual?video=testsrc2&size=640x480&rate=5#video=h264'
+# All 64 test stream names: 8 named originals + test_cam_09..test_cam_64
+_all_stream_names() {
+    echo "test_pattern test_colorbars test_red test_blue test_green test_mandelbrot test_pattern2 test_lowfps"
+    seq -f "test_cam_%02g" 9 64
+}
 
 show_config() {
     echo "================================================================"
-    echo "Add the following to your go2rtc.yaml configuration file:"
+    echo "Start go2rtc with the 64-stream test configuration:"
     echo "================================================================"
     echo ""
-    echo "$TEST_STREAMS_CONFIG"
+    echo "  go2rtc -config ${TEST_CONFIG}"
+    echo ""
+    echo "Or copy the streams section into your existing go2rtc.yaml:"
+    echo ""
+    echo "  ${TEST_CONFIG}"
     echo ""
     echo "================================================================"
-    echo "After adding, restart go2rtc and access streams at:"
+    echo "Once running, streams are available at:"
     echo "================================================================"
     echo ""
-    echo "  RTSP URLs:"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_pattern"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_colorbars"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_red"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_blue"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_green"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_mandelbrot"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_pattern2"
-    echo "    rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/test_lowfps"
+    echo "  RTSP:   rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/<stream_name>"
+    echo "  Web UI: http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/"
+    echo "  API:    http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/api/streams"
     echo ""
-    echo "  Web UI:"
-    echo "    http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/go2rtc/"
-    echo ""
-    echo "  API endpoints:"
-    echo "    http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/go2rtc/api/streams"
+    echo "Stream names (64 total):"
+    _all_stream_names | tr ' ' '\n' | sed 's/^/    /'
     echo ""
 }
 
 verify_streams() {
-    echo "Verifying go2rtc test streams..."
+    echo "Verifying go2rtc test streams (64 total)..."
     echo ""
-    
+
     # Check if go2rtc API is accessible
-    if ! curl -s --connect-timeout 5 "http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/go2rtc/api/streams" > /dev/null 2>&1; then
+    if ! curl -s --connect-timeout 5 "http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/api/streams" > /dev/null 2>&1; then
         echo "❌ ERROR: Cannot connect to go2rtc API at http://${GO2RTC_HOST}:${GO2RTC_API_PORT}"
-        echo "   Make sure go2rtc is running with the test stream configuration."
+        echo "   Start go2rtc with: go2rtc -config ${TEST_CONFIG}"
         exit 1
     fi
-    
+
     echo "✓ go2rtc API is accessible"
     echo ""
-    
-    # Get list of streams
-    STREAMS=$(curl -s "http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/go2rtc/api/streams")
-    
-    # Check for test streams
-    TEST_STREAM_NAMES=("test_pattern" "test_colorbars" "test_red" "test_blue" "test_green" "test_mandelbrot" "test_pattern2" "test_lowfps")
-    
+
+    STREAMS=$(curl -s "http://${GO2RTC_HOST}:${GO2RTC_API_PORT}/api/streams")
     FOUND=0
     MISSING=0
-    
-    for stream in "${TEST_STREAM_NAMES[@]}"; do
+
+    for stream in $(_all_stream_names); do
         if echo "$STREAMS" | grep -q "\"$stream\""; then
-            echo "✓ Stream '$stream' is configured"
+            echo "✓ $stream"
             FOUND=$((FOUND + 1))
         else
-            echo "✗ Stream '$stream' is NOT configured"
+            echo "✗ $stream  (MISSING)"
             MISSING=$((MISSING + 1))
         fi
     done
-    
+
     echo ""
-    echo "Summary: $FOUND streams found, $MISSING streams missing"
-    
-    if [ $MISSING -gt 0 ]; then
+    echo "Summary: ${FOUND}/64 streams found, ${MISSING} missing"
+
+    if [ "$MISSING" -gt 0 ]; then
         echo ""
-        echo "To add missing streams, run: $0 config"
+        echo "To start go2rtc with all 64 streams:"
+        echo "  go2rtc -config ${TEST_CONFIG}"
         exit 1
     fi
-    
+
     echo ""
-    echo "All test streams are configured! You can now:"
-    echo "  1. Add streams to lightNVR via the web UI or API"
-    echo "  2. Use RTSP URLs directly: rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/<stream_name>"
+    echo "All 64 test streams are configured!"
+    echo "  RTSP base: rtsp://${GO2RTC_HOST}:${GO2RTC_RTSP_PORT}/<stream_name>"
 }
 
 show_help() {
-    echo "test-streams.sh - Set up test RTSP streams for lightNVR development"
+    echo "test-streams.sh - Set up 64 test RTSP streams for lightNVR development"
     echo ""
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"
-    echo "  config    Show go2rtc configuration for test streams"
-    echo "  verify    Verify test streams are accessible via go2rtc API"
+    echo "  config    Show how to start go2rtc with all 64 test streams"
+    echo "  verify    Verify all 64 streams are accessible via go2rtc API"
     echo "  help      Show this help message"
     echo ""
     echo "Environment variables:"
     echo "  GO2RTC_HOST       Host where go2rtc is running (default: localhost)"
-    echo "  GO2RTC_API_PORT   go2rtc API port (default: 1984)"
-    echo "  GO2RTC_RTSP_PORT  go2rtc RTSP port (default: 8554)"
+    echo "  GO2RTC_API_PORT   go2rtc API port (default: 11984)"
+    echo "  GO2RTC_RTSP_PORT  go2rtc RTSP port (default: 18554)"
     echo ""
     echo "Examples:"
-    echo "  $0 config                    # Show configuration to add"
-    echo "  $0 verify                    # Check if streams are working"
-    echo "  GO2RTC_HOST=192.168.1.100 $0 verify  # Verify on remote host"
+    echo "  $0 config                              # Show how to start go2rtc"
+    echo "  $0 verify                              # Check all 64 streams"
+    echo "  GO2RTC_HOST=192.168.1.100 $0 verify   # Verify on remote host"
 }
 
 # Main

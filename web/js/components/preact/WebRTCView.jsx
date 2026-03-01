@@ -12,7 +12,7 @@ import { WebRTCVideoCell } from './WebRTCVideoCell.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
-import { GridPicker, computeOptimalGrid } from './GridPicker.jsx';
+import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -81,9 +81,9 @@ export function WebRTCView() {
   const [cols, setCols] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const cp = urlParams.get('cols');
-    if (cp) return Math.max(1, Math.min(8, parseInt(cp, 10) || 2));
+    if (cp) return Math.max(1, Math.min(9, parseInt(cp, 10) || 2));
     const stored = localStorage.getItem('lightnvr-webrtc-cols');
-    if (stored) return Math.max(1, Math.min(8, parseInt(stored, 10) || 2));
+    if (stored) return Math.max(1, Math.min(9, parseInt(stored, 10) || 2));
     const oldLayout = localStorage.getItem('lightnvr-webrtc-layout');
     if (oldLayout) return legacyLayoutToColsRowsWebRTC(oldLayout)[0];
     return 2; // placeholder until autoGrid resolves
@@ -91,9 +91,9 @@ export function WebRTCView() {
   const [rows, setRows] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const rp = urlParams.get('rows');
-    if (rp) return Math.max(1, Math.min(8, parseInt(rp, 10) || 2));
+    if (rp) return Math.max(1, Math.min(9, parseInt(rp, 10) || 2));
     const stored = localStorage.getItem('lightnvr-webrtc-rows');
-    if (stored) return Math.max(1, Math.min(8, parseInt(stored, 10) || 2));
+    if (stored) return Math.max(1, Math.min(9, parseInt(stored, 10) || 2));
     const oldLayout = localStorage.getItem('lightnvr-webrtc-layout');
     if (oldLayout) return legacyLayoutToColsRowsWebRTC(oldLayout)[1];
     return 2; // placeholder until autoGrid resolves
@@ -102,6 +102,14 @@ export function WebRTCView() {
   // Total streams per page is simply cols × rows — derived immediately so every
   // subsequent useEffect that needs it can reference it without TDZ issues.
   const maxStreams = cols * rows;
+
+  // Clamp cols×rows to MAX_GRID_CELLS — guards against stale URL params or
+  // localStorage values written before the 36-stream cap was enforced.
+  useEffect(() => {
+    if (cols * rows > MAX_GRID_CELLS) {
+      setRows(Math.max(1, Math.floor(MAX_GRID_CELLS / cols)));
+    }
+  }, [cols, rows]);
 
   // True when we're in single-stream mode
   const isSingleStream = maxStreams === 1;
@@ -516,6 +524,7 @@ export function WebRTCView() {
               cols={cols}
               rows={rows}
               onSelect={(c, r) => { setCols(c); setRows(r); setCurrentPage(0); setAutoGrid(false); }}
+              maxCells={orderedStreams.length}
             />
           </div>
 

@@ -12,7 +12,7 @@ import { HLSVideoCell } from './HLSVideoCell.jsx';
 import { MSEVideoCell } from './MSEVideoCell.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
-import { GridPicker, computeOptimalGrid } from './GridPicker.jsx';
+import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -87,9 +87,9 @@ export function LiveView({isWebRTCDisabled}) {
   const [cols, setCols] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const cp = urlParams.get('cols');
-    if (cp) return Math.max(1, Math.min(8, parseInt(cp, 10) || 2));
+    if (cp) return Math.max(1, Math.min(9, parseInt(cp, 10) || 2));
     const stored = localStorage.getItem('lightnvr-hls-cols');
-    if (stored) return Math.max(1, Math.min(8, parseInt(stored, 10) || 2));
+    if (stored) return Math.max(1, Math.min(9, parseInt(stored, 10) || 2));
     const oldLayout = localStorage.getItem('lightnvr-hls-layout');
     if (oldLayout) return legacyLayoutToColsRowsHLS(oldLayout)[0];
     return 2; // placeholder until autoGrid resolves
@@ -97,9 +97,9 @@ export function LiveView({isWebRTCDisabled}) {
   const [rows, setRows] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const rp = urlParams.get('rows');
-    if (rp) return Math.max(1, Math.min(8, parseInt(rp, 10) || 2));
+    if (rp) return Math.max(1, Math.min(9, parseInt(rp, 10) || 2));
     const stored = localStorage.getItem('lightnvr-hls-rows');
-    if (stored) return Math.max(1, Math.min(8, parseInt(stored, 10) || 2));
+    if (stored) return Math.max(1, Math.min(9, parseInt(stored, 10) || 2));
     const oldLayout = localStorage.getItem('lightnvr-hls-layout');
     if (oldLayout) return legacyLayoutToColsRowsHLS(oldLayout)[1];
     return 2; // placeholder until autoGrid resolves
@@ -108,6 +108,14 @@ export function LiveView({isWebRTCDisabled}) {
   // Total streams per page — derived immediately so URL-sync useEffect can reference
   // isSingleStream in its dependency array without TDZ issues.
   const maxStreams = cols * rows;
+
+  // Clamp cols×rows to MAX_GRID_CELLS — guards against stale URL params or
+  // localStorage values written before the 36-stream cap was enforced.
+  useEffect(() => {
+    if (cols * rows > MAX_GRID_CELLS) {
+      setRows(Math.max(1, Math.floor(MAX_GRID_CELLS / cols)));
+    }
+  }, [cols, rows]);
 
   // True when we're in single-stream mode
   const isSingleStream = maxStreams === 1;
@@ -522,6 +530,7 @@ export function LiveView({isWebRTCDisabled}) {
               cols={cols}
               rows={rows}
               onSelect={(c, r) => { setCols(c); setRows(r); setCurrentPage(0); setAutoGrid(false); }}
+              maxCells={orderedStreams.length}
             />
           </div>
 
@@ -666,12 +675,22 @@ export function LiveView({isWebRTCDisabled}) {
             </div>
           ) : (
             // Render video cells using MSEVideoCell (when go2rtc enabled) or HLSVideoCell (fallback)
-            // Both modes stagger initialization to avoid a thundering-herd on go2rtc/backend:
-            //   MSE:  300ms per stream (WebSocket + codec negotiation burst is lighter)
-            //   HLS:  600ms per stream (manifest + segment fetches need more breathing room)
+            //
+            // Stagger strategy:
+            //   MSE (go2rtc WebSocket): 200ms per stream — short burst for WS negotiation
+            //   HLS via go2rtc:        no stagger — go2rtc is an HLS server built for many
+            //                          concurrent clients; staggering 68 streams over 40 s caused
+            //                          the go2rtc health-check cache to expire mid-initialization,
+            //                          producing false-negative availability results under load and
+            //                          triggering a stampede of HLS.js error-recovery re-registrations
+            //   HLS native (FFmpeg):   300ms per stream — avoids N simultaneous ffmpeg spawns
             streamsToShow.map((stream, index) => {
               const VideoCell = useMSE ? MSEVideoCell : HLSVideoCell;
-              const initDelay = useMSE ? (index * 300) : (index * 600);
+              const initDelay = useMSE
+                ? (index * 200)
+                : go2rtcAvailable
+                  ? 0               // go2rtc HLS: no stagger needed, go2rtc handles concurrency
+                  : (index * 300);  // native FFmpeg HLS: gentle stagger to avoid process-spawn burst
               // Global index in orderedStreams for drag-and-drop (pagination offset)
               const globalIndex = currentPage * maxStreams + index;
 

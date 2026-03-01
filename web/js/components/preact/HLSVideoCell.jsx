@@ -206,26 +206,37 @@ export function HLSVideoCell({
       if (Hls.isSupported()) {
         console.log(`Using HLS.js for stream ${stream.name} (mode: ${usingGo2rtc ? 'go2rtc' : 'native'})`);
 
-        // go2rtc mode: use default HLS.js config (matching go2rtc's own reference implementation)
-        // Native mode: minimal config tuned for FFmpeg file-based segments
-        const hlsConfig = usingGo2rtc ? {} : {
-          // Native mode: FFmpeg file-based HLS with sliding window playlist
+        // Shared low-memory budget: keep only a small forward buffer and zero back-buffer.
+        // backBufferLength: 0 is the single biggest win — HLS.js default keeps decoded
+        // frames forever for seeking, which multiplies by stream count and crashes the tab.
+        const sharedMemoryConfig = {
+          maxBufferLength: 4,        // seconds of forward buffer (default: 30)
+          maxMaxBufferLength: 8,     // hard ceiling (default: 600)
+          backBufferLength: 0,       // discard played frames immediately (default: Infinity)
+          enableWorker: true,
+          lowLatencyMode: false,
+          startLevel: 0,
+          debug: false,
+        };
+
+        // go2rtc mode: low-latency live source, keep latency tight
+        // Native mode: FFmpeg file-based segments, slightly more tolerant retry settings
+        const hlsConfig = usingGo2rtc ? {
+          ...sharedMemoryConfig,
+          liveSyncDurationCount: 2,
+          liveMaxLatencyDurationCount: 6,
+          liveDurationInfinity: true,
+        } : {
+          ...sharedMemoryConfig,
           liveSyncDurationCount: 3,
           liveMaxLatencyDurationCount: 10,
           liveDurationInfinity: true,
-          maxBufferLength: 10,
-          maxMaxBufferLength: 20,
-          backBufferLength: 5,
           fragLoadingTimeOut: 20000,
           manifestLoadingTimeOut: 15000,
           manifestLoadingMaxRetry: 10,
           manifestLoadingRetryDelay: 1000,
           fragLoadingMaxRetry: 10,
           fragLoadingRetryDelay: 500,
-          enableWorker: true,
-          lowLatencyMode: false,
-          startLevel: 0,
-          debug: false
         };
 
         const hls = new Hls(hlsConfig);

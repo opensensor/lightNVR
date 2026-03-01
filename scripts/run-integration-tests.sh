@@ -263,7 +263,7 @@ register_test_streams() {
 
     # Define test streams using FFmpeg virtual sources
     # Format: name|source
-    # Note: Using simple virtual sources that work reliably with go2rtc API registration
+    # 8 named originals + 56 numbered solid-color streams = 64 total
     local test_streams=(
         "test_pattern|ffmpeg:virtual?video&size=720#video=h264"
         "test_colorbars|ffmpeg:virtual?video=smptebars&size=720#video=h264"
@@ -273,6 +273,69 @@ register_test_streams() {
         "test_mandelbrot|ffmpeg:virtual?video=mandelbrot&size=640x480#video=h264"
         "test_pattern2|ffmpeg:virtual?video=testsrc2&size=1080#video=h264"
         "test_lowfps|ffmpeg:virtual?video&size=480&fps=5#video=h264"
+        # Group A (09-16)
+        "test_cam_09|ffmpeg:virtual?video=color&color=yellow&size=640x480#video=h264"
+        "test_cam_10|ffmpeg:virtual?video=color&color=cyan&size=640x480#video=h264"
+        "test_cam_11|ffmpeg:virtual?video=color&color=magenta&size=640x480#video=h264"
+        "test_cam_12|ffmpeg:virtual?video=color&color=orange&size=640x480#video=h264"
+        "test_cam_13|ffmpeg:virtual?video=color&color=purple&size=640x480#video=h264"
+        "test_cam_14|ffmpeg:virtual?video=color&color=pink&size=640x480#video=h264"
+        "test_cam_15|ffmpeg:virtual?video=color&color=lime&size=640x480#video=h264"
+        "test_cam_16|ffmpeg:virtual?video=color&color=teal&size=640x480#video=h264"
+        # Group B (17-24)
+        "test_cam_17|ffmpeg:virtual?video=color&color=crimson&size=640x480#video=h264"
+        "test_cam_18|ffmpeg:virtual?video=color&color=royalblue&size=640x480#video=h264"
+        "test_cam_19|ffmpeg:virtual?video=color&color=limegreen&size=640x480#video=h264"
+        "test_cam_20|ffmpeg:virtual?video=color&color=hotpink&size=640x480#video=h264"
+        "test_cam_21|ffmpeg:virtual?video=color&color=darkturquoise&size=640x480#video=h264"
+        "test_cam_22|ffmpeg:virtual?video=color&color=darkviolet&size=640x480#video=h264"
+        "test_cam_23|ffmpeg:virtual?video=color&color=darkorange&size=640x480#video=h264"
+        "test_cam_24|ffmpeg:virtual?video=color&color=seagreen&size=640x480#video=h264"
+        # Group C (25-32)
+        "test_cam_25|ffmpeg:virtual?video=color&color=dodgerblue&size=640x480#video=h264"
+        "test_cam_26|ffmpeg:virtual?video=color&color=deeppink&size=640x480#video=h264"
+        "test_cam_27|ffmpeg:virtual?video=color&color=springgreen&size=640x480#video=h264"
+        "test_cam_28|ffmpeg:virtual?video=color&color=saddlebrown&size=640x480#video=h264"
+        "test_cam_29|ffmpeg:virtual?video=color&color=slateblue&size=640x480#video=h264"
+        "test_cam_30|ffmpeg:virtual?video=color&color=lightseagreen&size=640x480#video=h264"
+        "test_cam_31|ffmpeg:virtual?video=color&color=firebrick&size=640x480#video=h264"
+        "test_cam_32|ffmpeg:virtual?video=color&color=steelblue&size=640x480#video=h264"
+        # Group D (33-40)
+        "test_cam_33|ffmpeg:virtual?video=color&color=chocolate&size=640x480#video=h264"
+        "test_cam_34|ffmpeg:virtual?video=color&color=darkolivegreen&size=640x480#video=h264"
+        "test_cam_35|ffmpeg:virtual?video=color&color=darkred&size=640x480#video=h264"
+        "test_cam_36|ffmpeg:virtual?video=color&color=darkslateblue&size=640x480#video=h264"
+        "test_cam_37|ffmpeg:virtual?video=color&color=peru&size=640x480#video=h264"
+        "test_cam_38|ffmpeg:virtual?video=color&color=goldenrod&size=640x480#video=h264"
+        "test_cam_39|ffmpeg:virtual?video=color&color=cadetblue&size=640x480#video=h264"
+        "test_cam_40|ffmpeg:virtual?video=color&color=mediumseagreen&size=640x480#video=h264"
+        # Group E (41-48)
+        "test_cam_41|ffmpeg:virtual?video=color&color=rosybrown&size=640x480#video=h264"
+        "test_cam_42|ffmpeg:virtual?video=color&color=indigo&size=640x480#video=h264"
+        "test_cam_43|ffmpeg:virtual?video=color&color=skyblue&size=640x480#video=h264"
+        "test_cam_44|ffmpeg:virtual?video=color&color=sandybrown&size=640x480#video=h264"
+        "test_cam_45|ffmpeg:virtual?video=color&color=yellowgreen&size=640x480#video=h264"
+        "test_cam_46|ffmpeg:virtual?video=color&color=turquoise&size=640x480#video=h264"
+        "test_cam_47|ffmpeg:virtual?video=color&color=violet&size=640x480#video=h264"
+        "test_cam_48|ffmpeg:virtual?video=color&color=slategray&size=640x480#video=h264"
+        # Group F (49-56)
+        "test_cam_49|ffmpeg:virtual?video=color&color=darksalmon&size=640x480#video=h264"
+        "test_cam_50|ffmpeg:virtual?video=color&color=darkkhaki&size=640x480#video=h264"
+        "test_cam_51|ffmpeg:virtual?video=color&color=lawngreen&size=640x480#video=h264"
+        "test_cam_52|ffmpeg:virtual?video=color&color=salmon&size=640x480#video=h264"
+        "test_cam_53|ffmpeg:virtual?video=color&color=cornflowerblue&size=640x480#video=h264"
+        "test_cam_54|ffmpeg:virtual?video=color&color=burlywood&size=640x480#video=h264"
+        "test_cam_55|ffmpeg:virtual?video=color&color=forestgreen&size=640x480#video=h264"
+        "test_cam_56|ffmpeg:virtual?video=color&color=tomato&size=640x480#video=h264"
+        # Group G (57-64)
+        "test_cam_57|ffmpeg:virtual?video=color&color=khaki&size=640x480#video=h264"
+        "test_cam_58|ffmpeg:virtual?video=color&color=coral&size=640x480#video=h264"
+        "test_cam_59|ffmpeg:virtual?video=color&color=sienna&size=640x480#video=h264"
+        "test_cam_60|ffmpeg:virtual?video=color&color=plum&size=640x480#video=h264"
+        "test_cam_61|ffmpeg:virtual?video=color&color=darkseagreen&size=640x480#video=h264"
+        "test_cam_62|ffmpeg:virtual?video=color&color=mediumpurple&size=640x480#video=h264"
+        "test_cam_63|ffmpeg:virtual?video=color&color=lightsalmon&size=640x480#video=h264"
+        "test_cam_64|ffmpeg:virtual?video=color&color=mediumaquamarine&size=640x480#video=h264"
     )
 
     local registered=0
@@ -311,7 +374,11 @@ test_streams_configured() {
     log_info "Test: Verifying test streams are configured..."
 
     local streams=$(curl -s "http://localhost:${GO2RTC_API_PORT}/api/streams")
+    # Build expected list: 8 named originals + test_cam_09..test_cam_64
     local expected_streams=("test_pattern" "test_colorbars" "test_red" "test_blue" "test_green" "test_mandelbrot" "test_pattern2" "test_lowfps")
+    for i in $(seq -f "%02g" 9 64); do
+        expected_streams+=("test_cam_${i}")
+    done
     local failed=0
 
     for stream in "${expected_streams[@]}"; do

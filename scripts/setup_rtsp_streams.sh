@@ -1,7 +1,8 @@
 #!/bin/bash
 # RTSP Test Stream Setup for LightNVR Load Testing
-# Streams 8 channels via MediaMTX + FFmpeg on 192.168.50.153
-# Requires: ffmpeg, mediamtx (auto-downloaded if missing)
+# Streams 64 channels via MediaMTX + FFmpeg on 192.168.50.153
+# Requires: ffmpeg, mediamtx (auto-downloaded if missing), sqlite3
+# Override DB path: DB_PATH=/path/to/lightnvr.db ./setup_rtsp_streams.sh
 
 set -e
 
@@ -12,6 +13,7 @@ MEDIAMTX_CONF="$MEDIAMTX_DIR/mediamtx.yml"
 IP="192.168.50.153"
 RTSP_PORT="8554"
 LOG_DIR="/tmp/rtsp_streams"
+DB_PATH="${DB_PATH:-/var/lib/lightnvr/lightnvr.db}"
 
 mkdir -p "$LOG_DIR"
 
@@ -71,8 +73,9 @@ sleep 2
 echo "[+] MediaMTX PID: $(pgrep -f mediamtx)"
 
 # ── 5. Stream definitions ─────────────────────────────────────────────────────
-# Format: "name|resolution|fps|bitrate|pattern"
-# Patterns use ffmpeg lavfi test sources for variety
+# Format: "name|resolution|fps|bitrate|lavfi_source"
+# cam01-cam08: varied patterns/resolutions (original)
+# cam09-cam64: solid-color 640x480@10fps (low CPU, easy to identify)
 declare -a STREAMS=(
     "cam01|1920x1080|15|1500k|testsrc2=size=1920x1080:rate=15"
     "cam02|1280x720|15|800k|testsrc2=size=1280x720:rate=15"
@@ -82,6 +85,62 @@ declare -a STREAMS=(
     "cam06|640x480|25|500k|mandelbrot=size=640x480:rate=25"
     "cam07|1280x720|10|600k|smptebars=size=1280x720:rate=10"
     "cam08|1920x1080|10|1200k|smptehdbars=size=1920x1080:rate=10"
+    "cam09|640x480|10|250k|color=c=yellow:size=640x480:rate=10"
+    "cam10|640x480|10|250k|color=c=cyan:size=640x480:rate=10"
+    "cam11|640x480|10|250k|color=c=magenta:size=640x480:rate=10"
+    "cam12|640x480|10|250k|color=c=orange:size=640x480:rate=10"
+    "cam13|640x480|10|250k|color=c=purple:size=640x480:rate=10"
+    "cam14|640x480|10|250k|color=c=pink:size=640x480:rate=10"
+    "cam15|640x480|10|250k|color=c=lime:size=640x480:rate=10"
+    "cam16|640x480|10|250k|color=c=teal:size=640x480:rate=10"
+    "cam17|640x480|10|250k|color=c=crimson:size=640x480:rate=10"
+    "cam18|640x480|10|250k|color=c=royalblue:size=640x480:rate=10"
+    "cam19|640x480|10|250k|color=c=limegreen:size=640x480:rate=10"
+    "cam20|640x480|10|250k|color=c=hotpink:size=640x480:rate=10"
+    "cam21|640x480|10|250k|color=c=darkturquoise:size=640x480:rate=10"
+    "cam22|640x480|10|250k|color=c=darkviolet:size=640x480:rate=10"
+    "cam23|640x480|10|250k|color=c=darkorange:size=640x480:rate=10"
+    "cam24|640x480|10|250k|color=c=seagreen:size=640x480:rate=10"
+    "cam25|640x480|10|250k|color=c=dodgerblue:size=640x480:rate=10"
+    "cam26|640x480|10|250k|color=c=deeppink:size=640x480:rate=10"
+    "cam27|640x480|10|250k|color=c=springgreen:size=640x480:rate=10"
+    "cam28|640x480|10|250k|color=c=saddlebrown:size=640x480:rate=10"
+    "cam29|640x480|10|250k|color=c=slateblue:size=640x480:rate=10"
+    "cam30|640x480|10|250k|color=c=lightseagreen:size=640x480:rate=10"
+    "cam31|640x480|10|250k|color=c=firebrick:size=640x480:rate=10"
+    "cam32|640x480|10|250k|color=c=steelblue:size=640x480:rate=10"
+    "cam33|640x480|10|250k|color=c=chocolate:size=640x480:rate=10"
+    "cam34|640x480|10|250k|color=c=darkolivegreen:size=640x480:rate=10"
+    "cam35|640x480|10|250k|color=c=darkred:size=640x480:rate=10"
+    "cam36|640x480|10|250k|color=c=darkslateblue:size=640x480:rate=10"
+    "cam37|640x480|10|250k|color=c=peru:size=640x480:rate=10"
+    "cam38|640x480|10|250k|color=c=goldenrod:size=640x480:rate=10"
+    "cam39|640x480|10|250k|color=c=cadetblue:size=640x480:rate=10"
+    "cam40|640x480|10|250k|color=c=mediumseagreen:size=640x480:rate=10"
+    "cam41|640x480|10|250k|color=c=rosybrown:size=640x480:rate=10"
+    "cam42|640x480|10|250k|color=c=indigo:size=640x480:rate=10"
+    "cam43|640x480|10|250k|color=c=skyblue:size=640x480:rate=10"
+    "cam44|640x480|10|250k|color=c=sandybrown:size=640x480:rate=10"
+    "cam45|640x480|10|250k|color=c=yellowgreen:size=640x480:rate=10"
+    "cam46|640x480|10|250k|color=c=turquoise:size=640x480:rate=10"
+    "cam47|640x480|10|250k|color=c=violet:size=640x480:rate=10"
+    "cam48|640x480|10|250k|color=c=slategray:size=640x480:rate=10"
+    "cam49|640x480|10|250k|color=c=darksalmon:size=640x480:rate=10"
+    "cam50|640x480|10|250k|color=c=darkkhaki:size=640x480:rate=10"
+    "cam51|640x480|10|250k|color=c=lawngreen:size=640x480:rate=10"
+    "cam52|640x480|10|250k|color=c=salmon:size=640x480:rate=10"
+    "cam53|640x480|10|250k|color=c=cornflowerblue:size=640x480:rate=10"
+    "cam54|640x480|10|250k|color=c=burlywood:size=640x480:rate=10"
+    "cam55|640x480|10|250k|color=c=forestgreen:size=640x480:rate=10"
+    "cam56|640x480|10|250k|color=c=tomato:size=640x480:rate=10"
+    "cam57|640x480|10|250k|color=c=khaki:size=640x480:rate=10"
+    "cam58|640x480|10|250k|color=c=coral:size=640x480:rate=10"
+    "cam59|640x480|10|250k|color=c=sienna:size=640x480:rate=10"
+    "cam60|640x480|10|250k|color=c=plum:size=640x480:rate=10"
+    "cam61|640x480|10|250k|color=c=darkseagreen:size=640x480:rate=10"
+    "cam62|640x480|10|250k|color=c=mediumpurple:size=640x480:rate=10"
+    "cam63|640x480|10|250k|color=c=lightsalmon:size=640x480:rate=10"
+    "cam64|640x480|10|250k|color=c=mediumaquamarine:size=640x480:rate=10"
 )
 
 # Kill any old ffmpeg stream publishers
@@ -112,20 +171,45 @@ done
 
 echo ""
 echo "════════════════════════════════════════════════════════════════"
-echo "  8 RTSP Test Streams Ready"
+echo "  64 RTSP Test Streams Ready"
 echo "════════════════════════════════════════════════════════════════"
-echo ""
-echo "  rtsp://192.168.50.153:8554/cam01   1080p @ 15fps  ~1.5 Mbps  (testsrc2)"
-echo "  rtsp://192.168.50.153:8554/cam02    720p @ 15fps  ~0.8 Mbps  (testsrc2)"
-echo "  rtsp://192.168.50.153:8554/cam03   1080p @ 25fps  ~2.0 Mbps  (testsrc)"
-echo "  rtsp://192.168.50.153:8554/cam04    720p @ 25fps  ~1.0 Mbps  (testsrc)"
-echo "  rtsp://192.168.50.153:8554/cam05    480p @ 15fps  ~0.4 Mbps  (testsrc2)"
-echo "  rtsp://192.168.50.153:8554/cam06    720p @ 25fps  ~1.5 Mbps  (mandelbrot)"
-echo "  rtsp://192.168.50.153:8554/cam07    720p @ 10fps  ~0.6 Mbps  (SMPTEbars)"
-echo "  rtsp://192.168.50.153:8554/cam08   1080p @ 10fps  ~1.2 Mbps  (SMPTEhd)"
-echo ""
-echo "  Total approx bandwidth: ~8 Mbps"
+for STREAM in "${STREAMS[@]}"; do
+    IFS='|' read -r NAME RES FPS BITRATE LAVFI <<< "$STREAM"
+    printf "  rtsp://%s:%s/%-6s  %s @ %sfps  %s\n" \
+        "$IP" "$RTSP_PORT" "$NAME" "$RES" "$FPS" "$BITRATE"
+done
 echo ""
 echo "  Logs: $LOG_DIR/"
 echo "  Stop all: pkill -f mediamtx; pkill -f 'ffmpeg.*rtsp'"
 echo "════════════════════════════════════════════════════════════════"
+
+# ── 6. Register streams in LightNVR DB ───────────────────────────────────────
+if [ ! -f "$DB_PATH" ]; then
+    echo ""
+    echo "[!] LightNVR DB not found at $DB_PATH — skipping registration."
+    echo "    Re-run after LightNVR has initialised, or set DB_PATH=/path/to/lightnvr.db"
+    exit 0
+fi
+
+echo ""
+echo "[*] Registering streams in LightNVR DB: $DB_PATH"
+
+SQL="BEGIN;"
+for STREAM in "${STREAMS[@]}"; do
+    IFS='|' read -r NAME RES FPS BITRATE LAVFI <<< "$STREAM"
+    WIDTH=$(echo "$RES" | cut -dx -f1)
+    HEIGHT=$(echo "$RES" | cut -dx -f2)
+    URL="rtsp://${IP}:${RTSP_PORT}/${NAME}"
+    SQL+="
+INSERT OR IGNORE INTO streams
+    (name, url, enabled, streaming_enabled, width, height, fps, codec,
+     priority, record, segment_duration, record_audio, tags)
+VALUES
+    ('${NAME}','${URL}',1,1,${WIDTH},${HEIGHT},${FPS},'h264',5,0,60,0,'test');"
+done
+SQL+="
+COMMIT;
+SELECT COUNT(*) || ' test streams in DB' FROM streams WHERE tags='test';"
+
+sudo sqlite3 "$DB_PATH" "$SQL"
+echo "[+] Done. Restart LightNVR to pick up the new streams."
