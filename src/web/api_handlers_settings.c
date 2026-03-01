@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 
 #include <stdio.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -594,7 +595,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     if (max_storage_size && cJSON_IsNumber(max_storage_size)) {
         g_config.max_storage_size = max_storage_size->valueint;
         settings_changed = true;
-        log_info("Updated max_storage_size: %d", g_config.max_storage_size);
+        log_info("Updated max_storage_size: %" PRIu64, g_config.max_storage_size);
     }
     
     // Retention days

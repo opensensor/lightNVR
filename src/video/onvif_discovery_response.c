@@ -410,7 +410,7 @@ int receive_discovery_responses(onvif_device_info_t *devices, int max_devices) {
             // Log the source IP
             char ip_str[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &(addr.sin_addr), ip_str, INET_ADDRSTRLEN);
-            log_info("Received %d bytes from %s:%d", ret, ip_str, ntohs(addr.sin_port));
+            log_info("Received %d bytes from %s:%d", (int)ret, ip_str, ntohs(addr.sin_port));
             
             // Null-terminate the buffer
             buffer[ret] = '\0';
@@ -639,7 +639,7 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
             // Log the source IP
             char ip_str[INET_ADDRSTRLEN];
             inet_ntop(AF_INET, &(addr.sin_addr), ip_str, INET_ADDRSTRLEN);
-            log_info("Received %d bytes from %s:%d", ret, ip_str, ntohs(addr.sin_port));
+            log_info("Received %d bytes from %s:%d", (int)ret, ip_str, ntohs(addr.sin_port));
 
             // Null-terminate the buffer
             buffer[ret] = '\0';

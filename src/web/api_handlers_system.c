@@ -1169,9 +1169,9 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
     // Append filename to path
     snprintf(backup_path, sizeof(backup_path), "%s/backups/%s", g_config.web_root, backup_filename);
 
-    // Open backup file
-    FILE* backup_file = fopen(backup_path, "w");
-    if (!backup_file) {
+    // Open backup file with restricted permissions (owner read/write only)
+    int backup_fd = open(backup_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (backup_fd < 0) {
         log_error("Failed to create backup file: %s", strerror(errno));
 
         // Create error response using cJSON
@@ -1204,6 +1204,14 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
         // Clean up
         free(json_str);
         cJSON_Delete(error);
+        return;
+    }
+
+    FILE* backup_file = fdopen(backup_fd, "w");
+    if (!backup_file) {
+        log_error("Failed to open backup file stream: %s", strerror(errno));
+        close(backup_fd);
+        http_response_set_json_error(res, 500, "Failed to open backup file stream");
         return;
     }
 

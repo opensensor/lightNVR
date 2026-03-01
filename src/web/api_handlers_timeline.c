@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <dirent.h>
 #include <time.h>
 #include <pthread.h>
@@ -550,10 +551,17 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
     // Lock mutex for manifest creation
     pthread_mutex_lock(&manifest_mutex);
     
-    // Create manifest file
-    FILE *manifest = fopen(manifest_filename, "w");
-    if (!manifest) {
+    // Create manifest file with restricted permissions (owner read/write only)
+    int manifest_fd = open(manifest_filename, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (manifest_fd < 0) {
         log_error("Failed to create manifest file: %s", manifest_filename);
+        pthread_mutex_unlock(&manifest_mutex);
+        return -1;
+    }
+    FILE *manifest = fdopen(manifest_fd, "w");
+    if (!manifest) {
+        log_error("Failed to open manifest file stream: %s", manifest_filename);
+        close(manifest_fd);
         pthread_mutex_unlock(&manifest_mutex);
         return -1;
     }
