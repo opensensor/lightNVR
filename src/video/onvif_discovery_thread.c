@@ -77,7 +77,7 @@ void *discovery_thread_func(void *arg) {
         send_discovery_probe("239.255.255.250");
         
         // Receive responses
-        count = receive_discovery_responses(devices, MAX_DISCOVERED_DEVICES);
+        int count = receive_discovery_responses(devices, MAX_DISCOVERED_DEVICES);
         
         // Update discovered devices list
         pthread_mutex_lock(&g_discovery_mutex);
