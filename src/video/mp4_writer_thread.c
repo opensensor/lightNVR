@@ -317,45 +317,31 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         if (thread_ctx->segment_count % 10 == 0) {
             log_info("Stream %s has processed %d segments since startup", stream_name, thread_ctx->segment_count);
 
-            // Force a complete FFmpeg resource reset every 10 segments to prevent memory growth
-            log_info("Performing complete FFmpeg resource reset for stream %s after %d segments",
+            // Recycle the AVPacket every 10 segments to release any accumulated buffer
+            // memory without disturbing the live RTSP connection.
+            //
+            // BUGFIX (#156): The previous code also called avformat_close_input() here,
+            // which forced a full RTSP reconnect + avformat_find_stream_info() probe on
+            // every 10th segment boundary (~every 5 minutes at the default 30-second
+            // segment duration).  That probe takes 3-4 seconds and creates a visible
+            // recording gap.  The input context is designed to be reused across segments
+            // and must NOT be closed during this housekeeping pass.
+            log_info("Recycling AVPacket for stream %s after %d segments (RTSP connection kept alive)",
                     stream_name, thread_ctx->segment_count);
 
-            // MEMORY LEAK FIX: Ensure all FFmpeg resources are properly freed
-            // This is the most aggressive approach to prevent memory growth
-
-            // 1. Free the packet if it exists
+            // Free and reallocate the packet to release any retained buffer memory.
             if (pkt) {
                 av_packet_unref(pkt);
                 av_packet_free(&pkt);
                 pkt = NULL;
             }
-
-            // 2. BUGFIX: Close the per-stream input context if it exists
-            if (thread_ctx->input_ctx) {
-                // Flush all buffers before closing
-                if (thread_ctx->input_ctx->pb) {
-                    avio_flush(thread_ctx->input_ctx->pb);
-                }
-
-                // Close the input context - this will free all associated resources
-                // Let FFmpeg handle its own memory management
-                avformat_close_input(&thread_ctx->input_ctx);
-                thread_ctx->input_ctx = NULL;
-            }
-
-            // 3. Allocate a new packet
             pkt = av_packet_alloc();
             if (!pkt) {
-                log_error("Failed to allocate packet during FFmpeg resource reset");
-                // Continue anyway, the next iteration will try again
+                log_error("Failed to allocate packet during periodic recycle for stream %s", stream_name);
+                // Continue anyway — record_segment will allocate its own packet if needed
             }
 
-            // Re-detect video params after reset — resolution may have changed
-            thread_ctx->video_params_detected = false;
-
-            // Log that we've reset all FFmpeg resources
-            log_info("Successfully reset all FFmpeg resources for stream %s", stream_name);
+            log_info("Successfully recycled AVPacket for stream %s", stream_name);
         }
 
         // Record the segment with timestamp continuity and keyframe handling
