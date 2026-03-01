@@ -863,19 +863,26 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
                             // Skip loopback
                             if (strcmp(name, "lo") != 0) {
-                                // Validate interface name: only allow safe characters to prevent
-                                // path traversal when building /sys/class/net/<name>/... paths.
-                                // POSIX interface names are at most IFNAMSIZ-1 chars and must not
-                                // contain '/', '..' sequences, or characters outside [a-zA-Z0-9._-].
-                                bool name_safe = (name[0] != '\0');
-                                for (const char *np = name; *np && name_safe; np++) {
-                                    if (!isalnum((unsigned char)*np) &&
-                                        *np != '_' && *np != '-' && *np != '.') {
+                                // Validate the interface name and copy only allowed characters
+                                // into a fixed IFNAMSIZ buffer (safe_name).  POSIX names are at
+                                // most IFNAMSIZ-1 chars and may only contain [a-zA-Z0-9._-].
+                                // Reject empty, oversized, or ".." containing names to prevent
+                                // path traversal in /sys/class/net/<name>/... paths.
+                                char safe_name[IFNAMSIZ] = {0};
+                                size_t iface_len = strlen(name);
+                                bool name_safe = (iface_len > 0 && iface_len < IFNAMSIZ);
+                                if (name_safe) {
+                                    for (size_t ni = 0; ni < iface_len; ni++) {
+                                        if (!isalnum((unsigned char)name[ni]) &&
+                                            name[ni] != '_' && name[ni] != '-' && name[ni] != '.') {
+                                            name_safe = false;
+                                            break;
+                                        }
+                                        safe_name[ni] = name[ni];
+                                    }
+                                    if (name_safe && strstr(safe_name, "..") != NULL) {
                                         name_safe = false;
                                     }
-                                }
-                                if (name_safe && strstr(name, "..") != NULL) {
-                                    name_safe = false;
                                 }
                                 if (!name_safe) {
                                     continue; /* skip interfaces with unsafe names */
@@ -890,7 +897,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                     if (ioc_sock >= 0) {
                                         struct ifreq ifr;
                                         memset(&ifr, 0, sizeof(ifr));
-                                        strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+                                        strncpy(ifr.ifr_name, safe_name, IFNAMSIZ - 1);
                                         if (ioctl(ioc_sock, SIOCGIFADDR, &ifr) == 0) {
                                             struct sockaddr_in *sin =
                                                 (struct sockaddr_in *)&ifr.ifr_addr;
@@ -907,7 +914,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                     // Get MAC address
                                     char mac[128] = "Unknown";
                                     char mac_path[256];
-                                    snprintf(mac_path, sizeof(mac_path), "/sys/class/net/%s/address", name);
+                                    snprintf(mac_path, sizeof(mac_path), "/sys/class/net/%s/address", safe_name);
                                     FILE *mac_file = fopen(mac_path, "r");
                                     if (mac_file) {
                                         if (fgets(mac, sizeof(mac), mac_file)) {
@@ -921,7 +928,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
                                     // Check if interface is up
                                     char flags_path[256];
-                                    snprintf(flags_path, sizeof(flags_path), "/sys/class/net/%s/flags", name);
+                                    snprintf(flags_path, sizeof(flags_path), "/sys/class/net/%s/flags", safe_name);
                                     FILE *flags_file = fopen(flags_path, "r");
                                     bool is_up = false;
                                     if (flags_file) {

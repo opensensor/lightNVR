@@ -343,7 +343,8 @@ void load_default_config(config_t *config) {
     // Use the cmake-compiled-in path when available (set via -DGO2RTC_BINARY_PATH at build time),
     // falling back to the conventional system install location.
 #ifdef GO2RTC_BINARY_PATH
-    snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "%s", GO2RTC_BINARY_PATH);
+    strncpy(config->go2rtc_binary_path, GO2RTC_BINARY_PATH, MAX_PATH_LENGTH - 1);
+    config->go2rtc_binary_path[MAX_PATH_LENGTH - 1] = '\0';
 #else
     snprintf(config->go2rtc_binary_path, MAX_PATH_LENGTH, "/usr/local/bin/go2rtc");
 #endif
@@ -1107,12 +1108,19 @@ int load_config(config_t *config) {
     // First try to load from custom config path if specified
     if (g_custom_config_path[0] != '\0') {
         if (access(g_custom_config_path, R_OK) == 0) {
-            if (load_config_from_file(g_custom_config_path, config) == 0) {
-                log_info("Loaded configuration from custom path: %s", g_custom_config_path);
-                set_loaded_config_path(g_custom_config_path);
+            // Canonicalise the path via realpath() so that any remaining ".." or
+            // symlink components are resolved before the file is opened.
+            char resolved_custom_path[PATH_MAX];
+            const char *canon_path = realpath(g_custom_config_path, resolved_custom_path);
+            if (!canon_path) {
+                log_error("Failed to resolve config path '%s': %s",
+                          g_custom_config_path, strerror(errno));
+            } else if (load_config_from_file(canon_path, config) == 0) {
+                log_info("Loaded configuration from custom path: %s", canon_path);
+                set_loaded_config_path(canon_path);
                 loaded = 1;
             } else {
-                log_error("Failed to load configuration from custom path: %s", g_custom_config_path);
+                log_error("Failed to load configuration from custom path: %s", canon_path);
             }
         } else {
             log_error("Custom config file not accessible: %s", g_custom_config_path);
@@ -1317,17 +1325,47 @@ int save_config(const config_t *config, const char *path) {
         }
     }
     
+    // Build a canonical path by resolving the directory component with realpath()
+    // and rejoining the basename. This neutralises any ".." or symlink traversal
+    // remaining in save_path before the file descriptor is opened.
+    char canonical_save_path[PATH_MAX];
+    {
+        char tmp[MAX_PATH_LENGTH];
+        strncpy(tmp, save_path, MAX_PATH_LENGTH - 1);
+        tmp[MAX_PATH_LENGTH - 1] = '\0';
+        char *sl = strrchr(tmp, '/');
+        if (sl) {
+            const char *fname = sl + 1;
+            *sl = '\0'; /* tmp is now the directory portion */
+            char resolved_dir[PATH_MAX];
+            if (realpath(tmp, resolved_dir) == NULL) {
+                log_error("Cannot resolve config directory '%s': %s", tmp, strerror(errno));
+                return -1;
+            }
+            int n = snprintf(canonical_save_path, sizeof(canonical_save_path),
+                             "%s/%s", resolved_dir, fname);
+            if (n < 0 || (size_t)n >= sizeof(canonical_save_path)) {
+                log_error("Canonical config path too long");
+                return -1;
+            }
+        } else {
+            /* No directory separator — relative filename only */
+            strncpy(canonical_save_path, save_path, sizeof(canonical_save_path) - 1);
+            canonical_save_path[sizeof(canonical_save_path) - 1] = '\0';
+        }
+    }
+
     // Open the config file with 0600 permissions so passwords written to it
     // are not world-readable. Using open()+fdopen() instead of fopen() lets us
     // specify the mode explicitly and avoid relying on the process umask.
-    int config_fd = open(save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    int config_fd = open(canonical_save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (config_fd < 0) {
-        log_error("Could not open config file for writing: %s (error: %s)", save_path, strerror(errno));
+        log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
         return -1;
     }
     FILE *file = fdopen(config_fd, "w");
     if (!file) {
-        log_error("Could not open config file for writing: %s (error: %s)", save_path, strerror(errno));
+        log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
         close(config_fd);
         return -1;
     }

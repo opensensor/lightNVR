@@ -339,7 +339,9 @@ short ezxml_internal_dtd(ezxml_root_t root, char *s, size_t len)
             }
 
             for (i = 0, ent = (*c == '%') ? pe : root->ent; ent[i]; i++);
-            ent = realloc(ent, (i + 3) * sizeof(char *)); // space for next ent
+            { char **ent_tmp = realloc(ent, (i + 3) * sizeof(char *)); // space for next ent
+              if (!ent_tmp) { free(ent); break; }
+              ent = ent_tmp; }
             if (*c == '%') pe = ent;
             else root->ent = ent;
 
@@ -361,7 +363,7 @@ short ezxml_internal_dtd(ezxml_root_t root, char *s, size_t len)
             else *s = '\0'; // null terminate tag name
             for (i = 0; root->attr[i] && strcmp(n, root->attr[i][0]); i++);
 
-            while (*(n = ++s + strspn(s, EZXML_WS)) && *n != '>') {
+            while (s++, *(n = s + strspn(s, EZXML_WS)) && *n != '>') {
                 if (*(s = n + strcspn(n, EZXML_WS))) *s = '\0'; // attr name
                 else { ezxml_err(root, t, "malformed <!ATTLIST"); break; }
 
@@ -438,7 +440,11 @@ char *ezxml_str2utf8(char **s, size_t *len)
             c = (((c & 0x3FF) << 10) | (d & 0x3FF)) + 0x10000;
         }
 
-        while (l + 6 > max) u = realloc(u, max += EZXML_BUFSIZE);
+        while (l + 6 > max) {
+            char *utmp = realloc(u, max += EZXML_BUFSIZE);
+            if (!utmp) { free(u); return NULL; }
+            u = utmp;
+        }
         if (c < 0x80) u[l++] = c; // US-ASCII subset
         else { // multi-byte UTF-8 sequence
             for (b = 0, d = c; d; d /= 2) b++; // bits in c
@@ -611,7 +617,11 @@ ezxml_t ezxml_parse_fp(FILE *fp)
     if (! (s = malloc(EZXML_BUFSIZE))) return NULL;
     do {
         len += (l = fread((s + len), 1, EZXML_BUFSIZE, fp));
-        if (l == EZXML_BUFSIZE) s = realloc(s, len + EZXML_BUFSIZE);
+        if (l == EZXML_BUFSIZE) {
+            char *stmp = realloc(s, len + EZXML_BUFSIZE);
+            if (!stmp) { free(s); s = NULL; }
+            else s = stmp;
+        }
     } while (s && l == EZXML_BUFSIZE);
 
     if (! s) return NULL;
@@ -757,8 +767,12 @@ char *ezxml_toxml(ezxml_t xml)
         for (k = 2; root->pi[i][k - 1]; k++);
         for (j = 1; (n = root->pi[i][j]); j++) {
             if (root->pi[i][k][j - 1] == '>') continue; // not pre-root
-            while (len + strlen(t = root->pi[i][0]) + strlen(n) + 7 > max)
-                s = realloc(s, max += EZXML_BUFSIZE);
+            t = root->pi[i][0];
+            while (len + strlen(t) + strlen(n) + 7 > max) {
+                char *stmp = realloc(s, max += EZXML_BUFSIZE);
+                if (!stmp) { free(s); return NULL; }
+                s = stmp;
+            }
             len += sprintf(s + len, "<?%s%s%s?>\n", t, *n ? " " : "", n);
         }
     }
@@ -772,8 +786,12 @@ char *ezxml_toxml(ezxml_t xml)
         for (k = 2; root->pi[i][k - 1]; k++);
         for (j = 1; (n = root->pi[i][j]); j++) {
             if (root->pi[i][k][j - 1] == '<') continue; // not post-root
-            while (len + strlen(t = root->pi[i][0]) + strlen(n) + 7 > max)
-                s = realloc(s, max += EZXML_BUFSIZE);
+            t = root->pi[i][0];
+            while (len + strlen(t) + strlen(n) + 7 > max) {
+                char *stmp = realloc(s, max += EZXML_BUFSIZE);
+                if (!stmp) { free(s); return NULL; }
+                s = stmp;
+            }
             len += sprintf(s + len, "\n<?%s%s%s?>", t, *n ? " " : "", n);
         }
     }
