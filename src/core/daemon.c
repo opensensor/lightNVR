@@ -395,11 +395,13 @@ int stop_daemon(const char *pid_file) {
     pid_str[bytes_read] = '\0';
     
     // Parse the PID
-    pid_t pid;
-    if (sscanf(pid_str, "%d", &pid) != 1) {
+    char *end_ptr;
+    long pid_val = strtol(pid_str, &end_ptr, 10);
+    if (end_ptr == pid_str || pid_val <= 0) {
         log_error("Failed to parse PID from file %s", file_path);
         return -1;
     }
+    pid_t pid = (pid_t)pid_val;
 
     // First try SIGTERM for a graceful shutdown
     log_info("Sending SIGTERM to process %d", pid);
@@ -554,12 +556,14 @@ int daemon_status(const char *pid_file) {
     pid_str[bytes_read] = '\0';
     
     // Parse the PID
-    pid_t pid;
-    if (sscanf(pid_str, "%d", &pid) != 1) {
+    char *end_ptr2;
+    long pid_val2 = strtol(pid_str, &end_ptr2, 10);
+    if (end_ptr2 == pid_str || pid_val2 <= 0) {
         log_error("Failed to parse PID from file %s", file_path);
         return -1;
     }
-    
+    pid_t pid = (pid_t)pid_val2;
+
     // Check if process is running
     if (kill(pid, 0) == 0) {
         // Process is running

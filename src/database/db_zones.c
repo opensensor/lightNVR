@@ -74,7 +74,7 @@ static int json_to_polygon(const char *json, zone_point_t *polygon, int *count, 
 
         // Parse point
         float x, y;
-        if (sscanf(p, "{\"x\":%f,\"y\":%f}", &x, &y) == 2) {
+        if (sscanf(p, "{\"x\":%f,\"y\":%f}", &x, &y) == 2) { // NOLINT(cert-err34-c)
             polygon[*count].x = x;
             polygon[*count].y = y;
             (*count)++;

@@ -258,14 +258,22 @@ static int check_and_kill_existing_instance(const char *pid_file) {
     }
 
     // Read PID from file
-    pid_t existing_pid;
-    if (fscanf(fp, "%d", &existing_pid) != 1) {
+    char pid_buf[32] = {0};
+    if (!fgets(pid_buf, sizeof(pid_buf), fp)) {
         fclose(fp);
         log_warn("Invalid PID file format");
         unlink(pid_file);  // Remove invalid PID file
         return 0;
     }
     fclose(fp);
+    char *end_ptr;
+    long pid_val = strtol(pid_buf, &end_ptr, 10);
+    if (end_ptr == pid_buf || pid_val <= 0) {
+        log_warn("Invalid PID file format");
+        unlink(pid_file);  // Remove invalid PID file
+        return 0;
+    }
+    pid_t existing_pid = (pid_t)pid_val;
 
     // Check if process exists
     if (kill(existing_pid, 0) == 0) {

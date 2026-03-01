@@ -18,6 +18,7 @@
 #include "core/config.h"  // For MAX_PATH_LENGTH
 #include "video/detection_result.h"
 #include "video/detection_model.h"
+#include "video/detection_model_internal.h"
 #include "video/sod_detection.h"
 #ifdef SOD_ENABLED
 #include "sod/sod.h"
@@ -42,11 +43,7 @@ static sod_functions_t sod_funcs = {0};
 #endif /* SOD_ENABLED */
 static bool sod_available = false;
 
-// SOD model structure
-typedef struct {
-    void *model;                 // SOD model handle
-    float threshold;             // Detection threshold
-} sod_model_t;
+/* model_t is defined in detection_model_internal.h */
 
 // SOD box structure (for dynamic loading)
 typedef struct {
@@ -58,13 +55,6 @@ typedef struct {
     const char *zName;
     void *pUserData;
 } sod_box_dynamic;
-
-// Generic model structure
-typedef struct {
-    char type[16];               // Model type (sod)
-    sod_model_t sod;             // SOD model
-    char path[MAX_PATH_LENGTH];  // Path to the model file (for reference)
-} model_t;
 
 /**
  * Initialize the SOD detection system
@@ -158,10 +148,10 @@ void cleanup_sod_model(detection_model_t model) {
     log_info("Cleaning up SOD model: %s", m->path);
 
     // Clean up the SOD model - use a local variable to avoid double-free issues
-    void *sod_model_ptr = m->sod.model;
+    void *sod_model_ptr = m->sod;
 
     // Set the model pointer to NULL first to prevent double-free
-    m->sod.model = NULL;
+    m->sod = NULL;
 
     // Only destroy the model if the pointer is valid
     if (sod_model_ptr) {
@@ -275,8 +265,8 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
 
     // Initialize model structure
     strncpy(model->type, MODEL_TYPE_SOD, sizeof(model->type) - 1);
-    model->sod.model = sod_model;
-    model->sod.threshold = threshold;
+    model->sod = sod_model;
+    model->threshold = threshold;
 
     // Store the model path in the model structure
     strncpy(model->path, model_path, MAX_PATH_LENGTH - 1);
@@ -404,17 +394,17 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     log_info("Step 3: Successfully copied frame data to SOD image");
 
     // Step 3: Prepare the image for CNN detection
-    log_info("Step 4: Preparing image for CNN detection with model=%p", (void*)m->sod.model);
+    log_info("Step 4: Preparing image for CNN detection with model=%p", (void*)m->sod);
     float *prepared_data = NULL;
 
     // Extra safety check for model pointer
-    if (!m->sod.model) {
+    if (!m->sod) {
         log_error("Model pointer is NULL before preparing image");
         sod_free_image(img);
         return -1;
     }
 
-    prepared_data = sod_cnn_prepare_image(m->sod.model, img);
+    prepared_data = sod_cnn_prepare_image(m->sod, img);
     if (!prepared_data) {
         log_error("Failed to prepare image for CNN detection");
         sod_free_image(img);
@@ -429,7 +419,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     void **boxes_ptr = NULL;
 
     // Add extra safety check
-    if (!m->sod.model) {
+    if (!m->sod) {
         log_error("Model pointer is NULL before prediction");
         // prepared_data is freed when we free the image
         sod_free_image(img);
@@ -448,7 +438,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     }
 
     // Try-catch block to prevent segmentation faults
-    rc = sod_cnn_predict((sod_cnn*)m->sod.model, prepared_data, &boxes, &count);
+    rc = sod_cnn_predict((sod_cnn*)m->sod, prepared_data, &boxes, &count);
     log_info("Step 7: sod_cnn_predict returned with rc=%d, count=%d", rc, count);
 
     if (rc != 0) { // SOD_OK is 0
@@ -547,7 +537,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
         h = (h < 0.0f) ? 0.0f : (h > 1.0f ? 1.0f : h);
 
         // Apply threshold
-        if (confidence < m->sod.threshold) {
+        if (confidence < m->threshold) {
             log_info("Detection %d below threshold: %s (%.2f%%) at [%.2f, %.2f, %.2f, %.2f]",
                     i, label, confidence * 100.0f, x, y, w, h);
             continue;
