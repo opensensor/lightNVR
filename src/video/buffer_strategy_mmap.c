@@ -48,7 +48,7 @@ typedef struct {
 } __attribute__((packed)) mmap_packet_entry_t;
 
 #define MMAP_MAGIC 0x4D4D5056            // "MMPV" - mmap packet video
-#define MAX_PACKET_SIZE (256 * 1024)     // 256KB max per packet
+#define MAX_PACKET_SIZE ((size_t)256 * 1024)     // 256KB max per packet
 #define ENTRY_SIZE(data_sz) (sizeof(mmap_packet_entry_t) + (data_sz))
 #define ENTRY_ALIGNED_SIZE(data_sz) (((ENTRY_SIZE(data_sz) + 4095) / 4096) * 4096)
 

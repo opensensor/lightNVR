@@ -39,7 +39,7 @@ bool is_embedded_device(void) {
         fclose(meminfo);
         
         // If total memory is less than 512MB, consider it an embedded device
-        if (total_mem_kb > 0 && total_mem_kb < 512 * 1024) {
+        if (total_mem_kb > 0 && total_mem_kb < 512UL * 1024) {
             log_info("Detected embedded device with %lu KB RAM", total_mem_kb);
             is_embedded = true;
             checked = true;
@@ -107,7 +107,7 @@ int get_downscale_factor(const char *model_type) {
             fclose(meminfo);
             
             // If available memory is very low (less than 50MB), use more aggressive downscaling
-            if (available_mem_kb > 0 && available_mem_kb < 50 * 1024) {
+            if (available_mem_kb > 0 && available_mem_kb < 50UL * 1024) {
                 log_warn("Very low memory available (%lu KB), using more aggressive downscaling", 
                         available_mem_kb);
                 downscale = 4; // More aggressive downscaling
@@ -240,16 +240,16 @@ size_t calculate_detection_memory_requirements(int width, int height, int channe
     downscaled_height = (downscaled_height / 2) * 2;
     
     // Calculate memory requirements
-    size_t frame_size = downscaled_width * downscaled_height * channels;
-    
+    size_t frame_size = (size_t)downscaled_width * downscaled_height * channels;
+
     // Add memory for model and other data structures
     size_t model_size = 0;
     if (strcmp(model_type, MODEL_TYPE_SOD) == 0) {
         // CNN models are larger
-        model_size = 20 * 1024 * 1024; // 20MB for CNN model
+        model_size = (size_t)20 * 1024 * 1024; // 20MB for CNN model
     } else if (strcmp(model_type, MODEL_TYPE_SOD_REALNET) == 0) {
         // RealNet models are smaller
-        model_size = 5 * 1024 * 1024; // 5MB for RealNet model
+        model_size = (size_t)5 * 1024 * 1024; // 5MB for RealNet model
     }
     
     // Add memory for buffer pool

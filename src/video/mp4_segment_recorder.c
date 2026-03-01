@@ -1153,8 +1153,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         consecutive_timestamp_errors = 0;
                     } else {
                         // Force a larger increment for the next packet to avoid timestamp issues
-                        last_video_dts += 100 * consecutive_timestamp_errors;
-                        last_video_pts += 100 * consecutive_timestamp_errors;
+                        last_video_dts += (int64_t)100 * consecutive_timestamp_errors;
+                        last_video_pts += (int64_t)100 * consecutive_timestamp_errors;
                     }
                 }
             } else {
@@ -1395,8 +1395,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         consecutive_timestamp_errors = 0;
                     } else {
                         // Force a larger increment for the next packet to avoid timestamp issues
-                        last_audio_dts += 100 * consecutive_timestamp_errors;
-                        last_audio_pts += 100 * consecutive_timestamp_errors;
+                        last_audio_dts += (int64_t)100 * consecutive_timestamp_errors;
+                        last_audio_pts += (int64_t)100 * consecutive_timestamp_errors;
                     }
                 }
             } else {

@@ -139,7 +139,7 @@ static int is_port_open(const char *ip_addr, int port, int timeout_ms) {
         if (errno == EINPROGRESS) {
             // Connection in progress, wait for result
             tv.tv_sec = timeout_ms / 1000;
-            tv.tv_usec = (timeout_ms % 1000) * 1000;
+            tv.tv_usec = (long)(timeout_ms % 1000) * 1000;
             
             FD_ZERO(&fdset);
             FD_SET(sock, &fdset);

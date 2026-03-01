@@ -66,7 +66,7 @@ int cleanup_old_recordings(const char *stream_name, int retention_days) {
     time_t timestamps[1000];
     uint64_t sizes[1000];
     
-    time_t cutoff_time = time(NULL) - (retention_days * 24 * 60 * 60);
+    time_t cutoff_time = time(NULL) - ((time_t)retention_days * 24 * 60 * 60);
     
     int count = get_motion_recordings_list(stream_name, 0, cutoff_time, paths, timestamps, sizes, 1000);
     if (count < 0) {

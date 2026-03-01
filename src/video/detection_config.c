@@ -85,7 +85,7 @@ int init_detection_config(void) {
         fclose(meminfo);
 
         // If total memory is less than 512MB, use embedded configuration
-        if (total_mem_kb > 0 && total_mem_kb < 512 * 1024) {
+        if (total_mem_kb > 0 && total_mem_kb < 512UL * 1024) {
             log_info("Detected embedded device with %lu KB RAM, using embedded configuration", total_mem_kb);
             current_config = &embedded_config;
         }

@@ -420,7 +420,7 @@ static bool is_port_open(const char *host, int port, int timeout_ms) {
             if (errno == EINPROGRESS) {
                 // Connection in progress, wait for it
                 tv.tv_sec = timeout_ms / 1000;
-                tv.tv_usec = (timeout_ms % 1000) * 1000;
+                tv.tv_usec = (long)(timeout_ms % 1000) * 1000;
                 FD_ZERO(&fdset);
                 FD_SET(sockfd, &fdset);
 

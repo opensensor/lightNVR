@@ -317,8 +317,8 @@ static char *extract_subscription_address(const char *response) {
     };
 
     for (int i = 0; i < 3; i++) {
-        const char *start = strstr(response, patterns[i*2]);
-        const char *end = strstr(response, patterns[i*2+1]);
+        const char *start = strstr(response, patterns[(ptrdiff_t)i*2]);
+        const char *end = strstr(response, patterns[(ptrdiff_t)i*2+1]);
         
         if (start && end) {
             start += strlen(patterns[i*2]);

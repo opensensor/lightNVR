@@ -499,7 +499,7 @@ bool is_motion_detection_enabled(const char *stream_name) {
  * Convert RGB frame to grayscale - optimized for embedded devices
  */
 static unsigned char *rgb_to_grayscale(const unsigned char *rgb_data, int width, int height) {
-    unsigned char *gray_data = (unsigned char *)malloc(width * height);
+    unsigned char *gray_data = (unsigned char *)malloc((size_t)width * height);
     if (!gray_data) {
         log_error("Failed to allocate memory for grayscale conversion");
         return NULL;
@@ -555,12 +555,12 @@ static unsigned char *downscale_grayscale(const unsigned char *src, int width, i
                                          int *out_width, int *out_height) {
     if (factor <= 1) {
         // No downscaling needed
-        unsigned char *copy = (unsigned char *)malloc(width * height);
+        unsigned char *copy = (unsigned char *)malloc((size_t)width * height);
         if (!copy) {
             log_error("Failed to allocate memory for image copy");
             return NULL;
         }
-        memcpy(copy, src, width * height);
+        memcpy(copy, src, (size_t)width * height);
         *out_width = width;
         *out_height = height;
         return copy;
@@ -575,7 +575,7 @@ static unsigned char *downscale_grayscale(const unsigned char *src, int width, i
     if (new_height < 32) new_height = 32;
     
     // Allocate memory for downscaled image
-    unsigned char *dst = (unsigned char *)malloc(new_width * new_height);
+    unsigned char *dst = (unsigned char *)malloc((size_t)new_width * new_height);
     if (!dst) {
         log_error("Failed to allocate memory for downscaled image");
         return NULL;
@@ -611,7 +611,7 @@ static unsigned char *downscale_grayscale(const unsigned char *src, int width, i
 static void apply_box_blur(unsigned char *src, unsigned char *dst, int width, int height, int radius) {
     // Skip if radius is 0
     if (radius <= 0) {
-        memcpy(dst, src, width * height);
+        memcpy(dst, src, (size_t)width * height);
         return;
     }
 
@@ -654,13 +654,13 @@ static void apply_box_blur(unsigned char *src, unsigned char *dst, int width, in
     }
     
     // Vertical pass (using dst as source and writing back to dst)
-    unsigned char *temp = (unsigned char *)malloc(width * height);
+    unsigned char *temp = (unsigned char *)malloc((size_t)width * height);
     if (!temp) {
         // If memory allocation fails, just return the horizontal blur
         return;
     }
-    
-    memcpy(temp, dst, width * height);
+
+    memcpy(temp, dst, (size_t)width * height);
     
     for (int x = 0; x < width; x++) {
         // Initialize sliding window sum for the column
@@ -919,13 +919,13 @@ static void add_frame_to_history(motion_stream_t *stream, const unsigned char *f
     }
 
     // Allocate and copy new frame
-    stream->frame_history[stream->history_index].frame = (unsigned char *)malloc(stream->width * stream->height);
+    stream->frame_history[stream->history_index].frame = (unsigned char *)malloc((size_t)stream->width * stream->height);
     if (!stream->frame_history[stream->history_index].frame) {
         log_error("Failed to allocate memory for frame history");
         return;
     }
 
-    memcpy(stream->frame_history[stream->history_index].frame, frame, stream->width * stream->height);
+    memcpy(stream->frame_history[stream->history_index].frame, frame, (size_t)stream->width * stream->height);
     stream->frame_history[stream->history_index].timestamp = timestamp;
 
     // Update index
@@ -1240,7 +1240,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
     update_background_model(stream->background, stream->blur_buffer, processing_width, processing_height, learning_rate);
 
     // Copy current blurred frame to previous frame buffer for next comparison
-    memcpy(stream->prev_frame, stream->blur_buffer, processing_width * processing_height);
+    memcpy(stream->prev_frame, stream->blur_buffer, (size_t)processing_width * processing_height);
 
     if (motion_detected) {
         // Update last detection time

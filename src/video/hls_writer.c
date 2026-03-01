@@ -672,8 +672,8 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     // Cap unreasonable PTS/DTS differences
     if (out_pkt_ptr->pts != AV_NOPTS_VALUE && out_pkt_ptr->dts != AV_NOPTS_VALUE) {
         int64_t pts_dts_diff = out_pkt_ptr->pts - out_pkt_ptr->dts;
-        if (pts_dts_diff > 90000 * 10) {
-            out_pkt_ptr->pts = out_pkt_ptr->dts + 90000 * 5; // 5 seconds max difference
+        if (pts_dts_diff > (int64_t)90000 * 10) {
+            out_pkt_ptr->pts = out_pkt_ptr->dts + (int64_t)90000 * 5; // 5 seconds max difference
         }
     }
 
