@@ -52,7 +52,7 @@ int init_detection_integration(void) {
     }
 
     // Get configuration
-    detection_config_t *config = get_detection_config();
+    const detection_config_t *config = get_detection_config();
     if (!config) {
         log_error("Failed to get detection configuration");
         return -1;
@@ -185,7 +185,7 @@ bool is_detection_in_progress(const char *stream_name) {
 
     // Check if this stream is in the active list
     for (int i = 0; i < max_detections; i++) {
-        char *active_stream = active_detection_streams + (ptrdiff_t)i * MAX_STREAM_NAME;
+        const char *active_stream = active_detection_streams + (ptrdiff_t)i * MAX_STREAM_NAME;
         if (active_stream[0] != '\0' && strcmp(active_stream, stream_name) == 0) {
             return true;
         }

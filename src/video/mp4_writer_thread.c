@@ -229,7 +229,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 // Create timestamp for new MP4 filename
                 char timestamp_str[32];
                 struct tm tm_buf;
-                struct tm *tm_info = localtime_r(&current_time, &tm_buf);
+                const struct tm *tm_info = localtime_r(&current_time, &tm_buf);
                 strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
                 // Create new output path
@@ -433,7 +433,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             if (thread_ctx->writer && thread_ctx->writer->output_dir[0] != '\0') {
                 time_t retry_ts = time(NULL);
                 struct tm retry_tm_buf;
-                struct tm *retry_tm = localtime_r(&retry_ts, &retry_tm_buf);
+                const struct tm *retry_tm = localtime_r(&retry_ts, &retry_tm_buf);
                 if (retry_tm) {
                     char retry_ts_str[32];
                     strftime(retry_ts_str, sizeof(retry_ts_str), "%Y%m%d_%H%M%S", retry_tm);
@@ -794,7 +794,7 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
         return 1;
     }
 
-    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)writer->thread_ctx;
+    const mp4_writer_thread_t *thread_ctx = (const mp4_writer_thread_t *)writer->thread_ctx;
     if (!thread_ctx) {
         return 0;
     }

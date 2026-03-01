@@ -253,7 +253,7 @@ size_t calculate_detection_memory_requirements(int width, int height, int channe
     }
     
     // Add memory for buffer pool
-    detection_config_t *config = get_detection_config();
+    const detection_config_t *config = get_detection_config();
     size_t buffer_pool_size = config ? config->buffer_pool_size * frame_size : 4 * frame_size;
     
     // Total memory requirements

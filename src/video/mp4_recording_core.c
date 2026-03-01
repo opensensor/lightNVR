@@ -552,13 +552,13 @@ int start_mp4_recording(const char *stream_name) {
     strncpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type) - 1);
 
     // Create output paths
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
 
     // Create timestamp for MP4 filename
     char timestamp_str[32];
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
     // Create MP4 directory path
@@ -714,13 +714,13 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     strncpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type) - 1);
 
     // Create output paths
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
 
     // Create timestamp for MP4 filename
     char timestamp_str[32];
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
     // Create MP4 directory path
@@ -943,13 +943,13 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     }
 
     // Create output paths
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
 
     // Create timestamp for MP4 filename
     char timestamp_str[32];
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
     // Create MP4 directory path
@@ -1089,13 +1089,13 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     }
 
     // Create output paths
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
 
     // Create timestamp for MP4 filename
     char timestamp_str[32];
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
 
     // Create MP4 directory path

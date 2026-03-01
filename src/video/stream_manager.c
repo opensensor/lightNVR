@@ -242,7 +242,7 @@ int init_stream_manager(int max_streams) {
     // Create stream state managers for all existing streams and register with go2rtc
     for (int i = 0; i < streams_capacity; i++) {
         if (streams[i].config.name[0] != '\0') {
-            stream_state_manager_t *state = get_stream_state_by_name(streams[i].config.name);
+            const stream_state_manager_t *state = get_stream_state_by_name(streams[i].config.name);
             if (!state) {
                 state = create_stream_state(&streams[i].config);
                 if (!state) {
@@ -616,7 +616,7 @@ stream_handle_t add_stream(const stream_config_t *config) {
     pthread_mutex_unlock(&streams[slot].mutex);
 
     // Create a stream state manager for this stream
-    stream_state_manager_t *state = get_stream_state_by_name(config->name);
+    const stream_state_manager_t *state = get_stream_state_by_name(config->name);
     if (!state) {
         state = create_stream_state(config);
         if (!state) {

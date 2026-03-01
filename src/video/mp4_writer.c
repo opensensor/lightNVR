@@ -57,7 +57,7 @@ void mp4_writer_set_audio(mp4_writer_t *writer, int enable) {
  * @param writer The MP4 writer instance
  * @return The current output path or NULL if writer is NULL
  */
-const char *mp4_writer_get_output_path(mp4_writer_t *writer) {
+const char *mp4_writer_get_output_path(const mp4_writer_t *writer) {
     if (!writer) {
         return NULL;
     }
@@ -71,7 +71,7 @@ const char *mp4_writer_get_output_path(mp4_writer_t *writer) {
  * @param writer The MP4 writer instance
  * @return The current output directory or NULL if writer is NULL
  */
-const char *mp4_writer_get_output_dir(mp4_writer_t *writer) {
+const char *mp4_writer_get_output_dir(const mp4_writer_t *writer) {
     if (!writer) {
         return NULL;
     }
@@ -85,7 +85,7 @@ const char *mp4_writer_get_output_dir(mp4_writer_t *writer) {
  * @param writer The MP4 writer instance
  * @return The stream name or NULL if writer is NULL
  */
-const char *mp4_writer_get_stream_name(mp4_writer_t *writer) {
+const char *mp4_writer_get_stream_name(const mp4_writer_t *writer) {
     if (!writer) {
         return NULL;
     }
@@ -99,7 +99,7 @@ const char *mp4_writer_get_stream_name(mp4_writer_t *writer) {
  * @param writer The MP4 writer instance
  * @return The segment duration in seconds or 0 if writer is NULL
  */
-int mp4_writer_get_segment_duration(mp4_writer_t *writer) {
+int mp4_writer_get_segment_duration(const mp4_writer_t *writer) {
     if (!writer) {
         return 0;
     }
@@ -113,7 +113,7 @@ int mp4_writer_get_segment_duration(mp4_writer_t *writer) {
  * @param writer The MP4 writer instance
  * @return 1 if audio is enabled, 0 if disabled or writer is NULL
  */
-int mp4_writer_has_audio(mp4_writer_t *writer) {
+int mp4_writer_has_audio(const mp4_writer_t *writer) {
     if (!writer) {
         return 0;
     }

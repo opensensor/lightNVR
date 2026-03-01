@@ -111,7 +111,7 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     char mp4_path[MAX_PATH_LENGTH];
     
     // Get the MP4 writer for this stream to get the actual path
-    mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
+    const mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
     if (mp4_writer && mp4_writer->output_path) {
         // Use the actual MP4 file path from the writer
         strncpy(mp4_path, mp4_writer->output_path, sizeof(mp4_path) - 1);
@@ -258,7 +258,7 @@ void stop_recording(const char *stream_name) {
             update_recording_metadata(recording_id, end_time, total_size, true);
             
             // Get the MP4 writer for this stream
-            mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
+            const mp4_writer_t *mp4_writer = get_mp4_writer_for_stream(stream_name);
             if (mp4_writer) {
                 // Update the file path in the database with the actual MP4 path
                 recording_metadata_t metadata;
@@ -341,7 +341,7 @@ static bool find_first_mp4_in_dir(const char *dir_path, const char *prefix,
     if (!d) return false;
 
     char best[256] = {0}; /* lexicographically smallest match */
-    struct dirent *entry;
+    const struct dirent *entry;
 
     while ((entry = readdir(d)) != NULL) {
         const char *name = entry->d_name;
@@ -387,13 +387,13 @@ int find_mp4_recording(const char *stream_name, time_t timestamp, char *mp4_path
     }
 
     // Get global config for storage paths
-    config_t *global_config = get_streaming_config();
+    const config_t *global_config = get_streaming_config();
     char base_path[256];
 
     // Format timestamp for pattern matching
     char timestamp_str[32];
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&timestamp, &tm_buf);
+    const struct tm *tm_info = localtime_r(&timestamp, &tm_buf);
     strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M", tm_info);
 
     // Build the filename prefix used for all searches

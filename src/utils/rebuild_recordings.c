@@ -396,7 +396,7 @@ static bool process_directory(const char *dir_path, int *processed_count, int *a
  */
 static bool process_directory(const char *dir_path, int *processed_count, int *added_count) {
     DIR *dir;
-    struct dirent *entry;
+    const struct dirent *entry;
     char file_path[MAX_PATH_LENGTH];
     struct stat st;
     int initial_added_count = *added_count;
@@ -462,7 +462,7 @@ static bool process_directory(const char *dir_path, int *processed_count, int *a
  */
 static bool scan_directory(const char *base_dir, int *processed_count, int *added_count) {
     DIR *dir;
-    struct dirent *entry;
+    const struct dirent *entry;
     char path[MAX_PATH_LENGTH];
     struct stat st;
     
@@ -507,7 +507,7 @@ static bool scan_directory(const char *base_dir, int *processed_count, int *adde
 /**
  * Main function
  */
-int main(int argc, char *argv[]) {
+int main(int argc, const char *argv[]) {
     char storage_path[MAX_PATH_LENGTH];
     char mp4_path[MAX_PATH_LENGTH];
     int processed_count = 0;
