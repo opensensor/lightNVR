@@ -20,6 +20,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <dirent.h>
+#include <limits.h>
 
 #include "web/api_handlers.h"
 #include "core/logger.h"
@@ -915,7 +916,13 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                     char mac[128] = "Unknown";
                                     char mac_path[256];
                                     snprintf(mac_path, sizeof(mac_path), "/sys/class/net/%s/address", safe_name);
-                                    FILE *mac_file = fopen(mac_path, "r");
+                                    // Resolve the path to prevent path traversal via symlinks
+                                    char resolved_mac_path[PATH_MAX];
+                                    FILE *mac_file = NULL;
+                                    if (realpath(mac_path, resolved_mac_path) != NULL &&
+                                        strncmp(resolved_mac_path, "/sys/", 5) == 0) {
+                                        mac_file = fopen(resolved_mac_path, "r");
+                                    }
                                     if (mac_file) {
                                         if (fgets(mac, sizeof(mac), mac_file)) {
                                             // Remove newline
@@ -929,7 +936,13 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                     // Check if interface is up
                                     char flags_path[256];
                                     snprintf(flags_path, sizeof(flags_path), "/sys/class/net/%s/flags", safe_name);
-                                    FILE *flags_file = fopen(flags_path, "r");
+                                    // Resolve the path to prevent path traversal via symlinks
+                                    char resolved_flags_path[PATH_MAX];
+                                    FILE *flags_file = NULL;
+                                    if (realpath(flags_path, resolved_flags_path) != NULL &&
+                                        strncmp(resolved_flags_path, "/sys/", 5) == 0) {
+                                        flags_file = fopen(resolved_flags_path, "r");
+                                    }
                                     bool is_up = false;
                                     if (flags_file) {
                                         char flags_buf[32] = {0};
