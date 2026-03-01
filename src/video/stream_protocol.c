@@ -93,7 +93,7 @@ bool is_multicast_url(const char *url) {
 
     // Parse IP address with additional validation
     unsigned int a = 0, b = 0, c = 0, d = 0;
-    if (sscanf(ip_buffer, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+    if (sscanf(ip_buffer, "%u.%u.%u.%u", &a, &b, &c, &d) == 4) { // NOLINT(cert-err34-c)
         // Validate IP address components
         if (a > 255 || b > 255 || c > 255 || d > 255) {
             log_warn("Invalid IP address components in URL: %s", url);
