@@ -177,7 +177,7 @@ static int create_directory(const char *path) {
                 return -1;
             }
 
-            char *parent_dir = dirname(parent_path);
+            const char *parent_dir = dirname(parent_path);
             int ret = create_directory(parent_dir);
             free(parent_path);
 
@@ -216,7 +216,7 @@ int set_log_file(const char *filename) {
         return -1;
     }
 
-    char *dir = dirname(dir_path);
+    const char *dir = dirname(dir_path);
     if (create_directory(dir) != 0) {
         free(dir_path);
         pthread_mutex_unlock(&logger.mutex);
@@ -344,7 +344,7 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
 
         time_t now;
         struct tm tm_buf;
-        struct tm *tm_info;
+        const struct tm *tm_info;
         char timestamp[32];
         time(&now);
         tm_info = localtime_r(&now, &tm_buf);
@@ -365,7 +365,7 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
 
     time_t now;
     struct tm tm_buf;
-    struct tm *tm_info;
+    const struct tm *tm_info;
     char timestamp[32];
     char iso_timestamp[32];
 

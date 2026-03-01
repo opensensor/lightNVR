@@ -171,17 +171,17 @@ static void apply_env_overrides(config_t *config) {
 
         switch (mapping->type) {
             case CONFIG_TYPE_BOOL: {
-                bool *bool_ptr = (bool *)field_ptr;
+                const bool *bool_ptr = (const bool *)field_ptr;
                 is_default = (*bool_ptr == mapping->default_bool_value);
                 break;
             }
             case CONFIG_TYPE_INT: {
-                int *int_ptr = (int *)field_ptr;
+                const int *int_ptr = (const int *)field_ptr;
                 is_default = (*int_ptr == mapping->default_int_value);
                 break;
             }
             case CONFIG_TYPE_STRING: {
-                char *str_ptr = (char *)field_ptr;
+                const char *str_ptr = (const char *)field_ptr;
                 is_default = is_string_default(str_ptr, mapping->default_str_value);
                 break;
             }
@@ -428,7 +428,7 @@ static int create_directory(const char *path) {
                 return -1;
             }
             
-            char *parent_dir = dirname(parent_path);
+            const char *parent_dir = dirname(parent_path);
             int ret = create_directory(parent_dir);
             free(parent_path);
             

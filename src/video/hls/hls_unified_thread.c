@@ -2595,17 +2595,17 @@ int stop_hls_unified_stream(const char *stream_name) {
     stream_state_manager_t *state = get_stream_state_by_name(stream_name);
     if (state) {
         // Only disable callbacks if we're actually stopping the stream
-        bool found = false;
+        bool ctx_found = false;
         pthread_mutex_lock(&unified_contexts_mutex);
         for (int i = 0; i < g_config.max_streams; i++) {
             if (unified_contexts[i] && strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
-                found = true;
+                ctx_found = true;
                 break;
             }
         }
         pthread_mutex_unlock(&unified_contexts_mutex);
 
-        if (found) {
+        if (ctx_found) {
             // Disable callbacks to prevent new packets from being processed
             set_stream_callbacks_enabled(state, false);
             log_info("Disabled callbacks for stream %s during HLS shutdown", stream_name);
