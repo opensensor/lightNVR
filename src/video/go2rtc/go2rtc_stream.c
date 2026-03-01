@@ -888,7 +888,7 @@ bool go2rtc_stream_start_service(void) {
                 }
 
                 log_warn("Checking go2rtc log file: %s", log_path);
-                fp = fopen(log_path, "r");
+                FILE *fp = fopen(log_path, "r");
                 if (fp) {
                     char log_line[1024];
                     int lines = 0;

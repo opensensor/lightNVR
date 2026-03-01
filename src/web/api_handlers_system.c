@@ -52,19 +52,43 @@ static bool get_detector_memory_usage(unsigned long long *memory_usage) {
     // Initialize to 0
     *memory_usage = 0;
 
-    // Find light-object-detect process using pgrep
-    FILE *fp = popen("pgrep -f 'light-object-detect' 2>/dev/null | head -1", "r");
-    if (!fp) {
-        log_debug("Failed to execute pgrep for light-object-detect");
+    // Find light-object-detect process by scanning /proc (no shell / popen needed)
+    pid_t pid = -1;
+    pid_t self = getpid();
+    DIR *proc_dir = opendir("/proc");
+    if (!proc_dir) {
+        log_debug("Failed to open /proc for light-object-detect search");
         return false;
     }
 
-    char line[32];
-    pid_t pid = -1;
-    if (fgets(line, sizeof(line), fp)) {
-        pid = (pid_t)strtol(line, NULL, 10);
+    struct dirent *entry;
+    while ((entry = readdir(proc_dir)) != NULL) {
+        const char *d = entry->d_name;
+        if (*d < '1' || *d > '9') continue;
+        char *ep;
+        pid_t candidate = (pid_t)strtol(d, &ep, 10);
+        if (*ep != '\0' || candidate <= 0 || candidate == self) continue;
+
+        char cmdline_path[64];
+        snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%d/cmdline", candidate);
+        FILE *cf = fopen(cmdline_path, "r");
+        if (!cf) continue;
+
+        char cmdline[512] = {0};
+        size_t bytes = fread(cmdline, 1, sizeof(cmdline) - 1, cf);
+        fclose(cf);
+
+        // cmdline fields are NUL-separated — replace with spaces for strstr
+        for (size_t i = 0; i < bytes; i++) {
+            if (cmdline[i] == '\0') cmdline[i] = ' ';
+        }
+
+        if (strstr(cmdline, "light-object-detect")) {
+            pid = candidate;
+            break;
+        }
     }
-    pclose(fp);
+    closedir(proc_dir);
 
     if (pid <= 0) {
         log_debug("No light-object-detect process found");
