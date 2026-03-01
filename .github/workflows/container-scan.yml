@@ -39,7 +39,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         id: trivy-sarif
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: 'lightnvr:scan'
           format: 'sarif'
@@ -56,7 +56,7 @@ jobs:
           category: 'container-scanning'
 
       - name: Run Trivy (table output for logs)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.34.1
         with:
           image-ref: 'lightnvr:scan'
           format: 'table'
