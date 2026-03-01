@@ -1335,6 +1335,7 @@ int save_config(const config_t *config, const char *path) {
         case LOG_LOCAL5: facility_name = "LOG_LOCAL5"; break;
         case LOG_LOCAL6: facility_name = "LOG_LOCAL6"; break;
         case LOG_LOCAL7: facility_name = "LOG_LOCAL7"; break;
+        default: /* facility_name already set to "LOG_USER" above */ break;
     }
     fprintf(file, "syslog_facility = %s  ; Syslog facility for system logging\n\n", facility_name);
     

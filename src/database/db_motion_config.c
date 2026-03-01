@@ -204,6 +204,7 @@ int load_all_motion_configs(motion_recording_config_t *configs, char stream_name
         return -1;
     }
 
+    rc = SQLITE_OK;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_count) {
         const char *stream_name = (const char *)sqlite3_column_text(stmt, 0);
         if (stream_name) {
@@ -231,6 +232,10 @@ int load_all_motion_configs(motion_recording_config_t *configs, char stream_name
 
             count++;
         }
+    }
+
+    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+        log_warn("load_all_motion_configs: sqlite3_step returned %d", rc);
     }
 
     sqlite3_finalize(stmt);
@@ -480,6 +485,7 @@ int get_motion_recordings_list(const char *stream_name,
     }
     sqlite3_bind_int(stmt, param_idx, max_count);
 
+    rc = SQLITE_OK;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_count) {
         const char *file_path = (const char *)sqlite3_column_text(stmt, 0);
         if (file_path) {
@@ -489,6 +495,10 @@ int get_motion_recordings_list(const char *stream_name,
             sizes[count] = sqlite3_column_int64(stmt, 2);
             count++;
         }
+    }
+
+    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+        log_warn("get_motion_recordings_in_range: sqlite3_step returned %d", rc);
     }
 
     sqlite3_finalize(stmt);

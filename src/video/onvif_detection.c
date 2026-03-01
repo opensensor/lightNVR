@@ -321,7 +321,7 @@ static char *extract_subscription_address(const char *response) {
         const char *end = strstr(response, patterns[(ptrdiff_t)i*2+1]);
         
         if (start && end) {
-            start += strlen(patterns[i*2]);
+            start += strlen(patterns[(ptrdiff_t)i * 2]);
             int length = (int)(end - start);
             
             char *address = (char *)malloc(length + 1);
