@@ -36,6 +36,10 @@ static struct {
     .initialized = 0,
 };
 
+// Weak symbols for optional JSON logger (implemented in logger_json.c when linked)
+extern __attribute__((weak)) int init_json_logger(const char *filename);
+extern __attribute__((weak)) int write_json_log(log_level_t level, const char *timestamp, const char *message);
+
 // Log level strings
 static const char *log_level_strings[] = {
     "ERROR",
@@ -66,7 +70,6 @@ int init_logger(void) {
     }
 
     // Initialize JSON logger if log file is set and the function is available
-    extern __attribute__((weak)) int init_json_logger(const char *filename);
     if (logger.log_filename[0] != '\0' && init_json_logger) {
         char json_log_filename[512];
         snprintf(json_log_filename, sizeof(json_log_filename), "%s.json", logger.log_filename);
@@ -235,7 +238,6 @@ int set_log_file(const char *filename) {
     pthread_mutex_unlock(&logger.mutex);
 
     // Initialize JSON logger with a corresponding JSON log file if the function is available
-    extern __attribute__((weak)) int init_json_logger(const char *filename);
     if (init_json_logger) {
         char json_log_filename[512];
         snprintf(json_log_filename, sizeof(json_log_filename), "%s.json", filename);
@@ -430,10 +432,7 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
 
     pthread_mutex_unlock(&logger.mutex);
 
-    // Write to JSON log file if the function is available
-    // This is a weak symbol that can be overridden by the actual implementation
-    // If the JSON logger is not linked, this will be a no-op
-    extern __attribute__((weak)) int write_json_log(log_level_t level, const char *timestamp, const char *message);
+    // Write to JSON log file if the function is available (weak symbol, no-op when not linked)
     if (write_json_log) {
         write_json_log(level, iso_timestamp, message);
     }

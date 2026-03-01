@@ -142,7 +142,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     const char *actual_api_url = api_url;
     if (api_url && strcmp(api_url, "api-detection") == 0) {
         // Get the API URL from the global config
-        extern config_t g_config;
         actual_api_url = g_config.api_detection_url;
         log_info("API Detection: Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
     }
@@ -161,6 +160,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     // cause memory corruption. curl_easy_reset() clears all previously set options.
     curl_easy_reset(curl_handle);
 
+    // cppcheck-suppress knownConditionTrueFalse
     if (!actual_api_url || !result) {
         log_error("Invalid parameters for detect_objects_api");
         pthread_mutex_unlock(&curl_mutex);
@@ -298,7 +298,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     log_info("API Detection: Successfully added JPEG data to form (%zu bytes)", jpeg_size);
 
     // Get the backend from config (default to "onnx" if not set)
-    extern config_t g_config;
     const char *backend = g_config.api_detection_backend;
     if (!backend || strlen(backend) == 0) {
         backend = "onnx";
@@ -622,7 +621,6 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     // Handle "api-detection" special string
     const char *actual_api_url = api_url;
     if (api_url && strcmp(api_url, "api-detection") == 0) {
-        extern config_t g_config;
         actual_api_url = g_config.api_detection_url;
         log_info("API Detection (snapshot): Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
     }
@@ -738,7 +736,6 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     jpeg_data = NULL;
 
     // Get backend from config
-    extern config_t g_config;
     const char *backend = g_config.api_detection_backend;
     if (!backend || strlen(backend) == 0) {
         backend = "onnx";

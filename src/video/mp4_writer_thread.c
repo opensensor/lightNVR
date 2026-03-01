@@ -701,8 +701,7 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
     // racing with us (e.g. close_all_mp4_writers during shutdown).  A local
     // copy ensures we always have a safe string for logging.
     char sname[MAX_STREAM_NAME];
-    if (writer->stream_name[0] != '\0' && writer->stream_name[0] > 0x1F
-        && writer->stream_name[0] < 0x7F) {
+    if (writer->stream_name[0] > 0x1F && writer->stream_name[0] < 0x7F) {
         strncpy(sname, writer->stream_name, MAX_STREAM_NAME - 1);
         sname[MAX_STREAM_NAME - 1] = '\0';
     } else {
@@ -713,6 +712,7 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
     // Capture thread handle locally before any operations that might
     // race with thread context being freed.
     mp4_writer_thread_t *tctx = writer->thread_ctx;
+    // cppcheck-suppress knownConditionTrueFalse
     if (!tctx) {
         return;
     }

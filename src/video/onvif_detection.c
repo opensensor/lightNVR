@@ -556,6 +556,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     }
 
     // Validate parameters - allow empty credentials (empty strings) but not NULL pointers
+    // cppcheck-suppress knownConditionTrueFalse
     if (!onvif_url || !username || !password || !result) {
         log_error("Invalid parameters for detect_motion_onvif (NULL pointers not allowed)");
         pthread_mutex_unlock(&curl_mutex);

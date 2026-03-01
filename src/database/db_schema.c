@@ -264,11 +264,11 @@ int add_column_if_not_exists(const char *table_name, const char *column_name, co
         return -1;
     }
 
-    bool column_exists = false;
+    bool col_found = false;
     while (sqlite3_step(check_column_stmt) == SQLITE_ROW) {
         const char *name = (const char *)sqlite3_column_text(check_column_stmt, 1);
         if (name && strcmp(name, column_name) == 0) {
-            column_exists = true;
+            col_found = true;
             break;
         }
     }
@@ -278,7 +278,7 @@ int add_column_if_not_exists(const char *table_name, const char *column_name, co
         check_column_stmt = NULL;
     }
 
-    if (column_exists) {
+    if (col_found) {
         log_info("Column %s already exists in table %s", column_name, table_name);
         return 0;
     }

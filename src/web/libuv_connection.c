@@ -19,6 +19,9 @@
 #include "web/go2rtc_proxy_thread.h"
 #include "core/logger.h"
 
+// Forward declaration for MIME type helper defined in libuv_file_serve.c
+extern const char *libuv_get_mime_type(const char *path);
+
 // Forward declarations for llhttp callbacks
 static int on_url(llhttp_t *parser, const char *at, size_t length);
 static int on_header_field(llhttp_t *parser, const char *at, size_t length);
@@ -554,7 +557,6 @@ static void static_file_resolve_handler(const http_request_t *req, http_response
         snprintf(gz_path, sizeof(gz_path), "%s.gz", file_path);
         if (stat(gz_path, &st) == 0 && S_ISREG(st.st_mode)) {
             log_debug("Serving gzip static file: %s", gz_path);
-            extern const char *libuv_get_mime_type(const char *path);
             const char *mime_type = libuv_get_mime_type(file_path);
             strncpy(conn->deferred_file_path, gz_path, sizeof(conn->deferred_file_path) - 1);
             conn->deferred_file_path[sizeof(conn->deferred_file_path) - 1] = '\0';

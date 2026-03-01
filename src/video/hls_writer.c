@@ -498,12 +498,12 @@ int hls_writer_write_packet(hls_writer_t *writer, const AVPacket *pkt, const AVS
     }
 
     if (!pkt) {
-        log_error("hls_writer_write_packet: NULL packet for stream %s", writer ? writer->stream_name : "unknown");
+        log_error("hls_writer_write_packet: NULL packet for stream %s", writer->stream_name);
         return -1;
     }
 
     if (!input_stream) {
-        log_error("hls_writer_write_packet: NULL input stream for stream %s", writer ? writer->stream_name : "unknown");
+        log_error("hls_writer_write_packet: NULL input stream for stream %s", writer->stream_name);
         return -1;
     }
 
@@ -937,9 +937,8 @@ void hls_writer_close(hls_writer_t *writer) {
     // Store stream name for logging - use a local copy to avoid potential race conditions
     char stream_name[MAX_STREAM_NAME] = {0};
 
-    // CRITICAL FIX: Add additional safety check before accessing stream_name
-    // This prevents segfaults when the writer structure is partially initialized or corrupted
-    if (writer && writer->stream_name && writer->stream_name[0] != '\0') {
+    // Copy stream name for logging; fall back to "unknown" if not yet set
+    if (writer->stream_name[0] != '\0') {
         strncpy(stream_name, writer->stream_name, MAX_STREAM_NAME - 1);
         stream_name[MAX_STREAM_NAME - 1] = '\0';
     } else {
@@ -950,7 +949,7 @@ void hls_writer_close(hls_writer_t *writer) {
 
     // CRITICAL FIX: Don't call stop_hls_stream from here to prevent recursive calls
     // Instead, just clear the thread_ctx pointer to prevent future recursive calls
-    if (writer && writer->thread_ctx) {
+    if (writer->thread_ctx) {
         log_info("Clearing thread context reference for stream %s during writer close", stream_name);
         writer->thread_ctx = NULL;
     }
@@ -960,29 +959,22 @@ void hls_writer_close(hls_writer_t *writer) {
     clock_gettime(CLOCK_REALTIME, &timeout);
     timeout.tv_sec += 5; // Increased to 5 second timeout for better reliability with go2rtc
 
-    // CRITICAL FIX: Add additional safety check before accessing mutex
-    int mutex_result = EOWNERDEAD; // Default to error state
-    if (writer) {
-        // CRITICAL FIX: Use a memory barrier before accessing the mutex
-        __sync_synchronize();
+    // CRITICAL FIX: Use a memory barrier before accessing the mutex
+    __sync_synchronize();
 
-        mutex_result = pthread_mutex_timedlock(&writer->mutex, &timeout);
-        if (mutex_result != 0) {
-            log_warn("Could not acquire HLS writer mutex for stream %s within timeout, proceeding with forced close (error: %s)",
-                    stream_name, strerror(mutex_result));
-            // Continue with the close operation even if we couldn't acquire the mutex
-        } else {
-            log_info("Successfully acquired mutex for HLS writer for stream %s", stream_name);
-        }
+    int mutex_result = pthread_mutex_timedlock(&writer->mutex, &timeout);
+    if (mutex_result != 0) {
+        log_warn("Could not acquire HLS writer mutex for stream %s within timeout, proceeding with forced close (error: %s)",
+                stream_name, strerror(mutex_result));
+        // Continue with the close operation even if we couldn't acquire the mutex
     } else {
-        log_warn("Writer became NULL during mutex acquisition for stream %s", stream_name);
+        log_info("Successfully acquired mutex for HLS writer for stream %s", stream_name);
     }
 
-    // Check if already closed - with additional safety check
-    // CRITICAL FIX: Add additional NULL check before accessing output_ctx
-    if (!writer || !writer->output_ctx) {
+    // Check if already closed
+    if (!writer->output_ctx) {
         log_warn("Attempted to close already closed HLS writer for stream %s", stream_name);
-        if (writer && mutex_result == 0) {
+        if (mutex_result == 0) {
             // CRITICAL FIX: Add memory barrier before unlocking mutex
             __sync_synchronize();
             pthread_mutex_unlock(&writer->mutex);

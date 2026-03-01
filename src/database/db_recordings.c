@@ -433,7 +433,7 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     int rc_step;
     while ((rc_step = sqlite3_step(stmt)) == SQLITE_ROW && count < max_count) {
         // Safely copy data to metadata structure
-        if (count < max_count) {
+        {
             metadata[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
             const char *stream = (const char *)sqlite3_column_text(stmt, 1);
@@ -751,7 +751,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     int rc_step;
     while ((rc_step = sqlite3_step(stmt)) == SQLITE_ROW && count < limit) {
         // Safely copy data to metadata structure
-        if (count < limit) {
+        {
             metadata[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
             const char *stream = (const char *)sqlite3_column_text(stmt, 1);

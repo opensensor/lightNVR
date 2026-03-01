@@ -347,14 +347,12 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
         log_error("Failed to create logs JSON object");
 
         // Free logs
-        if (logs) {
-            for (int i = 0; i < actual_log_count; i++) {
-                if (logs[i]) {
-                    free(logs[i]);
-                }
+        for (int i = 0; i < actual_log_count; i++) {
+            if (logs[i]) {
+                free(logs[i]);
             }
-            free((void *)logs);
         }
+        free((void *)logs);
 
         http_response_set_json_error(res, 500, "Failed to create logs JSON");
         return;
@@ -366,14 +364,12 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
         log_error("Failed to create logs array");
 
         // Free logs
-        if (logs) {
-            for (int i = 0; i < actual_log_count; i++) {
-                if (logs[i]) {
-                    free(logs[i]);
-                }
+        for (int i = 0; i < actual_log_count; i++) {
+            if (logs[i]) {
+                free(logs[i]);
             }
-            free((void *)logs);
         }
+        free((void *)logs);
 
         cJSON_Delete(logs_obj);
         http_response_set_json_error(res, 500, "Failed to create logs array");

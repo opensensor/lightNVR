@@ -180,8 +180,8 @@ void shutdown_unified_detection_system(void) {
 
             atomic_store(&ctx->running, 0);
 
-            // Only update state to stopping if not already stopping or stopped
-            if (current_state != UDT_STATE_STOPPING && current_state != UDT_STATE_STOPPED) {
+            // Only update state to stopping if not already stopping
+            if (current_state != UDT_STATE_STOPPING) {
                 atomic_store(&ctx->state, UDT_STATE_STOPPING);
             }
 
@@ -736,7 +736,7 @@ static void *unified_detection_thread_func(void *arg) {
 
     log_info("[%s] Unified detection thread started", stream_name);
 
-    unified_detection_state_t state = UDT_STATE_INITIALIZING;
+    unified_detection_state_t state;
     int reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
     AVPacket *pkt = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
@@ -1451,7 +1451,6 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             // Get the actual API URL
             const char *actual_api_url = ctx->model_path;
             if (strcmp(ctx->model_path, "api-detection") == 0) {
-                extern config_t g_config;
                 actual_api_url = g_config.api_detection_url;
             }
 

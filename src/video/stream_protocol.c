@@ -626,36 +626,36 @@ int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol
                 sanitized_url, (*input_ctx)->nb_streams);
 
         // Log information about detected streams with safety checks
-        for (unsigned int i = 0; i < (*input_ctx)->nb_streams; i++) {
+        for (unsigned int si = 0; si < (*input_ctx)->nb_streams; si++) {
             // CRITICAL FIX: Add safety checks to prevent segmentation faults
-            if (!(*input_ctx)->streams[i]) {
-                log_warn("Stream %d is NULL, skipping", i);
+            if (!(*input_ctx)->streams[si]) {
+                log_warn("Stream %u is NULL, skipping", si);
                 continue;
             }
 
-            AVStream *stream = (*input_ctx)->streams[i];
+            AVStream *stream = (*input_ctx)->streams[si];
 
             // CRITICAL FIX: Check if codecpar is valid
             if (!stream->codecpar) {
-                log_warn("Stream %d has NULL codecpar, skipping", i);
+                log_warn("Stream %u has NULL codecpar, skipping", si);
                 continue;
             }
 
             if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-                log_info("Stream %d: Video stream detected (codec: %d, width: %d, height: %d)",
-                        i, stream->codecpar->codec_id, stream->codecpar->width, stream->codecpar->height);
+                log_info("Stream %u: Video stream detected (codec: %d, width: %d, height: %d)",
+                        si, stream->codecpar->codec_id, stream->codecpar->width, stream->codecpar->height);
             } else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
                 // CRITICAL FIX: Use the correct field for channels based on FFmpeg version
                 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-                    log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
-                            i, stream->codecpar->codec_id, stream->codecpar->ch_layout.nb_channels, stream->codecpar->sample_rate);
+                    log_info("Stream %u: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
+                            si, stream->codecpar->codec_id, stream->codecpar->ch_layout.nb_channels, stream->codecpar->sample_rate);
                 #else
-                    log_info("Stream %d: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
-                            i, stream->codecpar->codec_id, stream->codecpar->channels, stream->codecpar->sample_rate);
+                    log_info("Stream %u: Audio stream detected (codec: %d, channels: %d, sample_rate: %d)",
+                            si, stream->codecpar->codec_id, stream->codecpar->channels, stream->codecpar->sample_rate);
                 #endif
             } else {
-                log_info("Stream %d: Other stream type detected (type: %d)",
-                        i, stream->codecpar->codec_type);
+                log_info("Stream %u: Other stream type detected (type: %d)",
+                        si, stream->codecpar->codec_type);
             }
         }
     } else {

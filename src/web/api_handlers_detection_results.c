@@ -68,6 +68,7 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
     // Publish to MQTT if enabled (use filtered result)
     if (filtered_result.count > 0) {
         int mqtt_ret = mqtt_publish_detection(stream_name, &filtered_result, timestamp);
+        // cppcheck-suppress knownConditionTrueFalse
         if (mqtt_ret != 0) {
             log_debug("MQTT publish skipped or failed for stream '%s'", stream_name);
         }

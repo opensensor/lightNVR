@@ -588,7 +588,7 @@ static bool check_stream_consensus(void) {
     }
 
     if (total_streams >= PROCESS_MIN_STREAMS_FOR_CONSENSUS &&
-        failed_streams == total_streams && total_streams > 0) {
+        failed_streams == total_streams) {
         log_warn("Stream consensus: %d/%d streams failed - indicates go2rtc issue",
                  failed_streams, total_streams);
         return true;
@@ -1150,7 +1150,6 @@ int go2rtc_integration_start_hls(const char *stream_name) {
     }
 
     // Check if force_native_hls is enabled - if so, always use ffmpeg-based HLS
-    extern config_t g_config;
     if (g_config.go2rtc_force_native_hls) {
         log_info("force_native_hls enabled, using ffmpeg-based HLS for stream %s", stream_name);
         return start_hls_stream(stream_name);

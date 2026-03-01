@@ -54,7 +54,6 @@ buffer_strategy_type_t get_recommended_strategy_type(void) {
     }
     
     // Check if go2rtc is available by checking for config
-    extern config_t g_config;
     if (g_config.go2rtc_api_port > 0) {
         log_info("go2rtc detected, recommending go2rtc native strategy");
         return BUFFER_STRATEGY_GO2RTC_NATIVE;

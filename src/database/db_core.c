@@ -331,10 +331,10 @@ int init_database(const char *db_path) {
         // Continue anyway, but with less crash protection
     } else {
         // Verify WAL mode was enabled
-        sqlite3_stmt *stmt;
-        rc = sqlite3_prepare_v2(db, "PRAGMA journal_mode;", -1, &stmt, NULL);
-        if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
-            const char *mode = (const char *)sqlite3_column_text(stmt, 0);
+        sqlite3_stmt *wal_stmt;
+        rc = sqlite3_prepare_v2(db, "PRAGMA journal_mode;", -1, &wal_stmt, NULL);
+        if (rc == SQLITE_OK && sqlite3_step(wal_stmt) == SQLITE_ROW) {
+            const char *mode = (const char *)sqlite3_column_text(wal_stmt, 0);
             if (mode && strcmp(mode, "wal") == 0) {
                 log_info("WAL mode successfully enabled");
                 wal_mode_enabled = true;
@@ -342,8 +342,8 @@ int init_database(const char *db_path) {
                 log_warn("WAL mode not enabled, current mode: %s", mode ? mode : "unknown");
             }
         }
-        if (stmt) {
-            sqlite3_finalize(stmt);
+        if (wal_stmt) {
+            sqlite3_finalize(wal_stmt);
         }
     }
 
@@ -421,10 +421,10 @@ int init_database(const char *db_path) {
     if (rc != 0) {
         log_error("Failed to run database migrations");
         // Finalize any remaining statements before closing
-        sqlite3_stmt *stmt;
-        while ((stmt = sqlite3_next_stmt(db, NULL)) != NULL) {
+        sqlite3_stmt *cleanup_stmt;
+        while ((cleanup_stmt = sqlite3_next_stmt(db, NULL)) != NULL) {
             log_info("Finalizing statement during error cleanup");
-            sqlite3_finalize(stmt);
+            sqlite3_finalize(cleanup_stmt);
         }
         sqlite3_close_v2(db); // Use close_v2 for better cleanup
         db = NULL;

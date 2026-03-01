@@ -855,12 +855,14 @@ int main(int argc, char *argv[]) {
 
     // Initialize MQTT client if enabled
     if (config.mqtt_enabled) {
+        // cppcheck-suppress knownConditionTrueFalse
         if (mqtt_init(&config) != 0) {
             log_error("Failed to initialize MQTT client");
             // Continue anyway, MQTT is optional
         } else {
             log_info("MQTT client initialized successfully");
             // Connect to MQTT broker
+            // cppcheck-suppress knownConditionTrueFalse
             if (mqtt_connect() != 0) {
                 log_warn("Failed to connect to MQTT broker, will retry automatically");
             } else {

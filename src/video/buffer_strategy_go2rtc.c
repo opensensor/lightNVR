@@ -185,7 +185,6 @@ static int go2rtc_strategy_init(pre_buffer_strategy_t *self, const buffer_config
         strncpy(data->go2rtc_url, config->go2rtc_url, sizeof(data->go2rtc_url) - 1);
     } else {
         // Default to localhost
-        extern config_t g_config;
         snprintf(data->go2rtc_url, sizeof(data->go2rtc_url),
                  "http://127.0.0.1:%d", g_config.go2rtc_api_port);
     }

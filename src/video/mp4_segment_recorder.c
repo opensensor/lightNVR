@@ -998,10 +998,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                             pkt->pts = fixed_dts;
                         }
                     }
-                    if (pkt->dts != AV_NOPTS_VALUE) {
-                        last_video_dts = pkt->dts;
-                    }
-
                     // Set output stream index
                     pkt->stream_index = out_video_stream->index;
 

@@ -76,8 +76,8 @@ void cleanup_hls_streaming_backend(void) {
             // Mark as not running to signal threads to exit
             atomic_store(&unified_contexts[i]->running, 0);
 
-            // Only update thread state to stopping if not already stopping or stopped
-            if (current_state != HLS_THREAD_STOPPING && current_state != HLS_THREAD_STOPPED) {
+            // Only update thread state to stopping if not already stopping
+            if (current_state != HLS_THREAD_STOPPING) {
                 atomic_store(&unified_contexts[i]->thread_state, HLS_THREAD_STOPPING);
             }
 

@@ -162,7 +162,6 @@ static int mmap_strategy_init(pre_buffer_strategy_t *self, const buffer_config_t
     }
 
     // Set up file path
-    extern config_t g_config;
     snprintf(data->file_path, sizeof(data->file_path),
              "%s/buffer/%s_prebuffer.mmap",
              config->storage_path ? config->storage_path : g_config.storage_path,

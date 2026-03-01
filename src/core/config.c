@@ -969,51 +969,49 @@ int save_stream_configs(const config_t *config) {
         return 0;
     }
     
-    if (count > 0) {
-        // Get existing stream names (heap-allocated to avoid large stack frames)
-        stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
-        if (!db_streams) {
-            log_error("save_stream_configs: out of memory");
-            rollback_transaction();
-            return -1;
+    // Get existing stream names (heap-allocated to avoid large stack frames)
+    stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
+    if (!db_streams) {
+        log_error("save_stream_configs: out of memory");
+        rollback_transaction();
+        return -1;
+    }
+    int loaded = get_all_stream_configs(db_streams, config->max_streams);
+    if (loaded < 0) {
+        log_error("Failed to load stream configurations from database");
+        free(db_streams);
+        rollback_transaction();
+        return -1;
+    }
+
+    // Check if configurations are identical to avoid unnecessary updates
+    int identical = 1;
+    if (loaded == count) {
+        for (int i = 0; i < loaded && identical; i++) {
+            if (strlen(config->streams[i].name) == 0 ||
+                strcmp(config->streams[i].name, db_streams[i].name) != 0) {
+                identical = 0;
+            }
         }
-        int loaded = get_all_stream_configs(db_streams, config->max_streams);
-        if (loaded < 0) {
-            log_error("Failed to load stream configurations from database");
+
+        if (identical) {
+            log_info("Stream configurations unchanged, skipping update");
+            free(db_streams);
+            commit_transaction();
+            return loaded;
+        }
+    }
+
+    // Delete existing stream configurations
+    for (int i = 0; i < loaded; i++) {
+        if (delete_stream_config(db_streams[i].name) != 0) {
+            log_error("Failed to delete stream configuration: %s", db_streams[i].name);
             free(db_streams);
             rollback_transaction();
             return -1;
         }
-
-        // Check if configurations are identical to avoid unnecessary updates
-        int identical = 1;
-        if (loaded == count) {
-            for (int i = 0; i < loaded && identical; i++) {
-                if (strlen(config->streams[i].name) == 0 ||
-                    strcmp(config->streams[i].name, db_streams[i].name) != 0) {
-                    identical = 0;
-                }
-            }
-
-            if (identical) {
-                log_info("Stream configurations unchanged, skipping update");
-                free(db_streams);
-                commit_transaction();
-                return loaded;
-            }
-        }
-
-        // Delete existing stream configurations
-        for (int i = 0; i < loaded; i++) {
-            if (delete_stream_config(db_streams[i].name) != 0) {
-                log_error("Failed to delete stream configuration: %s", db_streams[i].name);
-                free(db_streams);
-                rollback_transaction();
-                return -1;
-            }
-        }
-        free(db_streams);
     }
+    free(db_streams);
 
     // Add stream configurations to database
     for (int i = 0; i < config->max_streams; i++) {

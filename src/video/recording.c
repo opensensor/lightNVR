@@ -70,11 +70,10 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     }
 
     // Check if there's already an active recording for this stream
-    uint64_t existing_recording_id = 0;
     for (int i = 0; i < g_config.max_streams; i++) {
-        if (active_recordings[i].recording_id > 0 && 
+        if (active_recordings[i].recording_id > 0 &&
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
-            existing_recording_id = active_recordings[i].recording_id;
+            uint64_t existing_recording_id = active_recordings[i].recording_id;
             
             // If we found an existing recording, stop it first
             log_info("Found existing recording for stream %s with ID %llu, stopping it first", 

@@ -104,6 +104,7 @@ int init_storage_manager(const char *storage_path, uint64_t max_size) {
 // Shutdown the storage manager
 void shutdown_storage_manager(void) {
     // Stop the storage manager thread
+    // cppcheck-suppress knownConditionTrueFalse
     if (stop_storage_manager_thread() != 0) {
         log_warn("Failed to stop storage manager thread");
     }

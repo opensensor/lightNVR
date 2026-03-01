@@ -582,16 +582,13 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
             // Safely unref and free the packet
             log_debug("Safely unreferencing packet during cleanup");
 
-            // CRITICAL FIX: Add additional NULL check before unreferencing
-            if (pkt_to_free) {
-                av_packet_unref(pkt_to_free);
-                log_debug("Safely freeing packet during cleanup");
+            av_packet_unref(pkt_to_free);
+            log_debug("Safely freeing packet during cleanup");
 
-                // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
-                __sync_synchronize();
+            // CRITICAL FIX: Add memory barrier before freeing to ensure all accesses are complete
+            __sync_synchronize();
 
-                av_packet_free(&pkt_to_free);
-            }
+            av_packet_free(&pkt_to_free);
         }
     }
 
@@ -610,27 +607,23 @@ static void safe_cleanup_resources(AVFormatContext **input_ctx, AVPacket **pkt, 
             // Safely close the input context
             log_debug("Safely closing input context during cleanup");
 
-            // CRITICAL FIX: Add additional NULL check before closing
-            if (ctx_to_close) {
-                // MEMORY LEAK FIX: Use comprehensive_ffmpeg_cleanup instead of manual cleanup
-                // This ensures all resources are properly freed, preventing memory leaks
-                log_debug("Using comprehensive cleanup for input context");
+            // MEMORY LEAK FIX: Use comprehensive_ffmpeg_cleanup instead of manual cleanup
+            // This ensures all resources are properly freed, preventing memory leaks
+            log_debug("Using comprehensive cleanup for input context");
 
-                // Create a local copy of the pointer to prevent race conditions
-                AVFormatContext *ctx_to_cleanup = ctx_to_close;
-                ctx_to_close = NULL; // Clear the original pointer to prevent double-free
+            // Create a local copy of the pointer to prevent race conditions
+            AVFormatContext *ctx_to_cleanup = ctx_to_close;
+            ctx_to_close = NULL; // Clear the original pointer to prevent double-free
 
-                // Use our comprehensive cleanup function
-                comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
+            // Use our comprehensive cleanup function
+            comprehensive_ffmpeg_cleanup(&ctx_to_cleanup, NULL, NULL, NULL);
 
-                // Verify that the context is actually NULL after cleanup
-                if (ctx_to_cleanup) {
-                    log_warn("Failed to clean up context, forcing NULL");
-                    ctx_to_cleanup = NULL;
-                }
-
-                log_debug("Successfully cleaned up input context");
+            if (ctx_to_cleanup) {
+                log_warn("Failed to clean up context, forcing NULL");
+                ctx_to_cleanup = NULL;
             }
+
+            log_debug("Successfully cleaned up input context");
         }
     }
 
@@ -1443,6 +1436,8 @@ void *hls_unified_thread_func(void *arg) {
                     pthread_mutex_lock(&writer->mutex);
 
                     // CRITICAL FIX: Check if writer is still valid after locking
+                    // (another thread may have swapped ctx->writer while we were blocked on the lock)
+                    // cppcheck-suppress knownConditionTrueFalse
                     if (ctx->writer != writer) {
                         log_warn("Writer changed for stream %s during mutex lock, releasing mutex and skipping packet", stream_name);
                         pthread_mutex_unlock(&writer->mutex);
@@ -1795,12 +1790,8 @@ void *hls_unified_thread_func(void *arg) {
 
     // Store stream name in local buffer for logging even if context becomes invalid
     char stream_name_buf[MAX_STREAM_NAME] = {0};
-    if (stream_name) {
-        strncpy(stream_name_buf, stream_name, MAX_STREAM_NAME - 1);
-        stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
-    } else {
-        strcpy(stream_name_buf, "unknown");
-    }
+    strncpy(stream_name_buf, stream_name, MAX_STREAM_NAME - 1);
+    stream_name_buf[MAX_STREAM_NAME - 1] = '\0';
 
     // CRITICAL FIX: Ensure all resources are cleaned up before exiting
     // This is a safety measure in case we exited the loop without proper cleanup
@@ -2254,7 +2245,6 @@ int start_hls_unified_stream(const char *stream_name) {
     int running_count = 0;
     int running_indices[MAX_STREAMS];
     int valid_connection_idx = -1;
-    int best_context_idx = -1;
 
     // First pass: count running contexts and find any with valid connections
     for (int i = 0; i < g_config.max_streams; i++) {
@@ -2274,6 +2264,7 @@ int start_hls_unified_stream(const char *stream_name) {
     if (running_count > 0) {
         log_info("Found %d running HLS contexts for stream %s", running_count, stream_name);
 
+        int best_context_idx;
         // If we have a valid connection, keep that one and stop all others
         if (valid_connection_idx >= 0) {
             best_context_idx = valid_connection_idx;

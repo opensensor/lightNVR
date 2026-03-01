@@ -22,6 +22,9 @@
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 
+// Forward declaration for recording function defined in recording.c
+extern int stop_mp4_recording(const char *stream_name);
+
 // Global event queue
 static motion_event_queue_t event_queue;
 
@@ -364,7 +367,6 @@ static int stop_motion_recording_internal(motion_recording_context_t *ctx) {
     }
 
     // Stop MP4 recording
-    extern int stop_mp4_recording(const char *stream_name);
     int result = stop_mp4_recording(ctx->stream_name);
     if (result != 0) {
         log_warn("Failed to stop MP4 recording for stream: %s", ctx->stream_name);

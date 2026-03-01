@@ -20,6 +20,10 @@
 #include "web/libuv_connection.h"
 #include "core/logger.h"
 
+// Forward declaration for response helper defined in libuv_response.c
+extern int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
+                                  write_complete_action_t act);
+
 // Forward declarations
 static void on_file_open(uv_fs_t *req);
 static void on_file_stat(uv_fs_t *req);
@@ -225,8 +229,6 @@ static void on_file_open(uv_fs_t *req) {
                 ? WRITE_ACTION_KEEP_ALIVE
                 : WRITE_ACTION_CLOSE;
 
-        extern int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
-                                          write_complete_action_t action);
         libuv_send_response_ex(conn, &conn->response, action);
         file_serve_cleanup(ctx);
 
@@ -264,8 +266,6 @@ static void on_file_stat(uv_fs_t *req) {
                 ? WRITE_ACTION_KEEP_ALIVE
                 : WRITE_ACTION_CLOSE;
 
-        extern int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
-                                          write_complete_action_t action);
         libuv_send_response_ex(conn, &conn->response, action);
 
         // Clear async flag before closing file
@@ -294,8 +294,6 @@ static void on_file_stat(uv_fs_t *req) {
                     ? WRITE_ACTION_KEEP_ALIVE
                     : WRITE_ACTION_CLOSE;
 
-            extern int libuv_send_response_ex(libuv_connection_t *conn, const http_response_t *response,
-                                              write_complete_action_t action);
             libuv_send_response_ex(conn, &conn->response, action);
 
             // Clear async flag before closing file

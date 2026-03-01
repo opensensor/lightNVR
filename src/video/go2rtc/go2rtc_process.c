@@ -161,32 +161,77 @@ static bool proc_comm_contains(pid_t pid, const char *name) {
 }
 
 /**
+ * @brief fd-based recursive helper for recursive_remove().
+ *
+ * All stat/unlink/rmdir operations are performed relative to an open directory
+ * file descriptor, eliminating the TOCTOU window that exists when using full
+ * path strings (CWE-367).
+ *
+ * @param parent_dfd  Open O_RDONLY|O_DIRECTORY fd for the parent directory.
+ * @param name        Name of the entry inside parent_dfd to remove.
+ */
+static void recursive_remove_at(int parent_dfd, const char *name) {
+    struct stat st;
+    if (fstatat(parent_dfd, name, &st, AT_SYMLINK_NOFOLLOW) != 0) return;
+
+    if (!S_ISDIR(st.st_mode)) {
+        /* Plain file or symlink – unlink relative to the parent fd. */
+        unlinkat(parent_dfd, name, 0);
+        return;
+    }
+
+    /* Open the subdirectory relative to the parent fd (never follow symlinks). */
+    int dfd = openat(parent_dfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (dfd < 0) return;
+
+    DIR *d = fdopendir(dfd); /* fdopendir takes ownership of dfd */
+    if (!d) {
+        close(dfd);
+        return;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        recursive_remove_at(dirfd(d), entry->d_name);
+    }
+    closedir(d); /* also closes dfd */
+
+    unlinkat(parent_dfd, name, AT_REMOVEDIR);
+}
+
+/**
  * @brief Recursively remove a directory and all its contents without a shell.
  *
  * Replaces: system("rm -rf <path>")
  */
 static void recursive_remove(const char *path) {
-    DIR *d = opendir(path);
-    if (!d) {
-        // Not a directory – try plain unlink
-        unlink(path);
-        return;
+    char parent[PATH_MAX];
+    strncpy(parent, path, sizeof(parent) - 1);
+    parent[sizeof(parent) - 1] = '\0';
+
+    const char *name;
+    int parent_fd;
+    char *sep = strrchr(parent, '/');
+
+    if (sep && sep != parent) {
+        /* e.g. "/dev/shm/logs/go2rtc"  →  parent="/dev/shm/logs", name="go2rtc" */
+        *sep = '\0';
+        name = sep + 1;
+        parent_fd = open(parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    } else if (sep == parent) {
+        /* path is "/foo" – parent is the filesystem root */
+        name = path + 1;
+        parent_fd = open("/", O_RDONLY | O_DIRECTORY);
+    } else {
+        /* Relative path with no slash – parent is cwd */
+        name = path;
+        parent_fd = open(".", O_RDONLY | O_DIRECTORY);
     }
-    struct dirent *entry;
-    char child[PATH_MAX];
-    while ((entry = readdir(d)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
-        struct stat st;
-        if (lstat(child, &st) != 0) continue;
-        if (S_ISDIR(st.st_mode)) {
-            recursive_remove(child);
-        } else {
-            unlink(child);
-        }
-    }
-    closedir(d);
-    rmdir(path);
+
+    if (parent_fd < 0) return;
+    recursive_remove_at(parent_fd, name);
+    close(parent_fd);
 }
 
 // Process management variables

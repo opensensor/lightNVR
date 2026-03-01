@@ -430,14 +430,6 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     sod_box *boxes = NULL;
     int rc;
 
-    // Extra safety check for prepared_data
-    if (!prepared_data) {
-        log_error("Prepared data is NULL before prediction");
-        sod_free_image(img);
-        return -1;
-    }
-
-    // Try-catch block to prevent segmentation faults
     rc = sod_cnn_predict((sod_cnn*)m->sod, prepared_data, &boxes, &count);
     log_info("Step 7: sod_cnn_predict returned with rc=%d, count=%d", rc, count);
 
@@ -475,20 +467,7 @@ int detect_with_sod_model(detection_model_t model, const unsigned char *frame_da
     // For static linking, boxes is already an array of sod_box structures
 
     for (int i = 0; i < count && valid_count < MAX_DETECTIONS; i++) {
-        // Get the current box - with bounds checking
-        if (i < 0 || i >= count) {
-            log_warn("Box index %d out of bounds (count=%d), skipping", i, count);
-            continue;
-        }
-
         sod_box *box = &boxes[i];
-
-        // This check is redundant since box is a reference, not a pointer
-        // but we'll keep a modified version for safety
-        if (box == NULL) {
-            log_warn("Box %d is NULL, skipping", i);
-            continue;
-        }
 
         // Log box values for debugging
         log_info("Box %d: x=%d, y=%d, w=%d, h=%d, score=%.2f, name=%s",

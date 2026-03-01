@@ -70,6 +70,7 @@ static void mqtt_settings_worker(mqtt_settings_task_t *task) {
     log_info("MQTT settings worker: reinitializing MQTT client...");
 
     int rc = mqtt_reinit(&g_config);
+    // cppcheck-suppress knownConditionTrueFalse
     if (rc != 0) {
         log_error("MQTT settings worker: reinit failed (rc=%d)", rc);
     } else {

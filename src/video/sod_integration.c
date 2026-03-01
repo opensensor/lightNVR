@@ -71,8 +71,6 @@ void* load_sod_model_for_detection(const char *model_path, float threshold,
         return NULL;
     }
 
-    extern config_t g_config;
-
     // Check if model_path is a relative path
     if (model_path[0] != '/') {
         // Construct full path using configured models path from INI if it exists

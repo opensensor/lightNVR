@@ -155,7 +155,6 @@ static int hls_segment_strategy_init(pre_buffer_strategy_t *self, const buffer_c
     data->default_segment_duration = 2.0f;  // go2rtc default segment duration
 
     // Set up HLS path pattern
-    extern config_t g_config;
     snprintf(data->hls_base_path, sizeof(data->hls_base_path),
              "%s/hls/%s", g_config.storage_path, data->stream_name);
     snprintf(data->segment_pattern, sizeof(data->segment_pattern),

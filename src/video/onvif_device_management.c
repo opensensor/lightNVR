@@ -790,7 +790,7 @@ int test_onvif_connection(const char *url, const char *username, const char *pas
     log_info("Successfully connected to ONVIF device: %s", url);
     
     // Now test the stream connection
-    if (count > 0 && strlen(profiles[0].stream_uri) > 0) {
+    if (strlen(profiles[0].stream_uri) > 0) {
         log_info("Testing stream connection for profile: %s, URI: %s", 
                 profiles[0].token, profiles[0].stream_uri);
         
