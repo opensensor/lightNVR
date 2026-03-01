@@ -298,7 +298,6 @@ int transcode_audio_packet(const char *stream_name,
                           const AVStream *input_stream) {
     int ret = 0;
     int transcoder_idx = -1;
-    int got_output = 0;
 
     // Find the transcoder for this stream
     for (int i = 0; i < g_config.max_streams; i++) {

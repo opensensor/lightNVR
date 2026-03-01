@@ -211,7 +211,6 @@ void cleanup_hls_contexts(void) {
 
         // Wait with timeout for threads to notice the running=0 flag and exit
         const int max_wait_ms = 3000;  // 3 second total timeout
-        const int poll_interval_ms = 100;  // Check every 100ms
         usleep(max_wait_ms * 1000);  // Simple wait - legacy contexts don't have thread_state
 
         log_info("Waited %d ms for legacy HLS threads to exit", max_wait_ms);

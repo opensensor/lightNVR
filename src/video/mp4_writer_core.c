@@ -162,10 +162,9 @@ void mp4_writer_close(mp4_writer_t *writer) {
     if (writer->current_recording_id > 0) {
         // Get the file size before marking as complete
         struct stat st;
-        uint64_t size_bytes = 0;
 
         if (writer->output_path && stat(writer->output_path, &st) == 0) {
-            size_bytes = st.st_size;
+            uint64_t size_bytes = (uint64_t)st.st_size;
             log_info("Final file size for %s: %llu bytes",
                     writer->output_path, (unsigned long long)size_bytes);
 

@@ -1020,9 +1020,6 @@ void hls_writer_close(hls_writer_t *writer) {
     if (local_output_ctx) {
         log_info("Writing trailer for HLS writer for stream %s", stream_name);
 
-        // Use a try/catch-like approach with signal handling to prevent crashes
-        int ret = 0;
-
         // Validate the output context more thoroughly before writing trailer
         bool context_valid = false;
 
@@ -1060,7 +1057,7 @@ void hls_writer_close(hls_writer_t *writer) {
             alarm(5); // 5 second timeout for trailer write
 
             // Use a safer approach to write the trailer
-            ret = av_write_trailer(local_output_ctx);
+            int ret = av_write_trailer(local_output_ctx);
 
             // Cancel the alarm and restore signal handler
             alarm(0);

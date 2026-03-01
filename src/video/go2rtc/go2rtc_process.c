@@ -653,7 +653,6 @@ static bool wait_for_process_termination(pid_t pid, int timeout_ms) {
  * @return true if it's a go2rtc process, false otherwise
  */
 static bool is_go2rtc_process(pid_t pid) {
-    char cmd[128];
     char proc_path[64];
 
     // First check if the process exists
