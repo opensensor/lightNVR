@@ -12,7 +12,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
     libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev \
     libmosquitto-dev libuv1-dev \
-    nodejs npm && \
+    nodejs npm libsimdjson30 && \
     # Verify installation
     node --version && \
     npm --version && \
