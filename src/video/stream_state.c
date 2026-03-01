@@ -510,9 +510,6 @@ int start_stream_with_state(stream_state_manager_t *state) {
     // Track if any component started successfully
     bool any_component_started = false;
 
-    // Start stream reader
-    stream_reader_ctx_t *reader_ctx = NULL;
-
     // Start HLS streaming if enabled
     if (streaming_enabled) {
         int hls_result = stream_start_hls(state->name);
@@ -598,7 +595,6 @@ int stop_stream_with_state(stream_state_manager_t *state, bool wait_for_completi
 
     // Get feature flags and stream name while holding the mutex
     bool streaming_enabled = state->features.streaming_enabled;
-    bool recording_enabled = state->features.recording_enabled;
 
     // Get stream name for logging
     char stream_name[MAX_STREAM_NAME];
