@@ -36,10 +36,10 @@ LightNVR provides a lightweight yet powerful solution for recording and managing
 #### 🔧 Core Capabilities
 - **Cross-Platform**: Runs on any Linux system, from embedded devices to full servers
 - **Memory Efficient**: Optimized to run on devices with low memory (SBCs and certain SoCs)
-- **Stream Support**: Handle up to 16 video streams (with memory-optimized buffering)
+- **Stream Support**: Handle multiple video streams (with memory-optimized buffering)
 - **Protocol Support**: RTSP and ONVIF (basic profile)
 - **Codec Support**: H.264 (primary), H.265 (if resources permit)
-- **Resolution Support**: Up to 1080p per stream (configurable lower resolutions)
+- **Resolution Support**: Configurable resolution per stream
 - **Frame Rate Control**: Configurable from 1-15 FPS per stream to reduce resource usage
 - **Standard Formats**: Records in standard MP4/MKV containers with proper indexing
 - **Storage Management**: Automatic retention policies and disk space management

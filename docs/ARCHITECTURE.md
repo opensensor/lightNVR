@@ -620,7 +620,7 @@ Configuration uses INI format files (`.ini`) with the following sections:
 - **`[storage]`**: Recording paths, retention, MP4 direct recording options
 - **`[database]`**: SQLite database path
 - **`[web]`**: Port, web root, authentication, session timeout, thread pool
-- **`[streams]`**: Maximum streams limit
+- **`[streams]`**: Stream configuration
 - **`[models]`**: Detection model storage path
 - **`[api_detection]`**: External detection API URL, backend, confidence, class filter
 - **`[memory]`**: Buffer size, swap settings

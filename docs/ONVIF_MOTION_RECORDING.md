@@ -212,7 +212,7 @@ if (motion_detected) {
 - **Latency**: Recording starts within 500ms of motion detection
 - **Memory**: ~32KB per stream context
 - **CPU**: Minimal overhead (event-driven architecture)
-- **Concurrency**: Supports up to MAX_STREAMS (16) concurrent recordings
+- **Concurrency**: Supports concurrent recordings for all configured streams
 
 ### Post-Buffer Behavior
 
