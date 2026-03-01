@@ -221,9 +221,7 @@ static bool is_go2rtc_running_as_service(int api_port) {
             log_debug("go2rtc is already running as a service on port %d", api_port);
             return true;
         }
-    }
 
-    if (port_in_use) {
         // Use libcurl to make a simple HTTP request to the API endpoint
         CURL *curl;
         CURLcode res;
