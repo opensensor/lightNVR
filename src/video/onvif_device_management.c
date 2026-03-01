@@ -77,15 +77,18 @@ static char* create_security_header(const char *username, const char *password, 
     strftime(created, 30, "%Y-%m-%dT%H:%M:%S.000Z", tm_now);
     
     // Create the concatenated string: nonce + created + password
-    // For digest calculation, we need to use the raw nonce bytes, not the base64 encoded version
-    concatenated = malloc(nonce_len + strlen(created) + strlen(password) + 1);
+    // For digest calculation, we need to use the raw nonce bytes, not the base64 encoded version.
+    // Pre-compute lengths to avoid the bugprone-not-null-terminated-result lint pattern.
+    size_t created_len = strlen(created);
+    size_t password_len = strlen(password);
+    concatenated = malloc(nonce_len + created_len + password_len + 1);
     memcpy(concatenated, nonce_bytes, nonce_len);
     // Raw byte copies for SHA-1 input: intermediate parts are not C strings
-    memcpy((void *)(concatenated + nonce_len), created, strlen(created));
-    memcpy((void *)(concatenated + nonce_len + strlen(created)), password, strlen(password) + 1);
-    
+    memcpy((void *)(concatenated + nonce_len), created, created_len);
+    memcpy((void *)(concatenated + nonce_len + created_len), password, password_len + 1);
+
     // Calculate SHA1 digest
-    mbedtls_sha1((unsigned char*)concatenated, nonce_len + strlen(created) + strlen(password), digest);
+    mbedtls_sha1((unsigned char*)concatenated, nonce_len + created_len + password_len, digest);
 
     // Base64 encode the digest
     base64_digest = malloc(((4 * 20) / 3) + 5); // 20 is SHA1 digest length
