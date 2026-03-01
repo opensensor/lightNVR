@@ -33,8 +33,7 @@ void *discovery_thread_func(void *arg) {
     char ip_addr[16];
     struct in_addr addr;
     onvif_device_info_t devices[MAX_DISCOVERED_DEVICES];
-    int count;
-    
+
     log_info("ONVIF discovery thread started");
     
     // Parse network
