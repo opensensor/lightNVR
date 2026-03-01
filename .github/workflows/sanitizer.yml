@@ -57,20 +57,56 @@ jobs:
 
       - name: Smoke test - start and stop service
         run: |
-          # Create a minimal config for smoke testing
+          # Create directories needed by lightNVR
           mkdir -p /tmp/lightnvr-smoke/recordings
-          cat > /tmp/lightnvr-smoke/lightnvr.ini << 'EOF'
+          mkdir -p /tmp/lightnvr-smoke/models
+          mkdir -p /tmp/lightnvr-smoke/www
+          mkdir -p /tmp/lightnvr-smoke/logs
+
+          # Create a minimal INI config (no leading whitespace!)
+          cat > /tmp/lightnvr-smoke/lightnvr.ini << 'EOCONFIG'
           [general]
-          log_level = info
-          db_path = /tmp/lightnvr-smoke/lightnvr.db
-          storage_path = /tmp/lightnvr-smoke/recordings
-          web_port = 18888
-          web_root = /dev/null
-          EOF
+          pid_file = /tmp/lightnvr-smoke/lightnvr.pid
+          log_file = /tmp/lightnvr-smoke/logs/lightnvr.log
+          log_level = 2
+
+          [storage]
+          path = /tmp/lightnvr-smoke/recordings
+          max_size = 0
+          retention_days = 1
+          auto_delete_oldest = true
+
+          [database]
+          path = /tmp/lightnvr-smoke/lightnvr.db
+
+          [web]
+          port = 18888
+          root = /tmp/lightnvr-smoke/www
+          auth_enabled = true
+          username = admin
+          password = admin
+
+          [streams]
+          max_streams = 4
+
+          [models]
+          path = /tmp/lightnvr-smoke/models
+
+          [memory]
+          buffer_size = 512
+          use_swap = false
+          EOCONFIG
+
+          # Strip leading whitespace that YAML indentation adds
+          sed -i 's/^[[:space:]]*//' /tmp/lightnvr-smoke/lightnvr.ini
+
+          echo "=== Generated config ==="
+          cat /tmp/lightnvr-smoke/lightnvr.ini
+          echo "========================"
 
           # Start the service briefly to catch startup crashes
           echo "Starting lightNVR under sanitizers for smoke test..."
-          timeout 10 ./build/bin/lightnvr -c /tmp/lightnvr-smoke/lightnvr.ini &
+          timeout 15 ./build/bin/lightnvr -c /tmp/lightnvr-smoke/lightnvr.ini &
           SERVER_PID=$!
           sleep 5
 
@@ -79,7 +115,7 @@ jobs:
             echo "lightNVR started successfully under ASan/UBSan"
 
             # Make a few API calls
-            curl -s -u admin:admin http://localhost:18888/api/system || echo "API call failed (may be expected without web_root)"
+            curl -s -u admin:admin http://localhost:18888/api/system || echo "API call failed (may be expected without full web root)"
 
             # Graceful shutdown
             kill $SERVER_PID
@@ -90,6 +126,8 @@ jobs:
             wait $SERVER_PID 2>/dev/null
             EXIT_CODE=$?
             echo "Exit code: $EXIT_CODE"
+            # Show logs if available
+            cat /tmp/lightnvr-smoke/logs/lightnvr.log 2>/dev/null || true
             if [ $EXIT_CODE -ne 0 ]; then
               echo "FAIL: Sanitizer detected issues during startup"
               exit 1
