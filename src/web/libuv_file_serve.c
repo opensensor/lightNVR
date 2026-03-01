@@ -214,7 +214,7 @@ static void on_file_open(uv_fs_t *req) {
     libuv_connection_t *conn = ctx->conn;
 
     if (req->result < 0) {
-        log_error("on_file_open: Failed to open file: %s", uv_strerror(req->result));
+        log_error("on_file_open: Failed to open file: %s", uv_strerror((int)req->result));
 
         // Send 404 response
         http_response_set_json_error(&conn->response, 404, "File Not Found");
@@ -255,7 +255,7 @@ static void on_file_stat(uv_fs_t *req) {
     libuv_connection_t *conn = ctx->conn;
 
     if (req->result < 0) {
-        log_error("on_file_stat: Failed to stat file: %s", uv_strerror(req->result));
+        log_error("on_file_stat: Failed to stat file: %s", uv_strerror((int)req->result));
         http_response_set_json_error(&conn->response, 500, "Failed to stat file");
 
         // Determine post-response action based on keep-alive
@@ -430,7 +430,7 @@ static void on_file_read(uv_fs_t *req) {
     file_serve_ctx_t *ctx = (file_serve_ctx_t *)req->data;
 
     if (req->result < 0) {
-        log_error("on_file_read: Read error: %s", uv_strerror(req->result));
+        log_error("on_file_read: Read error: %s", uv_strerror((int)req->result));
         uv_fs_close(ctx->conn->server->loop, &ctx->close_req, ctx->fd, on_file_close);
         return;
     }

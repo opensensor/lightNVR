@@ -969,14 +969,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         pkt->duration = 90000;
                     }
 
-                    // Update last timestamps
-                    if (pkt->dts != AV_NOPTS_VALUE) {
-                        last_video_dts = pkt->dts;
-                    }
-                    if (pkt->pts != AV_NOPTS_VALUE) {
-                        last_video_pts = pkt->pts;
-                    }
-
                     // Explicitly set duration for the final frame to prevent segmentation fault
                     if (pkt->duration == 0 || pkt->duration == AV_NOPTS_VALUE) {
                         // Use the time base of the video stream to calculate a reasonable duration

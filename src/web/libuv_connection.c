@@ -209,7 +209,7 @@ void libuv_read_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 
     if (nread < 0) {
         if (nread != UV_EOF) {
-            log_debug("libuv_read_cb: Read error: %s", uv_strerror(nread));
+            log_debug("libuv_read_cb: Read error: %s", uv_strerror((int)nread));
         }
         libuv_connection_close(conn);
         return;
