@@ -57,15 +57,70 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
     // Add models array to response
     cJSON_AddItemToObject(response, "models", models_array);
     
+    // Initialize model count
+    int model_count = 0;
+
+    // Add built-in motion detection model (always available, regardless of models directory)
+    cJSON *motion_model = cJSON_CreateObject();
+    if (motion_model) {
+        cJSON_AddStringToObject(motion_model, "id", "motion");
+        cJSON_AddStringToObject(motion_model, "name", "Built-in Motion Detection");
+        cJSON_AddStringToObject(motion_model, "path", "motion");
+        cJSON_AddStringToObject(motion_model, "type", "builtin");
+        cJSON_AddBoolToObject(motion_model, "supported", true);
+        cJSON_AddStringToObject(motion_model, "description", "Built-in motion detection");
+
+        cJSON_AddItemToArray(models_array, motion_model);
+        model_count++;
+
+        log_info("Added built-in motion detection model");
+    } else {
+        log_error("Failed to create motion model JSON object");
+    }
+
+    // Add API detection model (always available)
+    cJSON *api_model = cJSON_CreateObject();
+    if (api_model) {
+        cJSON_AddStringToObject(api_model, "id", "api-detection");
+        cJSON_AddStringToObject(api_model, "name", "API Detection (light-object-detect)");
+        cJSON_AddStringToObject(api_model, "path", "api-detection");
+        cJSON_AddStringToObject(api_model, "type", MODEL_TYPE_API);
+        cJSON_AddBoolToObject(api_model, "supported", true);
+        cJSON_AddStringToObject(api_model, "description", "External API-based object detection");
+
+        cJSON_AddItemToArray(models_array, api_model);
+        model_count++;
+
+        log_info("Added API detection model");
+    } else {
+        log_error("Failed to create API model JSON object");
+    }
+
+    // Add ONVIF detection model (always available)
+    cJSON *onvif_model = cJSON_CreateObject();
+    if (onvif_model) {
+        cJSON_AddStringToObject(onvif_model, "id", "onvif");
+        cJSON_AddStringToObject(onvif_model, "name", "ONVIF Motion Events");
+        cJSON_AddStringToObject(onvif_model, "path", "onvif");
+        cJSON_AddStringToObject(onvif_model, "type", MODEL_TYPE_ONVIF);
+        cJSON_AddBoolToObject(onvif_model, "supported", true);
+        cJSON_AddStringToObject(onvif_model, "description", "ONVIF camera motion events detection");
+
+        cJSON_AddItemToArray(models_array, onvif_model);
+        model_count++;
+
+        log_info("Added ONVIF detection model");
+    } else {
+        log_error("Failed to create ONVIF model JSON object");
+    }
+
     // Check if models directory exists
     DIR *dir = opendir(models_dir);
     if (!dir) {
         log_warn("Models directory does not exist: %s", models_dir);
-        
-        // Add a message to the response
         cJSON_AddStringToObject(response, "message", "Models directory does not exist");
-        
-        // Convert to string
+        // Still return the built-in models above
+        cJSON_AddNumberToObject(response, "count", model_count);
         char *json_str = cJSON_PrintUnformatted(response);
         if (!json_str) {
             log_error("Failed to convert response JSON to string");
@@ -73,78 +128,13 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
             http_response_set_json_error(res, 500, "Failed to convert response JSON to string");
             return;
         }
-
-        // Send response
         http_response_set_json(res, 200, json_str);
-        
-        // Clean up
         free(json_str);
         cJSON_Delete(response);
-        
         return;
     }
-    
-    // Initialize model count
-    int model_count = 0;
-    
-    // Add built-in motion detection model
-    cJSON *motion_model = cJSON_CreateObject();
-    if (motion_model) {
-        cJSON_AddStringToObject(motion_model, "name", "motion");
-        cJSON_AddStringToObject(motion_model, "path", "builtin://motion");
-        cJSON_AddStringToObject(motion_model, "type", "builtin");
-        cJSON_AddBoolToObject(motion_model, "supported", true);
-        cJSON_AddStringToObject(motion_model, "description", "Built-in motion detection");
-        
-        // Add model to array
-        cJSON_AddItemToArray(models_array, motion_model);
-        model_count = 1;
-        
-        log_info("Added built-in motion detection model");
-    } else {
-        log_error("Failed to create motion model JSON object");
-        model_count = 0;
-    }
-    
-    // Add API detection model
-    cJSON *api_model = cJSON_CreateObject();
-    if (api_model) {
-        cJSON_AddStringToObject(api_model, "name", "API Detection (light-object-detect)");
-        cJSON_AddStringToObject(api_model, "path", "api-detection");
-        cJSON_AddStringToObject(api_model, "type", MODEL_TYPE_API);
-        cJSON_AddBoolToObject(api_model, "supported", true);
-        cJSON_AddStringToObject(api_model, "description", "External API-based object detection");
-        cJSON_AddStringToObject(api_model, "id", "api-detection");
-        
-        // Add model to array
-        cJSON_AddItemToArray(models_array, api_model);
-        model_count++;
-        
-        log_info("Added API detection model");
-    } else {
-        log_error("Failed to create API model JSON object");
-    }
-    
-    // Add ONVIF detection model
-    cJSON *onvif_model = cJSON_CreateObject();
-    if (onvif_model) {
-        cJSON_AddStringToObject(onvif_model, "name", "ONVIF Motion Events");
-        cJSON_AddStringToObject(onvif_model, "path", "onvif-detection");
-        cJSON_AddStringToObject(onvif_model, "type", MODEL_TYPE_ONVIF);
-        cJSON_AddBoolToObject(onvif_model, "supported", true);
-        cJSON_AddStringToObject(onvif_model, "description", "ONVIF camera motion events detection");
-        cJSON_AddStringToObject(onvif_model, "id", "onvif");
-        
-        // Add model to array
-        cJSON_AddItemToArray(models_array, onvif_model);
-        model_count++;
-        
-        log_info("Added ONVIF detection model");
-    } else {
-        log_error("Failed to create ONVIF model JSON object");
-    }
-    
-    // Scan models directory
+
+    // Scan models directory for file-based models
     struct dirent *entry;
     
     while ((entry = readdir(dir)) != NULL) {
@@ -173,7 +163,8 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
             continue;
         }
         
-        // Add model properties
+        // Add model properties (id = full_path so the backend can locate the file)
+        cJSON_AddStringToObject(model_obj, "id", full_path);
         cJSON_AddStringToObject(model_obj, "name", entry->d_name);
         cJSON_AddStringToObject(model_obj, "path", full_path);
         cJSON_AddStringToObject(model_obj, "type", model_type);
