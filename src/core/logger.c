@@ -337,7 +337,7 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
         // Logger is shutting down or destroyed - use fallback console logging only
         // This is safe because we don't use the mutex
         char message[4096];
-        vsnprintf(message, sizeof(message), format, args_copy);
+        vsnprintf(message, sizeof(message), format, args_copy); // NOLINT(clang-analyzer-valist.Uninitialized)
         va_end(args_copy);
 
         time_t now;
@@ -379,7 +379,7 @@ void log_message_v(log_level_t level, const char *format, va_list args) {
 
     // Format the log message
     char message[4096];
-    vsnprintf(message, sizeof(message), format, args_copy);
+    vsnprintf(message, sizeof(message), format, args_copy); // NOLINT(clang-analyzer-valist.Uninitialized)
     va_end(args_copy);
 
     // Double-check shutdown flag before acquiring mutex
