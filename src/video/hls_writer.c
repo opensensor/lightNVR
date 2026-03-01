@@ -166,10 +166,10 @@ hls_writer_t *hls_writer_create(const char *output_dir, const char *stream_name,
     strncpy(writer->stream_name, stream_name, MAX_STREAM_NAME - 1);
 
     //  Ensure segment duration is reasonable but allow lower values for lower latency
-    if (segment_duration < 0.5) {
-        log_warn("HLS segment duration too low (%d), setting to 0.5 seconds minimum",
+    if (segment_duration < 1) {
+        log_warn("HLS segment duration too low (%d), setting to 1 second minimum",
                 segment_duration);
-        segment_duration = 0.5;  // Minimum 0.5 seconds for lower latency
+        segment_duration = 1;  // Minimum 1 second for lower latency
     } else if (segment_duration > 10) {
         log_warn("HLS segment duration too high (%d), capping at 10 seconds",
                 segment_duration);

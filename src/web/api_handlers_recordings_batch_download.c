@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/stat.h>
+#include <sys/random.h>
 #include <cjson/cJSON.h>
 
 #include "web/request_response.h"
@@ -164,9 +165,10 @@ static void dl_jobs_init(void) {
 
 static void gen_uuid(char *out) {
     uint8_t b[16];
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (f) { (void)fread(b, 1, 16, f); fclose(f); }
-    else   { for (int i=0;i<16;i++) b[i]=rand()&0xFF; }
+    if (getrandom(b, 16, 0) < 0) {
+        FILE *f = fopen("/dev/urandom", "rb");
+        if (f) { (void)fread(b, 1, 16, f); fclose(f); }
+    }
     b[6]=(b[6]&0x0F)|0x40; b[8]=(b[8]&0x3F)|0x80;
     snprintf(out,37,
         "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",

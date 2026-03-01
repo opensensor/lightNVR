@@ -411,7 +411,7 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     cJSON *detection_threshold = cJSON_GetObjectItem(stream_json, "detection_threshold");
     if (detection_threshold && cJSON_IsNumber(detection_threshold)) {
         // Convert from percentage (0-100) to float (0.0-1.0)
-        config.detection_threshold = detection_threshold->valuedouble / 100.0f;
+        config.detection_threshold = (float)(detection_threshold->valuedouble / 100.0);
     }
 
     cJSON *detection_interval = cJSON_GetObjectItem(stream_json, "detection_interval");

@@ -78,17 +78,17 @@ ezxml_t ezxml_child(ezxml_t xml, const char *name);
 
 // returns the next tag of the same name in the same section and depth or NULL
 // if not found
-#define ezxml_next(xml) ((xml) ? xml->next : NULL)
+#define ezxml_next(xml) ((xml) ? (xml)->next : NULL)
 
 // Returns the Nth tag with the same name in the same section at the same depth
 // or NULL if not found. An index of 0 returns the tag given.
 ezxml_t ezxml_idx(ezxml_t xml, int idx);
 
 // returns the name of the given tag
-#define ezxml_name(xml) ((xml) ? xml->name : NULL)
+#define ezxml_name(xml) ((xml) ? (xml)->name : NULL)
 
 // returns the given tag's character content or empty string if none
-#define ezxml_txt(xml) ((xml) ? xml->txt : "")
+#define ezxml_txt(xml) ((xml) ? (xml)->txt : "")
 
 // returns the value of the requested tag attribute, or NULL if not found
 const char *ezxml_attr(ezxml_t xml, const char *attr);

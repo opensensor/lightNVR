@@ -211,8 +211,8 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
             cJSON *y = cJSON_GetObjectItem(point, "y");
 
             if (x && cJSON_IsNumber(x) && y && cJSON_IsNumber(y)) {
-                zone->polygon[zone->polygon_count].x = x->valuedouble;
-                zone->polygon[zone->polygon_count].y = y->valuedouble;
+                zone->polygon[zone->polygon_count].x = (float)x->valuedouble;
+                zone->polygon[zone->polygon_count].y = (float)y->valuedouble;
                 zone->polygon_count++;
             }
         }
@@ -226,9 +226,9 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
         }
 
         if (min_confidence && cJSON_IsNumber(min_confidence)) {
-            zone->min_confidence = min_confidence->valuedouble;
+            zone->min_confidence = (float)min_confidence->valuedouble;
         } else {
-            zone->min_confidence = 0.0;
+            zone->min_confidence = 0.0f;
         }
     }
 

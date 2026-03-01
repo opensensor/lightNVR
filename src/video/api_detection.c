@@ -528,11 +528,11 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         // Add the detection to the result
         strncpy(result->detections[result->count].label, label->valuestring, MAX_LABEL_LENGTH - 1);
         result->detections[result->count].label[MAX_LABEL_LENGTH - 1] = '\0';
-        result->detections[result->count].confidence = confidence->valuedouble;
-        result->detections[result->count].x = x_min->valuedouble;
-        result->detections[result->count].y = y_min->valuedouble;
-        result->detections[result->count].width = x_max->valuedouble - x_min->valuedouble;
-        result->detections[result->count].height = y_max->valuedouble - y_min->valuedouble;
+        result->detections[result->count].confidence = (float)confidence->valuedouble;
+        result->detections[result->count].x = (float)x_min->valuedouble;
+        result->detections[result->count].y = (float)y_min->valuedouble;
+        result->detections[result->count].width = (float)(x_max->valuedouble - x_min->valuedouble);
+        result->detections[result->count].height = (float)(y_max->valuedouble - y_min->valuedouble);
 
         // Parse optional track_id field
         cJSON *track_id = cJSON_GetObjectItem(detection, "track_id");
@@ -867,11 +867,11 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         // Add detection to result
         strncpy(result->detections[result->count].label, label->valuestring, MAX_LABEL_LENGTH - 1);
         result->detections[result->count].label[MAX_LABEL_LENGTH - 1] = '\0';
-        result->detections[result->count].confidence = confidence->valuedouble;
-        result->detections[result->count].x = x_min->valuedouble;
-        result->detections[result->count].y = y_min->valuedouble;
-        result->detections[result->count].width = x_max->valuedouble - x_min->valuedouble;
-        result->detections[result->count].height = y_max->valuedouble - y_min->valuedouble;
+        result->detections[result->count].confidence = (float)confidence->valuedouble;
+        result->detections[result->count].x = (float)x_min->valuedouble;
+        result->detections[result->count].y = (float)y_min->valuedouble;
+        result->detections[result->count].width = (float)(x_max->valuedouble - x_min->valuedouble);
+        result->detections[result->count].height = (float)(y_max->valuedouble - y_min->valuedouble);
 
         cJSON *track_id = cJSON_GetObjectItem(detection, "track_id");
         result->detections[result->count].track_id = (track_id && cJSON_IsNumber(track_id))

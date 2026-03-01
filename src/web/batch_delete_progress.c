@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/random.h>
 
 #include "web/batch_delete_progress.h"
 #include "core/logger.h"
@@ -22,20 +23,13 @@
 static void generate_uuid_v4(char *uuid_str) {
     unsigned char uuid[16];
 
-    // Try to read from /dev/urandom for better randomness
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (f) {
-        if (fread(uuid, 1, 16, f) != 16) {
-            // Fallback to rand() if read fails
-            for (int i = 0; i < 16; i++) {
-                uuid[i] = rand() & 0xFF;
-            }
-        }
-        fclose(f);
-    } else {
-        // Fallback to rand() if /dev/urandom is not available
-        for (int i = 0; i < 16; i++) {
-            uuid[i] = rand() & 0xFF;
+    // Use getrandom() for cryptographically secure random bytes
+    if (getrandom(uuid, 16, 0) < 0) {
+        // Fallback to /dev/urandom if getrandom fails
+        FILE *f = fopen("/dev/urandom", "rb");
+        if (f) {
+            (void)fread(uuid, 1, 16, f);
+            fclose(f);
         }
     }
 

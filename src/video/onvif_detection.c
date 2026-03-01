@@ -617,11 +617,11 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         result->count = 1;
         strncpy(result->detections[0].label, "motion", MAX_LABEL_LENGTH - 1);
         result->detections[0].label[MAX_LABEL_LENGTH - 1] = '\0';
-        result->detections[0].confidence = 1.0;
-        result->detections[0].x = 0.0;
-        result->detections[0].y = 0.0;
-        result->detections[0].width = 1.0;
-        result->detections[0].height = 1.0;
+        result->detections[0].confidence = 1.0f;
+        result->detections[0].x = 0.0f;
+        result->detections[0].y = 0.0f;
+        result->detections[0].width = 1.0f;
+        result->detections[0].height = 1.0f;
 
         // Filter detections by zones before storing
         if (stream_name && stream_name[0] != '\0') {

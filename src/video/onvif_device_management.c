@@ -700,7 +700,7 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     config.segment_duration = 60;
     config.detection_based_recording = true;  // Enable detection-based recording by default
     config.detection_interval = 10;
-    config.detection_threshold = 0.5;
+    config.detection_threshold = 0.5f;
     config.pre_detection_buffer = 5;
     config.post_detection_buffer = 10;
     config.streaming_enabled = true;  // Enable live streaming by default

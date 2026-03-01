@@ -245,7 +245,7 @@ int get_detection_zones(const char *stream_name, detection_zone_t *zones, int ma
             zone->filter_classes[0] = '\0';
         }
 
-        zone->min_confidence = sqlite3_column_double(stmt, 7);
+        zone->min_confidence = (float)sqlite3_column_double(stmt, 7);
 
         count++;
     }
