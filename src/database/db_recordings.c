@@ -386,7 +386,8 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     // Build query based on filters
     char sql[1024];
     snprintf(sql, sizeof(sql), "SELECT id, stream_name, file_path, start_time, end_time, "
-                 "size_bytes, width, height, fps, codec, is_complete "
+                 "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+                 "protected, retention_override_days, retention_tier, disk_pressure_eligible "
                  "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL"); // Only complete recordings with end_time set
 
     if (start_time > 0) {
@@ -474,6 +475,27 @@ int get_recording_metadata(time_t start_time, time_t end_time,
             }
 
             metadata[count].is_complete = sqlite3_column_int(stmt, 10) != 0;
+
+            const char *trigger_type = (const char *)sqlite3_column_text(stmt, 11);
+            if (trigger_type) {
+                strncpy(metadata[count].trigger_type, trigger_type, sizeof(metadata[count].trigger_type) - 1);
+                metadata[count].trigger_type[sizeof(metadata[count].trigger_type) - 1] = '\0';
+            } else {
+                strncpy(metadata[count].trigger_type, "scheduled", sizeof(metadata[count].trigger_type) - 1);
+            }
+
+            metadata[count].protected = sqlite3_column_int(stmt, 12) != 0;
+
+            if (sqlite3_column_type(stmt, 13) != SQLITE_NULL) {
+                metadata[count].retention_override_days = sqlite3_column_int(stmt, 13);
+            } else {
+                metadata[count].retention_override_days = -1;
+            }
+
+            metadata[count].retention_tier = (sqlite3_column_type(stmt, 14) != SQLITE_NULL)
+                ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
+            metadata[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
+                ? (sqlite3_column_int(stmt, 15) != 0) : true;
 
             count++;
         }
