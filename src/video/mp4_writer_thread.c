@@ -95,8 +95,6 @@ static void *mp4_writer_rtsp_thread(void *arg) {
     int segment_duration;
 
     AVPacket *pkt = NULL;
-    int video_stream_idx = -1;
-    int audio_stream_idx = -1;
     int ret;
 
     // BUGFIX: Initialize per-stream context and segment info

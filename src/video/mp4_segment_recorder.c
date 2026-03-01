@@ -137,14 +137,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int64_t first_video_pts = AV_NOPTS_VALUE;
     int64_t first_audio_dts = AV_NOPTS_VALUE;
     int64_t first_audio_pts = AV_NOPTS_VALUE;
-    int64_t last_video_dts = 0;
-    int64_t last_video_pts = 0;
+    int64_t last_video_dts = AV_NOPTS_VALUE;  // BUGFIX: Use AV_NOPTS_VALUE sentinel so first-frame DTS=0 duplicate pairs are caught
+    int64_t last_video_pts = AV_NOPTS_VALUE;
     int64_t last_audio_dts = 0;
     int64_t last_audio_pts = 0;
     int audio_packet_count = 0;
     int video_packet_count = 0;
     int64_t start_time = 0;  // CRITICAL FIX: Initialize to 0 to prevent using uninitialized value
-    time_t last_progress = 0;
     int segment_index = 0;
     // Invoke-once guard for started callback
     bool started_cb_called = false;
@@ -982,6 +981,27 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         log_debug("Set final frame duration to %lld", (long long)pkt->duration);
                     }
 
+                    // BUGFIX: Ensure monotonically increasing DTS for final frame before writing.
+                    // Camera streams (e.g. Dahua) can emit duplicate DTS values at segment
+                    // boundaries.  Without this check the muxer rejects the packet with
+                    // "non monotonically increasing dts" and may leave the output file corrupted.
+                    if (pkt->dts != AV_NOPTS_VALUE && last_video_dts != AV_NOPTS_VALUE && pkt->dts <= last_video_dts) {
+                        int64_t fixed_dts = last_video_dts + 1;
+                        log_debug("Fixing non-monotonic DTS in final frame: old=%lld, last=%lld, new=%lld",
+                                 (long long)pkt->dts, (long long)last_video_dts, (long long)fixed_dts);
+                        if (pkt->pts != AV_NOPTS_VALUE) {
+                            int64_t pts_dts_diff = pkt->pts - pkt->dts;
+                            pkt->dts = fixed_dts;
+                            pkt->pts = fixed_dts + (pts_dts_diff > 0 ? pts_dts_diff : 0);
+                        } else {
+                            pkt->dts = fixed_dts;
+                            pkt->pts = fixed_dts;
+                        }
+                    }
+                    if (pkt->dts != AV_NOPTS_VALUE) {
+                        last_video_dts = pkt->dts;
+                    }
+
                     // Set output stream index
                     pkt->stream_index = out_video_stream->index;
 
@@ -1050,7 +1070,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
             // CRITICAL FIX: Ensure monotonically increasing DTS values
             // This prevents the "Application provided invalid, non monotonically increasing dts" error
-            if (pkt->dts != AV_NOPTS_VALUE && last_video_dts != 0 && pkt->dts <= last_video_dts) {
+            // BUGFIX: Changed last_video_dts != 0 to last_video_dts != AV_NOPTS_VALUE so that the
+            // very first packet pair with adjusted DTS=0 is also checked (cameras like Dahua send
+            // duplicate DTS values that were slipping through when last_video_dts was still 0).
+            if (pkt->dts != AV_NOPTS_VALUE && last_video_dts != AV_NOPTS_VALUE && pkt->dts <= last_video_dts) {
                 int64_t fixed_dts = last_video_dts + 1;
                 log_debug("Fixing non-monotonic DTS: old=%lld, last=%lld, new=%lld",
                          (long long)pkt->dts, (long long)last_video_dts, (long long)fixed_dts);
