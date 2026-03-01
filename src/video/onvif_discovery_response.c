@@ -598,10 +598,6 @@ int receive_extended_discovery_responses(onvif_device_info_t *devices, int max_d
     log_info("Waiting for discovery responses (timeout: %d seconds, attempts: %d)",
              timeout_sec, max_attempts);
 
-    // Set timeout for select
-    timeout.tv_sec = timeout_sec;
-    timeout.tv_usec = 0;
-
     // Wait for responses, processing multiple responses per attempt
     for (int attempt = 0; attempt < max_attempts; attempt++) {
         log_info("Waiting for responses, attempt %d/%d", attempt+1, max_attempts);

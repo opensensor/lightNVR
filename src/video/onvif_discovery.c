@@ -184,7 +184,6 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
     char selected_network[64] = {0};
     int discovery_sock = -1;
     int broadcast_enabled = 1;
-    int result = -1;
 
     if (!devices || max_devices <= 0) {
         log_error("Invalid parameters for discover_onvif_devices");
