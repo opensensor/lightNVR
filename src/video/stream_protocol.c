@@ -183,7 +183,7 @@ static bool check_rtsp_stream_exists(const char *url) {
     server_addr.sin_port = htons(port);
 
     // Convert hostname to IP address
-    struct hostent *he = gethostbyname(host);
+    const struct hostent *he = gethostbyname(host);
     if (!he) {
         log_error("Failed to resolve hostname: %s", host);
         close(sock);
@@ -688,7 +688,7 @@ bool is_onvif_stream(const char *url) {
 /**
  * Find video stream index in the input context
  */
-int find_video_stream_index(AVFormatContext *input_ctx) {
+int find_video_stream_index(const AVFormatContext *input_ctx) {
     if (!input_ctx) {
         return -1;
     }
@@ -705,7 +705,7 @@ int find_video_stream_index(AVFormatContext *input_ctx) {
 /**
  * Find audio stream index in the input context
  */
-int find_audio_stream_index(AVFormatContext *input_ctx) {
+int find_audio_stream_index(const AVFormatContext *input_ctx) {
     if (!input_ctx) {
         return -1;
     }

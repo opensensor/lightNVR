@@ -86,11 +86,10 @@ void* load_sod_model_for_detection(const char *model_path, float threshold,
             log_error("Model file does not exist: %s", full_model_path);
 
             // Try alternative locations
-            char alt_path[MAX_PATH_LENGTH];
-
             // Get current working directory
             char cwd[MAX_PATH_LENGTH];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
+                char alt_path[MAX_PATH_LENGTH];
                 const char *locations[] = {
                     "/var/lib/lightnvr/models/", // Default system location
                 };

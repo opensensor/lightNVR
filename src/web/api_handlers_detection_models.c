@@ -29,7 +29,7 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
     log_info("Handling GET /api/detection/models request");
 
     // Get models directory from config or use default
-    config_t *config = &g_config;
+    const config_t *config = &g_config;
     const char *models_dir = config->models_path;
     if (!models_dir || strlen(models_dir) == 0) {
         models_dir = DEFAULT_MODELS_DIR;

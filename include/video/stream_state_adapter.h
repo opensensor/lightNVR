@@ -31,7 +31,7 @@ stream_state_manager_t *stream_handle_to_state(stream_handle_t handle);
  * @param state Stream state manager
  * @return Stream handle for the old API, or NULL if not found
  */
-stream_handle_t stream_state_to_handle(stream_state_manager_t *state);
+stream_handle_t stream_state_to_handle(const stream_state_manager_t *state);
 
 /**
  * Adapter function for add_stream

@@ -146,7 +146,7 @@ void free_motion_stream(motion_stream_t* stream) {
 }
 
 // Forward declarations for helper functions
-static void apply_box_blur(unsigned char *src, unsigned char *dst, int width, int height, int radius);
+static void apply_box_blur(const unsigned char *src, unsigned char *dst, int width, int height, int radius);
 static void update_background_model(unsigned char *background, const unsigned char *current,
                                     int width, int height, float learning_rate);
 static float calculate_grid_motion(const unsigned char *curr_frame, const unsigned char *prev_frame,

@@ -190,7 +190,7 @@ stream_state_manager_t *stream_handle_to_state(stream_handle_t handle) {
 /**
  * Convert stream_state_manager_t to stream_handle_t
  */
-stream_handle_t stream_state_to_handle(stream_state_manager_t *state) {
+stream_handle_t stream_state_to_handle(const stream_state_manager_t *state) {
     if (!state || !adapter_initialized) {
         return NULL;
     }

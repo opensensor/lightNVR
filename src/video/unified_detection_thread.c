@@ -605,7 +605,7 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
     ctx->audio_stream_idx = -1;
 
     for (unsigned int i = 0; i < ctx->input_ctx->nb_streams; i++) {
-        AVCodecParameters *codecpar = ctx->input_ctx->streams[i]->codecpar;
+        const AVCodecParameters *codecpar = ctx->input_ctx->streams[i]->codecpar;
         if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO && ctx->video_stream_idx < 0) {
             ctx->video_stream_idx = (int)i;
         } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO && ctx->audio_stream_idx < 0) {
@@ -950,7 +950,7 @@ static int flush_packet_callback(const AVPacket *packet, void *user_data) {
 
     // Write packet to MP4 - we need the input stream for codec parameters
     if (ctx->mp4_writer && ctx->input_ctx) {
-        AVStream *input_stream = NULL;
+        const AVStream *input_stream = NULL;
         if (packet->stream_index == ctx->video_stream_idx && ctx->video_stream_idx >= 0) {
             input_stream = ctx->input_ctx->streams[ctx->video_stream_idx];
         } else if (packet->stream_index == ctx->audio_stream_idx && ctx->audio_stream_idx >= 0) {
@@ -1007,7 +1007,7 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
     // If recording, write packet to MP4
     if (current_state == UDT_STATE_RECORDING || current_state == UDT_STATE_POST_BUFFER) {
         if (ctx->mp4_writer && ctx->input_ctx) {
-            AVStream *input_stream = NULL;
+            const AVStream *input_stream = NULL;
             if (is_video && ctx->video_stream_idx >= 0) {
                 input_stream = ctx->input_ctx->streams[ctx->video_stream_idx];
             } else if (!is_video && ctx->audio_stream_idx >= 0) {
@@ -1177,7 +1177,7 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     // Generate output filename with timestamp
     time_t now = time(NULL);
     struct tm tm_buf;
-    struct tm *tm_info = localtime_r(&now, &tm_buf);
+    const struct tm *tm_info = localtime_r(&now, &tm_buf);
     char timestamp[32];
     strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", tm_info);
 

@@ -95,7 +95,7 @@ static pthread_mutex_t cleaned_models_mutex = PTHREAD_MUTEX_INITIALIZER;
 /**
  * Check if a model has already been cleaned up
  */
-static bool is_model_already_cleaned(void *model_ptr) {
+static bool is_model_already_cleaned(const void *model_ptr) {
     bool result = false;
 
     pthread_mutex_lock(&cleaned_models_mutex);

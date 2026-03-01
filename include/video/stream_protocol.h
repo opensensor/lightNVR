@@ -17,9 +17,9 @@ bool is_onvif_stream(const char *url);
 int open_input_stream(AVFormatContext **input_ctx, const char *url, int protocol);
 
 // Find video stream index in the input context
-int find_video_stream_index(AVFormatContext *input_ctx);
+int find_video_stream_index(const AVFormatContext *input_ctx);
 
 // Find audio stream index in the input context
-int find_audio_stream_index(AVFormatContext *input_ctx);
+int find_audio_stream_index(const AVFormatContext *input_ctx);
 
 #endif // STREAM_PROTOCOL_H
