@@ -72,14 +72,17 @@ config_t* get_streaming_config(void) {
     memcpy(&db_config, &g_config, sizeof(config_t));
     
     // Load stream configurations from database
-    stream_config_t db_streams[MAX_STREAMS];
-    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
-    
-    if (count > 0) {
-        // Copy stream configurations to the config structure
-        for (int i = 0; i < count && i < MAX_STREAMS; i++) {
-            memcpy(&db_config.streams[i], &db_streams[i], sizeof(stream_config_t));
+    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    stream_config_t *db_streams = calloc(ms, sizeof(stream_config_t));
+    if (db_streams) {
+        int count = get_all_stream_configs(db_streams, ms);
+        if (count > 0) {
+            // Copy stream configurations to the config structure
+            for (int i = 0; i < count && i < ms; i++) {
+                memcpy(&db_config.streams[i], &db_streams[i], sizeof(stream_config_t));
+            }
         }
+        free(db_streams);
     }
     
     // Log the storage path for debugging

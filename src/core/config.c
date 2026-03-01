@@ -215,9 +215,32 @@ static void apply_env_overrides(config_t *config) {
 // Default configuration values
 void load_default_config(config_t *config) {
     if (!config) return;
-    
+
+    // Free any existing dynamic streams array before zeroing the struct
+    if (config->streams) {
+        free(config->streams);
+        config->streams = NULL;
+    }
+
     // Clear the structure
     memset(config, 0, sizeof(config_t));
+
+    // --- Runtime stream limit ---
+    config->max_streams = 32; // default; overridden by [streams] max_streams in INI
+    config->streams = calloc(config->max_streams, sizeof(stream_config_t));
+    if (!config->streams) {
+        // Fatal: we can't run without a streams array. Caller will detect NULL.
+        log_error("load_default_config: failed to allocate streams array");
+        return;
+    }
+
+    // --- Web thread pool default: 2x online CPUs, clamped [2, 128] ---
+    {
+        int num_cores = (int)sysconf(_SC_NPROCESSORS_ONLN);
+        config->web_thread_pool_size = (num_cores > 0) ? (num_cores * 2) : 8;
+        if (config->web_thread_pool_size < 2)   config->web_thread_pool_size = 2;
+        if (config->web_thread_pool_size > 128) config->web_thread_pool_size = 128;
+    }
     
     // General settings
     snprintf(config->pid_file, MAX_PATH_LENGTH, "/var/run/lightnvr.pid");
@@ -327,7 +350,7 @@ void load_default_config(config_t *config) {
     snprintf(config->onvif_discovery_network, sizeof(config->onvif_discovery_network), "auto");
 
     // Initialize default values for detection-based recording in streams
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < config->max_streams; i++) {
         config->streams[i].detection_based_recording = false;
         config->streams[i].detection_model[0] = '\0';
         config->streams[i].detection_interval = 10; // Check every 10 seconds
@@ -651,20 +674,45 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (config->login_rate_limit_window_seconds < 10) {
                 config->login_rate_limit_window_seconds = 10; // Minimum 10 seconds
             }
+        } else if (strcmp(name, "web_thread_pool_size") == 0) {
+            int v = atoi(value);
+            if (v < 2)   v = 2;
+            if (v > 128) v = 128;
+            config->web_thread_pool_size = v;
         }
     }
-    // Stream settings (max_streams is ignored, uses compile-time MAX_STREAMS)
+    // Stream settings
     else if (strcmp(section, "streams") == 0) {
-        // max_streams setting is no longer configurable, using MAX_STREAMS constant
+        if (strcmp(name, "max_streams") == 0) {
+            int new_max = atoi(value);
+            if (new_max < 1)          new_max = 1;
+            if (new_max > MAX_STREAMS) new_max = MAX_STREAMS;
+            if (new_max != config->max_streams) {
+                stream_config_t *p = realloc(config->streams, new_max * sizeof(stream_config_t));
+                if (p) {
+                    // Zero-initialise newly added slots when expanding
+                    if (new_max > config->max_streams) {
+                        memset(p + config->max_streams, 0,
+                               (new_max - config->max_streams) * sizeof(stream_config_t));
+                    }
+                    config->streams    = p;
+                    config->max_streams = new_max;
+                    log_info("max_streams set to %d", new_max);
+                } else {
+                    log_error("Failed to realloc streams array for max_streams=%d, keeping %d",
+                              new_max, config->max_streams);
+                }
+            }
+        }
     }
     // Stream-specific settings (format: stream_name.setting)
     else if (strstr(section, "stream.") == section) {
         // Extract stream name from section (after "stream.")
         const char *stream_name = section + 7; // Skip "stream."
-        
+
         // Find the stream with this name
         int stream_idx = -1;
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < config->max_streams; i++) {
             if (strcmp(config->streams[i].name, stream_name) == 0) {
                 stream_idx = i;
                 break;
@@ -873,36 +921,42 @@ static int load_config_from_file(const char *filename, config_t *config) {
 
 // Load stream configurations from database
 int load_stream_configs(config_t *config) {
-    if (!config) return -1;
-    
+    if (!config || !config->streams) return -1;
+
     // Clear existing stream configurations
-    memset(config->streams, 0, sizeof(stream_config_t) * MAX_STREAMS);
-    
+    memset(config->streams, 0, sizeof(stream_config_t) * config->max_streams);
+
     // Get stream count from database
     int count = count_stream_configs();
     if (count < 0) {
         log_error("Failed to count stream configurations in database");
         return -1;
     }
-    
+
     if (count == 0) {
         log_info("No stream configurations found in database");
         return 0;
     }
-    
-    // Get stream configurations from database
-    stream_config_t db_streams[MAX_STREAMS];
-    int loaded = get_all_stream_configs(db_streams, MAX_STREAMS);
-    if (loaded < 0) {
-        log_error("Failed to load stream configurations from database");
+
+    // Heap-allocate temporary buffer (stream_config_t is ~2 KB; stack array at 256 overflows)
+    stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
+    if (!db_streams) {
+        log_error("load_stream_configs: out of memory");
         return -1;
     }
-    
+    int loaded = get_all_stream_configs(db_streams, config->max_streams);
+    if (loaded < 0) {
+        log_error("Failed to load stream configurations from database");
+        free(db_streams);
+        return -1;
+    }
+
     // Copy stream configurations to config
-    for (int i = 0; i < loaded && i < MAX_STREAMS; i++) {
+    for (int i = 0; i < loaded && i < config->max_streams; i++) {
         memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
     }
-    
+    free(db_streams);
+
     log_info("Loaded %d stream configurations from database", loaded);
     return loaded;
 }
@@ -942,44 +996,53 @@ int save_stream_configs(const config_t *config) {
     }
     
     if (count > 0) {
-        // Get existing stream names
-        stream_config_t db_streams[MAX_STREAMS];
-        int loaded = get_all_stream_configs(db_streams, MAX_STREAMS);
-        if (loaded < 0) {
-            log_error("Failed to load stream configurations from database");
+        // Get existing stream names (heap-allocated to avoid large stack frames)
+        stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
+        if (!db_streams) {
+            log_error("save_stream_configs: out of memory");
             rollback_transaction();
             return -1;
         }
-        
+        int loaded = get_all_stream_configs(db_streams, config->max_streams);
+        if (loaded < 0) {
+            log_error("Failed to load stream configurations from database");
+            free(db_streams);
+            rollback_transaction();
+            return -1;
+        }
+
         // Check if configurations are identical to avoid unnecessary updates
         int identical = 1;
         if (loaded == count) {
             for (int i = 0; i < loaded && identical; i++) {
-                if (strlen(config->streams[i].name) == 0 || 
+                if (strlen(config->streams[i].name) == 0 ||
                     strcmp(config->streams[i].name, db_streams[i].name) != 0) {
                     identical = 0;
                 }
             }
-            
+
             if (identical) {
                 log_info("Stream configurations unchanged, skipping update");
+                free(db_streams);
                 commit_transaction();
                 return loaded;
             }
         }
-        
+
         // Delete existing stream configurations
         for (int i = 0; i < loaded; i++) {
             if (delete_stream_config(db_streams[i].name) != 0) {
                 log_error("Failed to delete stream configuration: %s", db_streams[i].name);
+                free(db_streams);
                 rollback_transaction();
                 return -1;
             }
         }
+        free(db_streams);
     }
-    
+
     // Add stream configurations to database
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < config->max_streams; i++) {
         if (strlen(config->streams[i].name) > 0) {
             uint64_t result = add_stream_config(&config->streams[i]);
             if (result == 0) {
@@ -1326,6 +1389,7 @@ int save_config(const config_t *config, const char *path) {
     
     // Write web server settings
     fprintf(file, "[web]\n");
+    fprintf(file, "web_thread_pool_size = %d  ; libuv UV_THREADPOOL_SIZE (default: 2x CPU cores; requires restart)\n", config->web_thread_pool_size);
     fprintf(file, "port = %d\n", config->web_port);
     fprintf(file, "root = %s\n", config->web_root);
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
@@ -1342,7 +1406,8 @@ int save_config(const config_t *config, const char *path) {
 
     // Write stream settings
     fprintf(file, "[streams]\n");
-    fprintf(file, "# max_streams is no longer configurable (compile-time limit: %d)\n\n", MAX_STREAMS);
+    fprintf(file, "max_streams = %d  ; Runtime stream slot limit (default: 32, ceiling: %d; requires restart)\n\n",
+            config->max_streams, MAX_STREAMS);
     
     // Write memory optimization settings
     fprintf(file, "[memory]\n");
@@ -1418,7 +1483,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "discovery_network = %s\n", config->onvif_discovery_network);
 
     // Write stream-specific settings
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < config->max_streams; i++) {
         if (strlen(config->streams[i].name) > 0 &&
             (config->streams[i].detection_based_recording || config->streams[i].record_audio)) {
             fprintf(file, "\n[stream.%s]\n", config->streams[i].name);
@@ -1510,7 +1575,9 @@ void print_config(const config_t *config) {
     printf("    Login Rate Limit Window: %d seconds\n", config->login_rate_limit_window_seconds);
 
     printf("  Stream Settings:\n");
-    printf("    Max Streams: %d (compile-time)\n", MAX_STREAMS);
+    printf("    Max Streams: %d (runtime) / %d (compile-time ceiling)\n",
+           config->max_streams, MAX_STREAMS);
+    printf("  Web Thread Pool Size: %d\n", config->web_thread_pool_size);
     
     printf("  Memory Optimization:\n");
     printf("    Buffer Size: %d KB\n", config->buffer_size);
@@ -1523,7 +1590,7 @@ void print_config(const config_t *config) {
     printf("    HW Accel Device: %s\n", config->hw_accel_device);
     
     printf("  Stream Configurations:\n");
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < config->max_streams; i++) {
         if (strlen(config->streams[i].name) > 0) {
             printf("    Stream %d:\n", i);
             printf("      Name: %s\n", config->streams[i].name);

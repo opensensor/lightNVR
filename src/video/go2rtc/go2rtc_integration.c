@@ -1255,12 +1255,15 @@ bool go2rtc_integration_register_all_streams(void) {
         return false;
     }
 
-    // Get all stream configurations
-    stream_config_t streams[MAX_STREAMS];
-    int count = get_all_stream_configs(streams, MAX_STREAMS);
+    // Get all stream configurations (heap-allocated)
+    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
+    if (!streams) return false;
+    int count = get_all_stream_configs(streams, ms);
 
     if (count <= 0) {
         log_info("No streams found to register with go2rtc");
+        free(streams);
         return true; // Not an error, just no streams
     }
 
@@ -1286,7 +1289,7 @@ bool go2rtc_integration_register_all_streams(void) {
             }
         }
     }
-
+    free(streams);
     return all_success;
 }
 
@@ -1314,9 +1317,11 @@ bool go2rtc_sync_streams_from_database(void) {
         return false;
     }
 
-    // Get all stream configurations from database
-    stream_config_t db_streams[MAX_STREAMS];
-    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+    // Get all stream configurations from database (heap-allocated)
+    int ms2 = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    stream_config_t *db_streams = calloc(ms2, sizeof(stream_config_t));
+    if (!db_streams) return false;
+    int count = get_all_stream_configs(db_streams, ms2);
 
     if (count < 0) {
         log_error("Failed to get stream configurations from database");
@@ -1379,6 +1384,7 @@ bool go2rtc_sync_streams_from_database(void) {
     }
 
     log_info("go2rtc sync complete: %d synced, %d skipped, %d failed", synced, skipped, failed);
+    free(db_streams);
     return all_success;
 }
 

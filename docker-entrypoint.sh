@@ -92,10 +92,13 @@ root = /var/lib/lightnvr/www
 auth_enabled = true
 username = admin
 password = admin
-web_thread_pool_size = 8
+; web_thread_pool_size: UV_THREADPOOL_SIZE. Default is 2x online CPU cores (clamped [2,128]).
+; Uncomment to override. Requires restart.
+; web_thread_pool_size = 8
 
 [streams]
-max_streams = 16
+; max_streams: runtime stream slot limit (default 32, ceiling 256). Requires restart.
+max_streams = ${MAX_STREAMS:-32}
 
 [models]
 path = /var/lib/lightnvr/data/models

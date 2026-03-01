@@ -20,6 +20,7 @@
 #include "web/thumbnail_thread.h"
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_health.h"
+#include "core/config.h"
 #include "core/logger.h"
 
 // Initial handler capacity
@@ -67,11 +68,16 @@ static http_server_handle_t libuv_server_init_internal(const http_server_config_
     // default of 4 threads is too small — slow handlers (ONVIF discovery,
     // recording sync) would starve fast handlers (config reads, stream CRUD).
     // Must be set before the first uv_loop_init / uv_queue_work call.
-    // 8 threads is sufficient for typical workloads (was 16, reduced to cut
-    // per-thread stack RSS, especially important in memory-constrained pods).
+    // The value comes from g_config.web_thread_pool_size (default: 2x CPU cores).
+    // An explicit UV_THREADPOOL_SIZE env var always takes precedence.
     if (!getenv("UV_THREADPOOL_SIZE")) {
-        setenv("UV_THREADPOOL_SIZE", "8", 1);
-        log_info("libuv_server_init: Set UV_THREADPOOL_SIZE=8 for handler offloading");
+        char pool_size_str[16];
+        int pool_size = g_config.web_thread_pool_size;
+        if (pool_size < 2)   pool_size = 2;
+        if (pool_size > 128) pool_size = 128;
+        snprintf(pool_size_str, sizeof(pool_size_str), "%d", pool_size);
+        setenv("UV_THREADPOOL_SIZE", pool_size_str, 1);
+        log_info("libuv_server_init: Set UV_THREADPOOL_SIZE=%d for handler offloading", pool_size);
     }
 
     libuv_server_t *server = safe_calloc(1, sizeof(libuv_server_t));

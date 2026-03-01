@@ -26,8 +26,9 @@
  * the stream is stopped, even if the flags were changed before stopping.
  */
 
-// Global array of stream state managers
-static stream_state_manager_t *stream_states[MAX_STREAMS];
+// Global dynamically-allocated array of stream state manager pointers
+static stream_state_manager_t **stream_states = NULL;
+static int states_capacity = 0;  // allocated slot count
 static pthread_mutex_t states_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool initialized = false;
 
@@ -39,15 +40,23 @@ int init_stream_state_manager(int max_streams) {
         return 0;  // Already initialized
     }
 
+    if (max_streams < 1)           max_streams = 1;
+    if (max_streams > MAX_STREAMS) max_streams = MAX_STREAMS;
+
     pthread_mutex_lock(&states_mutex);
 
-    // Initialize stream states array
-    memset(stream_states, 0, sizeof(stream_states));
+    stream_states = calloc(max_streams, sizeof(stream_state_manager_t *));
+    if (!stream_states) {
+        pthread_mutex_unlock(&states_mutex);
+        log_error("init_stream_state_manager: failed to allocate states array");
+        return -1;
+    }
+    states_capacity = max_streams;
 
     initialized = true;
     pthread_mutex_unlock(&states_mutex);
 
-    log_info("Stream state manager initialized");
+    log_info("Stream state manager initialized (%d slots)", max_streams);
     return 0;
 }
 
@@ -62,7 +71,7 @@ void shutdown_stream_state_manager(void) {
     pthread_mutex_lock(&states_mutex);
 
     // Stop and clean up all streams
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < states_capacity; i++) {
         if (stream_states[i]) {
             // Make a local copy of the stream name for logging
             char stream_name[MAX_STREAM_NAME];
@@ -86,6 +95,9 @@ void shutdown_stream_state_manager(void) {
         }
     }
 
+    free(stream_states);
+    stream_states = NULL;
+    states_capacity = 0;
     initialized = false;
     pthread_mutex_unlock(&states_mutex);
 
@@ -105,7 +117,7 @@ stream_state_manager_t *create_stream_state(const stream_config_t *config) {
 
     // Find an empty slot
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < states_capacity; i++) {
         if (!stream_states[i]) {
             slot = i;
             break;
@@ -119,7 +131,7 @@ stream_state_manager_t *create_stream_state(const stream_config_t *config) {
     }
 
     // Check if stream with same name already exists
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < states_capacity; i++) {
         if (i != slot && stream_states[i] &&
             strcmp(stream_states[i]->name, config->name) == 0) {
             log_error("Stream with name '%s' already exists", config->name);
@@ -221,7 +233,7 @@ stream_state_manager_t *get_stream_state_by_name(const char *name) {
 
     pthread_mutex_lock(&states_mutex);
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < states_capacity; i++) {
         if (stream_states[i] && strcmp(stream_states[i]->name, name) == 0) {
             pthread_mutex_unlock(&states_mutex);
             return stream_states[i];
@@ -775,7 +787,7 @@ int get_stream_state_count(void) {
     pthread_mutex_lock(&states_mutex);
 
     int count = 0;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < states_capacity; i++) {
         if (stream_states[i]) {
             count++;
         }
@@ -789,7 +801,7 @@ int get_stream_state_count(void) {
  * Get stream state manager by index
  */
 stream_state_manager_t *get_stream_state_by_index(int index) {
-    if (index < 0 || index >= MAX_STREAMS || !initialized) {
+    if (index < 0 || index >= states_capacity || !initialized) {
         return NULL;
     }
 
@@ -813,7 +825,7 @@ int remove_stream_state(stream_state_manager_t *state) {
 
     // Find the state in the array
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < states_capacity; i++) {
         if (stream_states[i] == state) {
             slot = i;
             break;

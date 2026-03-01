@@ -290,7 +290,7 @@ static void mark_context_pending_deletion(void *ctx) {
 
     // Find an empty slot or the existing entry for this context
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (pending_deletions[i].ctx == ctx) {
             // Context already marked, just update the flag
             atomic_store(&pending_deletions[i].pending_deletion, 1);
@@ -323,7 +323,7 @@ static bool is_context_pending_deletion(void *ctx) {
 
     pthread_mutex_lock(&pending_deletions_mutex);
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (pending_deletions[i].ctx == ctx && atomic_load(&pending_deletions[i].pending_deletion)) {
             result = true;
             break;
@@ -352,7 +352,7 @@ static void mark_thread_exited(void *ctx) {
 
     // First, check if the context is already in the list
     bool found = false;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (pending_deletions[i].ctx == ctx) {
             atomic_store(&pending_deletions[i].thread_exited, 1);
             found = true;
@@ -365,7 +365,7 @@ static void mark_thread_exited(void *ctx) {
     if (!found) {
         // Find an empty slot
         int slot = -1;
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (pending_deletions[i].ctx == NULL) {
                 slot = i;
                 break;
@@ -398,7 +398,7 @@ static bool has_thread_exited(void *ctx) {
 
     pthread_mutex_lock(&pending_deletions_mutex);
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (pending_deletions[i].ctx == ctx) {
             result = atomic_load(&pending_deletions[i].thread_exited);
             break;
@@ -486,7 +486,7 @@ static void wait_for_thread_exit(void *ctx) {
 static void clear_context_pending_deletion(void *ctx) {
     pthread_mutex_lock(&pending_deletions_mutex);
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (pending_deletions[i].ctx == ctx) {
             pending_deletions[i].ctx = NULL;
             atomic_store(&pending_deletions[i].pending_deletion, 0);
@@ -2245,7 +2245,7 @@ int start_hls_unified_stream(const char *stream_name) {
     int best_context_idx = -1;
 
     // First pass: count running contexts and find any with valid connections
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (unified_contexts[i] && strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
             running_indices[running_count++] = i;
             already_running = true;
@@ -2300,7 +2300,7 @@ int start_hls_unified_stream(const char *stream_name) {
 
     // Find empty slot
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!unified_contexts[i]) {
             slot = i;
             break;
@@ -2595,7 +2595,7 @@ int stop_hls_unified_stream(const char *stream_name) {
         // Only disable callbacks if we're actually stopping the stream
         bool found = false;
         pthread_mutex_lock(&unified_contexts_mutex);
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (unified_contexts[i] && strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
                 found = true;
                 break;
@@ -2621,7 +2621,7 @@ int stop_hls_unified_stream(const char *stream_name) {
     int indices[MAX_STREAMS];
 
     // CRITICAL FIX: Check for multiple contexts with the same stream name
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (unified_contexts[i] && unified_contexts[i]->stream_name[0] != '\0' &&
             strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
             if (contexts_found == 0) {
@@ -2858,7 +2858,7 @@ int stop_hls_unified_stream(const char *stream_name) {
 
     // CRITICAL FIX: Check for any remaining contexts for this stream and clean them up
     pthread_mutex_lock(&unified_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (unified_contexts[i] && unified_contexts[i]->stream_name[0] != '\0' &&
             strcmp(unified_contexts[i]->stream_name, stream_name) == 0) {
             log_warn("Found additional HLS context for stream %s after primary context cleanup", stream_name);
@@ -2913,7 +2913,7 @@ int stop_hls_unified_stream(const char *stream_name) {
 int is_hls_stream_active(const char *stream_name) {
     pthread_mutex_lock(&unified_contexts_mutex);
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (unified_contexts[i] &&
             strcmp(unified_contexts[i]->stream_name, stream_name) == 0 &&
             atomic_load(&unified_contexts[i]->running) &&
@@ -3081,7 +3081,7 @@ static void cleanup_freed_contexts_tracking(void) {
 
     // Check if there are any pending deletions
     bool has_pending = false;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (pending_deletions[i].ctx != NULL && atomic_load(&pending_deletions[i].pending_deletion)) {
             has_pending = true;
             log_info("Waiting for thread to exit for context %p", pending_deletions[i].ctx);
@@ -3253,7 +3253,7 @@ static void *hls_watchdog_thread_func(void *arg) {
         pthread_mutex_lock(&unified_contexts_mutex);
 
         // Check each context
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             hls_unified_thread_ctx_t *ctx = unified_contexts[i];
             if (!ctx) {
                 continue;

@@ -93,8 +93,13 @@ typedef struct {
 static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
     if (!task) return;
 
-    stream_config_t all_streams[MAX_STREAMS];
-    int stream_count = get_all_stream_configs(all_streams, MAX_STREAMS);
+    stream_config_t *all_streams = calloc(g_config.max_streams, sizeof(stream_config_t));
+    if (!all_streams) {
+        log_error("go2rtc_settings_worker: out of memory");
+        free(task);
+        return;
+    }
+    int stream_count = get_all_stream_configs(all_streams, g_config.max_streams);
 
     if (!task->becoming_enabled) {
         // go2rtc is being DISABLED — stop health monitor, stop go2rtc, start native HLS
@@ -224,6 +229,7 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
         }
     }
 
+    free(all_streams);
     free(task);
 }
 
@@ -262,6 +268,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     }
     
     // Add settings properties
+    cJSON_AddNumberToObject(settings, "web_thread_pool_size", g_config.web_thread_pool_size);
     cJSON_AddNumberToObject(settings, "web_port", g_config.web_port);
     cJSON_AddStringToObject(settings, "web_root", g_config.web_root);
     cJSON_AddBoolToObject(settings, "web_auth_enabled", g_config.web_auth_enabled);
@@ -275,7 +282,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
     cJSON_AddBoolToObject(settings, "generate_thumbnails", g_config.generate_thumbnails);
-    cJSON_AddNumberToObject(settings, "max_streams", MAX_STREAMS);
+    cJSON_AddNumberToObject(settings, "max_streams", g_config.max_streams);
+    cJSON_AddNumberToObject(settings, "max_streams_ceiling", MAX_STREAMS);
     cJSON_AddStringToObject(settings, "log_file", g_config.log_file);
     cJSON_AddNumberToObject(settings, "log_level", g_config.log_level);
     cJSON_AddStringToObject(settings, "pid_file", g_config.pid_file);
@@ -435,6 +443,17 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     char old_mqtt_ha_discovery_prefix[128];
     strncpy(old_mqtt_ha_discovery_prefix, g_config.mqtt_ha_discovery_prefix, sizeof(old_mqtt_ha_discovery_prefix));
     int old_mqtt_ha_snapshot_interval = g_config.mqtt_ha_snapshot_interval;
+
+    // Web thread pool size (requires restart; stored in config only)
+    cJSON *web_thread_pool_size_j = cJSON_GetObjectItem(settings, "web_thread_pool_size");
+    if (web_thread_pool_size_j && cJSON_IsNumber(web_thread_pool_size_j)) {
+        int v = web_thread_pool_size_j->valueint;
+        if (v < 2)   v = 2;
+        if (v > 128) v = 128;
+        g_config.web_thread_pool_size = v;
+        settings_changed = true;
+        log_info("Updated web_thread_pool_size: %d (restart required)", v);
+    }
 
     // Web port
     cJSON *web_port = cJSON_GetObjectItem(settings, "web_port");
@@ -609,7 +628,18 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated models_path: %s", g_config.models_path);
     }
     
-    // max_streams is no longer configurable (compile-time MAX_STREAMS constant)
+    // max_streams — runtime stream slot limit (requires restart to take effect)
+    cJSON *max_streams_j = cJSON_GetObjectItem(settings, "max_streams");
+    if (max_streams_j && cJSON_IsNumber(max_streams_j)) {
+        int new_max = max_streams_j->valueint;
+        if (new_max < 1)           new_max = 1;
+        if (new_max > MAX_STREAMS) new_max = MAX_STREAMS;
+        if (new_max != g_config.max_streams) {
+            g_config.max_streams = new_max;
+            settings_changed = true;
+            log_info("Updated max_streams: %d (restart required)", new_max);
+        }
+    }
 
     // Log file
     cJSON *log_file = cJSON_GetObjectItem(settings, "log_file");
@@ -1107,12 +1137,18 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         // First, stop all HLS streams explicitly to ensure they're properly shut down
         log_info("Stopping all HLS streams before changing database path...");
         
-        // Get a list of all active streams
-        char active_streams[MAX_STREAMS][MAX_STREAM_NAME];
+        // Get a list of all active streams (heap-allocated; 256 * 256 B on stack is too large)
+        char (*active_streams)[MAX_STREAM_NAME] = calloc(g_config.max_streams, MAX_STREAM_NAME);
+        if (!active_streams) {
+            log_error("handle_post_settings: out of memory for active_streams");
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 500, "Internal error");
+            return;
+        }
         int active_stream_count = 0;
-        
+
         log_info("Scanning for active streams...");
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             log_info("Checking stream slot %d: name='%s', enabled=%d", 
                     i, g_config.streams[i].name, g_config.streams[i].enabled);
             
@@ -1177,23 +1213,25 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             }
             
             // Reinitialize stream manager
-            if (init_stream_manager(MAX_STREAMS) != 0) {
+            if (init_stream_manager(g_config.max_streams) != 0) {
                 log_error("Failed to reinitialize stream manager");
             } else {
                 log_info("Successfully reinitialized stream manager");
             }
-            
+
             // Send error response
+            free(active_streams);
             cJSON_Delete(settings);
             http_response_set_json_error(res, 500, "Failed to initialize database with new path");
             return;
         }
-        
+
         log_info("Reinitializing stream manager...");
-        if (init_stream_manager(MAX_STREAMS) != 0) {
+        if (init_stream_manager(g_config.max_streams) != 0) {
             log_error("Failed to reinitialize stream manager");
-            
+
             // Send error response
+            free(active_streams);
             cJSON_Delete(settings);
             http_response_set_json_error(res, 500, "Failed to reinitialize stream manager");
             return;
@@ -1257,7 +1295,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                 
                 // Try to find the stream configuration in the global config
                 stream_config_t *config = NULL;
-                for (int j = 0; j < MAX_STREAMS; j++) {
+                for (int j = 0; j < g_config.max_streams; j++) {
                     if (strcmp(g_config.streams[j].name, active_streams[i]) == 0) {
                         config = &g_config.streams[j];
                         break;
@@ -1361,9 +1399,16 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         // Always start all streams from the database after changing the database path
         log_info("Starting all streams from the database after changing database path...");
         
-        // Get all stream configurations from the database
-        stream_config_t db_streams[MAX_STREAMS];
-        int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+        // Get all stream configurations from the database (heap-allocated)
+        stream_config_t *db_streams = calloc(g_config.max_streams, sizeof(stream_config_t));
+        if (!db_streams) {
+            log_error("handle_post_settings: out of memory for db_streams");
+            free(active_streams);
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 500, "Internal error");
+            return;
+        }
+        int count = get_all_stream_configs(db_streams, g_config.max_streams);
         
         if (count > 0) {
             log_info("Found %d streams in the database", count);
@@ -1451,7 +1496,9 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         } else {
             log_warn("No streams found in the database");
         }
-        
+        free(db_streams);
+        free(active_streams);
+
         log_info("Database path changed successfully");
     }
     

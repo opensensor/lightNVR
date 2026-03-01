@@ -750,8 +750,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Initialize stream state manager
-    if (init_stream_state_manager(MAX_STREAMS) != 0) {
+    // Initialize stream state manager (use runtime max from config)
+    if (init_stream_state_manager(config.max_streams) != 0) {
         log_error("Failed to initialize stream state manager");
         goto cleanup;
     }
@@ -762,8 +762,8 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    // Initialize stream manager
-    if (init_stream_manager(MAX_STREAMS) != 0) {
+    // Initialize stream manager (use runtime max from config)
+    if (init_stream_manager(config.max_streams) != 0) {
         log_error("Failed to initialize stream manager");
         goto cleanup;
     }
@@ -868,7 +868,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Check if detection models exist and start detection-based recording - MOVED TO END OF SETUP
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
 
@@ -1293,7 +1293,7 @@ cleanup:
 
         // Stop all detection stream readers first
         log_info("Stopping all detection stream readers...");
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0' &&
                 config.streams[i].detection_based_recording &&
                 config.streams[i].detection_model[0] != '\0') {
@@ -1321,7 +1321,7 @@ cleanup:
         usleep(500000);  // 500ms
 
         // Stop all streams to ensure clean shutdown
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
                 stream_handle_t stream = get_stream_by_name(config.streams[i].name);
                 if (stream) {
@@ -1339,7 +1339,7 @@ cleanup:
         close_all_mp4_writers();
 
         // Update MP4 writer components state
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0' && config.streams[i].record) {
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "mp4_writer_%s", config.streams[i].name);
@@ -1361,7 +1361,7 @@ cleanup:
         cleanup_hls_directories();
 
         // Update HLS writer components state
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
                 char component_name[128];
                 snprintf(component_name, sizeof(component_name), "hls_writer_%s", config.streams[i].name);
@@ -1510,7 +1510,7 @@ cleanup:
         // to prevent serving requests during shutdown
 
         // Stop all streams first
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (config.streams[i].name[0] != '\0') {
                 stream_handle_t stream = get_stream_by_name(config.streams[i].name);
                 if (stream) {
@@ -1659,14 +1659,14 @@ static void check_and_ensure_services(void) {
     // by the maintenance loop.
     config_t *current_config = get_streaming_config();
 
-    log_info("Running periodic service check (%d max streams)", MAX_STREAMS);
+    log_info("Running periodic service check (%d max streams)", g_config.max_streams);
 
     // Track how many new recordings we've started in this check cycle.
     // Used to stagger recording starts so we don't overwhelm go2rtc with
     // simultaneous RTSP connections to multiple cameras.
     int recordings_started = 0;
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         // Log the record flag for debugging
         if (current_config->streams[i].name[0] != '\0') {
             log_info("Service check for stream %s: enabled=%d, record=%d, streaming_enabled=%d",

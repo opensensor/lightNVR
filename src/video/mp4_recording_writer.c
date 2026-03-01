@@ -55,7 +55,7 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
 
     // Find empty slot or existing entry for this stream
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!mp4_writers[i]) {
             slot = i;
             break;
@@ -116,7 +116,7 @@ mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name) {
     // Use a local variable to store the writer pointer
     mp4_writer_t *writer_copy = NULL;
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (mp4_writers[i] && 
             mp4_writer_stream_names[i][0] != '\0' && 
             strcmp(mp4_writer_stream_names[i], local_stream_name) == 0) {
@@ -169,7 +169,7 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
 
     // Find the writer for this stream
     int writer_idx = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (mp4_writers[i] && 
             mp4_writer_stream_names[i][0] != '\0' && 
             strcmp(mp4_writer_stream_names[i], local_stream_name) == 0) {
@@ -206,7 +206,7 @@ void close_all_mp4_writers(void) {
     char file_paths_to_close[MAX_STREAMS][MAX_PATH_LENGTH] = {{0}};
     int num_writers_to_close = 0;
     
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (mp4_writers[i] && mp4_writer_stream_names[i][0] != '\0') {
             // Store the writer pointer
             mp4_writer_t *writer = mp4_writers[i];
@@ -272,7 +272,7 @@ void close_all_mp4_writers(void) {
                 file_paths_to_close[i][0] != '\0' ? file_paths_to_close[i] : "(empty path)");
         
         // Update recording contexts to prevent double-free
-        for (int j = 0; j < MAX_STREAMS; j++) {
+        for (int j = 0; j < g_config.max_streams; j++) {
             if (recording_contexts[j] && 
                 strcmp(recording_contexts[j]->config.name, stream_names_to_close[i]) == 0) {
                 // If this recording context references the writer we're about to close,

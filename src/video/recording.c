@@ -71,7 +71,7 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
 
     // Check if there's already an active recording for this stream
     uint64_t existing_recording_id = 0;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (active_recordings[i].recording_id > 0 && 
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
             existing_recording_id = active_recordings[i].recording_id;
@@ -153,7 +153,7 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     log_info("Recording metadata added to database with ID: %llu", (unsigned long long)recording_id);
 
     // Store active recording
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (active_recordings[i].recording_id == 0) {
             active_recordings[i].recording_id = recording_id;
             strncpy(active_recordings[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
@@ -179,7 +179,7 @@ void update_recording(const char *stream_name) {
     if (!stream_name) return;
 
     // Find the active recording for this stream
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (active_recordings[i].recording_id > 0 && 
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
             
@@ -224,7 +224,7 @@ void stop_recording(const char *stream_name) {
     if (!stream_name) return;
 
     // Find the active recording for this stream
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (active_recordings[i].recording_id > 0 && 
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
             
@@ -315,7 +315,7 @@ int get_recording_state(const char *stream_name) {
     }
 
     // Also check the active_recordings array for backward compatibility
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (active_recordings[i].recording_id > 0 &&
             strcmp(active_recordings[i].stream_name, stream_name) == 0) {
             return 1; // Recording is active in legacy system

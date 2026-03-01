@@ -29,6 +29,8 @@ export function SettingsView() {
     generateThumbnails: true,
     dbPath: '/var/lib/lightnvr/lightnvr.db',
     webPort: '8080',
+    webThreadPoolSize: '',   // populated from API; blank = use server default (2x cores)
+    maxStreams: '32',
     authEnabled: true,
     demoMode: false, // Demo mode: allows unauthenticated viewer access
     webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
@@ -185,6 +187,8 @@ export function SettingsView() {
         generateThumbnails: settingsData.generate_thumbnails !== false,
         dbPath: settingsData.db_path || '',
         webPort: settingsData.web_port?.toString() || '',
+        webThreadPoolSize: settingsData.web_thread_pool_size?.toString() || '',
+        maxStreams: settingsData.max_streams?.toString() || '32',
         authEnabled: settingsData.web_auth_enabled || false,
         demoMode: settingsData.demo_mode || false,
         webrtcDisabled: settingsData.webrtc_disabled || false,
@@ -268,6 +272,8 @@ export function SettingsView() {
       generate_thumbnails: settings.generateThumbnails,
       db_path: settings.dbPath,
       web_port: parseInt(settings.webPort, 10),
+      web_thread_pool_size: parseInt(settings.webThreadPoolSize, 10) || undefined,
+      max_streams: parseInt(settings.maxStreams, 10) || 32,
       web_auth_enabled: settings.authEnabled,
       demo_mode: settings.demoMode,
       webrtc_disabled: settings.webrtcDisabled,
@@ -627,6 +633,51 @@ export function SettingsView() {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-thread-pool" class="font-medium">
+              Thread Pool Size
+              <span class="ml-1 text-xs text-muted-foreground">(requires restart)</span>
+            </label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-thread-pool"
+                name="webThreadPoolSize"
+                min="2"
+                max="128"
+                placeholder="Default: 2× CPU cores"
+                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.webThreadPoolSize}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <p class="text-xs text-muted-foreground mt-1">
+                Number of libuv worker threads. Default is 2× the number of CPU cores (clamped 2–128).
+              </p>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-max-streams" class="font-medium">
+              Max Streams
+              <span class="ml-1 text-xs text-muted-foreground">(requires restart)</span>
+            </label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-max-streams"
+                name="maxStreams"
+                min="1"
+                max="256"
+                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.maxStreams}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <p class="text-xs text-muted-foreground mt-1">
+                Maximum concurrent stream slots (default 32, ceiling 256). Restart required.
+              </p>
+            </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-auth-enabled" class="font-medium">Enable Authentication</label>

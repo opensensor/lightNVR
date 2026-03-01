@@ -387,7 +387,7 @@ void cleanup_hls_directories(void) {
 
             // Check if this stream is currently active
             bool is_active = false;
-            for (int i = 0; i < MAX_STREAMS; i++) {
+            for (int i = 0; i < g_config.max_streams; i++) {
                 if (streaming_contexts[i] &&
                     strcmp(streaming_contexts[i]->config.name, entry->d_name) == 0 &&
                     streaming_contexts[i]->running) {

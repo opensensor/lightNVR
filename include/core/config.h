@@ -10,8 +10,9 @@
 #define MAX_STREAM_NAME 256
 // Maximum length for URLs
 #define MAX_URL_LENGTH 512
-// Maximum number of streams supported
-#define MAX_STREAMS 32
+// Compile-time ceiling for per-stream static arrays (pointer arrays, watchdog trackers, etc.).
+// The actual operational limit is g_config.max_streams (default 32, configurable up to this value).
+#define MAX_STREAMS 256
 
 // Stream protocol enum
 typedef enum {
@@ -130,6 +131,7 @@ typedef struct {
     char db_path[MAX_PATH_LENGTH];
     
     // Web server settings
+    int web_thread_pool_size; // libuv UV_THREADPOOL_SIZE (default: 2x CPU cores, requires restart)
     int web_port;
     char web_root[MAX_PATH_LENGTH];
     bool web_auth_enabled;
@@ -161,7 +163,8 @@ typedef struct {
     char onvif_discovery_network[64]; // Network to scan for ONVIF devices (e.g., "192.168.1.0/24")
     
     // Stream settings
-    stream_config_t streams[MAX_STREAMS];
+    int max_streams;            // Runtime operational limit (default 32, max MAX_STREAMS, requires restart)
+    stream_config_t *streams;   // Dynamically allocated array of max_streams entries
     
     // Memory optimization
     int buffer_size; // in KB

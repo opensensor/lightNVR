@@ -43,7 +43,7 @@ static pthread_mutex_t detection_streams_mutex = PTHREAD_MUTEX_INITIALIZER;
 void init_detection_stream_system(void) {
     pthread_mutex_lock(&detection_streams_mutex);
     
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         memset(&detection_streams[i], 0, sizeof(detection_stream_t));
         pthread_mutex_init(&detection_streams[i].mutex, NULL);
     }
@@ -63,7 +63,7 @@ void shutdown_detection_stream_system(void) {
     log_info("Shutting down detection stream system...");
     pthread_mutex_lock(&detection_streams_mutex);
     
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         pthread_mutex_lock(&detection_streams[i].mutex);
         
         // Log active detection streams
@@ -123,7 +123,7 @@ int start_detection_stream_reader(const char *stream_name, int detection_interva
     
     // Find an empty slot or existing entry for this stream
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (detection_streams[i].stream_name[0] == '\0') {
             if (slot == -1) {
                 slot = i;
@@ -196,7 +196,7 @@ int stop_detection_stream_reader(const char *stream_name) {
     
     // Find the detection stream for this stream
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (detection_streams[i].stream_name[0] != '\0' && 
             strcmp(detection_streams[i].stream_name, stream_name) == 0) {
             slot = i;
@@ -239,7 +239,7 @@ bool is_detection_stream_reader_running(const char *stream_name) {
     pthread_mutex_lock(&detection_streams_mutex);
     
     // Find the detection stream for this stream
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (detection_streams[i].stream_name[0] != '\0' && 
             strcmp(detection_streams[i].stream_name, stream_name) == 0) {
             
@@ -275,7 +275,7 @@ int get_detection_interval(const char *stream_name) {
     pthread_mutex_lock(&detection_streams_mutex);
     
     // Find the detection stream for this stream
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (detection_streams[i].stream_name[0] != '\0' && 
             strcmp(detection_streams[i].stream_name, stream_name) == 0 &&
             detection_streams[i].reader_ctx != NULL) {
@@ -301,7 +301,7 @@ void print_detection_stream_status(void) {
     int active_count = 0;
     int running_threads = 0;
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (detection_streams[i].stream_name[0] != '\0') {
             pthread_mutex_lock(&detection_streams[i].mutex);
 

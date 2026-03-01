@@ -55,12 +55,18 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
 		}
 	}
 
-	// Get all stream configurations from database
-    stream_config_t db_streams[MAX_STREAMS];
-    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+    // Get all stream configurations from database (heap-allocated)
+    stream_config_t *db_streams = calloc(g_config.max_streams, sizeof(stream_config_t));
+    if (!db_streams) {
+        log_error("handle_get_streams: out of memory");
+        http_response_set_json_error(res, 500, "Internal error");
+        return;
+    }
+    int count = get_all_stream_configs(db_streams, g_config.max_streams);
 
     if (count < 0) {
         log_error("Failed to get stream configurations from database");
+        free(db_streams);
         http_response_set_json_error(res, 500, "Failed to get stream configurations");
         return;
     }
@@ -69,6 +75,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     cJSON *streams_array = cJSON_CreateArray();
     if (!streams_array) {
         log_error("Failed to create streams JSON array");
+        free(db_streams);
         http_response_set_json_error(res, 500, "Failed to create streams JSON");
         return;
     }
@@ -210,6 +217,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
 
     // Clean up
     free(json_str);
+    free(db_streams);
     cJSON_Delete(streams_array);
 
     log_info("Successfully handled GET /api/streams request");

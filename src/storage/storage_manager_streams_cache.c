@@ -260,7 +260,7 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
             int retention_days = 0;
             int detection_retention_days = 0;
             int max_storage_mb = 0;
-            for (int j = 0; j < MAX_STREAMS; j++) {
+            for (int j = 0; j < g_config.max_streams; j++) {
                 if (g_config.streams[j].name[0] != '\0' &&
                     strcmp(g_config.streams[j].name, stream_info[i].name) == 0) {
                     retention_days = g_config.streams[j].retention_days;

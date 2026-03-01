@@ -37,7 +37,7 @@ void init_hls_streaming_backend(void) {
 
     // Initialize the unified contexts array
     pthread_mutex_lock(&unified_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         unified_contexts[i] = NULL;
     }
     pthread_mutex_unlock(&unified_contexts_mutex);
@@ -58,7 +58,7 @@ void cleanup_hls_streaming_backend(void) {
     pthread_mutex_lock(&unified_contexts_mutex);
     int stream_count = 0;
     int already_stopped_count = 0;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (unified_contexts[i] != NULL) {
             // Check current thread state BEFORE modifying
             int current_state = atomic_load(&unified_contexts[i]->thread_state);
@@ -119,7 +119,7 @@ void cleanup_hls_streaming_backend(void) {
             int threads_still_running = 0;
 
             pthread_mutex_lock(&unified_contexts_mutex);
-            for (int i = 0; i < MAX_STREAMS; i++) {
+            for (int i = 0; i < g_config.max_streams; i++) {
                 if (unified_contexts[i] != NULL) {
                     int state = atomic_load(&unified_contexts[i]->thread_state);
                     if (state != HLS_THREAD_STOPPED) {
@@ -153,7 +153,7 @@ void cleanup_hls_streaming_backend(void) {
     pthread_mutex_lock(&unified_contexts_mutex);
     int cleaned_count = 0;
     int skipped_count = 0;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (unified_contexts[i] != NULL) {
             char stream_name_copy[MAX_STREAM_NAME] = "unknown";
             if (unified_contexts[i]->stream_name[0] != '\0') {

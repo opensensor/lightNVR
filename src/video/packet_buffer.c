@@ -60,7 +60,7 @@ void cleanup_packet_buffer_pool(void) {
     }
 
     // Destroy all active buffers — destroy_packet_buffer handles per-slot mutex cleanup
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (buffer_pool.buffers[i].active) {
             destroy_packet_buffer(&buffer_pool.buffers[i]);
         }
@@ -128,7 +128,7 @@ size_t calculate_packet_buffer_pool_size(void) {
     size_t total_mb = 0;
     int detection_streams = 0;
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         const stream_config_t *s = &cfg->streams[i];
         if (!s->enabled || !s->detection_based_recording) {
             continue;
@@ -209,7 +209,7 @@ packet_buffer_t* create_packet_buffer(const char *stream_name, int buffer_second
 
     // Find a free buffer slot
     packet_buffer_t *buffer = NULL;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!buffer_pool.buffers[i].active) {
             buffer = &buffer_pool.buffers[i];
             break;
@@ -563,7 +563,7 @@ packet_buffer_t* get_packet_buffer(const char *stream_name) {
 
     pthread_mutex_lock(&buffer_pool.pool_mutex);
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (buffer_pool.buffers[i].active &&
             strcmp(buffer_pool.buffers[i].stream_name, stream_name) == 0) {
             pthread_mutex_unlock(&buffer_pool.pool_mutex);

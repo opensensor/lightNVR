@@ -414,7 +414,7 @@ void cleanup_mp4_recording_backend(void) {
     // null their slots.  Joins are performed outside the lock (they can block
     // up to 15 s each).
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i]) {
             recording_contexts[i]->running = 0;
 
@@ -493,7 +493,7 @@ int start_mp4_recording(const char *stream_name) {
     // Extract a dead context (if any) under the mutex, then join it outside.
     mp4_recording_ctx_t *dead_ctx = NULL;
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
             mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
             if (writer && mp4_writer_is_recording(writer)) {
@@ -524,7 +524,7 @@ int start_mp4_recording(const char *stream_name) {
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!recording_contexts[i]) {
             slot = i;
             break;
@@ -651,7 +651,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     // Check if already running — also verify the recording is actually healthy.
     mp4_recording_ctx_t *dead_ctx = NULL;
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
             mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
             if (writer && mp4_writer_is_recording(writer)) {
@@ -680,7 +680,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!recording_contexts[i]) {
             slot = i;
             break;
@@ -799,7 +799,7 @@ int stop_mp4_recording(const char *stream_name) {
     int index = -1;
 
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
             ctx = recording_contexts[i];
             index = i;
@@ -877,7 +877,7 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     // Check if already running — also verify the recording is actually healthy.
     mp4_recording_ctx_t *dead_ctx = NULL;
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
             mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
             if (writer && mp4_writer_is_recording(writer)) {
@@ -906,7 +906,7 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!recording_contexts[i]) {
             slot = i;
             break;
@@ -1021,7 +1021,7 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     // Check if already running — also verify the recording is actually healthy.
     mp4_recording_ctx_t *dead_ctx = NULL;
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i] && strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
             mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
             if (writer && mp4_writer_is_recording(writer)) {
@@ -1051,7 +1051,7 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!recording_contexts[i]) {
             slot = i;
             break;
@@ -1150,7 +1150,7 @@ void signal_all_mp4_recordings_reconnect(void) {
     int signaled_count = 0;
 
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i] && recording_contexts[i]->running) {
             mp4_writer_t *writer = recording_contexts[i]->mp4_writer;
             if (writer) {
@@ -1181,7 +1181,7 @@ void signal_mp4_recording_reconnect(const char *stream_name) {
     log_info("Signaling reconnect for MP4 recording of stream: %s", stream_name);
 
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i] && recording_contexts[i]->running &&
             strcmp(recording_contexts[i]->config.name, stream_name) == 0) {
             mp4_writer_t *writer = recording_contexts[i]->mp4_writer;

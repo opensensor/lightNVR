@@ -155,7 +155,7 @@ static motion_recording_context_t* get_recording_context(const char *stream_name
     pthread_mutex_lock(&contexts_mutex);
     
     // Look for existing context
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i].active && 
             strcmp(recording_contexts[i].stream_name, stream_name) == 0) {
             pthread_mutex_unlock(&contexts_mutex);
@@ -178,7 +178,7 @@ static motion_recording_context_t* create_recording_context(const char *stream_n
     pthread_mutex_lock(&contexts_mutex);
     
     // Find free slot
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!recording_contexts[i].active) {
             memset(&recording_contexts[i], 0, sizeof(motion_recording_context_t));
             strncpy(recording_contexts[i].stream_name, stream_name, MAX_STREAM_NAME - 1);
@@ -589,7 +589,7 @@ int init_onvif_motion_recording(void) {
 
     // Initialize recording contexts
     pthread_mutex_lock(&contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         memset(&recording_contexts[i], 0, sizeof(motion_recording_context_t));
         recording_contexts[i].active = false;
     }
@@ -636,7 +636,7 @@ void cleanup_onvif_motion_recording(void) {
     }
 
     // Stop all active recordings (without holding contexts_mutex to avoid deadlocks)
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         pthread_mutex_lock(&contexts_mutex);
         bool is_active = recording_contexts[i].active;
         packet_buffer_t *buffer = recording_contexts[i].buffer;
@@ -655,7 +655,7 @@ void cleanup_onvif_motion_recording(void) {
 
     // Now destroy all mutexes and mark contexts as inactive
     pthread_mutex_lock(&contexts_mutex);
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (recording_contexts[i].active) {
             recording_contexts[i].buffer = NULL;
             pthread_mutex_destroy(&recording_contexts[i].mutex);

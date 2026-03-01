@@ -44,7 +44,7 @@ bool is_stream_stopping(const char *stream_name) {
         }
 
         // Also check the new state management system
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             stream_state_manager_t *state = get_stream_state_by_index(i);
             if (state && is_stream_state_stopping(state)) {
                 return true;
@@ -195,7 +195,7 @@ void cleanup_hls_contexts(void) {
 
     // Check if there are any contexts left and mark them as not running
     int context_count = 0;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (streaming_contexts[i] != NULL) {
             context_count++;
             // Mark as not running to signal threads to exit
@@ -218,7 +218,7 @@ void cleanup_hls_contexts(void) {
 
         // Now safe to free the contexts
         pthread_mutex_lock(&hls_contexts_mutex);
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < g_config.max_streams; i++) {
             if (streaming_contexts[i]) {
                 // Log that we're cleaning up this context
                 log_info("Cleaning up remaining HLS context for stream %s",

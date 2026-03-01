@@ -75,8 +75,9 @@ static const char* recording_mode_to_string(recording_mode_t mode) {
     }
 }
 
-// Global array of streams
-static stream_t streams[MAX_STREAMS];
+// Global dynamically-allocated array of streams (sized by init_stream_manager's max_streams arg)
+static stream_t *streams = NULL;
+static int streams_capacity = 0;  // actual allocated slot count
 static bool initialized = false;
 
 // Schedule monitor thread state
@@ -137,8 +138,9 @@ static void *schedule_monitor_func(void *arg) {
          * schedule changes made through the web UI are picked up
          * immediately, rather than relying on the stale in-memory
          * streams[] array that was loaded at boot time. */
-        stream_config_t db_streams[MAX_STREAMS];
-        int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+        stream_config_t *db_streams = calloc(streams_capacity > 0 ? streams_capacity : 32, sizeof(stream_config_t));
+        if (!db_streams) { sleep(60); continue; }
+        int count = get_all_stream_configs(db_streams, streams_capacity > 0 ? streams_capacity : 32);
 
         for (int i = 0; i < count; i++) {
             /* Skip streams that don't need schedule management */
@@ -177,6 +179,7 @@ static void *schedule_monitor_func(void *arg) {
                 stop_recording(db_streams[i].name);
             }
         }
+        free(db_streams);
     }
 
     log_info("Recording schedule monitor thread exiting");
@@ -191,9 +194,20 @@ int init_stream_manager(int max_streams) {
         return 0;  // Already initialized
     }
 
-    // Initialize streams array
-    memset(streams, 0, sizeof(streams));
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    // Clamp to a sane range
+    if (max_streams < 1)           max_streams = 1;
+    if (max_streams > MAX_STREAMS) max_streams = MAX_STREAMS;
+
+    // Allocate the stream array dynamically
+    streams = calloc(max_streams, sizeof(stream_t));
+    if (!streams) {
+        log_error("init_stream_manager: failed to allocate stream array (%d slots)", max_streams);
+        return -1;
+    }
+    streams_capacity = max_streams;
+
+    // Initialise each slot
+    for (int i = 0; i < streams_capacity; i++) {
         pthread_mutex_init(&streams[i].mutex, NULL);
         streams[i].status = STREAM_STATUS_STOPPED;
         memset(&streams[i].stats, 0, sizeof(stream_stats_t));
@@ -201,12 +215,19 @@ int init_stream_manager(int max_streams) {
         streams[i].detection_recording_enabled = false;
     }
 
-    // Load stream configurations directly from database
-    stream_config_t db_streams[MAX_STREAMS];
-    int count = get_all_stream_configs(db_streams, MAX_STREAMS);
+    // Load stream configurations directly from database (heap-allocated temp buffer)
+    stream_config_t *db_streams = calloc(streams_capacity, sizeof(stream_config_t));
+    if (!db_streams) {
+        log_error("init_stream_manager: out of memory for db_streams");
+        free(streams);
+        streams = NULL;
+        streams_capacity = 0;
+        return -1;
+    }
+    int count = get_all_stream_configs(db_streams, streams_capacity);
 
     if (count > 0) {
-        for (int i = 0; i < count && i < MAX_STREAMS; i++) {
+        for (int i = 0; i < count && i < streams_capacity; i++) {
             if (db_streams[i].name[0] != '\0') {
                 memcpy(&streams[i].config, &db_streams[i], sizeof(stream_config_t));
                 streams[i].recording_enabled = db_streams[i].record;
@@ -214,11 +235,12 @@ int init_stream_manager(int max_streams) {
             }
         }
     }
+    free(db_streams);
 
     initialized = true;
 
     // Create stream state managers for all existing streams and register with go2rtc
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (streams[i].config.name[0] != '\0') {
             stream_state_manager_t *state = get_stream_state_by_name(streams[i].config.name);
             if (!state) {
@@ -267,7 +289,7 @@ void shutdown_stream_manager(void) {
     }
 
     // Stop all streams
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (streams[i].config.name[0] != '\0' && streams[i].status == STREAM_STATUS_RUNNING) {
             char stream_name[MAX_STREAM_NAME];
             strncpy(stream_name, streams[i].config.name, MAX_STREAM_NAME - 1);
@@ -294,6 +316,13 @@ void shutdown_stream_manager(void) {
         }
     }
 
+    // Destroy mutexes and free the array
+    for (int i = 0; i < streams_capacity; i++) {
+        pthread_mutex_destroy(&streams[i].mutex);
+    }
+    free(streams);
+    streams = NULL;
+    streams_capacity = 0;
     initialized = false;
 
     log_info("Stream manager shutdown");
@@ -307,7 +336,7 @@ stream_handle_t get_stream_by_name(const char *name) {
         return NULL;
     }
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (streams[i].config.name[0] != '\0' && strcmp(streams[i].config.name, name) == 0) {
             return (stream_handle_t)&streams[i];
         }
@@ -317,7 +346,7 @@ stream_handle_t get_stream_by_name(const char *name) {
     stream_config_t db_config;
     if (get_stream_config_by_name(name, &db_config) == 0) {
         // Found in database, add to memory
-        for (int i = 0; i < MAX_STREAMS; i++) {
+        for (int i = 0; i < streams_capacity; i++) {
             if (streams[i].config.name[0] == '\0') {
                 // Found empty slot
                 memcpy(&streams[i].config, &db_config, sizeof(stream_config_t));
@@ -556,7 +585,7 @@ stream_handle_t add_stream(const stream_config_t *config) {
 
     // Find an empty slot
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (streams[i].config.name[0] == '\0') {
             slot = i;
             break;
@@ -569,7 +598,7 @@ stream_handle_t add_stream(const stream_config_t *config) {
     }
 
     // Check if stream with same name already exists
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (i != slot && streams[i].config.name[0] != '\0' &&
             strcmp(streams[i].config.name, config->name) == 0) {
             log_error("Stream with name '%s' already exists", config->name);
@@ -624,7 +653,7 @@ int remove_stream(stream_handle_t handle) {
 
     // Find the stream in the array
     int slot = -1;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (&streams[i] == s) {
             slot = i;
             break;
@@ -889,7 +918,7 @@ int stop_stream(stream_handle_t handle) {
  * Get stream by index
  */
 stream_handle_t get_stream_by_index(int index) {
-    if (index < 0 || index >= MAX_STREAMS || !initialized) {
+    if (index < 0 || index >= streams_capacity || !initialized) {
         return NULL;
     }
 
@@ -910,7 +939,7 @@ int get_active_stream_count(void) {
     }
 
     int count = 0;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (streams[i].config.name[0] != '\0' &&
             (streams[i].status == STREAM_STATUS_RUNNING ||
              streams[i].status == STREAM_STATUS_RECONNECTING ||
@@ -931,7 +960,7 @@ int get_total_stream_count(void) {
     }
 
     int count = 0;
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < streams_capacity; i++) {
         if (streams[i].config.name[0] != '\0') {
             count++;
         }

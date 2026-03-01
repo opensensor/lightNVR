@@ -94,12 +94,15 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
 void debug_dump_detection_results(void) {
     log_debug("DEBUG: Current detection results (from database):");
 
-    // Get all stream names
-    stream_config_t streams[MAX_STREAMS];
-    int stream_count = get_all_stream_configs(streams, MAX_STREAMS);
+    // Get all stream names (heap-allocated)
+    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
+    if (!streams) return;
+    int stream_count = get_all_stream_configs(streams, ms);
 
     if (stream_count <= 0) {
         log_debug("  No streams found");
+        free(streams);
         return;
     }
     
@@ -132,4 +135,5 @@ void debug_dump_detection_results(void) {
     if (active_streams == 0) {
         log_debug("  No active detection results found");
     }
+    free(streams);
 }

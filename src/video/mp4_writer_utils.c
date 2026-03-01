@@ -63,7 +63,7 @@ static int init_audio_transcoder(const char *stream_name,
     pthread_mutex_lock(&audio_transcoder_mutex);
 
     // Find an empty slot or existing entry for this stream
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (!audio_transcoders[i].initialized) {
             slot = i;
             break;
@@ -243,7 +243,7 @@ cleanup:
 void cleanup_audio_transcoder(const char *stream_name) {
     pthread_mutex_lock(&audio_transcoder_mutex);
 
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (audio_transcoder_stream_names[i][0] != '\0' &&
             strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
             // Found the transcoder for this stream
@@ -301,7 +301,7 @@ int transcode_audio_packet(const char *stream_name,
     int got_output = 0;
 
     // Find the transcoder for this stream
-    for (int i = 0; i < MAX_STREAMS; i++) {
+    for (int i = 0; i < g_config.max_streams; i++) {
         if (audio_transcoders[i].initialized &&
             audio_transcoder_stream_names[i][0] != '\0' &&
             strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
