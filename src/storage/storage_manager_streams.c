@@ -149,7 +149,7 @@ int add_stream_storage_usage_to_json(cJSON *json_obj) {
         cJSON *stream_obj = cJSON_CreateObject();
         if (stream_obj) {
             cJSON_AddStringToObject(stream_obj, "name", stream_info[i].name);
-            cJSON_AddNumberToObject(stream_obj, "size", stream_info[i].size_bytes);
+            cJSON_AddNumberToObject(stream_obj, "size", (double)stream_info[i].size_bytes);
             cJSON_AddNumberToObject(stream_obj, "count", stream_info[i].recording_count);
             
             cJSON_AddItemToArray(stream_storage_array, stream_obj);

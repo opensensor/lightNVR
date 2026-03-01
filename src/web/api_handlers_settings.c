@@ -291,7 +291,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "models_path", g_config.models_path);
     cJSON_AddNumberToObject(settings, "buffer_size", g_config.buffer_size);
     cJSON_AddBoolToObject(settings, "use_swap", g_config.use_swap);
-    cJSON_AddNumberToObject(settings, "swap_size", g_config.swap_size / ((uint64_t)1024 * 1024)); // Convert bytes to MB
+    cJSON_AddNumberToObject(settings, "swap_size", (double)g_config.swap_size / (double)(1024ULL * 1024ULL)); // Convert bytes to MB
 
     // Syslog settings
     cJSON_AddBoolToObject(settings, "syslog_enabled", g_config.syslog_enabled);

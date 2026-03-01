@@ -42,8 +42,10 @@ pthread_mutex_t g_discovery_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Initialize ONVIF discovery module
 int init_onvif_discovery(void) {
-    // Initialize random number generator for UUID generation
-    srand(time(NULL));
+    // Initialize random number generator for UUID generation.
+    // Mix time() with getpid() to reduce seed predictability across processes
+    // started at the same second (cert-msc32-c / cert-msc51-cpp).
+    srand((unsigned int)time(NULL) ^ ((unsigned int)getpid() << 16));
     
     // Initialize discovered devices array
     memset(g_discovered_devices, 0, sizeof(g_discovered_devices));

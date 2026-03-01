@@ -194,9 +194,9 @@ int downscale_frame(const uint8_t *src_data, int src_width, int src_height, int 
             int src_x_int = (int)src_x;
             int src_y_int = (int)src_y;
             
-            // Calculate fractional parts
-            float src_x_frac = src_x - src_x_int;
-            float src_y_frac = src_y - src_y_int;
+            // Calculate fractional parts (explicit casts to avoid narrowing int→float)
+            float src_x_frac = src_x - (float)src_x_int;
+            float src_y_frac = src_y - (float)src_y_int;
             
             // Ensure we don't go out of bounds
             int src_x_int_p1 = (src_x_int + 1 < src_width) ? src_x_int + 1 : src_x_int;

@@ -172,7 +172,7 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
         
         // Add file size
         if (stat(full_path, &st) == 0) {
-            cJSON_AddNumberToObject(model_obj, "size", st.st_size);
+            cJSON_AddNumberToObject(model_obj, "size", (double)st.st_size);
         }
         
         // Add model to array

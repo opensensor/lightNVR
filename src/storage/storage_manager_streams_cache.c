@@ -254,7 +254,7 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
         cJSON *stream_obj = cJSON_CreateObject();
         if (stream_obj) {
             cJSON_AddStringToObject(stream_obj, "name", stream_info[i].name);
-            cJSON_AddNumberToObject(stream_obj, "size", stream_info[i].size_bytes);
+            cJSON_AddNumberToObject(stream_obj, "size", (double)stream_info[i].size_bytes);
             cJSON_AddNumberToObject(stream_obj, "count", stream_info[i].recording_count);
 
             // Look up per-stream retention config from global config
@@ -284,7 +284,7 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
     // Add cache metadata
     cJSON *cache_meta = cJSON_CreateObject();
     if (cache_meta) {
-        cJSON_AddNumberToObject(cache_meta, "lastUpdate", cache.last_update);
+        cJSON_AddNumberToObject(cache_meta, "lastUpdate", (double)cache.last_update);
         cJSON_AddNumberToObject(cache_meta, "ttlSeconds", cache.ttl_seconds);
         cJSON_AddBoolToObject(cache_meta, "isCached", true);
 
