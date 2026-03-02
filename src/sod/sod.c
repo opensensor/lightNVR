@@ -3997,6 +3997,7 @@ static float *network_predict(network *net, float *input)
 	state.truth = 0;
 	state.train = 0;
 	state.delta = 0;
+	state.workspace = 0;
 	forward_network(net, state);
 	out = get_network_output(net);
 	return out;
@@ -4204,11 +4205,14 @@ static char *fgetl(FILE *fp)
 
 	while ((line[curr - 1] != '\n') && !feof(fp)) {
 		if (curr == size - 1) {
+			char *tmp;
 			size *= 2;
-			line = realloc(line, size * sizeof(char));
-			if (!line) {
+			tmp = realloc(line, size * sizeof(char));
+			if (!tmp) {
+				free(line);
 				return 0;
 			}
+			line = tmp;
 		}
 		size_t readsize = size - curr;
 		if (readsize > INT_MAX) readsize = INT_MAX - 1;
@@ -7472,8 +7476,15 @@ static int *read_map(char *filename)
 		return 0;
 	}
 	while ((str = fgetl(file)) != 0) {
+		int *tmp;
 		++n;
-		map = realloc(map, n * sizeof(int));
+		tmp = realloc(map, n * sizeof(int));
+		if (!tmp) {
+			free(map);
+			fclose(file);
+			return 0;
+		}
+		map = tmp;
 		map[n - 1] = atoi(str);
 	}
 	return map;
@@ -8368,7 +8379,7 @@ static int parse_avgpool(avgpool_layer *l, list *options, size_params params, so
 	if (!(h && w && c)) {
 		pNet->zErr = "Layer before avgpool layer must output image.";
 		pNet->nErr++;
-		options = 0; /* cc warn on unused var */
+		(void)options; /* cc warn on unused var */
 		return -1;
 	}
 	*l = make_avgpool_layer(batch, w, h, c);
@@ -8896,7 +8907,7 @@ int sod_cnn_create(sod_cnn **ppOut, const char *zArch, const char *zModelPath, c
 			return SOD_UNSUPPORTED;
 		}
 	}
-	else if (zArch[0] != '[' || zArch[0] != '#' || sz < 170) {
+	else if (zArch[0] != '[' && zArch[0] != '#' || sz < 170) {
 		/* Assume a file path, open read-only  */
 		rc = pNet->pVfs->xMmap(zArch, &pMap, &sz);
 		if (rc != SOD_OK) {
@@ -9091,7 +9102,7 @@ static void sodFastImageResize(sod_img im, sod_img resized, sod_img part, int w,
 float * sod_cnn_prepare_image(sod_cnn *pNet, sod_img in)
 {
 	sod_img *pCur;
-	if (pNet->state != SOD_NET_STATE_READY) {
+	if (!pNet || pNet->state != SOD_NET_STATE_READY) {
 		return 0;
 	}
 	if (pNet->net.w < 1 && pNet->net.h < 1) {
@@ -12130,14 +12141,19 @@ static int DupSyString(SyString *pIn, SyString *pOut)
 	char *z = 0;
 	pOut->nByte = 0; /* Marker */
 	if (pOut->zString != 0) {
-		z = (char *)pOut->zString;
-		z = realloc(z, pIn->nByte);
+		char *old = (char *)pOut->zString;
+		z = realloc(old, pIn->nByte);
+		if (!z) {
+			free(old);
+			pOut->zString = 0;
+			return SOD_OUTOFMEM;
+		}
 	}
 	else {
 		z = malloc(pIn->nByte + 1);
 		pOut->nByte = 0; /* Marker */
+		if (z == 0) return SOD_OUTOFMEM;
 	}
-	if (z == 0) return SOD_OUTOFMEM;
 	memcpy(z, (const void *)pIn->zString, pIn->nByte);
 	z[pIn->nByte] = 0;
 	pOut->zString = z;
@@ -13362,7 +13378,7 @@ int sod_realnet_train_start(sod_realnet_trainer *pTrainer, const char * zConf)
 	while (isspace(zConf[0])) zConf++;
 	/* Assume a null terminated memory buffer */
 	sz = strlen(zConf);
-	if (zConf[0] != '[' || zConf[0] != '#' || zConf[0] != ';' || sz < 170) {
+	if ((zConf[0] != '[' && zConf[0] != '#' && zConf[0] != ';') || sz < 170) {
 		/* Assume a file path, open read-only  */
 		rc = pTrainer->pVfs->xMmap(zConf, &pMap, &sz);
 		if (rc != SOD_OK) {

@@ -1395,7 +1395,7 @@ int save_config(const config_t *config, const char *path) {
     // Security: canonical_save_path is built from a realpath()-resolved directory
     // joined with a validated filename (no path separators, no "..", must end in
     // ".ini"). This ensures the path cannot escape the intended directory.
-    int config_fd = open(canonical_save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600); // lgtm[cpp/path-injection]
+    int config_fd = open(canonical_save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600); // codeql[cpp/path-injection] -- canonical_save_path is built from realpath()-resolved directory joined with a filename validated to contain no path separators and to end in ".ini"
     if (config_fd < 0) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
         return -1;
