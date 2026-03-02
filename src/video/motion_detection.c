@@ -61,6 +61,7 @@ typedef struct {
     bool use_grid_detection;             // Whether to use grid-based detection
     int grid_size;                       // Size of detection grid (grid_size x grid_size)
     time_t last_detection_time;
+    time_t last_background_update_time;    // Wall-clock time of last background model update
     bool enabled;
     bool downscale_enabled;              // Whether to downscale frames for processing
     int downscale_factor;                // Factor by which to downscale (2 = half size)
@@ -1234,10 +1235,24 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
     // Add current frame to history
     add_frame_to_history(stream, stream->blur_buffer, frame_time);
 
-    // Update background model with a slow learning rate
-    // Use a faster learning rate (0.05) when no motion is detected, slower (0.01) when motion is detected
-    float learning_rate = motion_detected ? 0.01f : 0.05f;
-    update_background_model(stream->background, stream->blur_buffer, processing_width, processing_height, learning_rate);
+    // Update background model with a time-proportional learning rate so that
+    // the adaptation speed in wall-clock seconds is constant regardless of how
+    // often detect_motion() is called (e.g. every frame vs. every 5 seconds).
+    // Base rates per second: 0.01/s while motion is present, 0.05/s otherwise.
+    // Clamped to [0, 0.25] to guard against stale timestamps or large gaps.
+    {
+        float base_rate = motion_detected ? 0.01f : 0.05f;
+        float dt = (stream->last_background_update_time > 0)
+                   ? (float)(frame_time - stream->last_background_update_time)
+                   : 1.0f;   // treat first call as 1-second interval
+        if (dt < 0.0f) dt = 0.0f;
+        if (dt > 5.0f) dt = 5.0f;   // cap so a long gap doesn't flush the model
+        float learning_rate = base_rate * dt;
+        if (learning_rate > 0.25f) learning_rate = 0.25f;
+        update_background_model(stream->background, stream->blur_buffer,
+                                processing_width, processing_height, learning_rate);
+        stream->last_background_update_time = frame_time;
+    }
 
     // Copy current blurred frame to previous frame buffer for next comparison
     memcpy(stream->prev_frame, stream->blur_buffer, (size_t)processing_width * processing_height);
