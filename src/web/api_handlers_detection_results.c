@@ -22,10 +22,9 @@
 #include "video/zone_filter.h"
 #include "database/database_manager.h"
 
-// Maximum age of detections to return (in seconds)
-// For live view, we want to show only recent detections (5 seconds)
-// This prevents detection boxes from being displayed for too long after they occur
-#define MAX_DETECTION_AGE 5
+// See api_handlers_detection.c — this constant is only used by the debug helper
+// (debug_dump_detection_results) which still benefits from a wider window.
+#define MAX_DETECTION_AGE 30
 // We no longer use a hardcoded minimum detection confidence threshold
 // Instead, we use the user's configured threshold for each stream
 

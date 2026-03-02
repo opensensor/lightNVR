@@ -18,10 +18,12 @@
 #include "video/stream_manager.h"
 #include "database/database_manager.h"
 
-// Maximum age of detections to return (in seconds)
-// For live view, we want to show only recent detections (5 seconds)
-// This prevents detection boxes from being displayed for too long after they occur
-#define MAX_DETECTION_AGE 5
+// Minimum/default window for live-view detection queries (seconds).
+// The actual window is max(MIN_DETECTION_AGE, stream_detection_interval * 2) so
+// that a stored detection is never aged out before the next one could be stored.
+// Without this, a 5-second window paired with a 5-second detection interval creates
+// a guaranteed gap where the API returns nothing (stale box disappears mid-motion).
+#define MIN_DETECTION_AGE 30
 
 /**
  * @brief Backend-agnostic handler for GET /api/detection/results/:stream
@@ -55,10 +57,13 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
         log_info("Using end_time filter: %lld (str='%s')", (long long)end_time, end_str);
     }
 
-    // If no time range specified, use default MAX_DETECTION_AGE
-    uint64_t max_age = MAX_DETECTION_AGE;
+    // If no time range specified, compute a per-stream max_age so that a stored
+    // detection is never aged out before the next one can arrive.  We use at
+    // least MIN_DETECTION_AGE (30 s) or the stream's detection_interval * 2,
+    // whichever is larger.
+    uint64_t max_age = MIN_DETECTION_AGE;
     if (start_time > 0 || end_time > 0) {
-        // Custom time range specified, don't use max_age
+        // Custom time range specified — bypass max_age entirely
         max_age = 0;
     } else {
         // For live detection queries (no time range), require stream to exist
@@ -67,6 +72,16 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
             log_error("Stream not found: %s", stream_name);
             http_response_set_json_error(res, 404, "Stream not found");
             return;
+        }
+
+        // Widen the window to cover at least two full detection intervals so
+        // the bounding box stays visible between consecutive detection checks.
+        stream_config_t stream_cfg;
+        if (get_stream_config(stream, &stream_cfg) == 0 && stream_cfg.detection_interval > 0) {
+            uint64_t interval_window = (uint64_t)stream_cfg.detection_interval * 2;
+            if (interval_window > max_age) {
+                max_age = interval_window;
+            }
         }
     }
     
