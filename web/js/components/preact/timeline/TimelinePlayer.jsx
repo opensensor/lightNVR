@@ -303,6 +303,21 @@ export function TimelinePlayer() {
     }
   };
 
+  // Handle native video play event (user pressed play inside the browser video controls)
+  const handlePlay = () => {
+    if (!timelineState.isPlaying) {
+      timelineState.setState({ isPlaying: true });
+    }
+  };
+
+  // Handle native video pause event (user pressed pause inside the browser video controls)
+  const handlePause = () => {
+    // Only sync if our own code didn't trigger the pause (e.g. during segment load)
+    if (timelineState.isPlaying && !timelineState.directVideoControl) {
+      timelineState.setState({ isPlaying: false });
+    }
+  };
+
   // Handle video time update event
   const handleTimeUpdate = () => {
     const video = videoRef.current;
@@ -401,6 +416,8 @@ export function TimelinePlayer() {
               autoPlay={false}
               muted={false}
               playsInline
+              onPlay={handlePlay}
+              onPause={handlePause}
               onEnded={handleEnded}
               onTimeUpdate={handleTimeUpdate}
           ></video>
