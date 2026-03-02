@@ -587,9 +587,11 @@ static bool check_stream_consensus(void) {
         }
     }
 
+    // Majority (>50%) of streams failing indicates a go2rtc-level issue,
+    // not just an individual camera being offline.
     if (total_streams >= PROCESS_MIN_STREAMS_FOR_CONSENSUS &&
-        failed_streams == total_streams) {
-        log_warn("Stream consensus: %d/%d streams failed - indicates go2rtc issue",
+        failed_streams * 2 > total_streams) {
+        log_warn("Stream consensus: %d/%d streams failed (majority) - indicates go2rtc issue",
                  failed_streams, total_streams);
         return true;
     }
@@ -675,6 +677,17 @@ static bool restart_go2rtc_process(void) {
         log_info("All streams re-registered successfully after go2rtc restart");
     }
 
+    // Reset HLS preload tracking so the next service check re-preloads all streams.
+    // go2rtc loses preload consumers when it restarts; clearing the flags here
+    // ensures go2rtc_integration_start_hls() re-preloads them on the next check
+    // rather than skipping them as "already done".
+    for (int i = 0; i < MAX_TRACKED_STREAMS; i++) {
+        if (g_tracked_streams[i].stream_name[0] != '\0') {
+            g_tracked_streams[i].using_go2rtc_for_hls = false;
+        }
+    }
+    log_info("Cleared HLS preload tracking to force re-preload after go2rtc restart");
+
     sleep(2);
 
     log_info("Signaling MP4 recordings to reconnect after go2rtc restart");
@@ -735,17 +748,34 @@ static void *unified_health_monitor_thread(void *arg) {
                 log_error("go2rtc API has failed %d consecutive health checks", g_consecutive_api_failures);
 
                 bool consensus_failure = check_stream_consensus();
-                if (consensus_failure) {
-                    log_error("Stream consensus also indicates go2rtc failure - restart required");
-                }
+                int total_stream_count = get_total_stream_count();
 
-                if (can_restart_go2rtc()) {
-                    if (restart_go2rtc_process()) {
-                        log_info("go2rtc process successfully restarted");
-                        process_restarted = true;
+                // Only restart go2rtc if stream consensus also confirms the failure,
+                // OR if there are too few streams for a meaningful consensus check.
+                // This prevents an isolated stream failure or transient API blip from
+                // triggering a global restart that disrupts all working streams.
+                bool should_restart = consensus_failure ||
+                                      (total_stream_count < PROCESS_MIN_STREAMS_FOR_CONSENSUS);
+
+                if (should_restart) {
+                    if (consensus_failure) {
+                        log_error("Stream consensus also indicates go2rtc failure - restart required");
                     } else {
-                        log_error("Failed to restart go2rtc process");
+                        log_warn("Too few streams (%d) for consensus, restarting on API failure alone",
+                                 total_stream_count);
                     }
+                    if (can_restart_go2rtc()) {
+                        if (restart_go2rtc_process()) {
+                            log_info("go2rtc process successfully restarted");
+                            process_restarted = true;
+                        } else {
+                            log_error("Failed to restart go2rtc process");
+                        }
+                    }
+                } else {
+                    log_warn("go2rtc API unhealthy (%d consecutive failures) but stream consensus OK "
+                             "— skipping process restart to avoid disrupting working streams",
+                             g_consecutive_api_failures);
                 }
             }
 
@@ -1165,14 +1195,21 @@ int go2rtc_integration_start_hls(const char *stream_name) {
     if (using_go2rtc) {
         log_info("Using go2rtc native HLS for stream %s (no ffmpeg HLS thread needed)", stream_name);
 
-        // Preload the stream to keep the go2rtc producer active
-        // This is essential for detection-based recording, as it ensures snapshots
-        // are always available even when no WebRTC/HLS viewers are connected.
-        if (!go2rtc_api_preload_stream(stream_name)) {
-            log_warn("Failed to preload stream %s in go2rtc - detection snapshots may be intermittent", stream_name);
-            // Continue anyway - go2rtc HLS will still work for viewers
+        // Only preload if not already tracked as active.  go2rtc's AddPreload
+        // removes the existing consumer before adding a new one; calling it every
+        // 30 s from the periodic service check briefly leaves the stream with no
+        // consumers, which can cause go2rtc to disconnect from the camera and
+        // creates unnecessary noise/reconnections for working streams.
+        go2rtc_stream_tracking_t *existing = find_tracked_stream(stream_name);
+        if (!existing || !existing->using_go2rtc_for_hls) {
+            if (!go2rtc_api_preload_stream(stream_name)) {
+                log_warn("Failed to preload stream %s in go2rtc - detection snapshots may be intermittent", stream_name);
+                // Continue anyway - go2rtc HLS will still work for viewers
+            } else {
+                log_info("Preloaded stream %s to keep go2rtc producer active for HLS/detection", stream_name);
+            }
         } else {
-            log_info("Preloaded stream %s to keep go2rtc producer active for HLS/detection", stream_name);
+            log_debug("Stream %s already preloaded for go2rtc HLS, skipping redundant preload", stream_name);
         }
 
         // Update tracking

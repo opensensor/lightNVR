@@ -17,6 +17,7 @@
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "web/go2rtc_proxy_thread.h"
+#include "web/api_handlers_health.h"
 #include "core/logger.h"
 
 // Forward declaration for MIME type helper defined in libuv_file_serve.c
@@ -502,6 +503,7 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
 
         if (libuv_serve_file(conn, conn->deferred_file_path, ct, eh) == 0) {
             // File serving started — it manages its own response and connection lifecycle
+            update_health_metrics(true);
             return;
         }
         // File serving failed — fall through to send error response
@@ -518,6 +520,7 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
     }
 
     // Send the response — write callback handles keep-alive/close
+    update_health_metrics(conn->response.status_code < 500);
     libuv_send_response_ex(conn, &conn->response, action);
 }
 
