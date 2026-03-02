@@ -676,14 +676,16 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                 // Skip the state field (single non-space char after whitespace)
                 while (*p == ' ') p++;
                 if (*p && *p != '\n') p++; // skip state
-                // Parse 19 numeric fields; starttime is the 20th (index 19)
-                for (int i = 0; i < 20; i++) {
+                // Parse fields after state; starttime is the 19th (index 18):
+                // ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt
+                // utime stime cutime cstime priority nice num_threads itrealvalue starttime
+                for (int i = 0; i < 19; i++) {
                     while (*p == ' ') p++;
                     if (!*p || *p == '\n') break;
                     char *ep;
                     unsigned long long val = strtoull(p, &ep, 10);
                     if (ep == p) break;
-                    if (i == 19) { starttime = val; stat_ok = true; }
+                    if (i == 18) { starttime = val; stat_ok = true; }
                     p = ep;
                 }
             }
