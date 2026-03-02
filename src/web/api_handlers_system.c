@@ -557,8 +557,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
     // Get memory information for the LightNVR process
     cJSON *memory = cJSON_CreateObject();
+    unsigned long process_threads = 0;
     if (memory) {
-        // Get process memory usage using /proc/self/status
+        // Get process memory usage and thread count using /proc/self/status
         FILE *fp = fopen("/proc/self/status", "r");
         unsigned long vm_rss = 0;
 
@@ -569,7 +570,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                     // VmRSS is in kB - actual physical memory used
                     char *endptr;
                     vm_rss = strtoul(line + 6, &endptr, 10);
-                    break;
+                } else if (strncmp(line, "Threads:", 8) == 0) {
+                    char *endptr;
+                    process_threads = strtoul(line + 8, &endptr, 10);
                 }
             }
             fclose(fp);
@@ -592,6 +595,10 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Add memory object to info
         cJSON_AddItemToObject(info, "memory", memory);
     }
+
+    // Add process thread count and web thread pool size
+    cJSON_AddNumberToObject(info, "threads", (double)process_threads);
+    cJSON_AddNumberToObject(info, "webThreadPoolSize", (double)g_config.web_thread_pool_size);
 
     // Get memory information for the go2rtc process
     cJSON *go2rtc_memory = cJSON_CreateObject();

@@ -23,8 +23,8 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white" onClick={stopPropagation}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
         <h2 className="text-xl font-bold mb-4">Delete User</h2>
 
         <p className="mb-6">
@@ -33,7 +33,7 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
 
         <div className="flex justify-end">
           <button
-            className="px-4 py-2 bg-gray-300 text-gray-800 dark:bg-gray-600 dark:text-white rounded hover:bg-gray-400 dark:hover:bg-gray-500 mr-2"
+            className="btn-secondary mr-2"
             onClick={onClose}
           >
             Cancel

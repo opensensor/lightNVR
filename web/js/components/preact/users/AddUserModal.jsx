@@ -27,8 +27,8 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white" onClick={stopPropagation}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
         <h2 className="text-xl font-bold mb-4">Add New User</h2>
 
         <form onSubmit={handleSubmit}>
@@ -37,7 +37,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               Username
             </label>
             <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               id="username"
               type="text"
               name="username"
@@ -52,7 +52,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               Password
             </label>
             <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               id="password"
               type="password"
               name="password"
@@ -67,7 +67,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               Email
             </label>
             <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               id="email"
               type="email"
               name="email"
@@ -81,7 +81,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               Role
             </label>
             <select
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               id="role"
               name="role"
               value={formData.role}
@@ -117,17 +117,17 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               />
               <span className="text-sm font-bold">Lock Password Changes</span>
             </label>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 ml-6">
+            <p className="text-xs text-muted-foreground mt-1 ml-6">
               When locked, this user cannot change their own password
             </p>
           </div>
 
           <div className="mb-4">
             <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-              Allowed Tags <span className="font-normal text-gray-500">(RBAC)</span>
+              Allowed Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
             </label>
             <input
-              className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               id="allowed_tags"
               type="text"
               name="allowed_tags"
@@ -136,13 +136,13 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
               maxLength={255}
             />
-            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Comma-separated tags. When set, this user can only see streams that share at least one matching tag. Leave blank to allow access to all streams.
             </p>
             {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(tag => (
-                  <span key={tag.trim()} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                  <span key={tag.trim()} className="badge-info">
                     #{tag.trim()}
                   </span>
                 ))}
@@ -153,7 +153,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           <div className="flex justify-end mt-6">
             <button
               type="button"
-              className="px-4 py-2 bg-gray-300 text-gray-800 dark:bg-gray-600 dark:text-white rounded hover:bg-gray-400 dark:hover:bg-gray-500 mr-2"
+              className="btn-secondary mr-2"
               onClick={onClose}
             >
               Cancel

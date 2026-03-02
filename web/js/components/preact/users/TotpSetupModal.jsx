@@ -129,8 +129,8 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white" onClick={stopPropagation}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
         <h2 className="text-xl font-bold mb-4">MFA Setup — {user.username}</h2>
 
         {error && (
@@ -174,7 +174,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
             </div>
             <div className="mb-4">
               <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
-              <code className="block p-2 bg-gray-100 dark:bg-gray-700 rounded text-sm font-mono break-all select-all">
+              <code className="block p-2 bg-muted text-foreground rounded text-sm font-mono break-all select-all">
                 {secret}
               </code>
             </div>
@@ -182,7 +182,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
               <label className="block text-sm font-medium mb-1">Enter verification code:</label>
               <input
                 type="text"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-center text-xl tracking-widest mb-3"
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest mb-3"
                 placeholder="000000"
                 value={verifyCode}
                 onChange={(e) => setVerifyCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}

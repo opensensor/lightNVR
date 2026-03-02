@@ -33,8 +33,8 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={handleClose}>
-      <div className="bg-white rounded-lg p-6 max-w-md w-full dark:bg-gray-800 dark:text-white" onClick={stopPropagation}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleClose}>
+      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
         <h2 className="text-xl font-bold mb-4">API Key for {currentUser.username}</h2>
 
         <div className="mb-6">
@@ -45,7 +45,7 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
               </label>
               <div className="flex">
                 <input
-                  className="shadow appearance-none border rounded-l w-full py-2 px-3 text-gray-700 dark:text-white dark:bg-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  className="w-full px-3 py-2 border border-input rounded-l-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   type="text"
                   value={newApiKey}
                   readOnly
@@ -57,7 +57,7 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
                   Copy
                 </button>
               </div>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 This key will only be shown once. Save it securely.
               </p>
             </div>
