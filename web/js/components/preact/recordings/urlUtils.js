@@ -15,7 +15,7 @@ export const urlUtils = {
     const urlParams = new URLSearchParams(window.location.search);
     
     // Check if we have any filter parameters
-    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection') && !urlParams.has('stream') && !urlParams.has('detection_label')) {
+    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection') && !urlParams.has('stream') && !urlParams.has('detection_label') && !urlParams.has('protected')) {
       return null;
     }
     
@@ -29,7 +29,8 @@ export const urlUtils = {
         endTime: '23:59',
         streamId: 'all',
         recordingType: 'all',
-        detectionLabel: ''
+        detectionLabel: '',
+        protectedStatus: 'all'
       },
       page: 1,
       limit: 20,
@@ -72,6 +73,11 @@ export const urlUtils = {
       result.filters.detectionLabel = urlParams.get('detection_label');
     }
 
+    // Protected status
+    if (urlParams.has('protected')) {
+      result.filters.protectedStatus = urlParams.get('protected') === '1' ? 'yes' : 'no';
+    }
+
     // Pagination
     if (urlParams.has('page')) {
       result.page = parseInt(urlParams.get('page'), 10);
@@ -104,7 +110,8 @@ export const urlUtils = {
       filters.dateRange !== 'last7days' ||
       filters.streamId !== 'all' ||
       filters.recordingType !== 'all' ||
-      (filters.detectionLabel && filters.detectionLabel.trim() !== '')
+      (filters.detectionLabel && filters.detectionLabel.trim() !== '') ||
+      (filters.protectedStatus && filters.protectedStatus !== 'all')
     );
     
     if (hasFilters) {
@@ -142,8 +149,15 @@ export const urlUtils = {
       if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
         activeFilters.push({ key: 'detectionLabel', label: `Object: ${filters.detectionLabel.trim()}` });
       }
+
+      // Protected status filter
+      if (filters.protectedStatus === 'yes') {
+        activeFilters.push({ key: 'protectedStatus', label: 'Protected: Yes' });
+      } else if (filters.protectedStatus === 'no') {
+        activeFilters.push({ key: 'protectedStatus', label: 'Protected: No' });
+      }
     }
-    
+
     return activeFilters;
   },
   
@@ -192,7 +206,12 @@ export const urlUtils = {
     if (urlParams.has('detection') && urlParams.get('detection') === '1') {
       newFilters.recordingType = 'detection';
     }
-    
+
+    // Protected status
+    if (urlParams.has('protected')) {
+      newFilters.protectedStatus = urlParams.get('protected') === '1' ? 'yes' : 'no';
+    }
+
     // Update filters state
     setFilters(newFilters);
     
@@ -257,6 +276,11 @@ export const urlUtils = {
     } else {
       url.searchParams.delete('detection_label');
     }
+
+    // Protected status filter
+    if (filters.protectedStatus === 'yes') url.searchParams.set('protected', '1');
+    else if (filters.protectedStatus === 'no') url.searchParams.set('protected', '0');
+    else url.searchParams.delete('protected');
 
     // Pagination
     url.searchParams.set('page', pagination.currentPage.toString());

@@ -105,7 +105,7 @@ void test_get_recording_count(void) {
     time_t now = time(NULL);
     recording_metadata_t m = make_rec("cam1", "/rec/cnt.mp4", now);
     add_recording_metadata(&m);
-    int cnt = get_recording_count(0, 0, "cam1", 0, NULL);
+    int cnt = get_recording_count(0, 0, "cam1", 0, NULL, -1);
     TEST_ASSERT_EQUAL_INT(1, cnt);
 }
 
@@ -119,7 +119,7 @@ void test_get_recording_metadata_paginated(void) {
         add_recording_metadata(&m);
     }
     recording_metadata_t out[10];
-    int n = get_recording_metadata_paginated(0, 0, "cam1", 0, NULL,
+    int n = get_recording_metadata_paginated(0, 0, "cam1", 0, NULL, -1,
                                              "start_time", "desc", out, 3, 0);
     TEST_ASSERT_EQUAL_INT(3, n);
 }

@@ -49,7 +49,7 @@ export function RecordingsView() {
   const [filters, setFilters] = useState(() => {
     const p = new URLSearchParams(window.location.search);
     const hasUrlParams = p.has('dateRange') || p.has('page') || p.has('sort') ||
-      p.has('detection') || p.has('stream') || p.has('detection_label');
+      p.has('detection') || p.has('stream') || p.has('detection_label') || p.has('protected');
 
     if (!hasUrlParams) {
       // No URL params — use defaults with current date range
@@ -64,7 +64,8 @@ export function RecordingsView() {
         endTime: '23:59',
         streamId: 'all',
         recordingType: 'all',
-        detectionLabel: ''
+        detectionLabel: '',
+        protectedStatus: 'all'
       };
     }
 
@@ -76,7 +77,8 @@ export function RecordingsView() {
       endTime: p.get('endTime') || '23:59',
       streamId: p.get('stream') || 'all',
       recordingType: p.get('detection') === '1' ? 'detection' : 'all',
-      detectionLabel: p.get('detection_label') || ''
+      detectionLabel: p.get('detection_label') || '',
+      protectedStatus: p.has('protected') ? (p.get('protected') === '1' ? 'yes' : 'no') : 'all'
     };
   });
 
@@ -256,6 +258,10 @@ export function RecordingsView() {
     } else {
       url.searchParams.delete('detection_label');
     }
+
+    if (filters.protectedStatus === 'yes') url.searchParams.set('protected', '1');
+    else if (filters.protectedStatus === 'no') url.searchParams.set('protected', '0');
+    else url.searchParams.delete('protected');
 
     // Pagination
     url.searchParams.set('page', pagination.currentPage.toString());
@@ -460,7 +466,8 @@ export function RecordingsView() {
       endTime: '23:59',
       streamId: 'all',
       recordingType: 'all',
-      detectionLabel: ''
+      detectionLabel: '',
+      protectedStatus: 'all'
     });
     setPagination(prev => ({ ...prev, currentPage: 1 }));
     setSortField('start_time');
@@ -493,6 +500,12 @@ export function RecordingsView() {
         setFilters(prev => ({
           ...prev,
           detectionLabel: ''
+        }));
+        break;
+      case 'protectedStatus':
+        setFilters(prev => ({
+          ...prev,
+          protectedStatus: 'all'
         }));
         break;
     }

@@ -14,11 +14,12 @@
  * @param stream_name   Stream name filter (NULL for all streams)
  * @param detection_only Filter to only include recordings with detection events
  * @param detection_label Filter by specific detection label (NULL for all)
+ * @param protected_filter Filter by protection status (-1 for all, 0 for unprotected, 1 for protected)
  *
  * @return Total number of matching recordings, or -1 on error
  */
 int get_recording_count(time_t start_time, time_t end_time, const char *stream_name, int detection_only,
-                       const char *detection_label);
+                       const char *detection_label, int protected_filter);
 
 /**
  * Get paginated recording metadata from the database with sorting
@@ -29,6 +30,7 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
  * @param stream_name   Stream name filter (NULL for all streams)
  * @param has_detection Filter to only include recordings with detection events
  * @param detection_label Filter by specific detection label (NULL for all)
+ * @param protected_filter Filter by protection status (-1 for all, 0 for unprotected, 1 for protected)
  * @param sort_field    Field to sort by
  * @param sort_order    Sort order (asc or desc)
  * @param metadata      Array to store the results
@@ -40,6 +42,7 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
 int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    const char *stream_name, int has_detection,
                                    const char *detection_label,
+                                   int protected_filter,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
                                    int limit, int offset);

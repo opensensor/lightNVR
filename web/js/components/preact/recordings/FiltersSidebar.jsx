@@ -38,7 +38,7 @@ function FilterSection({ title, badge, isExpanded, onToggle, children }) {
   );
 }
 
-const DEFAULT_SECTIONS = { dateRange: true, stream: true, recordingType: true, detectionObject: false, display: false };
+const DEFAULT_SECTIONS = { dateRange: true, stream: true, recordingType: true, detectionObject: false, protectedStatus: false, display: false };
 
 /**
  * FiltersSidebar component
@@ -109,6 +109,7 @@ export function FiltersSidebar({
   const streamBadge = filters.streamId !== 'all' ? filters.streamId : null;
   const typeBadge = filters.recordingType !== 'all' ? 'detection' : null;
   const detectionBadge = filters.detectionLabel ? filters.detectionLabel : null;
+  const protectedBadge = filters.protectedStatus !== 'all' ? filters.protectedStatus : null;
 
   return (
     <aside
@@ -224,6 +225,20 @@ export function FiltersSidebar({
               onChange={handleDetectionLabelChange}
             />
             <p className="text-[11px] text-muted-foreground">Filter by detected object type</p>
+          </FilterSection>
+
+          {/* Protected Status */}
+          <FilterSection title="Protected" badge={protectedBadge} isExpanded={sections.protectedStatus} onToggle={() => toggleSection('protectedStatus')}>
+            <select
+              id="protected-filter"
+              className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
+              value={filters.protectedStatus}
+              onChange={e => setFilters(prev => ({ ...prev, protectedStatus: e.target.value }))}
+            >
+              <option value="all">All</option>
+              <option value="yes">Protected</option>
+              <option value="no">Not Protected</option>
+            </select>
           </FilterSection>
 
           {/* Display Options */}

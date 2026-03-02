@@ -54,7 +54,7 @@ int get_stream_storage_usage(const char *storage_path, stream_storage_info_t *st
         }
 
         // Get recording count from DB
-        int rec_count = get_recording_count(0, 0, stream_names[i], 0, NULL);
+        int rec_count = get_recording_count(0, 0, stream_names[i], 0, NULL, -1);
         if (rec_count < 0) {
             rec_count = 0; // Treat errors as zero
         }

@@ -635,6 +635,7 @@ int get_recording_count(time_t start_time, time_t end_time,
 int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    const char *stream_name, int has_detection,
                                    const char *detection_label,
+                                   int protected_filter,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
                                    int limit, int offset) {
@@ -727,6 +728,14 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     if (stream_name) {
         strncat(sql, " AND r.stream_name = ?", sizeof(sql) - strlen(sql) - 1);
+    }
+
+    if (protected_filter == 0) {
+        strncat(sql, " AND r.protected = 0", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding protected_filter=0 (unprotected only) to paginated query");
+    } else if (protected_filter == 1) {
+        strncat(sql, " AND r.protected = 1", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding protected_filter=1 (protected only) to paginated query");
     }
 
     // Add ORDER BY clause with sanitized field and order

@@ -77,6 +77,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     char sort_order[8] = "desc";
     char has_detection_str[8] = {0};
     char detection_label[64] = {0};
+    char protected_str[8] = {0};
 
     http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name));
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -87,11 +88,16 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     http_request_get_query_param(req, "order", sort_order, sizeof(sort_order));
     http_request_get_query_param(req, "has_detection", has_detection_str, sizeof(has_detection_str));
     http_request_get_query_param(req, "detection_label", detection_label, sizeof(detection_label));
+    http_request_get_query_param(req, "protected", protected_str, sizeof(protected_str));
 
     // Parse numeric parameters
     int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
     int limit = limit_str[0] ? (int)strtol(limit_str, NULL, 10) : 20;
     int has_detection = has_detection_str[0] ? (int)strtol(has_detection_str, NULL, 10) : 0;
+    // protected_filter: -1=all (default), 0=not protected, 1=protected
+    int protected_filter = -1;
+    if (protected_str[0] == '0') protected_filter = 0;
+    else if (protected_str[0] == '1') protected_filter = 1;
 
     // Validate parameters
     if (page <= 0) page = 1;
@@ -168,7 +174,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Get total count first (for pagination)
     int total_count = get_recording_count(start_time, end_time,
                                           stream_name[0] != '\0' ? stream_name : NULL,
-                                          has_detection, label_filter);
+                                          has_detection, label_filter, protected_filter);
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
@@ -180,7 +186,8 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Get recordings with pagination
     int count = get_recording_metadata_paginated(start_time, end_time,
                                                  stream_name[0] != '\0' ? stream_name : NULL,
-                                                 has_detection, label_filter, sort_field, sort_order,
+                                                 has_detection, label_filter, protected_filter,
+                                                 sort_field, sort_order,
                                                  recordings, limit, offset);
 
     if (count < 0) {

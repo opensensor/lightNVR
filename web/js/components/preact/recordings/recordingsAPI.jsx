@@ -97,6 +97,13 @@ export const recordingsAPI = {
         params.append('detection_label', filters.detectionLabel.trim());
       }
 
+      // Add protected status filter
+      if (filters.protectedStatus === 'yes') {
+        params.append('protected', '1');
+      } else if (filters.protectedStatus === 'no') {
+        params.append('protected', '0');
+      }
+
       // Create query key that includes all filter parameters
       const queryKey = ['recordings', filters, pagination, sortField, sortDirection];
 
@@ -277,6 +284,13 @@ export const recordingsAPI = {
       // Add recording type filter
       if (filters.recordingType === 'detection') {
         params.append('has_detection', '1');
+      }
+
+      // Add protected status filter
+      if (filters.protectedStatus === 'yes') {
+        params.append('protected', '1');
+      } else if (filters.protectedStatus === 'no') {
+        params.append('protected', '0');
       }
 
       // Log the API request
@@ -521,6 +535,13 @@ export const recordingsAPI = {
         filter.detection = 1;
       }
 
+      // Add protected status filter
+      if (filters.protectedStatus === 'yes') {
+        filter.protected = 1;
+      } else if (filters.protectedStatus === 'no') {
+        filter.protected = 0;
+      }
+
       console.log('Deleting with filter:', filter);
 
       // Show batch delete modal with indeterminate progress initially
@@ -564,6 +585,13 @@ export const recordingsAPI = {
         // Add detection filter
         if (filter.detection) {
           params.append('has_detection', '1');
+        }
+
+        // Add protected filter
+        if (filter.protected === 1) {
+          params.append('protected', '1');
+        } else if (filter.protected === 0) {
+          params.append('protected', '0');
         }
 
         // Set page size to 1 to minimize data transfer, we just need the total count

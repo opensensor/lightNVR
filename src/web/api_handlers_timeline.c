@@ -57,7 +57,7 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
     
     // Get recordings from database
     int count = get_recording_metadata_paginated(start_time, end_time, stream_name, 0,
-                                              NULL, "start_time", "asc", recordings, max_segments, 0);
+                                              NULL, -1, "start_time", "asc", recordings, max_segments, 0);
     
     if (count < 0) {
         log_error("Failed to get recordings from database");
