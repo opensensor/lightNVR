@@ -451,6 +451,18 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
         mkdir(ctx->output_dir, 0755);
     }
 
+    // If using built-in motion detection, enable the motion stream now so that
+    // detect_motion() does not silently return 0 on every call.  New motion
+    // streams are created with enabled=false, so we must flip the flag here.
+    // configure_motion_detection() uses threshold as sensitivity and clamps it
+    // to a valid range internally.
+    if (is_motion_detection_model(model_path)) {
+        float sens = (threshold > 0.0f && threshold <= 1.0f) ? threshold : 0.15f;
+        configure_motion_detection(stream_name, sens, 0.005f, 3);
+        set_motion_detection_enabled(stream_name, true);
+        log_info("[%s] Built-in motion detection enabled (sensitivity=%.2f)", stream_name, sens);
+    }
+
     // Initialize mutex
     if (pthread_mutex_init(&ctx->mutex, NULL) != 0) {
         log_error("Failed to initialize mutex for unified detection context");
