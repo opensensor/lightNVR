@@ -35,5 +35,22 @@ int filter_detections_by_zones(const char *stream_name, detection_result_t *resu
  */
 int filter_detections_by_stream_objects(const char *stream_name, detection_result_t *result);
 
+/**
+ * Build a zone mask for a motion detection grid.
+ *
+ * For each grid cell, checks whether the cell center (in normalized 0-1
+ * coordinates) falls inside any enabled zone polygon for the given stream.
+ *
+ * If no zones are configured or no zones are enabled, all mask entries are
+ * set to true (i.e. the entire frame is considered active).
+ *
+ * @param stream_name Stream name to load zones for
+ * @param grid_size   Size of the grid (grid_size x grid_size cells)
+ * @param zone_mask   Output array of size grid_size*grid_size.  true = cell
+ *                    is inside at least one enabled zone.
+ * @return Number of enabled zones found (0 means no filtering), -1 on error
+ */
+int build_motion_zone_mask(const char *stream_name, int grid_size, bool *zone_mask);
+
 #endif /* LIGHTNVR_ZONE_FILTER_H */
 

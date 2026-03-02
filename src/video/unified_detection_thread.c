@@ -44,6 +44,7 @@
 #include "video/api_detection.h"
 #include "video/motion_detection.h"
 #include "video/onvif_detection.h"
+#include "video/zone_filter.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_recording.h"
@@ -1623,6 +1624,15 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
         if (mot_ret != 0) {
             log_warn("[%s] Motion detection failed with error %d", ctx->stream_name, mot_ret);
             return false;
+        }
+
+        // Apply zone filtering to motion detections (consistent with ONVIF path)
+        if (result.count > 0) {
+            int zf_ret = filter_detections_by_zones(ctx->stream_name, &result);
+            if (zf_ret != 0) {
+                log_warn("[%s] Zone filtering failed for motion detections, keeping all",
+                         ctx->stream_name);
+            }
         }
 
         // Check if any detections meet the threshold

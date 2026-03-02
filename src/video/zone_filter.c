@@ -323,3 +323,69 @@ int filter_detections_by_stream_objects(const char *stream_name, detection_resul
 
     return 0;
 }
+
+/**
+ * Build a zone mask for a motion detection grid.
+ */
+int build_motion_zone_mask(const char *stream_name, int grid_size, bool *zone_mask) {
+    if (!stream_name || grid_size <= 0 || !zone_mask) {
+        return -1;
+    }
+
+    int total_cells = grid_size * grid_size;
+
+    // Get zones for this stream
+    detection_zone_t zones[MAX_ZONES_PER_STREAM];
+    int zone_count = get_detection_zones(stream_name, zones, MAX_ZONES_PER_STREAM);
+
+    if (zone_count < 0) {
+        log_error("Failed to get detection zones for stream %s", stream_name);
+        // On error, allow all cells (don't block motion detection)
+        for (int i = 0; i < total_cells; i++) {
+            zone_mask[i] = true;
+        }
+        return -1;
+    }
+
+    // Count enabled zones
+    int enabled_zone_count = 0;
+    for (int i = 0; i < zone_count; i++) {
+        if (zones[i].enabled) {
+            enabled_zone_count++;
+        }
+    }
+
+    // If no zones configured or none enabled, all cells are active
+    if (zone_count == 0 || enabled_zone_count == 0) {
+        for (int i = 0; i < total_cells; i++) {
+            zone_mask[i] = true;
+        }
+        return 0;
+    }
+
+    // For each grid cell, check if its center is inside any enabled zone
+    for (int gy = 0; gy < grid_size; gy++) {
+        for (int gx = 0; gx < grid_size; gx++) {
+            // Compute normalized center of this cell (0.0 - 1.0)
+            float center_x = ((float)gx + 0.5f) / (float)grid_size;
+            float center_y = ((float)gy + 0.5f) / (float)grid_size;
+
+            bool in_any_zone = false;
+            for (int z = 0; z < zone_count; z++) {
+                if (!zones[z].enabled) continue;
+                if (point_in_polygon(center_x, center_y,
+                                     zones[z].polygon, zones[z].polygon_count)) {
+                    in_any_zone = true;
+                    break;
+                }
+            }
+
+            zone_mask[gy * grid_size + gx] = in_any_zone;
+        }
+    }
+
+    log_debug("Built zone mask for stream %s: %d/%d cells active (%d enabled zones)",
+              stream_name, enabled_zone_count, total_cells, enabled_zone_count);
+
+    return enabled_zone_count;
+}

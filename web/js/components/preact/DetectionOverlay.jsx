@@ -24,6 +24,7 @@ export const DetectionOverlay = forwardRef(({
   detectionModel = null
 }, ref) => {
   const [detections, setDetections] = useState([]);
+  const [zones, setZones] = useState([]);
   const canvasRef = useRef(null);
   const intervalRef = useRef(null);
   const errorCountRef = useRef(0);
@@ -35,7 +36,20 @@ export const DetectionOverlay = forwardRef(({
     getDetections: () => detections
   }));
 
-  // Function to draw bounding boxes
+  // Fetch detection zones for this stream
+  useEffect(() => {
+    if (!streamName) return;
+    fetch(`/api/streams/${encodeURIComponent(streamName)}/zones`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.zones && Array.isArray(data.zones)) {
+          setZones(data.zones.filter(z => z.enabled));
+        }
+      })
+      .catch(err => console.warn('Failed to load detection zones:', err));
+  }, [streamName]);
+
+  // Function to draw bounding boxes and zone polygons
   const drawDetectionBoxes = useCallback(() => {
     if (!canvasRef.current || !videoRef.current) return;
 
@@ -50,18 +64,12 @@ export const DetectionOverlay = forwardRef(({
     // Clear previous drawings
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // No detections, just return
-    if (!detections || detections.length === 0) {
-      return;
-    }
-
     // Get the actual video dimensions
     const videoWidth = videoElement.videoWidth;
     const videoHeight = videoElement.videoHeight;
 
     // If video dimensions aren't available yet, skip drawing
     if (!videoWidth || !videoHeight) {
-      console.log('Video dimensions not available yet, skipping detection drawing');
       return;
     }
 
@@ -72,43 +80,78 @@ export const DetectionOverlay = forwardRef(({
     let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
 
     if (videoAspect > canvasAspect) {
-      // Video is wider than canvas (letterboxing - black bars on top and bottom)
       drawWidth = canvas.width;
       drawHeight = canvas.width / videoAspect;
       offsetY = (canvas.height - drawHeight) / 2;
     } else {
-      // Video is taller than canvas (pillarboxing - black bars on sides)
       drawHeight = canvas.height;
       drawWidth = canvas.height * videoAspect;
       offsetX = (canvas.width - drawWidth) / 2;
     }
 
-    // Draw each detection
-    detections.forEach(detection => {
-      // Calculate pixel coordinates based on normalized values (0-1)
-      // and adjust for the actual display area
-      const x = (detection.x * drawWidth) + offsetX;
-      const y = (detection.y * drawHeight) + offsetY;
-      const width = detection.width * drawWidth;
-      const height = detection.height * drawHeight;
+    // Draw zone polygons first (underneath detections)
+    zones.forEach(zone => {
+      if (!zone.polygon || zone.polygon.length < 3) return;
+      const color = zone.color || '#3b82f6';
 
-      // Draw bounding box
-      ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(x, y, width, height);
+      ctx.beginPath();
+      const p0x = (zone.polygon[0].x * drawWidth) + offsetX;
+      const p0y = (zone.polygon[0].y * drawHeight) + offsetY;
+      ctx.moveTo(p0x, p0y);
+      for (let i = 1; i < zone.polygon.length; i++) {
+        const px = (zone.polygon[i].x * drawWidth) + offsetX;
+        const py = (zone.polygon[i].y * drawHeight) + offsetY;
+        ctx.lineTo(px, py);
+      }
+      ctx.closePath();
 
-      // Draw label background
-      const label = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
-      ctx.font = '14px Arial';
-      const textWidth = ctx.measureText(label).width;
-      ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
-      ctx.fillRect(x, y - 20, textWidth + 10, 20);
+      // Semi-transparent fill
+      ctx.fillStyle = color + '1A'; // ~10% opacity
+      ctx.fill();
+      // Solid border
+      ctx.strokeStyle = color + 'CC'; // ~80% opacity
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-      // Draw label text
-      ctx.fillStyle = 'white';
-      ctx.fillText(label, x + 5, y - 5);
+      // Draw zone name label
+      if (zone.name) {
+        ctx.font = '12px Arial';
+        const labelWidth = ctx.measureText(zone.name).width;
+        ctx.fillStyle = color + 'B3'; // ~70% opacity
+        ctx.fillRect(p0x, p0y - 18, labelWidth + 8, 18);
+        ctx.fillStyle = 'white';
+        ctx.fillText(zone.name, p0x + 4, p0y - 4);
+      }
     });
-  }, [detections, videoRef]);
+
+    // Draw each detection
+    if (detections && detections.length > 0) {
+      detections.forEach(detection => {
+        const x = (detection.x * drawWidth) + offsetX;
+        const y = (detection.y * drawHeight) + offsetY;
+        const width = detection.width * drawWidth;
+        const height = detection.height * drawHeight;
+
+        // Draw bounding box
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, width, height);
+
+        // Draw label background
+        const label = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+        ctx.font = '14px Arial';
+        const textWidth = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+        ctx.fillRect(x, y - 20, textWidth + 10, 20);
+
+        // Draw label text
+        ctx.fillStyle = 'white';
+        ctx.fillText(label, x + 5, y - 5);
+      });
+    }
+  }, [detections, zones, videoRef]);
 
   // Poll for detections
   const pollDetections = useCallback(() => {

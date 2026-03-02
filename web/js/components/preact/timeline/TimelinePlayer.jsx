@@ -3,7 +3,7 @@
  * Handles video playback for the timeline
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
@@ -17,11 +17,15 @@ export function TimelinePlayer() {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const [segments, setSegments] = useState([]);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [detections, setDetections] = useState([]);
+  const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
 
   // Refs
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const lastTimeUpdateRef = useRef(null);
   const lastSegmentIdRef = useRef(null);
+  const lastDetectionSegmentIdRef = useRef(null);
 
   // Subscribe to timeline state changes
   useEffect(() => {
@@ -405,6 +409,142 @@ export function TimelinePlayer() {
     });
   };
 
+  // Fetch detections when segment changes
+  useEffect(() => {
+    if (currentSegmentIndex < 0 || !segments || segments.length === 0 ||
+        currentSegmentIndex >= segments.length) {
+      setDetections([]);
+      return;
+    }
+
+    const segment = segments[currentSegmentIndex];
+    if (!segment || !segment.id) return;
+
+    // Don't refetch if same segment
+    if (lastDetectionSegmentIdRef.current === segment.id) return;
+    lastDetectionSegmentIdRef.current = segment.id;
+
+    // Fetch recording info to get stream name and timestamps
+    fetch(`/api/recordings/${segment.id}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!data || !data.stream || !data.start_time || !data.end_time) return;
+
+        const startTime = Math.floor(new Date(data.start_time).getTime() / 1000);
+        const endTime = Math.floor(new Date(data.end_time).getTime() / 1000);
+        if (startTime <= 0 || endTime <= 0) return;
+
+        return fetch(`/api/detection/results/${encodeURIComponent(data.stream)}?start=${startTime}&end=${endTime}`);
+      })
+      .then(res => res && res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.detections) {
+          setDetections(data.detections);
+        } else {
+          setDetections([]);
+        }
+      })
+      .catch(err => {
+        console.warn('Failed to load detections for timeline segment:', err);
+        setDetections([]);
+      });
+  }, [currentSegmentIndex, segments]);
+
+  // Draw detection overlays on canvas
+  const drawTimelineDetections = useCallback(() => {
+    if (!canvasRef.current || !videoRef.current || !detectionOverlayEnabled) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    if (!videoWidth || !videoHeight) return;
+
+    const displayWidth = video.clientWidth;
+    const displayHeight = video.clientHeight;
+    canvas.width = displayWidth;
+    canvas.height = displayHeight;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!detections || detections.length === 0) return;
+
+    // Get current segment to compute current timestamp
+    if (currentSegmentIndex < 0 || currentSegmentIndex >= segments.length) return;
+    const segment = segments[currentSegmentIndex];
+    if (!segment) return;
+
+    const currentTimestamp = segment.start_timestamp + video.currentTime;
+
+    // Calculate letterbox offsets
+    const videoAspect = videoWidth / videoHeight;
+    const displayAspect = displayWidth / displayHeight;
+    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+    if (videoAspect > displayAspect) {
+      drawWidth = displayWidth;
+      drawHeight = displayWidth / videoAspect;
+      offsetY = (displayHeight - drawHeight) / 2;
+    } else {
+      drawHeight = displayHeight;
+      drawWidth = displayHeight * videoAspect;
+      offsetX = (displayWidth - drawWidth) / 2;
+    }
+
+    // Filter detections within a 2-second window of current time
+    const timeWindow = 2;
+    const visibleDetections = detections.filter(d =>
+      d.timestamp && Math.abs(d.timestamp - currentTimestamp) <= timeWindow
+    );
+
+    const scale = Math.max(1, Math.min(drawWidth, drawHeight) / 400);
+
+    visibleDetections.forEach(detection => {
+      const x = (detection.x * drawWidth) + offsetX;
+      const y = (detection.y * drawHeight) + offsetY;
+      const width = detection.width * drawWidth;
+      const height = detection.height * drawHeight;
+
+      ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+      ctx.lineWidth = Math.max(2, 3 * scale);
+      ctx.strokeRect(x, y, width, height);
+
+      const fontSize = Math.round(Math.max(12, 14 * scale));
+      ctx.font = `${fontSize}px Arial`;
+      const labelText = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
+      const labelWidth = ctx.measureText(labelText).width + 10;
+      const labelHeight = fontSize + 8;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x, y - labelHeight, labelWidth, labelHeight);
+      ctx.fillStyle = 'white';
+      ctx.fillText(labelText, x + 5, y - 5);
+    });
+
+    // Continue animation if playing
+    if (!video.paused && !video.ended) {
+      requestAnimationFrame(drawTimelineDetections);
+    }
+  }, [detectionOverlayEnabled, detections, currentSegmentIndex, segments]);
+
+  // Redraw detections on play/seek/timeupdate
+  useEffect(() => {
+    if (!detectionOverlayEnabled || !videoRef.current) return;
+    const video = videoRef.current;
+
+    const onEvent = () => drawTimelineDetections();
+    video.addEventListener('play', onEvent);
+    video.addEventListener('seeked', onEvent);
+    video.addEventListener('timeupdate', onEvent);
+
+    return () => {
+      video.removeEventListener('play', onEvent);
+      video.removeEventListener('seeked', onEvent);
+      video.removeEventListener('timeupdate', onEvent);
+    };
+  }, [detectionOverlayEnabled, drawTimelineDetections]);
+
   return (
     <>
       <div className="timeline-player-container mb-2" id="video-player">
@@ -422,6 +562,15 @@ export function TimelinePlayer() {
               onTimeUpdate={handleTimeUpdate}
           ></video>
 
+          {/* Detection overlay canvas */}
+          {detectionOverlayEnabled && (
+            <canvas
+              ref={canvasRef}
+              className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              style={{ zIndex: 2 }}
+            />
+          )}
+
           {/* Add a message for invalid segments */}
           <div
             className={`absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 text-white text-center p-4 ${currentSegmentIndex >= 0 && segments.length > 0 ? 'hidden' : ''}`}
@@ -434,8 +583,23 @@ export function TimelinePlayer() {
         </div>
       </div>
 
-      {/* Playback speed controls */}
-      <SpeedControls />
+      {/* Detection overlay toggle and playback speed controls */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="timeline-detection-overlay"
+            className="w-4 h-4 accent-primary"
+            checked={detectionOverlayEnabled}
+            onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
+            disabled={detections.length === 0}
+          />
+          <label htmlFor="timeline-detection-overlay" className="text-xs font-medium text-foreground">
+            Show Detections {detections.length > 0 ? `(${detections.length})` : ''}
+          </label>
+        </div>
+        <SpeedControls />
+      </div>
     </>
   );
 }

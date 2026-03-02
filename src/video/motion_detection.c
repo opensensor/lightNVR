@@ -18,6 +18,7 @@
 #include "video/motion_detection.h"
 #include "video/streams.h"
 #include "video/detection_result.h"
+#include "video/zone_filter.h"
 #include "utils/memory.h"
 
 #define MAX_MOTION_STREAMS MAX_STREAMS
@@ -153,7 +154,8 @@ static void update_background_model(unsigned char *background, const unsigned ch
 static float calculate_grid_motion(const unsigned char *curr_frame, const unsigned char *prev_frame,
                                   const unsigned char *background, int width, int height,
                                   float sensitivity, int noise_threshold, int grid_size,
-                                  float *grid_scores, float *motion_area);
+                                  float *grid_scores, float *motion_area,
+                                  const bool *zone_mask);
 static unsigned char *rgb_to_grayscale(const unsigned char *rgb_data, int width, int height);
 static unsigned char *downscale_grayscale(const unsigned char *src, int width, int height, int factor, 
                                          int *out_width, int *out_height);
@@ -759,28 +761,41 @@ static void update_background_model(unsigned char *background, const unsigned ch
 
 /**
  * Calculate motion using grid-based approach - optimized for embedded devices
+ * @param zone_mask  Optional boolean mask (grid_size*grid_size).  If non-NULL,
+ *                   cells where zone_mask[idx]==false are skipped entirely.
+ *                   When NULL, all cells are processed.
  */
 static float calculate_grid_motion(const unsigned char *curr_frame, const unsigned char *prev_frame,
                                   const unsigned char *background, int width, int height,
                                   float sensitivity, int noise_threshold, int grid_size,
-                                  float *grid_scores, float *motion_area) {
+                                  float *grid_scores, float *motion_area,
+                                  const bool *zone_mask) {
     if (!curr_frame || !prev_frame || !background || !grid_scores || !motion_area) {
         return 0.0f;
     }
 
     int cell_width = width / grid_size;
     int cell_height = height / grid_size;
-    int total_cells = grid_size * grid_size;
+    int total_cells = 0;   // only count cells that are in-zone
     int cells_with_motion = 0;
     float max_cell_score = 0.0f;
 
     #if EMBEDDED_DEVICE_OPTIMIZATION
     // Convert sensitivity to fixed-point for faster comparison
     int sensitivity_threshold = (int)(sensitivity * 255.0f);
-    
+
     // Calculate motion for each grid cell
     for (int gy = 0; gy < grid_size; gy++) {
         for (int gx = 0; gx < grid_size; gx++) {
+            int cell_idx = gy * grid_size + gx;
+
+            // Skip cells outside configured zones
+            if (zone_mask && !zone_mask[cell_idx]) {
+                grid_scores[cell_idx] = 0.0f;
+                continue;
+            }
+            total_cells++;
+
             int cell_start_x = gx * cell_width;
             int cell_start_y = gy * cell_height;
             int cell_end_x = (gx + 1) * cell_width;
@@ -821,10 +836,11 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
             }
 
             // Calculate cell motion score
-            float cell_score = (float)total_diff / (float)(cell_pixels * 255);
+            float cell_score = (cell_pixels > 0)
+                ? (float)total_diff / (float)(cell_pixels * 255)
+                : 0.0f;
 
             // Store cell score
-            int cell_idx = gy * grid_size + gx;
             grid_scores[cell_idx] = cell_score;
 
             // Track overall motion
@@ -840,6 +856,15 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
     // Original implementation for non-embedded devices
     for (int gy = 0; gy < grid_size; gy++) {
         for (int gx = 0; gx < grid_size; gx++) {
+            int cell_idx = gy * grid_size + gx;
+
+            // Skip cells outside configured zones
+            if (zone_mask && !zone_mask[cell_idx]) {
+                grid_scores[cell_idx] = 0.0f;
+                continue;
+            }
+            total_cells++;
+
             int cell_start_x = gx * cell_width;
             int cell_start_y = gy * cell_height;
             int cell_end_x = (gx + 1) * cell_width;
@@ -879,11 +904,15 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
             }
 
             // Calculate cell motion score
-            float cell_area = (float)changed_pixels / (float)cell_pixels;
-            float cell_score = (float)total_diff / (float)(cell_pixels * 255);
+            float cell_area = (cell_pixels > 0)
+                ? (float)changed_pixels / (float)cell_pixels
+                : 0.0f;
+            float cell_score = (cell_pixels > 0)
+                ? (float)total_diff / (float)(cell_pixels * 255)
+                : 0.0f;
+            (void)cell_area; // suppress unused warning
 
             // Store cell score
-            int cell_idx = gy * grid_size + gx;
             grid_scores[cell_idx] = cell_score;
 
             // Track overall motion
@@ -897,8 +926,12 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
     }
     #endif
 
-    // Calculate overall motion metrics
-    *motion_area = (float)cells_with_motion / (float)total_cells;
+    // Calculate overall motion metrics (only among in-zone cells)
+    if (total_cells > 0) {
+        *motion_area = (float)cells_with_motion / (float)total_cells;
+    } else {
+        *motion_area = 0.0f;
+    }
 
     // Return the maximum cell score as the overall motion score
     // This focuses on the most active area rather than averaging motion across the frame
@@ -1158,13 +1191,30 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
     float motion_score = 0.0f;
     float motion_area = 0.0f;
 
+    // Build zone mask for grid-based detection (stack-allocated, max grid is 32x32=1024)
+    bool zone_mask_buf[1024];
+    bool *zone_mask = NULL;
+    if (stream->use_grid_detection) {
+        int mask_size = stream->grid_size * stream->grid_size;
+        if (mask_size <= (int)(sizeof(zone_mask_buf) / sizeof(zone_mask_buf[0]))) {
+            zone_mask = zone_mask_buf;
+        } else {
+            zone_mask = (bool *)malloc(mask_size * sizeof(bool));
+        }
+        if (zone_mask) {
+            // build_motion_zone_mask sets all true when no zones are configured
+            build_motion_zone_mask(stream_name, stream->grid_size, zone_mask);
+        }
+    }
+
     // Detect motion between frames
     if (stream->use_grid_detection) {
-        // Grid-based motion detection
+        // Grid-based motion detection (zone-aware)
         motion_score = calculate_grid_motion(
             stream->blur_buffer, stream->prev_frame, stream->background,
             processing_width, processing_height, stream->sensitivity, stream->noise_threshold,
-            stream->grid_size, stream->grid_scores, &motion_area
+            stream->grid_size, stream->grid_scores, &motion_area,
+            zone_mask
         );
 
         // Determine if motion is detected based on area threshold
@@ -1181,7 +1231,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         for (int y = 0; y < processing_height; y += 2) {
             for (int x = 0; x < processing_width; x += 2) {
                 int idx = y * processing_width + x;
-                
+
                 // Calculate differences from previous frame and background
                 int frame_diff = abs((int)stream->blur_buffer[idx] - (int)stream->prev_frame[idx]);
                 int bg_diff = abs((int)stream->blur_buffer[idx] - (int)stream->background[idx]);
@@ -1199,7 +1249,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
                 }
             }
         }
-        
+
         // Adjust for sampling (we only processed 1/4 of the pixels)
         pixel_count = (processing_width * processing_height) / 4;
         #else
@@ -1261,24 +1311,55 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         // Update last detection time
         stream->last_detection_time = frame_time;
 
+        // Compute tight bounding box from active grid cells
+        float bbox_x = 0.0f, bbox_y = 0.0f, bbox_w = 1.0f, bbox_h = 1.0f;
+
+        if (stream->use_grid_detection && stream->grid_size > 0) {
+            int min_gx = stream->grid_size, min_gy = stream->grid_size;
+            int max_gx = -1, max_gy = -1;
+
+            for (int gy = 0; gy < stream->grid_size; gy++) {
+                for (int gx = 0; gx < stream->grid_size; gx++) {
+                    int cell_idx = gy * stream->grid_size + gx;
+                    if (stream->grid_scores[cell_idx] > 0.01f) {
+                        if (gx < min_gx) min_gx = gx;
+                        if (gx > max_gx) max_gx = gx;
+                        if (gy < min_gy) min_gy = gy;
+                        if (gy > max_gy) max_gy = gy;
+                    }
+                }
+            }
+
+            if (max_gx >= 0 && max_gy >= 0) {
+                // Convert grid cell coordinates to normalized 0-1 coordinates
+                bbox_x = (float)min_gx / (float)stream->grid_size;
+                bbox_y = (float)min_gy / (float)stream->grid_size;
+                bbox_w = (float)(max_gx - min_gx + 1) / (float)stream->grid_size;
+                bbox_h = (float)(max_gy - min_gy + 1) / (float)stream->grid_size;
+            }
+        }
+
         // Fill detection result
         result->count = 1;
         strncpy(result->detections[0].label, MOTION_LABEL, MAX_LABEL_LENGTH - 1);
         result->detections[0].confidence = motion_score;
+        result->detections[0].x = bbox_x;
+        result->detections[0].y = bbox_y;
+        result->detections[0].width = bbox_w;
+        result->detections[0].height = bbox_h;
 
-        // Set bounding box to cover the entire frame for now
-        // In a more advanced implementation, we could identify the specific motion regions
-        result->detections[0].x = 0.0f;
-        result->detections[0].y = 0.0f;
-        result->detections[0].width = 1.0f;
-        result->detections[0].height = 1.0f;
-
-        log_info("Motion detected in stream %s: score=%.3f, area=%.2f%%, confidence=%.2f",
-                stream_name, motion_score, motion_area * 100.0f, result->detections[0].confidence);
+        log_info("Motion detected in stream %s: score=%.3f, area=%.2f%%, bbox=[%.2f,%.2f,%.2f,%.2f]",
+                stream_name, motion_score, motion_area * 100.0f,
+                bbox_x, bbox_y, bbox_w, bbox_h);
     } else {
         // Log low motion details for debugging (at debug level)
         log_debug("No motion in stream %s: score=%.3f, area=%.2f%%, threshold=%.2f",
                  stream_name, motion_score, motion_area * 100.0f, stream->min_motion_area);
+    }
+
+    // Free dynamically-allocated zone mask (if it wasn't the stack buffer)
+    if (zone_mask && zone_mask != zone_mask_buf) {
+        free(zone_mask);
     }
 
     // Clean up

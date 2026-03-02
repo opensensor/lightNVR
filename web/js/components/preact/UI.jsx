@@ -411,79 +411,93 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
-    // Get video dimensions
+    // Get native video dimensions
     const videoWidth = video.videoWidth;
     const videoHeight = video.videoHeight;
 
     if (videoWidth === 0 || videoHeight === 0) {
-      // Video dimensions not available yet, try again later
       requestAnimationFrame(drawDetections);
       return;
     }
 
-    // Set canvas dimensions to match video
-    canvas.width = videoWidth;
-    canvas.height = videoHeight;
+    // Set canvas to match the displayed element size (not native resolution)
+    const displayWidth = video.clientWidth;
+    const displayHeight = video.clientHeight;
+    canvas.width = displayWidth;
+    canvas.height = displayHeight;
 
-    // Get canvas context
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate letterbox / pillarbox offsets (video uses object-contain)
+    const videoAspect = videoWidth / videoHeight;
+    const displayAspect = displayWidth / displayHeight;
+    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+    if (videoAspect > displayAspect) {
+      drawWidth = displayWidth;
+      drawHeight = displayWidth / videoAspect;
+      offsetY = (displayHeight - drawHeight) / 2;
+    } else {
+      drawHeight = displayHeight;
+      drawWidth = displayHeight * videoAspect;
+      offsetX = (displayWidth - drawWidth) / 2;
+    }
 
     // Get current video time in seconds
     const currentTime = video.currentTime;
 
-    // Calculate the timestamp for the current video position
     if (!recordingData || !recordingData.start_time) {
       return;
     }
 
-    // Convert recording start time to seconds using dayjs
     const recordingStartTime = parseRecordingTimestamp(recordingData.start_time);
     if (recordingStartTime === 0) {
       console.error('Failed to parse recording start time:', recordingData.start_time);
       return;
     }
 
-    // Calculate current timestamp in the video
     const currentTimestamp = recordingStartTime + Math.floor(currentTime);
 
     // Filter detections to only show those within the time window
     const visibleDetections = detections.filter(detection => {
       if (!detection.timestamp) return false;
-
-      // Check if detection is within the time window
       return Math.abs(detection.timestamp - currentTimestamp) <= timeWindow;
     });
 
-    // Update status with count of visible detections
+    // Update status
     if (visibleDetections.length > 0) {
       setDetectionStatus(`Showing ${visibleDetections.length} detection${visibleDetections.length !== 1 ? 's' : ''} at current time`);
     } else {
       setDetectionStatus(`No detections at current time (${detections.length} total)`);
     }
 
-    // Draw each visible detection
+    // Draw each visible detection using letterbox-aware coordinates
     visibleDetections.forEach(detection => {
-      // Calculate coordinates based on relative positions
-      const x = detection.x * videoWidth;
-      const y = detection.y * videoHeight;
-      const width = detection.width * videoWidth;
-      const height = detection.height * videoHeight;
+      const x = (detection.x * drawWidth) + offsetX;
+      const y = (detection.y * drawHeight) + offsetY;
+      const width = detection.width * drawWidth;
+      const height = detection.height * drawHeight;
+
+      // Scale line width for visibility
+      const scale = Math.max(1, Math.min(drawWidth, drawHeight) / 400);
 
       // Draw bounding box
       ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = Math.max(2, 3 * scale);
       ctx.strokeRect(x, y, width, height);
 
       // Draw label background
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      const fontSize = Math.round(Math.max(12, 14 * scale));
+      ctx.font = `${fontSize}px Arial`;
       const labelText = `${detection.label} (${Math.round(detection.confidence * 100)}%)`;
       const labelWidth = ctx.measureText(labelText).width + 10;
-      ctx.fillRect(x, y - 20, labelWidth, 20);
+      const labelHeight = fontSize + 8;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x, y - labelHeight, labelWidth, labelHeight);
 
       // Draw label text
       ctx.fillStyle = 'white';
-      ctx.font = '12px Arial';
       ctx.fillText(labelText, x + 5, y - 5);
     });
 
@@ -649,7 +663,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 <canvas
                   ref={canvasRef}
                   className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                  style={{ display: 'none' }}
+                  style={{ display: 'none', zIndex: 2 }}
                 />
               </div>
             </div>
