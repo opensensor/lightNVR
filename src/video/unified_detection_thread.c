@@ -43,6 +43,7 @@
 #include "video/detection_result.h"
 #include "video/api_detection.h"
 #include "video/motion_detection.h"
+#include "video/onvif_detection.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_recording.h"
@@ -118,6 +119,53 @@ static bool is_motion_detection_model(const char *model_path) {
         return false;
     }
     return strcmp(model_path, "motion") == 0;
+}
+
+/**
+ * Check if a model path indicates ONVIF event-based detection
+ * Returns true if the path is exactly "onvif"
+ */
+static bool is_onvif_detection_model(const char *model_path) {
+    if (!model_path || model_path[0] == '\0') {
+        return false;
+    }
+    return strcmp(model_path, "onvif") == 0;
+}
+
+/**
+ * Derive an ONVIF base URL (http://host) from a stream URL.
+ * Strips the scheme, credentials, port, and path, then prepends "http://".
+ * Examples:
+ *   rtsp://admin:pass@192.168.1.100:554/stream  →  http://192.168.1.100
+ *   onvif://192.168.1.100/onvif/device_service  →  http://192.168.1.100
+ */
+static void extract_onvif_base_url(const char *stream_url, char *onvif_url, size_t onvif_url_size) {
+    if (!stream_url || !onvif_url || onvif_url_size == 0) {
+        return;
+    }
+    onvif_url[0] = '\0';
+
+    /* Skip scheme (rtsp://, onvif://, http://, etc.) */
+    const char *host_start = strstr(stream_url, "://");
+    if (!host_start) {
+        snprintf(onvif_url, onvif_url_size, "http://%s", stream_url);
+        return;
+    }
+    host_start += 3;  /* skip "://" */
+
+    /* Skip optional credentials (user:pass@) */
+    const char *at_sign = strchr(host_start, '@');
+    if (at_sign) {
+        host_start = at_sign + 1;
+    }
+
+    /* Find end of bare hostname: stop at ':', '/', or NUL */
+    const char *host_end = host_start;
+    while (*host_end && *host_end != ':' && *host_end != '/') {
+        host_end++;
+    }
+
+    snprintf(onvif_url, onvif_url_size, "http://%.*s", (int)(host_end - host_start), host_start);
 }
 
 /**
@@ -1593,6 +1641,49 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
         }
 
         return mot_triggered;
+    }
+
+    // ONVIF event-based detection — no frame decoding needed
+    if (is_onvif_detection_model(ctx->model_path)) {
+        // Fetch the stream config to obtain the camera URL and ONVIF credentials
+        stream_config_t onvif_cfg;
+        memset(&onvif_cfg, 0, sizeof(onvif_cfg));
+        if (get_stream_config_by_name(ctx->stream_name, &onvif_cfg) != 0) {
+            log_warn("[%s] ONVIF detection: failed to look up stream config", ctx->stream_name);
+            return false;
+        }
+
+        // Derive http://host from the stream's RTSP/ONVIF URL
+        char onvif_url[MAX_PATH_LENGTH];
+        extract_onvif_base_url(onvif_cfg.url, onvif_url, sizeof(onvif_url));
+
+        if (onvif_url[0] == '\0') {
+            log_warn("[%s] ONVIF detection: could not derive ONVIF URL from stream URL: %s",
+                     ctx->stream_name, onvif_cfg.url);
+            return false;
+        }
+
+        log_debug("[%s] ONVIF detection: polling events at %s (user=%s)",
+                  ctx->stream_name, onvif_url, onvif_cfg.onvif_username);
+
+        // detect_motion_onvif already handles DB storage, MQTT publish, and
+        // recording trigger internally — do not duplicate those calls here.
+        int onvif_ret = detect_motion_onvif(onvif_url,
+                                            onvif_cfg.onvif_username,
+                                            onvif_cfg.onvif_password,
+                                            &result,
+                                            ctx->stream_name);
+        if (onvif_ret != 0) {
+            log_warn("[%s] ONVIF detection failed with error %d", ctx->stream_name, onvif_ret);
+            return false;
+        }
+
+        bool onvif_triggered = (result.count > 0);
+        if (onvif_triggered) {
+            ctx->total_detections += result.count;
+            log_info("[%s] ONVIF motion detected (%d event(s))", ctx->stream_name, result.count);
+        }
+        return onvif_triggered;
     }
 
     // Embedded model detection - requires frame decoding
