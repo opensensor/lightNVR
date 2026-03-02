@@ -684,12 +684,16 @@ export function RecordingsView() {
         throw new Error(`Failed to ${newProtectedState ? 'protect' : 'unprotect'} recording`);
       }
 
-      // Update the local state
+      // Update the local state optimistically so the UI responds immediately
       setRecordings(prevRecordings =>
         prevRecordings.map(r =>
           r.id === recording.id ? { ...r, protected: newProtectedState } : r
         )
       );
+
+      // Invalidate the recordings query so the list re-fetches and reflects the
+      // new protected status (important when a protected-status filter is active)
+      queryClient.invalidateQueries({ queryKey: ['recordings'] });
 
       showStatusMessage(
         newProtectedState
