@@ -1090,9 +1090,12 @@ bool go2rtc_process_start(int api_port) {
         return false;
     }
 
-    // Set the RTSP port to the default value (8554) for now
-    // We'll try to get the actual value from the API after the process starts
-    g_rtsp_port = 8554;
+    // Seed g_rtsp_port from the user-configured value before starting the process.
+    // This ensures that if the post-start API call fails (e.g. because another
+    // service such as mediamtx already holds the default port 8554), the fallback
+    // still reflects what go2rtc was actually configured to listen on rather than
+    // silently using the hardcoded default.
+    g_rtsp_port = (g_config.go2rtc_rtsp_port > 0) ? g_config.go2rtc_rtsp_port : 8554;
 
     // Create a symbolic link from /dev/shm/go2rtc.yaml to our config file
     // This ensures that even if something tries to use the /dev/shm path, it will use our config
