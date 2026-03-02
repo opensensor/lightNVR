@@ -1635,19 +1635,35 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             }
         }
 
-        // Check if any detections meet the threshold
+        // Filter out detections below the threshold so they are not stored
+        // or displayed on the overlay.  Keep only those that meet the
+        // configured detection_threshold.
         bool mot_triggered = false;
-        for (int i = 0; i < result.count; i++) {
-            if (result.detections[i].confidence >= ctx->detection_threshold) {
-                mot_triggered = true;
-                log_info("[%s] Motion detected: %s (%.1f%%)",
-                         ctx->stream_name,
-                         result.detections[i].label,
-                         result.detections[i].confidence * 100.0f);
+        {
+            int kept = 0;
+            for (int i = 0; i < result.count; i++) {
+                if (result.detections[i].confidence >= ctx->detection_threshold) {
+                    mot_triggered = true;
+                    log_info("[%s] Motion detected: %s (%.1f%%)",
+                             ctx->stream_name,
+                             result.detections[i].label,
+                             result.detections[i].confidence * 100.0f);
+                    if (kept != i) {
+                        result.detections[kept] = result.detections[i];
+                    }
+                    kept++;
+                } else {
+                    log_debug("[%s] Motion below threshold: %s (%.1f%% < %.1f%%)",
+                              ctx->stream_name,
+                              result.detections[i].label,
+                              result.detections[i].confidence * 100.0f,
+                              ctx->detection_threshold * 100.0f);
+                }
             }
+            result.count = kept;
         }
 
-        // Store detections in database if any were found
+        // Store detections in database if any passed the threshold
         if (result.count > 0) {
             time_t now = time(NULL);
             uint64_t rec_id = 0;

@@ -1311,46 +1311,122 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
         // Update last detection time
         stream->last_detection_time = frame_time;
 
-        // Compute tight bounding box from active grid cells
-        float bbox_x = 0.0f, bbox_y = 0.0f, bbox_w = 1.0f, bbox_h = 1.0f;
-
         if (stream->use_grid_detection && stream->grid_size > 0) {
-            int min_gx = stream->grid_size, min_gy = stream->grid_size;
-            int max_gx = -1, max_gy = -1;
+            // ----------------------------------------------------------
+            // Connected-component clustering of active grid cells.
+            // Each connected region of cells with score > 0.01 becomes
+            // its own detection with a tight bounding box and the mean
+            // score of its constituent cells as the confidence value.
+            // ----------------------------------------------------------
+            int gs = stream->grid_size;
+            int total = gs * gs;
 
-            for (int gy = 0; gy < stream->grid_size; gy++) {
-                for (int gx = 0; gx < stream->grid_size; gx++) {
-                    int cell_idx = gy * stream->grid_size + gx;
-                    if (stream->grid_scores[cell_idx] > 0.01f) {
-                        if (gx < min_gx) min_gx = gx;
-                        if (gx > max_gx) max_gx = gx;
-                        if (gy < min_gy) min_gy = gy;
-                        if (gy > max_gy) max_gy = gy;
+            // labels[]: component id per cell (-1 = inactive)
+            int labels[32 * 32];  // max grid 32×32
+            for (int i = 0; i < total; i++)
+                labels[i] = -1;
+
+            int num_components = 0;
+
+            // Flood-fill labeling (4-connected)
+            for (int gy = 0; gy < gs; gy++) {
+                for (int gx = 0; gx < gs; gx++) {
+                    int idx = gy * gs + gx;
+                    if (stream->grid_scores[idx] <= 0.01f || labels[idx] >= 0)
+                        continue;
+
+                    // BFS from this cell
+                    int comp = num_components++;
+                    int queue[32 * 32];
+                    int head = 0, tail = 0;
+                    queue[tail++] = idx;
+                    labels[idx] = comp;
+
+                    while (head < tail) {
+                        int ci = queue[head++];
+                        int cy = ci / gs;
+                        int cx = ci % gs;
+                        // 4-connected neighbours
+                        const int dx[] = {-1, 1, 0, 0};
+                        const int dy[] = { 0, 0,-1, 1};
+                        for (int d = 0; d < 4; d++) {
+                            int nx = cx + dx[d];
+                            int ny = cy + dy[d];
+                            if (nx < 0 || nx >= gs || ny < 0 || ny >= gs)
+                                continue;
+                            int ni = ny * gs + nx;
+                            if (labels[ni] < 0 && stream->grid_scores[ni] > 0.01f) {
+                                labels[ni] = comp;
+                                queue[tail++] = ni;
+                            }
+                        }
                     }
+
+                    if (num_components >= MAX_DETECTIONS)
+                        break;
                 }
+                if (num_components >= MAX_DETECTIONS)
+                    break;
             }
 
-            if (max_gx >= 0 && max_gy >= 0) {
-                // Convert grid cell coordinates to normalized 0-1 coordinates
-                bbox_x = (float)min_gx / (float)stream->grid_size;
-                bbox_y = (float)min_gy / (float)stream->grid_size;
-                bbox_w = (float)(max_gx - min_gx + 1) / (float)stream->grid_size;
-                bbox_h = (float)(max_gy - min_gy + 1) / (float)stream->grid_size;
+            // Compute bounding box & mean score per component
+            int clamp = (num_components > MAX_DETECTIONS) ? MAX_DETECTIONS : num_components;
+            result->count = 0;
+
+            for (int c = 0; c < clamp; c++) {
+                int min_x = gs, min_y = gs, max_x = -1, max_y = -1;
+                float sum_score = 0.0f;
+                int cell_count = 0;
+
+                for (int i = 0; i < total; i++) {
+                    if (labels[i] != c)
+                        continue;
+                    int cy = i / gs;
+                    int cx = i % gs;
+                    if (cx < min_x) min_x = cx;
+                    if (cx > max_x) max_x = cx;
+                    if (cy < min_y) min_y = cy;
+                    if (cy > max_y) max_y = cy;
+                    sum_score += stream->grid_scores[i];
+                    cell_count++;
+                }
+
+                if (max_x < 0 || cell_count == 0)
+                    continue;
+
+                float conf = sum_score / (float)cell_count;
+                float bx = (float)min_x / (float)gs;
+                float by = (float)min_y / (float)gs;
+                float bw = (float)(max_x - min_x + 1) / (float)gs;
+                float bh = (float)(max_y - min_y + 1) / (float)gs;
+
+                int ri = result->count;
+                strncpy(result->detections[ri].label, MOTION_LABEL, MAX_LABEL_LENGTH - 1);
+                result->detections[ri].label[MAX_LABEL_LENGTH - 1] = '\0';
+                result->detections[ri].confidence = conf;
+                result->detections[ri].x = bx;
+                result->detections[ri].y = by;
+                result->detections[ri].width = bw;
+                result->detections[ri].height = bh;
+                result->count++;
             }
+
+            log_info("Motion detected in stream %s: score=%.3f, area=%.2f%%, clusters=%d",
+                    stream_name, motion_score, motion_area * 100.0f, result->count);
+        } else {
+            // Non-grid path: single full-frame detection
+            result->count = 1;
+            strncpy(result->detections[0].label, MOTION_LABEL, MAX_LABEL_LENGTH - 1);
+            result->detections[0].label[MAX_LABEL_LENGTH - 1] = '\0';
+            result->detections[0].confidence = motion_score;
+            result->detections[0].x = 0.0f;
+            result->detections[0].y = 0.0f;
+            result->detections[0].width = 1.0f;
+            result->detections[0].height = 1.0f;
+
+            log_info("Motion detected in stream %s: score=%.3f, area=%.2f%%",
+                    stream_name, motion_score, motion_area * 100.0f);
         }
-
-        // Fill detection result
-        result->count = 1;
-        strncpy(result->detections[0].label, MOTION_LABEL, MAX_LABEL_LENGTH - 1);
-        result->detections[0].confidence = motion_score;
-        result->detections[0].x = bbox_x;
-        result->detections[0].y = bbox_y;
-        result->detections[0].width = bbox_w;
-        result->detections[0].height = bbox_h;
-
-        log_info("Motion detected in stream %s: score=%.3f, area=%.2f%%, bbox=[%.2f,%.2f,%.2f,%.2f]",
-                stream_name, motion_score, motion_area * 100.0f,
-                bbox_x, bbox_y, bbox_w, bbox_h);
     } else {
         // Log low motion details for debugging (at debug level)
         log_debug("No motion in stream %s: score=%.3f, area=%.2f%%, threshold=%.2f",
