@@ -342,6 +342,12 @@ include_directories(${LIGHTNVR_INCLUDE_DIRS})
 
 # Define source files, excluding SOD sources which are built separately
 file(GLOB_RECURSE CORE_SOURCES "src/core/*.c")
+# Exclude main.c from CORE_SOURCES so it is not compiled into lightnvr_lib.
+# Test executables link against lightnvr_lib and provide their own main(); having
+# main.c.o inside the library would produce a duplicate-symbol link error.
+# main.c is compiled directly into the lightnvr executable via add_executable().
+list(FILTER CORE_SOURCES EXCLUDE REGEX ".*core/main\\.c$")
+message(STATUS "Excluding main.c from CORE_SOURCES (library build)")
 file(GLOB_RECURSE DATABASE_SOURCES "src/database/*.c")
 file(GLOB_RECURSE STORAGE_SOURCES "src/storage/*.c")
 file(GLOB_RECURSE UTILS_SOURCES "src/utils/*.c")
@@ -354,12 +360,14 @@ file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
 list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
 
 file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
-# Exclude sod.c and rebuild_recordings.c from ROOT_SOURCES to avoid static linking and multiple main functions
+# Exclude files with their own main() from ROOT_SOURCES to avoid multiple-definition
+# errors when linking test executables against lightnvr_lib.
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
+list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*core/main\\.c$")
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*utils/rebuild_recordings\\.c$")
 # Also exclude libuv sources from ROOT_SOURCES (they're added separately)
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
-message(STATUS "Excluding rebuild_recordings.c from ROOT_SOURCES")
+message(STATUS "Excluding main.c and rebuild_recordings.c from ROOT_SOURCES")
 
 # Explicitly list video sources to exclude motion_detection_optimized.c, detection_thread_pool.c,
 # and the original hls_writer_thread.c (since we're using our split version)
