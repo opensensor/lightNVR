@@ -76,7 +76,7 @@ export function RecordingsView() {
       endDate: p.get('endDate') || '',
       endTime: p.get('endTime') || '23:59',
       streamId: p.get('stream') || 'all',
-      recordingType: p.get('detection') === '1' ? 'detection' : 'all',
+      recordingType: p.get('detection') === '1' ? 'detection' : p.get('detection') === '-1' ? 'no_detection' : 'all',
       detectionLabel: p.get('detection_label') || '',
       protectedStatus: p.has('protected') ? (p.get('protected') === '1' ? 'yes' : 'no') : 'all'
     };
@@ -251,6 +251,7 @@ export function RecordingsView() {
     else url.searchParams.delete('stream');
 
     if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');
+    else if (filters.recordingType === 'no_detection') url.searchParams.set('detection', '-1');
     else url.searchParams.delete('detection');
 
     if (filters.detectionLabel && filters.detectionLabel.trim()) {

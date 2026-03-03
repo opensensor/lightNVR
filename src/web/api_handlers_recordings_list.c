@@ -98,7 +98,10 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Parse numeric parameters
     int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
     int limit = limit_str[0] ? (int)strtol(limit_str, NULL, 10) : 20;
+    // has_detection: 0=all, 1=detection events only, -1=no detection events only
     int has_detection = has_detection_str[0] ? (int)strtol(has_detection_str, NULL, 10) : 0;
+    if (has_detection < -1) has_detection = -1;
+    else if (has_detection > 1) has_detection = 1;
     // protected_filter: -1=all (default), 0=not protected, 1=protected
     int protected_filter = -1;
     if (protected_str[0] == '0') protected_filter = 0;

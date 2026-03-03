@@ -538,7 +538,7 @@ int get_recording_count(time_t start_time, time_t end_time,
     // Use trigger_type and/or detections table to filter detection-based recordings
     snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
-    if (has_detection) {
+    if (has_detection == 1) {
         // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)
         // Falls back to timestamp range scan for legacy detections without recording_id
         strncat(sql, " AND (r.trigger_type = 'detection'"
@@ -547,6 +547,14 @@ int get_recording_count(time_t start_time, time_t end_time,
                     " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))",
                     sizeof(sql) - strlen(sql) - 1);
         log_debug("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
+    } else if (has_detection == -1) {
+        // Filter to recordings with NO detections
+        strncat(sql, " AND (r.trigger_type != 'detection' OR r.trigger_type IS NULL)"
+                    " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
+                    " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)",
+                    sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding no-detection filter (no trigger_type AND no linked detections)");
     }
 
     if (detection_label) {
@@ -710,7 +718,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible "
             "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
-    if (has_detection) {
+    if (has_detection == 1) {
         // Filter by trigger_type = 'detection' OR existence of linked detections via recording_id (fast index lookup)
         // Falls back to timestamp range scan for legacy detections without recording_id
         strncat(sql, " AND (r.trigger_type = 'detection'"
@@ -719,6 +727,14 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                     " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))",
                     sizeof(sql) - strlen(sql) - 1);
         log_info("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
+    } else if (has_detection == -1) {
+        // Filter to recordings with NO detections
+        strncat(sql, " AND (r.trigger_type != 'detection' OR r.trigger_type IS NULL)"
+                    " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
+                    " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)",
+                    sizeof(sql) - strlen(sql) - 1);
+        log_info("Adding no-detection filter (no trigger_type AND no linked detections)");
     }
 
     if (detection_label) {

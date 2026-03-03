@@ -64,8 +64,9 @@ export const urlUtils = {
     }
     
     // Recording type
-    if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-      result.filters.recordingType = 'detection';
+    if (urlParams.has('detection')) {
+      if (urlParams.get('detection') === '1') result.filters.recordingType = 'detection';
+      else if (urlParams.get('detection') === '-1') result.filters.recordingType = 'no_detection';
     }
 
     // Detection label
@@ -141,8 +142,10 @@ export const urlUtils = {
       }
       
       // Recording type filter
-      if (filters.recordingType !== 'all') {
+      if (filters.recordingType === 'detection') {
         activeFilters.push({ key: 'recordingType', label: 'Detection Events Only' });
+      } else if (filters.recordingType === 'no_detection') {
+        activeFilters.push({ key: 'recordingType', label: 'No Detection Events Only' });
       }
 
       // Detection label filter
@@ -203,8 +206,9 @@ export const urlUtils = {
     }
     
     // Recording type - IMPORTANT: Check for this parameter even if dateRange is not present
-    if (urlParams.has('detection') && urlParams.get('detection') === '1') {
-      newFilters.recordingType = 'detection';
+    if (urlParams.has('detection')) {
+      if (urlParams.get('detection') === '1') newFilters.recordingType = 'detection';
+      else if (urlParams.get('detection') === '-1') newFilters.recordingType = 'no_detection';
     }
 
     // Protected status
@@ -268,6 +272,7 @@ export const urlUtils = {
 
     // Recording type filter
     if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');
+    else if (filters.recordingType === 'no_detection') url.searchParams.set('detection', '-1');
     else url.searchParams.delete('detection');
 
     // Detection label filter

@@ -107,7 +107,7 @@ export function FiltersSidebar({
   // Count active non-default filters for badges
   const dateRangeBadge = filters.dateRange !== 'today' ? filters.dateRange.replace('last', '').replace('days', 'd') : null;
   const streamBadge = filters.streamId !== 'all' ? filters.streamId : null;
-  const typeBadge = filters.recordingType !== 'all' ? 'detection' : null;
+  const typeBadge = filters.recordingType === 'detection' ? 'detect' : filters.recordingType === 'no_detection' ? 'no detect' : null;
   const detectionBadge = filters.detectionLabel ? filters.detectionLabel : null;
   const protectedBadge = filters.protectedStatus !== 'all' ? filters.protectedStatus : null;
 
@@ -211,6 +211,7 @@ export function FiltersSidebar({
             >
               <option value="all">All Recordings</option>
               <option value="detection">Detection Events Only</option>
+              <option value="no_detection">No Detection Events Only</option>
             </select>
           </FilterSection>
 
