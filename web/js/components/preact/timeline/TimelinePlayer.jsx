@@ -592,7 +592,6 @@ export function TimelinePlayer() {
             className="w-4 h-4 accent-primary"
             checked={detectionOverlayEnabled}
             onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
-            disabled={detections.length === 0}
           />
           <label htmlFor="timeline-detection-overlay" className="text-xs font-medium text-foreground">
             Show Detections {detections.length > 0 ? `(${detections.length})` : ''}
