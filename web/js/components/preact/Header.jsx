@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import {VERSION} from '../../version.js';
 import { getSettings } from '../../utils/settings-utils.js';
-import { isDemoMode } from '../../utils/auth-utils.js';
+import { isDemoMode, validateSession } from '../../utils/auth-utils.js';
 
 /**
  * Header component
@@ -22,9 +22,20 @@ export function Header({ version = VERSION }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
   const [demoMode, setDemoMode] = useState(false); // Demo mode state
+  const [userRole, setUserRole] = useState(null); // null = still loading
 
-  // Get the current username from localStorage and check if auth is enabled
+  // Get the current username, role, and check if auth is enabled
   useEffect(() => {
+    // Fetch user role for role-based nav filtering
+    validateSession().then(session => {
+      if (session.valid && session.role) {
+        setUserRole(session.role);
+      } else {
+        // Auth disabled or unauthenticated — treat as admin for nav visibility
+        setUserRole(session.auth_enabled === false ? 'admin' : 'viewer');
+      }
+    }).catch(() => setUserRole('viewer'));
+
     const auth = localStorage.getItem('auth');
     if (auth) {
       try {
@@ -103,14 +114,20 @@ export function Header({ version = VERSION }) {
     return 'index.html';
   };
 
+  // Determine if the current user has admin access for nav filtering.
+  // While the role is still loading (null) we conservatively show all items
+  // so the nav doesn't flash/reorder after load.
+  const isAdmin = userRole === null || userRole === 'admin';
+
   // Navigation items - don't preserve query parameters when navigating via header
+  // Admin-only tabs (System, Users) are hidden from non-admin roles.
   const navItems = [
     { id: 'nav-live', href: getLiveViewHref(), label: 'Live View' },
     { id: 'nav-recordings', href: 'recordings.html', label: 'Recordings' },
     { id: 'nav-streams', href: 'streams.html', label: 'Streams' },
     { id: 'nav-settings', href: 'settings.html', label: 'Settings' },
-    { id: 'nav-users', href: 'users.html', label: 'Users' },
-    { id: 'nav-system', href: 'system.html', label: 'System' }
+    ...(isAdmin ? [{ id: 'nav-users', href: 'users.html', label: 'Users' }] : []),
+    ...(isAdmin ? [{ id: 'nav-system', href: 'system.html', label: 'System' }] : []),
   ];
 
   // Force navigation function to bypass React cleanup issues

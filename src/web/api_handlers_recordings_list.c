@@ -21,6 +21,7 @@
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 #include "database/db_auth.h"
+#include "database/db_streams.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings
@@ -50,20 +51,24 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
     // Check authentication if enabled
     // In demo mode, allow unauthenticated viewer access to read recordings
+    user_t auth_user;
+    memset(&auth_user, 0, sizeof(auth_user));
+    bool have_auth_user = false;
     if (g_config.web_auth_enabled) {
-        user_t user;
         if (g_config.demo_mode) {
-            if (!httpd_check_viewer_access(req, &user)) {
+            if (!httpd_check_viewer_access(req, &auth_user)) {
                 log_error("Authentication failed for GET /api/recordings request");
                 http_response_set_json_error(res, 401, "Unauthorized");
                 return;
             }
+            have_auth_user = true;
         } else {
-            if (!httpd_get_authenticated_user(req, &user)) {
+            if (!httpd_get_authenticated_user(req, &auth_user)) {
                 log_error("Authentication failed for GET /api/recordings request");
                 http_response_set_json_error(res, 401, "Unauthorized");
                 return;
             }
+            have_auth_user = true;
         }
     }
 
@@ -171,14 +176,101 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         has_detection = 1;  // Searching by label implies detection filter
     }
 
+    // --- Tag-based RBAC: build list of allowed streams for this user ---
+    stream_config_t *all_stream_cfgs = NULL;
+    const char *allowed_streams[MAX_STREAMS];
+    int allowed_streams_count = 0;
+    bool tag_restricted = have_auth_user && auth_user.has_tag_restriction;
+
+    if (tag_restricted) {
+        all_stream_cfgs = calloc(g_config.max_streams, sizeof(stream_config_t));
+        if (all_stream_cfgs) {
+            int sc = get_all_stream_configs(all_stream_cfgs, g_config.max_streams);
+            for (int i = 0; i < sc; i++) {
+                if (db_auth_stream_allowed_for_user(&auth_user, all_stream_cfgs[i].tags)) {
+                    allowed_streams[allowed_streams_count++] = all_stream_cfgs[i].name;
+                }
+            }
+        }
+
+        // If the caller requested a specific stream, validate it is in the allowed list
+        if (stream_name[0] != '\0') {
+            bool permitted = false;
+            for (int i = 0; i < allowed_streams_count; i++) {
+                if (strcmp(stream_name, allowed_streams[i]) == 0) {
+                    permitted = true;
+                    break;
+                }
+            }
+            if (!permitted) {
+                log_warn("User '%s' attempted to access restricted stream '%s' via recordings API",
+                         auth_user.username, stream_name);
+                // Return an empty result set rather than an error to avoid leaking stream existence
+                free(recordings);
+                if (all_stream_cfgs) free(all_stream_cfgs);
+                cJSON *empty_resp = cJSON_CreateObject();
+                cJSON *empty_arr  = cJSON_CreateArray();
+                cJSON *empty_pg   = cJSON_CreateObject();
+                if (empty_resp && empty_arr && empty_pg) {
+                    cJSON_AddItemToObject(empty_resp, "recordings", empty_arr);
+                    cJSON_AddNumberToObject(empty_pg, "page", page);
+                    cJSON_AddNumberToObject(empty_pg, "pages", 0);
+                    cJSON_AddNumberToObject(empty_pg, "total", 0);
+                    cJSON_AddNumberToObject(empty_pg, "limit", limit);
+                    cJSON_AddItemToObject(empty_resp, "pagination", empty_pg);
+                    char *json_str = cJSON_PrintUnformatted(empty_resp);
+                    http_response_set_json(res, 200, json_str ? json_str : "{}");
+                    free(json_str);
+                    cJSON_Delete(empty_resp);
+                } else {
+                    cJSON_Delete(empty_resp); cJSON_Delete(empty_arr); cJSON_Delete(empty_pg);
+                    http_response_set_json_error(res, 500, "Failed to create response JSON");
+                }
+                return;
+            }
+            // The specific stream is permitted — no need for the IN clause; use stream_name filter
+            allowed_streams_count = 0;
+        } else if (allowed_streams_count == 0) {
+            // User has tag restriction but no accessible streams at all
+            free(recordings);
+            if (all_stream_cfgs) free(all_stream_cfgs);
+            cJSON *empty_resp = cJSON_CreateObject();
+            cJSON *empty_arr  = cJSON_CreateArray();
+            cJSON *empty_pg   = cJSON_CreateObject();
+            if (empty_resp && empty_arr && empty_pg) {
+                cJSON_AddItemToObject(empty_resp, "recordings", empty_arr);
+                cJSON_AddNumberToObject(empty_pg, "page", page);
+                cJSON_AddNumberToObject(empty_pg, "pages", 0);
+                cJSON_AddNumberToObject(empty_pg, "total", 0);
+                cJSON_AddNumberToObject(empty_pg, "limit", limit);
+                cJSON_AddItemToObject(empty_resp, "pagination", empty_pg);
+                char *json_str = cJSON_PrintUnformatted(empty_resp);
+                http_response_set_json(res, 200, json_str ? json_str : "{}");
+                free(json_str);
+                cJSON_Delete(empty_resp);
+            } else {
+                cJSON_Delete(empty_resp); cJSON_Delete(empty_arr); cJSON_Delete(empty_pg);
+                http_response_set_json_error(res, 500, "Failed to create response JSON");
+            }
+            return;
+        }
+    }
+
     // Get total count first (for pagination)
+    const char * const *streams_filter = (tag_restricted && allowed_streams_count > 0)
+                                         ? allowed_streams : NULL;
+    int streams_filter_count = (tag_restricted && allowed_streams_count > 0)
+                               ? allowed_streams_count : 0;
+
     int total_count = get_recording_count(start_time, end_time,
                                           stream_name[0] != '\0' ? stream_name : NULL,
-                                          has_detection, label_filter, protected_filter);
+                                          has_detection, label_filter, protected_filter,
+                                          streams_filter, streams_filter_count);
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
         free(recordings);
+        if (all_stream_cfgs) free(all_stream_cfgs);
         http_response_set_json_error(res, 500, "Failed to get recording count from database");
         return;
     }
@@ -188,11 +280,13 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
                                                  stream_name[0] != '\0' ? stream_name : NULL,
                                                  has_detection, label_filter, protected_filter,
                                                  sort_field, sort_order,
-                                                 recordings, limit, offset);
+                                                 recordings, limit, offset,
+                                                 streams_filter, streams_filter_count);
 
     if (count < 0) {
         log_error("Failed to get recordings from database");
         free(recordings);
+        if (all_stream_cfgs) free(all_stream_cfgs);
         http_response_set_json_error(res, 500, "Failed to get recordings from database");
         return;
     }
@@ -333,8 +427,9 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         cJSON_AddItemToArray(recordings_array, recording);
     }
 
-    // Free recordings
+    // Free recordings and stream config buffer (if allocated for tag-based RBAC)
     free(recordings);
+    if (all_stream_cfgs) free(all_stream_cfgs);
 
     // Convert to JSON string
     char *json_str = cJSON_PrintUnformatted(response);

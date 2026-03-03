@@ -23,6 +23,8 @@
 #include <limits.h>
 
 #include "web/api_handlers.h"
+#include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/version.h"
@@ -517,6 +519,11 @@ static unsigned long long get_directory_size(const char *path) {
 void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/system/info request");
 
+    // System info is sensitive — require admin privileges
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set
+    }
+
     // Create JSON object
     cJSON *info = cJSON_CreateObject();
     if (!info) {
@@ -1008,7 +1015,7 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         // Pass 0 for start_time and end_time to get all recordings
         // Pass NULL for stream_name to get recordings from all streams
         // Pass 0 for has_detection to get all recordings regardless of detection status
-        recording_count = get_recording_count(0, 0, NULL, 0, NULL, -1);
+        recording_count = get_recording_count(0, 0, NULL, 0, NULL, -1, NULL, 0);
         if (recording_count < 0) {
             recording_count = 0; // Reset if query fails
             log_error("Failed to get recording count from database");
@@ -1074,6 +1081,11 @@ extern void request_restart(void);
 void handle_post_system_restart(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/restart request");
 
+    // Restart is a destructive admin operation — require admin privileges
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set
+    }
+
     // Create success response using cJSON
     cJSON *success = cJSON_CreateObject();
     if (!success) {
@@ -1116,6 +1128,11 @@ void handle_post_system_restart(const http_request_t *req, http_response_t *res)
  */
 void handle_post_system_shutdown(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/shutdown request");
+
+    // Shutdown is a destructive admin operation — require admin privileges
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set
+    }
 
     // Create success response using cJSON
     cJSON *success = cJSON_CreateObject();
@@ -1175,6 +1192,11 @@ void handle_post_system_shutdown(const http_request_t *req, http_response_t *res
  */
 void handle_post_system_backup(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/backup request");
+
+    // Backup is an admin operation — require admin privileges
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set
+    }
 
     // Create a timestamp for the backup filename
     time_t now = time(NULL);

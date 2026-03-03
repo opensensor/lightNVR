@@ -19,7 +19,8 @@
  * @return Total number of matching recordings, or -1 on error
  */
 int get_recording_count(time_t start_time, time_t end_time, const char *stream_name, int detection_only,
-                       const char *detection_label, int protected_filter);
+                       const char *detection_label, int protected_filter,
+                       const char * const *allowed_streams, int allowed_streams_count);
 
 /**
  * Get paginated recording metadata from the database with sorting
@@ -36,6 +37,8 @@ int get_recording_count(time_t start_time, time_t end_time, const char *stream_n
  * @param metadata      Array to store the results
  * @param limit         Limit for pagination
  * @param offset        Offset for pagination
+ * @param allowed_streams Optional whitelist of stream names for tag-based RBAC (NULL or count=0 for no restriction)
+ * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
  *
  * @return Number of recordings fetched, or -1 on error
  */
@@ -45,7 +48,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    int protected_filter,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
-                                   int limit, int offset);
+                                   int limit, int offset,
+                                   const char * const *allowed_streams, int allowed_streams_count);
 
 
 /**

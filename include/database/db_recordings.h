@@ -74,11 +74,14 @@ int get_recording_metadata(time_t start_time, time_t end_time,
  * @param has_detection Filter for recordings with detection events (0 for all)
  * @param detection_label Filter by specific detection label (NULL for all)
  * @param protected_filter Filter by protected status (-1 for all, 0 for not protected, 1 for protected)
+ * @param allowed_streams Optional whitelist of stream names for tag-based RBAC (NULL or count=0 for no restriction)
+ * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
  * @return Total count of matching recordings, or -1 on error
  */
 int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
-                       const char *detection_label, int protected_filter);
+                       const char *detection_label, int protected_filter,
+                       const char * const *allowed_streams, int allowed_streams_count);
 
 /**
  * Get paginated recording metadata from the database with sorting
@@ -94,6 +97,8 @@ int get_recording_count(time_t start_time, time_t end_time,
  * @param metadata Array to fill with recording metadata
  * @param limit Maximum number of recordings to return
  * @param offset Number of recordings to skip (for pagination)
+ * @param allowed_streams Optional whitelist of stream names for tag-based RBAC (NULL or count=0 for no restriction)
+ * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
  * @return Number of recordings found, or -1 on error
  */
 int get_recording_metadata_paginated(time_t start_time, time_t end_time,
@@ -102,7 +107,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    int protected_filter,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
-                                   int limit, int offset);
+                                   int limit, int offset,
+                                   const char * const *allowed_streams, int allowed_streams_count);
 
 /**
  * Get recording metadata by ID

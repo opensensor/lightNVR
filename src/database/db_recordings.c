@@ -516,7 +516,8 @@ int get_recording_metadata(time_t start_time, time_t end_time,
 // Get total count of recordings matching filter criteria
 int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
-                       const char *detection_label, int protected_filter) {
+                       const char *detection_label, int protected_filter,
+                       const char * const *allowed_streams, int allowed_streams_count) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -570,6 +571,15 @@ int get_recording_count(time_t start_time, time_t end_time,
 
     if (stream_name) {
         strncat(sql, " AND r.stream_name = ?", sizeof(sql) - strlen(sql) - 1);
+    } else if (allowed_streams && allowed_streams_count > 0) {
+        // Tag-based RBAC: restrict to the user's whitelisted streams via IN clause
+        strncat(sql, " AND r.stream_name IN (", sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < allowed_streams_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding allowed_streams IN filter (%d streams)", allowed_streams_count);
     }
 
     if (protected_filter == 0) {
@@ -613,6 +623,10 @@ int get_recording_count(time_t start_time, time_t end_time,
 
     if (stream_name) {
         sqlite3_bind_text(stmt, param_index++, stream_name, -1, SQLITE_STATIC);
+    } else if (allowed_streams && allowed_streams_count > 0) {
+        for (int i = 0; i < allowed_streams_count; i++) {
+            sqlite3_bind_text(stmt, param_index++, allowed_streams[i], -1, SQLITE_STATIC);
+        }
     }
 
     // Execute query and get count
@@ -638,7 +652,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    int protected_filter,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
-                                   int limit, int offset) {
+                                   int limit, int offset,
+                                   const char * const *allowed_streams, int allowed_streams_count) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -728,6 +743,15 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     if (stream_name) {
         strncat(sql, " AND r.stream_name = ?", sizeof(sql) - strlen(sql) - 1);
+    } else if (allowed_streams && allowed_streams_count > 0) {
+        // Tag-based RBAC: restrict to the user's whitelisted streams via IN clause
+        strncat(sql, " AND r.stream_name IN (", sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < allowed_streams_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding allowed_streams IN filter (%d streams) to paginated query", allowed_streams_count);
     }
 
     if (protected_filter == 0) {
@@ -781,6 +805,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
 
     if (stream_name) {
         sqlite3_bind_text(stmt, param_index++, stream_name, -1, SQLITE_STATIC);
+    } else if (allowed_streams && allowed_streams_count > 0) {
+        for (int i = 0; i < allowed_streams_count; i++) {
+            sqlite3_bind_text(stmt, param_index++, allowed_streams[i], -1, SQLITE_STATIC);
+        }
     }
 
     // Bind LIMIT and OFFSET parameters

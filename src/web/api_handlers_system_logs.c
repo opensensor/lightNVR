@@ -317,6 +317,11 @@ int log_level_meets_minimum(const char *log_level, const char *min_level) {
 void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/system/logs request");
 
+    // System logs contain sensitive information — restrict to admins
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set
+    }
+
     // Get query parameters
     char level[MAX_LOG_LEVEL_LENGTH] = "debug";
 
@@ -453,6 +458,11 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
  */
 void handle_post_system_logs_clear(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/system/logs/clear request");
+
+    // Clearing logs is a destructive admin operation — require admin privileges
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;  // Error response already set
+    }
 
     // Get log file path
     const char* log_file = DEFAULT_LOG_FILE; // Default log file path
