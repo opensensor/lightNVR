@@ -375,6 +375,8 @@ static void *batch_delete_worker_thread(void *arg) {
         time_t end_time = 0;
         char stream_name[64] = {0};
         int has_detection = 0;
+        // protected_filter: -1=all, 0=not protected, 1=protected
+        int protected_filter = -1;
 
         // Extract filter parameters
         cJSON *start = cJSON_GetObjectItem(filter, "start");
@@ -384,6 +386,7 @@ static void *batch_delete_worker_thread(void *arg) {
             stream = cJSON_GetObjectItem(filter, "stream");
         }
         cJSON *detection = cJSON_GetObjectItem(filter, "detection");
+        cJSON *protected_item = cJSON_GetObjectItem(filter, "protected");
 
         if (start && cJSON_IsString(start)) {
             struct tm tm = {0};
@@ -415,10 +418,17 @@ static void *batch_delete_worker_thread(void *arg) {
             has_detection = detection->valueint;
         }
 
+        if (protected_item && cJSON_IsNumber(protected_item)) {
+            protected_filter = protected_item->valueint;
+            if (protected_filter < -1) protected_filter = -1;
+            else if (protected_filter > 1) protected_filter = 1;
+            log_info("Batch delete: protected_filter=%d", protected_filter);
+        }
+
         // Get total count
         int total_count = get_recording_count(start_time, end_time,
                                             stream_name[0] != '\0' ? stream_name : NULL,
-                                            has_detection, NULL, -1, NULL, 0);
+                                            has_detection, NULL, protected_filter, NULL, 0);
 
         if (total_count <= 0) {
             batch_delete_progress_complete(job_id, 0, 0);
@@ -443,7 +453,7 @@ static void *batch_delete_worker_thread(void *arg) {
         // Get all recordings
         int count = get_recording_metadata_paginated(start_time, end_time,
                                                   stream_name[0] != '\0' ? stream_name : NULL,
-                                                  has_detection, NULL, -1, "id", "asc",
+                                                  has_detection, NULL, protected_filter, "id", "asc",
                                                   recordings, total_count, 0,
                                                   NULL, 0);
 

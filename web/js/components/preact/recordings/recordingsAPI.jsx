@@ -537,6 +537,8 @@ export const recordingsAPI = {
       // Add recording type filter
       if (filters.recordingType === 'detection') {
         filter.detection = 1;
+      } else if (filters.recordingType === 'no_detection') {
+        filter.detection = -1;
       }
 
       // Add protected status filter
@@ -587,8 +589,10 @@ export const recordingsAPI = {
         }
 
         // Add detection filter
-        if (filter.detection) {
+        if (filter.detection === 1) {
           params.append('has_detection', '1');
+        } else if (filter.detection === -1) {
+          params.append('has_detection', '-1');
         }
 
         // Add protected filter
