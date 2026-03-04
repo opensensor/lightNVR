@@ -27,7 +27,8 @@ export function MSEVideoCell({
   onToggleFullscreen,
   initDelay = 0,
   showLabels = true,
-  showControls = true
+  showControls = true,
+  globalShowDetections = true
 }) {
   // Component state
   const [isLoading, setIsLoading] = useState(true);
@@ -43,8 +44,9 @@ export function MSEVideoCell({
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
 
-  // Detection overlay visibility state
-  const [showDetections, setShowDetections] = useState(true);
+  // Detection overlay visibility state (per-camera toggle, constrained by global toggle)
+  const [localShowDetections, setLocalShowDetections] = useState(true);
+  const showDetections = globalShowDetections && localShowDetections;
 
   // Refs
   const videoRef = useRef(null);
@@ -614,7 +616,7 @@ export function MSEVideoCell({
             <button
               className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
               title={showDetections ? 'Hide Detections' : 'Show Detections'}
-              onClick={() => setShowDetections(!showDetections)}
+              onClick={() => setLocalShowDetections(!localShowDetections)}
               style={{
                 padding: '8px 12px',
                 backgroundColor: 'rgba(0, 0, 0, 0.7)',

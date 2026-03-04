@@ -64,6 +64,11 @@ export function LiveView({isWebRTCDisabled}) {
     const stored = localStorage.getItem('lightnvr-show-controls');
     return stored !== null ? stored === 'true' : true;
   });
+  // Global detection overlay toggle (persisted to localStorage)
+  const [showDetections, setShowDetections] = useState(() => {
+    const stored = localStorage.getItem('lightnvr-show-detections');
+    return stored !== null ? stored === 'true' : true;
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   // State for go2rtc availability
@@ -349,7 +354,8 @@ export function LiveView({isWebRTCDisabled}) {
     else localStorage.removeItem('lightnvr-hls-tag-filter');
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
-  }, [tagFilter, showLabels, showControls]);
+    localStorage.setItem('lightnvr-show-detections', String(showDetections));
+  }, [tagFilter, showLabels, showControls, showDetections]);
 
   // Derive unique tags from all streams for the filter dropdown
   const availableTags = useMemo(() => {
@@ -583,6 +589,20 @@ export function LiveView({isWebRTCDisabled}) {
             </svg>
           </button>
 
+          <button
+            className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showDetections ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
+            onClick={() => setShowDetections(v => !v)}
+            title={showDetections ? 'Hide All Detection Overlays' : 'Show All Detection Overlays'}
+          >
+            {/* Eye icon for detection overlay toggle */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+              {!showDetections && <line x1="2" y1="22" x2="22" y2="2" stroke="currentColor" strokeWidth="2"></line>}
+            </svg>
+          </button>
+
           {orderedStreams.length > 1 && (
             <button
               className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
@@ -729,6 +749,7 @@ export function LiveView({isWebRTCDisabled}) {
                     initDelay={initDelay}
                     showLabels={showLabels}
                     showControls={showControls}
+                    globalShowDetections={showDetections}
                   />
                 </div>
               );

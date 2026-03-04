@@ -28,7 +28,8 @@ export function HLSVideoCell({
   onToggleFullscreen,
   initDelay = 0,
   showLabels = true,
-  showControls = true
+  showControls = true,
+  globalShowDetections = true
 }) {
   // Component state
   const [isLoading, setIsLoading] = useState(true);
@@ -47,8 +48,9 @@ export function HLSVideoCell({
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
 
-  // Detection overlay visibility state
-  const [showDetections, setShowDetections] = useState(true);
+  // Detection overlay visibility state (per-camera toggle, constrained by global toggle)
+  const [localShowDetections, setLocalShowDetections] = useState(true);
+  const showDetections = globalShowDetections && localShowDetections;
 
   // Refs
   const videoRef = useRef(null);
@@ -669,7 +671,7 @@ export function HLSVideoCell({
           <button
             className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
             title={showDetections ? 'Hide Detections' : 'Show Detections'}
-            onClick={() => setShowDetections(!showDetections)}
+            onClick={() => setLocalShowDetections(!localShowDetections)}
             style={{
               backgroundColor: 'transparent',
               border: 'none',
