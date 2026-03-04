@@ -41,7 +41,7 @@ Only the latest release receives security updates. We recommend always running t
 
 Instead, please report them responsibly via email:
 
-📧 **security@opensensor.com**
+📧 **matt@opensensor.io**
 
 Please include:
 
