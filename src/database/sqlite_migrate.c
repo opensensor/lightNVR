@@ -12,6 +12,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <limits.h>
 
 #include "database/sqlite_migrate.h"
 #include "core/logger.h"
@@ -805,11 +806,25 @@ static int apply_migration(sqlite_migrate_t *ctx, migration_t *m) {
     // For filesystem migrations, read the file
     if (!m->is_embedded) {
         // Validate that the filepath is within the configured migrations directory
-        // to prevent path traversal attacks (addresses SQL injection via file content)
+        // to prevent path traversal attacks (addresses SQL injection via file content).
+        // Use realpath() to canonicalize both paths before comparison so that
+        // sequences like "/../" cannot bypass the prefix check.
         if (ctx->config.migrations_dir) {
-            size_t dir_len = strlen(ctx->config.migrations_dir);
-            if (strncmp(m->filepath, ctx->config.migrations_dir, dir_len) != 0) {
-                log_error("Migration file is outside the configured directory: %s", m->filepath);
+            char resolved_file[PATH_MAX];
+            char resolved_dir[PATH_MAX];
+            if (!realpath(m->filepath, resolved_file)) {
+                log_error("Cannot resolve migration file path: %s", m->filepath);
+                return -1;
+            }
+            if (!realpath(ctx->config.migrations_dir, resolved_dir)) {
+                log_error("Cannot resolve migrations directory: %s", ctx->config.migrations_dir);
+                return -1;
+            }
+            size_t dir_len = strlen(resolved_dir);
+            if (strncmp(resolved_file, resolved_dir, dir_len) != 0 ||
+                (resolved_file[dir_len] != '/' && resolved_file[dir_len] != '\0')) {
+                log_error("Migration file is outside the configured directory: %s (resolved: %s)",
+                          m->filepath, resolved_file);
                 return -1;
             }
         }
@@ -881,10 +896,24 @@ static int rollback_migration(sqlite_migrate_t *ctx, migration_t *m) {
     if (!m->is_embedded) {
         // Validate that the filepath is within the configured migrations directory
         // to prevent path traversal attacks.
+        // Use realpath() to canonicalize both paths before comparison so that
+        // sequences like "/../" cannot bypass the prefix check.
         if (ctx->config.migrations_dir) {
-            size_t dir_len = strlen(ctx->config.migrations_dir);
-            if (strncmp(m->filepath, ctx->config.migrations_dir, dir_len) != 0) {
-                log_error("Migration file is outside the configured directory: %s", m->filepath);
+            char resolved_file[PATH_MAX];
+            char resolved_dir[PATH_MAX];
+            if (!realpath(m->filepath, resolved_file)) {
+                log_error("Cannot resolve migration file path: %s", m->filepath);
+                return -1;
+            }
+            if (!realpath(ctx->config.migrations_dir, resolved_dir)) {
+                log_error("Cannot resolve migrations directory: %s", ctx->config.migrations_dir);
+                return -1;
+            }
+            size_t dir_len = strlen(resolved_dir);
+            if (strncmp(resolved_file, resolved_dir, dir_len) != 0 ||
+                (resolved_file[dir_len] != '/' && resolved_file[dir_len] != '\0')) {
+                log_error("Migration file is outside the configured directory: %s (resolved: %s)",
+                          m->filepath, resolved_file);
                 return -1;
             }
         }
