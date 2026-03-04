@@ -513,7 +513,8 @@ For organizations that need to integrate lightNVR into proprietary products or c
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=opensensor/lightNVR&type=Date)](https://star-history.com/#opensensor/lightNVR&Date)
+## Star History
+[![Star History Chart](https://api.star-history.com/image?repos=opensensor/lightNVR&type=date&legend=top-left)](https://www.star-history.com/?repos=opensensor%2FlightNVR&type=date&legend=top-left)
 
 ## Acknowledgments
 
