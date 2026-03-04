@@ -50,6 +50,7 @@ typedef struct {
     char onvif_username[64];
     char onvif_password[64];
     char onvif_profile[64];
+    int onvif_port; // ONVIF service port (0 = auto-detect from stream URL)
     bool onvif_discovery_enabled; // Whether this camera should be included in discovery
     bool is_onvif; // Whether this stream is an ONVIF camera
 

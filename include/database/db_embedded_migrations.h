@@ -479,6 +479,12 @@ static const char migration_0030_up[] =
 static const char migration_0030_down[] =
     "DROP TABLE IF EXISTS system_settings;";
 
+static const char migration_0031_up[] =
+    "ALTER TABLE streams ADD COLUMN onvif_port INTEGER DEFAULT 0;";
+
+static const char migration_0031_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -690,8 +696,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0030_down,
         .is_embedded = true
     },
+    {
+        .version = "0031",
+        .description = "add_onvif_port",
+        .sql_up = migration_0031_up,
+        .sql_down = migration_0031_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 30
+#define EMBEDDED_MIGRATIONS_COUNT 31
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

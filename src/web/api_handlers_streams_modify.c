@@ -566,6 +566,12 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
 
     log_info("ONVIF flag for stream %s: %s", config.name, config.is_onvif ? "true" : "false");
 
+    // Parse ONVIF port if provided
+    cJSON *onvif_port_json = cJSON_GetObjectItem(stream_json, "onvif_port");
+    if (onvif_port_json && cJSON_IsNumber(onvif_port_json)) {
+        config.onvif_port = onvif_port_json->valueint;
+    }
+
     // If ONVIF flag is set, test the connection
     bool onvif_test_success = true;
     bool onvif_test_performed = false;
@@ -587,8 +593,28 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
             config.onvif_password[sizeof(config.onvif_password) - 1] = '\0';
         }
 
+        // Build ONVIF device URL, using onvif_port if specified
+        char onvif_device_url[MAX_URL_LENGTH];
+        if (config.onvif_port > 0) {
+            // Extract host from stream URL (skip scheme and credentials)
+            const char *host_start = strstr(config.url, "://");
+            if (host_start) {
+                host_start += 3;
+                const char *at = strchr(host_start, '@');
+                if (at) host_start = at + 1;
+                const char *host_end = host_start;
+                while (*host_end && *host_end != ':' && *host_end != '/') host_end++;
+                snprintf(onvif_device_url, sizeof(onvif_device_url), "http://%.*s:%d/onvif/device_service",
+                         (int)(host_end - host_start), host_start, config.onvif_port);
+            } else {
+                snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
+            }
+        } else {
+            snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
+        }
+
         // Test ONVIF connection
-        int result = test_onvif_connection(config.url,
+        int result = test_onvif_connection(onvif_device_url,
                                           config.onvif_username[0] ? config.onvif_username : NULL,
                                           config.onvif_password[0] ? config.onvif_password : NULL);
 
@@ -1119,6 +1145,17 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         non_dynamic_config_changed = true;
     }
 
+    // Parse ONVIF port if provided
+    cJSON *onvif_port_json = cJSON_GetObjectItem(stream_json, "onvif_port");
+    if (onvif_port_json && cJSON_IsNumber(onvif_port_json)) {
+        int new_port = onvif_port_json->valueint;
+        if (new_port != config.onvif_port) {
+            config.onvif_port = new_port;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+        }
+    }
+
     // If ONVIF flag is set, test the connection
     bool onvif_test_success = true;
     bool onvif_test_performed = false;
@@ -1141,8 +1178,27 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config.onvif_password[sizeof(config.onvif_password) - 1] = '\0';
         }
 
+        // Build ONVIF device URL, using onvif_port if specified
+        char onvif_device_url[MAX_URL_LENGTH];
+        if (config.onvif_port > 0) {
+            const char *host_start = strstr(config.url, "://");
+            if (host_start) {
+                host_start += 3;
+                const char *at = strchr(host_start, '@');
+                if (at) host_start = at + 1;
+                const char *host_end = host_start;
+                while (*host_end && *host_end != ':' && *host_end != '/') host_end++;
+                snprintf(onvif_device_url, sizeof(onvif_device_url), "http://%.*s:%d/onvif/device_service",
+                         (int)(host_end - host_start), host_start, config.onvif_port);
+            } else {
+                snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
+            }
+        } else {
+            snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
+        }
+
         // Test ONVIF connection
-        int result = test_onvif_connection(config.url,
+        int result = test_onvif_connection(onvif_device_url,
                                           config.onvif_username[0] ? config.onvif_username : NULL,
                                           config.onvif_password[0] ? config.onvif_password : NULL);
 

@@ -144,6 +144,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddStringToObject(stream_obj, "onvif_username", db_streams[i].onvif_username);
         cJSON_AddStringToObject(stream_obj, "onvif_password", db_streams[i].onvif_password);
         cJSON_AddStringToObject(stream_obj, "onvif_profile", db_streams[i].onvif_profile);
+        cJSON_AddNumberToObject(stream_obj, "onvif_port", db_streams[i].onvif_port);
         cJSON_AddBoolToObject(stream_obj, "record_on_schedule", db_streams[i].record_on_schedule);
         cJSON *schedule_arr_i = cJSON_CreateArray();
         if (schedule_arr_i) {
@@ -310,6 +311,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "onvif_username", config.onvif_username);
     cJSON_AddStringToObject(stream_obj, "onvif_password", config.onvif_password);
     cJSON_AddStringToObject(stream_obj, "onvif_profile", config.onvif_profile);
+    cJSON_AddNumberToObject(stream_obj, "onvif_port", config.onvif_port);
     cJSON_AddBoolToObject(stream_obj, "record_on_schedule", config.record_on_schedule);
     cJSON *schedule_arr_get = cJSON_CreateArray();
     if (schedule_arr_get) {
@@ -460,6 +462,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "onvif_username", config.onvif_username);
     cJSON_AddStringToObject(stream_obj, "onvif_password", config.onvif_password);
     cJSON_AddStringToObject(stream_obj, "onvif_profile", config.onvif_profile);
+    cJSON_AddNumberToObject(stream_obj, "onvif_port", config.onvif_port);
     cJSON_AddBoolToObject(stream_obj, "record_on_schedule", config.record_on_schedule);
     cJSON *schedule_arr_full = cJSON_CreateArray();
     if (schedule_arr_full) {

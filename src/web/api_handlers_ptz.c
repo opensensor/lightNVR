@@ -113,6 +113,11 @@ static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t ur
         return -1;
     }
 
+    // Use explicitly configured ONVIF port if set (non-zero)
+    if (config->onvif_port > 0) {
+        port = config->onvif_port;
+    }
+
     snprintf(ptz_url, url_size, "%s://%s:%d/onvif/ptz_service", scheme, host, port);
     return 0;
 }

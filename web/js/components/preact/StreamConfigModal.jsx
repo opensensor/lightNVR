@@ -465,11 +465,11 @@ export function StreamConfigModal({
                 {/* ONVIF Credentials - shown when ONVIF Camera is enabled */}
                 {currentStream.isOnvif && (
                   <div className="col-span-2 p-4 bg-muted/50 rounded-lg border border-border">
-                    <h4 className="text-sm font-medium mb-3">ONVIF Credentials</h4>
+                    <h4 className="text-sm font-medium mb-3">ONVIF Settings</h4>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Enter credentials for ONVIF features (motion detection, PTZ control). Leave empty if your camera doesn't require authentication.
+                      Enter credentials and connection settings for ONVIF features (motion detection, PTZ control). Leave empty if your camera doesn't require authentication.
                     </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div>
                         <label htmlFor="stream-onvif-username" className="block text-sm font-medium mb-1">Username</label>
                         <input
@@ -505,6 +505,21 @@ export function StreamConfigModal({
                           value={currentStream.onvifProfile || ''}
                           onChange={onInputChange}
                         />
+                      </div>
+                      <div>
+                        <label htmlFor="stream-onvif-port" className="block text-sm font-medium mb-1">ONVIF Port</label>
+                        <input
+                          type="number"
+                          id="stream-onvif-port"
+                          name="onvifPort"
+                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                          placeholder="80"
+                          min="0"
+                          max="65535"
+                          value={currentStream.onvifPort || 0}
+                          onChange={onInputChange}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">0 = auto-detect</p>
                       </div>
                     </div>
                   </div>

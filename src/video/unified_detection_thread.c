@@ -134,13 +134,15 @@ static bool is_onvif_detection_model(const char *model_path) {
 }
 
 /**
- * Derive an ONVIF base URL (http://host) from a stream URL.
+ * Derive an ONVIF base URL (http://host[:port]) from a stream URL.
  * Strips the scheme, credentials, port, and path, then prepends "http://".
+ * If onvif_port > 0, appends the explicit ONVIF port.
  * Examples:
- *   rtsp://admin:pass@192.168.1.100:554/stream  →  http://192.168.1.100
- *   onvif://192.168.1.100/onvif/device_service  →  http://192.168.1.100
+ *   rtsp://admin:pass@192.168.1.100:554/stream  (port=0)   →  http://192.168.1.100
+ *   rtsp://admin:pass@192.168.1.100:554/stream  (port=8080) →  http://192.168.1.100:8080
+ *   onvif://192.168.1.100/onvif/device_service  (port=0)   →  http://192.168.1.100
  */
-static void extract_onvif_base_url(const char *stream_url, char *onvif_url, size_t onvif_url_size) {
+static void extract_onvif_base_url(const char *stream_url, int onvif_port, char *onvif_url, size_t onvif_url_size) {
     if (!stream_url || !onvif_url || onvif_url_size == 0) {
         return;
     }
@@ -149,7 +151,11 @@ static void extract_onvif_base_url(const char *stream_url, char *onvif_url, size
     /* Skip scheme (rtsp://, onvif://, http://, etc.) */
     const char *host_start = strstr(stream_url, "://");
     if (!host_start) {
-        snprintf(onvif_url, onvif_url_size, "http://%s", stream_url);
+        if (onvif_port > 0) {
+            snprintf(onvif_url, onvif_url_size, "http://%s:%d", stream_url, onvif_port);
+        } else {
+            snprintf(onvif_url, onvif_url_size, "http://%s", stream_url);
+        }
         return;
     }
     host_start += 3;  /* skip "://" */
@@ -166,7 +172,11 @@ static void extract_onvif_base_url(const char *stream_url, char *onvif_url, size
         host_end++;
     }
 
-    snprintf(onvif_url, onvif_url_size, "http://%.*s", (int)(host_end - host_start), host_start);
+    if (onvif_port > 0) {
+        snprintf(onvif_url, onvif_url_size, "http://%.*s:%d", (int)(host_end - host_start), host_start, onvif_port);
+    } else {
+        snprintf(onvif_url, onvif_url_size, "http://%.*s", (int)(host_end - host_start), host_start);
+    }
 }
 
 /**
@@ -1691,9 +1701,9 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             return false;
         }
 
-        // Derive http://host from the stream's RTSP/ONVIF URL
+        // Derive http://host[:port] from the stream's RTSP/ONVIF URL
         char onvif_url[MAX_PATH_LENGTH];
-        extract_onvif_base_url(onvif_cfg.url, onvif_url, sizeof(onvif_url));
+        extract_onvif_base_url(onvif_cfg.url, onvif_cfg.onvif_port, onvif_url, sizeof(onvif_url));
 
         if (onvif_url[0] == '\0') {
             log_warn("[%s] ONVIF detection: could not derive ONVIF URL from stream URL: %s",
