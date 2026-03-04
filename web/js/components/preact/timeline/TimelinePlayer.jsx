@@ -23,6 +23,7 @@ export function TimelinePlayer() {
   // Refs
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const videoContainerRef = useRef(null);
   const lastTimeUpdateRef = useRef(null);
   const lastSegmentIdRef = useRef(null);
   const lastDetectionSegmentIdRef = useRef(null);
@@ -545,10 +546,49 @@ export function TimelinePlayer() {
     };
   }, [detectionOverlayEnabled, drawTimelineDetections]);
 
+  // Override video's native fullscreen to use the container (so the canvas overlay is included)
+  useEffect(() => {
+    if (!videoRef.current || !videoContainerRef.current) return;
+
+    const video = videoRef.current;
+    const container = videoContainerRef.current;
+
+    // Save original requestFullscreen
+    const originalRequestFullscreen = video.requestFullscreen?.bind(video)
+      || video.webkitRequestFullscreen?.bind(video)
+      || video.mozRequestFullScreen?.bind(video)
+      || video.msRequestFullscreen?.bind(video);
+
+    // Override to make the container go fullscreen instead
+    video.requestFullscreen = () => container.requestFullscreen();
+    if (video.webkitRequestFullscreen) video.webkitRequestFullscreen = () => container.requestFullscreen();
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen = () => container.requestFullscreen();
+
+    // Redraw detections when entering/exiting fullscreen
+    const handleFullscreenChange = () => {
+      setTimeout(() => {
+        if (detectionOverlayEnabled) {
+          drawTimelineDetections();
+        }
+      }, 100);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      if (originalRequestFullscreen && video) {
+        video.requestFullscreen = originalRequestFullscreen;
+      }
+    };
+  }, [detectionOverlayEnabled, drawTimelineDetections]);
+
   return (
     <>
       <div className="timeline-player-container mb-2" id="video-player">
-        <div className="relative w-full bg-black rounded-lg shadow-md" style={{ aspectRatio: '16/9' }}>
+        <div ref={videoContainerRef} className="relative w-full bg-black rounded-lg shadow-md" style={{ aspectRatio: '16/9' }}>
           <video
               ref={videoRef}
               className="w-full h-full object-contain"

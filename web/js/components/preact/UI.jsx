@@ -298,6 +298,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const modalRef = useRef(null);
+  const videoContainerRef = useRef(null);
 
   // Handle escape key and cleanup
   useEffect(() => {
@@ -570,6 +571,46 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     }
   }, [detectionOverlayEnabled, drawDetections]);
 
+  // Override video's native fullscreen to use the container (so the canvas overlay is included)
+  useEffect(() => {
+    if (!isOpen || !videoRef.current || !videoContainerRef.current) return;
+
+    const video = videoRef.current;
+    const container = videoContainerRef.current;
+
+    // Save original requestFullscreen
+    const originalRequestFullscreen = video.requestFullscreen?.bind(video)
+      || video.webkitRequestFullscreen?.bind(video)
+      || video.mozRequestFullScreen?.bind(video)
+      || video.msRequestFullscreen?.bind(video);
+
+    // Override to make the container go fullscreen instead
+    video.requestFullscreen = () => container.requestFullscreen();
+    if (video.webkitRequestFullscreen) video.webkitRequestFullscreen = () => container.requestFullscreen();
+    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen = () => container.requestFullscreen();
+
+    // Redraw detections when entering/exiting fullscreen
+    const handleFullscreenChange = () => {
+      setTimeout(() => {
+        if (detectionOverlayEnabled) {
+          drawDetections();
+        }
+      }, 100);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      // Restore original if possible
+      if (originalRequestFullscreen && video) {
+        video.requestFullscreen = originalRequestFullscreen;
+      }
+    };
+  }, [isOpen, detectionOverlayEnabled, drawDetections]);
+
   // Handle background click
   const handleBackgroundClick = (e) => {
     if (e.target === e.currentTarget) {
@@ -643,7 +684,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-3">
             <div className="relative flex justify-center">
-              <div className="relative inline-block max-w-full">
+              <div ref={videoContainerRef} className="relative inline-block max-w-full" style={{ background: 'black' }}>
                 <video
                   ref={videoRef}
                   className="w-full h-auto max-w-full max-h-[50vh] object-contain"
