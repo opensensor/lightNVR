@@ -122,13 +122,13 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/detection/models", "GET", handle_get_detection_models);
 
     // Motion Recording API
-    http_server_register_handler(server, "/api/motion/config/", "GET", handle_get_motion_config);
-    http_server_register_handler(server, "/api/motion/config/", "POST", handle_post_motion_config);
-    http_server_register_handler(server, "/api/motion/config/", "DELETE", handle_delete_motion_config);
-    http_server_register_handler(server, "/api/motion/test/", "POST", handle_test_motion_event);
-    http_server_register_handler(server, "/api/motion/stats/", "GET", handle_get_motion_stats);
-    http_server_register_handler(server, "/api/motion/recordings/", "GET", handle_get_motion_recordings);
-    http_server_register_handler(server, "/api/motion/recordings/", "DELETE", handle_delete_motion_recording);
+    http_server_register_handler(server, "/api/motion/config/#", "GET", handle_get_motion_config);
+    http_server_register_handler(server, "/api/motion/config/#", "POST", handle_post_motion_config);
+    http_server_register_handler(server, "/api/motion/config/#", "DELETE", handle_delete_motion_config);
+    http_server_register_handler(server, "/api/motion/test/#", "POST", handle_test_motion_event);
+    http_server_register_handler(server, "/api/motion/stats/#", "GET", handle_get_motion_stats);
+    http_server_register_handler(server, "/api/motion/recordings/#", "GET", handle_get_motion_recordings);
+    http_server_register_handler(server, "/api/motion/recordings/#", "DELETE", handle_delete_motion_recording);
     http_server_register_handler(server, "/api/motion/cleanup", "POST", handle_post_motion_cleanup);
     http_server_register_handler(server, "/api/motion/storage", "GET", handle_get_motion_storage);
 
