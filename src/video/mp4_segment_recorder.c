@@ -1418,6 +1418,31 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     log_info("Recording segment complete (video packets: %d, audio packets: %d)",
             video_packet_count, audio_packet_count);
 
+    // BUGFIX: If the segment completed with 0 video packets, the RTSP connection
+    // is dead (av_read_frame returned EOF immediately).  Treat this as a failure
+    // so the caller closes the stale input context and opens a fresh RTSP
+    // connection on the next attempt.  Without this, the dead input context is
+    // reused and every subsequent segment also records 0 packets, creating a
+    // tight death-loop of empty recordings.
+    if (video_packet_count == 0) {
+        log_warn("Segment recorded 0 video packets — treating as failure "
+                 "(RTSP connection likely dead)");
+        // Close the dead input context so the caller gets a fresh connection.
+        // Note: the local `input_ctx` owns the context (taken from *input_ctx_ptr
+        // at function entry), so close it here.  The cleanup error-path will see
+        // input_ctx==NULL and skip the redundant close.
+        if (input_ctx) {
+            avformat_close_input(&input_ctx);
+            input_ctx = NULL;
+        }
+        // Ensure the caller's pointer is also NULL so it opens a fresh connection
+        if (input_ctx_ptr) {
+            *input_ctx_ptr = NULL;
+        }
+        ret = -1;
+        goto cleanup;
+    }
+
     // Write trailer
     if (output_ctx && output_ctx->pb) {
         ret = av_write_trailer(output_ctx);
