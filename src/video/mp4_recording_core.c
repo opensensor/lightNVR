@@ -179,6 +179,9 @@ static void *mp4_recording_thread(void *arg) {
         return NULL;
     }
 
+    // Configure audio recording based on stream config BEFORE anything else uses the writer
+    mp4_writer_set_audio(ctx->mp4_writer, ctx->config.record_audio ? 1 : 0);
+
     // Set trigger type on the writer
     if (ctx->trigger_type[0] != '\0') {
         strncpy(ctx->mp4_writer->trigger_type, ctx->trigger_type, sizeof(ctx->mp4_writer->trigger_type) - 1);

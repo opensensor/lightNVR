@@ -785,9 +785,10 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
         return -1;
     }
 
-    //  Always enable audio recording by default
-    writer->has_audio = 1;
-    log_info("Audio recording enabled by default for stream %s", writer->stream_name);
+    // Respect the existing has_audio setting (set by mp4_writer_set_audio or from DB config)
+    // Do NOT override it here — the caller is responsible for configuring audio before init
+    log_info("Audio recording %s for stream %s (preserving configured setting)",
+            writer->has_audio ? "enabled" : "disabled", writer->stream_name);
 
     // Add video stream only if this is a video packet
     if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
