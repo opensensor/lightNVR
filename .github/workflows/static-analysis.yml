@@ -14,22 +14,23 @@ jobs:
   clang-tidy:
     name: clang-tidy
     runs-on: ubuntu-latest
+    container: debian:sid-slim
     timeout-minutes: 30
 
     steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            git build-essential cmake pkg-config clang-tidy \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+            libsqlite3-dev libuv1-dev libllhttp-dev libcurl4-openssl-dev \
+            libcjson-dev libmbedtls-dev libmosquitto-dev
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: false
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake pkg-config clang-tidy \
-            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-            libsqlite3-dev libuv1-dev libllhttp-dev libcurl4-openssl-dev \
-            libcjson-dev libmbedtls-dev libmosquitto-dev
 
       - name: Generate compile_commands.json
         run: |
