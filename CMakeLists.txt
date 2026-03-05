@@ -556,6 +556,22 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# Obtain git short commit hash for version stamping
+set(GIT_COMMIT "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_COMMIT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+endif()
+
+# Build date in ISO-8601
+string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
+
 # Create a version.h file
 configure_file(
         ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in

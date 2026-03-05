@@ -129,6 +129,10 @@ regenerate_version_js() {
     # Create directory if it doesn't exist
     mkdir -p "$(dirname "$version_js")"
     
+    # Extract git short commit hash
+    local git_commit
+    git_commit=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
     # Generate version.js
     cat > "$version_js" << EOF
 /**
@@ -138,6 +142,7 @@ regenerate_version_js() {
  */
 
 export const VERSION = '$version';
+export const GIT_COMMIT = '$git_commit';
 EOF
     
     print_info "✓ Regenerated version.js"

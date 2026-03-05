@@ -534,6 +534,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
     // Add version information
     cJSON_AddStringToObject(info, "version", LIGHTNVR_VERSION_STRING);
+    if (LIGHTNVR_GIT_COMMIT[0] != '\0') {
+        cJSON_AddStringToObject(info, "git_commit", LIGHTNVR_GIT_COMMIT);
+    }
 
     // Get system information
     struct utsname system_info;

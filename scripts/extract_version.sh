@@ -64,6 +64,10 @@ fi
 
 echo "Extracted version: $VERSION"
 
+# Extract git short commit hash
+GIT_COMMIT=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+echo "Git commit: $GIT_COMMIT"
+
 # Create output directory if it doesn't exist
 mkdir -p "$(dirname "$OUTPUT_PATH")"
 
@@ -76,6 +80,7 @@ cat > "$OUTPUT_PATH" << EOF
  */
 
 export const VERSION = '$VERSION';
+export const GIT_COMMIT = '$GIT_COMMIT';
 EOF
 
-echo "Generated version.js with version $VERSION"
+echo "Generated version.js with version $VERSION ($GIT_COMMIT)"

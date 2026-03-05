@@ -120,6 +120,20 @@ function main() {
     const version = versionMatch[1];
     console.log(`Extracted version: ${version}`);
 
+    // Extract git short commit hash
+    let gitCommit = 'unknown';
+    try {
+      const { execSync } = require('child_process');
+      gitCommit = execSync('git rev-parse --short HEAD', {
+        cwd: projectRoot,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+    } catch {
+      console.warn('Could not determine git commit hash');
+    }
+    console.log(`Git commit: ${gitCommit}`);
+
     // Generate version.js file
     const versionJsContent = `/**
  * LightNVR version information
@@ -128,6 +142,7 @@ function main() {
  */
 
 export const VERSION = '${version}';
+export const GIT_COMMIT = '${gitCommit}';
 `;
 
     // Create directory if it doesn't exist
@@ -138,7 +153,7 @@ export const VERSION = '${version}';
 
     // Write the file
     fs.writeFileSync(outputPath, versionJsContent);
-    console.log(`Generated version.js with version ${version}`);
+    console.log(`Generated version.js with version ${version} (${gitCommit})`);
 
   } catch (error) {
     console.error('Error:', error.message);
