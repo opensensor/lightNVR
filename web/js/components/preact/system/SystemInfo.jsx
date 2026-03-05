@@ -17,7 +17,7 @@ export function SystemInfo({ systemInfo, formatUptime }) {
       <div className="space-y-2">
         <div className="flex justify-between">
           <span className="font-medium">Version:</span>
-          <span>{systemInfo.version || 'Unknown'}</span>
+          <span>{systemInfo.version || 'Unknown'}{systemInfo.git_commit ? `-${systemInfo.git_commit}` : ''}</span>
         </div>
         <div className="flex justify-between">
           <span className="font-medium">Uptime:</span>

@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'preact/hooks';
-import {VERSION, GIT_COMMIT} from '../../version.js';
+import {VERSION} from '../../version.js';
 import { getSettings } from '../../utils/settings-utils.js';
 import { isDemoMode, validateSession } from '../../utils/auth-utils.js';
 
@@ -181,7 +181,7 @@ export function Header({ version = VERSION }) {
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="logo flex items-center">
             <h1 className="text-xl font-bold m-0">LightNVR</h1>
-            <span className="version text-xs ml-2" style={{color: 'hsl(var(--muted-foreground))'}}>v{version}{GIT_COMMIT && GIT_COMMIT !== 'unknown' ? `-${GIT_COMMIT}` : ''}</span>
+            <span className="version text-xs ml-2" style={{color: 'hsl(var(--muted-foreground))'}}>v{version}</span>
           </div>
 
           {/* Desktop Navigation */}
