@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
-    libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev \
+    libmbedtls-dev curl wget ca-certificates gpg libcjson-dev \
     libmosquitto-dev libuv1-dev libllhttp-dev \
     nodejs npm libsimdjson30 \
     golang-go && \
