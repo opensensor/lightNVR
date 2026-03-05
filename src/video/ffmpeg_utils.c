@@ -1301,3 +1301,52 @@ cleanup:
 
     return ret;
 }
+
+
+/**
+ * Inject credentials into a URL if not already present.
+ */
+int url_inject_credentials(const char *url, const char *username,
+                           const char *password, char *out_url, size_t out_size) {
+    if (!url || !out_url || out_size == 0) {
+        return -1;
+    }
+
+    /* Nothing to inject if credentials are missing or empty */
+    if (!username || !password || username[0] == '\0' || password[0] == '\0') {
+        strncpy(out_url, url, out_size - 1);
+        out_url[out_size - 1] = '\0';
+        return 0;
+    }
+
+    /* If the URL already contains an '@' after the scheme, credentials are
+     * already embedded — copy verbatim to avoid double-injection. */
+    const char *scheme_end = strstr(url, "://");
+    if (scheme_end && strchr(scheme_end + 3, '@')) {
+        strncpy(out_url, url, out_size - 1);
+        out_url[out_size - 1] = '\0';
+        return 0;
+    }
+
+    /* No credentials in URL — inject them.
+     * Format: scheme://username:password@host_and_path */
+    if (!scheme_end) {
+        /* Malformed URL — no scheme, just copy as-is */
+        strncpy(out_url, url, out_size - 1);
+        out_url[out_size - 1] = '\0';
+        return 0;
+    }
+
+    size_t scheme_len = (size_t)(scheme_end - url);  /* e.g. "rtsp" */
+    const char *host_and_path = scheme_end + 3;       /* everything after "://" */
+
+    int written = snprintf(out_url, out_size, "%.*s://%s:%s@%s",
+                           (int)scheme_len, url, username, password, host_and_path);
+    if (written < 0 || (size_t)written >= out_size) {
+        log_error("url_inject_credentials: buffer too small (need %d, have %zu)",
+                  written, out_size);
+        return -1;
+    }
+
+    return 0;
+}

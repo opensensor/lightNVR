@@ -10,6 +10,7 @@
 #include "video/go2rtc/dns_cleanup.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "video/ffmpeg_utils.h"  // For url_inject_credentials
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -144,26 +145,14 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     strncpy(modified_url, stream_url, URL_BUFFER_SIZE - 1);
     modified_url[URL_BUFFER_SIZE - 1] = '\0';
 
-    // If username and password are provided but not in the URL, add them
-    if (username && password && strstr(modified_url, "@") == NULL) {
-        // URL doesn't contain credentials, need to add them
-        // Extract protocol and host parts
-        const char *protocol_end = strstr(modified_url, "://");
-        if (protocol_end) {
-            char new_url[URL_BUFFER_SIZE];
-            // Format: protocol://username:password@rest_of_url
-            char proto_str[16] = {0};
-            size_t protocol_len = protocol_end - modified_url;
-            if (protocol_len < sizeof(proto_str)) {
-                strncpy(proto_str, modified_url, protocol_len);
-                proto_str[protocol_len] = '\0';
-
-                snprintf(new_url, URL_BUFFER_SIZE, "%s://%s:%s@%s",
-                         proto_str, username, password, protocol_end + 3);
-
-                strncpy(modified_url, new_url, URL_BUFFER_SIZE - 1);
+    // Inject credentials into URL if provided and not already embedded
+    {
+        char credentialed_url[URL_BUFFER_SIZE];
+        if (url_inject_credentials(modified_url, username, password,
+                                   credentialed_url, sizeof(credentialed_url)) == 0) {
+            if (strcmp(credentialed_url, modified_url) != 0) {
+                strncpy(modified_url, credentialed_url, URL_BUFFER_SIZE - 1);
                 modified_url[URL_BUFFER_SIZE - 1] = '\0';
-
                 log_info("Added credentials to URL: %s", modified_url);
             }
         }

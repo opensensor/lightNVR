@@ -254,9 +254,16 @@ static void *mp4_recording_thread(void *arg) {
             }
         }
     } else {
-        // Use the original URL
-        strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
-        actual_url[sizeof(actual_url) - 1] = '\0';
+        // Use the original URL, injecting ONVIF credentials if available
+        if (url_inject_credentials(ctx->config.url,
+                                   ctx->config.onvif_username[0] ? ctx->config.onvif_username : NULL,
+                                   ctx->config.onvif_password[0] ? ctx->config.onvif_password : NULL,
+                                   actual_url, sizeof(actual_url)) != 0) {
+            log_warn("Failed to inject credentials into URL for stream %s, using original URL",
+                     stream_name);
+            strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
+            actual_url[sizeof(actual_url) - 1] = '\0';
+        }
     }
 
     // Start the self-managing RTSP recording thread in the MP4 writer

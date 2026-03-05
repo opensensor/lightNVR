@@ -16,7 +16,7 @@
 #include "video/stream_state.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
-#include "video/ffmpeg_utils.h"
+#include "video/ffmpeg_utils.h"  // For url_inject_credentials and FFmpeg utilities
 
 // FFmpeg includes
 #include <libavformat/avformat.h>
@@ -155,9 +155,24 @@ void handle_test_stream(const http_request_t *req, http_response_t *res) {
     }
     
     // Get values
-    const char *stream_url = url->valuestring;
+    const char *raw_url = url->valuestring;
     int stream_protocol = protocol->valueint;
-    
+
+    // Extract optional ONVIF credentials
+    cJSON *onvif_user = cJSON_GetObjectItem(test_json, "onvif_username");
+    cJSON *onvif_pass = cJSON_GetObjectItem(test_json, "onvif_password");
+    const char *username = (onvif_user && cJSON_IsString(onvif_user)) ? onvif_user->valuestring : NULL;
+    const char *password = (onvif_pass && cJSON_IsString(onvif_pass)) ? onvif_pass->valuestring : NULL;
+
+    // Inject credentials into URL if provided and not already present
+    char credentialed_url[MAX_URL_LENGTH];
+    if (url_inject_credentials(raw_url, username, password,
+                               credentialed_url, sizeof(credentialed_url)) != 0) {
+        strncpy(credentialed_url, raw_url, sizeof(credentialed_url) - 1);
+        credentialed_url[sizeof(credentialed_url) - 1] = '\0';
+    }
+    const char *stream_url = credentialed_url;
+
     log_info("Testing stream connection: url=%s, protocol=%d", stream_url, stream_protocol);
     
     // Create response
