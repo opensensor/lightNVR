@@ -12,6 +12,8 @@ web/screenshots
 
 # Generated files
 cmake-build-debug/
+include/core/version.h
+web/js/version.js
 
 # Compiled Object files
 *.o
