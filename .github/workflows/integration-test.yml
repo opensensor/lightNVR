@@ -204,7 +204,7 @@ jobs:
           # Build go2rtc from the opensensor fork submodule
           cd go2rtc
           echo "Building go2rtc from source..."
-          CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o go2rtc
+          CGO_ENABLED=0 go build -buildvcs=false -ldflags "-s -w" -trimpath -o go2rtc
           chmod +x go2rtc
           ./go2rtc --version || echo "go2rtc built successfully"
           echo "go2rtc binary size: $(stat -c%s go2rtc) bytes"
