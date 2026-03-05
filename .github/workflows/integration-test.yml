@@ -40,6 +40,7 @@ jobs:
             libswscale-dev \
             libsqlite3-dev \
             libuv1-dev \
+            libllhttp-dev \
             libcurl4-openssl-dev \
             libcjson-dev \
             libmbedtls-dev \
@@ -180,6 +181,7 @@ jobs:
             libswscale-dev \
             libsqlite3-dev \
             libuv1-dev \
+            libllhttp-dev \
             libcurl4-openssl-dev \
             libcjson-dev \
             libmbedtls-dev \
