@@ -41,7 +41,9 @@ jobs:
             libcurl4-openssl-dev \
             libcjson-dev \
             libmbedtls-dev \
-            lcov
+            lcov \
+            curl \
+            gpg
 
       - name: Checkout
         uses: actions/checkout@v4
