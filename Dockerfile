@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev sqlite3 libsqlite3-dev \
     libmbedtls-dev curl wget ca-certificates gnupg libcjson-dev \
-    libmosquitto-dev libuv1-dev \
+    libmosquitto-dev libuv1-dev libllhttp-dev \
     nodejs npm libsimdjson30 \
     golang-go && \
     # Verify installation
@@ -121,7 +121,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libavcodec62 libavformat62 libavutil60 libswscale9 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
-    libmosquitto1 libuv1t64 && \
+    libmosquitto1 libuv1t64 libllhttp9.3 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure
