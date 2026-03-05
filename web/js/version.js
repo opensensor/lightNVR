@@ -4,5 +4,5 @@
  * DO NOT EDIT MANUALLY
  */
 
-export const VERSION = '0.28.2';
-export const GIT_COMMIT = '8d87330a';
+export const VERSION = '0.28.3';
+export const GIT_COMMIT = '31c949ad';
