@@ -195,6 +195,30 @@ void test_multiple_jobs_independent(void) {
 }
 
 /* ================================================================
+ * set_total
+ * ================================================================ */
+
+void test_set_total_updates_total(void) {
+    char job_id[64];
+    batch_delete_progress_create_job(0, job_id);
+
+    batch_delete_progress_t info;
+    batch_delete_progress_get(job_id, &info);
+    TEST_ASSERT_EQUAL_INT(0, info.total);
+
+    int rc = batch_delete_progress_set_total(job_id, 42);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    batch_delete_progress_get(job_id, &info);
+    TEST_ASSERT_EQUAL_INT(42, info.total);
+}
+
+void test_set_total_unknown_job_fails(void) {
+    int rc = batch_delete_progress_set_total("no-such-id", 10);
+    TEST_ASSERT_EQUAL_INT(-1, rc);
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -213,6 +237,8 @@ int main(void) {
     RUN_TEST(test_delete_removes_job);
     RUN_TEST(test_delete_unknown_job_fails);
     RUN_TEST(test_multiple_jobs_independent);
+    RUN_TEST(test_set_total_updates_total);
+    RUN_TEST(test_set_total_unknown_job_fails);
     return UNITY_END();
 }
 

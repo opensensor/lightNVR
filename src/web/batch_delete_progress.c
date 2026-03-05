@@ -201,6 +201,38 @@ int batch_delete_progress_create_job(int total, char *job_id_out) {
 }
 
 /**
+ * @brief Update the total count for a batch delete job
+ */
+int batch_delete_progress_set_total(const char *job_id, int total) {
+    if (!g_initialized) {
+        log_error("Batch delete progress tracking not initialized");
+        return -1;
+    }
+
+    if (!job_id) {
+        log_error("Invalid job_id parameter");
+        return -1;
+    }
+
+    pthread_mutex_lock(&g_jobs_mutex);
+
+    int slot = find_job_by_id(job_id);
+    if (slot < 0) {
+        pthread_mutex_unlock(&g_jobs_mutex);
+        log_error("Job not found: %s", job_id);
+        return -1;
+    }
+
+    g_jobs[slot].total = total;
+    g_jobs[slot].updated_at = time(NULL);
+
+    pthread_mutex_unlock(&g_jobs_mutex);
+
+    log_info("Updated total for job %s: %d", job_id, total);
+    return 0;
+}
+
+/**
  * @brief Update progress for a batch delete job
  */
 int batch_delete_progress_update(const char *job_id, int current, int succeeded, int failed, const char *status_message) {

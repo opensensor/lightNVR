@@ -437,6 +437,9 @@ static void *batch_delete_worker_thread(void *arg) {
             return NULL;
         }
 
+        // Update total count now that we know it (was 0 at job creation time)
+        batch_delete_progress_set_total(job_id, total_count);
+
         // Update progress
         batch_delete_progress_update(job_id, 0, 0, 0, "Loading recordings to delete...");
 

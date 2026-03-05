@@ -5,4 +5,4 @@
  */
 
 export const VERSION = '0.28.2';
-export const GIT_COMMIT = 'dd7a30e6';
+export const GIT_COMMIT = '8d87330a';

@@ -60,6 +60,18 @@ void batch_delete_progress_cleanup(void);
 int batch_delete_progress_create_job(int total, char *job_id_out);
 
 /**
+ * @brief Update the total count for a batch delete job
+ *
+ * This is useful when the total is not known at job creation time
+ * (e.g., for filter-based deletes where the count is determined later).
+ *
+ * @param job_id Job identifier
+ * @param total New total count
+ * @return int 0 on success, non-zero on error
+ */
+int batch_delete_progress_set_total(const char *job_id, int total);
+
+/**
  * @brief Update progress for a batch delete job
  * 
  * @param job_id Job identifier
