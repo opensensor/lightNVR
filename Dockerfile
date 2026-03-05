@@ -77,6 +77,9 @@ RUN if grep -q "systemctl" scripts/install.sh; then \
         sed -i 's/systemctl/#systemctl/g' scripts/install.sh; \
     fi
 
+# Generate version.js before building web assets (it is not checked into git)
+RUN ./scripts/extract_version.sh
+
 # Build web assets using Vite
 RUN echo "Building web assets..." && \
     # Verify Node.js and npm are available
