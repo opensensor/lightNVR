@@ -294,6 +294,8 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const [recordingData, setRecordingData] = useState(null);
   const [detectionStatus, setDetectionStatus] = useState('No detections loaded');
   const [currentSpeed, setCurrentSpeed] = useState(1.0);
+  const [isProtected, setIsProtected] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -354,6 +356,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
         const data = await response.json();
         setRecordingData(data);
+        setIsProtected(!!data.protected);
 
         // If we have recording data, fetch detections
         if (data && data.stream && data.start_time && data.end_time) {
@@ -402,6 +405,87 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
     fetchRecordingData();
   }, [isOpen, videoUrl]);
+
+  // Extract recording ID from URL
+  const recordingId = videoUrl ? (() => {
+    const m = videoUrl.match(/\/play\/(\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  })() : null;
+
+  // Toggle protection for the current recording
+  const handleToggleProtection = useCallback(async () => {
+    if (!recordingId) return;
+    const newState = !isProtected;
+    try {
+      const response = await fetch(`/api/recordings/${recordingId}/protect`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ protected: newState }),
+      });
+      if (!response.ok) throw new Error(`Failed to ${newState ? 'protect' : 'unprotect'} recording`);
+      setIsProtected(newState);
+      showStatusMessage(
+        newState ? 'Recording protected from automatic deletion' : 'Recording protection removed',
+        'success'
+      );
+    } catch (error) {
+      console.error('Error toggling protection:', error);
+      showStatusMessage(`Error: ${error.message}`, 'error');
+    }
+  }, [recordingId, isProtected]);
+
+  // Delete the current recording
+  const handleDeleteRecording = useCallback(async () => {
+    if (!recordingId) return;
+    try {
+      const response = await fetch(`/api/recordings/${recordingId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete recording');
+      showStatusMessage('Recording deleted successfully', 'success');
+      setShowDeleteConfirm(false);
+      onClose();
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+      showStatusMessage(`Error: ${error.message}`, 'error');
+      setShowDeleteConfirm(false);
+    }
+  }, [recordingId, onClose]);
+
+  // Take a snapshot of the current video frame
+  const handleSnapshot = useCallback(() => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const streamName = recordingData?.stream || 'recording';
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        showStatusMessage('Failed to create snapshot', 'error');
+        return;
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+      showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+    }, 'image/jpeg', 0.95);
+  }, [recordingData]);
 
   // Draw detections on canvas
   const drawDetections = useCallback(() => {
@@ -803,8 +887,21 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
               </div>
             </div>
 
-            {/* Download and Timeline buttons */}
+            {/* Action buttons */}
             <div className="flex flex-wrap justify-center gap-2 mt-3 pt-2 border-t border-border">
+              {/* Snapshot */}
+              <button
+                className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
+                onClick={handleSnapshot}
+                title="Take Snapshot"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Snapshot
+              </button>
+              {/* Download */}
               {downloadUrl && (
                 <a
                   className="px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-xs"
@@ -814,11 +911,11 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  Download Video
+                  Download
                 </a>
               )}
+              {/* View in Timeline */}
               {recordingData && recordingData.stream && (recordingData.start_time_unix || recordingData.start_time) && (() => {
-                // Use Unix epoch when available (preferred), fall back to ISO string
                 const tsValue = recordingData.start_time_unix ?? recordingData.start_time;
                 const local = typeof tsValue === 'number'
                   ? dayjs.unix(tsValue).local()
@@ -836,11 +933,55 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    View in Timeline
+                    Timeline
                   </a>
                 );
               })()}
+              {/* Protect */}
+              {recordingId && (
+                <button
+                  className={`px-3 py-1.5 rounded transition-colors flex items-center text-xs ${
+                    isProtected
+                      ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                      : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                  }`}
+                  onClick={handleToggleProtection}
+                  title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    {isProtected ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                    )}
+                  </svg>
+                  {isProtected ? 'Protected' : 'Protect'}
+                </button>
+              )}
+              {/* Delete */}
+              {recordingId && (
+                <button
+                  className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-xs"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  title="Delete Recording"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete
+                </button>
+              )}
             </div>
+
+            {/* Delete confirmation */}
+            <ConfirmDialog
+              isOpen={showDeleteConfirm}
+              onClose={() => setShowDeleteConfirm(false)}
+              onConfirm={handleDeleteRecording}
+              title="Delete Recording"
+              message="Are you sure you want to delete this recording? This action cannot be undone."
+              confirmLabel="Delete"
+            />
           </div>
         </div>
       </div>

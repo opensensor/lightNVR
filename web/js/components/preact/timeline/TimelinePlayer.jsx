@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { ConfirmDialog } from '../UI.jsx';
 
 /**
  * TimelinePlayer component
@@ -19,6 +20,9 @@ export function TimelinePlayer() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [detections, setDetections] = useState([]);
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
+  const [isProtected, setIsProtected] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [segmentRecordingData, setSegmentRecordingData] = useState(null);
 
   // Refs
   const videoRef = useRef(null);
@@ -410,11 +414,12 @@ export function TimelinePlayer() {
     });
   };
 
-  // Fetch detections when segment changes
+  // Fetch recording data and detections when segment changes
   useEffect(() => {
     if (currentSegmentIndex < 0 || !segments || segments.length === 0 ||
         currentSegmentIndex >= segments.length) {
       setDetections([]);
+      setSegmentRecordingData(null);
       return;
     }
 
@@ -425,11 +430,17 @@ export function TimelinePlayer() {
     if (lastDetectionSegmentIdRef.current === segment.id) return;
     lastDetectionSegmentIdRef.current = segment.id;
 
-    // Fetch recording info to get stream name and timestamps
+    // Fetch recording info to get stream name, timestamps, and protection status
     fetch(`/api/recordings/${segment.id}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
-        if (!data || !data.stream || !data.start_time || !data.end_time) return;
+        if (!data) return;
+
+        // Store recording data for action buttons
+        setSegmentRecordingData(data);
+        setIsProtected(!!data.protected);
+
+        if (!data.stream || !data.start_time || !data.end_time) return;
 
         const startTime = Math.floor(new Date(data.start_time).getTime() / 1000);
         const endTime = Math.floor(new Date(data.end_time).getTime() / 1000);
@@ -585,6 +596,87 @@ export function TimelinePlayer() {
     };
   }, [detectionOverlayEnabled, drawTimelineDetections]);
 
+  // Get current segment ID
+  const currentSegmentId = (currentSegmentIndex >= 0 && segments.length > 0 && currentSegmentIndex < segments.length)
+    ? segments[currentSegmentIndex].id : null;
+
+  // Toggle protection for the current segment's recording
+  const handleToggleProtection = useCallback(async () => {
+    if (!currentSegmentId) return;
+    const newState = !isProtected;
+    try {
+      const response = await fetch(`/api/recordings/${currentSegmentId}/protect`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ protected: newState }),
+      });
+      if (!response.ok) throw new Error(`Failed to ${newState ? 'protect' : 'unprotect'} recording`);
+      setIsProtected(newState);
+      showStatusMessage(
+        newState ? 'Recording protected from automatic deletion' : 'Recording protection removed',
+        'success'
+      );
+    } catch (error) {
+      console.error('Error toggling protection:', error);
+      showStatusMessage(`Error: ${error.message}`, 'error');
+    }
+  }, [currentSegmentId, isProtected]);
+
+  // Delete the current segment's recording
+  const handleDeleteRecording = useCallback(async () => {
+    if (!currentSegmentId) return;
+    try {
+      const response = await fetch(`/api/recordings/${currentSegmentId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete recording');
+      showStatusMessage('Recording deleted successfully', 'success');
+      setShowDeleteConfirm(false);
+      setSegmentRecordingData(null);
+      // Reset the segment so player doesn't show deleted content
+      lastDetectionSegmentIdRef.current = null;
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+      showStatusMessage(`Error: ${error.message}`, 'error');
+      setShowDeleteConfirm(false);
+    }
+  }, [currentSegmentId]);
+
+  // Take a snapshot of the current video frame
+  const handleSnapshot = useCallback(() => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const streamName = segmentRecordingData?.stream || 'timeline';
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        showStatusMessage('Failed to create snapshot', 'error');
+        return;
+      }
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        URL.revokeObjectURL(blobUrl);
+      }, 1000);
+      showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+    }, 'image/jpeg', 0.95);
+  }, [segmentRecordingData]);
+
   return (
     <>
       <div className="timeline-player-container mb-2" id="video-player">
@@ -639,6 +731,75 @@ export function TimelinePlayer() {
         </div>
         <SpeedControls />
       </div>
+
+      {/* Recording action buttons */}
+      {currentSegmentId && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {/* Snapshot */}
+          <button
+            className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
+            onClick={handleSnapshot}
+            title="Take Snapshot"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Snapshot
+          </button>
+          {/* Download */}
+          <a
+            className="px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-xs"
+            href={`/api/recordings/download/${currentSegmentId}`}
+            download
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download
+          </a>
+          {/* Protect */}
+          <button
+            className={`px-3 py-1.5 rounded transition-colors flex items-center text-xs ${
+              isProtected
+                ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+            }`}
+            onClick={handleToggleProtection}
+            title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              {isProtected ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+              )}
+            </svg>
+            {isProtected ? 'Protected' : 'Protect'}
+          </button>
+          {/* Delete */}
+          <button
+            className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-xs"
+            onClick={() => setShowDeleteConfirm(true)}
+            title="Delete Recording"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteRecording}
+        title="Delete Recording"
+        message="Are you sure you want to delete this recording? This action cannot be undone."
+        confirmLabel="Delete"
+      />
     </>
   );
 }
