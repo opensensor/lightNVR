@@ -62,4 +62,11 @@ void handle_timeline_playback(const http_request_t *request, http_response_t *re
  */
 void handle_timeline_manifest(const http_request_t *request, http_response_t *response);
 
+/**
+ * Handle GET request for timeline segments by recording IDs
+ * Endpoint: /api/timeline/segments-by-ids?ids=1,2,3,...
+ * Returns segments for specific recording IDs, potentially across multiple streams.
+ */
+void handle_get_timeline_segments_by_ids(const http_request_t *request, http_response_t *response);
+
 #endif /* API_HANDLERS_TIMELINE_H */

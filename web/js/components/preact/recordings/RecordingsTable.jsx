@@ -129,7 +129,8 @@ export function RecordingsTable({
   canDelete = true,
   hiddenColumns = {},
   toggleColumn = () => {},
-  onTagsChanged
+  onTagsChanged,
+  viewSelectedInTimeline
 }) {
   const show = (col) => !hiddenColumns[col];
   const [showBulkTags, setShowBulkTags] = useState(false);
@@ -185,6 +186,15 @@ export function RecordingsTable({
                 />
               )}
             </div>
+            {viewSelectedInTimeline && (
+              <button
+                className="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={getSelectedCount() === 0}
+                onClick={viewSelectedInTimeline}
+                title="View selected recordings in Timeline">
+                ▶ View in Timeline
+              </button>
+            )}
           </>
         )}
         <div className="ml-auto">

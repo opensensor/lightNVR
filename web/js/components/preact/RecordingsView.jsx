@@ -591,6 +591,20 @@ export function RecordingsView() {
     queryClient.invalidateQueries({ queryKey: ['recordings'] });
   };
 
+  // Navigate to timeline with selected recording IDs
+  const viewSelectedInTimeline = () => {
+    const selectedIds = Object.entries(selectedRecordings)
+      .filter(([_, sel]) => sel)
+      .map(([id]) => id);
+    if (selectedIds.length === 0) {
+      showStatusMessage('No recordings selected', 'warning');
+      return;
+    }
+    // Store current URL for "Refine Selections" back-link
+    sessionStorage.setItem('lightnvr_recordings_return_url', window.location.href);
+    window.location.href = `timeline.html?ids=${selectedIds.join(',')}`;
+  };
+
   // Open download modal
   const openDownloadModal = () => setIsDownloadModalOpen(true);
 
@@ -785,7 +799,7 @@ export function RecordingsView() {
             )}
             <a
               href="timeline.html"
-              class="px-3 py-1 rounded-r-md text-sm"
+              class={`px-3 py-1 text-sm ${getSelectedCount() > 0 ? '' : 'rounded-r-md'}`}
               style={{
                 backgroundColor: 'hsl(var(--secondary))',
                 color: 'hsl(var(--secondary-foreground))'
@@ -795,6 +809,19 @@ export function RecordingsView() {
             >
               Timeline
             </a>
+            {getSelectedCount() > 0 && (
+              <button
+                onClick={viewSelectedInTimeline}
+                class="px-3 py-1 rounded-r-md text-sm"
+                style={{
+                  backgroundColor: 'hsl(var(--primary))',
+                  color: 'hsl(var(--primary-foreground))'
+                }}
+                title={`View ${getSelectedCount()} selected recording(s) in Timeline`}
+              >
+                ▶ Timeline ({getSelectedCount()})
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -845,6 +872,7 @@ export function RecordingsView() {
                 hiddenColumns={hiddenColumns}
                 toggleColumn={toggleColumn}
                 onTagsChanged={handleTagsChanged}
+                viewSelectedInTimeline={viewSelectedInTimeline}
               />
             ) : (
               <RecordingsTable
@@ -869,6 +897,7 @@ export function RecordingsView() {
                 hiddenColumns={hiddenColumns}
                 toggleColumn={toggleColumn}
                 onTagsChanged={handleTagsChanged}
+                viewSelectedInTimeline={viewSelectedInTimeline}
               />
             )}
 

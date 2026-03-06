@@ -26,6 +26,8 @@
 #include "core/config.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "database/db_detections.h"
+#include "database/db_auth.h"
 
 // Maximum number of segments to return in a single request
 // Must be large enough for a full 24-hour day of short segments
@@ -604,6 +606,150 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
     pthread_mutex_unlock(&manifest_mutex);
     
     log_info("Created timeline manifest: %s", manifest_filename);
-    
+
     return 0;
+}
+
+/**
+ * @brief Handle GET /api/timeline/segments-by-ids?ids=1,2,3,...
+ *
+ * Fetches recording metadata for the given IDs and returns them as timeline
+ * segments sorted by start_time.  The response format matches that of
+ * handle_get_timeline_segments so the TimelinePage can consume it directly.
+ */
+void handle_get_timeline_segments_by_ids(const http_request_t *req, http_response_t *res) {
+    log_info("Handling GET /api/timeline/segments-by-ids request");
+
+    /* optional auth check */
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (!httpd_check_viewer_access(req, &user)) {
+            http_response_set_json_error(res, 401, "Unauthorized");
+            return;
+        }
+    }
+
+    /* ---- Parse "ids" parameter ---- */
+    char ids_param[8192] = {0};
+    if (http_request_get_query_param(req, "ids", ids_param, sizeof(ids_param)) < 0 ||
+        ids_param[0] == '\0') {
+        http_response_set_json_error(res, 400, "Missing required parameter: ids");
+        return;
+    }
+
+    /* Parse comma-separated IDs */
+    uint64_t ids[MAX_TIMELINE_SEGMENTS];
+    int id_count = 0;
+    char *saveptr = NULL;
+    char *token = strtok_r(ids_param, ",", &saveptr);
+    while (token && id_count < MAX_TIMELINE_SEGMENTS) {
+        while (*token == ' ') token++;
+        uint64_t id = strtoull(token, NULL, 10);
+        if (id > 0) ids[id_count++] = id;
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+    if (id_count == 0) {
+        http_response_set_json_error(res, 400, "No valid recording IDs provided");
+        return;
+    }
+
+    log_info("Fetching %d recording IDs for timeline", id_count);
+
+    /* ---- Fetch metadata for each ID ---- */
+    cJSON *response = cJSON_CreateObject();
+    cJSON *segments_array = cJSON_CreateArray();
+    if (!response || !segments_array) {
+        cJSON_Delete(response);
+        cJSON_Delete(segments_array);
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
+        return;
+    }
+    cJSON_AddItemToObject(response, "segments", segments_array);
+
+    time_t overall_start = 0, overall_end = 0;
+    int seg_count = 0;
+
+    for (int i = 0; i < id_count; i++) {
+        recording_metadata_t rec;
+        memset(&rec, 0, sizeof(rec));
+        if (get_recording_metadata_by_id(ids[i], &rec) != 0) {
+            log_warn("Recording ID %llu not found, skipping", (unsigned long long)ids[i]);
+            continue;
+        }
+
+        /* Check for detections */
+        bool has_det = false;
+        if (rec.trigger_type[0] != '\0' && strcmp(rec.trigger_type, "detection") == 0) {
+            has_det = true;
+        }
+
+        /* Track overall time range */
+        if (overall_start == 0 || rec.start_time < overall_start) overall_start = rec.start_time;
+        if (rec.end_time > overall_end) overall_end = rec.end_time;
+
+        /* Build segment JSON (same format as handle_get_timeline_segments) */
+        cJSON *segment = cJSON_CreateObject();
+        if (!segment) continue;
+
+        struct tm tm_buf;
+        const struct tm *tm_info;
+        char seg_start[32] = {0}, seg_end[32] = {0};
+        tm_info = localtime_r(&rec.start_time, &tm_buf);
+        if (tm_info) strftime(seg_start, sizeof(seg_start), "%Y-%m-%d %H:%M:%S", tm_info);
+        tm_info = localtime_r(&rec.end_time, &tm_buf);
+        if (tm_info) strftime(seg_end, sizeof(seg_end), "%Y-%m-%d %H:%M:%S", tm_info);
+
+        int duration = (int)difftime(rec.end_time, rec.start_time);
+
+        char size_str[32] = {0};
+        if (rec.size_bytes < 1024)
+            snprintf(size_str, sizeof(size_str), "%lu B", (unsigned long)rec.size_bytes);
+        else if (rec.size_bytes < (uint64_t)1024 * 1024)
+            snprintf(size_str, sizeof(size_str), "%.1f KB", (double)rec.size_bytes / 1024.0);
+        else if (rec.size_bytes < (uint64_t)1024 * 1024 * 1024)
+            snprintf(size_str, sizeof(size_str), "%.1f MB", (double)rec.size_bytes / (1024.0 * 1024.0));
+        else
+            snprintf(size_str, sizeof(size_str), "%.1f GB", (double)rec.size_bytes / (1024.0 * 1024.0 * 1024.0));
+
+        cJSON_AddNumberToObject(segment, "id", (double)rec.id);
+        cJSON_AddStringToObject(segment, "stream", rec.stream_name);
+        cJSON_AddStringToObject(segment, "start_time", seg_start);
+        cJSON_AddStringToObject(segment, "end_time", seg_end);
+        cJSON_AddNumberToObject(segment, "duration", duration);
+        cJSON_AddStringToObject(segment, "size", size_str);
+        cJSON_AddBoolToObject(segment, "has_detection", has_det);
+        cJSON_AddNumberToObject(segment, "start_timestamp", (double)rec.start_time);
+        cJSON_AddNumberToObject(segment, "end_timestamp", (double)rec.end_time);
+        cJSON_AddNumberToObject(segment, "local_start_timestamp", (double)rec.start_time);
+        cJSON_AddNumberToObject(segment, "local_end_timestamp", (double)rec.end_time);
+
+        cJSON_AddItemToArray(segments_array, segment);
+        seg_count++;
+    }
+
+    /* Add metadata */
+    cJSON_AddStringToObject(response, "stream", "(selected)");
+    cJSON_AddBoolToObject(response, "multi_stream", true);
+
+    char start_display[32] = {0}, end_display[32] = {0};
+    struct tm tm_buf;
+    const struct tm *tm_info;
+    if (overall_start) {
+        tm_info = localtime_r(&overall_start, &tm_buf);
+        if (tm_info) strftime(start_display, sizeof(start_display), "%Y-%m-%d %H:%M:%S", tm_info);
+    }
+    if (overall_end) {
+        tm_info = localtime_r(&overall_end, &tm_buf);
+        if (tm_info) strftime(end_display, sizeof(end_display), "%Y-%m-%d %H:%M:%S", tm_info);
+    }
+    cJSON_AddStringToObject(response, "start_time", start_display);
+    cJSON_AddStringToObject(response, "end_time", end_display);
+    cJSON_AddNumberToObject(response, "segment_count", seg_count);
+
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str ? json_str : "{}");
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Returned %d segments for %d requested IDs", seg_count, id_count);
 }

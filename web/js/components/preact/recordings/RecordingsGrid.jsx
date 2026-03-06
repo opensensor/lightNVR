@@ -421,7 +421,8 @@ export function RecordingsGrid({
   clearSelections,
   hiddenColumns = {},
   toggleColumn = () => {},
-  onTagsChanged
+  onTagsChanged,
+  viewSelectedInTimeline
 }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [showBulkTags, setShowBulkTags] = useState(false);
@@ -490,6 +491,16 @@ export function RecordingsGrid({
                     />
                   )}
                 </div>
+                {viewSelectedInTimeline && (
+                  <button
+                    class="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={getSelectedCount() === 0}
+                    onClick={viewSelectedInTimeline}
+                    title="View selected recordings in Timeline"
+                  >
+                    ▶ View in Timeline
+                  </button>
+                )}
                 <button
                   class="text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
                   onClick={exitSelectionMode}

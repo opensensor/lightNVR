@@ -125,7 +125,8 @@ function parseUrlParams() {
   return {
     stream: params.get('stream') || '',
     date: params.get('date') || formatDateForInput(new Date()),
-    time: params.get('time') || ''  // Optional HH:MM:SS to auto-seek on load
+    time: params.get('time') || '',  // Optional HH:MM:SS to auto-seek on load
+    ids: params.get('ids') || ''     // Comma-separated recording IDs for selected-recordings mode
   };
 }
 
@@ -148,11 +149,17 @@ export function TimelinePage() {
   // Get initial values from URL parameters
   const urlParams = parseUrlParams();
 
+  // Detect selected-recordings mode
+  const idsMode = urlParams.ids.length > 0;
+  const recordingIds = idsMode ? urlParams.ids : '';
+
   // State
   const [streamsList, setStreamsList] = useState([]);
   const [selectedStream, setSelectedStream] = useState(urlParams.stream);
   const [selectedDate, setSelectedDate] = useState(urlParams.date);
   const [segments, setSegments] = useState([]);
+  const [idsLoading, setIdsLoading] = useState(idsMode);
+  const [idsSegmentInfo, setIdsSegmentInfo] = useState(null);  // metadata from IDs endpoint
 
   // Refs
   const timelineContainerRef = useRef(null);
@@ -220,6 +227,53 @@ export function TimelinePage() {
     }
   }, [streamsError]);
 
+  // IDs mode: fetch segments by recording IDs instead of stream+date
+  useEffect(() => {
+    if (!idsMode || !recordingIds) return;
+
+    const fetchByIds = async () => {
+      setIdsLoading(true);
+      try {
+        const resp = await fetch(`/api/timeline/segments-by-ids?ids=${encodeURIComponent(recordingIds)}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        setIdsSegmentInfo(data);
+
+        const segs = (data.segments || []).sort((a, b) => a.start_timestamp - b.start_timestamp);
+        if (segs.length > 0) {
+          // Compute the overall day range
+          const earliest = segs[0].start_timestamp;
+          const latest = segs[segs.length - 1].end_timestamp;
+          const dayStart = earliest - (earliest % 86400); // approximate day start
+          const dayEnd = dayStart + 86400;
+
+          timelineState.setState({
+            segments: segs,
+            dayStart,
+            dayEnd,
+            isLoading: false
+          });
+          setSegments(segs);
+
+          // Build a pseudo-stream name from unique streams
+          const uniqueStreams = [...new Set(segs.map(s => s.stream))];
+          setSelectedStream(uniqueStreams.join(', '));
+
+          showStatusMessage(`Loaded ${segs.length} selected recording segments`, 'success');
+        } else {
+          setSegments([]);
+          showStatusMessage('No recordings found for the selected IDs', 'info');
+        }
+      } catch (err) {
+        console.error('Error fetching segments by IDs:', err);
+        showStatusMessage('Error loading selected recordings: ' + err.message, 'error');
+      }
+      setIdsLoading(false);
+    };
+
+    fetchByIds();
+  }, [idsMode, recordingIds]);
+
   // Calculate time range for timeline data
   const getTimeRange = (date) => {
     // Create a date object at midnight for the selected date
@@ -271,7 +325,7 @@ export function TimelinePage() {
       retryDelay: 1000 // 1 second between retries
     },
     {
-      enabled: !!selectedStream // Only run query if we have a selected stream
+      enabled: !!selectedStream && !idsMode // Only run query if we have a selected stream (and not in IDs mode)
     }
   );
 
@@ -401,8 +455,8 @@ export function TimelinePage() {
 
   // Render content based on state
   const renderContent = () => {
-    if (isLoadingTimeline) {
-      return <LoadingIndicator message="Loading timeline data..." />;
+    if (isLoadingTimeline || idsLoading) {
+      return <LoadingIndicator message={idsMode ? "Loading selected recordings..." : "Loading timeline data..."} />;
     }
 
     if (segments.length === 0) {
@@ -443,13 +497,37 @@ export function TimelinePage() {
     );
   };
 
+  // Get return URL for "Refine Selections" link
+  const returnUrl = idsMode ? (sessionStorage.getItem('lightnvr_recordings_return_url') || 'recordings.html') : null;
+
+  // IDs for download
+  const downloadSelectedRecordings = () => {
+    if (!idsMode || !recordingIds) return;
+    const idsList = recordingIds.split(',');
+    // Use the same batch download mechanism
+    idsList.forEach(id => {
+      const seg = segments.find(s => String(s.id) === String(id));
+      if (seg) {
+        const a = document.createElement('a');
+        a.href = `/api/recordings/${id}/download`;
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    });
+    showStatusMessage(`Downloading ${idsList.length} recordings...`, 'success');
+  };
+
   return (
     <div className="timeline-page">
       <div className="flex items-center mb-4">
-        <h1 className="text-2xl font-bold">Timeline Playback</h1>
+        <h1 className="text-2xl font-bold">
+          {idsMode ? 'Selected Recordings Timeline' : 'Timeline Playback'}
+        </h1>
         <div className="ml-4 flex">
           <a
-            href="recordings.html"
+            href={returnUrl || 'recordings.html'}
             className="px-3 py-1 rounded-l-md text-sm"
             style={{
               backgroundColor: 'hsl(var(--secondary))',
@@ -478,50 +556,83 @@ export function TimelinePage() {
             href="timeline.html"
             className="px-3 py-1 rounded-r-md text-sm"
             style={{
-              backgroundColor: 'hsl(var(--primary))',
-              color: 'hsl(var(--primary-foreground))'
+              backgroundColor: idsMode ? 'hsl(var(--secondary))' : 'hsl(var(--primary))',
+              color: idsMode ? 'hsl(var(--secondary-foreground))' : 'hsl(var(--primary-foreground))'
             }}
+            onMouseOver={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'; }}
+            onMouseOut={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'; }}
           >
             Timeline
           </a>
         </div>
       </div>
 
-      {/* Stream selector and date picker */}
-      <div className="flex flex-wrap gap-4 mb-2">
-        <div className="stream-selector flex-grow">
-          <div className="flex justify-between items-center mb-2">
-            <label htmlFor="stream-selector">Stream</label>
-            <button
-              className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1 rounded"
-              onClick={() => refetchTimeline()}
-            >
-              Reload Data
-            </button>
+      {idsMode ? (
+        /* IDs mode: show info bar with refine/download options */
+        <div className="flex flex-wrap items-center gap-4 mb-4 p-3 bg-secondary rounded-lg">
+          <div className="flex-grow">
+            <span className="text-sm font-medium">
+              Viewing {segments.length} selected recording{segments.length !== 1 ? 's' : ''}
+              {idsSegmentInfo?.multi_stream && ` across ${[...new Set(segments.map(s => s.stream))].length} stream(s)`}
+            </span>
+            {idsSegmentInfo && (
+              <span className="text-xs text-muted-foreground ml-2">
+                {idsSegmentInfo.start_time} — {idsSegmentInfo.end_time}
+              </span>
+            )}
           </div>
-          <select
-            id="stream-selector"
-            className="w-full p-2 border border-border rounded bg-background text-foreground"
-            value={selectedStream || ''}
-            onChange={handleStreamChange}
+          <a
+            href={returnUrl || 'recordings.html'}
+            className="btn-secondary text-sm px-3 py-1"
           >
-            <option value="" disabled>Select a stream ({streamsList.length} available)</option>
-            {streamsList.map(stream => (
-              <option key={stream.name} value={stream.name}>{stream.name}</option>
-            ))}
-          </select>
+            ← Refine Selections
+          </a>
+          <button
+            className="btn-primary text-sm px-3 py-1"
+            onClick={downloadSelectedRecordings}
+            disabled={segments.length === 0}
+          >
+            ↓ Download All ({segments.length})
+          </button>
         </div>
+      ) : (
+        /* Normal mode: stream/date selectors */
+        <>
+          <div className="flex flex-wrap gap-4 mb-2">
+            <div className="stream-selector flex-grow">
+              <div className="flex justify-between items-center mb-2">
+                <label htmlFor="stream-selector">Stream</label>
+                <button
+                  className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1 rounded"
+                  onClick={() => refetchTimeline()}
+                >
+                  Reload Data
+                </button>
+              </div>
+              <select
+                id="stream-selector"
+                className="w-full p-2 border border-border rounded bg-background text-foreground"
+                value={selectedStream || ''}
+                onChange={handleStreamChange}
+              >
+                <option value="" disabled>Select a stream ({streamsList.length} available)</option>
+                {streamsList.map(stream => (
+                  <option key={stream.name} value={stream.name}>{stream.name}</option>
+                ))}
+              </select>
+            </div>
 
-        <div className="date-selector flex-grow">
-          <label className="block mb-2">Date</label>
-          <CalendarPicker value={selectedDate} onChange={handleDateChange} />
-        </div>
-      </div>
+            <div className="date-selector flex-grow">
+              <label className="block mb-2">Date</label>
+              <CalendarPicker value={selectedDate} onChange={handleDateChange} />
+            </div>
+          </div>
 
-      {/* Auto-load message */}
-      <div className="mb-4 text-sm text-muted-foreground italic">
-        {isLoadingTimeline ? 'Loading...' : 'Recordings auto-load when stream or date changes'}
-      </div>
+          <div className="mb-4 text-sm text-muted-foreground italic">
+            {isLoadingTimeline ? 'Loading...' : 'Recordings auto-load when stream or date changes'}
+          </div>
+        </>
+      )}
 
       {/* Current time display */}
       <div className="flex justify-between items-center mb-2">
@@ -530,8 +641,8 @@ export function TimelinePage() {
 
       {/* Debug info */}
       <div className="mb-2 text-xs text-muted-foreground">
-        Debug - isLoading: {isLoadingTimeline ? 'true' : 'false'},
-        Streams: {streamsList.length},
+        Debug - isLoading: {(isLoadingTimeline || idsLoading) ? 'true' : 'false'},
+        {idsMode ? `IDs mode (${recordingIds.split(',').length} IDs)` : `Streams: ${streamsList.length}`},
         Segments: {segments.length}
       </div>
 
