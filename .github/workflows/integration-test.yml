@@ -306,13 +306,12 @@ jobs:
           echo ""
           echo "=== Running Playwright tests ==="
 
-          # Run Playwright tests with output capture
-          # global-setup.ts starts lightNVR which internally starts go2rtc
-          # global-setup.ts then registers test streams via API
-          set +e
-          npx playwright test --project=ui 2>&1 | tee playwright-output.log
-          RESULT=${PIPESTATUS[0]}
-          set -e
+          # Run Playwright tests with output capture.
+          # Avoid ${PIPESTATUS[0]} — it is bash-only and the container
+          # shell is /bin/sh (dash).  Capture the exit code directly.
+          RESULT=0
+          npx playwright test --project=ui > playwright-output.log 2>&1 || RESULT=$?
+          cat playwright-output.log
 
           if [ $RESULT -ne 0 ]; then
             echo ""
