@@ -485,6 +485,25 @@ static const char migration_0031_up[] =
 static const char migration_0031_down[] =
     "SELECT 1;";
 
+static const char migration_0032_up[] =
+    "CREATE TABLE IF NOT EXISTS recording_tags (\n"
+    "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+    "    recording_id INTEGER NOT NULL,\n"
+    "    tag TEXT NOT NULL,\n"
+    "    created_at INTEGER DEFAULT (strftime('%s', 'now')),\n"
+    "    FOREIGN KEY (recording_id) REFERENCES recordings(id) ON DELETE CASCADE\n"
+    ");\n"
+    "\n"
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_recording_tags_unique ON recording_tags(recording_id, tag);\n"
+    "CREATE INDEX IF NOT EXISTS idx_recording_tags_tag ON recording_tags(tag);\n"
+    "CREATE INDEX IF NOT EXISTS idx_recording_tags_recording ON recording_tags(recording_id);";
+
+static const char migration_0032_down[] =
+    "DROP INDEX IF EXISTS idx_recording_tags_recording;\n"
+    "DROP INDEX IF EXISTS idx_recording_tags_tag;\n"
+    "DROP INDEX IF EXISTS idx_recording_tags_unique;\n"
+    "DROP TABLE IF EXISTS recording_tags;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -703,8 +722,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0031_down,
         .is_embedded = true
     },
+    {
+        .version = "0032",
+        .description = "add_recording_tags",
+        .sql_up = migration_0032_up,
+        .sql_down = migration_0032_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 31
+#define EMBEDDED_MIGRATIONS_COUNT 32
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

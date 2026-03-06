@@ -517,7 +517,8 @@ int get_recording_metadata(time_t start_time, time_t end_time,
 int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
                        const char *detection_label, int protected_filter,
-                       const char * const *allowed_streams, int allowed_streams_count) {
+                       const char * const *allowed_streams, int allowed_streams_count,
+                       const char *tag_filter) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -598,6 +599,12 @@ int get_recording_count(time_t start_time, time_t end_time,
         log_debug("Adding protected_filter=1 (protected only)");
     }
 
+    if (tag_filter) {
+        strncat(sql, " AND EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = r.id AND rt.tag = ?)",
+                sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding tag_filter=%s", tag_filter);
+    }
+
     log_debug("SQL query for get_recording_count: %s", sql);
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -637,6 +644,10 @@ int get_recording_count(time_t start_time, time_t end_time,
         }
     }
 
+    if (tag_filter) {
+        sqlite3_bind_text(stmt, param_index++, tag_filter, -1, SQLITE_STATIC);
+    }
+
     // Execute query and get count
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         count = sqlite3_column_int(stmt, 0);
@@ -661,7 +672,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
-                                   const char * const *allowed_streams, int allowed_streams_count) {
+                                   const char * const *allowed_streams, int allowed_streams_count,
+                                   const char *tag_filter) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -778,6 +790,12 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         log_debug("Adding protected_filter=1 (protected only) to paginated query");
     }
 
+    if (tag_filter) {
+        strncat(sql, " AND EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = r.id AND rt.tag = ?)",
+                sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding tag_filter=%s to paginated query", tag_filter);
+    }
+
     // Add ORDER BY clause with sanitized field and order
     char order_clause[64];
     snprintf(order_clause, sizeof(order_clause), " ORDER BY r.%s %s", safe_sort_field, safe_sort_order);
@@ -825,6 +843,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         for (int i = 0; i < allowed_streams_count; i++) {
             sqlite3_bind_text(stmt, param_index++, allowed_streams[i], -1, SQLITE_STATIC);
         }
+    }
+
+    if (tag_filter) {
+        sqlite3_bind_text(stmt, param_index++, tag_filter, -1, SQLITE_STATIC);
     }
 
     // Bind LIMIT and OFFSET parameters

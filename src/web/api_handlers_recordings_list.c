@@ -22,6 +22,7 @@
 #include "database/db_detections.h"
 #include "database/db_auth.h"
 #include "database/db_streams.h"
+#include "database/db_recording_tags.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings
@@ -83,6 +84,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     char has_detection_str[8] = {0};
     char detection_label[64] = {0};
     char protected_str[8] = {0};
+    char tag_filter_str[MAX_TAG_LENGTH] = {0};
 
     http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name));
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -94,6 +96,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     http_request_get_query_param(req, "has_detection", has_detection_str, sizeof(has_detection_str));
     http_request_get_query_param(req, "detection_label", detection_label, sizeof(detection_label));
     http_request_get_query_param(req, "protected", protected_str, sizeof(protected_str));
+    http_request_get_query_param(req, "tag", tag_filter_str, sizeof(tag_filter_str));
 
     // Parse numeric parameters
     int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
@@ -265,10 +268,13 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     int streams_filter_count = (tag_restricted && allowed_streams_count > 0)
                                ? allowed_streams_count : 0;
 
+    const char *tag_filt = tag_filter_str[0] != '\0' ? tag_filter_str : NULL;
+
     int total_count = get_recording_count(start_time, end_time,
                                           stream_name[0] != '\0' ? stream_name : NULL,
                                           has_detection, label_filter, protected_filter,
-                                          streams_filter, streams_filter_count);
+                                          streams_filter, streams_filter_count,
+                                          tag_filt);
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
@@ -284,7 +290,8 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
                                                  has_detection, label_filter, protected_filter,
                                                  sort_field, sort_order,
                                                  recordings, limit, offset,
-                                                 streams_filter, streams_filter_count);
+                                                 streams_filter, streams_filter_count,
+                                                 tag_filt);
 
     if (count < 0) {
         log_error("Failed to get recordings from database");
@@ -425,6 +432,21 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
                 }
                 cJSON_AddItemToObject(recording, "detection_labels", labels_array);
             }
+        }
+
+        // Add recording tags
+        char rec_tags[MAX_RECORDING_TAGS][MAX_TAG_LENGTH];
+        int tag_count_val = db_recording_tag_get(recordings[i].id, rec_tags, MAX_RECORDING_TAGS);
+        if (tag_count_val > 0) {
+            cJSON *tags_array = cJSON_CreateArray();
+            if (tags_array) {
+                for (int j = 0; j < tag_count_val; j++) {
+                    cJSON_AddItemToArray(tags_array, cJSON_CreateString(rec_tags[j]));
+                }
+                cJSON_AddItemToObject(recording, "tags", tags_array);
+            }
+        } else {
+            cJSON_AddItemToObject(recording, "tags", cJSON_CreateArray());
         }
 
         cJSON_AddItemToArray(recordings_array, recording);

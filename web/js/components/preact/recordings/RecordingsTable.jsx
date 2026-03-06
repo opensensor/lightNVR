@@ -4,6 +4,7 @@
 
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
+import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.jsx';
 
 /** Columns that can be hidden by the user */
 const HIDEABLE_COLUMNS = [
@@ -11,8 +12,43 @@ const HIDEABLE_COLUMNS = [
   { key: 'duration', label: 'Duration' },
   { key: 'size', label: 'Size' },
   { key: 'detections', label: 'Detections' },
+  { key: 'tags', label: 'Tags' },
   { key: 'actions', label: 'Actions' },
 ];
+
+/**
+ * Inline tag cell with overlay toggle
+ */
+function TagCell({ recording, onTagsChanged }) {
+  const [showOverlay, setShowOverlay] = useState(false);
+  return (
+    <td className="px-6 py-4">
+      <div className="relative">
+        <div className="flex flex-wrap gap-1 items-center">
+          {(recording.tags || []).map((tag, idx) => (
+            <span key={idx} className="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] bg-primary/10 text-primary border border-primary/20">
+              {tag}
+            </span>
+          ))}
+          <button
+            className="p-0.5 rounded hover:bg-muted/70 transition-colors"
+            onClick={() => setShowOverlay(!showOverlay)}
+            title="Manage tags"
+          >
+            <TagIcon className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        </div>
+        {showOverlay && (
+          <TagsOverlay
+            recording={recording}
+            onClose={() => setShowOverlay(false)}
+            onTagsChanged={onTagsChanged}
+          />
+        )}
+      </div>
+    </td>
+  );
+}
 
 /**
  * Column config dropdown – gear icon that opens a checklist of hideable columns
@@ -92,14 +128,16 @@ export function RecordingsTable({
   pagination,
   canDelete = true,
   hiddenColumns = {},
-  toggleColumn = () => {}
+  toggleColumn = () => {},
+  onTagsChanged
 }) {
   const show = (col) => !hiddenColumns[col];
+  const [showBulkTags, setShowBulkTags] = useState(false);
 
   // Count visible columns for colSpan on empty row
   const visibleCount = (canDelete ? 1 : 0) + 1 /* start_time always */ +
     (show('stream') ? 1 : 0) + (show('duration') ? 1 : 0) + (show('size') ? 1 : 0) +
-    (show('detections') ? 1 : 0) + (show('actions') ? 1 : 0);
+    (show('detections') ? 1 : 0) + (show('tags') ? 1 : 0) + (show('actions') ? 1 : 0);
 
   return (
     <div className="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
@@ -130,6 +168,23 @@ export function RecordingsTable({
               title="Download selected recordings">
               Download Selected
             </button>
+            <div className="relative inline-block">
+              <button
+                className="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                disabled={getSelectedCount() === 0}
+                onClick={() => setShowBulkTags(!showBulkTags)}
+                title="Manage tags for selected recordings">
+                <TagIcon className="w-3.5 h-3.5" /> Manage Tags
+              </button>
+              {showBulkTags && (
+                <BulkTagsOverlay
+                  recordings={recordings}
+                  selectedRecordings={selectedRecordings}
+                  onClose={() => setShowBulkTags(false)}
+                  onTagsChanged={onTagsChanged}
+                />
+              )}
+            </div>
           </>
         )}
         <div className="ml-auto">
@@ -192,6 +247,11 @@ export function RecordingsTable({
                   Detections
                 </th>
               )}
+              {show('tags') && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Tags
+                </th>
+              )}
               {show('actions') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Actions
@@ -249,6 +309,9 @@ export function RecordingsTable({
                       </span>
                     ) : ''}
                   </td>
+                )}
+                {show('tags') && (
+                  <TagCell recording={recording} onTagsChanged={onTagsChanged} />
                 )}
                 {show('actions') && (
                   <td className="px-6 py-4 whitespace-nowrap">

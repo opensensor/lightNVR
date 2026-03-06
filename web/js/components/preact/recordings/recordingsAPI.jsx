@@ -99,6 +99,11 @@ export const recordingsAPI = {
         params.append('detection_label', filters.detectionLabel.trim());
       }
 
+      // Add tag filter
+      if (filters.tag && filters.tag.trim() !== '') {
+        params.append('tag', filters.tag.trim());
+      }
+
       // Add protected status filter
       if (filters.protectedStatus === 'yes') {
         params.append('protected', '1');
@@ -288,6 +293,11 @@ export const recordingsAPI = {
         params.append('has_detection', '1');
       } else if (filters.recordingType === 'no_detection') {
         params.append('has_detection', '-1');
+      }
+
+      // Add tag filter
+      if (filters.tag && filters.tag.trim() !== '') {
+        params.append('tag', filters.tag.trim());
       }
 
       // Add protected status filter
@@ -821,6 +831,92 @@ export const recordingsAPI = {
     }
 
     console.log('Video modal should be shown now');
+  },
+
+  /**
+   * Get all unique recording tags
+   * @returns {Promise<string[]>} Array of unique tags
+   */
+  getAllRecordingTags: async () => {
+    try {
+      const data = await fetchJSON('/api/recordings/tags', {
+        timeout: 10000,
+        retries: 1,
+        retryDelay: 500
+      });
+      return data.tags || [];
+    } catch (error) {
+      console.error('Error fetching recording tags:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Get tags for a specific recording
+   * @param {number} recordingId Recording ID
+   * @returns {Promise<string[]>} Array of tags
+   */
+  getRecordingTags: async (recordingId) => {
+    try {
+      const data = await fetchJSON(`/api/recordings/${recordingId}/tags`, {
+        timeout: 10000,
+        retries: 1,
+        retryDelay: 500
+      });
+      return data.tags || [];
+    } catch (error) {
+      console.error('Error fetching recording tags:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Set tags for a specific recording (replace all)
+   * @param {number} recordingId Recording ID
+   * @param {string[]} tags Array of tags
+   * @returns {Promise<Object>} Result with id and tags
+   */
+  setRecordingTags: async (recordingId, tags) => {
+    try {
+      const data = await fetchJSON(`/api/recordings/${recordingId}/tags`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags }),
+        timeout: 10000,
+        retries: 1,
+        retryDelay: 500
+      });
+      return data;
+    } catch (error) {
+      console.error('Error setting recording tags:', error);
+      showStatusMessage('Error setting tags: ' + error.message);
+      throw error;
+    }
+  },
+
+  /**
+   * Batch add/remove tags for multiple recordings
+   * @param {number[]} ids Array of recording IDs
+   * @param {string[]} addTags Tags to add
+   * @param {string[]} removeTags Tags to remove
+   * @returns {Promise<Object>} Result with counts
+   */
+  batchUpdateRecordingTags: async (ids, addTags = [], removeTags = []) => {
+    try {
+      const data = await fetchJSON('/api/recordings/batch-tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, add: addTags, remove: removeTags }),
+        timeout: 30000,
+        retries: 1,
+        retryDelay: 1000
+      });
+      return data;
+    } catch (error) {
+      console.error('Error in batch tag update:', error);
+      showStatusMessage('Error updating tags: ' + error.message);
+      throw error;
+    }
   },
 
   /**

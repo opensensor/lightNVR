@@ -20,7 +20,8 @@
  */
 int get_recording_count(time_t start_time, time_t end_time, const char *stream_name, int detection_only,
                        const char *detection_label, int protected_filter,
-                       const char * const *allowed_streams, int allowed_streams_count);
+                       const char * const *allowed_streams, int allowed_streams_count,
+                       const char *tag_filter);
 
 /**
  * Get paginated recording metadata from the database with sorting
@@ -49,7 +50,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    const char *sort_field, const char *sort_order,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
-                                   const char * const *allowed_streams, int allowed_streams_count);
+                                   const char * const *allowed_streams, int allowed_streams_count,
+                                   const char *tag_filter);
 
 
 /**

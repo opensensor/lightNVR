@@ -31,6 +31,7 @@
 #include "web/api_handlers_ice_servers.h"
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/api_handlers_setup.h"
+#include "web/api_handlers_recording_tags.h"
 #include "core/logger.h"
 #include "core/config.h"
 
@@ -183,6 +184,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/recordings/protected", "GET", handle_get_protected_recordings);
     http_server_register_handler(server, "/api/recordings/batch-protect", "POST", handle_batch_protect_recordings);
     http_server_register_handler(server, "/api/recordings/sync", "POST", handle_post_recordings_sync);
+    http_server_register_handler(server, "/api/recordings/tags", "GET", handle_get_recording_tags);
+    http_server_register_handler(server, "/api/recordings/batch-tags", "POST", handle_batch_recording_tags);
+    http_server_register_handler(server, "/api/recordings/#/tags", "GET", handle_get_recording_tags_by_id);
+    http_server_register_handler(server, "/api/recordings/#/tags", "PUT", handle_put_recording_tags);
     http_server_register_handler(server, "/api/recordings/#/protect", "PUT", handle_put_recording_protect);
     http_server_register_handler(server, "/api/recordings/#/retention", "PUT", handle_put_recording_retention);
     http_server_register_handler(server, "/api/recordings/#", "GET", handle_get_recording);

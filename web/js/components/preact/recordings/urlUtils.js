@@ -112,6 +112,7 @@ export const urlUtils = {
       filters.streamId !== 'all' ||
       filters.recordingType !== 'all' ||
       (filters.detectionLabel && filters.detectionLabel.trim() !== '') ||
+      (filters.tag && filters.tag.trim() !== '') ||
       (filters.protectedStatus && filters.protectedStatus !== 'all')
     );
     
@@ -151,6 +152,11 @@ export const urlUtils = {
       // Detection label filter
       if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
         activeFilters.push({ key: 'detectionLabel', label: `Object: ${filters.detectionLabel.trim()}` });
+      }
+
+      // Tag filter
+      if (filters.tag && filters.tag.trim() !== '') {
+        activeFilters.push({ key: 'tag', label: `Tag: ${filters.tag.trim()}` });
       }
 
       // Protected status filter

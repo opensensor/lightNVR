@@ -7,12 +7,14 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
 import { queueThumbnailLoad, Priority } from '../../../request-queue.js';
+import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.jsx';
 
 /** Card elements that can be hidden via the settings cog */
 const HIDEABLE_ELEMENTS = [
   { key: 'stream', label: 'Stream Name' },
   { key: 'duration', label: 'Duration' },
   { key: 'detections', label: 'Detections' },
+  { key: 'tags', label: 'Tags' },
   { key: 'protected', label: 'Protected Badge' },
   { key: 'actions', label: 'Actions' },
 ];
@@ -81,9 +83,12 @@ function RecordingCard({
   toggleRecordingSelection,
   canDelete,
   selectionMode,
-  hiddenColumns
+  hiddenColumns,
+  onTagsChanged
 }) {
   const [currentFrame, setCurrentFrame] = useState(1); // Start with middle frame
+  const [showTagsOverlay, setShowTagsOverlay] = useState(false);
+  const tagBtnRef = useRef(null);
   const [isHovering, setIsHovering] = useState(false);
   const [framesReady, setFramesReady] = useState(false); // true once frames 0+2 are loaded
   const [loadState, setLoadState] = useState('loading'); // 'loading', 'loaded', 'error'
@@ -296,6 +301,36 @@ function RecordingCard({
             </div>
           )}
 
+          {/* Tags */}
+          {show('tags') && (
+            <div class="relative">
+              <div class={`flex flex-wrap gap-1 items-center min-h-[22px] ${show('actions') ? 'mb-1' : ''}`}>
+                {(recording.tags || []).length > 0 ? (
+                  (recording.tags || []).map((tag, idx) => (
+                    <span key={idx} class="inline-flex items-center px-1.5 py-0 rounded-full text-[10px] bg-primary/10 text-primary border border-primary/20">
+                      {tag}
+                    </span>
+                  ))
+                ) : null}
+                <button
+                  ref={tagBtnRef}
+                  class="p-0.5 rounded hover:bg-muted/70 transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setShowTagsOverlay(!showTagsOverlay); }}
+                  title="Manage tags"
+                >
+                  <TagIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                </button>
+              </div>
+              {showTagsOverlay && (
+                <TagsOverlay
+                  recording={recording}
+                  onClose={() => setShowTagsOverlay(false)}
+                  onTagsChanged={onTagsChanged}
+                />
+              )}
+            </div>
+          )}
+
           {/* Action buttons */}
           {show('actions') && (
             <div class="flex items-center gap-1 pt-1 border-t border-border">
@@ -385,9 +420,11 @@ export function RecordingsGrid({
   canDelete = true,
   clearSelections,
   hiddenColumns = {},
-  toggleColumn = () => {}
+  toggleColumn = () => {},
+  onTagsChanged
 }) {
   const [selectionMode, setSelectionMode] = useState(false);
+  const [showBulkTags, setShowBulkTags] = useState(false);
 
   /** Exit selection mode and clear all selections */
   const exitSelectionMode = useCallback(() => {
@@ -435,6 +472,24 @@ export function RecordingsGrid({
                 >
                   Download Selected
                 </button>
+                <div class="relative inline-block">
+                  <button
+                    class="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    disabled={getSelectedCount() === 0}
+                    onClick={() => setShowBulkTags(!showBulkTags)}
+                    title="Manage tags for selected recordings"
+                  >
+                    <TagIcon className="w-3.5 h-3.5" /> Manage Tags
+                  </button>
+                  {showBulkTags && (
+                    <BulkTagsOverlay
+                      recordings={recordings}
+                      selectedRecordings={selectedRecordings}
+                      onClose={() => setShowBulkTags(false)}
+                      onTagsChanged={onTagsChanged}
+                    />
+                  )}
+                </div>
                 <button
                   class="text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
                   onClick={exitSelectionMode}
@@ -483,6 +538,7 @@ export function RecordingsGrid({
               canDelete={canDelete}
               selectionMode={selectionMode}
               hiddenColumns={hiddenColumns}
+              onTagsChanged={onTagsChanged}
             />
           ))
         )}

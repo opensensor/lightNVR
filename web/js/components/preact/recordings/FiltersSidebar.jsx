@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { recordingsAPI } from './recordingsAPI.jsx';
 
 /** Small reusable accordion section for filter groups */
 function FilterSection({ title, badge, isExpanded, onToggle, children }) {
@@ -38,7 +39,7 @@ function FilterSection({ title, badge, isExpanded, onToggle, children }) {
   );
 }
 
-const DEFAULT_SECTIONS = { dateRange: true, stream: true, recordingType: true, detectionObject: false, protectedStatus: false, display: false };
+const DEFAULT_SECTIONS = { dateRange: true, stream: true, recordingType: true, detectionObject: false, tag: false, protectedStatus: false, display: false };
 
 /**
  * FiltersSidebar component
@@ -104,11 +105,18 @@ export function FiltersSidebar({
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
   }, []);
 
+  // Load available tags for the tag filter
+  const [availableTags, setAvailableTags] = useState([]);
+  useEffect(() => {
+    recordingsAPI.getAllRecordingTags().then(setAvailableTags);
+  }, []);
+
   // Count active non-default filters for badges
   const dateRangeBadge = filters.dateRange !== 'today' ? filters.dateRange.replace('last', '').replace('days', 'd') : null;
   const streamBadge = filters.streamId !== 'all' ? filters.streamId : null;
   const typeBadge = filters.recordingType === 'detection' ? 'detect' : filters.recordingType === 'no_detection' ? 'no detect' : null;
   const detectionBadge = filters.detectionLabel ? filters.detectionLabel : null;
+  const tagBadge = filters.tag ? filters.tag : null;
   const protectedBadge = filters.protectedStatus !== 'all' ? filters.protectedStatus : null;
 
   return (
@@ -226,6 +234,22 @@ export function FiltersSidebar({
               onChange={handleDetectionLabelChange}
             />
             <p className="text-[11px] text-muted-foreground">Filter by detected object type</p>
+          </FilterSection>
+
+          {/* Tag Filter */}
+          <FilterSection title="Tag" badge={tagBadge} isExpanded={sections.tag} onToggle={() => toggleSection('tag')}>
+            <select
+              id="tag-filter"
+              className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
+              value={filters.tag || ''}
+              onChange={e => setFilters(prev => ({ ...prev, tag: e.target.value || '' }))}
+            >
+              <option value="">All Tags</option>
+              {availableTags.map(tag => (
+                <option key={tag} value={tag}>{tag}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted-foreground">Filter recordings by tag</p>
           </FilterSection>
 
           {/* Protected Status */}

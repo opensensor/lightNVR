@@ -428,7 +428,7 @@ static void *batch_delete_worker_thread(void *arg) {
         // Get total count
         int total_count = get_recording_count(start_time, end_time,
                                             stream_name[0] != '\0' ? stream_name : NULL,
-                                            has_detection, NULL, protected_filter, NULL, 0);
+                                            has_detection, NULL, protected_filter, NULL, 0, NULL);
 
         if (total_count <= 0) {
             batch_delete_progress_complete(job_id, 0, 0);
@@ -458,7 +458,7 @@ static void *batch_delete_worker_thread(void *arg) {
                                                   stream_name[0] != '\0' ? stream_name : NULL,
                                                   has_detection, NULL, protected_filter, "id", "asc",
                                                   recordings, total_count, 0,
-                                                  NULL, 0);
+                                                  NULL, 0, NULL);
 
         if (count <= 0) {
             free(recordings);

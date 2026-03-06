@@ -17,6 +17,7 @@ import { ActiveFilters } from './recordings/ActiveFilters.jsx';
 import { RecordingsTable } from './recordings/RecordingsTable.jsx';
 import { RecordingsGrid } from './recordings/RecordingsGrid.jsx';
 import { PaginationControls } from './recordings/PaginationControls.jsx';
+import { BulkTagsOverlay, TagIcon } from './recordings/TagsOverlay.jsx';
 
 // Import utilities
 import { formatUtils } from './recordings/formatUtils.js';
@@ -65,6 +66,7 @@ export function RecordingsView() {
         streamId: 'all',
         recordingType: 'all',
         detectionLabel: '',
+        tag: '',
         protectedStatus: 'all'
       };
     }
@@ -78,6 +80,7 @@ export function RecordingsView() {
       streamId: p.get('stream') || 'all',
       recordingType: p.get('detection') === '1' ? 'detection' : p.get('detection') === '-1' ? 'no_detection' : 'all',
       detectionLabel: p.get('detection_label') || '',
+      tag: p.get('tag') || '',
       protectedStatus: p.has('protected') ? (p.get('protected') === '1' ? 'yes' : 'no') : 'all'
     };
   });
@@ -102,6 +105,7 @@ export function RecordingsView() {
   const [deleteMode, setDeleteMode] = useState('selected'); // 'single', 'selected' or 'all'
   const [pendingDeleteRecording, setPendingDeleteRecording] = useState(null); // recording awaiting single-delete confirmation
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [showBulkTagsOverlay, setShowBulkTagsOverlay] = useState(false);
   const recordingsTableBodyRef = useRef(null);
 
   // View mode: 'table' or 'grid' — initialized from URL, then localStorage, then default
@@ -258,6 +262,12 @@ export function RecordingsView() {
       url.searchParams.set('detection_label', filters.detectionLabel.trim());
     } else {
       url.searchParams.delete('detection_label');
+    }
+
+    if (filters.tag && filters.tag.trim()) {
+      url.searchParams.set('tag', filters.tag.trim());
+    } else {
+      url.searchParams.delete('tag');
     }
 
     if (filters.protectedStatus === 'yes') url.searchParams.set('protected', '1');
@@ -468,6 +478,7 @@ export function RecordingsView() {
       streamId: 'all',
       recordingType: 'all',
       detectionLabel: '',
+      tag: '',
       protectedStatus: 'all'
     });
     setPagination(prev => ({ ...prev, currentPage: 1 }));
@@ -501,6 +512,12 @@ export function RecordingsView() {
         setFilters(prev => ({
           ...prev,
           detectionLabel: ''
+        }));
+        break;
+      case 'tag':
+        setFilters(prev => ({
+          ...prev,
+          tag: ''
         }));
         break;
       case 'protectedStatus':
@@ -567,6 +584,11 @@ export function RecordingsView() {
   const clearSelections = () => {
     setSelectedRecordings({});
     setSelectAll(false);
+  };
+
+  // Handle tag changes — invalidate recordings query to refresh tags
+  const handleTagsChanged = () => {
+    queryClient.invalidateQueries({ queryKey: ['recordings'] });
   };
 
   // Open download modal
@@ -822,6 +844,7 @@ export function RecordingsView() {
                 clearSelections={clearSelections}
                 hiddenColumns={hiddenColumns}
                 toggleColumn={toggleColumn}
+                onTagsChanged={handleTagsChanged}
               />
             ) : (
               <RecordingsTable
@@ -845,6 +868,7 @@ export function RecordingsView() {
                 canDelete={canDelete}
                 hiddenColumns={hiddenColumns}
                 toggleColumn={toggleColumn}
+                onTagsChanged={handleTagsChanged}
               />
             )}
 
