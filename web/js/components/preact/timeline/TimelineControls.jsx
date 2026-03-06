@@ -411,6 +411,12 @@ export function TimelineControls() {
         <span className="text-xs text-muted-foreground">Play from current position</span>
       </div>
 
+      {/* Current time display */}
+      <div id="time-display"
+        className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-sm tabular-nums border border-border">
+        00:00:00
+      </div>
+
       <div className="flex items-center gap-1">
         <button
           className="px-2 h-6 rounded text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-1 focus:ring-primary transition-colors"

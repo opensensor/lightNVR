@@ -143,6 +143,39 @@ function updateUrlParams(stream, date) {
 }
 
 /**
+ * Collapsible help panel — replaces the old large static instructions block.
+ */
+function TimelineHelp({ idsMode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-3">
+      <button
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        onClick={() => setOpen(!open)}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+        </svg>
+        {open ? 'Hide help' : 'How to use the timeline'}
+      </button>
+      {open && (
+        <ul className="mt-1.5 ml-5 text-xs text-muted-foreground list-disc space-y-0.5">
+          {!idsMode && <li>Select a stream and date — recordings load automatically</li>}
+          {idsMode && <li>Use <strong>Refine Selections</strong> to go back and adjust your selection</li>}
+          <li>Click on the timeline to position the cursor at a specific time</li>
+          <li>Drag the playhead to navigate precisely</li>
+          <li>Click a segment (coloured bar) to play that recording</li>
+          <li>Use the green play button to start playback from the current cursor position</li>
+          <li>Use the <strong>Fit</strong>, <strong>+</strong> and <strong>−</strong> buttons to zoom the timeline</li>
+          <li>Use <strong>Snapshot</strong>, <strong>Download</strong>, <strong>Protect</strong> or <strong>Delete</strong> on the currently playing recording</li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
  * TimelinePage component
  */
 export function TimelinePage() {
@@ -475,22 +508,22 @@ export function TimelinePage() {
         {/* Video player */}
         <TimelinePlayer />
 
-        {/* Playback controls */}
+        {/* Playback controls (includes time display) */}
         <TimelineControls />
 
         {/* Timeline */}
         <div
           id="timeline-container"
-          className="relative w-full h-24 bg-secondary border border-input rounded-lg mb-6 overflow-hidden"
+          className="relative w-full h-24 bg-secondary border border-input rounded-lg mb-2 overflow-hidden"
           ref={timelineContainerRef}
         >
           <TimelineRuler />
           <TimelineSegments segments={segments} />
           <TimelineCursor />
 
-          {/* Instructions for cursor */}
-          <div className="absolute bottom-1 right-2 text-xs text-muted-foreground bg-card text-card-foreground bg-opacity-75 dark:bg-opacity-75 px-2 py-1 rounded">
-            Click a segment to play · Drag playhead to navigate
+          {/* Inline hint */}
+          <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
+            Click segment to play · Drag playhead to navigate
           </div>
         </div>
       </>
@@ -568,99 +601,69 @@ export function TimelinePage() {
       </div>
 
       {idsMode ? (
-        /* IDs mode: show info bar with refine/download options */
-        <div className="flex flex-wrap items-center gap-4 mb-4 p-3 bg-secondary rounded-lg">
-          <div className="flex-grow">
-            <span className="text-sm font-medium">
-              Viewing {segments.length} selected recording{segments.length !== 1 ? 's' : ''}
-              {idsSegmentInfo?.multi_stream && ` across ${[...new Set(segments.map(s => s.stream))].length} stream(s)`}
+        /* IDs mode: compact info bar */
+        <div className="flex flex-wrap items-center gap-3 mb-3 px-3 py-2 bg-secondary rounded-lg text-sm">
+          <span className="font-medium">
+            {segments.length} recording{segments.length !== 1 ? 's' : ''}
+            {idsSegmentInfo?.multi_stream && ` · ${[...new Set(segments.map(s => s.stream))].length} stream(s)`}
+          </span>
+          {idsSegmentInfo && (
+            <span className="text-xs text-muted-foreground">
+              {idsSegmentInfo.start_time} — {idsSegmentInfo.end_time}
             </span>
-            {idsSegmentInfo && (
-              <span className="text-xs text-muted-foreground ml-2">
-                {idsSegmentInfo.start_time} — {idsSegmentInfo.end_time}
-              </span>
-            )}
+          )}
+          <div className="ml-auto flex gap-2">
+            <a href={returnUrl || 'recordings.html'} className="btn-secondary text-xs px-2 py-1">
+              ← Refine Selections
+            </a>
+            <button
+              className="btn-primary text-xs px-2 py-1"
+              onClick={downloadSelectedRecordings}
+              disabled={segments.length === 0}
+            >
+              ↓ Download All ({segments.length})
+            </button>
           </div>
-          <a
-            href={returnUrl || 'recordings.html'}
-            className="btn-secondary text-sm px-3 py-1"
-          >
-            ← Refine Selections
-          </a>
-          <button
-            className="btn-primary text-sm px-3 py-1"
-            onClick={downloadSelectedRecordings}
-            disabled={segments.length === 0}
-          >
-            ↓ Download All ({segments.length})
-          </button>
         </div>
       ) : (
-        /* Normal mode: stream/date selectors */
-        <>
-          <div className="flex flex-wrap gap-4 mb-2">
-            <div className="stream-selector flex-grow">
-              <div className="flex justify-between items-center mb-2">
-                <label htmlFor="stream-selector">Stream</label>
-                <button
-                  className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1 rounded"
-                  onClick={() => refetchTimeline()}
-                >
-                  Reload Data
-                </button>
-              </div>
-              <select
-                id="stream-selector"
-                className="w-full p-2 border border-border rounded bg-background text-foreground"
-                value={selectedStream || ''}
-                onChange={handleStreamChange}
-              >
-                <option value="" disabled>Select a stream ({streamsList.length} available)</option>
-                {streamsList.map(stream => (
-                  <option key={stream.name} value={stream.name}>{stream.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="date-selector flex-grow">
-              <label className="block mb-2">Date</label>
-              <CalendarPicker value={selectedDate} onChange={handleDateChange} />
-            </div>
+        /* Normal mode: compact single-row stream + date selectors */
+        <div className="flex flex-wrap items-end gap-3 mb-3">
+          <div className="flex-grow min-w-[180px]">
+            <label htmlFor="stream-selector" className="block text-xs text-muted-foreground mb-1">Stream</label>
+            <select
+              id="stream-selector"
+              className="w-full p-1.5 text-sm border border-border rounded bg-background text-foreground"
+              value={selectedStream || ''}
+              onChange={handleStreamChange}
+            >
+              <option value="" disabled>Select a stream ({streamsList.length})</option>
+              {streamsList.map(stream => (
+                <option key={stream.name} value={stream.name}>{stream.name}</option>
+              ))}
+            </select>
           </div>
-
-          <div className="mb-4 text-sm text-muted-foreground italic">
-            {isLoadingTimeline ? 'Loading...' : 'Recordings auto-load when stream or date changes'}
+          <div className="min-w-[160px]">
+            <label className="block text-xs text-muted-foreground mb-1">Date</label>
+            <CalendarPicker value={selectedDate} onChange={handleDateChange} />
           </div>
-        </>
+          <button
+            className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1.5 rounded"
+            onClick={() => refetchTimeline()}
+            title="Reload timeline data"
+          >
+            ↻ Reload
+          </button>
+          {isLoadingTimeline && (
+            <span className="text-xs text-muted-foreground italic">Loading...</span>
+          )}
+        </div>
       )}
-
-      {/* Current time display */}
-      <div className="flex justify-between items-center mb-2">
-        <div id="time-display" className="timeline-time-display bg-secondary text-foreground px-3 py-1 rounded font-mono text-base">00:00:00</div>
-      </div>
-
-      {/* Debug info */}
-      <div className="mb-2 text-xs text-muted-foreground">
-        Debug - isLoading: {(isLoadingTimeline || idsLoading) ? 'true' : 'false'},
-        {idsMode ? `IDs mode (${recordingIds.split(',').length} IDs)` : `Streams: ${streamsList.length}`},
-        Segments: {segments.length}
-      </div>
 
       {/* Content */}
       {renderContent()}
 
-      {/* Instructions */}
-      <div className="mt-6 p-4 bg-secondary rounded">
-        <h3 className="text-lg font-semibold mb-2">How to use the timeline:</h3>
-        <ul className="list-disc pl-5">
-          <li>Select a stream and date to load recordings</li>
-          <li>Click on the timeline to position the cursor at a specific time</li>
-          <li>Drag the playhead to navigate precisely</li>
-          <li>Click on a segment (blue bar) to play that recording</li>
-          <li>Use the play button to start playback from the current cursor position</li>
-          <li>Use the zoom buttons to adjust the timeline scale</li>
-        </ul>
-      </div>
+      {/* Compact help — collapsible, replaces the old large instructions block */}
+      <TimelineHelp idsMode={idsMode} />
     </div>
   );
 }
