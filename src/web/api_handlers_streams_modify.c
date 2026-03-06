@@ -346,6 +346,16 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    // Validate stream name is not empty or whitespace-only
+    const char *name_str = name->valuestring;
+    while (*name_str == ' ' || *name_str == '\t') name_str++;
+    if (*name_str == '\0') {
+        log_error("Stream name is empty or whitespace-only");
+        cJSON_Delete(stream_json);
+        http_response_set_json_error(res, 400, "Stream name cannot be empty");
+        return;
+    }
+
     // Copy name and URL
     strncpy(config.name, name->valuestring, sizeof(config.name) - 1);
     strncpy(config.url, url->valuestring, sizeof(config.url) - 1);

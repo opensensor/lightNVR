@@ -87,6 +87,14 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         return 0;
     }
 
+    // Reject empty or whitespace-only stream names
+    const char *p = stream->name;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p == '\0') {
+        log_error("Stream name is empty or whitespace-only, rejecting");
+        return 0;
+    }
+
     pthread_mutex_lock(db_mutex);
 
     // Check if a stream with this name already exists but is disabled

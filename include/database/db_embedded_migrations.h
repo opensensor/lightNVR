@@ -504,6 +504,12 @@ static const char migration_0032_down[] =
     "DROP INDEX IF EXISTS idx_recording_tags_unique;\n"
     "DROP TABLE IF EXISTS recording_tags;";
 
+static const char migration_0033_up[] =
+    "DELETE FROM streams WHERE TRIM(name) = '' OR name IS NULL;";
+
+static const char migration_0033_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -729,8 +735,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0032_down,
         .is_embedded = true
     },
+    {
+        .version = "0033",
+        .description = "cleanup_blank_stream_names",
+        .sql_up = migration_0033_up,
+        .sql_down = migration_0033_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 32
+#define EMBEDDED_MIGRATIONS_COUNT 33
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
