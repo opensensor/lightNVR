@@ -608,10 +608,17 @@ export function RecordingsView() {
   // Open download modal
   const openDownloadModal = () => setIsDownloadModalOpen(true);
 
-  // Open delete confirmation modal
+  // Open delete confirmation modal (single) or go straight to batch delete flow
   const openDeleteModal = (mode) => {
-    setDeleteMode(mode);
-    setIsDeleteModalOpen(true);
+    if (mode === 'single') {
+      setDeleteMode(mode);
+      setIsDeleteModalOpen(true);
+      return;
+    }
+
+    // For batch modes ('selected' / 'all'), go directly to the batch delete
+    // modal which has its own built-in confirmation step with a proper warning.
+    startBatchDelete(mode);
   };
 
   // Close delete confirmation modal
@@ -620,49 +627,40 @@ export function RecordingsView() {
     setPendingDeleteRecording(null);
   };
 
-  // Handle delete confirmation
+  // Handle delete confirmation (single recording only now)
   const handleDeleteConfirm = async () => {
     closeDeleteModal();
 
     if (deleteMode === 'single' && pendingDeleteRecording) {
-      // Single recording delete via mutation; reload list on success
       deleteRecordingMutation(pendingDeleteRecording.id, {
         onSuccess: () => loadRecordings()
       });
       setPendingDeleteRecording(null);
-      return;
     }
+  };
 
-    // Save current URL parameters before deletion
+  // Start a batch delete (selected or all filtered)
+  const startBatchDelete = async (mode) => {
     const currentUrlParams = new URLSearchParams(window.location.search);
     const currentSortField = currentUrlParams.get('sort') || sortField;
     const currentSortDirection = currentUrlParams.get('order') || sortDirection;
     const currentPage = parseInt(currentUrlParams.get('page'), 10) || pagination.currentPage;
 
-    if (deleteMode === 'selected') {
-      // Use the recordingsAPI to delete selected recordings
+    if (mode === 'selected') {
       const result = await recordingsAPI.deleteSelectedRecordings(selectedRecordings);
 
-      // Reset selection
       setSelectedRecordings({});
       setSelectAll(false);
 
-      // Only reload if some recordings were deleted successfully
-      if (result.succeeded > 0) {
-        // Reload recordings with preserved parameters
+      if (result && result.succeeded > 0) {
         reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
       }
     } else {
-      // Use the recordingsAPI to delete all filtered recordings
       await recordingsAPI.deleteAllFilteredRecordings(filters);
 
-      // Reset selection
       setSelectedRecordings({});
       setSelectAll(false);
 
-      // Invalidate the recordings query cache so the list re-fetches immediately,
-      // regardless of staleTime. This is necessary because loadRecordings() is a
-      // no-op when the page hasn't changed, and the cache may still hold the old data.
       queryClient.invalidateQueries({ queryKey: ['recordings'] });
     }
   };

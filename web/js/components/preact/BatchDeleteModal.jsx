@@ -9,13 +9,25 @@ import { useQueryClient } from '../../query-client.js';
 
 /**
  * BatchDeleteModal component
+ *
+ * Two-phase modal:
+ *  1. Confirmation — shows warning and Proceed / Cancel buttons
+ *  2. Progress    — shows progress bar with no cancel (operation cannot be stopped)
+ *
  * @returns {JSX.Element} BatchDeleteModal component
  */
 export function BatchDeleteModal() {
   const queryClient = useQueryClient();
 
-  // State for modal visibility and progress
-  const [isVisible, setIsVisible] = useState(false);
+  // Modal phase: 'hidden' | 'confirm' | 'progress'
+  const [phase, setPhase] = useState('hidden');
+
+  // Pending delete params (stored during confirm phase, used when user clicks Proceed)
+  const pendingParamsRef = useRef(null);
+  const pendingResolveRef = useRef(null);
+  const pendingRejectRef = useRef(null);
+
+  // Progress state
   const [progress, setProgress] = useState({
     current: 0,
     total: 0,
@@ -26,16 +38,69 @@ export function BatchDeleteModal() {
     error: false
   });
 
-  // Use refs to store the current poll timer so it can be cancelled
+  // Poll timer ref
   const pollTimerRef = useRef(null);
-  // Track if we're currently running a batch delete
   const isRunningRef = useRef(false);
 
+  /** Derive a human-readable description for the confirm dialog */
+  const getConfirmDescription = () => {
+    const params = pendingParamsRef.current;
+    if (!params) return '';
+    if (params.ids) return `${params.ids.length} selected recording${params.ids.length !== 1 ? 's' : ''}`;
+    if (params.totalCount) return `${params.totalCount} filtered recording${params.totalCount !== 1 ? 's' : ''}`;
+    return 'all matching recordings';
+  };
+
   /**
-   * Show the modal
+   * Close/reset the modal (only allowed when not running, or when complete)
    */
-  const showModal = useCallback(() => {
-    // Reset progress state
+  const closeModal = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    setPhase('hidden');
+    pendingParamsRef.current = null;
+    pendingResolveRef.current = null;
+    pendingRejectRef.current = null;
+  }, []);
+
+  /**
+   * Cancel during the confirmation phase (before delete starts)
+   */
+  const cancelConfirm = useCallback(() => {
+    closeModal();
+    showStatusMessage('Batch delete cancelled', 'info', 3000);
+  }, [closeModal]);
+
+  /**
+   * Open the modal in confirmation phase. The actual HTTP request is only
+   * fired when the user clicks "Proceed".
+   *
+   * @param {Object} params - Delete parameters (ids or filter)
+   * @returns {Promise<Object>} Resolves when the operation completes
+   */
+  const batchDeleteRecordingsByHttpRequest = useCallback((params) => {
+    console.log('Batch delete requested with params:', params);
+
+    return new Promise((resolve, reject) => {
+      pendingParamsRef.current = params;
+      pendingResolveRef.current = resolve;
+      pendingRejectRef.current = reject;
+      setPhase('confirm');
+    });
+  }, []);
+
+  /**
+   * User confirmed — start the actual delete operation.
+   */
+  const proceedWithDelete = useCallback(() => {
+    const params = pendingParamsRef.current;
+    const resolve = pendingResolveRef.current;
+    const reject = pendingRejectRef.current;
+    if (!params) return;
+
+    // Switch to progress phase
     setProgress({
       current: 0,
       total: 0,
@@ -45,100 +110,25 @@ export function BatchDeleteModal() {
       complete: false,
       error: false
     });
+    setPhase('progress');
+    isRunningRef.current = true;
 
-    // Show modal
-    setIsVisible(true);
-  }, []);
-
-  /**
-   * Close the modal
-   */
-  const closeModal = useCallback(() => {
-    setIsVisible(false);
-
-    // Clear any active poll timer
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
+    // Calculate total count for progress bar
+    let totalCount = 0;
+    if (params.ids) {
+      totalCount = params.ids.length;
+    } else if (params.filter && params.totalCount) {
+      totalCount = params.totalCount;
     }
-  }, []);
 
-  /**
-   * Update progress state
-   * @param {Object} newProgress - New progress data
-   */
-  const updateProgress = useCallback((newProgress) => {
-    setProgress(prevProgress => ({
-      ...prevProgress,
-      ...newProgress
+    setProgress(prev => ({
+      ...prev,
+      total: totalCount,
+      status: 'Starting batch delete operation...'
     }));
-  }, []);
 
-  /**
-   * Cancel batch delete operation
-   */
-  const cancelBatchDelete = useCallback(() => {
-    // Clear poll timer
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-
-    isRunningRef.current = false;
-
-    // Close modal
-    setIsVisible(false);
-
-    // Show status message
-    showStatusMessage('Batch delete operation cancelled', 'warning', 5000);
-  }, []);
-
-  /**
-   * Delete recordings by HTTP request
-   * @param {Object} params - Delete parameters (ids or filter)
-   * @returns {Promise<Object>} Promise that resolves when the operation is complete
-   */
-  const batchDeleteRecordingsByHttpRequest = useCallback((params) => {
-    console.log('Using HTTP for batch delete with params:', params);
-
-    return new Promise((resolve, reject) => {
-      // Clear any existing timer
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-
-      // Show modal with reset state
-      setProgress({
-        current: 0,
-        total: 0,
-        succeeded: 0,
-        failed: 0,
-        status: 'Preparing to delete recordings...',
-        complete: false,
-        error: false
-      });
-      setIsVisible(true);
-
-      isRunningRef.current = true;
-
-      // Calculate total count for progress bar
-      let totalCount = 0;
-      if (params.ids) {
-        totalCount = params.ids.length;
-      } else if (params.filter && params.totalCount) {
-        totalCount = params.totalCount;
-      }
-
-      // Update progress to show we're starting
-      setProgress(prev => ({
-        ...prev,
-        total: totalCount,
-        status: 'Starting batch delete operation...'
-      }));
-
-      // Send HTTP request to start the batch delete job
-      fetch('/api/recordings/batch-delete', {
+    // Send HTTP request to start the batch delete job
+    fetch('/api/recordings/batch-delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -281,26 +271,19 @@ export function BatchDeleteModal() {
     console.log('BatchDeleteModal initialized');
 
     // Make functions globally available
-    window.showBatchDeleteModal = showModal;
     window.closeBatchDeleteModal = closeModal;
-    window.updateBatchDeleteProgress = updateProgress;
     window.batchDeleteRecordingsByHttpRequest = batchDeleteRecordingsByHttpRequest;
 
     // Cleanup on unmount
     return () => {
-      // Clear any active poll timer
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
       }
-
-      // Clean up global functions
-      delete window.showBatchDeleteModal;
       delete window.closeBatchDeleteModal;
-      delete window.updateBatchDeleteProgress;
       delete window.batchDeleteRecordingsByHttpRequest;
     };
-  }, [showModal, closeModal, updateProgress, batchDeleteRecordingsByHttpRequest]);
+  }, [closeModal, batchDeleteRecordingsByHttpRequest]);
 
   // Calculate progress percentage
   const getProgressPercentage = () => {
@@ -354,82 +337,120 @@ export function BatchDeleteModal() {
     }
   };
 
-  // If not visible, don't render anything
-  if (!isVisible) {
+  // If hidden, don't render anything
+  if (phase === 'hidden') {
     return null;
   }
 
   return (
-    <div 
-      id="batch-delete-modal" 
+    <div
+      id="batch-delete-modal"
       className="fixed inset-0 bg-black/50 overflow-y-auto h-full w-full flex items-center justify-center z-50"
     >
       <div className="relative bg-card text-card-foreground rounded-lg shadow-xl max-w-md mx-auto p-6 w-full">
-        <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
-          <h3 id="batch-delete-modal-title" className="text-xl font-bold text-gray-900 dark:text-white">
-            Batch Delete Progress
-          </h3>
-          <button 
-            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl font-bold"
-            onClick={closeModal}
-          >
-            &times;
-          </button>
-        </div>
-        
-        <div className="modal-body">
-          <div className="progress-container bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-4">
-            <div
-              className={getProgressBarClasses()}
-              style={{ width: `${getProgressPercentage()}%` }}
-            ></div>
-          </div>
 
-          <div className="flex justify-between text-muted-foreground mb-6">
-            <div>{getCountText()}</div>
-            <div>{getPercentageText()}</div>
-          </div>
-          
-          <div className="mb-4">
-            <div className="flex justify-between mb-2">
-              <span className="text-gray-700 dark:text-gray-300">Succeeded:</span>
-              <span className="font-bold text-green-600 dark:text-green-400">{progress.succeeded}</span>
+        {/* ===== PHASE 1: Confirmation ===== */}
+        {phase === 'confirm' && (
+          <>
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
+              <h3 className="text-xl font-bold">Confirm Batch Delete</h3>
+              <button
+                className="text-muted-foreground hover:text-foreground text-2xl font-bold"
+                onClick={cancelConfirm}
+              >&times;</button>
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-700 dark:text-gray-300">Failed:</span>
-              <span className="font-bold text-red-600 dark:text-red-400">{progress.failed}</span>
+
+            <div className="mb-4">
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 mb-4">
+                <svg className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div>
+                  <p className="font-semibold text-red-500 mb-1">This action cannot be undone</p>
+                  <p className="text-sm text-muted-foreground">
+                    You are about to permanently delete <strong>{getConfirmDescription()}</strong>.
+                    Once started, this operation cannot be cancelled or reversed.
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-          
-          <div className="text-sm italic text-muted-foreground mb-4">
-            {progress.message}
-          </div>
-        </div>
-        
-        <div className="flex justify-end pt-2 border-t border-border">
-          {progress.complete ? (
-            <button 
-              className="btn-primary"
-              onClick={closeModal}
-            >
-              Done
-            </button>
-          ) : (
-            <button 
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
-              onClick={cancelBatchDelete}
-            >
-              Cancel
-            </button>
-          )}
-        </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+              <button
+                className="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors"
+                onClick={cancelConfirm}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors font-medium"
+                onClick={proceedWithDelete}
+              >
+                Delete {getConfirmDescription()}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ===== PHASE 2: Progress (non-cancellable) ===== */}
+        {phase === 'progress' && (
+          <>
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-border">
+              <h3 className="text-xl font-bold">
+                {progress.complete ? 'Batch Delete Complete' : 'Deleting Recordings…'}
+              </h3>
+            </div>
+
+            <div className="modal-body">
+              <div className="progress-container bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-4">
+                <div
+                  className={getProgressBarClasses()}
+                  style={{ width: `${getProgressPercentage()}%` }}
+                ></div>
+              </div>
+
+              <div className="flex justify-between text-muted-foreground mb-6">
+                <div>{getCountText()}</div>
+                <div>{getPercentageText()}</div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex justify-between mb-2">
+                  <span className="text-muted-foreground">Succeeded:</span>
+                  <span className="font-bold text-green-600 dark:text-green-400">{progress.succeeded}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Failed:</span>
+                  <span className="font-bold text-red-600 dark:text-red-400">{progress.failed}</span>
+                </div>
+              </div>
+
+              {!progress.complete && (
+                <div className="text-xs text-muted-foreground italic mb-4">
+                  This operation cannot be cancelled once started.
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-border">
+              {progress.complete ? (
+                <button className="btn-primary" onClick={closeModal}>Done</button>
+              ) : (
+                <span className="text-sm text-muted-foreground italic">Please wait…</span>
+              )}
+            </div>
+          </>
+        )}
+
       </div>
     </div>
   );
 }
 
 /**
- * Delete multiple recordings by IDs
+ * Delete multiple recordings by IDs.
+ * Opens the confirmation modal — no browser confirm() used.
  * @param {Array<number>} ids - Recording IDs to delete
  */
 export function batchDeleteRecordings(ids) {
@@ -438,24 +459,11 @@ export function batchDeleteRecordings(ids) {
     return;
   }
 
-  // Confirm deletion
-  if (!confirm(`Are you sure you want to delete ${ids.length} recordings?`)) {
-    return;
-  }
-
-  // Show modal
-  if (typeof window.showBatchDeleteModal === 'function') {
-    window.showBatchDeleteModal();
-  }
-
-  // Use HTTP fallback for batch delete
   if (typeof window.batchDeleteRecordingsByHttpRequest === 'function') {
     window.batchDeleteRecordingsByHttpRequest({ ids })
       .catch(error => {
-        console.error('Error starting batch delete:', error);
+        console.error('Error in batch delete:', error);
         showStatusMessage(`Error: ${error.message || 'Failed to start batch delete operation'}`, 'error', 5000);
-
-        // Close modal if it's open
         if (typeof window.closeBatchDeleteModal === 'function') {
           window.closeBatchDeleteModal();
         }
@@ -466,7 +474,8 @@ export function batchDeleteRecordings(ids) {
 }
 
 /**
- * Delete recordings by filter
+ * Delete recordings by filter.
+ * Opens the confirmation modal — no browser confirm() used.
  * @param {Object} filter - Filter to delete by
  */
 export function batchDeleteRecordingsByFilter(filter) {
@@ -475,24 +484,11 @@ export function batchDeleteRecordingsByFilter(filter) {
     return;
   }
 
-  // Confirm deletion
-  if (!confirm('Are you sure you want to delete all recordings matching the current filter?')) {
-    return;
-  }
-
-  // Show modal
-  if (typeof window.showBatchDeleteModal === 'function') {
-    window.showBatchDeleteModal();
-  }
-
-  // Use HTTP fallback for batch delete
   if (typeof window.batchDeleteRecordingsByHttpRequest === 'function') {
     window.batchDeleteRecordingsByHttpRequest({ filter })
       .catch(error => {
-        console.error('Error starting batch delete:', error);
+        console.error('Error in batch delete:', error);
         showStatusMessage(`Error: ${error.message || 'Failed to start batch delete operation'}`, 'error', 5000);
-
-        // Close modal if it's open
         if (typeof window.closeBatchDeleteModal === 'function') {
           window.closeBatchDeleteModal();
         }

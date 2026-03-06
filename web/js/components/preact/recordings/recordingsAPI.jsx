@@ -384,12 +384,11 @@ export const recordingsAPI = {
     }
 
     try {
-      // Show batch delete modal
-      if (typeof window.showBatchDeleteModal === 'function') {
-        window.showBatchDeleteModal();
+      // Route through BatchDeleteModal for confirmation + progress
+      if (typeof window.batchDeleteRecordingsByHttpRequest === 'function') {
+        return await window.batchDeleteRecordingsByHttpRequest({ ids: selectedIds });
       }
-
-      // Use HTTP for batch delete (WebSockets were removed)
+      // Fallback to direct HTTP if modal not mounted
       return recordingsAPI.deleteSelectedRecordingsHttp(selectedIds);
     } catch (error) {
       console.error('Error in batch delete operation:', error);
@@ -529,29 +528,24 @@ export const recordingsAPI = {
 
       // Add date range filters
       if (filters.dateRange === 'custom') {
-        // User enters local date/time — parse as local then convert to UTC ISO 8601
         filter.start = dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString();
         filter.end = dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString();
       } else {
-        // Convert predefined range to actual dates
         const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
         filter.start = start;
         filter.end = end;
       }
 
-      // Add stream filter
       if (filters.streamId !== 'all') {
-        filter.stream_name = filters.streamId; // Changed from 'stream' to 'stream_name' to match API expectations
+        filter.stream_name = filters.streamId;
       }
 
-      // Add recording type filter
       if (filters.recordingType === 'detection') {
         filter.detection = 1;
       } else if (filters.recordingType === 'no_detection') {
         filter.detection = -1;
       }
 
-      // Add protected status filter
       if (filters.protectedStatus === 'yes') {
         filter.protected = 1;
       } else if (filters.protectedStatus === 'no') {
@@ -560,91 +554,38 @@ export const recordingsAPI = {
 
       console.log('Deleting with filter:', filter);
 
-      // Show batch delete modal with indeterminate progress initially
-      if (typeof window.showBatchDeleteModal === 'function') {
-        window.showBatchDeleteModal();
-
-        // Update the progress UI with an indeterminate state
-        if (typeof window.updateBatchDeleteProgress === 'function') {
-          window.updateBatchDeleteProgress({
-            current: 0,
-            total: 0, // We don't know the total yet
-            succeeded: 0,
-            failed: 0,
-            status: `Preparing to delete recordings matching filter...`,
-            complete: false
-          });
-        }
-      }
-
-      // Get the total count from the current page's filter
-      // This will help us set a more accurate progress indicator
+      // Get total count first so the confirmation modal can show it
       let totalCount = 0;
       try {
-        // Build query parameters for the API request
         const params = new URLSearchParams();
-
-        // Add date range parameters
-        if (filter.start) {
-          params.append('start', filter.start);
-        }
-
-        if (filter.end) {
-          params.append('end', filter.end);
-        }
-
-        // Add stream filter
-        if (filter.stream_name) {
-          params.append('stream', filter.stream_name);
-        }
-
-        // Add detection filter
-        if (filter.detection === 1) {
-          params.append('has_detection', '1');
-        } else if (filter.detection === -1) {
-          params.append('has_detection', '-1');
-        }
-
-        // Add protected filter
-        if (filter.protected === 1) {
-          params.append('protected', '1');
-        } else if (filter.protected === 0) {
-          params.append('protected', '0');
-        }
-
-        // Set page size to 1 to minimize data transfer, we just need the total count
+        if (filter.start) params.append('start', filter.start);
+        if (filter.end) params.append('end', filter.end);
+        if (filter.stream_name) params.append('stream', filter.stream_name);
+        if (filter.detection === 1) params.append('has_detection', '1');
+        else if (filter.detection === -1) params.append('has_detection', '-1');
+        if (filter.protected === 1) params.append('protected', '1');
+        else if (filter.protected === 0) params.append('protected', '0');
         params.append('page', '1');
         params.append('limit', '1');
 
-        console.log('Getting total count with params:', params.toString());
-
-        // Fetch recordings to get pagination info
         const response = await fetch(`/api/recordings?${params.toString()}`);
         if (response.ok) {
           const data = await response.json();
-          if (data && data.pagination && data.pagination.total) {
+          if (data?.pagination?.total) {
             totalCount = data.pagination.total;
             console.log(`Found ${totalCount} recordings matching filter`);
-
-            // Update the progress UI with the total count
-            if (typeof window.updateBatchDeleteProgress === 'function') {
-              window.updateBatchDeleteProgress({
-                current: 0,
-                total: totalCount,
-                succeeded: 0,
-                failed: 0,
-                status: `Found ${totalCount} recordings matching filter. Starting deletion...`,
-                complete: false
-              });
-            }
           }
         }
       } catch (countError) {
         console.warn('Error getting recording count:', countError);
-        // Continue anyway, we'll just show an indeterminate progress
       }
 
-      // Use HTTP for batch delete with filter (WebSockets were removed)
+      // Route through BatchDeleteModal for confirmation + progress
+      if (typeof window.batchDeleteRecordingsByHttpRequest === 'function') {
+        return await window.batchDeleteRecordingsByHttpRequest({ filter, totalCount });
+      }
+
+      // Fallback to direct HTTP if modal not mounted
       return recordingsAPI.deleteAllFilteredRecordingsHttp(filter);
     } catch (error) {
       console.error('Error in delete all operation:', error);
