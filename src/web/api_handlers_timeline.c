@@ -25,6 +25,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "database/database_manager.h"
+#include "database/db_core.h"
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 #include "database/db_auth.h"
@@ -49,39 +50,80 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
         log_error("Invalid parameters for get_timeline_segments");
         return -1;
     }
-    
-    // Allocate memory for recording metadata
-    recording_metadata_t *recordings = (recording_metadata_t *)malloc(max_segments * sizeof(recording_metadata_t));
-    if (!recordings) {
-        log_error("Failed to allocate memory for recordings");
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    if (!db) {
+        log_error("Database not initialized");
         return -1;
     }
-    
-    // Get recordings from database
-    int count = get_recording_metadata_paginated(start_time, end_time, stream_name, 0,
-                                              NULL, -1, "start_time", "asc", recordings, max_segments, 0,
-                                              NULL, 0, NULL);
-    
-    if (count < 0) {
-        log_error("Failed to get recordings from database");
-        free(recordings);
+
+    pthread_mutex_lock(db_mutex);
+
+    /*
+     * Use an overlap query so that recordings which span the boundary of the
+     * requested range are included.  A recording overlaps [start_time, end_time]
+     * when its start is before the range end AND its end is after the range start.
+     *
+     * The old code used get_recording_metadata_paginated which filters with
+     *   r.start_time >= ? AND r.start_time <= ?
+     * That misses recordings whose start_time is before the query window but
+     * whose end_time falls inside it (e.g. a recording from the previous day
+     * that extends past midnight).
+     *
+     * Also populate has_detection by checking trigger_type or the detections table.
+     */
+    const char *sql =
+        "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
+        "r.size_bytes, "
+        "CASE WHEN r.trigger_type = 'detection' THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id) THEN 1 "
+        "     ELSE 0 END AS has_detection "
+        "FROM recordings r "
+        "WHERE r.is_complete = 1 "
+        "  AND r.end_time IS NOT NULL "
+        "  AND r.stream_name = ? "
+        "  AND r.start_time <= ? "
+        "  AND r.end_time   >= ? "
+        "ORDER BY r.start_time ASC "
+        "LIMIT ?;";
+
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare timeline segments query: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
         return -1;
     }
-    
-    // Convert recording metadata to timeline segments
-    for (int i = 0; i < count; i++) {
-        segments[i].id = recordings[i].id;
-        strncpy(segments[i].stream_name, recordings[i].stream_name, sizeof(segments[i].stream_name) - 1);
-        strncpy(segments[i].file_path, recordings[i].file_path, sizeof(segments[i].file_path) - 1);
-        segments[i].start_time = recordings[i].start_time;
-        segments[i].end_time = recordings[i].end_time;
-        segments[i].size_bytes = recordings[i].size_bytes;
-        segments[i].has_detection = false; // Default to false, could be updated with detection info
+
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
+    sqlite3_bind_int(stmt, 4, max_segments);
+
+    int count = 0;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_segments) {
+        segments[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
+
+        const char *sname = (const char *)sqlite3_column_text(stmt, 1);
+        if (sname) strncpy(segments[count].stream_name, sname, sizeof(segments[count].stream_name) - 1);
+
+        const char *fpath = (const char *)sqlite3_column_text(stmt, 2);
+        if (fpath) strncpy(segments[count].file_path, fpath, sizeof(segments[count].file_path) - 1);
+
+        segments[count].start_time  = (time_t)sqlite3_column_int64(stmt, 3);
+        segments[count].end_time    = (time_t)sqlite3_column_int64(stmt, 4);
+        segments[count].size_bytes  = (uint64_t)sqlite3_column_int64(stmt, 5);
+        segments[count].has_detection = sqlite3_column_int(stmt, 6) != 0;
+
+        count++;
     }
-    
-    // Free recordings
-    free(recordings);
-    
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    log_info("get_timeline_segments: found %d segments for stream '%s' in range [%ld, %ld]",
+             count, stream_name, (long)start_time, (long)end_time);
     return count;
 }
 

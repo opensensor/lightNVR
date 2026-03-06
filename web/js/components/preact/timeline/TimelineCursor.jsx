@@ -16,10 +16,15 @@ export function TimelineCursor() {
   const [visible, setVisible] = useState(false);
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
-  const [isDragging, setIsDragging] = useState(false);
 
-  // Refs
+  // Refs — use refs for values read inside event-handler closures so they
+  // always see the latest value without needing to re-attach listeners.
   const cursorRef = useRef(null);
+  const isDraggingRef = useRef(false);
+  const startHourRef = useRef(startHour);
+  const endHourRef = useRef(endHour);
+  startHourRef.current = startHour;
+  endHourRef.current = endHour;
 
   // Debounce function to limit how often a function can be called
   const debounce = (func, delay) => {
@@ -48,14 +53,14 @@ export function TimelineCursor() {
       setEndHour(state.timelineEndHour || 24);
 
       // Only update current time if not dragging
-      if (!isDragging && !state.userControllingCursor) {
+      if (!isDraggingRef.current && !state.userControllingCursor) {
         updateTimeDisplay(state.currentTime);
         debouncedUpdateCursorPosition(state.currentTime, state.timelineStartHour || 0, state.timelineEndHour || 24);
       }
     });
 
     return () => unsubscribe();
-  }, [isDragging, debouncedUpdateCursorPosition]);
+  }, [debouncedUpdateCursorPosition]);
 
   // Set up drag handling
   useEffect(() => {
@@ -65,7 +70,7 @@ export function TimelineCursor() {
     const handleMouseDown = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      setIsDragging(true);
+      isDraggingRef.current = true;
 
       timelineState.userControllingCursor = true;
       timelineState.preserveCursorPosition = true;
@@ -77,7 +82,7 @@ export function TimelineCursor() {
     };
 
     const handleMouseMove = (e) => {
-      if (!isDragging) return;
+      if (!isDraggingRef.current) return;
 
       // Get container dimensions
       const container = cursor.parentElement;
@@ -92,8 +97,8 @@ export function TimelineCursor() {
       setPosition(positionPercent);
 
       // Calculate time based on position
-      const hourRange = endHour - startHour;
-      const hour = startHour + (positionPercent / 100) * hourRange;
+      const hourRange = endHourRef.current - startHourRef.current;
+      const hour = startHourRef.current + (positionPercent / 100) * hourRange;
 
       // Convert hour to timestamp using the utility function
       const timestamp = timelineState.timelineHourToTimestamp(hour, timelineState.selectedDate);
@@ -103,7 +108,7 @@ export function TimelineCursor() {
     };
 
     const handleMouseUp = (e) => {
-      if (!isDragging) return;
+      if (!isDraggingRef.current) return;
 
       const container = cursor.parentElement;
       if (!container) return;
@@ -112,12 +117,12 @@ export function TimelineCursor() {
       const clickX = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
       const positionPercent = (clickX / rect.width) * 100;
 
-      const hourRange = endHour - startHour;
-      const hour = startHour + (positionPercent / 100) * hourRange;
+      const hourRange = endHourRef.current - startHourRef.current;
+      const hour = startHourRef.current + (positionPercent / 100) * hourRange;
       const timestamp = timelineState.timelineHourToTimestamp(hour, timelineState.selectedDate);
 
       // Reset dragging state
-      setIsDragging(false);
+      isDraggingRef.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
 
@@ -177,7 +182,7 @@ export function TimelineCursor() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [cursorRef.current, startHour, endHour, isDragging]);
+  }, []);
 
   // Update cursor position
   const updateCursorPosition = (time, startHr, endHr) => {
