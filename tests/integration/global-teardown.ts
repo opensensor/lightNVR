@@ -27,16 +27,33 @@ async function stopLightNVR(): Promise<void> {
         process.kill(pid, 'SIGTERM');
         console.log(`Sent SIGTERM to PID ${pid}`);
 
-        // Wait a bit for graceful shutdown
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait for graceful shutdown — lightNVR's cleanup can take up to
+        // ~50 seconds (phase 1: 30s + phase 2: 15s + margin).  Poll every
+        // second so we don't wait longer than necessary.
+        const maxWaitMs = 60_000;
+        const pollMs = 1_000;
+        const deadline = Date.now() + maxWaitMs;
+        let alive = true;
+        while (alive && Date.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, pollMs));
+          try {
+            process.kill(pid, 0); // throws if process is gone
+          } catch {
+            alive = false;
+          }
+        }
 
-        // Check if still running and force kill
-        try {
-          process.kill(pid, 0); // Check if process exists
-          process.kill(pid, 'SIGKILL');
-          console.log(`Sent SIGKILL to PID ${pid}`);
-        } catch (e) {
-          // Process already dead
+        if (alive) {
+          // Still running after timeout — force kill
+          console.log(`lightNVR still running after ${maxWaitMs / 1000}s, sending SIGKILL`);
+          try {
+            process.kill(pid, 'SIGKILL');
+            console.log(`Sent SIGKILL to PID ${pid}`);
+          } catch {
+            // Process died between check and kill
+          }
+        } else {
+          console.log('lightNVR shut down gracefully');
         }
       } catch (e) {
         console.log(`Process ${pid} already stopped`);
