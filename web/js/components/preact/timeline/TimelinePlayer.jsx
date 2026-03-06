@@ -8,6 +8,7 @@ import { timelineState } from './TimelinePage.jsx';
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
+import { TagIcon, TagsOverlay } from '../recordings/TagsOverlay.jsx';
 
 /**
  * TimelinePlayer component
@@ -23,6 +24,8 @@ export function TimelinePlayer() {
   const [isProtected, setIsProtected] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [segmentRecordingData, setSegmentRecordingData] = useState(null);
+  const [showTagsOverlay, setShowTagsOverlay] = useState(false);
+  const [recordingTags, setRecordingTags] = useState([]);
 
   // Refs
   const videoRef = useRef(null);
@@ -420,6 +423,8 @@ export function TimelinePlayer() {
         currentSegmentIndex >= segments.length) {
       setDetections([]);
       setSegmentRecordingData(null);
+      setRecordingTags([]);
+      setShowTagsOverlay(false);
       return;
     }
 
@@ -439,6 +444,12 @@ export function TimelinePlayer() {
         // Store recording data for action buttons
         setSegmentRecordingData(data);
         setIsProtected(!!data.protected);
+
+        // Fetch recording tags
+        fetch(`/api/recordings/${segment.id}/tags`)
+          .then(res => res.ok ? res.json() : null)
+          .then(tagData => setRecordingTags(tagData?.tags || []))
+          .catch(() => setRecordingTags([]));
 
         if (!data.stream || !data.start_time || !data.end_time) return;
 
@@ -763,6 +774,22 @@ export function TimelinePlayer() {
             >
               🛡 {isProtected ? 'Protected' : 'Protect'}
             </button>
+            <div className="relative inline-block">
+              <button
+                className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center gap-1 text-[11px]"
+                onClick={() => setShowTagsOverlay(!showTagsOverlay)}
+                title="Manage Recording Tags"
+              >
+                <TagIcon className="w-3 h-3" /> Tags{recordingTags.length > 0 ? ` (${recordingTags.length})` : ''}
+              </button>
+              {showTagsOverlay && (
+                <TagsOverlay
+                  recording={{ id: currentSegmentId, tags: recordingTags }}
+                  onClose={() => setShowTagsOverlay(false)}
+                  onTagsChanged={(_id, newTags) => setRecordingTags(newTags)}
+                />
+              )}
+            </div>
             <button
               className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-[11px]"
               onClick={() => setShowDeleteConfirm(true)}

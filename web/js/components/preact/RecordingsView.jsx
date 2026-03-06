@@ -618,9 +618,17 @@ export function RecordingsView() {
     setSelectAll(false);
   };
 
-  // Handle tag changes — invalidate recordings query to refresh tags
-  const handleTagsChanged = () => {
-    queryClient.invalidateQueries({ queryKey: ['recordings'] });
+  // Handle tag changes — update local state when possible, only refetch for bulk ops
+  const handleTagsChanged = (recordingId, newTags) => {
+    if (recordingId && newTags) {
+      // Single recording tag change — update local state without refetching
+      setRecordings(prev =>
+        prev.map(r => r.id === recordingId ? { ...r, tags: newTags } : r)
+      );
+    } else {
+      // Bulk tag change — refetch to get accurate state
+      queryClient.invalidateQueries({ queryKey: ['recordings'] });
+    }
   };
 
   // Navigate to timeline with selected recording IDs

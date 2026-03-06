@@ -236,8 +236,8 @@ export function FiltersSidebar({
             <p className="text-[11px] text-muted-foreground">Filter by detected object type</p>
           </FilterSection>
 
-          {/* Tag Filter */}
-          <FilterSection title="Tag" badge={tagBadge} isExpanded={sections.tag} onToggle={() => toggleSection('tag')}>
+          {/* Recording Tag Filter */}
+          <FilterSection title="Recording Tags" badge={tagBadge} isExpanded={sections.tag} onToggle={() => toggleSection('tag')}>
             <select
               id="tag-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"

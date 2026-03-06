@@ -185,7 +185,7 @@ function RecordingCard({
 
   return (
     <div
-      class={`recording-card relative bg-card text-card-foreground rounded-lg shadow overflow-hidden cursor-pointer group transition-all duration-200 hover:shadow-lg ${isSelected ? 'ring-2' : ''}`}
+      class={`recording-card relative bg-card text-card-foreground rounded-lg shadow cursor-pointer group transition-all duration-200 hover:shadow-lg ${isSelected ? 'ring-2' : ''}`}
       style={isSelected ? { ringColor: 'hsl(var(--primary))' } : {}}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
