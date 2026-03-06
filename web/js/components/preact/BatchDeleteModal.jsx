@@ -263,7 +263,6 @@ export function BatchDeleteModal() {
 
         reject(error);
       });
-    });
   }, []);
 
   // Component initialization - register global functions
