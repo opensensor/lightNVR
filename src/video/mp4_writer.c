@@ -122,52 +122,6 @@ int mp4_writer_has_audio(const mp4_writer_t *writer) {
 }
 
 
-// Forward declaration of transcode_audio_packet function
-extern int transcode_audio_packet(const char *stream_name,
-                                const AVPacket *in_pkt,
-                                AVPacket *out_pkt,
-                                const AVStream *input_stream);
-
-/**
- * Check if a codec is a PCM variant that needs transcoding
- *
- * @param codec_id The codec ID to check
- * @return true if it's a PCM codec, false otherwise
- */
-static bool is_pcm_codec(enum AVCodecID codec_id) {
-    switch (codec_id) {
-        case AV_CODEC_ID_PCM_S16LE:
-        case AV_CODEC_ID_PCM_S16BE:
-        case AV_CODEC_ID_PCM_U16LE:
-        case AV_CODEC_ID_PCM_U16BE:
-        case AV_CODEC_ID_PCM_S8:
-        case AV_CODEC_ID_PCM_U8:
-        case AV_CODEC_ID_PCM_MULAW:
-        case AV_CODEC_ID_PCM_ALAW:
-        case AV_CODEC_ID_PCM_S32LE:
-        case AV_CODEC_ID_PCM_S32BE:
-        case AV_CODEC_ID_PCM_U32LE:
-        case AV_CODEC_ID_PCM_U32BE:
-        case AV_CODEC_ID_PCM_S24LE:
-        case AV_CODEC_ID_PCM_S24BE:
-        case AV_CODEC_ID_PCM_U24LE:
-        case AV_CODEC_ID_PCM_U24BE:
-        case AV_CODEC_ID_PCM_S24DAUD:
-        case AV_CODEC_ID_PCM_ZORK:
-        case AV_CODEC_ID_PCM_S16LE_PLANAR:
-        case AV_CODEC_ID_PCM_DVD:
-        case AV_CODEC_ID_PCM_F32BE:
-        case AV_CODEC_ID_PCM_F32LE:
-        case AV_CODEC_ID_PCM_F64BE:
-        case AV_CODEC_ID_PCM_F64LE:
-        case AV_CODEC_ID_PCM_BLURAY:
-        case AV_CODEC_ID_PCM_LXF:
-            return true;
-        default:
-            return false;
-    }
-}
-
 /**
  * Write a packet to the MP4 file
  * This function handles both video and audio packets

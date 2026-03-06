@@ -395,7 +395,7 @@ int transcode_audio_packet(const char *stream_name,
  * @param transcoded_params Output parameter to store the transcoded codec parameters
  * @return 0 on success, negative on error
  */
-static int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
+int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
                                  const AVRational *time_base,
                                  const char *stream_name,
                                  AVCodecParameters **transcoded_params) {
@@ -538,7 +538,7 @@ cleanup:
  * @param codec_id The codec ID to check
  * @return true if it's a PCM codec, false otherwise
  */
-static bool is_pcm_codec(enum AVCodecID codec_id) {
+bool is_pcm_codec(enum AVCodecID codec_id) {
     switch (codec_id) {
         case AV_CODEC_ID_PCM_S16LE:
         case AV_CODEC_ID_PCM_S16BE:
@@ -579,7 +579,7 @@ static bool is_pcm_codec(enum AVCodecID codec_id) {
  * @param codec_name Output parameter to store the codec name
  * @return true if compatible, false otherwise
  */
-static bool is_audio_codec_compatible_with_mp4(enum AVCodecID codec_id, const char **codec_name) {
+bool is_audio_codec_compatible_with_mp4(enum AVCodecID codec_id, const char **codec_name) {
     bool is_compatible = true;
 
     switch (codec_id) {

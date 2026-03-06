@@ -131,6 +131,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     AVPacket *pkt = NULL;  // CRITICAL FIX: Initialize to NULL to prevent using uninitialized value
     int video_stream_idx = -1;
     int audio_stream_idx = -1;
+    bool needs_audio_transcoding = false;
     AVStream *out_video_stream = NULL;
     AVStream *out_audio_stream = NULL;
     int64_t first_video_dts = AV_NOPTS_VALUE;
@@ -517,26 +518,75 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     // Add audio stream if available and audio is enabled
     if (audio_stream_idx >= 0 && has_audio) {
         log_info("Including audio stream in MP4 recording");
-        out_audio_stream = avformat_new_stream(output_ctx, NULL);
-        if (!out_audio_stream) {
-            log_error("Failed to create output audio stream");
-            ret = -1;
-            goto cleanup;
+
+        // Check if the audio codec is compatible with MP4 format
+        const char *codec_name = "unknown";
+        bool is_compatible = is_audio_codec_compatible_with_mp4(
+            input_ctx->streams[audio_stream_idx]->codecpar->codec_id, &codec_name);
+
+        if (!is_compatible) {
+            if (is_pcm_codec(input_ctx->streams[audio_stream_idx]->codecpar->codec_id)) {
+                log_info("Attempting to transcode %s audio to AAC for MP4 compatibility", codec_name);
+
+                AVCodecParameters *transcoded_params = NULL;
+                AVRational audio_tb = input_ctx->streams[audio_stream_idx]->time_base;
+                int transcode_ret = transcode_mulaw_to_aac(
+                    input_ctx->streams[audio_stream_idx]->codecpar,
+                    &audio_tb, rtsp_url, &transcoded_params);
+
+                if (transcode_ret >= 0 && transcoded_params) {
+                    log_info("Successfully set up PCM-to-AAC transcoding for MP4 recording");
+                    needs_audio_transcoding = true;
+
+                    out_audio_stream = avformat_new_stream(output_ctx, NULL);
+                    if (!out_audio_stream) {
+                        log_error("Failed to create output audio stream");
+                        avcodec_parameters_free(&transcoded_params);
+                        ret = -1;
+                        goto cleanup;
+                    }
+
+                    // Use transcoded (AAC) parameters for the output stream
+                    ret = avcodec_parameters_copy(out_audio_stream->codecpar, transcoded_params);
+                    avcodec_parameters_free(&transcoded_params);
+                    if (ret < 0) {
+                        log_error("Failed to copy transcoded audio codec parameters: %d", ret);
+                        goto cleanup;
+                    }
+
+                    out_audio_stream->codecpar->codec_tag = 0;
+                    out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
+                } else {
+                    log_error("Failed to transcode %s audio to AAC: %d — disabling audio", codec_name, transcode_ret);
+                    has_audio = 0;
+                }
+            } else {
+                log_warn("Audio codec %s is not compatible with MP4 and is not a PCM codec — disabling audio",
+                         codec_name);
+                has_audio = 0;
+            }
+        } else {
+            // Compatible codec — copy parameters directly
+            out_audio_stream = avformat_new_stream(output_ctx, NULL);
+            if (!out_audio_stream) {
+                log_error("Failed to create output audio stream");
+                ret = -1;
+                goto cleanup;
+            }
+
+            ret = avcodec_parameters_copy(out_audio_stream->codecpar,
+                                         input_ctx->streams[audio_stream_idx]->codecpar);
+            if (ret < 0) {
+                log_error("Failed to copy audio codec parameters: %d", ret);
+                goto cleanup;
+            }
+
+            // Zero out codec_tag for audio as well (same reason as video above)
+            out_audio_stream->codecpar->codec_tag = 0;
+
+            // Set audio stream time base
+            out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
         }
-
-        // Copy audio codec parameters
-        ret = avcodec_parameters_copy(out_audio_stream->codecpar,
-                                     input_ctx->streams[audio_stream_idx]->codecpar);
-        if (ret < 0) {
-            log_error("Failed to copy audio codec parameters: %d", ret);
-            goto cleanup;
-        }
-
-        // Zero out codec_tag for audio as well (same reason as video above)
-        out_audio_stream->codecpar->codec_tag = 0;
-
-        // Set audio stream time base
-        out_audio_stream->time_base = input_ctx->streams[audio_stream_idx]->time_base;
     }
 
     // Use faststart to move moov atom to beginning for better compatibility
@@ -1356,8 +1406,36 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             // Set output stream index
             pkt->stream_index = out_audio_stream->index;
 
-            // Write packet
-            ret = av_interleaved_write_frame(output_ctx, pkt);
+            // If the audio needs transcoding (PCM -> AAC), do it now
+            if (needs_audio_transcoding) {
+                AVPacket *transcoded_pkt = av_packet_alloc();
+                if (!transcoded_pkt) {
+                    log_error("Failed to allocate packet for transcoded audio");
+                    av_packet_unref(pkt);
+                    continue;
+                }
+
+                int tc_ret = transcode_audio_packet(rtsp_url, pkt, transcoded_pkt,
+                                                    input_ctx->streams[audio_stream_idx]);
+                if (tc_ret < 0) {
+                    // Transcoding failed — skip this packet silently
+                    av_packet_free(&transcoded_pkt);
+                    av_packet_unref(pkt);
+                    continue;
+                }
+
+                // Carry over timing and stream index from the original packet
+                transcoded_pkt->stream_index = out_audio_stream->index;
+                transcoded_pkt->dts = pkt->dts;
+                transcoded_pkt->pts = pkt->pts;
+                transcoded_pkt->duration = pkt->duration;
+
+                ret = av_interleaved_write_frame(output_ctx, transcoded_pkt);
+                av_packet_free(&transcoded_pkt);
+            } else {
+                // Write packet directly (compatible codec)
+                ret = av_interleaved_write_frame(output_ctx, pkt);
+            }
             if (ret < 0) {
                 char error_buf[AV_ERROR_MAX_STRING_SIZE] = {0};
                 av_strerror(ret, error_buf, AV_ERROR_MAX_STRING_SIZE);
@@ -1462,6 +1540,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             segment_index, has_audio && audio_stream_idx >= 0, segment_info_ptr->last_frame_was_key);
 
 cleanup:
+    // Clean up audio transcoder if we set one up
+    if (needs_audio_transcoding) {
+        cleanup_audio_transcoder(rtsp_url);
+    }
+
     // CRITICAL FIX: Aggressive cleanup to prevent memory growth over time
     log_debug("Starting aggressive cleanup of FFmpeg resources");
 

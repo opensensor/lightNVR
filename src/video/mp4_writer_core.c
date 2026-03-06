@@ -259,7 +259,6 @@ void mp4_writer_close(mp4_writer_t *writer) {
     }
 
     // Clean up any audio transcoders for this stream
-    extern void cleanup_audio_transcoder(const char *stream_name);
     cleanup_audio_transcoder(writer->stream_name);
 
     // Free the writer structure
