@@ -50,8 +50,10 @@ export function WebRTCVideoCell({
   stream,
   streamId,
   onToggleFullscreen,
+  initDelay = 0,
   showLabels = true,
-  showControls = true
+  showControls = true,
+  globalShowDetections = true
 }) {
   // Component state
   const [isLoading, setIsLoading] = useState(true);
@@ -95,8 +97,9 @@ export function WebRTCVideoCell({
   // PTZ controls state
   const [showPTZControls, setShowPTZControls] = useState(false);
 
-  // Detection overlay visibility state
-  const [showDetections, setShowDetections] = useState(true);
+  // Detection overlay visibility state (per-camera toggle, constrained by global toggle)
+  const [localShowDetections, setLocalShowDetections] = useState(true);
+  const showDetections = globalShowDetections && localShowDetections;
 
   // Refs
   const videoRef = useRef(null);
@@ -128,6 +131,7 @@ export function WebRTCVideoCell({
     // Store cleanup functions
     let connectionTimeout = null;
     let videoDataTimeout = null;
+    let initDelayTimeout = null;
     let go2rtcBaseUrl = null;
 
     // Async function to initialize WebRTC
@@ -570,10 +574,10 @@ export function WebRTCVideoCell({
           const bodyText = await response.text().catch(() => '');
 
           if (!response.ok) {
-            // Retry on 404 (stream not ready in go2rtc) with exponential backoff
-            if (response.status === 404 && attempt < maxOfferRetries) {
+            // Retry on 404 (stream not ready) or 500 (server overloaded / race condition) with exponential backoff
+            if ((response.status === 404 || response.status === 500) && attempt < maxOfferRetries) {
               const delay = baseRetryDelayMs * Math.pow(2, attempt);
-              console.warn(`go2rtc returned 404 for stream ${stream.name} (attempt ${attempt + 1}/${maxOfferRetries + 1}), retrying in ${delay}ms...`);
+              console.warn(`go2rtc returned ${response.status} for stream ${stream.name} (attempt ${attempt + 1}/${maxOfferRetries + 1}), retrying in ${delay}ms...`);
               await new Promise(resolve => setTimeout(resolve, delay));
               return sendOfferWithRetry(attempt + 1);
             }
@@ -713,14 +717,25 @@ export function WebRTCVideoCell({
     };
     }; // End of initWebRTC async function
 
-    // Call the async init function
-    initWebRTC();
+    // Stagger initialization to avoid overwhelming go2rtc with concurrent offers
+    if (initDelay > 0) {
+      initDelayTimeout = setTimeout(() => {
+        initDelayTimeout = null;
+        initWebRTC();
+      }, initDelay);
+    } else {
+      initWebRTC();
+    }
 
     // Cleanup function
     const cleanupWebRTCResources = () => {
       console.log(`Cleaning up WebRTC connection for stream ${stream.name}`);
 
       // Clear timeouts
+      if (initDelayTimeout) {
+        clearTimeout(initDelayTimeout);
+        initDelayTimeout = null;
+      }
       if (connectionTimeout) {
         clearTimeout(connectionTimeout);
         connectionTimeout = null;
@@ -1261,7 +1276,7 @@ export function WebRTCVideoCell({
           <button
             className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
             title={showDetections ? 'Hide Detections' : 'Show Detections'}
-            onClick={() => setShowDetections(!showDetections)}
+            onClick={() => setLocalShowDetections(!localShowDetections)}
             style={{
               backgroundColor: 'transparent',
               border: 'none',
