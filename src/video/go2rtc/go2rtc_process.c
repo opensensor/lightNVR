@@ -1013,6 +1013,16 @@ bool go2rtc_process_start(int api_port) {
         return false;
     }
 
+    // Always regenerate the go2rtc config file fresh at startup to avoid
+    // stale/corrupted configs from prior versions causing stream errors
+    // (see issue #165). The file is opened with O_TRUNC so any old content
+    // is discarded.
+    log_info("Regenerating go2rtc configuration file fresh at startup");
+    if (!go2rtc_process_generate_config(g_config_path, api_port)) {
+        log_warn("Failed to regenerate go2rtc configuration at startup");
+        // Continue anyway - the old config may still work
+    }
+
     // Check if go2rtc is already running as a service
     if (is_go2rtc_running_as_service(api_port)) {
         log_info("go2rtc is already running as a service on port %d, using existing service", api_port);
@@ -1081,12 +1091,6 @@ bool go2rtc_process_start(int api_port) {
     if (check_tcp_port_open(api_port)) {
         log_warn("Port %d is already in use", api_port);
         log_error("Cannot start go2rtc because port %d is already in use", api_port);
-        return false;
-    }
-
-    // Generate configuration file
-    if (!go2rtc_process_generate_config(g_config_path, api_port)) {
-        log_error("Failed to generate go2rtc configuration");
         return false;
     }
 
