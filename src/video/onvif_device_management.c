@@ -13,6 +13,7 @@
 #include <mbedtls/sha1.h>
 #include <mbedtls/base64.h>
 #include <libavformat/avformat.h>
+#include "video/ffmpeg_utils.h"
 
 // Structure to store memory for CURL responses
 typedef struct {
@@ -592,58 +593,19 @@ int get_onvif_stream_url(const char *device_url, const char *username,
     strncpy(stream_url, uri, url_size - 1);
     stream_url[url_size - 1] = '\0';
     
-    // For onvif_simple_server compatibility, we need to embed credentials in the URL
+    // Embed credentials in the stream URL if provided.
+    // url_inject_credentials safely skips injection when credentials are
+    // already present in the URI (avoids double-embedding).
     if (username && password && strlen(username) > 0 && strlen(password) > 0) {
-        // Log the credentials for debugging
         log_info("Embedding credentials in stream URL for username: %s", username);
-        
-        // Extract scheme, host, port, and path from URI
-        char scheme[16] = {0};
-        char host[128] = {0};
-        char port[16] = {0};
-        char path[256] = {0};
         char auth_url[MAX_URL_LENGTH] = {0};
-        
-        if (sscanf(uri, "%15[^:]://%127[^:/]:%15[^/]%255s", scheme, host, port, path) == 4) {
-            log_info("Parsed RTSP URI components: scheme=%s, host=%s, port=%s, path=%s", 
-                    scheme, host, port, path);
-            
-            // Construct URL with embedded credentials
-            snprintf(auth_url, sizeof(auth_url), 
-                    "%s://%s:%s@%s:%s%s", 
-                    scheme, username, password, host, port, path);
-            
-            // Update the stream URL with embedded credentials
+        if (url_inject_credentials(stream_url, username, password,
+                                   auth_url, sizeof(auth_url)) == 0) {
             strncpy(stream_url, auth_url, url_size - 1);
             stream_url[url_size - 1] = '\0';
-            
-            log_info("Created URL with embedded credentials: %s", auth_url);
-        } else if (sscanf(uri, "%15[^:]://%127[^:/]%255s", scheme, host, path) == 3) {
-            log_info("Parsed RTSP URI components: scheme=%s, host=%s, path=%s (no port)", 
-                    scheme, host, path);
-            
-            // For RTSP, add the default port 554 if not specified
-            if (strcmp(scheme, "rtsp") == 0) {
-                log_info("Adding default RTSP port 554");
-                
-                // Construct URL with embedded credentials and default RTSP port
-                snprintf(auth_url, sizeof(auth_url), 
-                        "%s://%s:%s@%s:554%s", 
-                        scheme, username, password, host, path);
-            } else {
-                // Construct URL with embedded credentials (no port)
-                snprintf(auth_url, sizeof(auth_url), 
-                        "%s://%s:%s@%s%s", 
-                        scheme, username, password, host, path);
-            }
-            
-            // Update the stream URL with embedded credentials
-            strncpy(stream_url, auth_url, url_size - 1);
-            stream_url[url_size - 1] = '\0';
-            
-            log_info("Created URL with embedded credentials: %s", auth_url);
+            log_info("Created URL with embedded credentials: %s", stream_url);
         } else {
-            log_warn("Could not parse URI components, using original URI: %s", uri);
+            log_warn("Failed to inject credentials into stream URL, using original: %s", stream_url);
         }
     } else {
         log_info("No credentials provided, using original stream URI: %s", uri);
@@ -808,41 +770,15 @@ int test_onvif_connection(const char *url, const char *username, const char *pas
                 // Try with a direct RTSP URL without any modifications
                 log_warn("Failed with UDP protocol too, trying direct RTSP connection");
                 
-                // Create a direct RTSP URL with credentials
+                // Create a direct RTSP URL with credentials using
+                // url_inject_credentials which safely skips injection when
+                // credentials are already present (avoids double-embedding).
                 char direct_url[MAX_URL_LENGTH];
-                if (username && password && strlen(username) > 0 && strlen(password) > 0) {
-                    // Extract scheme, host, port, and path
-                    char scheme[16] = {0};
-                    char host[128] = {0};
-                    char port[16] = {0};
-                    char path[256] = {0};
-                    
-                    if (sscanf(profiles[0].stream_uri, "%15[^:]://%127[^:/]:%15[^/]%255s", 
-                              scheme, host, port, path) == 4) {
-                        // Construct URL with embedded credentials
-                        snprintf(direct_url, sizeof(direct_url), 
-                                "%s://%s:%s@%s:%s%s", 
-                                scheme, username, password, host, port, path);
-                    } else if (sscanf(profiles[0].stream_uri, "%15[^:]://%127[^:/]%255s", 
-                                     scheme, host, path) == 3) {
-                        // No port specified
-                        if (strcmp(scheme, "rtsp") == 0) {
-                            // Add default RTSP port 554
-                            snprintf(direct_url, sizeof(direct_url), 
-                                    "%s://%s:%s@%s:554%s", 
-                                    scheme, username, password, host, path);
-                        } else {
-                            snprintf(direct_url, sizeof(direct_url), 
-                                    "%s://%s:%s@%s%s", 
-                                    scheme, username, password, host, path);
-                        }
-                    } else {
-                        // Fallback to original URL
-                        strncpy(direct_url, profiles[0].stream_uri, sizeof(direct_url) - 1);
-                        direct_url[sizeof(direct_url) - 1] = '\0';
-                    }
-                } else {
-                    // No credentials, use original URL
+                if (url_inject_credentials(profiles[0].stream_uri,
+                                           (username && strlen(username) > 0) ? username : NULL,
+                                           (password && strlen(password) > 0) ? password : NULL,
+                                           direct_url, sizeof(direct_url)) != 0) {
+                    // Fallback to original URL on error
                     strncpy(direct_url, profiles[0].stream_uri, sizeof(direct_url) - 1);
                     direct_url[sizeof(direct_url) - 1] = '\0';
                 }

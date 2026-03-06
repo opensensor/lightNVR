@@ -2363,6 +2363,7 @@ int start_hls_unified_stream(const char *stream_name) {
 
         if (!rtsp_url_success) {
             log_warn("Failed to get go2rtc RTSP URL for stream %s after multiple attempts, falling back to original URL", stream_name);
+            // Falling back to config.url — inject credentials below
         }
 
         // When audio recording is disabled, append ?video to the go2rtc RTSP URL
@@ -2380,6 +2381,20 @@ int start_hls_unified_stream(const char *stream_name) {
             } else {
                 log_warn("RTSP URL too long to append ?video selector for stream %s", stream_name);
             }
+        }
+    }
+
+    // When NOT using go2rtc (or go2rtc URL retrieval failed), inject ONVIF
+    // credentials into the raw stream URL so the HLS thread can authenticate.
+    if (!go2rtc_integration_is_using_go2rtc_for_hls(stream_name) ||
+        strcmp(actual_url, config.url) == 0) {
+        char credentialed_url[MAX_PATH_LENGTH];
+        if (url_inject_credentials(actual_url,
+                                   config.onvif_username[0] ? config.onvif_username : NULL,
+                                   config.onvif_password[0] ? config.onvif_password : NULL,
+                                   credentialed_url, sizeof(credentialed_url)) == 0) {
+            strncpy(actual_url, credentialed_url, sizeof(actual_url) - 1);
+            actual_url[sizeof(actual_url) - 1] = '\0';
         }
     }
 
