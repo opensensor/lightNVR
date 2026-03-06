@@ -393,7 +393,7 @@ export function StreamConfigModal({
 
                 <div>
                   <label className="block text-sm font-medium mb-1" htmlFor="stream-tags">
-                    Tags
+                    Stream Tags
                   </label>
                   <input
                     type="text"
@@ -406,7 +406,7 @@ export function StreamConfigModal({
                     maxLength={255}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Comma-separated tags for filtering and access control (e.g. <span className="font-mono">outdoor,critical</span>). Used for dynamic dashboard filters and user permission restrictions.
+                    Comma-separated stream tags for access control and dashboard filtering (e.g. <span className="font-mono">outdoor,critical</span>). Used for RBAC user permission restrictions.
                   </p>
                   {(currentStream.tags || '').split(',').filter(t => t.trim()).length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">

@@ -205,7 +205,7 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
 
           <div className="mb-4">
             <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-              Allowed Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
+              Allowed Stream Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
             </label>
             <input
               className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -218,7 +218,7 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
               maxLength={255}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Comma-separated tags. When set, this user can only see streams that share at least one matching tag. Leave blank to allow access to all streams.
+              Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
             </p>
             {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">

@@ -119,7 +119,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
     >
       <div class="flex items-center justify-between mb-2">
         <span class="text-sm font-medium flex items-center gap-1">
-          <TagIcon className="w-3.5 h-3.5" /> Tags
+          <TagIcon className="w-3.5 h-3.5" /> Recording Tags
         </span>
         <button class="text-muted-foreground hover:text-foreground text-xs" onClick={onClose}>✕</button>
       </div>
@@ -267,7 +267,7 @@ export function BulkTagsOverlay({ recordings, selectedRecordings, onClose, onTag
     >
       <div class="flex items-center justify-between mb-2">
         <span class="text-sm font-medium flex items-center gap-1">
-          <TagIcon className="w-3.5 h-3.5" /> Manage Tags ({selectedIds.length} recordings)
+          <TagIcon className="w-3.5 h-3.5" /> Recording Tags ({selectedIds.length} recordings)
         </span>
         <button class="text-muted-foreground hover:text-foreground text-xs" onClick={onClose}>✕</button>
       </div>
