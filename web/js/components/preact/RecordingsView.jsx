@@ -195,6 +195,27 @@ export function RecordingsView() {
     }
   }, [modalContext]);
 
+  // Listen for recording changes from the Play modal so we can update the
+  // list locally without a full refetch (preserves scroll/sort position).
+  useEffect(() => {
+    const handleProtected = (e) => {
+      const { id, protected: isProtected } = e.detail;
+      setRecordings(prev =>
+        prev.map(r => r.id === id ? { ...r, protected: isProtected } : r)
+      );
+    };
+    const handleDeleted = (e) => {
+      const { id } = e.detail;
+      setRecordings(prev => prev.filter(r => r.id !== id));
+    };
+    window.addEventListener('recording-protected', handleProtected);
+    window.addEventListener('recording-deleted', handleDeleted);
+    return () => {
+      window.removeEventListener('recording-protected', handleProtected);
+      window.removeEventListener('recording-deleted', handleDeleted);
+    };
+  }, []);
+
   // Fetch streams using preact-query
   const {
     data: streamsData,

@@ -476,6 +476,57 @@ export function TimelinePage() {
     showStatusMessage(`Loaded ${segmentsCopy.length} recording segments`, 'success');
   }, [timelineData, timelineError, selectedDate]);
 
+  // When a recording is deleted from the timeline player, remove it from the
+  // local segments list (creates the visual gap) and advance to the next segment.
+  useEffect(() => {
+    const handleTimelineDeleted = (e) => {
+      const deletedId = e.detail.id;
+
+      setSegments(prev => {
+        const idx = prev.findIndex(s => s.id === deletedId);
+        const updated = prev.filter(s => s.id !== deletedId);
+
+        // Advance to the next segment (or the previous if it was the last)
+        if (updated.length > 0) {
+          const nextIdx = Math.min(idx, updated.length - 1);
+          const nextSeg = updated[nextIdx];
+
+          timelineState.setState({
+            timelineSegments: updated,
+            currentSegmentIndex: nextIdx,
+            currentTime: nextSeg.start_timestamp,
+            isPlaying: false,
+            forceReload: true
+          });
+
+          // Load the next segment's video
+          setTimeout(() => {
+            const videoEl = document.querySelector('#video-player video');
+            if (videoEl) {
+              videoEl.pause();
+              videoEl.removeAttribute('src');
+              videoEl.load();
+              videoEl.src = `/api/recordings/play/${nextSeg.id}?t=${Date.now()}`;
+              videoEl.load();
+            }
+          }, 100);
+        } else {
+          timelineState.setState({
+            timelineSegments: [],
+            currentSegmentIndex: -1,
+            currentTime: null,
+            isPlaying: false
+          });
+        }
+
+        return updated;
+      });
+    };
+
+    window.addEventListener('timeline-recording-deleted', handleTimelineDeleted);
+    return () => window.removeEventListener('timeline-recording-deleted', handleTimelineDeleted);
+  }, []);
+
   const handleStreamChange = (e) => setSelectedStream(e.target.value);
 
   const handleDateChange = (newDate) => {

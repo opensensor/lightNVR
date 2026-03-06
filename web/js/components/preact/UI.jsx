@@ -428,6 +428,11 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
         newState ? 'Recording protected from automatic deletion' : 'Recording protection removed',
         'success'
       );
+
+      // Notify RecordingsView to update the list locally
+      window.dispatchEvent(new CustomEvent('recording-protected', {
+        detail: { id: recordingId, protected: newState }
+      }));
     } catch (error) {
       console.error('Error toggling protection:', error);
       showStatusMessage(`Error: ${error.message}`, 'error');
@@ -442,6 +447,12 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       if (!response.ok) throw new Error('Failed to delete recording');
       showStatusMessage('Recording deleted successfully', 'success');
       setShowDeleteConfirm(false);
+
+      // Notify RecordingsView to remove the recording locally
+      window.dispatchEvent(new CustomEvent('recording-deleted', {
+        detail: { id: recordingId }
+      }));
+
       onClose();
     } catch (error) {
       console.error('Error deleting recording:', error);

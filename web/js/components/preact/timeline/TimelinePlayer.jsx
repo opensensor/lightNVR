@@ -631,8 +631,12 @@ export function TimelinePlayer() {
       showStatusMessage('Recording deleted successfully', 'success');
       setShowDeleteConfirm(false);
       setSegmentRecordingData(null);
-      // Reset the segment so player doesn't show deleted content
       lastDetectionSegmentIdRef.current = null;
+
+      // Tell TimelinePage to reload segments and advance to the next recording
+      window.dispatchEvent(new CustomEvent('timeline-recording-deleted', {
+        detail: { id: currentSegmentId }
+      }));
     } catch (error) {
       console.error('Error deleting recording:', error);
       showStatusMessage(`Error: ${error.message}`, 'error');
