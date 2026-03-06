@@ -310,6 +310,17 @@ export function RecordingsView() {
     window.history.replaceState({}, '', url);
   }, [filters, pagination.currentPage, pagination.pageSize, sortField, sortDirection, viewMode]);
 
+  // When any filter changes, reset to page 1 so the user doesn't end up on
+  // a page that doesn't exist for the new filter (fixes #179).
+  const isInitialFilterRender = useRef(true);
+  useEffect(() => {
+    if (isInitialFilterRender.current) {
+      isInitialFilterRender.current = false;
+      return;
+    }
+    setPagination(prev => prev.currentPage === 1 ? prev : { ...prev, currentPage: 1 });
+  }, [filters]);
+
   // Set default date range (used when switching to 'custom' with no existing dates)
   const setDefaultDateRange = () => {
     const now = new Date();
