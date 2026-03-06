@@ -679,7 +679,7 @@ export function TimelinePlayer() {
 
   return (
     <>
-      <div className="timeline-player-container mb-2" id="video-player">
+      <div className="timeline-player-container mb-1" id="video-player">
         <div ref={videoContainerRef} className="relative w-full bg-black rounded-lg shadow-md" style={{ aspectRatio: '16/9' }}>
           <video
               ref={videoRef}
@@ -715,81 +715,65 @@ export function TimelinePlayer() {
         </div>
       </div>
 
-      {/* Detection overlay toggle and playback speed controls */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+      {/* Compact toolbar: detections toggle | action buttons | speed */}
+      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1">
+        {/* Detection toggle */}
+        <label className="flex items-center gap-1.5 cursor-pointer">
           <input
             type="checkbox"
             id="timeline-detection-overlay"
-            className="w-4 h-4 accent-primary"
+            className="w-3.5 h-3.5 accent-primary"
             checked={detectionOverlayEnabled}
             onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
           />
-          <label htmlFor="timeline-detection-overlay" className="text-xs font-medium text-foreground">
-            Show Detections {detections.length > 0 ? `(${detections.length})` : ''}
-          </label>
-        </div>
-        <SpeedControls />
-      </div>
+          <span className="text-[11px] text-foreground">
+            Detections{detections.length > 0 ? ` (${detections.length})` : ''}
+          </span>
+        </label>
 
-      {/* Recording action buttons */}
-      {currentSegmentId && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {/* Snapshot */}
-          <button
-            className="px-3 py-1.5 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-xs"
-            onClick={handleSnapshot}
-            title="Take Snapshot"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            Snapshot
-          </button>
-          {/* Download */}
-          <a
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-xs"
-            href={`/api/recordings/download/${currentSegmentId}`}
-            download
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Download
-          </a>
-          {/* Protect */}
-          <button
-            className={`px-3 py-1.5 rounded transition-colors flex items-center text-xs ${
-              isProtected
-                ? 'bg-yellow-500 text-white hover:bg-yellow-600'
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-            }`}
-            onClick={handleToggleProtection}
-            title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              {isProtected ? (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              ) : (
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
-              )}
-            </svg>
-            {isProtected ? 'Protected' : 'Protect'}
-          </button>
-          {/* Delete */}
-          <button
-            className="px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-xs"
-            onClick={() => setShowDeleteConfirm(true)}
-            title="Delete Recording"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Delete
-          </button>
+        {/* Action buttons — only when a segment is selected */}
+        {currentSegmentId && (
+          <div className="flex items-center gap-1">
+            <button
+              className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-[11px]"
+              onClick={handleSnapshot}
+              title="Take Snapshot"
+            >
+              📷 Snapshot
+            </button>
+            <a
+              className="px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-[11px]"
+              href={`/api/recordings/download/${currentSegmentId}`}
+              download
+            >
+              ↓ Download
+            </a>
+            <button
+              className={`px-2 py-1 rounded transition-colors flex items-center text-[11px] ${
+                isProtected
+                  ? 'bg-yellow-500 text-white hover:bg-yellow-600'
+                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+              }`}
+              onClick={handleToggleProtection}
+              title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
+            >
+              🛡 {isProtected ? 'Protected' : 'Protect'}
+            </button>
+            <button
+              className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-[11px]"
+              onClick={() => setShowDeleteConfirm(true)}
+              title="Delete Recording"
+            >
+              🗑 Delete
+            </button>
+          </div>
+        )}
+
+        {/* Speed controls — pushed right */}
+        <div className="ml-auto">
+          <SpeedControls />
         </div>
-      )}
+      </div>
 
       {/* Delete confirmation */}
       <ConfirmDialog

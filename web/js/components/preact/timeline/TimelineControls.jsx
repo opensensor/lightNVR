@@ -389,15 +389,15 @@ export function TimelineControls() {
   };
 
   return (
-    <div className="timeline-controls flex justify-between items-center mb-2">
-      <div className="flex items-center">
+    <div className="timeline-controls flex justify-between items-center mb-1">
+      <div className="flex items-center gap-1.5">
         <button
           id="play-button"
-          className="w-10 h-10 rounded-full btn-success flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-green-500 focus:ring-offset-1 transition-colors shadow-sm mr-2"
+          className="w-7 h-7 rounded-full btn-success flex items-center justify-center focus:outline-none transition-colors shadow-sm"
           onClick={togglePlayback}
           title={isPlaying ? 'Pause' : 'Play from current position'}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             {isPlaying ? (
               <>
                 <rect x="6" y="6" width="4" height="12" rx="1" fill="white" />
@@ -408,12 +408,12 @@ export function TimelineControls() {
             )}
           </svg>
         </button>
-        <span className="text-xs text-muted-foreground">Play from current position</span>
+        <span className="text-[11px] text-muted-foreground">Play from cursor</span>
       </div>
 
       {/* Current time display */}
       <div id="time-display"
-        className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-sm tabular-nums border border-border">
+        className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border">
         00:00:00
       </div>
 
