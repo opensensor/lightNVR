@@ -173,7 +173,7 @@ void handle_test_stream(const http_request_t *req, http_response_t *res) {
     }
     const char *stream_url = credentialed_url;
 
-    log_info("Testing stream connection: url=%s, protocol=%d", stream_url, stream_protocol);
+    log_info("Testing stream connection: url=%s, protocol=%d", raw_url, stream_protocol);
     
     // Create response
     cJSON *response = cJSON_CreateObject();

@@ -153,7 +153,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
             if (strcmp(credentialed_url, modified_url) != 0) {
                 strncpy(modified_url, credentialed_url, URL_BUFFER_SIZE - 1);
                 modified_url[URL_BUFFER_SIZE - 1] = '\0';
-                log_info("Added credentials to URL: %s", modified_url);
+                log_info("Injected credentials into stream URL for go2rtc registration");
             }
         }
     }

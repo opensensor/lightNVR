@@ -580,7 +580,9 @@ export function StreamsView() {
   const testStreamConnection = () => {
     testStreamMutation.mutate({
       url: currentStream.url,
-      protocol: parseInt(currentStream.protocol, 10)
+      protocol: parseInt(currentStream.protocol, 10),
+      onvif_username: currentStream.isOnvif ? currentStream.onvifUsername : undefined,
+      onvif_password: currentStream.isOnvif ? currentStream.onvifPassword : undefined,
     });
   };
 

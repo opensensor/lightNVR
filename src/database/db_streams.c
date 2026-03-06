@@ -974,11 +974,11 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         "retention_days, detection_retention_days, max_storage_mb, "
         "tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
-        "onvif_port, "
+        "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags "
         "FROM streams ORDER BY name;";
 
-    // Column index constants (same as get_stream_config_by_name, minus ONVIF creds)
+    // Column index constants (same as get_stream_config_by_name)
     enum {
         COL_NAME = 0, COL_URL, COL_ENABLED, COL_STREAMING_ENABLED,
         COL_WIDTH, COL_HEIGHT, COL_FPS, COL_CODEC, COL_PRIORITY, COL_RECORD, COL_SEGMENT_DURATION,
@@ -989,7 +989,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         COL_RETENTION_DAYS, COL_DETECTION_RETENTION_DAYS, COL_MAX_STORAGE_MB,
         COL_TIER_CRITICAL_MULTIPLIER, COL_TIER_IMPORTANT_MULTIPLIER, COL_TIER_EPHEMERAL_MULTIPLIER, COL_STORAGE_PRIORITY,
         COL_PTZ_ENABLED, COL_PTZ_MAX_X, COL_PTZ_MAX_Y, COL_PTZ_MAX_Z, COL_PTZ_HAS_HOME,
-        COL_ONVIF_PORT,
+        COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE, COL_ONVIF_PORT,
         COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_TAGS
     };
 
@@ -1107,7 +1107,25 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
             ? sqlite3_column_int(stmt, COL_PTZ_MAX_Z) : 0;
         s->ptz_has_home = sqlite3_column_int(stmt, COL_PTZ_HAS_HOME) != 0;
 
-        // ONVIF port
+        // ONVIF credentials and settings
+        const char *onvif_username = (const char *)sqlite3_column_text(stmt, COL_ONVIF_USERNAME);
+        if (onvif_username) {
+            strncpy(s->onvif_username, onvif_username, sizeof(s->onvif_username) - 1);
+            s->onvif_username[sizeof(s->onvif_username) - 1] = '\0';
+        }
+
+        const char *onvif_password = (const char *)sqlite3_column_text(stmt, COL_ONVIF_PASSWORD);
+        if (onvif_password) {
+            strncpy(s->onvif_password, onvif_password, sizeof(s->onvif_password) - 1);
+            s->onvif_password[sizeof(s->onvif_password) - 1] = '\0';
+        }
+
+        const char *onvif_profile = (const char *)sqlite3_column_text(stmt, COL_ONVIF_PROFILE);
+        if (onvif_profile) {
+            strncpy(s->onvif_profile, onvif_profile, sizeof(s->onvif_profile) - 1);
+            s->onvif_profile[sizeof(s->onvif_profile) - 1] = '\0';
+        }
+
         s->onvif_port = (sqlite3_column_type(stmt, COL_ONVIF_PORT) != SQLITE_NULL)
             ? sqlite3_column_int(stmt, COL_ONVIF_PORT) : 0;
 

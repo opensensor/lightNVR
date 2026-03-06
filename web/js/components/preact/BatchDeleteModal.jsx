@@ -378,18 +378,14 @@ export function BatchDeleteModal() {
         </div>
         
         <div className="modal-body">
-          <div className="mb-4 text-gray-700 dark:text-gray-300">
-            {progress.status}
-          </div>
-          
           <div className="progress-container bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-4">
-            <div 
+            <div
               className={getProgressBarClasses()}
               style={{ width: `${getProgressPercentage()}%` }}
             ></div>
           </div>
-          
-          <div className="flex justify-between text-sm text-muted-foreground mb-6">
+
+          <div className="flex justify-between text-muted-foreground mb-6">
             <div>{getCountText()}</div>
             <div>{getPercentageText()}</div>
           </div>

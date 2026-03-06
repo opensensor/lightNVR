@@ -171,7 +171,7 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
         if (http_code == 200) {
-            log_info("Added stream to go2rtc: %s -> %s", stream_id, stream_url);
+            log_info("Added stream to go2rtc: %s", stream_id);
             log_info("Response: %s", resp.buffer);
             success = true;
         } else {
