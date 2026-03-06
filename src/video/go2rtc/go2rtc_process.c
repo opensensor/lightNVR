@@ -405,6 +405,7 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
     if (!g_config_path) {
         log_error("Memory allocation failed for config path");
         free(g_config_dir);
+        g_config_dir = NULL;
         return false;
     }
 
@@ -473,7 +474,7 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     }
     FILE *config_file = fdopen(config_fd, "w");
     if (!config_file) {
-        log_error("Failed to open go2rtc config file for writing: %s", config_path);
+        log_error("Failed to create file stream for go2rtc config file: %s", config_path);
         close(config_fd);
         return false;
     }
@@ -1137,10 +1138,10 @@ bool go2rtc_process_start(int api_port) {
         }
 
         // Redirect stdout and stderr to log files
-        char log_path[1024]; // Use a reasonable fixed size instead of PATH_MAX
+        char log_path[PATH_MAX]; // Use PATH_MAX to accommodate full filesystem paths
 
         // Extract directory from g_config->log_file
-        char log_dir[1024] = {0};
+        char log_dir[PATH_MAX] = {0};
         if (g_config.log_file[0] != '\0') {
             strncpy(log_dir, g_config.log_file, sizeof(log_dir) - 1);
 
@@ -1161,11 +1162,11 @@ bool go2rtc_process_start(int api_port) {
         }
 
         // Log the path we're using for the log file
-        log_info("Using go2rtc log file: %s", log_path);
+        fprintf(stderr, "Using go2rtc log file: %s\n", log_path);
 
         int log_fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (log_fd == -1) {
-            log_error("Failed to open log file: %s", log_path);
+            fprintf(stderr, "Failed to open log file: %s\n", log_path);
             exit(EXIT_FAILURE);
         }
 

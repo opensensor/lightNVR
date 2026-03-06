@@ -7,7 +7,7 @@
  *
  * This file implements the unified thread approach for HLS streaming.
  *
- * CRITICAL FIX (2025-04-11): Fixed segmentation fault issues related to thread safety
+ * CRITICAL FIX: Fixed segmentation fault issues related to thread safety
  * in the writer cleanup process. The main issue was that the hls_writer was being accessed
  * after it had been freed by another thread. The fix uses atomic operations to ensure
  * thread-safe access to the writer pointer.
@@ -2982,7 +2982,7 @@ static void ffmpeg_buffer_cleanup(void) {
 
     // CRITICAL FIX: Skip direct av_freep(NULL) call during shutdown or hard deletion
     // This is the most likely cause of segmentation faults
-    if (!is_shutdown_initiated() && !is_stream_stopping(NULL)) {
+    if (!is_shutdown_initiated()) {
         // Use a safer approach to release memory
         log_debug("Using safer approach to release FFmpeg memory");
 
@@ -2993,7 +2993,7 @@ static void ffmpeg_buffer_cleanup(void) {
             av_free(dummy);
         }
     } else {
-        log_info("Skipping av_freep(NULL) during shutdown or stream deletion to prevent segmentation fault");
+        log_info("Skipping av_freep(NULL) during shutdown to prevent segmentation fault");
     }
 
     // Call FFmpeg's internal memory cleanup functions - safely

@@ -185,7 +185,7 @@ static int init_audio_transcoder(const char *stream_name,
     strncpy(audio_transcoder_stream_names[slot], stream_name, MAX_STREAM_NAME - 1);
     audio_transcoder_stream_names[slot][MAX_STREAM_NAME - 1] = '\0';
 
-    log_info("Successfully initialized audio transcoder from μ-law to AAC for %s", stream_name);
+    log_info("Successfully initialized audio transcoder from PCM to AAC for %s", stream_name);
 
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
     log_info("Sample rate: %d, Channels: %d, Bit rate: %ld",
@@ -395,7 +395,7 @@ int transcode_audio_packet(const char *stream_name,
  * @param transcoded_params Output parameter to store the transcoded codec parameters
  * @return 0 on success, negative on error
  */
-int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
+int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
                                  const AVRational *time_base,
                                  const char *stream_name,
                                  AVCodecParameters **transcoded_params) {
@@ -456,7 +456,7 @@ int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
     // Open decoder
     ret = avcodec_open2(decoder_ctx, decoder, NULL);
     if (ret < 0) {
-        log_ffmpeg_error(ret, "Failed to open μ-law decoder");
+        log_ffmpeg_error(ret, "Failed to open PCM decoder");
         goto cleanup;
     }
 
@@ -505,7 +505,7 @@ int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
         goto cleanup;
     }
 
-    log_info("Successfully configured transcoding from μ-law to AAC for %s",
+    log_info("Successfully configured transcoding from PCM to AAC for %s",
             stream_name ? stream_name : "unknown");
 
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
@@ -871,7 +871,7 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
 
                 // Try to transcode PCM to AAC
                 AVCodecParameters *transcoded_params = NULL;
-                int transcode_ret = transcode_mulaw_to_aac(input_stream->codecpar,
+                int transcode_ret = transcode_pcm_to_aac(input_stream->codecpar,
                                                          &input_stream->time_base,
                                                          writer->stream_name,
                                                          &transcoded_params);
@@ -1290,7 +1290,7 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
 
             // Try to transcode PCM to AAC
             AVCodecParameters *transcoded_params = NULL;
-            int transcode_ret = transcode_mulaw_to_aac(codec_params, &safe_time_base,
+            int transcode_ret = transcode_pcm_to_aac(codec_params, &safe_time_base,
                                                      writer->stream_name, &transcoded_params);
 
             if (transcode_ret >= 0 && transcoded_params) {

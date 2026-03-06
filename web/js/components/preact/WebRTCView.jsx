@@ -184,8 +184,11 @@ export function WebRTCView() {
     setIsLoading(isLoadingStreams);
   }, [isLoadingStreams]);
 
-  // Process streams data when it's loaded or when the selected stream changes.
+  // Process streams data when it's loaded.
   useEffect(() => {
+    // If a stream is already selected (e.g. by the user or URL), don't override it here.
+    if (selectedStream) return;
+
     if (streamsData && Array.isArray(streamsData)) {
       // Process the streams data
       const processStreams = async () => {
@@ -226,9 +229,9 @@ export function WebRTCView() {
 
       processStreams();
     }
-    // Note: This effect now explicitly depends on selectedStream.
-    // It is written to be idempotent and will only update selectedStream when necessary.
-  }, [streamsData, selectedStream]);
+    // Note: This effect now explicitly depends on streamsData and autoGrid.
+    // It will only update selectedStream when none is already selected.
+  }, [streamsData, autoGrid]);
 
   // Sync layout/page/stream to URL — only meaningful once streams are loaded.
   useEffect(() => {

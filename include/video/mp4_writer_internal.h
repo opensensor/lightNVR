@@ -66,7 +66,7 @@ bool is_audio_codec_compatible_with_mp4(enum AVCodecID codec_id, const char **co
  * @param transcoded_params Output parameter to store the transcoded codec parameters
  * @return 0 on success, negative on error
  */
-int transcode_mulaw_to_aac(const AVCodecParameters *codec_params,
+int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
                            const AVRational *time_base,
                            const char *stream_name,
                            AVCodecParameters **transcoded_params);
