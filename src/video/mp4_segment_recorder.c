@@ -530,7 +530,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
                 AVCodecParameters *transcoded_params = NULL;
                 AVRational audio_tb = input_ctx->streams[audio_stream_idx]->time_base;
-                int transcode_ret = transcode_mulaw_to_aac(
+                int transcode_ret = transcode_pcm_to_aac(
                     input_ctx->streams[audio_stream_idx]->codecpar,
                     &audio_tb, rtsp_url, &transcoded_params);
 

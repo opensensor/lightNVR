@@ -21,6 +21,7 @@
 #include <libavutil/avutil.h>
 #include <libavutil/opt.h>
 #include <libavutil/time.h>
+#include <libswresample/swresample.h>
 #include <pthread.h>
 
 #include "core/config.h"
@@ -33,7 +34,9 @@
 typedef struct {
     AVCodecContext *decoder_ctx;
     AVCodecContext *encoder_ctx;
+    SwrContext *swr_ctx;
     AVFrame *frame;
+    AVFrame *resampled_frame;
     AVPacket *in_pkt;
     AVPacket *out_pkt;
     int initialized;
@@ -149,7 +152,20 @@ static int init_audio_transcoder(const char *stream_name,
     audio_transcoders[slot].encoder_ctx->channel_layout = av_get_default_channel_layout(audio_transcoders[slot].decoder_ctx->channels);
 #endif
 
-    audio_transcoders[slot].encoder_ctx->bit_rate = 128000; // 128 kbps, a good default for AAC
+    // Scale bit rate based on sample rate and channels to avoid
+    // "Too many bits per frame" warnings from the AAC encoder.
+    {
+        int sr = audio_transcoders[slot].encoder_ctx->sample_rate;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+        int ch = audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels;
+#else
+        int ch = audio_transcoders[slot].encoder_ctx->channels;
+#endif
+        if (ch < 1) ch = 1;
+        // 64 kbps per channel for ≥32 kHz, 32 kbps per channel for lower rates
+        int64_t br = (sr >= 32000) ? 64000LL * ch : 32000LL * ch;
+        audio_transcoders[slot].encoder_ctx->bit_rate = br;
+    }
     audio_transcoders[slot].encoder_ctx->time_base = (AVRational){1, audio_transcoders[slot].encoder_ctx->sample_rate};
 
     // Open encoder
@@ -159,10 +175,53 @@ static int init_audio_transcoder(const char *stream_name,
         goto cleanup;
     }
 
+    // Set up sample format conversion (PCM decoders output S16, AAC needs FLTP)
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+    ret = swr_alloc_set_opts2(&audio_transcoders[slot].swr_ctx,
+                              &audio_transcoders[slot].encoder_ctx->ch_layout,
+                              audio_transcoders[slot].encoder_ctx->sample_fmt,
+                              audio_transcoders[slot].encoder_ctx->sample_rate,
+                              &audio_transcoders[slot].decoder_ctx->ch_layout,
+                              audio_transcoders[slot].decoder_ctx->sample_fmt,
+                              audio_transcoders[slot].decoder_ctx->sample_rate,
+                              0, NULL);
+    if (ret < 0 || !audio_transcoders[slot].swr_ctx) {
+        log_ffmpeg_error(ret, "Failed to allocate SwrContext");
+        goto cleanup;
+    }
+#else
+    audio_transcoders[slot].swr_ctx = swr_alloc_set_opts(NULL,
+        audio_transcoders[slot].encoder_ctx->channel_layout,
+        audio_transcoders[slot].encoder_ctx->sample_fmt,
+        audio_transcoders[slot].encoder_ctx->sample_rate,
+        audio_transcoders[slot].decoder_ctx->channel_layout,
+        audio_transcoders[slot].decoder_ctx->sample_fmt,
+        audio_transcoders[slot].decoder_ctx->sample_rate,
+        0, NULL);
+    if (!audio_transcoders[slot].swr_ctx) {
+        log_error("Failed to allocate SwrContext for %s", stream_name);
+        ret = AVERROR(ENOMEM);
+        goto cleanup;
+    }
+#endif
+
+    ret = swr_init(audio_transcoders[slot].swr_ctx);
+    if (ret < 0) {
+        log_ffmpeg_error(ret, "Failed to initialize SwrContext");
+        goto cleanup;
+    }
+
     // Allocate frame and packets
     audio_transcoders[slot].frame = av_frame_alloc();
     if (!audio_transcoders[slot].frame) {
         log_error("Failed to allocate frame for %s", stream_name);
+        goto cleanup;
+    }
+
+    // Allocate resampled frame for format-converted audio
+    audio_transcoders[slot].resampled_frame = av_frame_alloc();
+    if (!audio_transcoders[slot].resampled_frame) {
+        log_error("Failed to allocate resampled frame for %s", stream_name);
         goto cleanup;
     }
 
@@ -213,9 +272,19 @@ cleanup:
         audio_transcoders[slot].encoder_ctx = NULL;
     }
 
+    if (audio_transcoders[slot].swr_ctx) {
+        swr_free(&audio_transcoders[slot].swr_ctx);
+        audio_transcoders[slot].swr_ctx = NULL;
+    }
+
     if (audio_transcoders[slot].frame) {
         av_frame_free(&audio_transcoders[slot].frame);
         audio_transcoders[slot].frame = NULL;
+    }
+
+    if (audio_transcoders[slot].resampled_frame) {
+        av_frame_free(&audio_transcoders[slot].resampled_frame);
+        audio_transcoders[slot].resampled_frame = NULL;
     }
 
     if (audio_transcoders[slot].in_pkt) {
@@ -257,9 +326,19 @@ void cleanup_audio_transcoder(const char *stream_name) {
                 audio_transcoders[i].encoder_ctx = NULL;
             }
 
+            if (audio_transcoders[i].swr_ctx) {
+                swr_free(&audio_transcoders[i].swr_ctx);
+                audio_transcoders[i].swr_ctx = NULL;
+            }
+
             if (audio_transcoders[i].frame) {
                 av_frame_free(&audio_transcoders[i].frame);
                 audio_transcoders[i].frame = NULL;
+            }
+
+            if (audio_transcoders[i].resampled_frame) {
+                av_frame_free(&audio_transcoders[i].resampled_frame);
+                audio_transcoders[i].resampled_frame = NULL;
             }
 
             if (audio_transcoders[i].in_pkt) {
@@ -348,9 +427,49 @@ int transcode_audio_packet(const char *stream_name,
         return ret;
     }
 
+    // Convert sample format from decoder output (e.g. S16) to encoder input (FLTP)
+    AVFrame *enc_frame = audio_transcoders[transcoder_idx].frame;
+    if (audio_transcoders[transcoder_idx].swr_ctx) {
+        AVFrame *resampled = audio_transcoders[transcoder_idx].resampled_frame;
+        av_frame_unref(resampled);
+        resampled->format = audio_transcoders[transcoder_idx].encoder_ctx->sample_fmt;
+        resampled->sample_rate = audio_transcoders[transcoder_idx].encoder_ctx->sample_rate;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+        av_channel_layout_copy(&resampled->ch_layout,
+                               &audio_transcoders[transcoder_idx].encoder_ctx->ch_layout);
+#else
+        resampled->channel_layout = audio_transcoders[transcoder_idx].encoder_ctx->channel_layout;
+        resampled->channels = audio_transcoders[transcoder_idx].encoder_ctx->channels;
+#endif
+        // Let swr determine the output nb_samples
+        resampled->nb_samples = swr_get_out_samples(audio_transcoders[transcoder_idx].swr_ctx,
+                                                     audio_transcoders[transcoder_idx].frame->nb_samples);
+        if (resampled->nb_samples <= 0) {
+            resampled->nb_samples = audio_transcoders[transcoder_idx].frame->nb_samples;
+        }
+
+        ret = av_frame_get_buffer(resampled, 0);
+        if (ret < 0) {
+            log_ffmpeg_error(ret, "Failed to allocate resampled frame buffer");
+            return ret;
+        }
+
+        ret = swr_convert(audio_transcoders[transcoder_idx].swr_ctx,
+                          resampled->data, resampled->nb_samples,
+                          (const uint8_t **)audio_transcoders[transcoder_idx].frame->data,
+                          audio_transcoders[transcoder_idx].frame->nb_samples);
+        if (ret < 0) {
+            log_ffmpeg_error(ret, "Failed to convert audio samples");
+            return ret;
+        }
+        resampled->nb_samples = ret;
+        resampled->pts = audio_transcoders[transcoder_idx].frame->pts;
+        enc_frame = resampled;
+    }
+
     // Send frame to encoder
     ret = avcodec_send_frame(audio_transcoders[transcoder_idx].encoder_ctx,
-                            audio_transcoders[transcoder_idx].frame);
+                            enc_frame);
     if (ret < 0) {
         log_ffmpeg_error(ret, "Failed to send frame to encoder");
         return ret;
@@ -488,7 +607,17 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
     encoder_ctx->channel_layout = av_get_default_channel_layout(decoder_ctx->channels);
 #endif
 
-    encoder_ctx->bit_rate = 128000; // 128 kbps, a good default for AAC
+    // Scale bit rate based on sample rate and channels
+    {
+        int sr = encoder_ctx->sample_rate;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+        int ch = encoder_ctx->ch_layout.nb_channels;
+#else
+        int ch = encoder_ctx->channels;
+#endif
+        if (ch < 1) ch = 1;
+        encoder_ctx->bit_rate = (sr >= 32000) ? 64000LL * ch : 32000LL * ch;
+    }
     encoder_ctx->time_base = (AVRational){1, encoder_ctx->sample_rate};
 
     // Open encoder
