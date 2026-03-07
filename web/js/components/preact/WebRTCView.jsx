@@ -186,9 +186,6 @@ export function WebRTCView() {
 
   // Process streams data when it's loaded.
   useEffect(() => {
-    // If a stream is already selected (e.g. by the user or URL), don't override it here.
-    if (selectedStream) return;
-
     if (streamsData && Array.isArray(streamsData)) {
       // Process the streams data
       const processStreams = async () => {
@@ -229,8 +226,9 @@ export function WebRTCView() {
 
       processStreams();
     }
-    // Note: This effect now explicitly depends on streamsData and autoGrid.
-    // It will only update selectedStream when none is already selected.
+    // Note: selectedStream is read to preserve the current selection when valid,
+    // but we still need to populate streams even when a selection already exists.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamsData, autoGrid]);
 
   // Sync layout/page/stream to URL — only meaningful once streams are loaded.

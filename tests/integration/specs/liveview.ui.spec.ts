@@ -38,6 +38,16 @@ test.describe('Live View Page @ui @liveview', () => {
       
       await page.screenshot({ path: 'test-results/liveview-grid.png' });
     });
+
+    test('should still render streams when a WebRTC stream is preselected via URL', async ({ page }) => {
+      await page.goto('/index.html?stream=test_pattern&cols=1&rows=1', { waitUntil: 'domcontentloaded' });
+
+      await page.waitForResponse(response => response.url().includes('/api/streams') && response.status() === 200);
+      await page.waitForResponse(response => response.url().includes('/api/streams/test_pattern') && response.status() === 200);
+
+      await expect(page.locator('#stream-selector')).toHaveValue('test_pattern');
+      await expect(page.locator('text=No streams configured')).toHaveCount(0);
+    });
   });
 
   test.describe('Video Streaming', () => {
