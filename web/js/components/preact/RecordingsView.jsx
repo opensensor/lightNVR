@@ -17,7 +17,6 @@ import { ActiveFilters } from './recordings/ActiveFilters.jsx';
 import { RecordingsTable } from './recordings/RecordingsTable.jsx';
 import { RecordingsGrid } from './recordings/RecordingsGrid.jsx';
 import { PaginationControls } from './recordings/PaginationControls.jsx';
-import { BulkTagsOverlay, TagIcon } from './recordings/TagsOverlay.jsx';
 
 // Import utilities
 import { formatUtils } from './recordings/formatUtils.js';
@@ -105,7 +104,6 @@ export function RecordingsView() {
   const [deleteMode, setDeleteMode] = useState('selected'); // 'single', 'selected' or 'all'
   const [pendingDeleteRecording, setPendingDeleteRecording] = useState(null); // recording awaiting single-delete confirmation
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [showBulkTagsOverlay, setShowBulkTagsOverlay] = useState(false);
   const recordingsTableBodyRef = useRef(null);
 
   // View mode: 'table' or 'grid' — initialized from URL, then localStorage, then default

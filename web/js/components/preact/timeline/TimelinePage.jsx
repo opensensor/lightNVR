@@ -3,7 +3,7 @@
  * Main component for the timeline view
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { TimelineControls } from './TimelineControls.jsx';
 import { TimelineRuler } from './TimelineRuler.jsx';
 import { TimelineSegments } from './TimelineSegments.jsx';
@@ -14,9 +14,13 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
 import {
+  countSegmentsForDate,
+  findFirstVisibleSegmentIndex,
   findContainingSegmentIndex,
-  findNearestSegmentIndex,
-  getClippedSegmentHourRange
+  formatTimestampAsLocalDate,
+  getAvailableDatesForSegments,
+  getClippedSegmentHourRange,
+  getLocalDayBounds
 } from './timelineUtils.js';
 
 // Convert fractional hour (0–24) → Unix timestamp (seconds) for the given date
@@ -122,6 +126,16 @@ function formatDateForInput(date) {
   return `${year}-${month}-${day}`;
 }
 
+function formatDisplayDate(dateString) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+}
+
 /**
  * Parse URL parameters
  */
@@ -198,6 +212,7 @@ export function TimelinePage() {
   const [segments, setSegments] = useState([]);
   const [idsLoading, setIdsLoading] = useState(idsMode);
   const [idsSegmentInfo, setIdsSegmentInfo] = useState(null);  // metadata from IDs endpoint
+  const [idsTimelineSegments, setIdsTimelineSegments] = useState([]);
 
   // Refs
   const timelineContainerRef = useRef(null);
@@ -205,6 +220,196 @@ export function TimelinePage() {
   const flushIntervalRef = useRef(null);
   const initialTimeRef = useRef(urlParams.time);  // Store initial time param for auto-seek
   const processedDataRef = useRef(null);  // Track last processed timeline data
+  const selectedDateRef = useRef(urlParams.date);
+
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
+
+  const idsAvailableDates = useMemo(() => (
+    idsMode ? getAvailableDatesForSegments(idsTimelineSegments) : []
+  ), [idsMode, idsTimelineSegments]);
+
+  const idsSelectedDayIndex = idsAvailableDates.indexOf(selectedDate);
+  const idsVisibleSegmentCount = useMemo(() => (
+    idsMode ? countSegmentsForDate(idsTimelineSegments, selectedDate) : 0
+  ), [idsMode, idsTimelineSegments, selectedDate]);
+
+  const loadSegmentsIntoTimeline = useCallback((rawSegments, effectiveDate, options = {}) => {
+    const { successMessage = null } = options;
+    const segmentsCopy = JSON.parse(JSON.stringify(rawSegments || []));
+
+    if (segmentsCopy.length === 0) {
+      setSegments([]);
+      timelineState.setState({
+        timelineSegments: [],
+        currentSegmentIndex: -1,
+        currentTime: null,
+        prevCurrentTime: null,
+        isPlaying: false,
+        selectedDate: effectiveDate
+      });
+      return false;
+    }
+
+    setSegments(segmentsCopy);
+
+    const dayBounds = getLocalDayBounds(effectiveDate);
+    const visibleIndices = [];
+
+    // Compute auto-fit range from segments for the selected day
+    let earliest = 24;
+    let latest = 0;
+    segmentsCopy.forEach((seg, index) => {
+      const visibleRange = getClippedSegmentHourRange(seg, effectiveDate);
+      if (!visibleRange) return;
+      visibleIndices.push(index);
+      earliest = Math.min(earliest, visibleRange.startHour);
+      latest = Math.max(latest, visibleRange.endHour);
+    });
+
+    if (visibleIndices.length === 0) {
+      timelineState.setState({
+        timelineSegments: segmentsCopy,
+        currentSegmentIndex: -1,
+        currentTime: null,
+        prevCurrentTime: null,
+        isPlaying: false,
+        selectedDate: effectiveDate,
+        timelineStartHour: 0,
+        timelineEndHour: 24,
+        autoFitStartHour: 0,
+        autoFitEndHour: 24
+      });
+      return false;
+    }
+
+    const findNearestVisibleIndex = (targetTimestamp) => {
+      let bestIndex = -1;
+      let bestDistance = Infinity;
+      let bestStart = Infinity;
+
+      visibleIndices.forEach(index => {
+        const seg = segmentsCopy[index];
+        let distance = 0;
+        if (targetTimestamp < seg.start_timestamp) {
+          distance = seg.start_timestamp - targetTimestamp;
+        } else if (targetTimestamp > seg.end_timestamp) {
+          distance = targetTimestamp - seg.end_timestamp;
+        }
+
+        if (distance < bestDistance || (distance === bestDistance && seg.start_timestamp < bestStart)) {
+          bestDistance = distance;
+          bestStart = seg.start_timestamp;
+          bestIndex = index;
+        }
+      });
+
+      return bestIndex;
+    };
+
+    // Determine initial time/segment (honour ?time= URL param)
+    let initialTime = null;
+    let initialSegmentIndex = -1;
+    let preserveExistingPlayback = false;
+
+    if (timelineState.currentTime !== null && timelineState.currentTime !== undefined) {
+      const containingIndex = findContainingSegmentIndex(segmentsCopy, timelineState.currentTime);
+      if (containingIndex !== -1 && getClippedSegmentHourRange(segmentsCopy[containingIndex], effectiveDate)) {
+        initialSegmentIndex = containingIndex;
+        initialTime = timelineState.currentTime;
+        preserveExistingPlayback = true;
+      }
+    }
+
+    if (initialSegmentIndex === -1 && initialTimeRef.current) {
+      const timeParts = initialTimeRef.current.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+      if (timeParts) {
+        const [, h, m, s] = timeParts.map(Number);
+        const seekTs = timelineHourToTimestamp(h + m / 60 + s / 3600, effectiveDate);
+
+        const containingIndex = findContainingSegmentIndex(segmentsCopy, seekTs);
+        if (containingIndex !== -1 && getClippedSegmentHourRange(segmentsCopy[containingIndex], effectiveDate)) {
+          initialSegmentIndex = containingIndex;
+          initialTime = seekTs;
+        } else {
+          const nearestIndex = findNearestVisibleIndex(seekTs);
+          if (nearestIndex !== -1) {
+            initialSegmentIndex = nearestIndex;
+            initialTime = Math.max(segmentsCopy[nearestIndex].start_timestamp, dayBounds.startTimestamp);
+          }
+        }
+      }
+      initialTimeRef.current = '';
+    }
+
+    if (initialSegmentIndex === -1) {
+      initialSegmentIndex = findFirstVisibleSegmentIndex(segmentsCopy, effectiveDate);
+      if (initialSegmentIndex !== -1) {
+        initialTime = Math.max(segmentsCopy[initialSegmentIndex].start_timestamp, dayBounds.startTimestamp);
+      }
+    }
+
+    if (initialSegmentIndex === -1 || initialTime === null) {
+      return false;
+    }
+
+    let fitStart = 0;
+    let fitEnd = 24;
+    if (earliest < 24 && latest > 0) {
+      const span = latest - earliest;
+      const pad = Math.max(0.5, Math.min(1, span * 0.1));
+      fitStart = Math.max(0, Math.floor((earliest - pad) * 2) / 2);
+      fitEnd = Math.min(24, Math.ceil((latest + pad) * 2) / 2);
+      if (fitEnd - fitStart < 2) {
+        const center = (earliest + latest) / 2;
+        fitStart = Math.max(0, Math.floor((center - 1) * 2) / 2);
+        fitEnd = Math.min(24, fitStart + 2);
+      }
+    }
+
+    // Push to global state
+    timelineState.timelineSegments = segmentsCopy;
+    timelineState.currentSegmentIndex = initialSegmentIndex;
+    timelineState.currentTime = initialTime;
+    timelineState.prevCurrentTime = initialTime;
+    if (!preserveExistingPlayback) {
+      timelineState.isPlaying = false;
+    }
+    timelineState.forceReload = !preserveExistingPlayback;
+    timelineState.autoFitStartHour = fitStart;
+    timelineState.autoFitEndHour = fitEnd;
+    timelineState.timelineStartHour = fitStart;
+    timelineState.timelineEndHour = fitEnd;
+    timelineState.selectedDate = effectiveDate;
+    timelineState.setState({});
+
+    if (!preserveExistingPlayback) {
+      // Safety net: retry if state didn't stick
+      setTimeout(() => {
+        if (!timelineState.currentTime || timelineState.currentSegmentIndex === -1) {
+          timelineState.setState({
+            currentSegmentIndex: initialSegmentIndex,
+            currentTime: initialTime,
+            prevCurrentTime: initialTime,
+            selectedDate: effectiveDate
+          });
+        }
+      }, 100);
+
+      // Preload the initial segment's video for this day
+      const videoPlayer = document.querySelector('#video-player video');
+      if (videoPlayer) {
+        videoPlayer.src = `/api/recordings/play/${segmentsCopy[initialSegmentIndex].id}?t=${Date.now()}`;
+        videoPlayer.load();
+      }
+    }
+
+    if (successMessage) {
+      showStatusMessage(successMessage, 'success');
+    }
+    return true;
+  }, []);
 
   // Set up periodic flush of pending updates
   useEffect(() => {
@@ -279,27 +484,24 @@ export function TimelinePage() {
 
         const segs = (data.segments || []).sort((a, b) => a.start_timestamp - b.start_timestamp);
         if (segs.length > 0) {
-          // Compute the overall day range
-          const earliest = segs[0].start_timestamp;
-          const latest = segs[segs.length - 1].end_timestamp;
-          const dayStart = earliest - (earliest % 86400); // approximate day start
-          const dayEnd = dayStart + 86400;
+          const availableDates = getAvailableDatesForSegments(segs);
+          const anchorDate = availableDates.includes(selectedDateRef.current)
+            ? selectedDateRef.current
+            : (availableDates[0] || formatDateForInput(new Date(segs[0].start_timestamp * 1000)));
 
-          timelineState.setState({
-            segments: segs,
-            dayStart,
-            dayEnd,
-            isLoading: false
-          });
-          setSegments(segs);
+          setIdsTimelineSegments(segs);
+          if (anchorDate !== selectedDateRef.current) {
+            setSelectedDate(anchorDate);
+          }
 
           // Build a pseudo-stream name from unique streams
           const uniqueStreams = [...new Set(segs.map(s => s.stream))];
           setSelectedStream(uniqueStreams.join(', '));
 
-          showStatusMessage(`Loaded ${segs.length} selected recording segments`, 'success');
+          showStatusMessage(`Loaded ${segs.length} selected recording segments across ${availableDates.length} day${availableDates.length !== 1 ? 's' : ''}`, 'success');
         } else {
-          setSegments([]);
+          setIdsTimelineSegments([]);
+          loadSegmentsIntoTimeline([], selectedDate);
           showStatusMessage('No recordings found for the selected IDs', 'info');
         }
       } catch (err) {
@@ -310,7 +512,24 @@ export function TimelinePage() {
     };
 
     fetchByIds();
-  }, [idsMode, recordingIds]);
+  }, [idsMode, recordingIds, loadSegmentsIntoTimeline]);
+
+  useEffect(() => {
+    if (!idsMode) return;
+    if (idsTimelineSegments.length === 0) return;
+    if (idsAvailableDates.length === 0) return;
+
+    const effectiveDate = idsAvailableDates.includes(selectedDate)
+      ? selectedDate
+      : idsAvailableDates[0];
+
+    if (effectiveDate !== selectedDate) {
+      setSelectedDate(effectiveDate);
+      return;
+    }
+
+    loadSegmentsIntoTimeline(idsTimelineSegments, effectiveDate);
+  }, [idsMode, idsTimelineSegments, idsAvailableDates, selectedDate, loadSegmentsIntoTimeline]);
 
   // Calculate time range for timeline data
   const getTimeRange = (date) => {
@@ -332,11 +551,20 @@ export function TimelinePage() {
 
   // Update URL and global state when stream or date changes
   useEffect(() => {
+    if (idsMode) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('date', selectedDate);
+      url.searchParams.delete('time');
+      window.history.replaceState({}, '', url);
+      timelineState.setState({ selectedDate });
+      return;
+    }
+
     if (selectedStream) {
       updateUrlParams(selectedStream, selectedDate);
       timelineState.setState({ selectedStream, selectedDate });
     }
-  }, [selectedStream, selectedDate]);
+  }, [idsMode, selectedStream, selectedDate]);
 
   // Get time range for current date
   const { startTime, endTime } = getTimeRange(selectedDate);
@@ -382,102 +610,28 @@ export function TimelinePage() {
     const timelineSegments = timelineData.segments || [];
 
     if (timelineSegments.length === 0) {
-      setSegments([]);
-      timelineState.setState({
-        timelineSegments: [],
-        currentSegmentIndex: -1,
-        currentTime: null,
-        isPlaying: false
-      });
+      loadSegmentsIntoTimeline([], selectedDate, '');
       showStatusMessage('No recordings found for the selected date', 'warning');
       return;
     }
 
-    const segmentsCopy = JSON.parse(JSON.stringify(timelineSegments));
-    setSegments(segmentsCopy);
-
-    // Determine initial time/segment (honour ?time= URL param)
-    let initialTime = segmentsCopy[0].start_timestamp;
-    let initialSegmentIndex = 0;
-
-    if (initialTimeRef.current) {
-      const timeParts = initialTimeRef.current.match(/^(\d{2}):(\d{2}):(\d{2})$/);
-      if (timeParts) {
-        const [, h, m, s] = timeParts.map(Number);
-        const seekTs = timelineHourToTimestamp(h + m / 60 + s / 3600, selectedDate);
-
-        const containingIndex = findContainingSegmentIndex(segmentsCopy, seekTs);
-        if (containingIndex !== -1) {
-          initialSegmentIndex = containingIndex;
-          initialTime = seekTs;
-        } else {
-          const nearestIndex = findNearestSegmentIndex(segmentsCopy, seekTs);
-          if (nearestIndex !== -1) {
-            initialSegmentIndex = nearestIndex;
-            initialTime = segmentsCopy[nearestIndex].start_timestamp;
-          }
-        }
-      }
-      initialTimeRef.current = '';
-    }
-
-    // Compute auto-fit range from segments
-    let earliest = 24, latest = 0;
-    segmentsCopy.forEach(seg => {
-      const visibleRange = getClippedSegmentHourRange(seg, selectedDate);
-      if (!visibleRange) return;
-      earliest = Math.min(earliest, visibleRange.startHour);
-      latest = Math.max(latest, visibleRange.endHour);
+    loadSegmentsIntoTimeline(timelineSegments, selectedDate, {
+      successMessage: `Loaded ${timelineSegments.length} recording segments`
     });
+  }, [timelineData, timelineError, selectedDate, loadSegmentsIntoTimeline]);
 
-    let fitStart = 0;
-    let fitEnd = 24;
-    if (earliest < 24 && latest > 0) {
-      const span = latest - earliest;
-      const pad = Math.max(0.5, Math.min(1, span * 0.1));
-      fitStart = Math.max(0, Math.floor((earliest - pad) * 2) / 2);
-      fitEnd = Math.min(24, Math.ceil((latest + pad) * 2) / 2);
-      if (fitEnd - fitStart < 2) {
-        const center = (earliest + latest) / 2;
-        fitStart = Math.max(0, Math.floor((center - 1) * 2) / 2);
-        fitEnd = Math.min(24, fitStart + 2);
+  useEffect(() => {
+    if (!idsMode || idsAvailableDates.length === 0) return undefined;
+
+    return timelineState.subscribe(({ currentTime }) => {
+      if (currentTime === null || currentTime === undefined) return;
+
+      const playbackDate = formatTimestampAsLocalDate(currentTime);
+      if (idsAvailableDates.includes(playbackDate) && playbackDate !== selectedDate) {
+        setSelectedDate(prev => (prev === playbackDate ? prev : playbackDate));
       }
-    }
-
-    // Push to global state
-    timelineState.timelineSegments = segmentsCopy;
-    timelineState.currentSegmentIndex = initialSegmentIndex;
-    timelineState.currentTime = initialTime;
-    timelineState.prevCurrentTime = initialTime;
-    timelineState.isPlaying = false;
-    timelineState.forceReload = true;
-    timelineState.autoFitStartHour = fitStart;
-    timelineState.autoFitEndHour = fitEnd;
-    timelineState.timelineStartHour = fitStart;
-    timelineState.timelineEndHour = fitEnd;
-    timelineState.selectedDate = selectedDate;
-    timelineState.setState({});
-
-    // Safety net: retry if state didn't stick
-    setTimeout(() => {
-      if (!timelineState.currentTime || timelineState.currentSegmentIndex === -1) {
-        timelineState.setState({
-          currentSegmentIndex: initialSegmentIndex,
-          currentTime: initialTime,
-          prevCurrentTime: initialTime
-        });
-      }
-    }, 100);
-
-    // Preload the initial segment's video
-    const videoPlayer = document.querySelector('#video-player video');
-    if (videoPlayer) {
-      videoPlayer.src = `/api/recordings/play/${segmentsCopy[initialSegmentIndex].id}?t=${Date.now()}`;
-      videoPlayer.load();
-    }
-
-    showStatusMessage(`Loaded ${segmentsCopy.length} recording segments`, 'success');
-  }, [timelineData, timelineError, selectedDate]);
+    });
+  }, [idsMode, idsAvailableDates, selectedDate]);
 
   // When a recording is deleted from the timeline player, remove it from the
   // local segments list (creates the visual gap) and advance to the next segment.
@@ -540,6 +694,19 @@ export function TimelinePage() {
     }
   };
 
+  const handleIdsDayChange = useCallback((newDate) => {
+    if (!idsAvailableDates.includes(newDate)) return;
+    setSelectedDate(newDate);
+  }, [idsAvailableDates]);
+
+  const jumpIdsDay = useCallback((offset) => {
+    if (idsSelectedDayIndex === -1) return;
+    const nextDate = idsAvailableDates[idsSelectedDayIndex + offset];
+    if (nextDate) {
+      handleIdsDayChange(nextDate);
+    }
+  }, [handleIdsDayChange, idsAvailableDates, idsSelectedDayIndex]);
+
   // Render content based on state
   const renderContent = () => {
     if (isLoadingTimeline || idsLoading) {
@@ -552,7 +719,9 @@ export function TimelinePage() {
           <svg className="w-16 h-16 text-muted-foreground mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
-          <p className="text-muted-foreground text-lg">No recordings found for the selected date and stream</p>
+          <p className="text-muted-foreground text-lg">
+            {idsMode ? 'No selected recordings are visible for this day' : 'No recordings found for the selected date and stream'}
+          </p>
         </div>
       );
     }
@@ -665,6 +834,44 @@ export function TimelinePage() {
             <span className="text-xs text-muted-foreground">
               {idsSegmentInfo.start_time} — {idsSegmentInfo.end_time}
             </span>
+          )}
+          {idsAvailableDates.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1">
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Active day</span>
+              <button
+                type="button"
+                className="btn-secondary text-xs px-2 py-1 disabled:opacity-50"
+                disabled={idsSelectedDayIndex <= 0}
+                onClick={() => jumpIdsDay(-1)}
+                title="Previous selected day"
+              >
+                ←
+              </button>
+              <select
+                className="min-w-[180px] rounded border border-border bg-background px-2 py-1 text-xs"
+                value={selectedDate}
+                onChange={(e) => handleIdsDayChange(e.target.value)}
+              >
+                {idsAvailableDates.map((date, index) => (
+                  <option key={date} value={date}>
+                    {`Day ${index + 1} · ${formatDisplayDate(date)}`}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-secondary text-xs px-2 py-1 disabled:opacity-50"
+                disabled={idsSelectedDayIndex === -1 || idsSelectedDayIndex >= idsAvailableDates.length - 1}
+                onClick={() => jumpIdsDay(1)}
+                title="Next selected day"
+              >
+                →
+              </button>
+              <span className="text-xs text-muted-foreground">
+                {idsSelectedDayIndex === -1 ? '' : `${idsSelectedDayIndex + 1} of ${idsAvailableDates.length}`}
+                {idsVisibleSegmentCount > 0 && ` · ${idsVisibleSegmentCount} visible`}
+              </span>
+            </div>
           )}
           <div className="ml-auto flex gap-2">
             <a href={returnUrl || 'recordings.html'} className="btn-secondary text-xs px-2 py-1">
