@@ -935,8 +935,19 @@ static int load_config_from_file(const char *filename, config_t *config) {
 int load_stream_configs(config_t *config) {
     if (!config || !config->streams) return -1;
 
+    if (config->max_streams <= 0 || config->max_streams > MAX_STREAMS) {
+        log_error("load_stream_configs: invalid max_streams value (%d)", config->max_streams);
+        return -1;
+    }
+
+    size_t max_streams = (size_t)config->max_streams;
+    if (max_streams > SIZE_MAX / sizeof(stream_config_t)) {
+        log_error("load_stream_configs: max_streams causes size overflow");
+        return -1;
+    }
+
     // Clear existing stream configurations
-    memset(config->streams, 0, sizeof(stream_config_t) * config->max_streams);
+    memset(config->streams, 0, sizeof(stream_config_t) * max_streams);
 
     // Get stream count from database
     int count = count_stream_configs();
@@ -950,13 +961,19 @@ int load_stream_configs(config_t *config) {
         return 0;
     }
 
+    size_t load_capacity = (size_t)count < max_streams ? (size_t)count : max_streams;
+    if ((size_t)count > max_streams) {
+        log_warn("load_stream_configs: database has %d streams, truncating to configured limit %zu",
+                 count, max_streams);
+    }
+
     // Heap-allocate temporary buffer (stream_config_t is ~2 KB; stack array at 256 overflows)
-    stream_config_t *db_streams = calloc(config->max_streams, sizeof(stream_config_t));
+    stream_config_t *db_streams = calloc(load_capacity, sizeof(stream_config_t));
     if (!db_streams) {
-        log_error("load_stream_configs: out of memory");
+        log_error("load_stream_configs: out of memory allocating %zu stream configs", load_capacity);
         return -1;
     }
-    int loaded = get_all_stream_configs(db_streams, config->max_streams);
+    int loaded = get_all_stream_configs(db_streams, (int)load_capacity);
     if (loaded < 0) {
         log_error("Failed to load stream configurations from database");
         free(db_streams);
@@ -964,7 +981,7 @@ int load_stream_configs(config_t *config) {
     }
 
     // Copy stream configurations to config
-    for (int i = 0; i < loaded && i < config->max_streams; i++) {
+    for (int i = 0; i < loaded; i++) {
         memcpy(&config->streams[i], &db_streams[i], sizeof(stream_config_t));
     }
     free(db_streams);
