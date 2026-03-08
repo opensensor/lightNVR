@@ -40,6 +40,7 @@ describe('timelineUtils', () => {
     ];
 
     expect(findContainingSegmentIndex(segments, 190)).toBe(1);
+    expect(findContainingSegmentIndex(segments, 195)).toBe(1);
     expect(findContainingSegmentIndex(segments, 200)).toBe(1);
   });
 
@@ -77,7 +78,20 @@ describe('timelineUtils', () => {
       { id: 2, start_timestamp: 190, end_timestamp: 240 }
     ];
 
-    expect(findNearestSegmentIndex(segments, 170)).toBe(0);
+    const timestamp = 170;
+    const distanceToFirst =
+      Math.min(
+        Math.abs(timestamp - segments[0].start_timestamp),
+        Math.abs(timestamp - segments[0].end_timestamp)
+      );
+    const distanceToSecond =
+      Math.min(
+        Math.abs(timestamp - segments[1].start_timestamp),
+        Math.abs(timestamp - segments[1].end_timestamp)
+      );
+
+    expect(distanceToFirst).toBe(distanceToSecond);
+    expect(findNearestSegmentIndex(segments, timestamp)).toBe(0);
   });
 
   test('clips a boundary-spanning segment to the selected local day', () => {
