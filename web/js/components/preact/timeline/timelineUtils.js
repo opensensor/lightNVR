@@ -18,12 +18,7 @@ function getLocalDayStart(selectedDate) {
     return null;
   }
 
-  const [year, month, day] = selectedDate.split('-').map(Number);
-  if (![year, month, day].every(Number.isFinite)) {
-    return null;
-  }
-
-  const localDayStart = dayjs(new Date(year, month - 1, day, 0, 0, 0, 0));
+  const localDayStart = dayjs(selectedDate).startOf('day');
   return localDayStart.isValid() ? localDayStart : null;
 }
 
@@ -93,7 +88,7 @@ export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = n
 }
 
 function formatLocalDate(date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return dayjs(date).format('YYYY-MM-DD');
 }
 
 export function formatTimestampAsLocalDate(timestamp) {
@@ -155,15 +150,12 @@ export function getAvailableDatesForSegments(segments) {
     }
 
     const effectiveEnd = Math.max(segment.start_timestamp, segment.end_timestamp - 1);
-    const cursor = new Date(segment.start_timestamp * 1000);
-    cursor.setHours(0, 0, 0, 0);
+    let cursor = dayjs.unix(segment.start_timestamp).startOf('day');
+    const endDate = dayjs.unix(effectiveEnd).startOf('day');
 
-    const endDate = new Date(effectiveEnd * 1000);
-    endDate.setHours(0, 0, 0, 0);
-
-    while (cursor <= endDate) {
+    while (cursor.isBefore(endDate) || cursor.isSame(endDate, 'day')) {
       dates.add(formatLocalDate(cursor));
-      cursor.setDate(cursor.getDate() + 1);
+      cursor = cursor.add(1, 'day');
     }
   });
 

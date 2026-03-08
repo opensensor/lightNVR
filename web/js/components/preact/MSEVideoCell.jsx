@@ -11,6 +11,7 @@ import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
 import { getGo2rtcWebSocketUrl } from '../../utils/settings-utils.js';
+import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 
 /**
  * MSEVideoCell component
@@ -393,7 +394,7 @@ export function MSEVideoCell({
     }
 
     // Auto-download for rapid-fire capability (also works in fullscreen)
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestamp = formatFilenameTimestamp();
     const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
 
     canvas.toBlob((blob) => {

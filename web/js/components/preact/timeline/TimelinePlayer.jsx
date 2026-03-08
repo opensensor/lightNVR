@@ -10,6 +10,7 @@ import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
 import { TagIcon, TagsOverlay } from '../recordings/TagsOverlay.jsx';
+import { formatFilenameTimestamp, formatLocalDateTime, toUnixSeconds } from '../../../utils/date-utils.js';
 
 // Timeout for cleaning up preloaded temporary video elements (in milliseconds).
 const PRELOAD_CLEANUP_TIMEOUT_MS = 15000;
@@ -494,7 +495,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       videoTime: video.currentTime,
       segmentStart: segment.start_timestamp,
       calculatedTime: currentTime,
-      localTime: new Date(currentTime * 1000).toLocaleString()
+      localTime: formatLocalDateTime(currentTime)
     });
 
     // Directly update the time display as well
@@ -543,7 +544,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       timestamp: time,
       formatted,
       stream: streamName || null,
-      localTime: new Date(time * 1000).toLocaleString()
+      localTime: formatLocalDateTime(time)
     });
   };
 
@@ -616,8 +617,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
         if (!data.stream || !data.start_time || !data.end_time) return;
 
-        const startTime = Math.floor(new Date(data.start_time).getTime() / 1000);
-        const endTime = Math.floor(new Date(data.end_time).getTime() / 1000);
+        const startTime = toUnixSeconds(data.start_time, { assumeUtc: true });
+        const endTime = toUnixSeconds(data.end_time, { assumeUtc: true });
         if (startTime <= 0 || endTime <= 0) return;
 
         return fetch(`/api/detection/results/${encodeURIComponent(data.stream)}?start=${startTime}&end=${endTime}`);
@@ -887,7 +888,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const streamName = segmentRecordingData?.stream || 'timeline';
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestamp = formatFilenameTimestamp();
     const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
 
     canvas.toBlob((blob) => {

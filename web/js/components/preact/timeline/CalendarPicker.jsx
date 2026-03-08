@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
+import dayjs from 'dayjs';
 
 /* ── helpers ────────────────────────────────────────────────── */
 
@@ -16,23 +17,19 @@ const MONTHS = [
   'July','August','September','October','November','December'
 ];
 
-/** Pad single-digit numbers to 2 chars */
-const pad = n => String(n).padStart(2, '0');
-
 /** YYYY-MM-DD from a Date (local) */
-const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fmt = d => dayjs(d).format('YYYY-MM-DD');
 
 /** Parse YYYY-MM-DD into local Date at midnight */
 function parseLocal(str) {
-  const [y, m, d] = str.split('-').map(Number);
-  return new Date(y, m - 1, d);
+  return dayjs(str);
 }
 
 /** Get calendar grid rows for a given year / month (0-indexed month). */
 function buildGrid(year, month) {
-  const first = new Date(year, month, 1);
-  const startDay = first.getDay(); // 0=Sun
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const first = dayjs().year(year).month(month).date(1);
+  const startDay = first.day(); // 0=Sun
+  const daysInMonth = first.daysInMonth();
 
   const cells = [];
   // leading blanks
@@ -46,13 +43,13 @@ function buildGrid(year, month) {
 /* ── component ──────────────────────────────────────────────── */
 
 export function CalendarPicker({ value, onChange }) {
-  const today = fmt(new Date());
+  const today = dayjs().format('YYYY-MM-DD');
   const selected = value || today;
 
   // The month being *viewed* in the popup (not necessarily the selected date's month)
   const selDate = parseLocal(selected);
-  const [viewYear, setViewYear] = useState(selDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(selDate.getMonth());
+  const [viewYear, setViewYear] = useState(selDate.year());
+  const [viewMonth, setViewMonth] = useState(selDate.month());
   const [open, setOpen] = useState(false);
 
   const wrapperRef = useRef(null);
@@ -60,8 +57,8 @@ export function CalendarPicker({ value, onChange }) {
   // Sync viewed month when value changes externally
   useEffect(() => {
     const d = parseLocal(selected);
-    setViewYear(d.getFullYear());
-    setViewMonth(d.getMonth());
+    setViewYear(d.year());
+    setViewMonth(d.month());
   }, [selected]);
 
   // Close on outside click
@@ -84,14 +81,14 @@ export function CalendarPicker({ value, onChange }) {
     else setViewMonth(m => m + 1);
   };
   const goToday = () => {
-    const t = new Date();
-    setViewYear(t.getFullYear());
-    setViewMonth(t.getMonth());
+    const t = dayjs();
+    setViewYear(t.year());
+    setViewMonth(t.month());
     pick(today);
   };
 
-  const prevDay = () => { const d = parseLocal(selected); d.setDate(d.getDate() - 1); pick(fmt(d)); };
-  const nextDay = () => { const d = parseLocal(selected); d.setDate(d.getDate() + 1); pick(fmt(d)); };
+  const prevDay = () => pick(parseLocal(selected).subtract(1, 'day').format('YYYY-MM-DD'));
+  const nextDay = () => pick(parseLocal(selected).add(1, 'day').format('YYYY-MM-DD'));
 
   const pick = useCallback((dateStr) => {
     onChange(dateStr);
@@ -102,7 +99,7 @@ export function CalendarPicker({ value, onChange }) {
 
   /* ── display helpers ── */
   const displayDate = parseLocal(selected);
-  const displayStr = `${MONTHS[displayDate.getMonth()]} ${displayDate.getDate()}, ${displayDate.getFullYear()}`;
+  const displayStr = `${MONTHS[displayDate.month()]} ${displayDate.date()}, ${displayDate.year()}`;
 
   return (
     <div className="relative" ref={wrapperRef} data-testid="date-picker">
@@ -187,7 +184,7 @@ export function CalendarPicker({ value, onChange }) {
           <div className="grid grid-cols-7 text-center text-sm">
             {grid.map((day, i) => {
               if (day === null) return <span key={`blank-${i}`} />;
-              const cellDate = fmt(new Date(viewYear, viewMonth, day));
+              const cellDate = dayjs().year(viewYear).month(viewMonth).date(day).format('YYYY-MM-DD');
               const isToday = cellDate === today;
               const isSel = cellDate === selected;
 

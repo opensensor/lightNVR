@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 
 import { forwardRef, useImperativeHandle } from 'preact/compat';
 
@@ -369,7 +370,7 @@ export function takeSnapshotWithDetections(videoRef, canvasRef, streamName) {
   }
 
   // Generate a filename
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const timestamp = formatFilenameTimestamp();
   const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
 
   return {

@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { findContainingSegmentIndex, getClippedSegmentHourRange } from './timelineUtils.js';
+import { formatLocalTime, nowMilliseconds } from '../../../utils/date-utils.js';
 
 /**
  * TimelineSegments component
@@ -176,7 +177,7 @@ export function TimelineSegments({ segments: propSegments }) {
           videoElement.load();
 
           // Set the new source
-          videoElement.src = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
+          videoElement.src = `/api/recordings/play/${segment.id}?t=${nowMilliseconds()}`;
 
           // Set the current time and play
           videoElement.onloadedmetadata = () => {
@@ -241,8 +242,8 @@ export function TimelineSegments({ segments: propSegments }) {
       const widthPct = ((vEnd - vStart) / hourRange) * 100;
 
       // Tooltip
-      const t0 = new Date(seg.start_timestamp * 1000).toLocaleTimeString();
-      const t1 = new Date(seg.end_timestamp * 1000).toLocaleTimeString();
+      const t0 = formatLocalTime(seg.start_timestamp);
+      const t1 = formatLocalTime(seg.end_timestamp);
       const dur = Math.round(seg.end_timestamp - seg.start_timestamp);
       const durLabel = dur >= 3600
         ? `${Math.floor(dur / 3600)}h ${Math.floor((dur % 3600) / 60)}m`

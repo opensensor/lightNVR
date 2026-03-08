@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'preact/hooks';
+import { getCurrentYear } from '../../utils/date-utils.js';
 
 /**
  * Footer component
@@ -11,7 +12,7 @@ import { useState } from 'preact/hooks';
  * @returns {JSX.Element} Footer component
  */
 export function Footer() {
-  const [year] = useState(new Date().getFullYear());
+  const [year] = useState(getCurrentYear());
 
   return (
     <footer class="bg-card text-card-foreground py-3 px-4 mt-4 shadow-inner">

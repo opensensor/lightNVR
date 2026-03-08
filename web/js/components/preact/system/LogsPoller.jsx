@@ -6,6 +6,7 @@
 import { useEffect, useRef, useCallback } from 'preact/hooks';
 import { fetchJSON } from '../../../fetch-utils.js';
 import { log_level_meets_minimum } from './SystemUtils.js';
+import { toEpochMilliseconds } from '../../../utils/date-utils.js';
 
 /**
  * LogsPoller component
@@ -69,7 +70,7 @@ export function LogsPoller({ logLevel, logCount, pollingInterval = 5000, onLogsR
         });
 
         // Sort logs by timestamp (newest first)
-        cleanedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        cleanedLogs.sort((a, b) => toEpochMilliseconds(b.timestamp) - toEpochMilliseconds(a.timestamp));
 
         // Update last timestamp for future reference
         if (cleanedLogs.length > 0 && cleanedLogs[0].timestamp) {

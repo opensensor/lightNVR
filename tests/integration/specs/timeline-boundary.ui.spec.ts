@@ -242,3 +242,30 @@ test.describe('Timeline DST rendering @ui @timeline', () => {
     await expect(ruler.getByText('2:00', { exact: true })).toHaveCount(0);
   });
 });
+
+test.describe('Timeline DST fall-back rendering @ui @timeline', () => {
+  test.use({ timezoneId: 'Europe/Berlin' });
+
+  test.beforeEach(async ({ page }) => {
+    await login(page, USERS.admin);
+  });
+
+  test('shows the repeated 2am hour twice on fall-back days', async ({ page }) => {
+    const stream = 'front_door';
+    const selectedDate = '2026-10-25';
+    const segments: Segment[] = [
+      { id: 701, stream, start_timestamp: Math.floor(Date.parse('2026-10-25T00:10:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-10-25T00:15:00Z') / 1000) },
+      { id: 702, stream, start_timestamp: Math.floor(Date.parse('2026-10-25T01:10:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-10-25T01:15:00Z') / 1000) }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${selectedDate}`, { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    const ruler = page.locator('.timeline-ruler');
+
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(ruler.getByText('2:00', { exact: true })).toHaveCount(2);
+    await expect(ruler.getByText('3:00', { exact: true })).toBeVisible();
+  });
+});

@@ -22,6 +22,7 @@ import { PaginationControls } from './recordings/PaginationControls.jsx';
 import { formatUtils } from './recordings/formatUtils.js';
 import { recordingsAPI } from './recordings/recordingsAPI.jsx';
 import { urlUtils } from './recordings/urlUtils.js';
+import { getDefaultDateRange } from '../../utils/date-utils.js';
 
 import { validateSession } from '../../utils/auth-utils.js';
 
@@ -342,14 +343,12 @@ export function RecordingsView() {
 
   // Set default date range (used when switching to 'custom' with no existing dates)
   const setDefaultDateRange = () => {
-    const now = new Date();
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(now.getDate() - 7);
+    const { startDate, endDate } = getDefaultDateRange(7);
 
     setFilters(prev => ({
       ...prev,
-      endDate: now.toISOString().split('T')[0],
-      startDate: sevenDaysAgo.toISOString().split('T')[0]
+      endDate,
+      startDate
     }));
   };
 
@@ -495,14 +494,12 @@ export function RecordingsView() {
     if (newDateRange === 'custom') {
       // If custom is selected, make sure we have default dates
       if (!filters.startDate || !filters.endDate) {
-        const now = new Date();
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(now.getDate() - 7);
+        const { startDate, endDate } = getDefaultDateRange(7);
 
         setFilters(prev => ({
           ...prev,
-          endDate: now.toISOString().split('T')[0],
-          startDate: sevenDaysAgo.toISOString().split('T')[0]
+          endDate,
+          startDate
         }));
       }
     }

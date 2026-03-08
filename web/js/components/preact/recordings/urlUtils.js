@@ -3,8 +3,7 @@
  */
 
 import { formatUtils } from './formatUtils.js';
-
-const getNow = () => new Date();
+import { getDefaultDateRange } from '../../../utils/date-utils.js';
 
 const parseMultiValueParam = (value) => {
   if (!value) return [];
@@ -43,13 +42,13 @@ const removeMultiValue = (values, value) => {
 };
 
 const createDefaultFilters = () => {
-  const now = getNow();
+  const { startDate, endDate } = getDefaultDateRange();
 
   return {
     dateRange: 'last7days',
-    startDate: now.toISOString().split('T')[0],
+    startDate,
     startTime: '00:00',
-    endDate: now.toISOString().split('T')[0],
+    endDate,
     endTime: '23:59',
     streamIds: [],
     recordingType: 'all',

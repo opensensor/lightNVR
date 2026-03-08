@@ -11,6 +11,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
 import { ConfirmDialog } from './UI.jsx';
 import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled, isForceNativeHls } from '../../utils/settings-utils.js';
+import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import Hls from 'hls.js';
 
 /**
@@ -638,7 +639,7 @@ export function HLSVideoCell({
               }
 
               // Auto-download for rapid-fire capability (also works in fullscreen)
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const timestamp = formatFilenameTimestamp();
               const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
 
               canvas.toBlob((blob) => {

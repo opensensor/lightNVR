@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
+import { nowMilliseconds } from '../../utils/date-utils.js';
 
 /**
  * ZoneEditor Component
@@ -56,13 +57,13 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
         try {
           const go2rtcBaseUrl = await getGo2rtcBaseUrl();
           // Add cache-busting parameter to force fresh snapshot
-          const timestamp = Date.now();
+          const timestamp = nowMilliseconds();
           const url = `${go2rtcBaseUrl}/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
           console.log('Loading snapshot from:', url);
           setSnapshotUrl(url);
         } catch (err) {
           console.warn('Failed to get go2rtc URL, using origin proxy:', err);
-          const timestamp = Date.now();
+          const timestamp = nowMilliseconds();
           const url = `${window.location.origin}/go2rtc/api/frame.jpeg?src=${encodeURIComponent(streamName)}&t=${timestamp}`;
           setSnapshotUrl(url);
         }
@@ -341,7 +342,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       // Add point to current zone
       if (!currentZone) {
         setCurrentZone({
-          id: `zone_${Date.now()}`,
+          id: `zone_${nowMilliseconds()}`,
           name: `Zone ${zoneList.length + 1}`,
           polygon: [{ x, y }],
           enabled: true,

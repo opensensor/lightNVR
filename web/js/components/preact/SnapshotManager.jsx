@@ -5,6 +5,7 @@
 import { useState, useCallback, useEffect } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showSnapshotPreview } from './UI.jsx';
+import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 
 /**
  * Custom hook for snapshot functionality
@@ -73,7 +74,7 @@ export function useSnapshotManager() {
 
     try {
       // Generate a filename
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = formatFilenameTimestamp();
       const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
 
       // Store the canvas and filename in state

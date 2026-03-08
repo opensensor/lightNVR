@@ -4,6 +4,7 @@
  */
 
 import { fetchJSON } from '../fetch-utils.js';
+import { nowMilliseconds } from './date-utils.js';
 
 // Cache for settings
 let settingsCache = null;
@@ -20,7 +21,7 @@ let settingsInflight = null;
  * @returns {Promise<Object>} - Settings object
  */
 export async function getSettings(forceRefresh = false) {
-  const now = Date.now();
+  const now = nowMilliseconds();
 
   // Return cached settings if still valid
   if (!forceRefresh && settingsCache && (now - settingsCacheTime) < CACHE_TTL) {
@@ -39,7 +40,7 @@ export async function getSettings(forceRefresh = false) {
     retryDelay: 500
   }).then(settings => {
     settingsCache = settings;
-    settingsCacheTime = Date.now();
+    settingsCacheTime = nowMilliseconds();
     settingsInflight = null;
     return settings;
   }).catch(error => {
@@ -152,7 +153,7 @@ let go2rtcAvailableInflight = null;
  * @returns {Promise<boolean>} - true if go2rtc is available
  */
 export async function isGo2rtcAvailable(forceRefresh = false) {
-  const now = Date.now();
+  const now = nowMilliseconds();
 
   // Return cached result if still valid
   if (!forceRefresh && go2rtcAvailableCache !== null && (now - go2rtcAvailableCacheTime) < GO2RTC_CACHE_TTL) {
@@ -178,7 +179,7 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
 
       const available = response.ok;
       go2rtcAvailableCache = available;
-      go2rtcAvailableCacheTime = Date.now();
+      go2rtcAvailableCacheTime = nowMilliseconds();
 
       if (!available) {
         console.warn(`go2rtc API responded with status ${response.status}`);
@@ -191,12 +192,12 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
       // respond to health checks even though it is serving streams correctly.
       if (go2rtcAvailableCache === true) {
         console.warn(`go2rtc health check failed (${error.message}) but was previously available — assuming still up`);
-        go2rtcAvailableCacheTime = Date.now(); // reset TTL so we don't spam retries
+        go2rtcAvailableCacheTime = nowMilliseconds(); // reset TTL so we don't spam retries
         return true;
       }
       console.warn('go2rtc is not available:', error.message);
       go2rtcAvailableCache = false;
-      go2rtcAvailableCacheTime = Date.now();
+      go2rtcAvailableCacheTime = nowMilliseconds();
       return false;
     } finally {
       go2rtcAvailableInflight = null;

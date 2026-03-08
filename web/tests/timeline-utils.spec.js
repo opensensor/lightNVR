@@ -200,6 +200,30 @@ describe('timelineUtils', () => {
     expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
   });
 
+  test('uses the actual local day length on a DST fall-back day', () => {
+    process.env.TZ = 'America/New_York';
+
+    const bounds = getLocalDayBounds('2026-11-01');
+
+    expect(bounds.endTimestamp - bounds.startTimestamp).toBe(25 * 3600);
+    expect(bounds.durationHours).toBe(25);
+    expect(getTimelineDayLengthHours('2026-11-01')).toBe(25);
+  });
+
+  test('shows the repeated local hour twice on a DST fall-back day', () => {
+    process.env.TZ = 'America/New_York';
+
+    const selectedDate = '2026-11-01';
+    const firstRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T05:10:00Z') / 1000);
+    const secondRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T06:10:00Z') / 1000);
+
+    expect(timestampToTimelineOffset(firstRepeatedHourTimestamp, selectedDate)).toBeCloseTo(1 + (10 / 60), 6);
+    expect(timestampToTimelineOffset(secondRepeatedHourTimestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
+    expect(formatTimelineOffsetLabel(1, selectedDate)).toBe('1:00');
+    expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('1:00');
+    expect(formatTimelineOffsetLabel(3, selectedDate)).toBe('2:00');
+  });
+
   test('handles clock boundary cases at midnight, end of day, and subsecond precision', () => {
     // Midnight at the start of the day
     expect(formatTimestampAsClock(new Date(2026, 2, 8, 0, 0, 0).getTime() / 1000)).toBe('00:00:00');

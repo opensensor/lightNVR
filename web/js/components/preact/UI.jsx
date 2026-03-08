@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { formatUtils } from './recordings/formatUtils.js';
+import { formatFilenameTimestamp, nowMilliseconds } from '../../utils/date-utils.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -493,7 +494,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const streamName = recordingData?.stream || 'recording';
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const timestamp = formatFilenameTimestamp();
     const fileName = `snapshot-${streamName.replace(/\s+/g, '-')}-${timestamp}.jpg`;
 
     canvas.toBlob((blob) => {
@@ -1020,7 +1021,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                 <a
                   className="px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-xs"
                   href={downloadUrl}
-                  download={`video-${Date.now()}.mp4`}
+                  download={`video-${nowMilliseconds()}.mp4`}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1166,7 +1167,7 @@ export function ModalProvider({ children }) {
         return;
       }
 
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const timestamp = formatFilenameTimestamp();
       const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
 
       const link = document.createElement('a');
@@ -1320,7 +1321,7 @@ export function showSnapshotPreview(imageData, streamName) {
   import('preact').then(({ render, h }) => {
     const handleDownload = () => {
       try {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const timestamp = formatFilenameTimestamp();
         const fileName = `snapshot_${streamName}_${timestamp}.jpg`;
 
         const link = document.createElement('a');

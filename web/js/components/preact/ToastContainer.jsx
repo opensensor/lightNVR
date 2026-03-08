@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
+import { formatLocalTime } from '../../utils/date-utils.js';
 
 // Global toast state
 let toastQueue = [];
@@ -167,7 +168,7 @@ if (typeof window !== 'undefined') {
 
   // Add a test function
   window.testToast = (type = 'info') => {
-    const message = `Test ${type} toast at ${new Date().toLocaleTimeString()}`;
+    const message = `Test ${type} toast at ${formatLocalTime()}`;
     console.log(`Triggering test toast: ${message}`);
     addToast(message, type);
     console.log(`Test toast triggered: ${message}`);

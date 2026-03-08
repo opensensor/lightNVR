@@ -15,6 +15,7 @@ import {
   timestampToTimelineOffset,
   zoomTimelineRange
 } from './timelineUtils.js';
+import { nowMilliseconds } from '../../../utils/date-utils.js';
 
 /**
  * TimelineControls component
@@ -343,7 +344,7 @@ export function TimelineControls() {
 
       // Set the new source
       console.log(`TimelineControls: Loading video from segment ${segmentToPlay.id}`);
-      videoElement.src = `/api/recordings/play/${segmentToPlay.id}?t=${Date.now()}`;
+      videoElement.src = `/api/recordings/play/${segmentToPlay.id}?t=${nowMilliseconds()}`;
       videoElement.load();
     } else {
       console.error('TimelineControls: No video element found');

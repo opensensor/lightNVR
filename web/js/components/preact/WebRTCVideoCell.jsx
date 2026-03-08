@@ -12,6 +12,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
 import { ConfirmDialog } from './UI.jsx';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
+import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -1129,7 +1130,7 @@ export function WebRTCVideoCell({
               }
 
               // Auto-download for rapid-fire capability (also works in fullscreen)
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const timestamp = formatFilenameTimestamp();
               const fileName = `snapshot-${stream.name.replace(/\s+/g, '-')}-${timestamp}.jpg`;
 
               canvas.toBlob((blob) => {

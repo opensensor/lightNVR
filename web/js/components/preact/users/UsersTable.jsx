@@ -3,6 +3,7 @@
  */
 
 import { USER_ROLES } from './UserRoles.js';
+import { formatLocalDateTime } from '../../../utils/date-utils.js';
 
 /**
  * Users Table Component
@@ -78,7 +79,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
                   {user.totp_enabled ? '🔐 Enabled' : '— Disabled'}
                 </span>
               </td>
-              <td className="py-3 px-6 border-b border-border">{user.last_login ? new Date(user.last_login * 1000).toLocaleString() : 'Never'}</td>
+              <td className="py-3 px-6 border-b border-border">{user.last_login ? formatLocalDateTime(user.last_login) : 'Never'}</td>
               <td className="py-3 px-6 border-b border-border">
                 <div className="flex space-x-2">
                   <button

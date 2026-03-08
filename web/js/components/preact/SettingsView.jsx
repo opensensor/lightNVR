@@ -9,6 +9,7 @@ import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 import { ThemeCustomizer } from './ThemeCustomizer.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
+import { formatLocalDateTime } from '../../utils/date-utils.js';
 
 /**
  * SettingsView component
@@ -227,7 +228,7 @@ export function SettingsView() {
 
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return '—';
-    return new Date(timestamp * 1000).toLocaleString();
+    return formatLocalDateTime(timestamp);
   };
 
   // Update settings state when data is loaded

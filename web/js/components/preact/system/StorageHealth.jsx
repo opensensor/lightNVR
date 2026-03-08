@@ -6,6 +6,7 @@
 
 import { useState } from 'preact/hooks';
 import { useQuery, useMutation, fetchJSON } from '../../../query-client.js';
+import { nowMilliseconds } from '../../../utils/date-utils.js';
 
 /**
  * Map pressure level to a badge color class
@@ -22,7 +23,7 @@ function pressureBadge(level) {
 
 function formatTimeAgo(epochSeconds) {
   if (!epochSeconds) return 'Never';
-  const diff = Math.floor(Date.now() / 1000) - epochSeconds;
+  const diff = Math.floor(nowMilliseconds() / 1000) - epochSeconds;
   if (diff < 0) return 'Just now';
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
@@ -58,7 +59,7 @@ export function StorageHealth({ formatBytes }) {
     },
     onMutate: () => {
       setCleanupPending(true);
-      setCleanupTriggeredAt(Date.now());
+      setCleanupTriggeredAt(nowMilliseconds());
     },
     onSettled: () => {
       setCleanupPending(false);

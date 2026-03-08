@@ -15,6 +15,13 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
 import {
+  currentDateInputValue,
+  formatDateForInput,
+  formatDisplayDate,
+  getLocalDayIsoRange,
+  nowMilliseconds
+} from '../../../utils/date-utils.js';
+import {
   countSegmentsForDate,
   findFirstVisibleSegmentIndex,
   findContainingSegmentIndex,
@@ -77,7 +84,7 @@ const timelineState = {
 
   // Update state and notify listeners
   setState(newState) {
-    const now = Date.now();
+    const now = nowMilliseconds();
     const isTimeOnlyUpdate = newState.currentTime !== undefined &&
       newState.currentSegmentIndex === undefined &&
       // Playback updates need to propagate immediately to keep the cursor and
@@ -132,33 +139,13 @@ const timelineState = {
 };
 
 /**
- * Format date for input element
- */
-function formatDateForInput(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function formatDisplayDate(dateString) {
-  const [year, month, day] = dateString.split('-').map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-}
-
-/**
  * Parse URL parameters
  */
 function parseUrlParams() {
   const params = new URLSearchParams(window.location.search);
   return {
     stream: params.get('stream') || '',
-    date: params.get('date') || formatDateForInput(new Date()),
+    date: params.get('date') || currentDateInputValue(),
     time: params.get('time') || '',  // Optional HH:MM:SS to auto-seek on load
     ids: params.get('ids') || ''     // Comma-separated recording IDs for selected-recordings mode
   };
@@ -492,7 +479,7 @@ export function TimelinePage() {
       // Preload the initial segment's video for this day
       const videoPlayer = videoElementRef.current;
       if (videoPlayer instanceof HTMLVideoElement) {
-        videoPlayer.src = `/api/recordings/play/${segmentsCopy[initialSegmentIndex].id}?t=${Date.now()}`;
+        videoPlayer.src = `/api/recordings/play/${segmentsCopy[initialSegmentIndex].id}?t=${nowMilliseconds()}`;
         videoPlayer.load();
       }
     }
@@ -579,7 +566,7 @@ export function TimelinePage() {
           const availableDates = getAvailableDatesForSegments(segs);
           const anchorDate = availableDates.includes(selectedDateRef.current)
             ? selectedDateRef.current
-            : (availableDates[0] || formatDateForInput(new Date(segs[0].start_timestamp * 1000)));
+            : (availableDates[0] || formatDateForInput(segs[0].start_timestamp));
 
           setIdsTimelineSegments(segs);
           if (anchorDate === selectedDateRef.current) {
@@ -630,20 +617,7 @@ export function TimelinePage() {
 
   // Calculate time range for timeline data
   const getTimeRange = (date) => {
-    // Create a date object at midnight for the selected date
-    // The date string from the input is in YYYY-MM-DD format (local date)
-    const [year, month, day] = date.split('-').map(num => parseInt(num, 10));
-
-    // Create date objects using local date components to avoid timezone issues
-    // Month is 0-indexed in JavaScript Date
-    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
-
-    // Format dates for API in ISO format
-    const startTime = startDate.toISOString();
-    const endTime = endDate.toISOString();
-
-    return { startTime, endTime };
+    return getLocalDayIsoRange(date);
   };
 
   // Update URL and global state when stream or date changes
@@ -760,7 +734,7 @@ export function TimelinePage() {
               videoEl.pause();
               videoEl.removeAttribute('src');
               videoEl.load();
-              videoEl.src = `/api/recordings/play/${nextSeg.id}?t=${Date.now()}`;
+              videoEl.src = `/api/recordings/play/${nextSeg.id}?t=${nowMilliseconds()}`;
               videoEl.load();
             }
           }, 100);
@@ -787,7 +761,7 @@ export function TimelinePage() {
     if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
       setSelectedDate(newDate);
     } else {
-      setSelectedDate(formatDateForInput(new Date()));
+      setSelectedDate(currentDateInputValue());
     }
   };
 

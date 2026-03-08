@@ -4,6 +4,7 @@
  */
 import { render, Component, createContext } from 'preact';
 import { useState, useEffect, useContext } from 'preact/hooks';
+import { formatLocalTime, nowMilliseconds } from '../../utils/date-utils.js';
 
 // Create a context for the toast system
 const ToastContext = createContext(null);
@@ -151,7 +152,7 @@ class ToastContainer extends Component {
   };
   
   addToast = (message, type, duration) => {
-    const id = Date.now();
+    const id = nowMilliseconds();
     const newToast = { id, message, type, duration };
     
     this.setState(prevState => ({
@@ -382,7 +383,7 @@ if (typeof window !== 'undefined') {
   
   // Add a test function to the window object
   window.testToast = (type = 'info') => {
-    const message = `Test ${type} toast at ${new Date().toLocaleTimeString()}`;
+    const message = `Test ${type} toast at ${formatLocalTime()}`;
     console.log(`Triggering test toast: ${message}`);
     showToast(message, type);
     console.log(`Test toast triggered: ${message}`);

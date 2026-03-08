@@ -21,6 +21,8 @@
  *   queueThumbnailLoad(url, Priority.LOW).catch(() => {});
  */
 
+import { nowMilliseconds } from './utils/date-utils.js';
+
 /**
  * Priority levels for queued requests
  */
@@ -63,7 +65,7 @@ export class RequestQueue {
         priority,
         resolve,
         reject,
-        timestamp: Date.now()
+        timestamp: nowMilliseconds()
       };
 
       // Insert into queue based on priority (and timestamp for same priority)
@@ -92,7 +94,7 @@ export class RequestQueue {
 
     // Apply start delay to prevent overwhelming the server
     if (this.startDelay > 0) {
-      const now = Date.now();
+      const now = nowMilliseconds();
       const timeSinceLastStart = now - this.lastStartTime;
       if (timeSinceLastStart < this.startDelay) {
         // Schedule processing after the delay
@@ -101,7 +103,7 @@ export class RequestQueue {
         setTimeout(() => this._processQueue(), delay);
         return;
       }
-      this.lastStartTime = Date.now();
+      this.lastStartTime = nowMilliseconds();
     }
 
     // Start the next request
