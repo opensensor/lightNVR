@@ -386,7 +386,16 @@ file(GLOB_RECURSE WEB_SOURCES "src/web/*.c")
 # Filter web sources - exclude libuv sources (they're added separately via LIBUV_SERVER_SOURCES)
 list(FILTER WEB_SOURCES EXCLUDE REGEX ".*libuv_.*\\.c$")
 
-file(GLOB_RECURSE ROOT_SOURCES "src/*.c")
+# Build ROOT_SOURCES from the existing categorized source lists instead of using GLOB_RECURSE.
+# This avoids CMake best-practice issues with recursive globbing for source discovery.
+set(ROOT_SOURCES)
+list(APPEND ROOT_SOURCES
+    ${CORE_SOURCES}
+    ${DATABASE_SOURCES}
+    ${STORAGE_SOURCES}
+    ${UTILS_SOURCES}
+    ${WEB_SOURCES}
+)
 # Exclude files with their own main() from ROOT_SOURCES to avoid multiple-definition
 # errors when linking test executables against lightnvr_lib.
 list(FILTER ROOT_SOURCES EXCLUDE REGEX ".*sod/sod\\.c$")
