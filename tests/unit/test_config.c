@@ -294,7 +294,7 @@ void test_get_loaded_config_path_initially(void) {
     TEST_ASSERT_NULL(path);
 }
 
-void test_save_config_accepts_dot_ini_filename(void) {
+void test_save_config_accepts_hidden_ini_dotfile(void) {
     char temp_dir[] = "/tmp/lightnvr_save_config_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
@@ -308,6 +308,9 @@ void test_save_config_accepts_dot_ini_filename(void) {
     FILE *saved = fopen(config_path, "r");
     TEST_ASSERT_NOT_NULL(saved);
     if (saved) {
+        char first_line[128] = {0};
+        TEST_ASSERT_NOT_NULL(fgets(first_line, sizeof(first_line), saved));
+        TEST_ASSERT_NOT_NULL(strstr(first_line, "; LightNVR Configuration File"));
         fclose(saved);
     }
 
@@ -315,7 +318,7 @@ void test_save_config_accepts_dot_ini_filename(void) {
     rmdir(dir);
 }
 
-void test_load_config_accepts_env_integer_with_trailing_whitespace(void) {
+void test_env_integer_with_trailing_whitespace(void) {
     char temp_dir[] = "/tmp/lightnvr_load_config_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
@@ -361,9 +364,23 @@ void test_load_config_accepts_env_integer_with_trailing_whitespace(void) {
 
     const char *previous_env = getenv("LIGHTNVR_WEB_PORT");
     char *saved_env = previous_env ? strdup(previous_env) : NULL;
+    if (previous_env) {
+        TEST_ASSERT_NOT_NULL(saved_env);
+    }
 
     set_custom_config_path(config_path);
+    /* Trailing whitespace should be ignored. */
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "9099   ", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
+
+    /* Leading whitespace should be ignored. */
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "   9099", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
+
+    /* Mixed leading and trailing whitespace should be ignored. */
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "   9099   ", 1));
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
 
@@ -438,8 +455,8 @@ int main(void) {
     RUN_TEST(test_custom_config_path_null_not_stored);
     RUN_TEST(test_custom_config_path_roundtrip);
     RUN_TEST(test_get_loaded_config_path_initially);
-    RUN_TEST(test_save_config_accepts_dot_ini_filename);
-    RUN_TEST(test_load_config_accepts_env_integer_with_trailing_whitespace);
+    RUN_TEST(test_save_config_accepts_hidden_ini_dotfile);
+    RUN_TEST(test_env_integer_with_trailing_whitespace);
 
     int result = UNITY_END();
     shutdown_logger();
