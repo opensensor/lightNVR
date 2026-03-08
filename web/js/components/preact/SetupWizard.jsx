@@ -61,7 +61,7 @@ function WelcomeStep() {
       <ul class="text-left inline-block space-y-2 text-sm">
         {[
           '📁  Storage path & size limits',
-          '⚡  Thread pool & max stream count',
+          '⚡  Performance limits for your camera count',
           '🔒  Admin password reminder',
         ].map(item => (
           <li key={item} class="flex items-center gap-2">{item}</li>
@@ -117,11 +117,28 @@ function PerformanceStep({ form, onChange, cpuCores }) {
     <div>
       <h2 class="text-xl font-bold mb-1">Performance</h2>
       <p class="text-sm text-muted-foreground mb-5">
-        Tune LightNVR for your hardware. Both settings require a restart.
+        These settings control capacity, not video quality. Most users can keep the defaults.
       </p>
+      <div class="rounded-lg border border-blue-400 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 p-3 text-sm mb-4 space-y-2">
+        <p>
+          <strong>Worker thread pool size</strong> affects background web/server work.
+          The recommended default is usually best unless you are tuning performance.
+        </p>
+        <p>
+          <strong>Maximum concurrent streams</strong> is the camera capacity limit for this
+          running instance. Set it to at least the number of cameras you plan to add,
+          plus a little headroom.
+        </p>
+      </div>
+      <div class="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 p-3 text-sm mb-5">
+        ⚠️ <strong>Important:</strong> if you change either setting, the new value is saved
+        now but will <strong>not</strong> be used until LightNVR restarts. For example, if the
+        current stream limit is 1 and you raise it to 32, you must restart before adding more
+        cameras beyond the old limit.
+      </div>
       <Field
         label="Worker thread pool size"
-        hint={`Recommended: ${recommended} (2× your ${cpuCores > 0 ? cpuCores + '-core' : ''} CPU). Controls libuv UV_THREADPOOL_SIZE. Range: 2–128.`}
+        hint={`Recommended: ${recommended} (2× your ${cpuCores > 0 ? cpuCores + '-core' : ''} CPU). This controls libuv background worker threads. Range: 2–128.`}
       >
         <input
           type="number"
@@ -135,7 +152,7 @@ function PerformanceStep({ form, onChange, cpuCores }) {
       </Field>
       <Field
         label="Maximum concurrent streams"
-        hint="How many camera streams can be configured. Default 32, ceiling 256. Requires restart."
+        hint="How many cameras LightNVR can keep active at once. Default 32, max 256. If you expect 8 cameras, choose at least 8. Requires restart to take effect."
       >
         <input
           type="number"
@@ -163,7 +180,8 @@ function CompleteStep({ saved, restartRequired }) {
       {restartRequired && (
         <div class="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 p-3 text-sm mb-4">
           ⚠️ <strong>Restart required</strong> — thread pool size and/or max streams
-          changes take effect after the service restarts.
+          changes are saved, but they will not take effect until the service restarts.
+          Restart before adding more cameras or expecting the new capacity limit to apply.
         </div>
       )}
       <div class="rounded-lg border border-blue-400 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 p-3 text-sm">

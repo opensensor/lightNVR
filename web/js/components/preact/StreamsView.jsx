@@ -251,7 +251,15 @@ export function StreamsView() {
         queryClient.invalidateQueries({ queryKey: ['streams'] });
       },
       onError: (error) => {
-        showStatusMessage(`Error adding stream: ${error.message}`, 'error', 5000);
+        const isStreamLimitError = error?.status === 409 &&
+          typeof error?.message === 'string' &&
+          error.message.includes('Max streams limit reached');
+
+        showStatusMessage(
+          isStreamLimitError ? error.message : `Error adding stream: ${error.message}`,
+          'error',
+          isStreamLimitError ? 9000 : 5000
+        );
       }
     }
   );

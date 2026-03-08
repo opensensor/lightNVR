@@ -55,6 +55,29 @@ typedef struct {
     bool non_dynamic_config_changed;           // Whether non-dynamic fields changed
 } put_stream_task_t;
 
+static void format_stream_capacity_error(char *buf, size_t buf_size,
+                                         int runtime_capacity,
+                                         int configured_capacity,
+                                         int current_total) {
+    if (!buf || buf_size == 0) {
+        return;
+    }
+
+    if (configured_capacity > runtime_capacity) {
+        snprintf(buf, buf_size,
+                 "Max streams limit reached (%d/%d in the current runtime). "
+                 "Settings are already saved for %d streams, but you must restart "
+                 "LightNVR before adding more cameras.",
+                 current_total, runtime_capacity, configured_capacity);
+        return;
+    }
+
+    snprintf(buf, buf_size,
+             "Max streams limit reached (%d/%d). Increase Settings -> Max Streams "
+             "and restart LightNVR before adding more cameras.",
+             current_total, runtime_capacity);
+}
+
 /**
  * @brief Free a PUT stream task
  */
@@ -690,6 +713,17 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    int runtime_capacity = get_stream_capacity();
+    int current_total = get_total_stream_count();
+    if (runtime_capacity > 0 && current_total >= runtime_capacity) {
+        char error_message[256];
+        format_stream_capacity_error(error_message, sizeof(error_message),
+                                     runtime_capacity, g_config.max_streams, current_total);
+        log_warn("Rejecting stream '%s': %s", config.name, error_message);
+        http_response_set_json_error(res, 409, error_message);
+        return;
+    }
+
     // Add stream to database
     uint64_t stream_id = add_stream_config(&config);
     if (stream_id == 0) {
@@ -705,6 +739,17 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         log_error("Failed to create stream: %s", config.name);
         // Delete from database since we couldn't create it in memory
         delete_stream_config(config.name);
+
+        runtime_capacity = get_stream_capacity();
+        current_total = get_total_stream_count();
+        if (runtime_capacity > 0 && current_total >= runtime_capacity) {
+            char error_message[256];
+            format_stream_capacity_error(error_message, sizeof(error_message),
+                                         runtime_capacity, g_config.max_streams, current_total);
+            http_response_set_json_error(res, 409, error_message);
+            return;
+        }
+
         http_response_set_json_error(res, 500, "Failed to create stream");
         return;
     }

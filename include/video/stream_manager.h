@@ -135,6 +135,17 @@ int get_active_stream_count(void);
 int get_total_stream_count(void);
 
 /**
+ * Get current runtime stream capacity.
+ *
+ * This reflects the number of stream slots allocated when the stream manager
+ * started. If the saved max_streams setting was changed after startup, this
+ * value continues to reflect the currently running limit until restart.
+ *
+ * @return Current runtime stream capacity
+ */
+int get_stream_capacity(void);
+
+/**
  * Set stream priority
  * 
  * @param handle Stream handle

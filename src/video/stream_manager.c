@@ -969,6 +969,17 @@ int get_total_stream_count(void) {
 }
 
 /**
+ * Get current runtime stream capacity
+ */
+int get_stream_capacity(void) {
+    if (!initialized) {
+        return 0;
+    }
+
+    return streams_capacity;
+}
+
+/**
  * Get stream statistics
  */
 int get_stream_stats(stream_handle_t handle, stream_stats_t *stats) {
