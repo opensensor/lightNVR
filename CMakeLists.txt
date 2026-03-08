@@ -46,7 +46,7 @@ add_compile_options(
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Add ASan/UBSan flags for Debug builds with GCC/Clang
-if(CMAKE_BUILD_TYPE MATCHES "^[Dd][Ee][Bb][Uu][Gg]$")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer for Debug build")
         add_compile_options(-fsanitize=address,undefined)
@@ -253,7 +253,7 @@ if(NOT LLHTTP_FOUND)
         file(MAKE_DIRECTORY "${LLHTTP_DIR}/include")
 
         # Download llhttp release (v9.2.1 - stable release)
-        set(LLHTTP_VERSION "v9.2.1")
+        # LLHTTP_VERSION is defined as a cache variable earlier; use it here without overriding it
         set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_VERSION}")
 
         file(DOWNLOAD
@@ -347,8 +347,12 @@ set(LIGHTNVR_INCLUDE_DIRS
         ${SQLITE_INCLUDE_DIRS}
         ${CURL_INCLUDE_DIRS}
         ${SSL_INCLUDE_DIRS}
-        ${EZXML_INCLUDE_DIR}
 )
+
+# Add ezXML include directory if provided
+if(DEFINED EZXML_INCLUDE_DIR)
+    list(APPEND LIGHTNVR_INCLUDE_DIRS ${EZXML_INCLUDE_DIR})
+endif()
 
 # Add conditional include directories
 if(ENABLE_SOD)
@@ -515,8 +519,6 @@ target_link_libraries(lightnvr
 
 # Link libraries for rebuild_recordings utility
 target_link_libraries(rebuild_recordings
-        lightnvr_lib
-        ${HTTP_BACKEND_LIBS}
         inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
@@ -567,10 +569,10 @@ if(ENABLE_SOD)
 
         # Additional direct RPATH via linker flags for older systems
         if(UNIX AND NOT APPLE)
-            set_target_properties(lightnvr PROPERTIES
-                    LINK_FLAGS "-Wl,-rpath,\$ORIGIN/../src/sod:\$ORIGIN/../lib"
-            )
+            target_link_options(lightnvr PRIVATE "LINKER:-rpath,\$ORIGIN/../src/sod:\$ORIGIN/../lib")
         endif()
+
+
     else()
         message(STATUS "Using static linking for SOD library")
     endif()
