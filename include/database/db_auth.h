@@ -47,10 +47,26 @@ typedef struct {
     int64_t user_id;         /**< User ID */
     char token[128];         /**< Session token */
     int64_t created_at;      /**< Creation timestamp */
+    int64_t last_activity_at;/**< Last authenticated activity timestamp */
+    int64_t idle_expires_at; /**< Idle timeout expiry timestamp */
     int64_t expires_at;      /**< Expiration timestamp */
     char ip_address[46];     /**< IP address of the client */
     char user_agent[256];    /**< User agent of the client */
 } session_t;
+
+/**
+ * @brief Trusted device structure
+ */
+typedef struct {
+    int64_t id;              /**< Trusted device ID */
+    int64_t user_id;         /**< User ID */
+    char token[128];         /**< Trusted-device token */
+    int64_t created_at;      /**< Creation timestamp */
+    int64_t last_used_at;    /**< Last successful use */
+    int64_t expires_at;      /**< Expiration timestamp */
+    char ip_address[46];     /**< Last known IP address */
+    char user_agent[256];    /**< Last known user agent */
+} trusted_device_t;
 
 /**
  * @brief Initialize the authentication system
@@ -214,6 +230,42 @@ int db_auth_delete_user_sessions(int64_t user_id);
  * @return Number of sessions deleted, or negative on failure
  */
 int db_auth_cleanup_sessions(void);
+
+/**
+ * @brief List sessions for a user, newest activity first.
+ */
+int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_count);
+
+/**
+ * @brief Delete a single session by ID for a user.
+ */
+int db_auth_delete_session_by_id(int64_t user_id, int64_t session_id);
+
+/**
+ * @brief Create a trusted device token for a user.
+ */
+int db_auth_create_trusted_device(int64_t user_id, const char *ip_address, const char *user_agent,
+                                  int expiry_seconds, char *token, size_t token_size);
+
+/**
+ * @brief Validate a trusted device token for a user.
+ */
+int db_auth_validate_trusted_device(int64_t user_id, const char *token);
+
+/**
+ * @brief Resolve the trusted-device ID for a presented token if still valid.
+ */
+int db_auth_get_trusted_device_id(int64_t user_id, const char *token, int64_t *trusted_device_id);
+
+/**
+ * @brief List trusted devices for a user.
+ */
+int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int max_count);
+
+/**
+ * @brief Delete a single trusted device by ID for a user.
+ */
+int db_auth_delete_trusted_device_by_id(int64_t user_id, int64_t trusted_device_id);
 
 /**
  * @brief Get the role name for a role ID

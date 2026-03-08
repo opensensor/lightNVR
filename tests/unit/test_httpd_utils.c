@@ -6,6 +6,7 @@
  *   httpd_parse_json_body()             - JSON body parsing
  *   httpd_get_basic_auth_credentials()  - Base64 decode of Authorization header
  *   httpd_get_session_token()           - Cookie session= extraction
+ *   httpd_get_cookie_value()            - Generic cookie extraction
  *   httpd_is_demo_mode()               - g_config.demo_mode wrapper
  *   httpd_get_authenticated_user()     - auth-disabled path (no DB needed)
  *   httpd_check_admin_privileges()     - auth-disabled path (no DB needed)
@@ -40,6 +41,16 @@ static void add_header(http_request_t *req, const char *name, const char *value)
     strncpy(req->headers[req->num_headers].value, value, 1023);
     req->headers[req->num_headers].value[1023] = '\0';
     req->num_headers++;
+}
+
+static const char *find_response_header(const http_response_t *res, const char *name) {
+    if (!res || !name) return NULL;
+    for (int i = 0; i < res->num_headers; i++) {
+        if (strcmp(res->headers[i].name, name) == 0) {
+            return res->headers[i].value;
+        }
+    }
+    return NULL;
 }
 
 /* ---- Unity boilerplate ---- */
@@ -188,6 +199,64 @@ void test_get_session_token_no_session_key_returns_error(void) {
     TEST_ASSERT_EQUAL_INT(-1, rc);
 }
 
+void test_get_cookie_value_extracts_named_cookie(void) {
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "Cookie", "lang=en; trusted_device=trust123; theme=dark");
+
+    char value[64] = {0};
+    int rc = httpd_get_cookie_value(&req, "trusted_device", value, sizeof(value));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("trust123", value);
+}
+
+void test_get_cookie_value_returns_error_for_missing_cookie(void) {
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "Cookie", "lang=en; theme=dark");
+
+    char value[64] = {0};
+    int rc = httpd_get_cookie_value(&req, "trusted_device", value, sizeof(value));
+    TEST_ASSERT_EQUAL_INT(-1, rc);
+}
+
+void test_auth_cookie_helpers_add_and_clear_expected_headers(void) {
+    http_response_t res;
+    http_response_init(&res);
+    g_config.auth_absolute_timeout_hours = 48;
+
+    httpd_add_session_cookie(&res, "session-token");
+    httpd_clear_session_cookie(&res);
+
+    TEST_ASSERT_EQUAL_INT(2, res.num_headers);
+    TEST_ASSERT_EQUAL_STRING("Set-Cookie", res.headers[0].name);
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "session=session-token"));
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "Max-Age=172800"));
+    TEST_ASSERT_EQUAL_STRING("Set-Cookie", res.headers[1].name);
+    TEST_ASSERT_EQUAL_STRING("session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax", res.headers[1].value);
+}
+
+void test_trusted_device_cookie_helpers_honor_lifetime_setting(void) {
+    http_response_t res;
+    http_response_init(&res);
+    g_config.trusted_device_days = 7;
+
+    httpd_add_trusted_device_cookie(&res, "trusted-token");
+    TEST_ASSERT_EQUAL_INT(1, res.num_headers);
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "trusted_device=trusted-token"));
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "Max-Age=604800"));
+
+    httpd_clear_trusted_device_cookie(&res);
+    TEST_ASSERT_EQUAL_INT(2, res.num_headers);
+    TEST_ASSERT_EQUAL_STRING("trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax", res.headers[1].value);
+
+    http_response_t disabled_res;
+    http_response_init(&disabled_res);
+    g_config.trusted_device_days = 0;
+    httpd_add_trusted_device_cookie(&disabled_res, "skipped-token");
+    TEST_ASSERT_NULL(find_response_header(&disabled_res, "Set-Cookie"));
+}
+
 /* ================================================================
  * httpd_is_demo_mode
  * ================================================================ */
@@ -281,6 +350,10 @@ int main(void) {
     RUN_TEST(test_get_session_token_cookie_with_other_fields);
     RUN_TEST(test_get_session_token_no_cookie_header_returns_error);
     RUN_TEST(test_get_session_token_no_session_key_returns_error);
+    RUN_TEST(test_get_cookie_value_extracts_named_cookie);
+    RUN_TEST(test_get_cookie_value_returns_error_for_missing_cookie);
+    RUN_TEST(test_auth_cookie_helpers_add_and_clear_expected_headers);
+    RUN_TEST(test_trusted_device_cookie_helpers_honor_lifetime_setting);
     RUN_TEST(test_is_demo_mode_false_by_default);
     RUN_TEST(test_is_demo_mode_true_when_set);
     RUN_TEST(test_get_authenticated_user_auth_disabled_returns_admin);

@@ -36,6 +36,8 @@ export function SettingsView() {
     demoMode: false, // Demo mode: allows unauthenticated viewer access
     webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
     authTimeoutHours: '24',
+    authAbsoluteTimeoutHours: '168',
+    trustedDeviceDays: '30',
     // Security settings
     forceMfaOnLogin: false,
     loginRateLimitEnabled: true,
@@ -175,6 +177,59 @@ export function SettingsView() {
     }
   });
 
+  const {
+    data: authSessionsData,
+    refetch: refetchAuthSessions,
+    isLoading: authSessionsLoading,
+    isError: authSessionsIsError,
+    error: authSessionsError
+  } = useQuery(['auth-sessions'], '/api/auth/sessions', {
+    timeout: 10000,
+    retries: 1,
+    retryDelay: 1000
+  });
+
+  const {
+    data: trustedDevicesData,
+    refetch: refetchTrustedDevices,
+    isLoading: trustedDevicesLoading,
+    isError: trustedDevicesIsError,
+    error: trustedDevicesError
+  } = useQuery(['trusted-devices'], '/api/auth/trusted-devices', {
+    timeout: 10000,
+    retries: 1,
+    retryDelay: 1000
+  });
+
+  const revokeSessionMutation = useMutation({
+    mutationKey: ['revokeSession'],
+    mutationFn: async (sessionId) => fetchJSON(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      showStatusMessage('Session revoked');
+      refetchAuthSessions();
+    },
+    onError: (error) => {
+      showStatusMessage(`Error revoking session: ${error.message}`);
+    }
+  });
+
+  const revokeTrustedDeviceMutation = useMutation({
+    mutationKey: ['revokeTrustedDevice'],
+    mutationFn: async (deviceId) => fetchJSON(`/api/auth/trusted-devices/${deviceId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      showStatusMessage('Trusted device revoked');
+      refetchTrustedDevices();
+    },
+    onError: (error) => {
+      showStatusMessage(`Error revoking trusted device: ${error.message}`);
+    }
+  });
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '—';
+    return new Date(timestamp * 1000).toLocaleString();
+  };
+
   // Update settings state when data is loaded
   useEffect(() => {
     if (settingsData) {
@@ -200,6 +255,8 @@ export function SettingsView() {
         demoMode: settingsData.demo_mode || false,
         webrtcDisabled: settingsData.webrtc_disabled || false,
         authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
+        authAbsoluteTimeoutHours: settingsData.auth_absolute_timeout_hours?.toString() || '168',
+        trustedDeviceDays: settingsData.trusted_device_days?.toString() || '30',
         // Security settings
         forceMfaOnLogin: settingsData.force_mfa_on_login || false,
         loginRateLimitEnabled: settingsData.login_rate_limit_enabled !== undefined ? settingsData.login_rate_limit_enabled : true,
@@ -287,6 +344,8 @@ export function SettingsView() {
       demo_mode: settings.demoMode,
       webrtc_disabled: settings.webrtcDisabled,
       auth_timeout_hours: parseInt(settings.authTimeoutHours, 10),
+      auth_absolute_timeout_hours: parseInt(settings.authAbsoluteTimeoutHours, 10),
+      trusted_device_days: parseInt(settings.trustedDeviceDays, 10),
       // Security settings
       force_mfa_on_login: settings.forceMfaOnLogin,
       login_rate_limit_enabled: settings.loginRateLimitEnabled,
@@ -761,7 +820,7 @@ export function SettingsView() {
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auth-timeout" class="font-medium">Auth Session Timeout (hours)</label>
+            <label for="setting-auth-timeout" class="font-medium">Session Idle Timeout (hours)</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -773,7 +832,39 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">How long authentication sessions remain valid (minimum 1 hour)</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">How long a signed-in session may sit inactive before re-authentication is required.</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-auth-absolute-timeout" class="font-medium">Absolute Session Lifetime (hours)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-auth-absolute-timeout"
+                name="authAbsoluteTimeoutHours"
+                min="1"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.authAbsoluteTimeoutHours}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Hard cap for a session even if the user stays active. Should be greater than or equal to the idle timeout.</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-trusted-device-days" class="font-medium">Remember Device (days)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-trusted-device-days"
+                name="trustedDeviceDays"
+                min="0"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.trustedDeviceDays}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">How long a successfully MFA-verified device can skip the next TOTP prompt. Set to 0 to disable remembered devices.</span>
             </div>
           </div>
           {/* Setup Wizard reset */}
@@ -808,6 +899,72 @@ export function SettingsView() {
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Session &amp; Device Management</h3>
+          <div class="mb-6">
+            <h4 class="font-medium mb-2">Active Sessions</h4>
+            <div class="space-y-3">
+              {authSessionsLoading ? (
+                <p class="text-sm text-muted-foreground">Loading sessions…</p>
+              ) : authSessionsIsError ? (
+                <p class="text-sm text-destructive">Failed to load sessions. {authSessionsError?.message || ''}</p>
+              ) : ((authSessionsData?.sessions || []).length === 0 ? (
+                <p class="text-sm text-muted-foreground">No active sessions found.</p>
+              ) : (
+                (authSessionsData?.sessions || []).map((session) => (
+                  <div key={session.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div class="text-sm">
+                      <div class="font-medium">{session.current ? 'Current session' : `Session #${session.id}`}</div>
+                      <div class="text-muted-foreground">Last active: {formatTimestamp(session.last_activity_at)}</div>
+                      <div class="text-muted-foreground">Idle expiry: {formatTimestamp(session.idle_expires_at)} · Absolute expiry: {formatTimestamp(session.expires_at)}</div>
+                      <div class="text-muted-foreground">{session.ip_address || 'Unknown IP'} · {session.user_agent || 'Unknown browser'}</div>
+                    </div>
+                    <button
+                      type="button"
+                      class="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
+                      disabled={revokeSessionMutation.isPending}
+                      onClick={() => revokeSessionMutation.mutate(session.id)}
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))
+              ))}
+            </div>
+          </div>
+          <div>
+            <h4 class="font-medium mb-2">Trusted Devices</h4>
+            <div class="space-y-3">
+              {trustedDevicesLoading ? (
+                <p class="text-sm text-muted-foreground">Loading trusted devices…</p>
+              ) : trustedDevicesIsError ? (
+                <p class="text-sm text-destructive">Failed to load trusted devices. {trustedDevicesError?.message || ''}</p>
+              ) : ((trustedDevicesData?.trusted_devices || []).length === 0 ? (
+                <p class="text-sm text-muted-foreground">No remembered devices found.</p>
+              ) : (
+                (trustedDevicesData?.trusted_devices || []).map((device) => (
+                  <div key={device.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div class="text-sm">
+                      <div class="font-medium">{device.current ? 'This device' : `Trusted device #${device.id}`}</div>
+                      <div class="text-muted-foreground">Last used: {formatTimestamp(device.last_used_at)}</div>
+                      <div class="text-muted-foreground">Expires: {formatTimestamp(device.expires_at)}</div>
+                      <div class="text-muted-foreground">{device.ip_address || 'Unknown IP'} · {device.user_agent || 'Unknown browser'}</div>
+                    </div>
+                    <button
+                      type="button"
+                      class="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
+                      disabled={revokeTrustedDeviceMutation.isPending}
+                      onClick={() => revokeTrustedDeviceMutation.mutate(device.id)}
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))
+              ))}
+            </div>
+          </div>
+          </div>
+
+          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Login Security</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-force-mfa" class="font-medium">Force MFA on Login</label>
@@ -822,7 +979,7 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Require TOTP code alongside password at login (prevents password-only brute force). Users must have MFA configured.</span>
+              <span class="hint text-sm text-muted-foreground ml-2">Require TOTP on untrusted devices. Users can still mark a device as trusted after a successful MFA verification.</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

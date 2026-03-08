@@ -46,6 +46,9 @@ export function LoginView() {
   const [totpToken, setTotpToken] = useState('');
   const [forceMfaEnabled, setForceMfaEnabled] = useState(false);
   const [forceMfaTotpCode, setForceMfaTotpCode] = useState('');
+  const [rememberDeviceEnabled, setRememberDeviceEnabled] = useState(false);
+  const [trustedDeviceDays, setTrustedDeviceDays] = useState(30);
+  const [rememberDevice, setRememberDevice] = useState(false);
   const abortControllerRef = useRef(null);
 
   // Fetch login config to determine if force MFA is enabled
@@ -56,6 +59,8 @@ export function LoginView() {
         if (response.ok) {
           const data = await response.json();
           setForceMfaEnabled(data.force_mfa_on_login || false);
+          setRememberDeviceEnabled(data.remember_device_enabled || false);
+          setTrustedDeviceDays(data.trusted_device_days || 30);
         }
       } catch (error) {
         console.warn('Failed to fetch login config:', error);
@@ -125,6 +130,9 @@ export function LoginView() {
       const loginBody = { username, password };
       if (forceMfaEnabled && forceMfaTotpCode) {
         loginBody.totp_code = forceMfaTotpCode;
+      }
+      if (rememberDeviceEnabled) {
+        loginBody.remember_device = rememberDevice;
       }
 
       // Make login request with an explicit timeout using AbortController
@@ -200,7 +208,7 @@ export function LoginView() {
       const response = await fetch('/api/auth/login/totp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ totp_token: totpToken, code: totpCode }),
+        body: JSON.stringify({ totp_token: totpToken, code: totpCode, remember_device: rememberDevice }),
       });
 
       if (response.ok) {
@@ -304,8 +312,19 @@ export function LoginView() {
                     pattern="[0-9]{6}"
                     autoComplete="one-time-code"
                 />
-                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app (leave blank if not yet configured)</span>
+                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app. On a remembered device, you can leave this blank next time.</span>
               </div>
+            )}
+            {rememberDeviceEnabled && (
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  disabled={isLoggingIn}
+                />
+                <span>Remember this device for {trustedDeviceDays} days</span>
+              </label>
             )}
             <div className="form-group">
               <button
@@ -340,6 +359,17 @@ export function LoginView() {
                   required
               />
             </div>
+            {rememberDeviceEnabled && (
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={rememberDevice}
+                  onChange={(e) => setRememberDevice(e.target.checked)}
+                  disabled={isLoggingIn}
+                />
+                <span>Remember this device for {trustedDeviceDays} days</span>
+              </label>
+            )}
             <div className="form-group">
               <button
                   type="submit"

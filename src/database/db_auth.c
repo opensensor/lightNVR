@@ -33,6 +33,9 @@
 // Default session expiry time (7 days)
 #define DEFAULT_SESSION_EXPIRY 604800
 
+// Default trusted device expiry time (30 days)
+#define DEFAULT_TRUSTED_DEVICE_EXPIRY 2592000
+
 // Role names
 static const char *role_names[] = {
     "admin",
@@ -40,6 +43,55 @@ static const char *role_names[] = {
     "viewer",
     "api"
 };
+
+static int default_session_absolute_expiry_seconds(void) {
+    int64_t seconds = (int64_t)g_config.auth_absolute_timeout_hours * 3600;
+    if (seconds <= 0) {
+        return DEFAULT_SESSION_EXPIRY;
+    }
+    if (seconds > INT32_MAX) {
+        return INT32_MAX;
+    }
+    return (int)seconds;
+}
+
+static int default_session_idle_expiry_seconds(void) {
+    int64_t seconds = (int64_t)g_config.auth_timeout_hours * 3600;
+    if (seconds <= 0) {
+        return DEFAULT_SESSION_EXPIRY;
+    }
+    if (seconds > INT32_MAX) {
+        return INT32_MAX;
+    }
+    return (int)seconds;
+}
+
+static int default_trusted_device_expiry_seconds(void) {
+    int64_t seconds = (int64_t)g_config.trusted_device_days * 86400;
+    if (seconds <= 0) {
+        return DEFAULT_TRUSTED_DEVICE_EXPIRY;
+    }
+    if (seconds > INT32_MAX) {
+        return INT32_MAX;
+    }
+    return (int)seconds;
+}
+
+static bool should_refresh_session_tracking(time_t now, time_t last_activity_at, time_t idle_expires_at) {
+    const time_t refresh_interval = 60;
+
+    if (last_activity_at <= 0) {
+        return true;
+    }
+    if (now - last_activity_at >= refresh_interval) {
+        return true;
+    }
+    if (idle_expires_at <= now + refresh_interval) {
+        return true;
+    }
+
+    return false;
+}
 
 /**
  * Generate a random string
@@ -156,6 +208,21 @@ static int bin_to_hex(const unsigned char *data, size_t data_length,
     }
 
     return 0;
+}
+
+static int hash_token_identifier(const char *token, char *token_hash, size_t token_hash_size) {
+    if (!token || token[0] == '\0') {
+        return -1;
+    }
+    if (!token_hash || token_hash_size < (SHA256_DIGEST_LENGTH * 2 + 1)) {
+        log_error("Token hash buffer too small");
+        return -1;
+    }
+
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    mbedtls_sha256((const unsigned char *)token, strlen(token), digest, 0);
+
+    return bin_to_hex(digest, SHA256_DIGEST_LENGTH, token_hash, token_hash_size);
 }
 
 /**
@@ -1271,11 +1338,11 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
     // Get current timestamp
     time_t now = time(NULL);
 
-    // Calculate expiry time (use config value as default if not specified)
-    int default_expiry = g_config.auth_timeout_hours > 0
-                             ? g_config.auth_timeout_hours * 3600
-                             : DEFAULT_SESSION_EXPIRY;
-    time_t expires_at = now + (expiry_seconds > 0 ? expiry_seconds : default_expiry);
+    // Calculate idle and absolute expiry times.
+    int absolute_expiry = expiry_seconds > 0 ? expiry_seconds : default_session_absolute_expiry_seconds();
+    int idle_expiry = expiry_seconds > 0 ? expiry_seconds : default_session_idle_expiry_seconds();
+    time_t expires_at = now + absolute_expiry;
+    time_t idle_expires_at = now + idle_expiry;
 
     // Some deployments may not yet have the optional ip_address/user_agent columns
     // (e.g., databases created before the 0018_add_session_tracking migration).
@@ -1283,9 +1350,14 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
     // columns that actually exist, so login still works on older schemas.
     bool has_ip_column = cached_column_exists("sessions", "ip_address");
     bool has_ua_column = cached_column_exists("sessions", "user_agent");
+    bool has_last_activity_column = cached_column_exists("sessions", "last_activity_at");
+    bool has_idle_expires_column = cached_column_exists("sessions", "idle_expires_at");
 
     const char *sql = NULL;
-    if (has_ip_column && has_ua_column) {
+    if (has_ip_column && has_ua_column && has_last_activity_column && has_idle_expires_column) {
+        sql = "INSERT INTO sessions (user_id, token, created_at, last_activity_at, idle_expires_at, expires_at, ip_address, user_agent) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+    } else if (has_ip_column && has_ua_column) {
         sql = "INSERT INTO sessions (user_id, token, created_at, expires_at, ip_address, user_agent) "
               "VALUES (?, ?, ?, ?, ?, ?);";
     } else if (has_ip_column && !has_ua_column) {
@@ -1309,6 +1381,10 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
     sqlite3_bind_int64(stmt, param_index++, user_id);
     sqlite3_bind_text(stmt, param_index++, token, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, param_index++, now);
+    if (has_last_activity_column && has_idle_expires_column) {
+        sqlite3_bind_int64(stmt, param_index++, now);
+        sqlite3_bind_int64(stmt, param_index++, idle_expires_at);
+    }
     sqlite3_bind_int64(stmt, param_index++, expires_at);
 
     if (has_ip_column) {
@@ -1347,14 +1423,27 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
         return -1;
     }
 
+    bool has_idle_expires_column = cached_column_exists("sessions", "idle_expires_at");
+    bool has_last_activity_column = cached_column_exists("sessions", "last_activity_at");
+    bool has_tracking_columns = has_idle_expires_column && has_last_activity_column;
+
     // Query the session
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-                               "SELECT s.id, s.user_id, s.expires_at, u.is_active "
-                               "FROM sessions s "
-                               "JOIN users u ON s.user_id = u.id "
-                               "WHERE s.token = ?;",
-                               -1, &stmt, NULL);
+    const char *sql = has_tracking_columns
+        ? "SELECT s.id, s.user_id, s.expires_at, s.idle_expires_at, COALESCE(s.last_activity_at, s.created_at), u.is_active "
+          "FROM sessions s "
+          "JOIN users u ON s.user_id = u.id "
+          "WHERE s.token = ?;"
+        : has_idle_expires_column
+        ? "SELECT s.id, s.user_id, s.expires_at, s.idle_expires_at, u.is_active "
+          "FROM sessions s "
+          "JOIN users u ON s.user_id = u.id "
+          "WHERE s.token = ?;"
+        : "SELECT s.id, s.user_id, s.expires_at, u.is_active "
+          "FROM sessions s "
+          "JOIN users u ON s.user_id = u.id "
+          "WHERE s.token = ?;";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -1368,18 +1457,22 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
         return -1;
     }
 
+    int64_t session_id = sqlite3_column_int64(stmt, 0);
+
     // Check if the session has expired
     time_t expires_at = sqlite3_column_int64(stmt, 2);
+    time_t idle_expires_at = has_idle_expires_column ? sqlite3_column_int64(stmt, 3) : expires_at;
+    time_t last_activity_at = has_tracking_columns ? sqlite3_column_int64(stmt, 4) : 0;
     time_t now = time(NULL);
 
-    if (now > expires_at) {
+    if (now > expires_at || now > idle_expires_at) {
         log_debug("Session has expired");
         sqlite3_finalize(stmt);
         return -1;
     }
 
     // Check if the user is active
-    int is_active = sqlite3_column_int(stmt, 3);
+    int is_active = sqlite3_column_int(stmt, has_tracking_columns ? 5 : (has_idle_expires_column ? 4 : 3));
     if (!is_active) {
         log_debug("User is inactive");
         sqlite3_finalize(stmt);
@@ -1393,6 +1486,30 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
     }
 
     sqlite3_finalize(stmt);
+
+    if (has_tracking_columns && should_refresh_session_tracking(now, last_activity_at, idle_expires_at)) {
+        time_t new_idle_expires_at = now + default_session_idle_expiry_seconds();
+        if (new_idle_expires_at > expires_at) {
+            new_idle_expires_at = expires_at;
+        }
+
+        rc = sqlite3_prepare_v2(db,
+                               "UPDATE sessions SET last_activity_at = ?, idle_expires_at = ? WHERE id = ?;",
+                               -1, &stmt, NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_int64(stmt, 1, now);
+            sqlite3_bind_int64(stmt, 2, new_idle_expires_at);
+            sqlite3_bind_int64(stmt, 3, session_id);
+            if (sqlite3_step(stmt) != SQLITE_DONE) {
+                log_warn("Failed to refresh idle timeout for session %lld: %s",
+                         (long long)session_id, sqlite3_errmsg(db));
+            }
+            sqlite3_finalize(stmt);
+        } else {
+            log_warn("Failed to prepare idle-timeout refresh for session %lld: %s",
+                     (long long)session_id, sqlite3_errmsg(db));
+        }
+    }
 
     return 0;
 }
@@ -1478,9 +1595,12 @@ int db_auth_cleanup_sessions(void) {
         return -1;
     }
 
-    // Delete expired sessions
+    // Delete expired or idle-expired sessions
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db, "DELETE FROM sessions WHERE expires_at < ?;", -1, &stmt, NULL);
+    const char *sql = cached_column_exists("sessions", "idle_expires_at")
+        ? "DELETE FROM sessions WHERE expires_at < ? OR idle_expires_at < ?;"
+        : "DELETE FROM sessions WHERE expires_at < ?;";
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -1488,6 +1608,9 @@ int db_auth_cleanup_sessions(void) {
 
     time_t now = time(NULL);
     sqlite3_bind_int64(stmt, 1, now);
+    if (cached_column_exists("sessions", "idle_expires_at")) {
+        sqlite3_bind_int64(stmt, 2, now);
+    }
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
@@ -1500,7 +1623,329 @@ int db_auth_cleanup_sessions(void) {
     sqlite3_finalize(stmt);
 
     log_info("Cleaned up %d expired sessions", deleted);
+
+    rc = sqlite3_prepare_v2(db, "DELETE FROM trusted_devices WHERE expires_at < ?;", -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, now);
+        if (sqlite3_step(stmt) != SQLITE_DONE) {
+            log_warn("Failed to clean up expired trusted devices: %s", sqlite3_errmsg(db));
+        }
+        sqlite3_finalize(stmt);
+    }
+
     return deleted;
+}
+
+int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_count) {
+    if (!sessions || max_count <= 0) {
+        return 0;
+    }
+
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    bool has_idle_expires_column = cached_column_exists("sessions", "idle_expires_at");
+    bool has_last_activity_column = cached_column_exists("sessions", "last_activity_at");
+    time_t now = time(NULL);
+
+    const char *sql = has_idle_expires_column && has_last_activity_column
+        ? "SELECT id, user_id, token, created_at, "
+          "COALESCE(last_activity_at, created_at), "
+          "COALESCE(idle_expires_at, expires_at), "
+          "expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+          "FROM sessions WHERE user_id = ? "
+          "AND expires_at >= ? "
+          "AND (idle_expires_at IS NULL OR idle_expires_at >= ?) "
+          "ORDER BY COALESCE(last_activity_at, created_at) DESC LIMIT ?;"
+        : has_idle_expires_column
+        ? "SELECT id, user_id, token, created_at, "
+          "created_at, COALESCE(idle_expires_at, expires_at), "
+          "expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+          "FROM sessions WHERE user_id = ? "
+          "AND expires_at >= ? "
+          "AND (idle_expires_at IS NULL OR idle_expires_at >= ?) "
+          "ORDER BY created_at DESC LIMIT ?;"
+        : "SELECT id, user_id, token, created_at, "
+          "created_at, expires_at, expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+          "FROM sessions WHERE user_id = ? "
+          "AND expires_at >= ? "
+          "ORDER BY created_at DESC LIMIT ?;";
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    int param = 1;
+    sqlite3_bind_int64(stmt, param++, user_id);
+    sqlite3_bind_int64(stmt, param++, now);
+    if (has_idle_expires_column) {
+        sqlite3_bind_int64(stmt, param++, now);
+    }
+    sqlite3_bind_int(stmt, param, max_count);
+
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        session_t *session = &sessions[count++];
+        memset(session, 0, sizeof(*session));
+        session->id = sqlite3_column_int64(stmt, 0);
+        session->user_id = sqlite3_column_int64(stmt, 1);
+        const char *token = (const char *)sqlite3_column_text(stmt, 2);
+        const char *ip = (const char *)sqlite3_column_text(stmt, 7);
+        const char *ua = (const char *)sqlite3_column_text(stmt, 8);
+        if (token) strncpy(session->token, token, sizeof(session->token) - 1);
+        if (ip) strncpy(session->ip_address, ip, sizeof(session->ip_address) - 1);
+        if (ua) strncpy(session->user_agent, ua, sizeof(session->user_agent) - 1);
+        session->created_at = sqlite3_column_int64(stmt, 3);
+        session->last_activity_at = sqlite3_column_int64(stmt, 4);
+        session->idle_expires_at = sqlite3_column_int64(stmt, 5);
+        session->expires_at = sqlite3_column_int64(stmt, 6);
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+int db_auth_delete_session_by_id(int64_t user_id, int64_t session_id) {
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "DELETE FROM sessions WHERE id = ? AND user_id = ?;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, session_id);
+    sqlite3_bind_int64(stmt, 2, user_id);
+    rc = sqlite3_step(stmt);
+    int changes = (rc == SQLITE_DONE) ? sqlite3_changes(db) : 0;
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE && changes > 0) ? 0 : -1;
+}
+
+int db_auth_create_trusted_device(int64_t user_id, const char *ip_address, const char *user_agent,
+                                  int expiry_seconds, char *token, size_t token_size) {
+    if (!token || token_size < 33) {
+        log_error("Token buffer is too small");
+        return -1;
+    }
+
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (generate_random_string(token, 32) != 0) {
+        return -1;
+    }
+
+    char token_hash[SHA256_DIGEST_LENGTH * 2 + 1];
+    if (hash_token_identifier(token, token_hash, sizeof(token_hash)) != 0) {
+        return -1;
+    }
+
+    time_t now = time(NULL);
+    int lifetime = expiry_seconds > 0 ? expiry_seconds : default_trusted_device_expiry_seconds();
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "INSERT INTO trusted_devices (user_id, token, ip_address, user_agent, created_at, last_used_at, expires_at) "
+                               "VALUES (?, ?, ?, ?, ?, ?, ?);",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, user_id);
+    sqlite3_bind_text(stmt, 2, token_hash, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, ip_address ? ip_address : "", -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, user_agent ? user_agent : "", -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 5, now);
+    sqlite3_bind_int64(stmt, 6, now);
+    sqlite3_bind_int64(stmt, 7, now + lifetime);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? 0 : -1;
+}
+
+static int lookup_trusted_device(sqlite3 *db, int64_t user_id, const char *token,
+                                 int64_t *trusted_id, time_t *expires_at) {
+    if (!db || !token || token[0] == '\0') {
+        return -1;
+    }
+
+    char token_hash[SHA256_DIGEST_LENGTH * 2 + 1];
+    if (hash_token_identifier(token, token_hash, sizeof(token_hash)) != 0) {
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "SELECT id, expires_at FROM trusted_devices WHERE user_id = ? AND token = ?;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, user_id);
+    sqlite3_bind_text(stmt, 2, token_hash, -1, SQLITE_TRANSIENT);
+
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    if (trusted_id) {
+        *trusted_id = sqlite3_column_int64(stmt, 0);
+    }
+    if (expires_at) {
+        *expires_at = sqlite3_column_int64(stmt, 1);
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+int db_auth_get_trusted_device_id(int64_t user_id, const char *token, int64_t *trusted_device_id) {
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    int64_t resolved_id = 0;
+    time_t expires_at = 0;
+    if (lookup_trusted_device(db, user_id, token, &resolved_id, &expires_at) != 0) {
+        return -1;
+    }
+
+    if (time(NULL) > expires_at) {
+        db_auth_delete_trusted_device_by_id(user_id, resolved_id);
+        return -1;
+    }
+
+    if (trusted_device_id) {
+        *trusted_device_id = resolved_id;
+    }
+
+    return 0;
+}
+
+int db_auth_validate_trusted_device(int64_t user_id, const char *token) {
+    if (!token || token[0] == '\0') {
+        return -1;
+    }
+
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    int64_t trusted_id = 0;
+    if (db_auth_get_trusted_device_id(user_id, token, &trusted_id) != 0) {
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                           "UPDATE trusted_devices SET last_used_at = ? WHERE id = ?;",
+                           -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, time(NULL));
+        sqlite3_bind_int64(stmt, 2, trusted_id);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+
+    return 0;
+}
+
+int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int max_count) {
+    if (!devices || max_count <= 0) {
+        return 0;
+    }
+
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    time_t now = time(NULL);
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "SELECT id, user_id, created_at, COALESCE(last_used_at, created_at), expires_at, "
+                               "COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+                               "FROM trusted_devices WHERE user_id = ? AND expires_at >= ? "
+                               "ORDER BY COALESCE(last_used_at, created_at) DESC LIMIT ?;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, user_id);
+    sqlite3_bind_int64(stmt, 2, now);
+    sqlite3_bind_int(stmt, 3, max_count);
+
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        trusted_device_t *device = &devices[count++];
+        memset(device, 0, sizeof(*device));
+        device->id = sqlite3_column_int64(stmt, 0);
+        device->user_id = sqlite3_column_int64(stmt, 1);
+        const char *ip = (const char *)sqlite3_column_text(stmt, 5);
+        const char *ua = (const char *)sqlite3_column_text(stmt, 6);
+        if (ip) strncpy(device->ip_address, ip, sizeof(device->ip_address) - 1);
+        if (ua) strncpy(device->user_agent, ua, sizeof(device->user_agent) - 1);
+        device->created_at = sqlite3_column_int64(stmt, 2);
+        device->last_used_at = sqlite3_column_int64(stmt, 3);
+        device->expires_at = sqlite3_column_int64(stmt, 4);
+    }
+
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+int db_auth_delete_trusted_device_by_id(int64_t user_id, int64_t trusted_device_id) {
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+                               "DELETE FROM trusted_devices WHERE id = ? AND user_id = ?;",
+                               -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, trusted_device_id);
+    sqlite3_bind_int64(stmt, 2, user_id);
+    rc = sqlite3_step(stmt);
+    int changes = (rc == SQLITE_DONE) ? sqlite3_changes(db) : 0;
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE && changes > 0) ? 0 : -1;
 }
 
 /**

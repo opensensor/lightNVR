@@ -568,6 +568,37 @@ static const char migration_0034_up[] =
 static const char migration_0034_down[] =
     "SELECT 1;";
 
+static const char migration_0035_up[] =
+    "ALTER TABLE sessions ADD COLUMN last_activity_at INTEGER;\n"
+    "UPDATE sessions\n"
+    "   SET last_activity_at = COALESCE(last_activity_at, created_at, strftime('%s', 'now'));\n"
+    "ALTER TABLE sessions ADD COLUMN idle_expires_at INTEGER;\n"
+    "UPDATE sessions\n"
+    "   SET idle_expires_at = COALESCE(idle_expires_at, expires_at, strftime('%s', 'now'));\n"
+    "CREATE INDEX IF NOT EXISTS idx_sessions_user_last_activity\n"
+    "    ON sessions(user_id, last_activity_at DESC);\n"
+    "CREATE TABLE IF NOT EXISTS trusted_devices (\n"
+    "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+    "    user_id INTEGER NOT NULL,\n"
+    "    token TEXT NOT NULL UNIQUE,\n"
+    "    ip_address TEXT,\n"
+    "    user_agent TEXT,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    last_used_at INTEGER,\n"
+    "    expires_at INTEGER NOT NULL,\n"
+    "    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE\n"
+    ");\n"
+    "CREATE INDEX IF NOT EXISTS idx_trusted_devices_user_id ON trusted_devices(user_id);\n"
+    "CREATE INDEX IF NOT EXISTS idx_trusted_devices_token ON trusted_devices(token);\n"
+    "CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires_at ON trusted_devices(expires_at);";
+
+static const char migration_0035_down[] =
+    "DROP INDEX IF EXISTS idx_trusted_devices_expires_at;\n"
+    "DROP INDEX IF EXISTS idx_trusted_devices_token;\n"
+    "DROP INDEX IF EXISTS idx_trusted_devices_user_id;\n"
+    "DROP TABLE IF EXISTS trusted_devices;\n"
+    "DROP INDEX IF EXISTS idx_sessions_user_last_activity;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -807,8 +838,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0034_down,
         .is_embedded = true
     },
+    {
+        .version = "0035",
+        .description = "modernize_auth_sessions",
+        .sql_up = migration_0035_up,
+        .sql_down = migration_0035_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 34
+#define EMBEDDED_MIGRATIONS_COUNT 35
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
