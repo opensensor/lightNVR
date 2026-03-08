@@ -253,6 +253,11 @@ int db_auth_create_trusted_device(int64_t user_id, const char *ip_address, const
 int db_auth_validate_trusted_device(int64_t user_id, const char *token);
 
 /**
+ * @brief Resolve the trusted-device ID for a presented token if still valid.
+ */
+int db_auth_get_trusted_device_id(int64_t user_id, const char *token, int64_t *trusted_device_id);
+
+/**
  * @brief List trusted devices for a user.
  */
 int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int max_count);

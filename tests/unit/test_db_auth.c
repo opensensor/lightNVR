@@ -27,6 +27,7 @@ static void clear_users(void) {
     /* Remove non-admin users to keep db_auth_init's default admin */
     sqlite3_exec(db, "DELETE FROM users WHERE username != 'admin';", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM sessions;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM trusted_devices;", NULL, NULL, NULL);
 }
 
 void setUp(void)    { clear_users(); }
@@ -149,6 +150,17 @@ void test_list_sessions_and_trusted_devices(void) {
     int device_count = db_auth_list_trusted_devices(uid, devices, 8);
     TEST_ASSERT_GREATER_THAN_INT(0, device_count);
     TEST_ASSERT_EQUAL_INT(uid, devices[0].user_id);
+
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    rc = sqlite3_prepare_v2(db, "SELECT token FROM trusted_devices WHERE id = ?;", -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    sqlite3_bind_int64(stmt, 1, devices[0].id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    const char *stored_token = (const char *)sqlite3_column_text(stmt, 0);
+    TEST_ASSERT_NOT_NULL(stored_token);
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(stored_token, trusted_token));
+    sqlite3_finalize(stmt);
 
     rc = db_auth_delete_trusted_device_by_id(uid, devices[0].id);
     TEST_ASSERT_EQUAL_INT(0, rc);

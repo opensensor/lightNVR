@@ -194,6 +194,21 @@ static int bin_to_hex(const unsigned char *data, size_t data_length,
     return 0;
 }
 
+static int hash_token_identifier(const char *token, char *token_hash, size_t token_hash_size) {
+    if (!token || token[0] == '\0') {
+        return -1;
+    }
+    if (!token_hash || token_hash_size < (SHA256_DIGEST_LENGTH * 2 + 1)) {
+        log_error("Token hash buffer too small");
+        return -1;
+    }
+
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    mbedtls_sha256((const unsigned char *)token, strlen(token), digest, 0);
+
+    return bin_to_hex(digest, SHA256_DIGEST_LENGTH, token_hash, token_hash_size);
+}
+
 /**
  * Convert hexadecimal string to binary data
  *
@@ -1688,6 +1703,11 @@ int db_auth_create_trusted_device(int64_t user_id, const char *ip_address, const
         return -1;
     }
 
+    char token_hash[SHA256_DIGEST_LENGTH * 2 + 1];
+    if (hash_token_identifier(token, token_hash, sizeof(token_hash)) != 0) {
+        return -1;
+    }
+
     time_t now = time(NULL);
     int lifetime = expiry_seconds > 0 ? expiry_seconds : default_trusted_device_expiry_seconds();
 
@@ -1702,7 +1722,7 @@ int db_auth_create_trusted_device(int64_t user_id, const char *ip_address, const
     }
 
     sqlite3_bind_int64(stmt, 1, user_id);
-    sqlite3_bind_text(stmt, 2, token, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, token_hash, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, ip_address ? ip_address : "", -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 4, user_agent ? user_agent : "", -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 5, now);
@@ -1714,14 +1734,14 @@ int db_auth_create_trusted_device(int64_t user_id, const char *ip_address, const
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
-int db_auth_validate_trusted_device(int64_t user_id, const char *token) {
-    if (!token || token[0] == '\0') {
+static int lookup_trusted_device(sqlite3 *db, int64_t user_id, const char *token,
+                                 int64_t *trusted_id, time_t *expires_at) {
+    if (!db || !token || token[0] == '\0') {
         return -1;
     }
 
-    sqlite3 *db = get_db_handle();
-    if (!db) {
-        log_error("Database not initialized");
+    char token_hash[SHA256_DIGEST_LENGTH * 2 + 1];
+    if (hash_token_identifier(token, token_hash, sizeof(token_hash)) != 0) {
         return -1;
     }
 
@@ -1735,23 +1755,66 @@ int db_auth_validate_trusted_device(int64_t user_id, const char *token) {
     }
 
     sqlite3_bind_int64(stmt, 1, user_id);
-    sqlite3_bind_text(stmt, 2, token, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, token_hash, -1, SQLITE_TRANSIENT);
 
     if (sqlite3_step(stmt) != SQLITE_ROW) {
         sqlite3_finalize(stmt);
         return -1;
     }
 
-    int64_t trusted_id = sqlite3_column_int64(stmt, 0);
-    time_t expires_at = sqlite3_column_int64(stmt, 1);
+    if (trusted_id) {
+        *trusted_id = sqlite3_column_int64(stmt, 0);
+    }
+    if (expires_at) {
+        *expires_at = sqlite3_column_int64(stmt, 1);
+    }
     sqlite3_finalize(stmt);
+    return 0;
+}
 
-    if (time(NULL) > expires_at) {
-        db_auth_delete_trusted_device_by_id(user_id, trusted_id);
+int db_auth_get_trusted_device_id(int64_t user_id, const char *token, int64_t *trusted_device_id) {
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
         return -1;
     }
 
-    rc = sqlite3_prepare_v2(db,
+    int64_t resolved_id = 0;
+    time_t expires_at = 0;
+    if (lookup_trusted_device(db, user_id, token, &resolved_id, &expires_at) != 0) {
+        return -1;
+    }
+
+    if (time(NULL) > expires_at) {
+        db_auth_delete_trusted_device_by_id(user_id, resolved_id);
+        return -1;
+    }
+
+    if (trusted_device_id) {
+        *trusted_device_id = resolved_id;
+    }
+
+    return 0;
+}
+
+int db_auth_validate_trusted_device(int64_t user_id, const char *token) {
+    if (!token || token[0] == '\0') {
+        return -1;
+    }
+
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    int64_t trusted_id = 0;
+    if (db_auth_get_trusted_device_id(user_id, token, &trusted_id) != 0) {
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
                            "UPDATE trusted_devices SET last_used_at = ? WHERE id = ?;",
                            -1, &stmt, NULL);
     if (rc == SQLITE_OK) {
@@ -1777,7 +1840,7 @@ int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int
 
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db,
-                               "SELECT id, user_id, token, created_at, COALESCE(last_used_at, created_at), expires_at, "
+                               "SELECT id, user_id, created_at, COALESCE(last_used_at, created_at), expires_at, "
                                "COALESCE(ip_address, ''), COALESCE(user_agent, '') "
                                "FROM trusted_devices WHERE user_id = ? "
                                "ORDER BY COALESCE(last_used_at, created_at) DESC LIMIT ?;",
@@ -1796,15 +1859,13 @@ int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int
         memset(device, 0, sizeof(*device));
         device->id = sqlite3_column_int64(stmt, 0);
         device->user_id = sqlite3_column_int64(stmt, 1);
-        const char *token = (const char *)sqlite3_column_text(stmt, 2);
-        const char *ip = (const char *)sqlite3_column_text(stmt, 6);
-        const char *ua = (const char *)sqlite3_column_text(stmt, 7);
-        if (token) strncpy(device->token, token, sizeof(device->token) - 1);
+        const char *ip = (const char *)sqlite3_column_text(stmt, 5);
+        const char *ua = (const char *)sqlite3_column_text(stmt, 6);
         if (ip) strncpy(device->ip_address, ip, sizeof(device->ip_address) - 1);
         if (ua) strncpy(device->user_agent, ua, sizeof(device->user_agent) - 1);
-        device->created_at = sqlite3_column_int64(stmt, 3);
-        device->last_used_at = sqlite3_column_int64(stmt, 4);
-        device->expires_at = sqlite3_column_int64(stmt, 5);
+        device->created_at = sqlite3_column_int64(stmt, 2);
+        device->last_used_at = sqlite3_column_int64(stmt, 3);
+        device->expires_at = sqlite3_column_int64(stmt, 4);
     }
 
     sqlite3_finalize(stmt);

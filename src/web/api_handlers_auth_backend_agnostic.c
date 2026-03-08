@@ -709,7 +709,10 @@ void handle_auth_trusted_devices_list(const http_request_t *req, http_response_t
     }
 
     char current_token[128] = {0};
-    httpd_get_cookie_value(req, "trusted_device", current_token, sizeof(current_token));
+    int64_t current_device_id = 0;
+    if (httpd_get_cookie_value(req, "trusted_device", current_token, sizeof(current_token)) == 0) {
+        db_auth_get_trusted_device_id(user.id, current_token, &current_device_id);
+    }
 
     cJSON *response = cJSON_CreateObject();
     cJSON *items = cJSON_AddArrayToObject(response, "trusted_devices");
@@ -721,7 +724,7 @@ void handle_auth_trusted_devices_list(const http_request_t *req, http_response_t
         cJSON_AddNumberToObject(item, "expires_at", devices[i].expires_at);
         cJSON_AddStringToObject(item, "ip_address", devices[i].ip_address);
         cJSON_AddStringToObject(item, "user_agent", devices[i].user_agent);
-        cJSON_AddBoolToObject(item, "current", current_token[0] != '\0' && strcmp(current_token, devices[i].token) == 0);
+        cJSON_AddBoolToObject(item, "current", current_device_id > 0 && current_device_id == devices[i].id);
         cJSON_AddItemToArray(items, item);
     }
 
@@ -746,12 +749,15 @@ void handle_auth_trusted_devices_delete(const http_request_t *req, http_response
 
     int64_t device_id = strtoll(id_str, NULL, 10);
     char current_token[128] = {0};
+    int64_t current_device_id = 0;
     bool deleted_current_device = false;
     trusted_device_t devices[32];
     int count = db_auth_list_trusted_devices(user.id, devices, 32);
-    httpd_get_cookie_value(req, "trusted_device", current_token, sizeof(current_token));
+    if (httpd_get_cookie_value(req, "trusted_device", current_token, sizeof(current_token)) == 0) {
+        db_auth_get_trusted_device_id(user.id, current_token, &current_device_id);
+    }
     for (int i = 0; i < count; i++) {
-        if (devices[i].id == device_id && current_token[0] != '\0' && strcmp(current_token, devices[i].token) == 0) {
+        if (devices[i].id == device_id && current_device_id > 0 && current_device_id == devices[i].id) {
             deleted_current_device = true;
             break;
         }
