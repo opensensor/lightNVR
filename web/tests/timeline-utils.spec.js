@@ -265,7 +265,7 @@ describe('timelineUtils', () => {
       // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
       const parsedLocal = dayjs.unix(timestamp);
       expect(parsedLocal.year()).toBe(2026);
-      expect(parsedLocal.month()).toBe(MARCH); // March
+      expect(parsedLocal.month()).toBe(MARCH);
       expect(parsedLocal.date()).toBe(8);
       expect(parsedLocal.hour()).toBe(3);
       expect(parsedLocal.minute()).toBe(10);
