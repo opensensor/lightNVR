@@ -14,6 +14,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "unity.h"
 #include "core/config.h"
@@ -144,6 +146,15 @@ void test_validate_config_buffer_size_zero(void) {
     load_default_config(&cfg);
     cfg.buffer_size = 0;
     TEST_ASSERT_NOT_EQUAL(0, validate_config(&cfg));
+}
+
+void test_validate_config_clamps_absolute_timeout_to_idle_timeout(void) {
+    load_default_config(&cfg);
+    cfg.auth_timeout_hours = 48;
+    cfg.auth_absolute_timeout_hours = 12;
+
+    TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(48, cfg.auth_absolute_timeout_hours);
 }
 
 /* ================================================================
@@ -283,6 +294,97 @@ void test_get_loaded_config_path_initially(void) {
     TEST_ASSERT_NULL(path);
 }
 
+void test_save_config_accepts_dot_ini_filename(void) {
+    char temp_dir[] = "/tmp/lightnvr_save_config_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+
+    char config_path[512];
+    snprintf(config_path, sizeof(config_path), "%s/.ini", dir);
+
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
+
+    FILE *saved = fopen(config_path, "r");
+    TEST_ASSERT_NOT_NULL(saved);
+    if (saved) {
+        fclose(saved);
+    }
+
+    unlink(config_path);
+    rmdir(dir);
+}
+
+void test_load_config_accepts_env_integer_with_trailing_whitespace(void) {
+    char temp_dir[] = "/tmp/lightnvr_load_config_XXXXXX";
+    char *dir = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir);
+
+    char config_path[512];
+    char storage_path[512];
+    char storage_hls_path[512];
+    char models_path[512];
+    char db_path[512];
+    char web_root[512];
+    char log_path[512];
+    char pid_path[512];
+
+    snprintf(config_path, sizeof(config_path), "%s/test.ini", dir);
+    snprintf(storage_path, sizeof(storage_path), "%s/storage", dir);
+    snprintf(storage_hls_path, sizeof(storage_hls_path), "%s/hls", dir);
+    snprintf(models_path, sizeof(models_path), "%s/models", dir);
+    snprintf(db_path, sizeof(db_path), "%s/lightnvr.db", dir);
+    snprintf(web_root, sizeof(web_root), "%s/web", dir);
+    snprintf(log_path, sizeof(log_path), "%s/lightnvr.log", dir);
+    snprintf(pid_path, sizeof(pid_path), "%s/lightnvr.pid", dir);
+
+    FILE *config_file = fopen(config_path, "w");
+    TEST_ASSERT_NOT_NULL(config_file);
+    fprintf(config_file,
+            "[general]\n"
+            "pid_file = %s\n"
+            "log_file = %s\n\n"
+            "[storage]\n"
+            "path = %s\n"
+            "path_hls = %s\n\n"
+            "[models]\n"
+            "path = %s\n\n"
+            "[database]\n"
+            "path = %s\n\n"
+            "[web]\n"
+            "root = %s\n",
+            pid_path, log_path, storage_path, storage_hls_path,
+            models_path, db_path, web_root);
+    fclose(config_file);
+
+    TEST_ASSERT_EQUAL_INT(0, mkdir(web_root, 0755));
+
+    const char *previous_env = getenv("LIGHTNVR_WEB_PORT");
+    char *saved_env = previous_env ? strdup(previous_env) : NULL;
+
+    set_custom_config_path(config_path);
+    TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "9099   ", 1));
+    TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
+
+    if (saved_env) {
+        TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", saved_env, 1));
+        free(saved_env);
+    } else {
+        TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_WEB_PORT"));
+    }
+
+    unlink(pid_path);
+    unlink(log_path);
+    unlink(db_path);
+    unlink(config_path);
+    rmdir(storage_hls_path);
+    rmdir(storage_path);
+    rmdir(models_path);
+    rmdir(web_root);
+    rmdir(dir);
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -312,6 +414,7 @@ int main(void) {
     RUN_TEST(test_validate_config_port_max_valid);
     RUN_TEST(test_validate_config_port_min_valid);
     RUN_TEST(test_validate_config_buffer_size_zero);
+    RUN_TEST(test_validate_config_clamps_absolute_timeout_to_idle_timeout);
 
     RUN_TEST(test_default_config_web_auth_enabled);
     RUN_TEST(test_default_config_username);
@@ -335,6 +438,8 @@ int main(void) {
     RUN_TEST(test_custom_config_path_null_not_stored);
     RUN_TEST(test_custom_config_path_roundtrip);
     RUN_TEST(test_get_loaded_config_path_initially);
+    RUN_TEST(test_save_config_accepts_dot_ini_filename);
+    RUN_TEST(test_load_config_accepts_env_integer_with_trailing_whitespace);
 
     int result = UNITY_END();
     shutdown_logger();
