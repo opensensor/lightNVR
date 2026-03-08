@@ -294,6 +294,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const [recordingData, setRecordingData] = useState(null);
   const [detectionStatus, setDetectionStatus] = useState('No detections loaded');
   const [currentSpeed, setCurrentSpeed] = useState(1.0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isProtected, setIsProtected] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -666,26 +667,15 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     }
   }, [detectionOverlayEnabled, drawDetections]);
 
-  // Override video's native fullscreen to use the container (so the canvas overlay is included)
+  // Track fullscreen state and redraw overlays when the player size changes.
   useEffect(() => {
     if (!isOpen || !videoRef.current || !videoContainerRef.current) return;
 
-    const video = videoRef.current;
     const container = videoContainerRef.current;
 
-    // Save original requestFullscreen
-    const originalRequestFullscreen = video.requestFullscreen?.bind(video)
-      || video.webkitRequestFullscreen?.bind(video)
-      || video.mozRequestFullScreen?.bind(video)
-      || video.msRequestFullscreen?.bind(video);
-
-    // Override to make the container go fullscreen instead
-    video.requestFullscreen = () => container.requestFullscreen();
-    if (video.webkitRequestFullscreen) video.webkitRequestFullscreen = () => container.requestFullscreen();
-    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen = () => container.requestFullscreen();
-
-    // Redraw detections when entering/exiting fullscreen
     const handleFullscreenChange = () => {
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      setIsFullscreen(fullscreenElement === container);
       setTimeout(() => {
         if (detectionOverlayEnabled) {
           drawDetections();
@@ -693,18 +683,59 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }, 100);
     };
 
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+        if (detectionOverlayEnabled) {
+          drawDetections();
+        }
+      })
+      : null;
+
+    if (resizeObserver) {
+      resizeObserver.observe(container);
+      resizeObserver.observe(videoRef.current);
+    }
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    handleFullscreenChange();
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      // Restore original if possible
-      if (originalRequestFullscreen && video) {
-        video.requestFullscreen = originalRequestFullscreen;
-      }
+      resizeObserver?.disconnect();
     };
   }, [isOpen, detectionOverlayEnabled, drawDetections]);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    const container = videoContainerRef.current;
+    if (!container) return;
+
+    try {
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fullscreenElement === container) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
+        return;
+      }
+
+      if (container.requestFullscreen) {
+        await container.requestFullscreen();
+      } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      } else if (container.msRequestFullscreen) {
+        container.msRequestFullscreen();
+      } else {
+        showStatusMessage('Fullscreen mode is not supported in this browser.', 'warning');
+      }
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+      showStatusMessage(`Could not toggle fullscreen mode: ${error.message}`, 'error');
+    }
+  }, []);
 
   // Handle background click
   const handleBackgroundClick = (e) => {
@@ -779,11 +810,16 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-3">
             <div className="relative flex justify-center">
-              <div ref={videoContainerRef} className="relative inline-block max-w-full" style={{ background: 'black' }}>
+              <div
+                ref={videoContainerRef}
+                data-testid="recording-video-container"
+                className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full w-full bg-black'}
+              >
                 <video
                   ref={videoRef}
-                  className="w-full h-auto max-w-full max-h-[50vh] object-contain"
+                  className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-auto max-w-full max-h-[50vh] object-contain'}
                   controls
+                  controlsList="nofullscreen"
                   autoPlay
                   key={videoUrl} /* Add key to force re-render when URL changes */
                   onError={(e) => {
@@ -809,6 +845,17 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
             <h3 className="text-base font-bold text-center mb-2 text-foreground">
               PLAYBACK CONTROLS
             </h3>
+
+            <div className="flex justify-center mb-3">
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors text-sm font-medium"
+                onClick={handleToggleFullscreen}
+                title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+              >
+                {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              </button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
               {/* Speed controls section */}

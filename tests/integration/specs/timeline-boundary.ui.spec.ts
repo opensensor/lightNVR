@@ -169,4 +169,43 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     await expect(page.getByRole('button', { name: '▶ Timeline (2)' })).toBeVisible();
   });
+
+  test('uses container fullscreen so detection overlays remain part of the timeline player', async ({ page }) => {
+    const stream = 'front_door';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 501, stream, start_timestamp: localTimestamp(date, '14:00:00'), end_timestamp: localTimestamp(date, '14:05:00') }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.route('**/api/detection/results/**', route => route.fulfill({ json: { detections: [{
+      timestamp: segments[0].start_timestamp + 1,
+      x: 0.1,
+      y: 0.1,
+      width: 0.25,
+      height: 0.25,
+      label: 'person',
+      confidence: 0.92
+    }] } }));
+
+    await page.goto(`/timeline.html?stream=${stream}&date=${date}&time=14:00:01`, { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect.poll(() => timelinePage.videoPlayer.evaluate(video => video.controlsList?.contains('nofullscreen') ?? false)).toBe(true);
+
+    await page.locator('#timeline-detection-overlay').check();
+    await expect(page.locator('[data-testid="timeline-video-container"] canvas')).toBeVisible();
+
+    await timelinePage.fullscreenButton.click();
+
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute('data-testid'))).toBe('timeline-video-container');
+    await expect.poll(() => page.evaluate(() => {
+      const fullscreenElement = document.fullscreenElement;
+      return Boolean(fullscreenElement?.querySelector('video') && fullscreenElement?.querySelector('canvas'));
+    })).toBe(true);
+
+    await page.evaluate(() => document.exitFullscreen());
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  });
 });

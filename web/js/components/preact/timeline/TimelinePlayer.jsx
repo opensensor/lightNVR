@@ -22,6 +22,7 @@ export function TimelinePlayer() {
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [detections, setDetections] = useState([]);
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isProtected, setIsProtected] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [segmentRecordingData, setSegmentRecordingData] = useState(null);
@@ -577,26 +578,15 @@ export function TimelinePlayer() {
     };
   }, [detectionOverlayEnabled, drawTimelineDetections]);
 
-  // Override video's native fullscreen to use the container (so the canvas overlay is included)
+  // Track fullscreen state and redraw overlays when the player size changes.
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
-    const video = videoRef.current;
     const container = videoContainerRef.current;
 
-    // Save original requestFullscreen
-    const originalRequestFullscreen = video.requestFullscreen?.bind(video)
-      || video.webkitRequestFullscreen?.bind(video)
-      || video.mozRequestFullScreen?.bind(video)
-      || video.msRequestFullscreen?.bind(video);
-
-    // Override to make the container go fullscreen instead
-    video.requestFullscreen = () => container.requestFullscreen();
-    if (video.webkitRequestFullscreen) video.webkitRequestFullscreen = () => container.requestFullscreen();
-    if (video.webkitEnterFullscreen) video.webkitEnterFullscreen = () => container.requestFullscreen();
-
-    // Redraw detections when entering/exiting fullscreen
     const handleFullscreenChange = () => {
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      setIsFullscreen(fullscreenElement === container);
       setTimeout(() => {
         if (detectionOverlayEnabled) {
           drawTimelineDetections();
@@ -604,17 +594,59 @@ export function TimelinePlayer() {
       }, 100);
     };
 
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+        if (detectionOverlayEnabled) {
+          drawTimelineDetections();
+        }
+      })
+      : null;
+
+    if (resizeObserver) {
+      resizeObserver.observe(container);
+      resizeObserver.observe(videoRef.current);
+    }
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    handleFullscreenChange();
 
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      if (originalRequestFullscreen && video) {
-        video.requestFullscreen = originalRequestFullscreen;
-      }
+      resizeObserver?.disconnect();
     };
   }, [detectionOverlayEnabled, drawTimelineDetections]);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    const container = videoContainerRef.current;
+    if (!container) return;
+
+    try {
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fullscreenElement === container) {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        }
+        return;
+      }
+
+      if (container.requestFullscreen) {
+        await container.requestFullscreen();
+      } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      } else if (container.msRequestFullscreen) {
+        container.msRequestFullscreen();
+      } else {
+        showStatusMessage('Fullscreen mode is not supported in this browser.', 'warning');
+      }
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+      showStatusMessage(`Could not toggle fullscreen mode: ${error.message}`, 'error');
+    }
+  }, []);
 
   // Get current segment ID
   const currentSegmentId = (currentSegmentIndex >= 0 && segments.length > 0 && currentSegmentIndex < segments.length)
@@ -704,11 +736,17 @@ export function TimelinePlayer() {
   return (
     <>
       <div className="timeline-player-container mb-1" id="video-player">
-        <div ref={videoContainerRef} className="relative w-full bg-black rounded-lg shadow-md" style={{ aspectRatio: '16/9' }}>
+        <div
+          ref={videoContainerRef}
+          data-testid="timeline-video-container"
+          className="relative w-full bg-black rounded-lg shadow-md"
+          style={isFullscreen ? { width: '100vw', height: '100vh' } : { aspectRatio: '16/9' }}
+        >
           <video
               ref={videoRef}
               className="w-full h-full object-contain"
               controls
+              controlsList="nofullscreen"
               autoPlay={false}
               muted={false}
               playsInline
@@ -754,6 +792,15 @@ export function TimelinePlayer() {
             Detections{detections.length > 0 ? ` (${detections.length})` : ''}
           </span>
         </label>
+
+        <button
+          type="button"
+          className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-[11px]"
+          onClick={handleToggleFullscreen}
+          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+        >
+          {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+        </button>
 
         {/* Action buttons — only when a segment is selected */}
         {currentSegmentId && (

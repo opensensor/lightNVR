@@ -58,6 +58,14 @@ export class TimelinePage extends BasePage {
     return this.page.locator('#video-player video, video, .video-player, [data-testid="video-player"]').first();
   }
 
+  get fullscreenButton(): Locator {
+    return this.page.getByRole('button', { name: /fullscreen/i }).first();
+  }
+
+  get videoContainer(): Locator {
+    return this.page.locator('[data-testid="timeline-video-container"]').first();
+  }
+
   get loadingIndicator(): Locator {
     return this.page.locator('.loading, .spinner, [data-testid="loading"]').first();
   }

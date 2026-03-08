@@ -261,6 +261,77 @@ test.describe('Recordings Page @ui @recordings', () => {
       await expect(page.locator('#recordings-table tbody')).toContainText('Manual');
       await expect(page.locator('#recordings-table tbody')).not.toContainText('cam1');
     });
+
+    test('uses container fullscreen so recording detection overlays remain visible', async ({ page }) => {
+      const recordingsPage = new RecordingsPage(page);
+
+      await page.addInitScript(() => {
+        localStorage.setItem('recordings_view_mode', 'table');
+      });
+
+      await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
+      await page.route('**/api/streams*', route => route.fulfill({ json: [{ name: 'cam1' }] }));
+      await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
+      await page.route('**/api/recordings?**', route => route.fulfill({ json: {
+        recordings: [{
+          id: 601,
+          stream: 'cam1',
+          capture_method: 'scheduled',
+          tags: [],
+          detection_labels: [{ label: 'person', count: 1 }],
+          start_time_unix: 1741420801,
+          duration: 60,
+          size: '1 MB',
+          protected: false,
+          has_detections: true
+        }],
+        pagination: { total: 1, pages: 1, limit: 20 }
+      } }));
+      await page.route('**/api/recordings/play/601*', route => route.fulfill({ status: 204, body: '' }));
+      await page.route('**/api/recordings/601', route => route.fulfill({ json: {
+        id: 601,
+        stream: 'cam1',
+        start_time: '2026-03-08T14:00:00Z',
+        end_time: '2026-03-08T14:01:00Z',
+        protected: false,
+        has_detection: true,
+        detection_labels: [{ label: 'person', count: 1 }]
+      } }));
+      await page.route('**/api/detection/results/cam1?**', route => route.fulfill({ json: {
+        detections: [{
+          timestamp: 1741442401,
+          x: 0.1,
+          y: 0.1,
+          width: 0.25,
+          height: 0.25,
+          label: 'person',
+          confidence: 0.95
+        }]
+      } }));
+
+      await recordingsPage.goto();
+
+      await expect(page.locator('#recordings-table')).toBeVisible();
+      await page.locator('button[title="Play"]').first().click();
+
+      await expect(page.locator('#video-preview-modal')).toBeVisible();
+      await expect.poll(() => page.locator('#video-preview-modal video').evaluate(video => video.controlsList?.contains('nofullscreen') ?? false)).toBe(true);
+      await expect(page.locator('#detection-overlay-checkbox')).toBeEnabled();
+
+      await page.locator('#detection-overlay-checkbox').check();
+      await expect(page.locator('[data-testid="recording-video-container"] canvas')).toBeVisible();
+
+      await page.getByRole('button', { name: 'Fullscreen' }).click();
+
+      await expect.poll(() => page.evaluate(() => document.fullscreenElement?.getAttribute('data-testid'))).toBe('recording-video-container');
+      await expect.poll(() => page.evaluate(() => {
+        const fullscreenElement = document.fullscreenElement;
+        return Boolean(fullscreenElement?.querySelector('video') && fullscreenElement?.querySelector('canvas'));
+      })).toBe(true);
+
+      await page.evaluate(() => document.exitFullscreen());
+      await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+    });
   });
 
   test.describe('Recording Actions', () => {
