@@ -275,13 +275,20 @@ function RecordingCard({
       {(show('stream') || show('detections') || show('actions')) && (
         <div class="p-3">
           {show('stream') && (
-            <div class="flex items-center justify-between mb-1">
-              <span class="font-medium text-sm truncate" title={recording.stream}>
-                {recording.stream || 'Unknown'}
-              </span>
-              <span class="text-xs text-muted-foreground ml-2 whitespace-nowrap">
-                {formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}
-              </span>
+            <div class="mb-1">
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-medium text-sm truncate" title={recording.stream}>
+                  {recording.stream || 'Unknown'}
+                </span>
+                <span class="text-xs text-muted-foreground whitespace-nowrap">
+                  {formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}
+                </span>
+              </div>
+              <div class="mt-1">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
+                  {formatUtils.formatCaptureMethod(recording.capture_method)}
+                </span>
+              </div>
             </div>
           )}
 

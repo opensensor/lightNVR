@@ -4,6 +4,7 @@
 
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { formatUtils } from './formatUtils.js';
+import { urlUtils } from './urlUtils.js';
 import { fetchJSON, enhancedFetch } from '../../../fetch-utils.js';
 import {
   useQuery,
@@ -32,6 +33,92 @@ const parseRecordingTimestamp = (value) => {
   // String: ISO 8601 or legacy format — dayjs.utc handles both
   const parsed = dayjs.utc(value);
   return parsed.isValid() ? parsed.unix() : 0;
+};
+
+const appendMultiValueParam = (params, key, values) => {
+  const serializedValue = urlUtils.serializeMultiValueParam(values);
+  if (serializedValue) params.append(key, serializedValue);
+};
+
+const applyDateRangeParams = (params, filters) => {
+  if (filters.dateRange === 'custom') {
+    params.append('start', dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString());
+    params.append('end', dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString());
+  } else {
+    const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
+    params.append('start', start);
+    params.append('end', end);
+  }
+};
+
+const applyFilterParams = (params, filters) => {
+  appendMultiValueParam(params, 'stream', filters.streamIds);
+
+  if (filters.recordingType === 'detection') {
+    params.append('has_detection', '1');
+  } else if (filters.recordingType === 'no_detection') {
+    params.append('has_detection', '-1');
+  }
+
+  appendMultiValueParam(params, 'detection_label', filters.detectionLabels);
+  appendMultiValueParam(params, 'tag', filters.tags);
+  appendMultiValueParam(params, 'capture_method', filters.captureMethods);
+
+  if (filters.protectedStatus === 'yes') {
+    params.append('protected', '1');
+  } else if (filters.protectedStatus === 'no') {
+    params.append('protected', '0');
+  }
+};
+
+const buildRecordingsQueryParams = (filters, pagination, sortField, sortDirection) => {
+  const params = new URLSearchParams();
+  params.append('page', pagination.currentPage);
+  params.append('limit', pagination.pageSize);
+  params.append('sort', sortField);
+  params.append('order', sortDirection);
+  applyDateRangeParams(params, filters);
+  applyFilterParams(params, filters);
+  return params;
+};
+
+const buildFilterObject = (filters) => {
+  const filter = {};
+
+  if (filters.dateRange === 'custom') {
+    filter.start = dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString();
+    filter.end = dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString();
+  } else {
+    const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
+    filter.start = start;
+    filter.end = end;
+  }
+
+  const streamFilter = urlUtils.serializeMultiValueParam(filters.streamIds);
+  if (streamFilter) filter.stream = streamFilter;
+
+  if (filters.recordingType === 'detection') {
+    filter.detection = 1;
+  } else if (filters.recordingType === 'no_detection') {
+    filter.detection = -1;
+  }
+
+  const detectionLabelFilter = urlUtils.serializeMultiValueParam(filters.detectionLabels);
+  if (detectionLabelFilter) filter.detection_label = detectionLabelFilter;
+
+  const tagFilter = urlUtils.serializeMultiValueParam(filters.tags);
+  if (tagFilter) filter.tag = tagFilter;
+
+  const captureMethodFilter = urlUtils.serializeMultiValueParam(filters.captureMethods);
+  if (captureMethodFilter) filter.capture_method = captureMethodFilter;
+
+  if (filters.protectedStatus === 'yes') {
+    filter.protected = 1;
+  } else if (filters.protectedStatus === 'no') {
+    filter.protected = 0;
+  }
+
+  return filter;
 };
 
 /**
@@ -63,53 +150,7 @@ export const recordingsAPI = {
      * @returns {Object} Query result
      */
     useRecordings: (filters, pagination, sortField, sortDirection) => {
-      // Build query parameters
-      const params = new URLSearchParams();
-      params.append('page', pagination.currentPage);
-      params.append('limit', pagination.pageSize);
-      params.append('sort', sortField);
-      params.append('order', sortDirection);
-
-      // Add date range filters
-      if (filters.dateRange === 'custom') {
-        // User enters local date/time — parse as local then convert to UTC ISO 8601
-        params.append('start', dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString());
-        params.append('end', dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString());
-      } else {
-        // Convert predefined range to actual dates
-        const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
-        params.append('start', start);
-        params.append('end', end);
-      }
-
-      // Add stream filter
-      if (filters.streamId !== 'all') {
-        params.append('stream', filters.streamId);
-      }
-
-      // Add recording type filter
-      if (filters.recordingType === 'detection') {
-        params.append('has_detection', '1');
-      } else if (filters.recordingType === 'no_detection') {
-        params.append('has_detection', '-1');
-      }
-
-      // Add detection label filter
-      if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
-        params.append('detection_label', filters.detectionLabel.trim());
-      }
-
-      // Add tag filter
-      if (filters.tag && filters.tag.trim() !== '') {
-        params.append('tag', filters.tag.trim());
-      }
-
-      // Add protected status filter
-      if (filters.protectedStatus === 'yes') {
-        params.append('protected', '1');
-      } else if (filters.protectedStatus === 'no') {
-        params.append('protected', '0');
-      }
+      const params = buildRecordingsQueryParams(filters, pagination, sortField, sortDirection);
 
       // Create query key that includes all filter parameters
       const queryKey = ['recordings', filters, pagination, sortField, sortDirection];
@@ -264,48 +305,7 @@ export const recordingsAPI = {
    */
   loadRecordings: async (filters, pagination, sortField, sortDirection) => {
     try {
-      // Build query parameters
-      const params = new URLSearchParams();
-      params.append('page', pagination.currentPage);
-      params.append('limit', pagination.pageSize);
-      params.append('sort', sortField);
-      params.append('order', sortDirection);
-
-      // Add date range filters
-      if (filters.dateRange === 'custom') {
-        // User enters local date/time — parse as local then convert to UTC ISO 8601
-        params.append('start', dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString());
-        params.append('end', dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString());
-      } else {
-        // Convert predefined range to actual dates
-        const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
-        params.append('start', start);
-        params.append('end', end);
-      }
-
-      // Add stream filter
-      if (filters.streamId !== 'all') {
-        params.append('stream', filters.streamId);
-      }
-
-      // Add recording type filter
-      if (filters.recordingType === 'detection') {
-        params.append('has_detection', '1');
-      } else if (filters.recordingType === 'no_detection') {
-        params.append('has_detection', '-1');
-      }
-
-      // Add tag filter
-      if (filters.tag && filters.tag.trim() !== '') {
-        params.append('tag', filters.tag.trim());
-      }
-
-      // Add protected status filter
-      if (filters.protectedStatus === 'yes') {
-        params.append('protected', '1');
-      } else if (filters.protectedStatus === 'no') {
-        params.append('protected', '0');
-      }
+      const params = buildRecordingsQueryParams(filters, pagination, sortField, sortDirection);
 
       // Log the API request
       console.log('API Request:', `/api/recordings?${params.toString()}`);
@@ -523,34 +523,7 @@ export const recordingsAPI = {
    */
   deleteAllFilteredRecordings: async (filters) => {
     try {
-      // Create filter object
-      const filter = {};
-
-      // Add date range filters
-      if (filters.dateRange === 'custom') {
-        filter.start = dayjs(`${filters.startDate}T${filters.startTime}:00`).toISOString();
-        filter.end = dayjs(`${filters.endDate}T${filters.endTime}:00`).toISOString();
-      } else {
-        const { start, end } = recordingsAPI.getDateRangeFromPreset(filters.dateRange);
-        filter.start = start;
-        filter.end = end;
-      }
-
-      if (filters.streamId !== 'all') {
-        filter.stream_name = filters.streamId;
-      }
-
-      if (filters.recordingType === 'detection') {
-        filter.detection = 1;
-      } else if (filters.recordingType === 'no_detection') {
-        filter.detection = -1;
-      }
-
-      if (filters.protectedStatus === 'yes') {
-        filter.protected = 1;
-      } else if (filters.protectedStatus === 'no') {
-        filter.protected = 0;
-      }
+      const filter = buildFilterObject(filters);
 
       console.log('Deleting with filter:', filter);
 
@@ -560,9 +533,12 @@ export const recordingsAPI = {
         const params = new URLSearchParams();
         if (filter.start) params.append('start', filter.start);
         if (filter.end) params.append('end', filter.end);
-        if (filter.stream_name) params.append('stream', filter.stream_name);
+        if (filter.stream) params.append('stream', filter.stream);
         if (filter.detection === 1) params.append('has_detection', '1');
         else if (filter.detection === -1) params.append('has_detection', '-1');
+        if (filter.detection_label) params.append('detection_label', filter.detection_label);
+        if (filter.tag) params.append('tag', filter.tag);
+        if (filter.capture_method) params.append('capture_method', filter.capture_method);
         if (filter.protected === 1) params.append('protected', '1');
         else if (filter.protected === 0) params.append('protected', '0');
         params.append('page', '1');

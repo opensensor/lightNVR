@@ -9,6 +9,26 @@ dayjs.extend(utc);
 
 export const formatUtils = {
   /**
+   * Format a capture method for display
+   * @param {string} value Capture method value from the API
+   * @returns {string} User-friendly capture method label
+   */
+  formatCaptureMethod: (value) => {
+    switch (value) {
+      case 'scheduled':
+        return 'Continuous';
+      case 'detection':
+        return 'Detection-triggered';
+      case 'motion':
+        return 'Motion-triggered';
+      case 'manual':
+        return 'Manual';
+      default:
+        return value ? value.replace(/_/g, ' ') : 'Unknown';
+    }
+  },
+
+  /**
    * Format a timestamp for display in the user's local timezone.
    * Accepts a Unix epoch number (seconds), an ISO 8601 string, or the legacy
    * "YYYY-MM-DD HH:mm:ss UTC" string returned by older server versions.

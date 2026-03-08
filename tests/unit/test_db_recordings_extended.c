@@ -15,7 +15,10 @@
 
 #include "unity.h"
 #include "database/db_core.h"
+#include "database/db_detections.h"
+#include "database/db_recording_tags.h"
 #include "database/db_recordings.h"
+#include "video/detection_result.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_recordings_ext_test.db"
 
@@ -39,7 +42,20 @@ static recording_metadata_t make_rec(const char *stream, const char *path, time_
 }
 
 static void clear_recordings(void) {
+    sqlite3_exec(get_db_handle(), "DELETE FROM detections;", NULL, NULL, NULL);
+    sqlite3_exec(get_db_handle(), "DELETE FROM recording_tags;", NULL, NULL, NULL);
     sqlite3_exec(get_db_handle(), "DELETE FROM recordings;", NULL, NULL, NULL);
+}
+
+static detection_result_t make_detection_result(const char *label) {
+    detection_result_t result;
+    memset(&result, 0, sizeof(result));
+    result.count = 1;
+    strncpy(result.detections[0].label, label, sizeof(result.detections[0].label) - 1);
+    result.detections[0].confidence = 0.9f;
+    result.detections[0].width = 0.3f;
+    result.detections[0].height = 0.3f;
+    return result;
 }
 
 void setUp(void)    { clear_recordings(); }
@@ -105,8 +121,30 @@ void test_get_recording_count(void) {
     time_t now = time(NULL);
     recording_metadata_t m = make_rec("cam1", "/rec/cnt.mp4", now);
     add_recording_metadata(&m);
-    int cnt = get_recording_count(0, 0, "cam1", 0, NULL, -1, NULL, 0, NULL);
+    int cnt = get_recording_count(0, 0, "cam1", 0, NULL, -1, NULL, 0, NULL, NULL);
     TEST_ASSERT_EQUAL_INT(1, cnt);
+}
+
+void test_get_recording_count_supports_multi_value_stream_tag_and_capture_filters(void) {
+    time_t now = time(NULL);
+
+    recording_metadata_t scheduled = make_rec("cam1", "/rec/multi-1.mp4", now);
+    recording_metadata_t detection = make_rec("cam2", "/rec/multi-2.mp4", now + 60);
+    recording_metadata_t manual = make_rec("cam3", "/rec/multi-3.mp4", now + 120);
+    strncpy(detection.trigger_type, "detection", sizeof(detection.trigger_type) - 1);
+    strncpy(manual.trigger_type, "manual", sizeof(manual.trigger_type) - 1);
+
+    uint64_t scheduled_id = add_recording_metadata(&scheduled);
+    uint64_t detection_id = add_recording_metadata(&detection);
+    uint64_t manual_id = add_recording_metadata(&manual);
+
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(scheduled_id, "important"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(detection_id, "review"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(manual_id, "urgent"));
+
+    int cnt = get_recording_count(0, 0, "cam1,cam3", 0, NULL, -1, NULL, 0,
+                                  "important,urgent", "scheduled,manual");
+    TEST_ASSERT_EQUAL_INT(2, cnt);
 }
 
 /* get_recording_metadata_paginated */
@@ -121,8 +159,40 @@ void test_get_recording_metadata_paginated(void) {
     recording_metadata_t out[10];
     int n = get_recording_metadata_paginated(0, 0, "cam1", 0, NULL, -1,
                                              "start_time", "desc", out, 3, 0,
-                                             NULL, 0, NULL);
+                                             NULL, 0, NULL, NULL);
     TEST_ASSERT_EQUAL_INT(3, n);
+}
+
+void test_get_recording_metadata_paginated_supports_multi_value_detection_labels_and_tags(void) {
+    time_t now = time(NULL);
+
+    recording_metadata_t rec1 = make_rec("cam1", "/rec/filter-1.mp4", now);
+    recording_metadata_t rec2 = make_rec("cam2", "/rec/filter-2.mp4", now + 60);
+    recording_metadata_t rec3 = make_rec("cam3", "/rec/filter-3.mp4", now + 120);
+
+    uint64_t rec1_id = add_recording_metadata(&rec1);
+    uint64_t rec2_id = add_recording_metadata(&rec2);
+    uint64_t rec3_id = add_recording_metadata(&rec3);
+
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(rec1_id, "alpha"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(rec2_id, "beta"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(rec3_id, "gamma"));
+
+    detection_result_t person = make_detection_result("person");
+    detection_result_t car = make_detection_result("car");
+    detection_result_t dog = make_detection_result("dog");
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam1", &person, rec1.start_time + 1, rec1_id));
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam2", &car, rec2.start_time + 1, rec2_id));
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db("cam3", &dog, rec3.start_time + 1, rec3_id));
+
+    recording_metadata_t out[10];
+    int n = get_recording_metadata_paginated(0, 0, NULL, 1, "person,car", -1,
+                                             "id", "asc", out, 10, 0,
+                                             NULL, 0, "alpha,beta", "scheduled");
+
+    TEST_ASSERT_EQUAL_INT(2, n);
+    TEST_ASSERT_EQUAL_STRING("cam1", out[0].stream_name);
+    TEST_ASSERT_EQUAL_STRING("cam2", out[1].stream_name);
 }
 
 /* set_recording_retention_tier */
@@ -179,7 +249,9 @@ int main(void) {
     RUN_TEST(test_get_recording_metadata_stream_filter);
     RUN_TEST(test_get_recording_metadata_by_path);
     RUN_TEST(test_get_recording_count);
+    RUN_TEST(test_get_recording_count_supports_multi_value_stream_tag_and_capture_filters);
     RUN_TEST(test_get_recording_metadata_paginated);
+    RUN_TEST(test_get_recording_metadata_paginated_supports_multi_value_detection_labels_and_tags);
     RUN_TEST(test_set_recording_retention_tier);
     RUN_TEST(test_set_recording_disk_pressure_eligible);
     RUN_TEST(test_set_recording_retention_override);

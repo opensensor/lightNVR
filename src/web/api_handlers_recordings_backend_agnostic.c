@@ -115,6 +115,8 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(recording_obj, "end_time_unix", (double)recording.end_time);
     cJSON_AddNumberToObject(recording_obj, "duration", duration);
     cJSON_AddStringToObject(recording_obj, "size", size_str);
+    cJSON_AddStringToObject(recording_obj, "capture_method",
+                            recording.trigger_type[0] ? recording.trigger_type : "scheduled");
 
     // Check if recording has detections and get detection labels summary
     bool has_detection_flag = (strcmp(recording.trigger_type, "detection") == 0);
@@ -373,8 +375,11 @@ static void *batch_delete_worker_thread(void *arg) {
         // Delete by filter
         time_t start_time = 0;
         time_t end_time = 0;
-        char stream_name[64] = {0};
+        char stream_name[256] = {0};
         int has_detection = 0;
+        char detection_label[256] = {0};
+        char tag_filter[512] = {0};
+        char capture_method_filter[128] = {0};
         // protected_filter: -1=all, 0=not protected, 1=protected
         int protected_filter = -1;
 
@@ -386,6 +391,9 @@ static void *batch_delete_worker_thread(void *arg) {
             stream = cJSON_GetObjectItem(filter, "stream");
         }
         cJSON *detection = cJSON_GetObjectItem(filter, "detection");
+        cJSON *detection_label_item = cJSON_GetObjectItem(filter, "detection_label");
+        cJSON *tag_item = cJSON_GetObjectItem(filter, "tag");
+        cJSON *capture_method_item = cJSON_GetObjectItem(filter, "capture_method");
         cJSON *protected_item = cJSON_GetObjectItem(filter, "protected");
 
         if (start && cJSON_IsString(start)) {
@@ -418,6 +426,22 @@ static void *batch_delete_worker_thread(void *arg) {
             has_detection = detection->valueint;
         }
 
+        if (detection_label_item && cJSON_IsString(detection_label_item)) {
+            strncpy(detection_label, detection_label_item->valuestring, sizeof(detection_label) - 1);
+        }
+
+        if (tag_item && cJSON_IsString(tag_item)) {
+            strncpy(tag_filter, tag_item->valuestring, sizeof(tag_filter) - 1);
+        }
+
+        if (capture_method_item && cJSON_IsString(capture_method_item)) {
+            strncpy(capture_method_filter, capture_method_item->valuestring, sizeof(capture_method_filter) - 1);
+        }
+
+        if (detection_label[0] != '\0') {
+            has_detection = 1;
+        }
+
         if (protected_item && cJSON_IsNumber(protected_item)) {
             protected_filter = protected_item->valueint;
             if (protected_filter < -1) protected_filter = -1;
@@ -428,7 +452,12 @@ static void *batch_delete_worker_thread(void *arg) {
         // Get total count
         int total_count = get_recording_count(start_time, end_time,
                                             stream_name[0] != '\0' ? stream_name : NULL,
-                                            has_detection, NULL, protected_filter, NULL, 0, NULL);
+                                            has_detection,
+                                            detection_label[0] != '\0' ? detection_label : NULL,
+                                            protected_filter,
+                                            NULL, 0,
+                                            tag_filter[0] != '\0' ? tag_filter : NULL,
+                                            capture_method_filter[0] != '\0' ? capture_method_filter : NULL);
 
         if (total_count <= 0) {
             batch_delete_progress_complete(job_id, 0, 0);
@@ -456,9 +485,13 @@ static void *batch_delete_worker_thread(void *arg) {
         // Get all recordings
         int count = get_recording_metadata_paginated(start_time, end_time,
                                                   stream_name[0] != '\0' ? stream_name : NULL,
-                                                  has_detection, NULL, protected_filter, "id", "asc",
+                                                  has_detection,
+                                                  detection_label[0] != '\0' ? detection_label : NULL,
+                                                  protected_filter, "id", "asc",
                                                   recordings, total_count, 0,
-                                                  NULL, 0, NULL);
+                                                  NULL, 0,
+                                                  tag_filter[0] != '\0' ? tag_filter : NULL,
+                                                  capture_method_filter[0] != '\0' ? capture_method_filter : NULL);
 
         if (count <= 0) {
             free(recordings);

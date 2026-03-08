@@ -26,6 +26,42 @@ export class RecordingsPage extends BasePage {
     return this.page.locator('select[name="stream"], #stream-filter, [data-testid="stream-filter"]').first();
   }
 
+  get detectionLabelFilter(): Locator {
+    return this.page.locator('#detection-label-filter').first();
+  }
+
+  get captureMethodFilter(): Locator {
+    return this.page.locator('#capture-method-filter').first();
+  }
+
+  get tagFilter(): Locator {
+    return this.page.locator('#tag-filter').first();
+  }
+
+  get applyFiltersButton(): Locator {
+    return this.page.locator('#apply-filters-btn').first();
+  }
+
+  get activeFilters(): Locator {
+    return this.page.locator('#active-filters .filter-tag');
+  }
+
+  get filtersSidebarToggleButton(): Locator {
+    return this.page.locator('#filters-sidebar button[title="Show filters"], #filters-sidebar button[title="Hide filters"]').first();
+  }
+
+  get detectionObjectsSectionButton(): Locator {
+    return this.page.locator('#filters-sidebar button').filter({ hasText: /Detection Objects/i }).first();
+  }
+
+  get captureMethodSectionButton(): Locator {
+    return this.page.locator('#filters-sidebar button').filter({ hasText: /Capture Method/i }).first();
+  }
+
+  get recordingTagsSectionButton(): Locator {
+    return this.page.locator('#filters-sidebar button').filter({ hasText: /Recording Tags/i }).first();
+  }
+
   get dateFilter(): Locator {
     return this.page.locator('input[type="date"], #date-filter, [data-testid="date-filter"]').first();
   }
@@ -80,6 +116,61 @@ export class RecordingsPage extends BasePage {
   async filterByStream(streamName: string): Promise<void> {
     await this.streamFilter.selectOption({ label: streamName });
     await sleep(1000); // Wait for filter to apply
+  }
+
+  async expandFiltersSidebar(): Promise<void> {
+    if (await this.streamFilter.isVisible()) return;
+    await this.filtersSidebarToggleButton.click();
+    await this.streamFilter.waitFor({ state: 'visible' });
+  }
+
+  async expandDetectionObjectsSection(): Promise<void> {
+    await this.expandFiltersSidebar();
+    if (await this.detectionLabelFilter.isVisible()) return;
+    await this.detectionObjectsSectionButton.click();
+    await this.detectionLabelFilter.waitFor({ state: 'visible' });
+  }
+
+  async expandCaptureMethodSection(): Promise<void> {
+    await this.expandFiltersSidebar();
+    if (await this.captureMethodFilter.isVisible()) return;
+    await this.captureMethodSectionButton.click();
+    await this.captureMethodFilter.waitFor({ state: 'visible' });
+  }
+
+  async expandRecordingTagsSection(): Promise<void> {
+    await this.expandFiltersSidebar();
+    if (await this.tagFilter.isVisible()) return;
+    await this.recordingTagsSectionButton.click();
+    await this.tagFilter.waitFor({ state: 'visible' });
+  }
+
+  async addDetectionLabel(label: string): Promise<void> {
+    await this.expandDetectionObjectsSection();
+    await this.detectionLabelFilter.fill(label);
+    await this.page.getByRole('button', { name: 'Add' }).click();
+    await sleep(300);
+  }
+
+  async addCaptureMethod(method: string): Promise<void> {
+    await this.expandCaptureMethodSection();
+    await this.captureMethodFilter.selectOption({ value: method });
+    await sleep(300);
+  }
+
+  async addTag(tag: string): Promise<void> {
+    await this.expandRecordingTagsSection();
+    await this.tagFilter.selectOption({ value: tag });
+    await sleep(300);
+  }
+
+  async applyFilters(): Promise<void> {
+    await this.applyFiltersButton.click();
+    await sleep(300);
+  }
+
+  getActiveFilter(label: string): Locator {
+    return this.page.locator('#active-filters .filter-tag').filter({ hasText: label }).first();
   }
 
   /**

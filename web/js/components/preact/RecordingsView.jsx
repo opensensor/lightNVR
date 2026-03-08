@@ -87,41 +87,8 @@ export function RecordingsView() {
 
   // Initialize filter state from URL params (lazy — no double render)
   const [filters, setFilters] = useState(() => {
-    const p = new URLSearchParams(window.location.search);
-    const hasUrlParams = p.has('dateRange') || p.has('page') || p.has('sort') ||
-      p.has('detection') || p.has('stream') || p.has('detection_label') || p.has('protected');
-
-    if (!hasUrlParams) {
-      // No URL params — use defaults with current date range
-      const now = new Date();
-      const sevenDaysAgo = new Date(now);
-      sevenDaysAgo.setDate(now.getDate() - 7);
-      return {
-        dateRange: 'last7days',
-        startDate: sevenDaysAgo.toISOString().split('T')[0],
-        startTime: '00:00',
-        endDate: now.toISOString().split('T')[0],
-        endTime: '23:59',
-        streamId: 'all',
-        recordingType: 'all',
-        detectionLabel: '',
-        tag: '',
-        protectedStatus: 'all'
-      };
-    }
-
-    return {
-      dateRange: p.get('dateRange') || 'last7days',
-      startDate: p.get('startDate') || '',
-      startTime: p.get('startTime') || '00:00',
-      endDate: p.get('endDate') || '',
-      endTime: p.get('endTime') || '23:59',
-      streamId: p.get('stream') || 'all',
-      recordingType: p.get('detection') === '1' ? 'detection' : p.get('detection') === '-1' ? 'no_detection' : 'all',
-      detectionLabel: p.get('detection_label') || '',
-      tag: p.get('tag') || '',
-      protectedStatus: p.has('protected') ? (p.get('protected') === '1' ? 'yes' : 'no') : 'all'
-    };
+    const urlState = urlUtils.getFiltersFromUrl();
+    return urlState?.filters || urlUtils.createDefaultFilters();
   });
 
   // Initialize pagination state from URL params (lazy — no double render)
@@ -314,23 +281,33 @@ export function RecordingsView() {
       url.searchParams.delete('endTime');
     }
 
-    if (filters.streamId !== 'all') url.searchParams.set('stream', filters.streamId);
+    const serializedStreams = urlUtils.serializeMultiValueParam(filters.streamIds);
+    if (serializedStreams) url.searchParams.set('stream', serializedStreams);
     else url.searchParams.delete('stream');
 
     if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');
     else if (filters.recordingType === 'no_detection') url.searchParams.set('detection', '-1');
     else url.searchParams.delete('detection');
 
-    if (filters.detectionLabel && filters.detectionLabel.trim()) {
-      url.searchParams.set('detection_label', filters.detectionLabel.trim());
+    const serializedDetectionLabels = urlUtils.serializeMultiValueParam(filters.detectionLabels);
+    if (serializedDetectionLabels) {
+      url.searchParams.set('detection_label', serializedDetectionLabels);
     } else {
       url.searchParams.delete('detection_label');
     }
 
-    if (filters.tag && filters.tag.trim()) {
-      url.searchParams.set('tag', filters.tag.trim());
+    const serializedTags = urlUtils.serializeMultiValueParam(filters.tags);
+    if (serializedTags) {
+      url.searchParams.set('tag', serializedTags);
     } else {
       url.searchParams.delete('tag');
+    }
+
+    const serializedCaptureMethods = urlUtils.serializeMultiValueParam(filters.captureMethods);
+    if (serializedCaptureMethods) {
+      url.searchParams.set('capture_method', serializedCaptureMethods);
+    } else {
+      url.searchParams.delete('capture_method');
     }
 
     if (filters.protectedStatus === 'yes') url.searchParams.set('protected', '1');
@@ -548,22 +525,7 @@ export function RecordingsView() {
 
   // Reset filters — resets all state to defaults; URL sync is handled by the reactive useEffect
   const resetFilters = () => {
-    const now = new Date();
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(now.getDate() - 7);
-
-    setFilters({
-      dateRange: 'last7days',
-      startDate: sevenDaysAgo.toISOString().split('T')[0],
-      startTime: '00:00',
-      endDate: now.toISOString().split('T')[0],
-      endTime: '23:59',
-      streamId: 'all',
-      recordingType: 'all',
-      detectionLabel: '',
-      tag: '',
-      protectedStatus: 'all'
-    });
+    setFilters(urlUtils.createDefaultFilters());
     setPagination(prev => ({ ...prev, currentPage: 1 }));
     setSortField('start_time');
     setSortDirection('desc');
@@ -571,7 +533,7 @@ export function RecordingsView() {
   };
 
   // Remove filter
-  const removeFilter = (key) => {
+  const removeFilter = (key, value) => {
     switch (key) {
       case 'dateRange':
         setFilters(prev => ({
@@ -579,10 +541,10 @@ export function RecordingsView() {
           dateRange: 'last7days'
         }));
         break;
-      case 'streamId':
+      case 'streamIds':
         setFilters(prev => ({
           ...prev,
-          streamId: 'all'
+          streamIds: value ? urlUtils.removeMultiValue(prev.streamIds, value) : []
         }));
         break;
       case 'recordingType':
@@ -591,16 +553,22 @@ export function RecordingsView() {
           recordingType: 'all'
         }));
         break;
-      case 'detectionLabel':
+      case 'detectionLabels':
         setFilters(prev => ({
           ...prev,
-          detectionLabel: ''
+          detectionLabels: value ? urlUtils.removeMultiValue(prev.detectionLabels, value) : []
         }));
         break;
-      case 'tag':
+      case 'tags':
         setFilters(prev => ({
           ...prev,
-          tag: ''
+          tags: value ? urlUtils.removeMultiValue(prev.tags, value) : []
+        }));
+        break;
+      case 'captureMethods':
+        setFilters(prev => ({
+          ...prev,
+          captureMethods: value ? urlUtils.removeMultiValue(prev.captureMethods, value) : []
         }));
         break;
       case 'protectedStatus':

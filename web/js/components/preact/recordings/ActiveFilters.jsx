@@ -19,7 +19,7 @@ export function ActiveFilters({ activeFiltersDisplay, removeFilter, hasActiveFil
         <div key={index} className="filter-tag">
           <span>{filter.label}</span>
           <button className="ml-2 text-secondary-foreground hover:text-foreground focus:outline-none"
-                  onClick={() => removeFilter(filter.key)}>
+                  onClick={() => removeFilter(filter.key, filter.value)}>
             ×
           </button>
         </div>

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <time.h>
 #include <cjson/cJSON.h>
 
@@ -24,13 +25,60 @@
 #include "database/db_streams.h"
 #include "database/db_recording_tags.h"
 
+#define MAX_SELECTED_STREAM_FILTERS 32
+#define MAX_SELECTED_STREAM_NAME_LEN 64
+
+static void trim_filter_value(char *value) {
+    if (!value) return;
+
+    char *start = value;
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+    if (start != value) {
+        memmove(value, start, strlen(start) + 1);
+    }
+
+    size_t len = strlen(value);
+    while (len > 0 && isspace((unsigned char)value[len - 1])) {
+        value[--len] = '\0';
+    }
+}
+
+static int parse_selected_streams(const char *csv,
+                                  char values[][MAX_SELECTED_STREAM_NAME_LEN],
+                                  int max_values) {
+    if (!csv || !*csv || max_values <= 0) {
+        return 0;
+    }
+
+    char buffer[MAX_SELECTED_STREAM_FILTERS * MAX_SELECTED_STREAM_NAME_LEN];
+    strncpy(buffer, csv, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+
+    int count = 0;
+    char *saveptr = NULL;
+    char *token = strtok_r(buffer, ",", &saveptr);
+    while (token && count < max_values) {
+        trim_filter_value(token);
+        if (*token) {
+            strncpy(values[count], token, MAX_SELECTED_STREAM_NAME_LEN - 1);
+            values[count][MAX_SELECTED_STREAM_NAME_LEN - 1] = '\0';
+            count++;
+        }
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+
+    return count;
+}
+
 /**
  * @brief Backend-agnostic handler for GET /api/recordings
  * 
  * Returns a paginated list of recordings with optional filtering by stream, time range, and detection status.
  * 
  * Query parameters:
- * - stream: Filter by stream name
+ * - stream: Filter by stream name or comma-separated stream names
  * - start: Start time (ISO 8601 format)
  * - end: End time (ISO 8601 format)
  * - page: Page number (default: 1)
@@ -38,7 +86,9 @@
  * - sort: Sort field (default: "start_time")
  * - order: Sort order "asc" or "desc" (default: "desc")
  * - has_detection: Filter by detection status (0 or 1)
- * - detection_label: Filter by specific detection object label (e.g., "car", "person")
+ * - detection_label: Filter by specific detection object label(s), comma-separated
+ * - tag: Filter by recording tag(s), comma-separated
+ * - capture_method: Filter by capture method(s), comma-separated (scheduled, detection, motion, manual)
  */
 void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Check if shutdown is in progress
@@ -74,7 +124,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     }
 
     // Extract query parameters
-    char stream_name[64] = {0};
+    char stream_name[256] = {0};
     char start_time_str[64] = {0};
     char end_time_str[64] = {0};
     char page_str[16] = {0};
@@ -82,9 +132,10 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     char sort_field[32] = "start_time";
     char sort_order[8] = "desc";
     char has_detection_str[8] = {0};
-    char detection_label[64] = {0};
+    char detection_label[256] = {0};
     char protected_str[8] = {0};
-    char tag_filter_str[MAX_TAG_LENGTH] = {0};
+    char tag_filter_str[512] = {0};
+    char capture_method_str[128] = {0};
 
     http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name));
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -97,6 +148,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     http_request_get_query_param(req, "detection_label", detection_label, sizeof(detection_label));
     http_request_get_query_param(req, "protected", protected_str, sizeof(protected_str));
     http_request_get_query_param(req, "tag", tag_filter_str, sizeof(tag_filter_str));
+    http_request_get_query_param(req, "capture_method", capture_method_str, sizeof(capture_method_str));
 
     // Parse numeric parameters
     int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
@@ -199,15 +251,25 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
             }
         }
 
-        // If the caller requested a specific stream, validate it is in the allowed list
+        // If the caller requested specific streams, validate each one is in the allowed list
         if (stream_name[0] != '\0') {
-            bool permitted = false;
-            for (int i = 0; i < allowed_streams_count; i++) {
-                if (strcmp(stream_name, allowed_streams[i]) == 0) {
-                    permitted = true;
-                    break;
+            char requested_streams[MAX_SELECTED_STREAM_FILTERS][MAX_SELECTED_STREAM_NAME_LEN] = {{0}};
+            int requested_stream_count = parse_selected_streams(stream_name, requested_streams, MAX_SELECTED_STREAM_FILTERS);
+            bool permitted = requested_stream_count > 0;
+
+            for (int requested = 0; requested < requested_stream_count && permitted; requested++) {
+                bool found = false;
+                for (int i = 0; i < allowed_streams_count; i++) {
+                    if (strcmp(requested_streams[requested], allowed_streams[i]) == 0) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    permitted = false;
                 }
             }
+
             if (!permitted) {
                 log_warn("User '%s' attempted to access restricted stream '%s' via recordings API",
                          auth_user.username, stream_name);
@@ -274,7 +336,8 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
                                           stream_name[0] != '\0' ? stream_name : NULL,
                                           has_detection, label_filter, protected_filter,
                                           streams_filter, streams_filter_count,
-                                          tag_filt);
+                                          tag_filt,
+                                          capture_method_str[0] != '\0' ? capture_method_str : NULL);
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
@@ -291,7 +354,8 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
                                                  sort_field, sort_order,
                                                  recordings, limit, offset,
                                                  streams_filter, streams_filter_count,
-                                                 tag_filt);
+                                                 tag_filt,
+                                                 capture_method_str[0] != '\0' ? capture_method_str : NULL);
 
     if (count < 0) {
         log_error("Failed to get recordings from database");
@@ -391,6 +455,8 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(recording, "end_time_unix", (double)recordings[i].end_time);
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
+        cJSON_AddStringToObject(recording, "capture_method",
+                                recordings[i].trigger_type[0] ? recordings[i].trigger_type : "scheduled");
 
         // Check if recording has detections and get detection labels summary
         bool has_detection_flag = (strcmp(recordings[i].trigger_type, "detection") == 0);

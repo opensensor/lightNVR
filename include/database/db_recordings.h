@@ -70,28 +70,30 @@ int get_recording_metadata(time_t start_time, time_t end_time,
  *
  * @param start_time Start time filter (0 for no filter)
  * @param end_time End time filter (0 for no filter)
- * @param stream_name Stream name filter (NULL for all streams)
+ * @param stream_name Stream name filter as a single name or comma-separated list (NULL for all streams)
  * @param has_detection Filter for recordings with detection events (0 for all)
- * @param detection_label Filter by specific detection label (NULL for all)
+ * @param detection_label Filter by specific detection label as a single value or comma-separated list (NULL for all)
  * @param protected_filter Filter by protected status (-1 for all, 0 for not protected, 1 for protected)
  * @param allowed_streams Optional whitelist of stream names for tag-based RBAC (NULL or count=0 for no restriction)
  * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
+ * @param tag_filter Filter by recording tag as a single value or comma-separated list (NULL for all)
+ * @param capture_method_filter Filter by capture method as a single value or comma-separated list (NULL for all)
  * @return Total count of matching recordings, or -1 on error
  */
 int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
                        const char *detection_label, int protected_filter,
                        const char * const *allowed_streams, int allowed_streams_count,
-                       const char *tag_filter);
+                       const char *tag_filter, const char *capture_method_filter);
 
 /**
  * Get paginated recording metadata from the database with sorting
  *
  * @param start_time Start time filter (0 for no filter)
  * @param end_time End time filter (0 for no filter)
- * @param stream_name Stream name filter (NULL for all streams)
+ * @param stream_name Stream name filter as a single name or comma-separated list (NULL for all streams)
  * @param has_detection Filter for recordings with detection events (0 for all)
- * @param detection_label Filter by specific detection label (NULL for all)
+ * @param detection_label Filter by specific detection label as a single value or comma-separated list (NULL for all)
  * @param protected_filter Filter by protection status (-1 for all, 0 for unprotected, 1 for protected)
  * @param sort_field Field to sort by (e.g., "start_time", "stream_name", "size_bytes")
  * @param sort_order Sort order ("asc" or "desc")
@@ -100,6 +102,8 @@ int get_recording_count(time_t start_time, time_t end_time,
  * @param offset Number of recordings to skip (for pagination)
  * @param allowed_streams Optional whitelist of stream names for tag-based RBAC (NULL or count=0 for no restriction)
  * @param allowed_streams_count Number of entries in allowed_streams (0 for no restriction)
+ * @param tag_filter Filter by recording tag as a single value or comma-separated list (NULL for all)
+ * @param capture_method_filter Filter by capture method as a single value or comma-separated list (NULL for all)
  * @return Number of recordings found, or -1 on error
  */
 int get_recording_metadata_paginated(time_t start_time, time_t end_time,
@@ -110,7 +114,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
                                    const char * const *allowed_streams, int allowed_streams_count,
-                                   const char *tag_filter);
+                                   const char *tag_filter, const char *capture_method_filter);
 
 /**
  * Get recording metadata by ID

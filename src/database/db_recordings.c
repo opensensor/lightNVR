@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <time.h>
 #include <unistd.h>
 #include <sqlite3.h>
@@ -13,6 +14,68 @@
 #include "database/db_recordings.h"
 #include "database/db_core.h"
 #include "core/logger.h"
+
+#define MAX_MULTI_FILTER_VALUES 32
+#define MAX_MULTI_FILTER_VALUE_LEN 128
+
+static void trim_whitespace(char *value) {
+    if (!value) {
+        return;
+    }
+
+    char *start = value;
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    if (start != value) {
+        memmove(value, start, strlen(start) + 1);
+    }
+
+    size_t len = strlen(value);
+    while (len > 0 && isspace((unsigned char)value[len - 1])) {
+        value[--len] = '\0';
+    }
+}
+
+static int parse_csv_filter_values(const char *csv,
+                                   char values[][MAX_MULTI_FILTER_VALUE_LEN],
+                                   int max_values) {
+    if (!csv || !*csv || max_values <= 0) {
+        return 0;
+    }
+
+    char buffer[MAX_MULTI_FILTER_VALUES * MAX_MULTI_FILTER_VALUE_LEN];
+    strncpy(buffer, csv, sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+
+    int count = 0;
+    char *saveptr = NULL;
+    char *token = strtok_r(buffer, ",", &saveptr);
+
+    while (token && count < max_values) {
+        trim_whitespace(token);
+        if (*token) {
+            bool duplicate = false;
+            for (int i = 0; i < count; i++) {
+                if (strcmp(values[i], token) == 0) {
+                    duplicate = true;
+                    break;
+                }
+            }
+
+            if (!duplicate) {
+                strncpy(values[count], token, MAX_MULTI_FILTER_VALUE_LEN - 1);
+                values[count][MAX_MULTI_FILTER_VALUE_LEN - 1] = '\0';
+                count++;
+            }
+        }
+
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+
+    return count;
+}
 
 // Add recording metadata to the database
 uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
@@ -518,10 +581,18 @@ int get_recording_count(time_t start_time, time_t end_time,
                        const char *stream_name, int has_detection,
                        const char *detection_label, int protected_filter,
                        const char * const *allowed_streams, int allowed_streams_count,
-                       const char *tag_filter) {
+                       const char *tag_filter, const char *capture_method_filter) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
+    char stream_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    char detection_label_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    char tag_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    char capture_method_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    int stream_filter_count = parse_csv_filter_values(stream_name, stream_filters, MAX_MULTI_FILTER_VALUES);
+    int detection_label_count = parse_csv_filter_values(detection_label, detection_label_filters, MAX_MULTI_FILTER_VALUES);
+    int tag_filter_count = parse_csv_filter_values(tag_filter, tag_filters, MAX_MULTI_FILTER_VALUES);
+    int capture_method_count = parse_csv_filter_values(capture_method_filter, capture_method_filters, MAX_MULTI_FILTER_VALUES);
 
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *db_mutex = get_db_mutex();
@@ -534,7 +605,7 @@ int get_recording_count(time_t start_time, time_t end_time,
     pthread_mutex_lock(db_mutex);
 
     // Build query based on filters
-    char sql[2048];
+    char sql[8192];
 
     // Use trigger_type and/or detections table to filter detection-based recordings
     snprintf(sql, sizeof(sql), "SELECT COUNT(*) FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
@@ -558,14 +629,24 @@ int get_recording_count(time_t start_time, time_t end_time,
         log_debug("Adding no-detection filter (no trigger_type AND no linked detections)");
     }
 
-    if (detection_label) {
+    if (detection_label_count > 0) {
         // Filter by specific detection label - prefer recording_id FK lookup, fall back to timestamp range
-        strncat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
-                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
+        strncat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND (",
+                sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < detection_label_count; i++) {
+            if (i > 0) strncat(sql, " OR ", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "d.label LIKE ?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")) OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
                     " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
-                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))",
+                    " AND d.timestamp <= r.end_time AND (",
                     sizeof(sql) - strlen(sql) - 1);
-        log_debug("Adding detection_label filter: %s", detection_label);
+        for (int i = 0; i < detection_label_count; i++) {
+            if (i > 0) strncat(sql, " OR ", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "d.label LIKE ?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")))", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding %d detection_label filters", detection_label_count);
     }
 
     if (start_time > 0) {
@@ -578,8 +659,13 @@ int get_recording_count(time_t start_time, time_t end_time,
         log_debug("Adding end_time filter: %ld", (long)end_time);
     }
 
-    if (stream_name) {
-        strncat(sql, " AND r.stream_name = ?", sizeof(sql) - strlen(sql) - 1);
+    if (stream_filter_count > 0) {
+        strncat(sql, " AND r.stream_name IN (", sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < stream_filter_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")", sizeof(sql) - strlen(sql) - 1);
     } else if (allowed_streams && allowed_streams_count > 0) {
         // Tag-based RBAC: restrict to the user's whitelisted streams via IN clause
         strncat(sql, " AND r.stream_name IN (", sizeof(sql) - strlen(sql) - 1);
@@ -599,10 +685,25 @@ int get_recording_count(time_t start_time, time_t end_time,
         log_debug("Adding protected_filter=1 (protected only)");
     }
 
-    if (tag_filter) {
-        strncat(sql, " AND EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = r.id AND rt.tag = ?)",
+    if (tag_filter_count > 0) {
+        strncat(sql, " AND EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = r.id AND rt.tag IN (",
                 sizeof(sql) - strlen(sql) - 1);
-        log_debug("Adding tag_filter=%s", tag_filter);
+        for (int i = 0; i < tag_filter_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, "))", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding %d tag filters", tag_filter_count);
+    }
+
+    if (capture_method_count > 0) {
+        strncat(sql, " AND COALESCE(r.trigger_type, 'scheduled') IN (", sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < capture_method_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding %d capture_method filters", capture_method_count);
     }
 
     log_debug("SQL query for get_recording_count: %s", sql);
@@ -619,13 +720,17 @@ int get_recording_count(time_t start_time, time_t end_time,
     // Bind parameters
     int param_index = 1;
 
-    if (detection_label) {
-        // Use LIKE with % wildcards for partial matching
-        // Bind twice: once for recording_id EXISTS, once for timestamp range fallback
-        char label_pattern[128];
-        snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label);
-        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+    if (detection_label_count > 0) {
+        for (int i = 0; i < detection_label_count; i++) {
+            char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
+            snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);
+            sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+        }
+        for (int i = 0; i < detection_label_count; i++) {
+            char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
+            snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);
+            sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+        }
     }
 
     if (start_time > 0) {
@@ -636,16 +741,22 @@ int get_recording_count(time_t start_time, time_t end_time,
         sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)end_time);
     }
 
-    if (stream_name) {
-        sqlite3_bind_text(stmt, param_index++, stream_name, -1, SQLITE_STATIC);
+    if (stream_filter_count > 0) {
+        for (int i = 0; i < stream_filter_count; i++) {
+            sqlite3_bind_text(stmt, param_index++, stream_filters[i], -1, SQLITE_TRANSIENT);
+        }
     } else if (allowed_streams && allowed_streams_count > 0) {
         for (int i = 0; i < allowed_streams_count; i++) {
             sqlite3_bind_text(stmt, param_index++, allowed_streams[i], -1, SQLITE_STATIC);
         }
     }
 
-    if (tag_filter) {
-        sqlite3_bind_text(stmt, param_index++, tag_filter, -1, SQLITE_STATIC);
+    for (int i = 0; i < tag_filter_count; i++) {
+        sqlite3_bind_text(stmt, param_index++, tag_filters[i], -1, SQLITE_TRANSIENT);
+    }
+
+    for (int i = 0; i < capture_method_count; i++) {
+        sqlite3_bind_text(stmt, param_index++, capture_method_filters[i], -1, SQLITE_TRANSIENT);
     }
 
     // Execute query and get count
@@ -673,10 +784,18 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                                    recording_metadata_t *metadata,
                                    int limit, int offset,
                                    const char * const *allowed_streams, int allowed_streams_count,
-                                   const char *tag_filter) {
+                                   const char *tag_filter, const char *capture_method_filter) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
+    char stream_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    char detection_label_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    char tag_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    char capture_method_filters[MAX_MULTI_FILTER_VALUES][MAX_MULTI_FILTER_VALUE_LEN] = {{0}};
+    int stream_filter_count = parse_csv_filter_values(stream_name, stream_filters, MAX_MULTI_FILTER_VALUES);
+    int detection_label_count = parse_csv_filter_values(detection_label, detection_label_filters, MAX_MULTI_FILTER_VALUES);
+    int tag_filter_count = parse_csv_filter_values(tag_filter, tag_filters, MAX_MULTI_FILTER_VALUES);
+    int capture_method_count = parse_csv_filter_values(capture_method_filter, capture_method_filters, MAX_MULTI_FILTER_VALUES);
 
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *db_mutex = get_db_mutex();
@@ -721,7 +840,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     }
 
     // Build query based on filters
-    char sql[2048];
+    char sql[8192];
 
     // Use trigger_type and/or detections table to filter detection-based recordings
     snprintf(sql, sizeof(sql),
@@ -749,14 +868,24 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         log_info("Adding no-detection filter (no trigger_type AND no linked detections)");
     }
 
-    if (detection_label) {
+    if (detection_label_count > 0) {
         // Filter by specific detection label - prefer recording_id FK lookup, fall back to timestamp range
-        strncat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND d.label LIKE ?)"
-                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
+        strncat(sql, " AND (EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id AND (",
+                sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < detection_label_count; i++) {
+            if (i > 0) strncat(sql, " OR ", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "d.label LIKE ?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")) OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
                     " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
-                    " AND d.timestamp <= r.end_time AND d.label LIKE ?))",
+                    " AND d.timestamp <= r.end_time AND (",
                     sizeof(sql) - strlen(sql) - 1);
-        log_info("Adding detection_label filter: %s", detection_label);
+        for (int i = 0; i < detection_label_count; i++) {
+            if (i > 0) strncat(sql, " OR ", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "d.label LIKE ?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")))", sizeof(sql) - strlen(sql) - 1);
+        log_info("Adding %d detection_label filters", detection_label_count);
     }
 
     if (start_time > 0) {
@@ -769,8 +898,13 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         log_info("Adding end_time filter to paginated query: %ld", (long)end_time);
     }
 
-    if (stream_name) {
-        strncat(sql, " AND r.stream_name = ?", sizeof(sql) - strlen(sql) - 1);
+    if (stream_filter_count > 0) {
+        strncat(sql, " AND r.stream_name IN (", sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < stream_filter_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")", sizeof(sql) - strlen(sql) - 1);
     } else if (allowed_streams && allowed_streams_count > 0) {
         // Tag-based RBAC: restrict to the user's whitelisted streams via IN clause
         strncat(sql, " AND r.stream_name IN (", sizeof(sql) - strlen(sql) - 1);
@@ -790,10 +924,25 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         log_debug("Adding protected_filter=1 (protected only) to paginated query");
     }
 
-    if (tag_filter) {
-        strncat(sql, " AND EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = r.id AND rt.tag = ?)",
+    if (tag_filter_count > 0) {
+        strncat(sql, " AND EXISTS (SELECT 1 FROM recording_tags rt WHERE rt.recording_id = r.id AND rt.tag IN (",
                 sizeof(sql) - strlen(sql) - 1);
-        log_debug("Adding tag_filter=%s to paginated query", tag_filter);
+        for (int i = 0; i < tag_filter_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, "))", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding %d tag filters to paginated query", tag_filter_count);
+    }
+
+    if (capture_method_count > 0) {
+        strncat(sql, " AND COALESCE(r.trigger_type, 'scheduled') IN (", sizeof(sql) - strlen(sql) - 1);
+        for (int i = 0; i < capture_method_count; i++) {
+            if (i > 0) strncat(sql, ",", sizeof(sql) - strlen(sql) - 1);
+            strncat(sql, "?", sizeof(sql) - strlen(sql) - 1);
+        }
+        strncat(sql, ")", sizeof(sql) - strlen(sql) - 1);
+        log_debug("Adding %d capture_method filters to paginated query", capture_method_count);
     }
 
     // Add ORDER BY clause with sanitized field and order
@@ -820,13 +969,17 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     // Bind parameters
     int param_index = 1;
 
-    if (detection_label) {
-        // Use LIKE with % wildcards for partial matching
-        // Bind twice: once for recording_id EXISTS, once for timestamp range fallback
-        char label_pattern[128];
-        snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label);
-        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+    if (detection_label_count > 0) {
+        for (int i = 0; i < detection_label_count; i++) {
+            char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
+            snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);
+            sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+        }
+        for (int i = 0; i < detection_label_count; i++) {
+            char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
+            snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);
+            sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+        }
     }
 
     if (start_time > 0) {
@@ -837,16 +990,22 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         sqlite3_bind_int64(stmt, param_index++, (sqlite3_int64)end_time);
     }
 
-    if (stream_name) {
-        sqlite3_bind_text(stmt, param_index++, stream_name, -1, SQLITE_STATIC);
+    if (stream_filter_count > 0) {
+        for (int i = 0; i < stream_filter_count; i++) {
+            sqlite3_bind_text(stmt, param_index++, stream_filters[i], -1, SQLITE_TRANSIENT);
+        }
     } else if (allowed_streams && allowed_streams_count > 0) {
         for (int i = 0; i < allowed_streams_count; i++) {
             sqlite3_bind_text(stmt, param_index++, allowed_streams[i], -1, SQLITE_STATIC);
         }
     }
 
-    if (tag_filter) {
-        sqlite3_bind_text(stmt, param_index++, tag_filter, -1, SQLITE_STATIC);
+    for (int i = 0; i < tag_filter_count; i++) {
+        sqlite3_bind_text(stmt, param_index++, tag_filters[i], -1, SQLITE_TRANSIENT);
+    }
+
+    for (int i = 0; i < capture_method_count; i++) {
+        sqlite3_bind_text(stmt, param_index++, capture_method_filters[i], -1, SQLITE_TRANSIENT);
     }
 
     // Bind LIMIT and OFFSET parameters

@@ -289,7 +289,14 @@ export function RecordingsTable({
                   </td>
                 )}
                 {show('stream') && (
-                  <td className="px-6 py-4 whitespace-nowrap">{recording.stream || ''}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <span>{recording.stream || ''}</span>
+                      <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
+                        {formatUtils.formatCaptureMethod(recording.capture_method)}
+                      </span>
+                    </div>
+                  </td>
                 )}
                 <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}</td>
                 {show('duration') && (

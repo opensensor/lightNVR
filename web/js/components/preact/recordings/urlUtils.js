@@ -2,10 +2,74 @@
  * URL utility functions for RecordingsView
  */
 
+import { formatUtils } from './formatUtils.js';
+
+const getNow = () => new Date();
+
+const parseMultiValueParam = (value) => {
+  if (!value) return [];
+
+  return [...new Set(
+    value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  )];
+};
+
+const serializeMultiValueParam = (values) => {
+  if (!Array.isArray(values)) return '';
+
+  return [...new Set(
+    values
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean)
+  )].join(',');
+};
+
+const addMultiValue = (values, value) => {
+  const normalizedValue = typeof value === 'string' ? value.trim() : '';
+  if (!normalizedValue) return Array.isArray(values) ? values : [];
+
+  const currentValues = Array.isArray(values) ? values : [];
+  return currentValues.includes(normalizedValue)
+    ? currentValues
+    : [...currentValues, normalizedValue];
+};
+
+const removeMultiValue = (values, value) => {
+  if (!Array.isArray(values)) return [];
+  return values.filter((item) => item !== value);
+};
+
+const createDefaultFilters = () => {
+  const now = getNow();
+
+  return {
+    dateRange: 'last7days',
+    startDate: now.toISOString().split('T')[0],
+    startTime: '00:00',
+    endDate: now.toISOString().split('T')[0],
+    endTime: '23:59',
+    streamIds: [],
+    recordingType: 'all',
+    detectionLabels: [],
+    tags: [],
+    captureMethods: [],
+    protectedStatus: 'all'
+  };
+};
+
 /**
  * URL utilities for RecordingsView
  */
 export const urlUtils = {
+  createDefaultFilters,
+  parseMultiValueParam,
+  serializeMultiValueParam,
+  addMultiValue,
+  removeMultiValue,
+
   /**
    * Get filters from URL
    * @returns {Object|null} Filters object or null if no filters in URL
@@ -15,23 +79,21 @@ export const urlUtils = {
     const urlParams = new URLSearchParams(window.location.search);
     
     // Check if we have any filter parameters
-    if (!urlParams.has('dateRange') && !urlParams.has('page') && !urlParams.has('sort') && !urlParams.has('detection') && !urlParams.has('stream') && !urlParams.has('detection_label') && !urlParams.has('protected')) {
+    if (!urlParams.has('dateRange') &&
+        !urlParams.has('page') &&
+        !urlParams.has('sort') &&
+        !urlParams.has('detection') &&
+        !urlParams.has('stream') &&
+        !urlParams.has('detection_label') &&
+        !urlParams.has('tag') &&
+        !urlParams.has('capture_method') &&
+        !urlParams.has('protected')) {
       return null;
     }
     
     // Create result object
     const result = {
-      filters: {
-        dateRange: 'last7days',
-        startDate: '',
-        startTime: '00:00',
-        endDate: '',
-        endTime: '23:59',
-        streamId: 'all',
-        recordingType: 'all',
-        detectionLabel: '',
-        protectedStatus: 'all'
-      },
+      filters: createDefaultFilters(),
       page: 1,
       limit: 20,
       sort: 'start_time',
@@ -60,7 +122,7 @@ export const urlUtils = {
     
     // Stream
     if (urlParams.has('stream')) {
-      result.filters.streamId = urlParams.get('stream');
+      result.filters.streamIds = parseMultiValueParam(urlParams.get('stream'));
     }
     
     // Recording type
@@ -71,7 +133,17 @@ export const urlUtils = {
 
     // Detection label
     if (urlParams.has('detection_label')) {
-      result.filters.detectionLabel = urlParams.get('detection_label');
+      result.filters.detectionLabels = parseMultiValueParam(urlParams.get('detection_label'));
+    }
+
+    // Recording tags
+    if (urlParams.has('tag')) {
+      result.filters.tags = parseMultiValueParam(urlParams.get('tag'));
+    }
+
+    // Capture methods
+    if (urlParams.has('capture_method')) {
+      result.filters.captureMethods = parseMultiValueParam(urlParams.get('capture_method'));
     }
 
     // Protected status
@@ -109,10 +181,11 @@ export const urlUtils = {
     // Check if we have any active filters
     const hasFilters = (
       filters.dateRange !== 'last7days' ||
-      filters.streamId !== 'all' ||
+      filters.streamIds.length > 0 ||
       filters.recordingType !== 'all' ||
-      (filters.detectionLabel && filters.detectionLabel.trim() !== '') ||
-      (filters.tag && filters.tag.trim() !== '') ||
+      filters.detectionLabels.length > 0 ||
+      filters.tags.length > 0 ||
+      filters.captureMethods.length > 0 ||
       (filters.protectedStatus && filters.protectedStatus !== 'all')
     );
     
@@ -138,9 +211,9 @@ export const urlUtils = {
       }
       
       // Stream filter
-      if (filters.streamId !== 'all') {
-        activeFilters.push({ key: 'streamId', label: `Stream: ${filters.streamId}` });
-      }
+      filters.streamIds.forEach((streamId) => {
+        activeFilters.push({ key: 'streamIds', value: streamId, label: `Stream: ${streamId}` });
+      });
       
       // Recording type filter
       if (filters.recordingType === 'detection') {
@@ -150,14 +223,23 @@ export const urlUtils = {
       }
 
       // Detection label filter
-      if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
-        activeFilters.push({ key: 'detectionLabel', label: `Object: ${filters.detectionLabel.trim()}` });
-      }
+      filters.detectionLabels.forEach((label) => {
+        activeFilters.push({ key: 'detectionLabels', value: label, label: `Object: ${label}` });
+      });
 
       // Tag filter
-      if (filters.tag && filters.tag.trim() !== '') {
-        activeFilters.push({ key: 'tag', label: `Tag: ${filters.tag.trim()}` });
-      }
+      filters.tags.forEach((tag) => {
+        activeFilters.push({ key: 'tags', value: tag, label: `Tag: ${tag}` });
+      });
+
+      // Capture method filter
+      filters.captureMethods.forEach((captureMethod) => {
+        activeFilters.push({
+          key: 'captureMethods',
+          value: captureMethod,
+          label: `Capture: ${formatUtils.formatCaptureMethod(captureMethod)}`
+        });
+      });
 
       // Protected status filter
       if (filters.protectedStatus === 'yes') {
@@ -208,13 +290,25 @@ export const urlUtils = {
     
     // Stream
     if (urlParams.has('stream')) {
-      newFilters.streamId = urlParams.get('stream');
+      newFilters.streamIds = parseMultiValueParam(urlParams.get('stream'));
     }
     
     // Recording type - IMPORTANT: Check for this parameter even if dateRange is not present
     if (urlParams.has('detection')) {
       if (urlParams.get('detection') === '1') newFilters.recordingType = 'detection';
       else if (urlParams.get('detection') === '-1') newFilters.recordingType = 'no_detection';
+    }
+
+    if (urlParams.has('detection_label')) {
+      newFilters.detectionLabels = parseMultiValueParam(urlParams.get('detection_label'));
+    }
+
+    if (urlParams.has('tag')) {
+      newFilters.tags = parseMultiValueParam(urlParams.get('tag'));
+    }
+
+    if (urlParams.has('capture_method')) {
+      newFilters.captureMethods = parseMultiValueParam(urlParams.get('capture_method'));
     }
 
     // Protected status
@@ -273,7 +367,8 @@ export const urlUtils = {
     }
 
     // Stream filter
-    if (filters.streamId !== 'all') url.searchParams.set('stream', filters.streamId);
+    const serializedStreams = serializeMultiValueParam(filters.streamIds);
+    if (serializedStreams) url.searchParams.set('stream', serializedStreams);
     else url.searchParams.delete('stream');
 
     // Recording type filter
@@ -282,11 +377,20 @@ export const urlUtils = {
     else url.searchParams.delete('detection');
 
     // Detection label filter
-    if (filters.detectionLabel && filters.detectionLabel.trim() !== '') {
-      url.searchParams.set('detection_label', filters.detectionLabel.trim());
+    const serializedDetectionLabels = serializeMultiValueParam(filters.detectionLabels);
+    if (serializedDetectionLabels) {
+      url.searchParams.set('detection_label', serializedDetectionLabels);
     } else {
       url.searchParams.delete('detection_label');
     }
+
+    const serializedTags = serializeMultiValueParam(filters.tags);
+    if (serializedTags) url.searchParams.set('tag', serializedTags);
+    else url.searchParams.delete('tag');
+
+    const serializedCaptureMethods = serializeMultiValueParam(filters.captureMethods);
+    if (serializedCaptureMethods) url.searchParams.set('capture_method', serializedCaptureMethods);
+    else url.searchParams.delete('capture_method');
 
     // Protected status filter
     if (filters.protectedStatus === 'yes') url.searchParams.set('protected', '1');

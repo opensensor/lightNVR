@@ -83,7 +83,7 @@ const timelineState = {
 
     // Batch frequent time-only updates (≤250 ms apart)
     if (newState.currentTime !== undefined &&
-        !newState.currentSegmentIndex &&
+        newState.currentSegmentIndex === undefined &&
         !newState.isPlaying &&
         now - this.lastUpdateTime < 250) {
       return;
@@ -697,7 +697,7 @@ export function TimelinePage() {
     const timelineSegments = timelineData.segments || [];
 
     if (timelineSegments.length === 0) {
-      loadSegmentsIntoTimeline([], selectedDate, '');
+      loadSegmentsIntoTimeline([], selectedDate);
       showStatusMessage('No recordings found for the selected date', 'warning');
       return;
     }

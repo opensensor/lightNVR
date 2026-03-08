@@ -9,6 +9,45 @@ import { test, expect } from '@playwright/test';
 import { RecordingsPage } from '../pages/RecordingsPage';
 import { USERS, login, sleep } from '../fixtures/test-fixtures';
 
+type MockRecording = {
+  id: number;
+  stream: string;
+  capture_method: string;
+  tags: string[];
+  detection_labels: Array<{ label: string; count: number }>;
+};
+
+function includesCsvValue(rawValue: string | null, expected: string): boolean {
+  return (rawValue || '').split(',').map(value => value.trim()).includes(expected);
+}
+
+function matchesRecording(url: URL, recording: MockRecording): boolean {
+  const stream = url.searchParams.get('stream');
+  if (stream && !includesCsvValue(stream, recording.stream)) return false;
+
+  const detectionLabel = url.searchParams.get('detection_label');
+  if (detectionLabel) {
+    const labels = recording.detection_labels.map(item => item.label);
+    const requestedLabels = detectionLabel.split(',').map(value => value.trim()).filter(Boolean);
+    if (!requestedLabels.some(label => labels.includes(label))) return false;
+  }
+
+  const tag = url.searchParams.get('tag');
+  if (tag) {
+    const requestedTags = tag.split(',').map(value => value.trim()).filter(Boolean);
+    if (!requestedTags.some(value => recording.tags.includes(value))) return false;
+  }
+
+  const captureMethod = url.searchParams.get('capture_method');
+  if (captureMethod && !includesCsvValue(captureMethod, recording.capture_method)) return false;
+
+  const hasDetection = url.searchParams.get('has_detection');
+  if (hasDetection === '1' && recording.detection_labels.length === 0) return false;
+  if (hasDetection === '-1' && recording.detection_labels.length > 0) return false;
+
+  return true;
+}
+
 test.describe('Recordings Page @ui @recordings', () => {
   
   test.beforeEach(async ({ page }) => {
@@ -103,6 +142,124 @@ test.describe('Recordings Page @ui @recordings', () => {
       }
       
       await page.screenshot({ path: 'test-results/recordings-filter-stream.png' });
+    });
+
+    test('should support multi-select recordings filters end to end', async ({ page }) => {
+      const recordingsPage = new RecordingsPage(page);
+      const recordings: MockRecording[] = [
+        {
+          id: 101,
+          stream: 'cam1',
+          capture_method: 'scheduled',
+          tags: ['urgent'],
+          detection_labels: [{ label: 'person', count: 1 }]
+        },
+        {
+          id: 102,
+          stream: 'cam2',
+          capture_method: 'manual',
+          tags: ['review'],
+          detection_labels: [{ label: 'car', count: 1 }]
+        },
+        {
+          id: 103,
+          stream: 'cam3',
+          capture_method: 'motion',
+          tags: ['night'],
+          detection_labels: [{ label: 'dog', count: 1 }]
+        }
+      ];
+      const seenRequests: string[] = [];
+
+      await page.addInitScript(() => {
+        localStorage.setItem('recordings_view_mode', 'table');
+      });
+
+      await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
+      await page.route('**/api/streams*', route => route.fulfill({
+        json: [{ name: 'cam1' }, { name: 'cam2' }, { name: 'cam3' }]
+      }));
+      await page.route('**/api/recordings/tags*', route => route.fulfill({
+        json: { tags: ['urgent', 'review', 'night'] }
+      }));
+      await page.route('**/api/recordings?**', route => {
+        const url = new URL(route.request().url());
+        seenRequests.push(url.search);
+
+        const filtered = recordings.filter(recording => matchesRecording(url, recording));
+        return route.fulfill({
+          json: {
+            recordings: filtered.map(recording => ({
+              ...recording,
+              start_time_unix: 1741420800 + recording.id,
+              duration: 60,
+              size: '1 MB',
+              protected: false,
+              has_detections: recording.detection_labels.length > 0
+            })),
+            pagination: { total: filtered.length, pages: 1, limit: 20 }
+          }
+        });
+      });
+
+      await recordingsPage.goto();
+
+      await expect(page.locator('#recordings-table')).toBeVisible();
+      await expect.poll(() => seenRequests.length).toBeGreaterThan(0);
+
+      await recordingsPage.expandDetectionObjectsSection();
+      await recordingsPage.expandCaptureMethodSection();
+      await recordingsPage.expandRecordingTagsSection();
+
+      await recordingsPage.filterByStream('cam1');
+      await recordingsPage.filterByStream('cam2');
+      await recordingsPage.addDetectionLabel('person');
+      await recordingsPage.addDetectionLabel('car');
+      await recordingsPage.addCaptureMethod('scheduled');
+      await recordingsPage.addCaptureMethod('manual');
+      await recordingsPage.addTag('urgent');
+      await recordingsPage.addTag('review');
+      await recordingsPage.applyFilters();
+
+      await expect(recordingsPage.getActiveFilter('Stream: cam1')).toBeVisible();
+      await expect(recordingsPage.getActiveFilter('Stream: cam2')).toBeVisible();
+      await expect(recordingsPage.getActiveFilter('Object: person')).toBeVisible();
+      await expect(recordingsPage.getActiveFilter('Object: car')).toBeVisible();
+      await expect(recordingsPage.getActiveFilter('Capture: Continuous')).toBeVisible();
+      await expect(recordingsPage.getActiveFilter('Capture: Manual')).toBeVisible();
+      await expect(recordingsPage.getActiveFilter('Tag: urgent')).toBeVisible();
+      await expect(recordingsPage.getActiveFilter('Tag: review')).toBeVisible();
+
+      await expect.poll(() => seenRequests.some(search => {
+        const params = new URL(`http://localhost/${search}`).searchParams;
+        return params.get('stream') === 'cam1,cam2' &&
+          params.get('detection_label') === 'person,car' &&
+          params.get('capture_method') === 'scheduled,manual' &&
+          params.get('tag') === 'urgent,review';
+      })).toBe(true);
+
+      await expect(page.locator('#recordings-table tbody tr')).toHaveCount(2);
+      await expect(page.locator('#recordings-table tbody')).toContainText('cam1');
+      await expect(page.locator('#recordings-table tbody')).toContainText('cam2');
+      await expect(page.locator('#recordings-table tbody')).toContainText('Continuous');
+      await expect(page.locator('#recordings-table tbody')).toContainText('Manual');
+
+      await recordingsPage.getActiveFilter('Stream: cam1').getByRole('button').click();
+
+      await expect(recordingsPage.getActiveFilter('Stream: cam1')).toHaveCount(0);
+      await expect(recordingsPage.getActiveFilter('Stream: cam2')).toBeVisible();
+      await expect.poll(() => seenRequests.some(search => {
+        const params = new URL(`http://localhost/${search}`).searchParams;
+        return params.get('stream') === 'cam2' &&
+          params.get('detection_label') === 'person,car' &&
+          params.get('capture_method') === 'scheduled,manual' &&
+          params.get('tag') === 'urgent,review';
+      })).toBe(true);
+
+      await expect(page.locator('#recordings-table tbody tr')).toHaveCount(1);
+      await expect(page.locator('#recordings-table tbody')).toContainText('cam2');
+      await expect(page.locator('#recordings-table tbody')).toContainText('Manual');
+      await expect(page.locator('#recordings-table tbody')).not.toContainText('cam1');
     });
   });
 
