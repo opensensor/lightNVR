@@ -30,7 +30,8 @@ dayjs.extend(timezone);
 // JavaScript Date months are 0-indexed, so month index 2 represents March.
 const MARCH = 2;
 const baseTestDateTimestamp = (hours, minutes, seconds = 0) =>
-  new Date(2026, MARCH, 8, hours, minutes, seconds).getTime() / 1000;
+  // Use UTC to avoid environment-dependent DST/local time interpretation in tests.
+  Date.UTC(2026, MARCH, 8, hours, minutes, seconds) / 1000;
 
 describe('timelineUtils', () => {
   const originalTz = process.env.TZ;
