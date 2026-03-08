@@ -25,6 +25,46 @@ import { urlUtils } from './recordings/urlUtils.js';
 
 import { validateSession } from '../../utils/auth-utils.js';
 
+const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
+const RECORDINGS_SELECTED_IDS_KEY = 'lightnvr_selected_recording_ids';
+const RECORDINGS_RESTORE_SELECTION_KEY = 'lightnvr_restore_recording_selection';
+
+function getRestoredSelectedRecordings() {
+  try {
+    if (sessionStorage.getItem(RECORDINGS_RESTORE_SELECTION_KEY) !== 'true') {
+      return {};
+    }
+
+    const rawSelectedIds = sessionStorage.getItem(RECORDINGS_SELECTED_IDS_KEY);
+    const selectedIds = rawSelectedIds ? JSON.parse(rawSelectedIds) : [];
+    if (!Array.isArray(selectedIds)) {
+      return {};
+    }
+
+    return selectedIds.reduce((restoredSelections, id) => {
+      if (id !== null && id !== undefined && `${id}`.length > 0) {
+        restoredSelections[String(id)] = true;
+      }
+      return restoredSelections;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function clearRestoredSelectionFlag() {
+  try {
+    sessionStorage.removeItem(RECORDINGS_RESTORE_SELECTION_KEY);
+  } catch {}
+}
+
+function clearStoredSelectedRecordings() {
+  try {
+    sessionStorage.removeItem(RECORDINGS_SELECTED_IDS_KEY);
+    sessionStorage.removeItem(RECORDINGS_RESTORE_SELECTION_KEY);
+  } catch {}
+}
+
 /**
  * RecordingsView component
  * @returns {JSX.Element} RecordingsView component
@@ -98,7 +138,7 @@ export function RecordingsView() {
   });
   const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [activeFiltersDisplay, setActiveFiltersDisplay] = useState([]);
-  const [selectedRecordings, setSelectedRecordings] = useState({});
+  const [selectedRecordings, setSelectedRecordings] = useState(() => getRestoredSelectedRecordings());
   const [selectAll, setSelectAll] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState('selected'); // 'single', 'selected' or 'all'
@@ -114,6 +154,10 @@ export function RecordingsView() {
     return localStorage.getItem('recordings_view_mode') || 'table';
   });
   const [thumbnailsEnabled, setThumbnailsEnabled] = useState(true);
+
+  useEffect(() => {
+    clearRestoredSelectionFlag();
+  }, []);
 
   // Column visibility for table view
   const [hiddenColumns, setHiddenColumns] = useState(() => {
@@ -362,6 +406,15 @@ export function RecordingsView() {
       }
     }
   }, [recordingsData, filters.recordingType, pagination.currentPage]);
+
+  useEffect(() => {
+    if (recordings.length === 0) {
+      setSelectAll(false);
+      return;
+    }
+
+    setSelectAll(recordings.every(recording => !!selectedRecordings[recording.id]));
+  }, [recordings, selectedRecordings]);
 
   // Handle recordings error
   useEffect(() => {
@@ -614,6 +667,7 @@ export function RecordingsView() {
   const clearSelections = () => {
     setSelectedRecordings({});
     setSelectAll(false);
+    clearStoredSelectedRecordings();
   };
 
   // Handle tag changes — update local state when possible, only refetch for bulk ops
@@ -639,7 +693,9 @@ export function RecordingsView() {
       return;
     }
     // Store current URL for "Refine Selections" back-link
-    sessionStorage.setItem('lightnvr_recordings_return_url', window.location.href);
+    sessionStorage.setItem(RECORDINGS_RETURN_URL_KEY, window.location.href);
+    sessionStorage.setItem(RECORDINGS_SELECTED_IDS_KEY, JSON.stringify(selectedIds));
+    sessionStorage.setItem(RECORDINGS_RESTORE_SELECTION_KEY, 'true');
     window.location.href = `timeline.html?ids=${selectedIds.join(',')}`;
   };
 
@@ -689,6 +745,7 @@ export function RecordingsView() {
 
       setSelectedRecordings({});
       setSelectAll(false);
+      clearStoredSelectedRecordings();
 
       if (result && result.succeeded > 0) {
         reloadRecordingsWithPreservedParams(currentSortField, currentSortDirection, currentPage);
@@ -698,6 +755,7 @@ export function RecordingsView() {
 
       setSelectedRecordings({});
       setSelectAll(false);
+      clearStoredSelectedRecordings();
 
       queryClient.invalidateQueries({ queryKey: ['recordings'] });
     }

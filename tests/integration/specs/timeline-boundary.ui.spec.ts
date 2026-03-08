@@ -13,6 +13,12 @@ function localTimestamp(date: string, time: string): number {
 async function mockTimelineApis(page: Page, stream: string, segments: Segment[], tagsById: Record<number, string[]> = {}) {
   await page.route('**/api/streams', route => route.fulfill({ json: [{ name: stream }] }));
   await page.route('**/api/timeline/segments?**', route => route.fulfill({ json: { segments } }));
+  await page.route('**/api/timeline/segments-by-ids?**', route => route.fulfill({ json: {
+    segments,
+    start_time: new Date(segments[0].start_timestamp * 1000).toISOString(),
+    end_time: new Date(segments[segments.length - 1].end_timestamp * 1000).toISOString(),
+    multi_stream: new Set(segments.map(segment => segment.stream)).size > 1
+  } }));
   await page.route('**/api/detection/results/**', route => route.fulfill({ json: { detections: [] } }));
   await page.route('**/api/recordings/**', async route => {
     const pathname = new URL(route.request().url()).pathname;
@@ -114,5 +120,53 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     await expect(timelinePage.timelineContainer).toBeVisible();
     await expect(timelinePage.timeDisplay).toHaveText('10:10:00');
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/302(?:\?|$)/);
+  });
+
+  test('loads selected recordings mode, reuses batch download modal, and restores selections when refining', async ({ page }) => {
+    const stream = 'front_door';
+    const date = '2026-03-08';
+    const returnUrl = `/recordings.html?dateRange=custom&startDate=${date}&endDate=${date}&startTime=00:00&endTime=23:59&page=1`;
+    const segments: Segment[] = [
+      { id: 401, stream, start_timestamp: localTimestamp(date, '09:00:00'), end_timestamp: localTimestamp(date, '09:10:00') },
+      { id: 402, stream, start_timestamp: localTimestamp(date, '09:15:00'), end_timestamp: localTimestamp(date, '09:25:00') }
+    ];
+
+    await page.addInitScript(({ selectedIds, url }) => {
+      localStorage.setItem('recordings_view_mode', 'table');
+      sessionStorage.setItem('lightnvr_selected_recording_ids', JSON.stringify(selectedIds));
+      sessionStorage.setItem('lightnvr_restore_recording_selection', 'true');
+      sessionStorage.setItem('lightnvr_recordings_return_url', url);
+    }, { selectedIds: ['401', '402'], url: returnUrl });
+
+    await mockTimelineApis(page, stream, segments, { 401: ['vehicle'], 402: ['person'] });
+    await page.route('**/api/recordings?**', route => route.fulfill({ json: {
+      recordings: segments.map(segment => ({
+        id: segment.id,
+        stream: segment.stream,
+        start_time_unix: segment.start_timestamp,
+        duration: segment.end_timestamp - segment.start_timestamp,
+        size: '1 MB',
+        protected: false,
+        tags: []
+      })),
+      pagination: { total: segments.length, pages: 1, limit: 20 }
+    } }));
+
+    await page.goto('/timeline.html?ids=401,402', { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(page.getByText('Loading selected recordings...')).toHaveCount(0);
+
+    await page.getByRole('button', { name: '↓ Download All (2)' }).click();
+    await expect(page.getByRole('heading', { name: 'Download Selected Recordings' })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+
+    await Promise.all([
+      page.waitForURL('**/recordings.html**'),
+      page.getByRole('link', { name: '← Refine Selections' }).click()
+    ]);
+
+    await expect(page.getByRole('button', { name: '▶ Timeline (2)' })).toBeVisible();
   });
 });

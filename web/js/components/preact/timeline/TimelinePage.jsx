@@ -10,6 +10,7 @@ import { TimelineSegments } from './TimelineSegments.jsx';
 import { TimelineCursor } from './TimelineCursor.jsx';
 import { TimelinePlayer } from './TimelinePlayer.jsx';
 import { CalendarPicker } from './CalendarPicker.jsx';
+import { BatchDownloadModal } from '../BatchDownloadModal.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
@@ -24,6 +25,8 @@ import {
   panTimelineRange,
   zoomTimelineRange
 } from './timelineUtils.js';
+
+const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
 
 // Convert fractional hour (0–24) → Unix timestamp (seconds) for the given date
 function timelineHourToTimestamp(hour, selectedDate) {
@@ -216,6 +219,7 @@ export function TimelinePage() {
   const [idsLoading, setIdsLoading] = useState(idsMode);
   const [idsSegmentInfo, setIdsSegmentInfo] = useState(null);  // metadata from IDs endpoint
   const [idsTimelineSegments, setIdsTimelineSegments] = useState([]);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   // Refs
   const timelineContainerRef = useRef(null);
@@ -290,6 +294,28 @@ export function TimelinePage() {
   const idsVisibleSegmentCount = useMemo(() => (
     idsMode ? countSegmentsForDate(idsTimelineSegments, selectedDate) : 0
   ), [idsMode, idsTimelineSegments, selectedDate]);
+  const selectedIdsList = useMemo(() => (
+    idsMode ? recordingIds.split(',').map(id => id.trim()).filter(Boolean) : []
+  ), [idsMode, recordingIds]);
+  const selectedRecordingMap = useMemo(() => (
+    selectedIdsList.reduce((acc, id) => {
+      acc[String(id)] = true;
+      return acc;
+    }, {})
+  ), [selectedIdsList]);
+  const selectedRecordingsForDownload = useMemo(() => {
+    if (!idsMode) return [];
+
+    const seen = new Set();
+    return idsTimelineSegments.filter(segment => {
+      const key = String(segment.id);
+      if (!selectedRecordingMap[key] || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [idsMode, idsTimelineSegments, selectedRecordingMap]);
 
   const loadSegmentsIntoTimeline = useCallback((rawSegments, effectiveDate, options = {}) => {
     const { successMessage = null } = options;
@@ -546,6 +572,9 @@ export function TimelinePage() {
             : (availableDates[0] || formatDateForInput(new Date(segs[0].start_timestamp * 1000)));
 
           setIdsTimelineSegments(segs);
+          if (anchorDate === selectedDateRef.current) {
+            loadSegmentsIntoTimeline(segs, anchorDate);
+          }
           if (anchorDate !== selectedDateRef.current) {
             setSelectedDate(anchorDate);
           }
@@ -562,9 +591,11 @@ export function TimelinePage() {
         }
       } catch (err) {
         console.error('Error fetching segments by IDs:', err);
+        setIdsTimelineSegments([]);
         showStatusMessage('Error loading selected recordings: ' + err.message, 'error');
+      } finally {
+        setIdsLoading(false);
       }
-      setIdsLoading(false);
     };
 
     fetchByIds();
@@ -765,7 +796,9 @@ export function TimelinePage() {
 
   // Render content based on state
   const renderContent = () => {
-    if (isLoadingTimeline || idsLoading) {
+    const isContentLoading = idsMode ? idsLoading : isLoadingTimeline;
+
+    if (isContentLoading) {
       return <LoadingIndicator message={idsMode ? "Loading selected recordings..." : "Loading timeline data..."} />;
     }
 
@@ -810,26 +843,7 @@ export function TimelinePage() {
   };
 
   // Get return URL for "Refine Selections" link
-  const returnUrl = idsMode ? (sessionStorage.getItem('lightnvr_recordings_return_url') || 'recordings.html') : null;
-
-  // IDs for download
-  const downloadSelectedRecordings = () => {
-    if (!idsMode || !recordingIds) return;
-    const idsList = recordingIds.split(',');
-    // Use the same batch download mechanism
-    idsList.forEach(id => {
-      const seg = segments.find(s => String(s.id) === String(id));
-      if (seg) {
-        const a = document.createElement('a');
-        a.href = `/api/recordings/${id}/download`;
-        a.download = '';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-    });
-    showStatusMessage(`Downloading ${idsList.length} recordings...`, 'success');
-  };
+  const returnUrl = idsMode ? (sessionStorage.getItem(RECORDINGS_RETURN_URL_KEY) || 'recordings.html') : null;
 
   return (
     <div className="timeline-page">
@@ -935,10 +949,10 @@ export function TimelinePage() {
             </a>
             <button
               className="btn-primary text-xs px-2 py-1"
-              onClick={downloadSelectedRecordings}
-              disabled={segments.length === 0}
+              onClick={() => setIsDownloadModalOpen(true)}
+              disabled={selectedRecordingsForDownload.length === 0}
             >
-              ↓ Download All ({segments.length})
+              ↓ Download All ({selectedRecordingsForDownload.length})
             </button>
           </div>
         </div>
@@ -978,6 +992,13 @@ export function TimelinePage() {
 
       {/* Content */}
       {renderContent()}
+
+      <BatchDownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        recordings={selectedRecordingsForDownload}
+        selectedIds={selectedRecordingMap}
+      />
 
       {/* Compact help — collapsible, replaces the old large instructions block */}
       <TimelineHelp idsMode={idsMode} />
