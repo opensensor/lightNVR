@@ -280,7 +280,7 @@ export function TimelinePage() {
     return () => {
       container.removeEventListener('wheel', handleWheel);
     };
-  }, []);
+  }, [segments.length]);
 
   const idsAvailableDates = useMemo(() => (
     idsMode ? getAvailableDatesForSegments(idsTimelineSegments) : []
