@@ -96,17 +96,25 @@ if(ENABLE_MQTT)
     endif()
 endif()
 
+# Common mbedTLS detection logic (used both in SSL block and for ONVIF/auth)
+macro(DETECT_MBEDTLS_ONCE)
+    if(NOT MBEDTLS_DETECTION_DONE)
+        pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
+        if (NOT MBEDTLS_FOUND)
+            find_path(MBEDTLS_INCLUDE_DIRS "mbedtls/version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
+            find_library(MBEDTLS_LIBRARY NAMES mbedtls REQUIRED)
+            find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
+            find_library(MBEDX509_LIBRARY NAMES mbedx509 REQUIRED)
+            set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
+        endif()
+        set(MBEDTLS_DETECTION_DONE TRUE CACHE INTERNAL "mbedTLS detection has been performed")
+    endif()
+endmacro()
+
 # SSL/TLS configuration
 if(ENABLE_SSL)
     if(USE_MBEDTLS)
-        pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
-        if (NOT MBEDTLS_FOUND)
-          find_path(MBEDTLS_INCLUDE_DIRS "version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
-          find_library(MBEDTLS_LIBRARY NAMES mbedtls REQUIRED)
-          find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
-          find_library(MBEDX509_LIBRARY NAMES mbedx509 REQUIRED)
-          set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
-        endif()
+        DETECT_MBEDTLS_ONCE()
         set(SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
         set(SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
         message(STATUS "Using mbedTLS for SSL/TLS support")
@@ -129,21 +137,13 @@ else()
 endif()
 
 # ONVIF and authentication system require mbedTLS for cryptographic functions
-pkg_check_modules(MBEDTLS QUIET mbedtls mbedcrypto mbedx509)
-if (NOT MBEDTLS_FOUND)
-  find_path(MBEDTLS_INCLUDE_DIRS "version.h" PATH_SUFFIXES "mbedtls" DOC "mbedtls include directory")
-  find_library(MBEDTLS_LIBRARY NAMES mbedtls REQUIRED)
-  find_library(MBEDCRYPTO_LIBRARY NAMES mbedcrypto REQUIRED)
-  find_library(MBEDX509_LIBRARY NAMES mbedx509 REQUIRED)
-  set(MBEDTLS_LIBRARIES ${MBEDTLS_LIBRARY} ${MBEDCRYPTO_LIBRARY} ${MBEDX509_LIBRARY})
-endif()
+DETECT_MBEDTLS_ONCE()
 list(APPEND SSL_INCLUDE_DIRS ${MBEDTLS_INCLUDE_DIRS})
 list(APPEND SSL_LIBRARIES ${MBEDTLS_LIBRARIES})
 message(STATUS "ONVIF and authentication system enabled, linking with mbedTLS for cryptographic functions")
 
 # Explicitly add mbedcrypto to the link libraries
-find_library(MBEDCRYPTO_LIBRARY mbedcrypto
-    HINTS
+set(COMMON_MBEDTLS_LIB_PATHS
     /usr/lib
     /usr/lib/x86_64-linux-gnu
     /usr/lib/aarch64-linux-gnu
@@ -154,12 +154,17 @@ find_library(MBEDCRYPTO_LIBRARY mbedcrypto
     /lib/arm-linux-gnueabihf
 )
 
+find_library(MBEDCRYPTO_LIBRARY mbedcrypto
+    HINTS
+    ${COMMON_MBEDTLS_LIB_PATHS}
+)
+
 if(MBEDCRYPTO_LIBRARY)
     message(STATUS "Found mbedcrypto library: ${MBEDCRYPTO_LIBRARY}")
     list(APPEND SSL_LIBRARIES ${MBEDCRYPTO_LIBRARY})
 else()
     # Try to find by manually checking common locations
-    foreach(LIB_PATH /usr/lib /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib/arm-linux-gnueabihf /lib /lib/x86_64-linux-gnu /lib/aarch64-linux-gnu /lib/arm-linux-gnueabihf)
+    foreach(LIB_PATH ${COMMON_MBEDTLS_LIB_PATHS})
         if(EXISTS "${LIB_PATH}/libmbedcrypto.so")
             set(MBEDCRYPTO_LIBRARY "${LIB_PATH}/libmbedcrypto.so")
             message(STATUS "Found mbedcrypto library through manual search: ${MBEDCRYPTO_LIBRARY}")
@@ -402,8 +407,8 @@ set(GO2RTC_SOURCES "")
 if(ENABLE_GO2RTC)
     add_subdirectory(src/video/go2rtc)
     add_definitions(-DUSE_GO2RTC)
-    add_definitions(-DGO2RTC_BINARY_PATH_RAW=${GO2RTC_BINARY_PATH})
-    add_definitions(-DGO2RTC_CONFIG_DIR_RAW=${GO2RTC_CONFIG_DIR})
+    add_definitions(-DGO2RTC_BINARY_PATH_RAW=\"${GO2RTC_BINARY_PATH}\")
+    add_definitions(-DGO2RTC_CONFIG_DIR_RAW=\"${GO2RTC_CONFIG_DIR}\")
     add_definitions(-DGO2RTC_API_PORT=${GO2RTC_API_PORT})
     message(STATUS "go2rtc integration enabled with binary path: ${GO2RTC_BINARY_PATH}")
     message(STATUS "go2rtc config directory: ${GO2RTC_CONFIG_DIR}")
@@ -421,8 +426,8 @@ set(SOURCES
         ${HLS_UNIFIED_THREAD_SOURCES}
         ${WEB_SOURCES}
         ${ROOT_SOURCES}
-        include/utils/strings.h
 )
+
 
 # Add go2rtc sources if enabled
 if(ENABLE_GO2RTC)
