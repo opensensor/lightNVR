@@ -234,7 +234,7 @@ describe('timelineUtils', () => {
 
     try {
       const selectedDate = '2026-03-08';
-      const timestamp = dayjs(`${selectedDate}T03:10:00`).unix();
+      const timestamp = dayjs.tz(`${selectedDate}T03:10:00`, 'America/New_York').unix();
 
       expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
       expect(timelineOffsetToTimestamp(2 + (10 / 60), selectedDate)).toBe(timestamp);
