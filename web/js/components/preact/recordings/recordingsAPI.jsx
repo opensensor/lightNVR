@@ -10,6 +10,7 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
+  usePostMutation,
 } from '../../../query-client.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -483,6 +484,10 @@ export const recordingsAPI = {
       try {
         const progress = await fetchJSON(`/api/recordings/batch-delete/progress/${jobId}`, {
           method: 'GET',
+          // Ensure each polling request has bounded duration and internal retries
+          timeout: 10000,       // 10 seconds per request
+          retries: 2,           // retry a couple of times on failure
+          retryDelay: 1000      // 1 second between internal retries
         });
 
         // Update progress UI if available
@@ -572,6 +577,53 @@ export const recordingsAPI = {
   },
 
   /**
+   * Internal helper to process batch delete HTTP responses.
+   * Handles optional async polling, status message display, and returns the final result.
+   * @param {Response} deleteResponse Response from the batch delete request
+   * @returns {Promise<Object>} Result with success and error counts
+   */
+  handleBatchDeleteResponse: async (deleteResponse) => {
+    const result = await deleteResponse.json();
+
+    // Check if we got a job_id (async operation) or direct result (sync operation)
+    if (result.job_id) {
+      console.log('Batch delete started with job_id:', result.job_id);
+
+      // Poll for progress
+      const finalResult = await recordingsAPI.pollBatchDeleteProgress(result.job_id);
+
+      // Show status message
+      const successCount = finalResult.succeeded || 0;
+      const errorCount = finalResult.failed || 0;
+
+      if (successCount > 0 && errorCount === 0) {
+        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+      } else if (successCount > 0 && errorCount > 0) {
+        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+      } else if (errorCount > 0) {
+        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+      }
+
+      return finalResult;
+    } else {
+      // Direct result (old sync behavior)
+      const successCount = result.succeeded || 0;
+      const errorCount = result.failed || 0;
+
+      // Show status message
+      if (successCount > 0 && errorCount === 0) {
+        showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
+      } else if (successCount > 0 && errorCount > 0) {
+        showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
+      } else if (errorCount > 0) {
+        showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
+      }
+
+      return result;
+    }
+  },
+
+  /**
    * Delete all recordings matching filter using HTTP (fallback)
    * @param {Object} filter Filter object
    * @returns {Promise<Object>} Result with success and error counts
@@ -592,44 +644,7 @@ export const recordingsAPI = {
         retryDelay: 3000 // 3 seconds between retries
       });
 
-      const result = await deleteResponse.json();
-
-      // Check if we got a job_id (async operation) or direct result (sync operation)
-      if (result.job_id) {
-        console.log('Batch delete started with job_id:', result.job_id);
-
-        // Poll for progress
-        const finalResult = await recordingsAPI.pollBatchDeleteProgress(result.job_id);
-
-        // Show status message
-        const successCount = finalResult.succeeded || 0;
-        const errorCount = finalResult.failed || 0;
-
-        if (successCount > 0 && errorCount === 0) {
-          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-        } else if (successCount > 0 && errorCount > 0) {
-          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-        } else if (errorCount > 0) {
-          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-        }
-
-        return finalResult;
-      } else {
-        // Direct result (old sync behavior)
-        const successCount = result.succeeded || 0;
-        const errorCount = result.failed || 0;
-
-        // Show status message
-        if (successCount > 0 && errorCount === 0) {
-          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-        } else if (successCount > 0 && errorCount > 0) {
-          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-        } else if (errorCount > 0) {
-          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-        }
-
-        return result;
-      }
+      return await recordingsAPI.handleBatchDeleteResponse(deleteResponse);
     } catch (error) {
       console.error('Error in HTTP delete all operation:', error);
       showStatusMessage('Error in delete all operation: ' + error.message);
@@ -648,19 +663,23 @@ export const recordingsAPI = {
     }
 
     try {
-      // Convert timestamps to seconds using dayjs
-      const startTime = parseRecordingTimestamp(recording.start_time);
-      const endTime = parseRecordingTimestamp(recording.end_time);
+      // Convert timestamps to Unix time in seconds using dayjs
+      const startTimeSec = parseRecordingTimestamp(recording.start_time);
+      const endTimeSec = parseRecordingTimestamp(recording.end_time);
 
-      if (startTime === 0 || endTime === 0) {
+      if (startTimeSec === 0 || endTimeSec === 0) {
         console.error('Failed to parse recording timestamps');
         return false;
       }
 
+      // The detections API expects Unix timestamps in milliseconds
+      const startTimeMs = startTimeSec * 1000;
+      const endTimeMs = endTimeSec * 1000;
+
       // Query the detections API to check if there are any detections in this time range
       const params = new URLSearchParams({
-        start: startTime,
-        end: endTime
+        start: startTimeMs.toString(),
+        end: endTimeMs.toString()
       });
 
       const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
@@ -687,7 +706,7 @@ export const recordingsAPI = {
     }
 
     try {
-      // Convert timestamps to seconds using dayjs
+      // Convert timestamps using the same logic used elsewhere for detections queries
       const startTime = parseRecordingTimestamp(recording.start_time);
       const endTime = parseRecordingTimestamp(recording.end_time);
 
@@ -696,10 +715,14 @@ export const recordingsAPI = {
         return [];
       }
 
+      // Format timestamps consistently for the detections API (ISO-8601 strings)
+      const startParam = dayjs(startTime * 1000).toISOString();
+      const endParam = dayjs(endTime * 1000).toISOString();
+
       // Query the detections API to get detections in this time range
       const params = new URLSearchParams({
-        start: startTime,
-        end: endTime
+        start: startParam,
+        end: endParam,
       });
 
       const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
