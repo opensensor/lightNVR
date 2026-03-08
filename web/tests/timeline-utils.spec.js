@@ -30,7 +30,8 @@ dayjs.extend(timezone);
 // JavaScript Date months are 0-indexed, so month index 2 represents March.
 const MARCH = 2;
 const baseTestDateTimestamp = (hours, minutes, seconds = 0) =>
-  new Date(2026, MARCH, 8, hours, minutes, seconds).getTime() / 1000;
+  // Use UTC to avoid environment-dependent DST/local time interpretation in tests.
+  Date.UTC(2026, MARCH, 8, hours, minutes, seconds) / 1000;
 
 describe('timelineUtils', () => {
   const originalTz = process.env.TZ;
@@ -234,7 +235,7 @@ describe('timelineUtils', () => {
 
     try {
       const selectedDate = '2026-03-08';
-      const timestamp = dayjs(`${selectedDate}T03:10:00`).unix();
+      const timestamp = dayjs.tz(`${selectedDate}T03:10:00`, 'America/New_York').unix();
 
       expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
       expect(timelineOffsetToTimestamp(2 + (10 / 60), selectedDate)).toBe(timestamp);
@@ -259,7 +260,7 @@ describe('timelineUtils', () => {
       const selectedDate = '2026-03-08';
       const timestamp = localClockTimeToTimestamp('03:10:00', selectedDate);
 
-      expect(timestamp).toBe(dayjs(`${selectedDate}T03:10:00`).unix());
+      expect(timestamp).toBe(dayjs.tz(`${selectedDate}T03:10:00`, 'America/New_York').unix());
       expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
 
       // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
@@ -293,8 +294,11 @@ describe('timelineUtils', () => {
 
     try {
       const selectedDate = '2026-11-01';
-      const firstRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T05:10:00Z') / 1000);
-      const secondRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T06:10:00Z') / 1000);
+      const firstRepeatedHourTimestamp = dayjs.tz('2026-11-01T01:10:00', 'America/New_York').unix();
+      const secondRepeatedHourTimestamp = dayjs
+        .tz('2026-11-01T01:10:00', 'America/New_York')
+        .add(1, 'hour')
+        .unix();
 
       expect(timestampToTimelineOffset(firstRepeatedHourTimestamp, selectedDate)).toBeCloseTo(1 + (10 / 60), 6);
       expect(timestampToTimelineOffset(secondRepeatedHourTimestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
