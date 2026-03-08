@@ -334,8 +334,11 @@ export const recordingsAPI = {
       // This prevents unnecessary detection API calls on the recordings page
       if (data.recordings && data.recordings.length > 0) {
         for (const recording of data.recordings) {
-          // Default to false on the recordings list; detailed checks can be done on-demand elsewhere
-          recording.has_detections = false;
+          // Default to false on the recordings list only when the backend has not provided a value;
+          // detailed checks can be done on-demand elsewhere
+          if (recording.has_detections === undefined) {
+            recording.has_detections = false;
+          }
         }
       }
 
@@ -476,12 +479,9 @@ export const recordingsAPI = {
 
     while (attempts < maxAttempts) {
       try {
-        const response = await fetch(`/api/recordings/batch-delete/progress/${jobId}`);
-        if (!response.ok) {
-          throw new Error(`Failed to get progress: ${response.statusText}`);
-        }
-
-        const progress = await response.json();
+        const progress = await fetchJSON(`/api/recordings/batch-delete/progress/${jobId}`, {
+          method: 'GET',
+        });
 
         // Update progress UI if available
         if (typeof window.updateBatchDeleteProgress === 'function') {
@@ -546,13 +546,10 @@ export const recordingsAPI = {
         params.append('page', '1');
         params.append('limit', '1');
 
-        const response = await fetch(`/api/recordings?${params.toString()}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data?.pagination?.total) {
-            totalCount = data.pagination.total;
-            console.log(`Found ${totalCount} recordings matching filter`);
-          }
+        const data = await fetchJSON('/api/recordings', { searchParams: params });
+        if (data?.pagination?.total) {
+          totalCount = data.pagination.total;
+          console.log(`Found ${totalCount} recordings matching filter`);
         }
       } catch (countError) {
         console.warn('Error getting recording count:', countError);
