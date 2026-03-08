@@ -23,7 +23,7 @@ export function SettingsView() {
     syslogIdent: 'lightnvr',
     syslogFacility: 'LOG_USER',
     storagePath: '/var/lib/lightnvr/recordings',
-    storagePathHls: '', // New field for HLS storage path
+    storagePathHls: '', // Optional HLS storage path; when empty, HLS segments use storagePath
     maxStorage: '0',
     retention: '30',
     autoDelete: true,
@@ -266,6 +266,8 @@ export function SettingsView() {
   // Save settings
   const saveSettings = () => {
     // Map frontend property names to backend property names
+    const webThreadPoolSize = parseInt(settings.webThreadPoolSize, 10);
+    const parsedMaxStreams = parseInt(settings.maxStreams, 10);
     const mappedSettings = {
       log_level: parseInt(settings.logLevel, 10),
       syslog_enabled: settings.syslogEnabled,
@@ -279,8 +281,8 @@ export function SettingsView() {
       generate_thumbnails: settings.generateThumbnails,
       db_path: settings.dbPath,
       web_port: parseInt(settings.webPort, 10),
-      web_thread_pool_size: parseInt(settings.webThreadPoolSize, 10) || undefined,
-      max_streams: parseInt(settings.maxStreams, 10) || 32,
+      web_thread_pool_size: Number.isNaN(webThreadPoolSize) ? undefined : webThreadPoolSize,
+      max_streams: Number.isNaN(parsedMaxStreams) ? 32 : parsedMaxStreams,
       web_auth_enabled: settings.authEnabled,
       demo_mode: settings.demoMode,
       webrtc_disabled: settings.webrtcDisabled,
@@ -565,7 +567,7 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground">Optional path for HLS segments. If not specified, Storage Path will be used.</span>
+              <span class="hint text-sm text-muted-foreground">Optional path for HLS segments. If not specified, storage path will be used.</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
