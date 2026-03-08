@@ -7,6 +7,7 @@ import { createContext } from 'preact';
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { showStatusMessage } from './ToastContainer.jsx';
+import { formatUtils } from './recordings/formatUtils.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -294,6 +295,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const [recordingData, setRecordingData] = useState(null);
   const [detectionStatus, setDetectionStatus] = useState('No detections loaded');
   const [currentSpeed, setCurrentSpeed] = useState(1.0);
+  const [currentPlaybackSeconds, setCurrentPlaybackSeconds] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isProtected, setIsProtected] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -302,6 +304,11 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
   const canvasRef = useRef(null);
   const modalRef = useRef(null);
   const videoContainerRef = useRef(null);
+
+  const updatePlaybackSeconds = useCallback((video) => {
+    const nextSeconds = Math.max(0, Math.floor(video?.currentTime || 0));
+    setCurrentPlaybackSeconds(prev => prev === nextSeconds ? prev : nextSeconds);
+  }, []);
 
   // Handle escape key and cleanup
   useEffect(() => {
@@ -405,6 +412,15 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     };
 
     fetchRecordingData();
+  }, [isOpen, videoUrl]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCurrentPlaybackSeconds(0);
+      return;
+    }
+
+    setCurrentPlaybackSeconds(0);
   }, [isOpen, videoUrl]);
 
   // Extract recording ID from URL
@@ -610,19 +626,26 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
     const video = videoRef.current;
 
+    const handleLoadedMetadata = () => {
+      updatePlaybackSeconds(video);
+    };
+
     const handlePlay = () => {
+      updatePlaybackSeconds(video);
       if (detectionOverlayEnabled) {
         drawDetections();
       }
     };
 
     const handleSeeked = () => {
+      updatePlaybackSeconds(video);
       if (detectionOverlayEnabled) {
         drawDetections();
       }
     };
 
     const handleTimeUpdate = () => {
+      updatePlaybackSeconds(video);
       if (detectionOverlayEnabled) {
         // Don't redraw on every timeupdate as it's too frequent
         // Instead, redraw every 0.5 seconds
@@ -634,16 +657,18 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }
     };
 
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('play', handlePlay);
     video.addEventListener('seeked', handleSeeked);
     video.addEventListener('timeupdate', handleTimeUpdate);
 
     return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('seeked', handleSeeked);
       video.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [isOpen, detectionOverlayEnabled, drawDetections]);
+  }, [isOpen, detectionOverlayEnabled, drawDetections, updatePlaybackSeconds]);
 
   // Handle video URL changes
   useEffect(() => {
@@ -763,6 +788,10 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
 
   if (!isOpen) return null;
 
+  const playbackPositionLabel = recordingData?.stream
+    ? `${recordingData.stream} - ${formatUtils.formatDuration(currentPlaybackSeconds)}`
+    : formatUtils.formatDuration(currentPlaybackSeconds);
+
   // Add useEffect to handle modal animation and cleanup
   useEffect(() => {
     let animationTimeout;
@@ -838,6 +867,16 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   style={{ display: 'none', zIndex: 2 }}
                 />
               </div>
+            </div>
+          </div>
+
+          <div className="px-3 pb-1">
+            <div
+              id="recording-playback-position"
+              data-testid="recording-playback-position"
+              className="text-center text-sm font-medium text-foreground tabular-nums"
+            >
+              {playbackPositionLabel}
             </div>
           </div>
 

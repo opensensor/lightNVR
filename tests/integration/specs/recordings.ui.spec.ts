@@ -333,6 +333,17 @@ test.describe('Recordings Page @ui @recordings', () => {
       await page.locator('button[title="Play"]').first().click();
 
       await expect(page.locator('#video-preview-modal')).toBeVisible();
+      await expect(page.locator('#recording-playback-position')).toHaveText('cam1 - 00:00:00');
+
+      await page.locator('#video-preview-modal video').evaluate(video => {
+        Object.defineProperty(video, 'currentTime', {
+          configurable: true,
+          value: 12.6
+        });
+        video.dispatchEvent(new Event('timeupdate'));
+      });
+
+      await expect(page.locator('#recording-playback-position')).toHaveText('cam1 - 00:00:12');
       await expect.poll(() => page.locator('#video-preview-modal video').evaluate(video => video.controlsList?.contains('nofullscreen') ?? false)).toBe(true);
       await expect(page.locator('#detection-overlay-checkbox')).toBeEnabled();
 
