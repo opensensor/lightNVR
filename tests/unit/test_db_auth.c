@@ -123,6 +123,38 @@ void test_delete_session(void) {
     TEST_ASSERT_NOT_EQUAL(0, rc);
 }
 
+void test_list_sessions_and_trusted_devices(void) {
+    int64_t uid = 0;
+    db_auth_create_user("deviceuser", "pass", NULL, USER_ROLE_USER, true, &uid);
+
+    char session_token[128];
+    int rc = db_auth_create_session(uid, "127.0.0.1", "TestAgent", 3600,
+                                    session_token, sizeof(session_token));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    session_t sessions[8];
+    int session_count = db_auth_list_user_sessions(uid, sessions, 8);
+    TEST_ASSERT_GREATER_THAN_INT(0, session_count);
+    TEST_ASSERT_EQUAL_INT(uid, sessions[0].user_id);
+    TEST_ASSERT_TRUE(sessions[0].last_activity_at >= sessions[0].created_at);
+    TEST_ASSERT_TRUE(sessions[0].idle_expires_at <= sessions[0].expires_at);
+
+    char trusted_token[128];
+    rc = db_auth_create_trusted_device(uid, "127.0.0.1", "TestAgent", 86400,
+                                       trusted_token, sizeof(trusted_token));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_trusted_device(uid, trusted_token));
+
+    trusted_device_t devices[8];
+    int device_count = db_auth_list_trusted_devices(uid, devices, 8);
+    TEST_ASSERT_GREATER_THAN_INT(0, device_count);
+    TEST_ASSERT_EQUAL_INT(uid, devices[0].user_id);
+
+    rc = db_auth_delete_trusted_device_by_id(uid, devices[0].id);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_trusted_device(uid, trusted_token));
+}
+
 /* role name / id conversions */
 void test_role_name_conversions(void) {
     TEST_ASSERT_EQUAL_STRING("admin",  db_auth_get_role_name(USER_ROLE_ADMIN));
@@ -185,6 +217,7 @@ int main(void) {
     RUN_TEST(test_change_password);
     RUN_TEST(test_create_and_validate_session);
     RUN_TEST(test_delete_session);
+    RUN_TEST(test_list_sessions_and_trusted_devices);
     RUN_TEST(test_role_name_conversions);
     RUN_TEST(test_generate_and_use_api_key);
     RUN_TEST(test_totp_set_get_enable);

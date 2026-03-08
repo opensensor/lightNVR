@@ -309,7 +309,9 @@ void load_default_config(config_t *config) {
     // No default password - will be generated randomly on first run
     config->web_password[0] = '\0';
     config->webrtc_disabled = false; // WebRTC is enabled by default
-    config->auth_timeout_hours = 24; // Default session timeout: 24 hours
+    config->auth_timeout_hours = 24; // Default session idle timeout: 24 hours
+    config->auth_absolute_timeout_hours = 168; // Default absolute session lifetime: 7 days
+    config->trusted_device_days = 30; // Default trusted-device lifetime: 30 days
     config->demo_mode = false; // Demo mode disabled by default
 
     // Security settings
@@ -686,6 +688,22 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->auth_timeout_hours = safe_atoi(value, 0);
             if (config->auth_timeout_hours < 1) {
                 config->auth_timeout_hours = 1; // Minimum 1 hour
+            } else if (config->auth_timeout_hours > (INT_MAX / 3600)) {
+                config->auth_timeout_hours = (INT_MAX / 3600);
+            }
+        } else if (strcmp(name, "auth_absolute_timeout_hours") == 0) {
+            config->auth_absolute_timeout_hours = safe_atoi(value, 0);
+            if (config->auth_absolute_timeout_hours < 1) {
+                config->auth_absolute_timeout_hours = 1;
+            } else if (config->auth_absolute_timeout_hours > (INT_MAX / 3600)) {
+                config->auth_absolute_timeout_hours = (INT_MAX / 3600);
+            }
+        } else if (strcmp(name, "trusted_device_days") == 0) {
+            config->trusted_device_days = safe_atoi(value, 0);
+            if (config->trusted_device_days < 0) {
+                config->trusted_device_days = 0;
+            } else if (config->trusted_device_days > (INT_MAX / 86400)) {
+                config->trusted_device_days = (INT_MAX / 86400);
             }
         } else if (strcmp(name, "demo_mode") == 0) {
             config->demo_mode = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
@@ -888,6 +906,10 @@ static int config_ini_handler(void* user, const char* section, const char* name,
                 config->mqtt_ha_snapshot_interval = 300; // Maximum 5 minutes
             }
         }
+    }
+
+    if (config->auth_absolute_timeout_hours < config->auth_timeout_hours) {
+        config->auth_absolute_timeout_hours = config->auth_timeout_hours;
     }
 
     return 1; // Return 1 to continue processing
@@ -1487,7 +1509,9 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database
     fprintf(file, "webrtc_disabled = %s\n", config->webrtc_disabled ? "true" : "false");
-    fprintf(file, "auth_timeout_hours = %d  ; Session timeout in hours (default: 24)\n", config->auth_timeout_hours);
+    fprintf(file, "auth_timeout_hours = %d  ; Session idle timeout in hours (default: 24)\n", config->auth_timeout_hours);
+    fprintf(file, "auth_absolute_timeout_hours = %d  ; Absolute session lifetime in hours (default: 168)\n", config->auth_absolute_timeout_hours);
+    fprintf(file, "trusted_device_days = %d  ; Remember trusted device for N days (0 disables, default: 30)\n", config->trusted_device_days);
     fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
     fprintf(file, "force_mfa_on_login = %s  ; Require TOTP code with password at login (prevents password-only brute force)\n", config->force_mfa_on_login ? "true" : "false");
     fprintf(file, "login_rate_limit_enabled = %s  ; Enable login rate limiting\n", config->login_rate_limit_enabled ? "true" : "false");
@@ -1620,7 +1644,9 @@ void print_config(const config_t *config) {
     printf("    Web Username: %s\n", config->web_username);
     printf("    Web Password: %s\n", "********");
     printf("    WebRTC Disabled: %s\n", config->webrtc_disabled ? "true" : "false");
-    printf("    Auth Timeout: %d hours\n", config->auth_timeout_hours);
+    printf("    Auth Idle Timeout: %d hours\n", config->auth_timeout_hours);
+    printf("    Auth Absolute Timeout: %d hours\n", config->auth_absolute_timeout_hours);
+    printf("    Trusted Device Lifetime: %d days\n", config->trusted_device_days);
     printf("    Demo Mode: %s\n", config->demo_mode ? "true" : "false");
     printf("    Force MFA on Login: %s\n", config->force_mfa_on_login ? "true" : "false");
     printf("    Login Rate Limit: %s\n", config->login_rate_limit_enabled ? "true" : "false");

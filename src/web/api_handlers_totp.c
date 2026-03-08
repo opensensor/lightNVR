@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <time.h>
 #include <ctype.h>
 #include <sqlite3.h>
@@ -32,6 +33,43 @@
 /* ========== Base32 Encoding/Decoding ========== */
 
 static const char BASE32_ALPHABET[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+static int auth_absolute_timeout_seconds(void) {
+    int64_t seconds = (int64_t)g_config.auth_absolute_timeout_hours * 3600;
+    if (seconds <= 0 || seconds > INT32_MAX) {
+        return 604800;
+    }
+    return (int)seconds;
+}
+
+static int trusted_device_lifetime_seconds(void) {
+    int64_t seconds = (int64_t)g_config.trusted_device_days * 86400;
+    if (seconds <= 0 || seconds > INT32_MAX) {
+        return 0;
+    }
+    return (int)seconds;
+}
+
+static void add_session_cookie(http_response_t *res, const char *token) {
+    char cookie_header[256];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+             token, auth_absolute_timeout_seconds());
+    http_response_add_header(res, "Set-Cookie", cookie_header);
+}
+
+static void add_trusted_device_cookie(http_response_t *res, const char *token) {
+    int lifetime = trusted_device_lifetime_seconds();
+    if (lifetime <= 0) {
+        return;
+    }
+
+    char cookie_header[256];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "trusted_device=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+             token, lifetime);
+    http_response_add_header(res, "Set-Cookie", cookie_header);
+}
 
 /**
  * @brief Encode binary data to base32 string
@@ -475,6 +513,8 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
 
     cJSON *token_json = cJSON_GetObjectItem(body, "totp_token");
     cJSON *code_json = cJSON_GetObjectItem(body, "code");
+    cJSON *remember_device_json = cJSON_GetObjectItem(body, "remember_device");
+    bool remember_device = remember_device_json && cJSON_IsBool(remember_device_json) && cJSON_IsTrue(remember_device_json);
 
     if (!token_json || !cJSON_IsString(token_json) ||
         !code_json || !cJSON_IsString(code_json)) {
@@ -516,21 +556,26 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
     cJSON_Delete(body);
 
     /* Create a real full session */
-    int session_timeout_seconds = g_config.auth_timeout_hours * 3600;
     char session_token[33];
-    rc = db_auth_create_session(user_id, NULL, NULL, session_timeout_seconds,
+    rc = db_auth_create_session(user_id, req->client_ip, req->user_agent, 0,
                                 session_token, sizeof(session_token));
     if (rc != 0) {
         http_response_set_json_error(res, 500, "Failed to create session");
         return;
     }
 
-    /* Set session cookie */
-    char cookie_header[256];
-    snprintf(cookie_header, sizeof(cookie_header),
-             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             session_token, session_timeout_seconds);
-    http_response_add_header(res, "Set-Cookie", cookie_header);
+    add_session_cookie(res, session_token);
+
+    if (remember_device && trusted_device_lifetime_seconds() > 0) {
+        char trusted_token[33];
+        if (db_auth_create_trusted_device(user_id, req->client_ip, req->user_agent,
+                                          trusted_device_lifetime_seconds(),
+                                          trusted_token, sizeof(trusted_token)) == 0) {
+            add_trusted_device_cookie(res, trusted_token);
+        } else {
+            log_warn("Failed to create trusted device during TOTP login for user %lld", (long long)user_id);
+        }
+    }
 
     /* Return success */
     cJSON *response = cJSON_CreateObject();

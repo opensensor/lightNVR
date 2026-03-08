@@ -142,6 +142,10 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/auth/login", "POST", handle_auth_login);
     http_server_register_handler(server, "/api/auth/logout", "POST", handle_auth_logout);
     http_server_register_handler(server, "/api/auth/verify", "GET", handle_auth_verify);
+    http_server_register_handler(server, "/api/auth/sessions", "GET", handle_auth_sessions_list);
+    http_server_register_handler(server, "/api/auth/sessions/#", "DELETE", handle_auth_sessions_delete);
+    http_server_register_handler(server, "/api/auth/trusted-devices", "GET", handle_auth_trusted_devices_list);
+    http_server_register_handler(server, "/api/auth/trusted-devices/#", "DELETE", handle_auth_trusted_devices_delete);
     http_server_register_handler(server, "/logout", "GET", handle_auth_logout);  // Simple GET logout route
 
     // User Management API (backend-agnostic handlers)

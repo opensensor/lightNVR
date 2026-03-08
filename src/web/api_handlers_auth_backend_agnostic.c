@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <time.h>
 #include <cjson/cJSON.h>
 
@@ -130,6 +131,59 @@ static void clear_rate_limit(const char *username) {
     }
 }
 
+static int auth_absolute_timeout_seconds(void) {
+    int64_t seconds = (int64_t)g_config.auth_absolute_timeout_hours * 3600;
+    if (seconds <= 0 || seconds > INT32_MAX) {
+        return 604800;
+    }
+    return (int)seconds;
+}
+
+static int trusted_device_lifetime_seconds(void) {
+    int64_t seconds = (int64_t)g_config.trusted_device_days * 86400;
+    if (seconds <= 0 || seconds > INT32_MAX) {
+        return 0;
+    }
+    return (int)seconds;
+}
+
+static void add_session_cookie(http_response_t *res, const char *token) {
+    char cookie_header[256];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+             token, auth_absolute_timeout_seconds());
+    http_response_add_header(res, "Set-Cookie", cookie_header);
+}
+
+static void clear_session_cookie(http_response_t *res) {
+    http_response_add_header(res, "Set-Cookie",
+                             "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+}
+
+static void add_trusted_device_cookie(http_response_t *res, const char *token) {
+    int lifetime = trusted_device_lifetime_seconds();
+    if (lifetime <= 0) {
+        return;
+    }
+
+    char cookie_header[256];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "trusted_device=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+             token, lifetime);
+    http_response_add_header(res, "Set-Cookie", cookie_header);
+}
+
+static bool request_has_valid_trusted_device(const http_request_t *req, int64_t user_id) {
+    char trusted_token[128] = {0};
+    if (trusted_device_lifetime_seconds() <= 0) {
+        return false;
+    }
+    if (httpd_get_cookie_value(req, "trusted_device", trusted_token, sizeof(trusted_token)) != 0) {
+        return false;
+    }
+    return db_auth_validate_trusted_device(user_id, trusted_token) == 0;
+}
+
 /**
  * @brief Initialize the authentication system
  */
@@ -206,6 +260,9 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     char password[64] = {0};
     char totp_code[8] = {0};  // Optional TOTP code for force-MFA mode
     bool is_form = false;
+    bool remember_device = false;
+    bool trusted_device_used = false;
+    bool totp_verified = false;
 
     // Check Content-Type to determine if it's form data or JSON
     const char *content_type = http_request_get_header(req, "Content-Type");
@@ -254,6 +311,11 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
             cJSON *totp_code_json = cJSON_GetObjectItem(login, "totp_code");
             if (totp_code_json && cJSON_IsString(totp_code_json)) {
                 strncpy(totp_code, totp_code_json->valuestring, sizeof(totp_code) - 1);
+            }
+
+            cJSON *remember_device_json = cJSON_GetObjectItem(login, "remember_device");
+            if (remember_device_json && cJSON_IsBool(remember_device_json)) {
+                remember_device = cJSON_IsTrue(remember_device_json);
             }
 
             cJSON_Delete(login);
@@ -305,33 +367,53 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
         char totp_secret[64] = {0};
         bool totp_enabled = false;
         if (db_auth_get_totp_info(user_id, totp_secret, sizeof(totp_secret), &totp_enabled) == 0 && totp_enabled) {
+            bool trusted_device_valid = request_has_valid_trusted_device(req, user_id);
 
             // Force MFA mode: verify TOTP code in the same request
             if (g_config.force_mfa_on_login) {
                 if (totp_code[0] == '\0') {
-                    // No TOTP code provided - return generic error
-                    // Don't reveal that password was correct
-                    record_failed_attempt(username);
-                    log_warn("Force MFA: no TOTP code provided for user: %s", username);
-                    http_response_set_json_error(res, 401, "Invalid credentials");
-                    return;
+                    if (trusted_device_valid) {
+                        trusted_device_used = true;
+                        log_info("Trusted device accepted for user: %s", username);
+                    } else {
+                        // No TOTP code provided - return generic error
+                        // Don't reveal that password was correct
+                        record_failed_attempt(username);
+                        log_warn("Force MFA: no TOTP code provided for user: %s", username);
+                        http_response_set_json_error(res, 401, "Invalid credentials");
+                        return;
+                    }
                 }
 
-                // Verify the TOTP code
-                if (totp_verify(totp_secret, totp_code) != 0) {
-                    record_failed_attempt(username);
-                    log_warn("Force MFA: invalid TOTP code for user: %s", username);
-                    http_response_set_json_error(res, 401, "Invalid credentials");
-                    return;
+                if (!trusted_device_used) {
+                    // Verify the TOTP code
+                    if (totp_verify(totp_secret, totp_code) != 0) {
+                        record_failed_attempt(username);
+                        log_warn("Force MFA: invalid TOTP code for user: %s", username);
+                        http_response_set_json_error(res, 401, "Invalid credentials");
+                        return;
+                    }
+                    totp_verified = true;
+                    log_info("Force MFA: TOTP verified for user: %s", username);
                 }
-
-                log_info("Force MFA: TOTP verified for user: %s", username);
                 // Fall through to create session
             } else {
+                if (totp_code[0] != '\0') {
+                    if (totp_verify(totp_secret, totp_code) != 0) {
+                        record_failed_attempt(username);
+                        log_warn("Invalid inline TOTP code for user: %s", username);
+                        http_response_set_json_error(res, 401, "Invalid credentials");
+                        return;
+                    }
+                    totp_verified = true;
+                } else if (trusted_device_valid) {
+                    trusted_device_used = true;
+                    log_info("Trusted device accepted for user: %s", username);
+                } else {
                 // Standard two-step MFA flow
                 // Create a short-lived pending MFA session (5 minutes)
                 char totp_token[33];
-                rc = db_auth_create_session(user_id, NULL, NULL, 300, totp_token, sizeof(totp_token));
+                rc = db_auth_create_session(user_id, req->client_ip, req->user_agent, 300, totp_token, sizeof(totp_token));
                 if (rc != 0) {
                     log_error("Failed to create pending MFA session for user: %s", username);
                     http_response_set_json_error(res, 500, "Failed to create MFA session");
@@ -350,6 +432,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
 
                 log_info("TOTP verification required for user: %s", username);
                 return;
+                }
             }
         } else if (g_config.force_mfa_on_login && totp_code[0] != '\0') {
             // Force MFA is on, user provided a TOTP code but doesn't have TOTP enabled
@@ -361,10 +444,10 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     // Clear rate limit on successful login
     clear_rate_limit(username);
 
-    // Create a session token using configured timeout
-    int session_timeout_seconds = g_config.auth_timeout_hours * 3600;
+    // Create a session token using the configured absolute session lifetime.
     char token[33];
-    rc = db_auth_create_session(user_id, NULL, NULL, session_timeout_seconds, token, sizeof(token));
+    rc = db_auth_create_session(user_id, req->client_ip, req->user_agent,
+                                0, token, sizeof(token));
 
     if (rc != 0) {
         log_error("Failed to create session for user: %s", username);
@@ -372,12 +455,18 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Set session cookie
-    char cookie_header[256];
-    snprintf(cookie_header, sizeof(cookie_header),
-             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             token, session_timeout_seconds);
-    http_response_add_header(res, "Set-Cookie", cookie_header);
+    add_session_cookie(res, token);
+
+    if (totp_verified && remember_device && !trusted_device_used && trusted_device_lifetime_seconds() > 0) {
+        char trusted_token[33];
+        if (db_auth_create_trusted_device(user_id, req->client_ip, req->user_agent,
+                                          trusted_device_lifetime_seconds(),
+                                          trusted_token, sizeof(trusted_token)) == 0) {
+            add_trusted_device_cookie(res, trusted_token);
+        } else {
+            log_warn("Failed to create trusted device for user: %s", username);
+        }
+    }
 
     if (is_form) {
         // For form submissions, redirect to index.html
@@ -406,33 +495,13 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
 void handle_auth_logout(const http_request_t *req, http_response_t *res) {
     log_info("Handling logout request");
 
-    // Check for session cookie and invalidate it
-    const char *cookie_header = http_request_get_header(req, "Cookie");
-    if (cookie_header) {
-        // Look for session cookie
-        const char *session_start = strstr(cookie_header, "session=");
-        if (session_start) {
-            session_start += 8; // Skip "session="
-            const char *session_end = strchr(session_start, ';');
-            if (!session_end) {
-                session_end = session_start + strlen(session_start);
-            }
-
-            char session_token[64] = {0};
-            size_t token_len = session_end - session_start;
-            if (token_len < sizeof(session_token)) {
-                memcpy(session_token, session_start, token_len);
-                session_token[token_len] = '\0';
-
-                // Invalidate the session
-                db_auth_delete_session(session_token);
-                log_info("Session deleted: %s", session_token);
-            }
-        }
+    char session_token[64] = {0};
+    if (httpd_get_session_token(req, session_token, sizeof(session_token)) == 0) {
+        db_auth_delete_session(session_token);
+        log_info("Session deleted for logout request");
     }
 
-    // Clear the session cookie
-    http_response_add_header(res, "Set-Cookie", "session=; Path=/; Max-Age=0; HttpOnly");
+    clear_session_cookie(res);
 
     // Check if this is an API request or browser request
     const char *accept = http_request_get_header(req, "Accept");
@@ -474,6 +543,9 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         cJSON_AddStringToObject(response, "username", "admin");
         cJSON_AddStringToObject(response, "role", "admin");
         cJSON_AddBoolToObject(response, "auth_enabled", false);
+        cJSON_AddNumberToObject(response, "auth_timeout_hours", g_config.auth_timeout_hours);
+        cJSON_AddNumberToObject(response, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
+        cJSON_AddNumberToObject(response, "trusted_device_days", g_config.trusted_device_days);
 
         char *json_str = cJSON_PrintUnformatted(response);
         http_response_set_json(res, 200, json_str);
@@ -482,51 +554,6 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // First, check for session token in cookie
-    const char *cookie_header = http_request_get_header(req, "Cookie");
-    if (cookie_header) {
-        // Look for session cookie
-        const char *session_start = strstr(cookie_header, "session=");
-        if (session_start) {
-            session_start += 8; // Skip "session="
-            const char *session_end = strchr(session_start, ';');
-            if (!session_end) {
-                session_end = session_start + strlen(session_start);
-            }
-
-            char session_token[64] = {0};
-            size_t token_len = session_end - session_start;
-            if (token_len < sizeof(session_token)) {
-                memcpy(session_token, session_start, token_len);
-                session_token[token_len] = '\0';
-
-                // Validate the session token
-                int64_t user_id;
-                int rc = db_auth_validate_session(session_token, &user_id);
-                if (rc == 0) {
-                    // Session is valid - get user info
-                    user_t user;
-                    if (db_auth_get_user_by_id(user_id, &user) == 0) {
-                        log_info("Authentication successful with session token for user: %s", user.username);
-
-                        // Send success response with user info
-                        cJSON *response = cJSON_CreateObject();
-                        cJSON_AddBoolToObject(response, "authenticated", true);
-                        cJSON_AddStringToObject(response, "username", user.username);
-                        cJSON_AddStringToObject(response, "role", db_auth_get_role_name(user.role));
-
-                        char *json_str = cJSON_PrintUnformatted(response);
-                        http_response_set_json(res, 200, json_str);
-                        free(json_str);
-                        cJSON_Delete(response);
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    // If no valid session, try HTTP Basic Auth
     user_t user;
     if (httpd_get_authenticated_user(req, &user)) {
         log_info("Authentication successful for user: %s (role: %s)", user.username, db_auth_get_role_name(user.role));
@@ -536,6 +563,10 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         cJSON_AddBoolToObject(response, "authenticated", true);
         cJSON_AddStringToObject(response, "username", user.username);
         cJSON_AddStringToObject(response, "role", db_auth_get_role_name(user.role));
+        cJSON_AddBoolToObject(response, "auth_enabled", true);
+        cJSON_AddNumberToObject(response, "auth_timeout_hours", g_config.auth_timeout_hours);
+        cJSON_AddNumberToObject(response, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
+        cJSON_AddNumberToObject(response, "trusted_device_days", g_config.trusted_device_days);
 
         char *json_str = cJSON_PrintUnformatted(response);
         http_response_set_json(res, 200, json_str);
@@ -576,10 +607,166 @@ void handle_auth_login_config(const http_request_t *req, http_response_t *res) {
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "force_mfa_on_login", g_config.force_mfa_on_login);
+    cJSON_AddBoolToObject(response, "remember_device_enabled", g_config.trusted_device_days > 0);
+    cJSON_AddNumberToObject(response, "auth_timeout_hours", g_config.auth_timeout_hours);
+    cJSON_AddNumberToObject(response, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
+    cJSON_AddNumberToObject(response, "trusted_device_days", g_config.trusted_device_days);
 
     char *json_str = cJSON_PrintUnformatted(response);
     http_response_set_json(res, 200, json_str);
     free(json_str);
     cJSON_Delete(response);
+}
+
+void handle_auth_sessions_list(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!httpd_get_authenticated_user(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
+    session_t sessions[32];
+    int count = db_auth_list_user_sessions(user.id, sessions, 32);
+    if (count < 0) {
+        http_response_set_json_error(res, 500, "Failed to list sessions");
+        return;
+    }
+
+    char current_token[128] = {0};
+    httpd_get_session_token(req, current_token, sizeof(current_token));
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON *items = cJSON_AddArrayToObject(response, "sessions");
+    for (int i = 0; i < count; i++) {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddNumberToObject(item, "id", sessions[i].id);
+        cJSON_AddNumberToObject(item, "created_at", sessions[i].created_at);
+        cJSON_AddNumberToObject(item, "last_activity_at", sessions[i].last_activity_at);
+        cJSON_AddNumberToObject(item, "idle_expires_at", sessions[i].idle_expires_at);
+        cJSON_AddNumberToObject(item, "expires_at", sessions[i].expires_at);
+        cJSON_AddStringToObject(item, "ip_address", sessions[i].ip_address);
+        cJSON_AddStringToObject(item, "user_agent", sessions[i].user_agent);
+        cJSON_AddBoolToObject(item, "current", current_token[0] != '\0' && strcmp(current_token, sessions[i].token) == 0);
+        cJSON_AddItemToArray(items, item);
+    }
+
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+    free(json_str);
+    cJSON_Delete(response);
+}
+
+void handle_auth_sessions_delete(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!httpd_get_authenticated_user(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
+    char id_str[64] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/sessions/", id_str, sizeof(id_str)) != 0) {
+        http_response_set_json_error(res, 400, "Missing session ID");
+        return;
+    }
+
+    int64_t session_id = strtoll(id_str, NULL, 10);
+    char current_token[128] = {0};
+    bool deleted_current_session = false;
+    session_t sessions[32];
+    int count = db_auth_list_user_sessions(user.id, sessions, 32);
+    httpd_get_session_token(req, current_token, sizeof(current_token));
+    for (int i = 0; i < count; i++) {
+        if (sessions[i].id == session_id && current_token[0] != '\0' && strcmp(current_token, sessions[i].token) == 0) {
+            deleted_current_session = true;
+            break;
+        }
+    }
+
+    if (session_id <= 0 || db_auth_delete_session_by_id(user.id, session_id) != 0) {
+        http_response_set_json_error(res, 404, "Session not found");
+        return;
+    }
+
+    if (deleted_current_session) {
+        clear_session_cookie(res);
+    }
+
+    http_response_set_json(res, 200, "{\"success\":true}");
+}
+
+void handle_auth_trusted_devices_list(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!httpd_get_authenticated_user(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
+    trusted_device_t devices[32];
+    int count = db_auth_list_trusted_devices(user.id, devices, 32);
+    if (count < 0) {
+        http_response_set_json_error(res, 500, "Failed to list trusted devices");
+        return;
+    }
+
+    char current_token[128] = {0};
+    httpd_get_cookie_value(req, "trusted_device", current_token, sizeof(current_token));
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON *items = cJSON_AddArrayToObject(response, "trusted_devices");
+    for (int i = 0; i < count; i++) {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddNumberToObject(item, "id", devices[i].id);
+        cJSON_AddNumberToObject(item, "created_at", devices[i].created_at);
+        cJSON_AddNumberToObject(item, "last_used_at", devices[i].last_used_at);
+        cJSON_AddNumberToObject(item, "expires_at", devices[i].expires_at);
+        cJSON_AddStringToObject(item, "ip_address", devices[i].ip_address);
+        cJSON_AddStringToObject(item, "user_agent", devices[i].user_agent);
+        cJSON_AddBoolToObject(item, "current", current_token[0] != '\0' && strcmp(current_token, devices[i].token) == 0);
+        cJSON_AddItemToArray(items, item);
+    }
+
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+    free(json_str);
+    cJSON_Delete(response);
+}
+
+void handle_auth_trusted_devices_delete(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!httpd_get_authenticated_user(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
+    char id_str[64] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/trusted-devices/", id_str, sizeof(id_str)) != 0) {
+        http_response_set_json_error(res, 400, "Missing trusted device ID");
+        return;
+    }
+
+    int64_t device_id = strtoll(id_str, NULL, 10);
+    char current_token[128] = {0};
+    bool deleted_current_device = false;
+    trusted_device_t devices[32];
+    int count = db_auth_list_trusted_devices(user.id, devices, 32);
+    httpd_get_cookie_value(req, "trusted_device", current_token, sizeof(current_token));
+    for (int i = 0; i < count; i++) {
+        if (devices[i].id == device_id && current_token[0] != '\0' && strcmp(current_token, devices[i].token) == 0) {
+            deleted_current_device = true;
+            break;
+        }
+    }
+
+    if (device_id <= 0 || db_auth_delete_trusted_device_by_id(user.id, device_id) != 0) {
+        http_response_set_json_error(res, 404, "Trusted device not found");
+        return;
+    }
+
+    if (deleted_current_device) {
+        http_response_add_header(res, "Set-Cookie",
+                                 "trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+    }
+
+    http_response_set_json(res, 200, "{\"success\":true}");
 }
 

@@ -139,7 +139,9 @@ typedef struct {
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
     bool webrtc_disabled;  // Whether WebRTC is disabled (use HLS only)
-    int auth_timeout_hours; // Session timeout in hours (default: 24)
+    int auth_timeout_hours; // Session idle timeout in hours (default: 24)
+    int auth_absolute_timeout_hours; // Absolute session lifetime in hours (default: 168)
+    int trusted_device_days; // Remember-device lifetime in days (default: 30, 0 disables)
     bool demo_mode;         // Demo mode: allows unauthenticated viewer access while still allowing login
 
     // Security settings

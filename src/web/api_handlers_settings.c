@@ -329,6 +329,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
 
     // Auth timeout
     cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
+    cJSON_AddNumberToObject(settings, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
+    cJSON_AddNumberToObject(settings, "trusted_device_days", g_config.trusted_device_days);
 
     // Security settings
     cJSON_AddBoolToObject(settings, "force_mfa_on_login", g_config.force_mfa_on_login);
@@ -524,6 +526,28 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.auth_timeout_hours = value;
         settings_changed = true;
         log_info("Updated auth_timeout_hours: %d", g_config.auth_timeout_hours);
+    }
+
+    cJSON *auth_absolute_timeout_hours = cJSON_GetObjectItem(settings, "auth_absolute_timeout_hours");
+    if (auth_absolute_timeout_hours && cJSON_IsNumber(auth_absolute_timeout_hours)) {
+        int value = auth_absolute_timeout_hours->valueint;
+        if (value < 1) value = 1;
+        g_config.auth_absolute_timeout_hours = value;
+        settings_changed = true;
+        log_info("Updated auth_absolute_timeout_hours: %d", g_config.auth_absolute_timeout_hours);
+    }
+
+    cJSON *trusted_device_days = cJSON_GetObjectItem(settings, "trusted_device_days");
+    if (trusted_device_days && cJSON_IsNumber(trusted_device_days)) {
+        int value = trusted_device_days->valueint;
+        if (value < 0) value = 0;
+        g_config.trusted_device_days = value;
+        settings_changed = true;
+        log_info("Updated trusted_device_days: %d", g_config.trusted_device_days);
+    }
+
+    if (g_config.auth_absolute_timeout_hours < g_config.auth_timeout_hours) {
+        g_config.auth_absolute_timeout_hours = g_config.auth_timeout_hours;
     }
 
     // Force MFA on login

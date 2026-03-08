@@ -173,6 +173,10 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res);
  * Returns public login config (force_mfa_on_login). No auth required.
  */
 void handle_auth_login_config(const http_request_t *req, http_response_t *res);
+void handle_auth_sessions_list(const http_request_t *req, http_response_t *res);
+void handle_auth_sessions_delete(const http_request_t *req, http_response_t *res);
+void handle_auth_trusted_devices_list(const http_request_t *req, http_response_t *res);
+void handle_auth_trusted_devices_delete(const http_request_t *req, http_response_t *res);
 
 /**
  * @brief Handler for GET /api/recordings/protected

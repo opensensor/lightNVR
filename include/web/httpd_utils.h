@@ -66,6 +66,13 @@ int httpd_check_admin_privileges(const http_request_t *req, http_response_t *res
 int httpd_get_session_token(const http_request_t *req, char *token, size_t token_size);
 
 /**
+ * @brief Extract a named cookie value from the Cookie header
+ * @return 0 if found, -1 otherwise
+ */
+int httpd_get_cookie_value(const http_request_t *req, const char *cookie_name,
+                           char *value, size_t value_size);
+
+/**
  * @brief Check if the request has viewer-level access
  *
  * In demo mode, unauthenticated users are granted viewer-level access.

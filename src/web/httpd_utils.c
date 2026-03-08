@@ -106,25 +106,37 @@ int httpd_get_basic_auth_credentials(const http_request_t *req,
     return 0;
 }
 
-int httpd_get_session_token(const http_request_t *req, char *token, size_t token_size) {
-    if (!req || !token || token_size == 0) return -1;
+int httpd_get_cookie_value(const http_request_t *req, const char *cookie_name,
+                           char *value, size_t value_size) {
+    if (!req || !cookie_name || !value || value_size == 0) return -1;
 
-    token[0] = '\0';
+    value[0] = '\0';
     const char *cookie = http_request_get_header(req, "Cookie");
     if (!cookie) return -1;
 
-    const char *session_start = strstr(cookie, "session=");
-    if (!session_start) return -1;
+    size_t name_len = strlen(cookie_name);
+    const char *cursor = cookie;
 
-    session_start += 8; // Skip "session="
-    const char *session_end = strchr(session_start, ';');
-    size_t len = session_end ? (size_t)(session_end - session_start) : strlen(session_start);
+    while (cursor && *cursor) {
+        while (*cursor == ' ' || *cursor == ';') cursor++;
+        if (strncmp(cursor, cookie_name, name_len) == 0 && cursor[name_len] == '=') {
+            const char *value_start = cursor + name_len + 1;
+            const char *value_end = strchr(value_start, ';');
+            size_t len = value_end ? (size_t)(value_end - value_start) : strlen(value_start);
+            if (len == 0 || len >= value_size) return -1;
+            memcpy(value, value_start, len);
+            value[len] = '\0';
+            return 0;
+        }
+        cursor = strchr(cursor, ';');
+        if (cursor) cursor++;
+    }
 
-    if (len == 0 || len >= token_size) return -1;
+    return -1;
+}
 
-    memcpy(token, session_start, len);
-    token[len] = '\0';
-    return 0;
+int httpd_get_session_token(const http_request_t *req, char *token, size_t token_size) {
+    return httpd_get_cookie_value(req, "session", token, token_size);
 }
 
 int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
