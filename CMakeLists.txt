@@ -445,6 +445,10 @@ if(ENABLE_GO2RTC)
     message(STATUS "go2rtc integration enabled with binary path: ${GO2RTC_BINARY_PATH}")
     message(STATUS "go2rtc config directory: ${GO2RTC_CONFIG_DIR}")
     message(STATUS "go2rtc API port: ${GO2RTC_API_PORT}")
+else()
+    list(APPEND GO2RTC_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/video/go2rtc/go2rtc_disabled.c"
+    )
 endif()
 
 # Combine all sources (excluding inih, bundled cjson)
@@ -456,10 +460,8 @@ set(SOURCES
 )
 
 
-# Add go2rtc sources if enabled
-if(ENABLE_GO2RTC)
-    list(APPEND SOURCES ${GO2RTC_SOURCES})
-endif()
+# Add go2rtc sources or disabled stubs
+list(APPEND SOURCES ${GO2RTC_SOURCES})
 
 # Add libuv server sources
 list(APPEND SOURCES ${LIBUV_SERVER_SOURCES})
