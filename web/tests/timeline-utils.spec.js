@@ -259,7 +259,7 @@ describe('timelineUtils', () => {
       const selectedDate = '2026-03-08';
       const timestamp = localClockTimeToTimestamp('03:10:00', selectedDate);
 
-      expect(timestamp).toBe(dayjs(`${selectedDate}T03:10:00`).unix());
+      expect(timestamp).toBe(dayjs.tz(`${selectedDate}T03:10:00`, 'America/New_York').unix());
       expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
 
       // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
