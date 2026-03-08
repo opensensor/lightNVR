@@ -360,6 +360,13 @@ test.describe('Recordings Page @ui @recordings', () => {
 
       await page.evaluate(() => document.exitFullscreen());
       await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+
+      await page.locator('#video-preview-modal button.close').click();
+      await expect(page.locator('#video-preview-modal')).toHaveCount(0);
+
+      await page.locator('button[title="Play"]').first().click();
+      await expect(page.locator('#video-preview-modal')).toBeVisible();
+      await expect(page.locator('#recording-playback-position')).toHaveText('cam1 - 00:00:00');
     });
   });
 

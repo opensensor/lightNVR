@@ -805,18 +805,11 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     }
   };
 
-  if (!isOpen) return null;
-
-  const playbackPositionLabel = recordingData?.stream
-    ? `${recordingData.stream} - ${formatUtils.formatDuration(currentPlaybackSeconds)}`
-    : formatUtils.formatDuration(currentPlaybackSeconds);
-
-  // Add useEffect to handle modal animation and cleanup
+  // Handle modal animation after the portal is mounted.
   useEffect(() => {
     let animationTimeout;
 
     if (isOpen && modalRef.current) {
-      // Animate in - small delay to ensure DOM is ready
       animationTimeout = setTimeout(() => {
         const modalContent = modalRef.current?.querySelector('.modal-content');
         if (modalContent) {
@@ -827,13 +820,18 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       }, 10);
     }
 
-    // Cleanup function
     return () => {
       if (animationTimeout) {
         clearTimeout(animationTimeout);
       }
     };
   }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const playbackPositionLabel = recordingData?.stream
+    ? `${recordingData.stream} - ${formatUtils.formatDuration(currentPlaybackSeconds)}`
+    : formatUtils.formatDuration(currentPlaybackSeconds);
 
   return createPortal(
     <div
@@ -1136,24 +1134,13 @@ export function ModalProvider({ children }) {
   const showVideoModal = useCallback((videoUrl, title, downloadUrl) => {
     console.log('ModalProvider.showVideoModal called with:', { videoUrl, title, downloadUrl });
 
-    // First reset the modal state completely
     setVideoModal({
-      isOpen: false,
-      videoUrl: '',
-      title: '',
-      downloadUrl: ''
+      isOpen: true,
+      videoUrl,
+      title,
+      downloadUrl,
     });
-
-    // Then set the new state after a small delay to ensure clean rendering
-    setTimeout(() => {
-      setVideoModal({
-        isOpen: true,
-        videoUrl,
-        title,
-        downloadUrl,
-      });
-      console.log('Video modal state updated with new content');
-    }, 50);
+    console.log('Video modal state updated with new content');
   }, []);
 
   // Handle snapshot download
@@ -1199,19 +1186,13 @@ export function ModalProvider({ children }) {
   const closeVideoModal = useCallback(() => {
     console.log('Closing video modal');
 
-    // First just set isOpen to false to trigger the closing animation
-    setVideoModal(prev => ({ ...prev, isOpen: false }));
-
-    // Then completely reset the modal state after animation completes
-    setTimeout(() => {
-      setVideoModal({
-        isOpen: false,
-        videoUrl: '',
-        title: '',
-        downloadUrl: ''
-      });
-      console.log('Video modal state fully reset');
-    }, 300);
+    setVideoModal({
+      isOpen: false,
+      videoUrl: '',
+      title: '',
+      downloadUrl: ''
+    });
+    console.log('Video modal state fully reset');
   }, []);
 
   // Create context value
