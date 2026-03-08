@@ -15,7 +15,7 @@ import { TagIcon, TagsOverlay } from '../recordings/TagsOverlay.jsx';
  * TimelinePlayer component
  * @returns {JSX.Element} TimelinePlayer component
  */
-export function TimelinePlayer() {
+export function TimelinePlayer({ videoElementRef = null }) {
   // Local state
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const [segments, setSegments] = useState([]);
@@ -36,6 +36,21 @@ export function TimelinePlayer() {
   const lastTimeUpdateRef = useRef(null);
   const lastSegmentIdRef = useRef(null);
   const lastDetectionSegmentIdRef = useRef(null);
+
+  const setVideoRefs = useCallback((node) => {
+    videoRef.current = node;
+
+    if (!videoElementRef) {
+      return;
+    }
+
+    if (typeof videoElementRef === 'function') {
+      videoElementRef(node);
+      return;
+    }
+
+    videoElementRef.current = node;
+  }, [videoElementRef]);
 
   // Subscribe to timeline state changes
   useEffect(() => {
@@ -743,7 +758,7 @@ export function TimelinePlayer() {
           style={isFullscreen ? { width: '100vw', height: '100vh' } : { aspectRatio: '16/9' }}
         >
           <video
-              ref={videoRef}
+              ref={setVideoRefs}
               className="w-full h-full object-contain"
               controls
               controlsList="nofullscreen"

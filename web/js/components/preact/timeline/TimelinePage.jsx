@@ -3,7 +3,7 @@
  * Main component for the timeline view
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'preact/hooks';
 import { TimelineControls } from './TimelineControls.jsx';
 import { TimelineRuler } from './TimelineRuler.jsx';
 import { TimelineSegments } from './TimelineSegments.jsx';
@@ -30,6 +30,13 @@ const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
 
 // Convert fractional hour (0–24) → Unix timestamp (seconds) for the given date
 function timelineHourToTimestamp(hour, selectedDate) {
+  const numericHour = Number(hour);
+  if (!Number.isFinite(numericHour)) {
+    throw new Error(`timelineHourToTimestamp: invalid hour value "${hour}"`);
+  }
+
+  const normalizedHour = Math.min(24, Math.max(0, numericHour));
+
   let date;
   if (selectedDate && typeof selectedDate === 'string' && selectedDate.includes('-')) {
     const [year, month, day] = selectedDate.split('-').map(Number);
@@ -38,7 +45,7 @@ function timelineHourToTimestamp(hour, selectedDate) {
     date = new Date();
     date.setHours(0, 0, 0, 0);
   }
-  return Math.floor((date.getTime() + hour * 3600000) / 1000);
+  return Math.floor((date.getTime() + normalizedHour * 3600000) / 1000);
 }
 
 // Utility function to convert timestamp to timeline hour
@@ -77,15 +84,25 @@ const timelineState = {
   // Pending state updates
   pendingUpdates: {},
 
+  // Prevent re-entrant listener notifications from overlapping state mutations.
+  isNotifying: false,
+
   // Update state and notify listeners
   setState(newState) {
     const now = Date.now();
+    const isTimeOnlyUpdate = newState.currentTime !== undefined &&
+      newState.currentSegmentIndex === undefined &&
+      // Playback updates need to propagate immediately to keep the cursor and
+      // currently playing segment synchronized with the video element.
+      newState.isPlaying !== true;
 
     // Batch frequent time-only updates (≤250 ms apart)
-    if (newState.currentTime !== undefined &&
-        newState.currentSegmentIndex === undefined &&
-        !newState.isPlaying &&
-        now - this.lastUpdateTime < 250) {
+    if (isTimeOnlyUpdate && now - this.lastUpdateTime < 250) {
+      return;
+    }
+
+    if (this.isNotifying) {
+      this.pendingUpdates = { ...this.pendingUpdates, ...newState };
       return;
     }
 
@@ -96,7 +113,13 @@ const timelineState = {
     }
 
     this.lastUpdateTime = now;
-    this.notifyListeners();
+
+    this.isNotifying = true;
+    try {
+      this.notifyListeners();
+    } finally {
+      this.isNotifying = false;
+    }
   },
 
   // Subscribe to state changes
@@ -112,11 +135,10 @@ const timelineState = {
 
   // Flush any pending updates
   flushPendingUpdates() {
-    if (Object.keys(this.pendingUpdates).length > 0) {
-      Object.assign(this, this.pendingUpdates);
+    if (!this.isNotifying && Object.keys(this.pendingUpdates).length > 0) {
+      const pendingUpdates = this.pendingUpdates;
       this.pendingUpdates = {};
-      this.lastUpdateTime = Date.now();
-      this.notifyListeners();
+      this.setState(pendingUpdates);
     }
   }
 };
@@ -228,6 +250,7 @@ export function TimelinePage() {
   const initialTimeRef = useRef(urlParams.time);  // Store initial time param for auto-seek
   const processedDataRef = useRef(null);  // Track last processed timeline data
   const selectedDateRef = useRef(urlParams.date);
+  const videoElementRef = useRef(null);
 
   useEffect(() => {
     selectedDateRef.current = selectedDate;
@@ -480,8 +503,8 @@ export function TimelinePage() {
       }, 100);
 
       // Preload the initial segment's video for this day
-      const videoPlayer = document.querySelector('#video-player video');
-      if (videoPlayer) {
+      const videoPlayer = videoElementRef.current;
+      if (videoPlayer instanceof HTMLVideoElement) {
         videoPlayer.src = `/api/recordings/play/${segmentsCopy[initialSegmentIndex].id}?t=${Date.now()}`;
         videoPlayer.load();
       }
@@ -745,8 +768,8 @@ export function TimelinePage() {
 
           // Load the next segment's video
           setTimeout(() => {
-            const videoEl = document.querySelector('#video-player video');
-            if (videoEl) {
+            const videoEl = videoElementRef.current;
+            if (videoEl instanceof HTMLVideoElement) {
               videoEl.pause();
               videoEl.removeAttribute('src');
               videoEl.load();
@@ -818,7 +841,7 @@ export function TimelinePage() {
     return (
       <>
         {/* Video player */}
-        <TimelinePlayer />
+        <TimelinePlayer videoElementRef={videoElementRef} />
 
         {/* Playback controls (includes time display) */}
         <TimelineControls />
