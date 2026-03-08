@@ -36,6 +36,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
   const lastTimeUpdateRef = useRef(null);
   const lastSegmentIdRef = useRef(null);
   const lastDetectionSegmentIdRef = useRef(null);
+  const preloadedVideoCleanupRef = useRef(null);
+  const initialPausedSyncEventLoggedRef = useRef(false);
+  const lastInitialPausedSegmentIdRef = useRef(null);
 
   const setVideoRefs = useCallback((node) => {
     videoRef.current = node;
@@ -61,6 +64,15 @@ export function TimelinePlayer({ videoElementRef = null }) {
     timelineState.setState({});
   }, []);
 
+  const cleanupPreloadedVideo = useCallback(() => {
+    if (typeof preloadedVideoCleanupRef.current !== 'function') {
+      return;
+    }
+
+    preloadedVideoCleanupRef.current();
+    preloadedVideoCleanupRef.current = null;
+  }, []);
+
   // Subscribe to timeline state changes
   useEffect(() => {
     const listener = state => {
@@ -81,6 +93,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => cleanupPreloadedVideo, [cleanupPreloadedVideo]);
 
   // Handle video playback based on state changes
   const handleVideoPlayback = (state) => {
@@ -228,9 +242,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
       // If we're very close to the start of the segment but not exactly at the start,
       // add a small offset to prevent snapping to the start
-      if (validSeekTime > 0 && validSeekTime < 1.0) {
-        // Ensure we're at least 1 second into the segment
-        validSeekTime = 1.0;
+      if (validSeekTime > 0 && validSeekTime < 0.1) {
+        // Ensure we're at least 0.1 seconds into the segment
+        validSeekTime = 0.1;
         console.log(`TimelinePlayer: Adjusting seek time to ${validSeekTime}s to prevent snapping to segment start`);
       }
 
@@ -284,11 +298,55 @@ export function TimelinePlayer({ videoElementRef = null }) {
       // Preload the next segment's video immediately
       const nextSegment = segments[nextIndex];
       const nextVideoUrl = `/api/recordings/play/${nextSegment.id}?t=${Date.now()}`;
+
+      cleanupPreloadedVideo();
       
       // Create a temporary video element to preload the next segment
       const tempVideo = document.createElement('video');
       tempVideo.preload = 'auto';
       tempVideo.src = nextVideoUrl;
+
+      let tempVideoCleanupTimeoutId = null;
+      const cleanupTempVideo = () => {
+        tempVideo.removeEventListener('loadeddata', onTempVideoLoadedData);
+        tempVideo.removeEventListener('error', onTempVideoError);
+
+        try {
+          tempVideo.pause();
+        } catch (e) {
+          // Ignore cleanup errors.
+        }
+
+        tempVideo.removeAttribute('src');
+
+        try {
+          tempVideo.load();
+        } catch (e) {
+          // Ignore cleanup errors.
+        }
+
+        if (tempVideoCleanupTimeoutId !== null) {
+          clearTimeout(tempVideoCleanupTimeoutId);
+          tempVideoCleanupTimeoutId = null;
+        }
+
+        if (preloadedVideoCleanupRef.current === cleanupTempVideo) {
+          preloadedVideoCleanupRef.current = null;
+        }
+      };
+      const onTempVideoLoadedData = () => {
+        cleanupTempVideo();
+      };
+      const onTempVideoError = () => {
+        cleanupTempVideo();
+      };
+
+      preloadedVideoCleanupRef.current = cleanupTempVideo;
+      tempVideo.addEventListener('loadeddata', onTempVideoLoadedData);
+      tempVideo.addEventListener('error', onTempVideoError);
+      tempVideoCleanupTimeoutId = setTimeout(() => {
+        cleanupTempVideo();
+      }, 15000);
       tempVideo.load();
       
       console.log(`Preloading next segment ${nextIndex} (ID: ${nextSegment.id})`);
@@ -400,13 +458,20 @@ export function TimelinePlayer({ videoElementRef = null }) {
       desiredTime > segment.start_timestamp &&
       desiredTime <= segment.end_timestamp;
 
+    if (lastInitialPausedSegmentIdRef.current !== segment.id) {
+      lastInitialPausedSegmentIdRef.current = segment.id;
+      initialPausedSyncEventLoggedRef.current = false;
+    }
+
     if (isInitialPausedSyncEvent) {
-      console.log('TimelinePlayer: Ignoring initial 0s timeupdate before seek position is applied', {
-        segmentId: segment.id,
-        segmentStart: segment.start_timestamp,
-        desiredTime,
-        videoTime: video.currentTime
-      });
+      if (!initialPausedSyncEventLoggedRef.current) {
+        initialPausedSyncEventLoggedRef.current = true;
+        console.log(
+          'TimelinePlayer: Ignoring initial 0s timeupdate before seek position is applied ' +
+          `(segmentId=${segment.id}, segmentStart=${segment.start_timestamp}, ` +
+          `desiredTime=${desiredTime}, videoTime=${video.currentTime})`
+        );
+      }
       return;
     }
 
