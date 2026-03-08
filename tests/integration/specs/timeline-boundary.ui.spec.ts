@@ -10,6 +10,10 @@ function localTimestamp(date: string, time: string): number {
   return Math.floor(new Date(y, m - 1, d, hh, mm, ss).getTime() / 1000);
 }
 
+function utcTimestamp(isoString: string): number {
+  return Math.floor(Date.parse(isoString) / 1000);
+}
+
 async function mockTimelineApis(page: Page, stream: string, segments: Segment[], tagsById: Record<number, string[]> = {}) {
   await page.route('**/api/streams', route => route.fulfill({ json: [{ name: stream }] }));
   await page.route('**/api/timeline/segments?**', route => route.fulfill({ json: { segments } }));
@@ -206,11 +210,16 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     const timelinePage = new TimelinePage(page);
     await expect(timelinePage.timelineContainer).toBeVisible();
     await expect.poll(() => timelinePage.videoPlayer.evaluate(video => {
+      interface VideoWithControlsList extends HTMLVideoElement {
+        controlsList?: { contains?(value: string): boolean };
+      }
+
       if (!video) {
         return false;
       }
-      const anyVideo: any = video;
-      const controlsList = anyVideo.controlsList;
+
+      const typedVideo = video as VideoWithControlsList;
+      const controlsList = typedVideo.controlsList;
       if (!controlsList || typeof controlsList.contains !== 'function') {
         return false;
       }
@@ -243,9 +252,16 @@ test.describe('Timeline DST rendering @ui @timeline', () => {
   test('skips the nonexistent 2am ruler label on spring-forward days while preserving playback selection', async ({ page }) => {
     const stream = 'front_door';
     const selectedDate = '2026-03-08';
+    // America/New_York spring-forward day:
+    // 06:50:00Z = 01:50:00 EST, 06:55:00Z = 01:55:00 EST,
+    // 07:10:00Z = 03:10:00 EDT, 07:15:00Z = 03:15:00 EDT.
+    const preSpringForward0150EST = utcTimestamp('2026-03-08T06:50:00Z');
+    const preSpringForward0155EST = utcTimestamp('2026-03-08T06:55:00Z');
+    const postSpringForward0310EDT = utcTimestamp('2026-03-08T07:10:00Z');
+    const postSpringForward0315EDT = utcTimestamp('2026-03-08T07:15:00Z');
     const segments: Segment[] = [
-      { id: 601, stream, start_timestamp: Math.floor(Date.parse('2026-03-08T06:50:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-03-08T06:55:00Z') / 1000) },
-      { id: 602, stream, start_timestamp: Math.floor(Date.parse('2026-03-08T07:10:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-03-08T07:15:00Z') / 1000) }
+      { id: 601, stream, start_timestamp: preSpringForward0150EST, end_timestamp: preSpringForward0155EST },
+      { id: 602, stream, start_timestamp: postSpringForward0310EDT, end_timestamp: postSpringForward0315EDT }
     ];
 
     await mockTimelineApis(page, stream, segments);
@@ -272,9 +288,14 @@ test.describe('Timeline DST fall-back rendering @ui @timeline', () => {
   test('shows the repeated 2am hour twice on fall-back days', async ({ page }) => {
     const stream = 'front_door';
     const selectedDate = '2026-10-25';
+    // Europe/Berlin fall-back day:
+    // 00:10:00Z = first 02:10 local time (CEST), 01:10:00Z = second 02:10 local time (CET).
+    const first0210Berlin = utcTimestamp('2026-10-25T00:10:00Z');
+    const second0210Berlin = utcTimestamp('2026-10-25T01:10:00Z');
+    const segmentDurationSeconds = 5 * 60;
     const segments: Segment[] = [
-      { id: 701, stream, start_timestamp: Math.floor(Date.parse('2026-10-25T00:10:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-10-25T00:15:00Z') / 1000) },
-      { id: 702, stream, start_timestamp: Math.floor(Date.parse('2026-10-25T01:10:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-10-25T01:15:00Z') / 1000) }
+      { id: 701, stream, start_timestamp: first0210Berlin, end_timestamp: first0210Berlin + segmentDurationSeconds },
+      { id: 702, stream, start_timestamp: second0210Berlin, end_timestamp: second0210Berlin + segmentDurationSeconds }
     ];
 
     await mockTimelineApis(page, stream, segments);
