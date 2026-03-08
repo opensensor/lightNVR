@@ -997,6 +997,10 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				if (is_keyframe ||
 				    (shutdown_detected && wait_time > SHUTDOWN_KEYFRAME_WAIT_TIMEOUT_S) ||
 				    keyframe_timeout_reached) {
+                    // The nested check below determines whether this *specific final* frame is a
+                    // keyframe. This influences boundary handling: only a final keyframe triggers
+                    // overlap mode (storing the frame for the next segment). A timeout or shutdown
+                    // exit falls through to the else branch regardless of is_keyframe's value above.
                     if (is_keyframe) {
                         log_info("Found final key frame, ending recording");
                         // Set flag to indicate the last frame was a key frame
@@ -1085,60 +1089,26 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // CRITICAL FIX: Ensure DTS values don't exceed MP4 format limits (0x7fffffff)
                     // This prevents the "Assertion next_dts <= 0x7fffffff failed" error
                     if (pkt->dts != AV_NOPTS_VALUE) {
-                        if (pkt->dts > MP4_DTS_MAX_VALUE) {
-                            log_warn("DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
-                            // Calculate PTS-DTS difference BEFORE modifying DTS
-                            int64_t pts_dts_diff = 0;
-                            if (pkt->pts != AV_NOPTS_VALUE) {
-                                pts_dts_diff = pkt->pts - pkt->dts;
-                            }
-                            // Reset DTS to a safe value
-                            pkt->dts = DTS_RESET_SAFE_VALUE;
-                            // Reset PTS to maintain relationship or set to DTS
-                            if (pkt->pts != AV_NOPTS_VALUE) {
-                                if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
-                                    // Only maintain the relationship if the difference is reasonable
-                                    pkt->pts = pkt->dts + pts_dts_diff;
-                                } else {
-                                    // Otherwise just set PTS equal to DTS
-                                    pkt->pts = pkt->dts;
-                                }
-                            } else {
-                                pkt->pts = pkt->dts;
-                            }
-                        }
-                        // Additional check to ensure DTS is always within safe range
-                        // This handles cases where DTS might be close to the limit
-                        if (pkt->dts > MP4_DTS_WARNING_THRESHOLD) {  // ~75% of max value
-                            log_info("DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
-                            // Calculate PTS-DTS difference BEFORE modifying DTS
-                            int64_t pts_dts_diff = 0;
-                            if (pkt->pts != AV_NOPTS_VALUE) {
-                                pts_dts_diff = pkt->pts - pkt->dts;
-                            }
-                            // Reset DTS to a safe value
-                            pkt->dts = DTS_RESET_SAFE_VALUE;
-                            // Reset PTS to maintain relationship or set to DTS
-                            if (pkt->pts != AV_NOPTS_VALUE) {
-                                if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
-                                    // Only maintain the relationship if the difference is reasonable
-                                    pkt->pts = pkt->dts + pts_dts_diff;
-                                } else {
-                                    // Otherwise just set PTS equal to DTS
-                                    pkt->pts = pkt->dts;
-                                }
-                            } else {
-                                pkt->pts = pkt->dts;
-                            }
-                        }
+                        // Delegate DTS/PTS clamping to the shared helper to avoid duplicated logic.
+                        clamp_dts_pts_for_mp4(pkt, DTS_RESET_SAFE_VALUE, MP4_DTS_WARNING_THRESHOLD,
+                                              "Video", NULL, NULL);
                     }
 
                     // CRITICAL FIX: Ensure packet duration is within reasonable limits
                     // This prevents the "Packet duration is out of range" error
                     if (pkt->duration > MAX_PACKET_DURATION_TIMEBASE_UNITS) {
                         log_warn("Packet duration too large: %lld, capping at reasonable value", (long long)pkt->duration);
-                        // Cap at a reasonable value (e.g., 1 second in a 90 kHz timebase)
-                        pkt->duration = DEFAULT_PACKET_DURATION_90KHZ;
+                        // Cap at a reasonable value (~1 second) expressed in the stream's actual time_base
+                        // rather than a hard-coded 90 kHz timebase, to avoid timing distortion.
+                        AVRational one_second = { 1, 1 };
+                        int64_t max_duration_in_stream_tb =
+                            av_rescale_q(1, one_second, input_ctx->streams[video_stream_idx]->time_base);
+                        if (max_duration_in_stream_tb <= 0 ||
+                            max_duration_in_stream_tb > MAX_PACKET_DURATION_TIMEBASE_UNITS) {
+                            // Fallback to the pre-defined upper bound if conversion is pathological.
+                            max_duration_in_stream_tb = MAX_PACKET_DURATION_TIMEBASE_UNITS;
+                        }
+                        pkt->duration = max_duration_in_stream_tb;
                     }
 
                     // Explicitly set duration for the final frame to prevent segmentation fault
@@ -1263,18 +1233,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             // Explicitly set duration to prevent segmentation fault during fragment writing
             // This addresses the "Estimating the duration of the last packet in a fragment" error
             if (pkt->duration == 0 || pkt->duration == AV_NOPTS_VALUE) {
-                // Use the time base of the video stream to calculate a reasonable duration
-                // For most video streams, this will be 1/framerate
-                if (input_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0 &&
-                    input_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0) {
-                    // Calculate duration based on framerate (time_base units)
-                    pkt->duration = av_rescale_q(1,
-                                               av_inv_q(input_ctx->streams[video_stream_idx]->avg_frame_rate),
-                                               input_ctx->streams[video_stream_idx]->time_base);
-                } else {
-                    // Default to a reasonable value if framerate is not available
-                    pkt->duration = 1;
-                }
+                // Use helper to calculate a reasonable per-frame duration in stream time_base units.
+                // For most video streams, this will be approximately 1/framerate.
+                pkt->duration = calculate_frame_duration_from_stream(input_ctx->streams[video_stream_idx]);
                 log_debug("Set video packet duration to %lld", (long long)pkt->duration);
             }
 
