@@ -293,8 +293,11 @@ describe('timelineUtils', () => {
 
     try {
       const selectedDate = '2026-11-01';
-      const firstRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T05:10:00Z') / 1000);
-      const secondRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T06:10:00Z') / 1000);
+      const firstRepeatedHourTimestamp = dayjs.tz('2026-11-01T01:10:00', 'America/New_York').unix();
+      const secondRepeatedHourTimestamp = dayjs
+        .tz('2026-11-01T01:10:00', 'America/New_York')
+        .add(1, 'hour')
+        .unix();
 
       expect(timestampToTimelineOffset(firstRepeatedHourTimestamp, selectedDate)).toBeCloseTo(1 + (10 / 60), 6);
       expect(timestampToTimelineOffset(secondRepeatedHourTimestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
