@@ -10,7 +10,6 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
-  usePostMutation,
 } from '../../../query-client.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -400,8 +399,8 @@ export const recordingsAPI = {
    */
   deleteSelectedRecordings: async (selectedRecordings) => {
     const selectedIds = Object.entries(selectedRecordings)
-      .filter(([recordingId, isSelected]) => isSelected)
-      .map(([id, isSelected]) => parseInt(id, 10));
+      .filter(([id, isSelected]) => isSelected)
+      .map(([id]) => parseInt(id, 10));
 
     if (selectedIds.length === 0) {
       showStatusMessage('No recordings selected');
@@ -459,7 +458,7 @@ export const recordingsAPI = {
   pollBatchDeleteProgress: async (jobId) => {
     const maxAttempts = BATCH_DELETE_POLL_MAX_ATTEMPTS;
     const baseDelayMs = 1000;    // 1 second base delay between polls
-    const maxDelayMs = 10000;    // cap delay at 10 seconds
+    const maxDelayMs = 10000;    // Cap delay at 10 seconds
     let attempts = 0;
 
     while (attempts < maxAttempts) {

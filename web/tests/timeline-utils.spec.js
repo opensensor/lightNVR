@@ -27,6 +27,10 @@ import {
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+// Note: JavaScript Date months are 0-indexed, so month 2 = March.
+const baseTestDateTimestamp = (hours, minutes, seconds = 0) =>
+  new Date(2026, 2, 8, hours, minutes, seconds).getTime() / 1000;
+
 describe('timelineUtils', () => {
   const originalTz = process.env.TZ;
 
@@ -164,9 +168,9 @@ describe('timelineUtils', () => {
   });
 
   test('formats exact minute boundaries without floating point drift', () => {
-    const exactTwelveTen = new Date(2026, 2, 8, 12, 10, 0).getTime() / 1000;
+    const exactTwelveTen = baseTestDateTimestamp(12, 10, 0);
     const exactTwelveTenPlusNearlyASecond = exactTwelveTen + 0.999;
-    const exactMidnightTwo = new Date(2026, 2, 8, 0, 2, 0).getTime() / 1000;
+    const exactMidnightTwo = baseTestDateTimestamp(0, 2, 0);
     const exactMidnightTwoPlusSmallFraction = exactMidnightTwo + 0.001;
 
     // Exact minute boundaries should format correctly.
@@ -179,7 +183,7 @@ describe('timelineUtils', () => {
   });
 
   test('formats playback labels with a stream name prefix when available', () => {
-    const timestamp = new Date(2026, 2, 8, 9, 15, 0).getTime() / 1000;
+    const timestamp = baseTestDateTimestamp(9, 15, 0);
 
     expect(formatPlaybackTimeLabel(timestamp, 'front_door')).toBe('front_door - 09:15:00');
     expect(formatPlaybackTimeLabel(timestamp, '')).toBe('09:15:00');
@@ -278,22 +282,22 @@ describe('timelineUtils', () => {
 
   test('handles clock boundary cases at midnight, end of day, and subsecond precision', () => {
     // Midnight at the start of the day
-    expect(formatTimestampAsClock(new Date(2026, 2, 8, 0, 0, 0).getTime() / 1000)).toBe('00:00:00');
+    expect(formatTimestampAsClock(baseTestDateTimestamp(0, 0, 0))).toBe('00:00:00');
 
     // Last second of the day
-    expect(formatTimestampAsClock(new Date(2026, 2, 8, 23, 59, 59).getTime() / 1000)).toBe('23:59:59');
+    expect(formatTimestampAsClock(baseTestDateTimestamp(23, 59, 59))).toBe('23:59:59');
 
     // Subsecond precision: ensure fractional seconds do not cause rounding drift
-    const nearlyNextSecond = new Date(2026, 2, 8, 12, 10, 30).getTime() / 1000 + 0.999;
+    const nearlyNextSecond = baseTestDateTimestamp(12, 10, 30) + 0.999;
     expect(formatTimestampAsClock(nearlyNextSecond)).toBe('12:10:30');
 
     // Subsecond precision near zero: ensure small positive fractions do not change the displayed second
-    const justAfterSecond = new Date(2026, 2, 8, 12, 10, 30).getTime() / 1000 + 0.001;
+    const justAfterSecond = baseTestDateTimestamp(12, 10, 30) + 0.001;
     expect(formatTimestampAsClock(justAfterSecond)).toBe('12:10:30');
   });
 
   test('formats timestamps as local YYYY-MM-DD keys', () => {
-    expect(formatTimestampAsLocalDate(new Date(2026, 2, 8, 12, 10, 0).getTime() / 1000)).toBe('2026-03-08');
+    expect(formatTimestampAsLocalDate(baseTestDateTimestamp(12, 10, 0))).toBe('2026-03-08');
   });
 
   test('returns all local dates touched by selected recordings, including overnight spans', () => {
