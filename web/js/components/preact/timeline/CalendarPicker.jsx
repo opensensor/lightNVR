@@ -17,9 +17,6 @@ const MONTHS = [
   'July','August','September','October','November','December'
 ];
 
-/** YYYY-MM-DD from a Date (local) */
-const fmt = d => dayjs(d).format('YYYY-MM-DD');
-
 /** Parse YYYY-MM-DD into local Date at midnight */
 function parseLocal(str) {
   return dayjs(str);

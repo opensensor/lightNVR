@@ -4,8 +4,6 @@
 
 import dayjs from 'dayjs';
 
-const pad = (value) => String(value).padStart(2, '0');
-
 export const MIN_TIMELINE_VIEW_HOURS = 0.5;
 export const MAX_TIMELINE_VIEW_HOURS = 24;
 
