@@ -515,8 +515,6 @@ target_link_libraries(lightnvr
 
 # Link libraries for rebuild_recordings utility
 target_link_libraries(rebuild_recordings
-        lightnvr_lib
-        ${HTTP_BACKEND_LIBS}
         inih_lib
         ${FFMPEG_LIBRARIES}
         ${SQLITE_LIBRARIES}
