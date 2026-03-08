@@ -218,6 +218,7 @@ void test_default_config_mp4_segment_duration(void) {
 
 void test_default_config_stream_defaults(void) {
     load_default_config(&cfg);
+    TEST_ASSERT_TRUE(cfg.max_streams > 0);
     /* All streams should default to streaming enabled, no detection */
     for (int i = 0; i < cfg.max_streams; i++) {
         TEST_ASSERT_TRUE(cfg.streams[i].streaming_enabled);
@@ -391,9 +392,6 @@ void test_env_integer_with_trailing_whitespace(void) {
         TEST_ASSERT_EQUAL_INT(0, unsetenv("LIGHTNVR_WEB_PORT"));
     }
 
-    unlink(pid_path);
-    unlink(log_path);
-    unlink(db_path);
     unlink(config_path);
     rmdir(storage_hls_path);
     rmdir(storage_path);
