@@ -368,16 +368,16 @@ endif()
 include_directories(${LIGHTNVR_INCLUDE_DIRS})
 
 # Define source files, excluding SOD sources which are built separately
-file(GLOB_RECURSE CORE_SOURCES "src/core/*.c")
+file(GLOB CORE_SOURCES "src/core/*.c")
 # Exclude main.c from CORE_SOURCES so it is not compiled into lightnvr_lib.
 # Test executables link against lightnvr_lib and provide their own main(); having
 # main.c.o inside the library would produce a duplicate-symbol link error.
 # main.c is compiled directly into the lightnvr executable via add_executable().
 list(FILTER CORE_SOURCES EXCLUDE REGEX ".*core/main\\.c$")
 message(STATUS "Excluding main.c from CORE_SOURCES (library build)")
-file(GLOB_RECURSE DATABASE_SOURCES "src/database/*.c")
-file(GLOB_RECURSE STORAGE_SOURCES "src/storage/*.c")
-file(GLOB_RECURSE UTILS_SOURCES "src/utils/*.c")
+file(GLOB DATABASE_SOURCES "src/database/*.c")
+file(GLOB STORAGE_SOURCES "src/storage/*.c")
+file(GLOB UTILS_SOURCES "src/utils/*.c")
 # Exclude rebuild_recordings.c from UTILS_SOURCES to avoid multiple main functions
 list(FILTER UTILS_SOURCES EXCLUDE REGEX ".*rebuild_recordings\\.c$")
 message(STATUS "Excluding rebuild_recordings.c from main executable")
