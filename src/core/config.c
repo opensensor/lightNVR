@@ -356,7 +356,7 @@ void load_default_config(config_t *config) {
     config->web_cache_max_age_default = 86400;    // 1 day default
     
     // Memory optimization
-    config->buffer_size = 1024; // 1MB buffer size
+    config->buffer_size = 1024; // 1024 KB (1 MB) buffer size
     config->use_swap = true;
     snprintf(config->swap_file, MAX_PATH_LENGTH, "/var/lib/lightnvr/swap");
     config->swap_size = (uint64_t)128 * 1024 * 1024; // 128MB swap
@@ -1231,7 +1231,7 @@ int load_config(config_t *config) {
     // Set default web root if not specified
     if (strlen(config->web_root) == 0) {
         // Set a default web root path
-        strcpy(config->web_root, "/var/www/lightnvr");  // or another appropriate default
+        snprintf(config->web_root, sizeof(config->web_root), "%s", "/var/www/lightnvr");  // or another appropriate default
     }
 
     // Add logging to debug
