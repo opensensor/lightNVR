@@ -401,7 +401,7 @@ export const recordingsAPI = {
   deleteSelectedRecordings: async (selectedRecordings) => {
     const selectedIds = Object.entries(selectedRecordings)
       .filter(([recordingId, isSelected]) => isSelected)
-      .map(([id, _]) => parseInt(id, 10));
+      .map(([id, isSelected]) => parseInt(id, 10));
 
     if (selectedIds.length === 0) {
       showStatusMessage('No recordings selected');
@@ -458,9 +458,14 @@ export const recordingsAPI = {
    */
   pollBatchDeleteProgress: async (jobId) => {
     const maxAttempts = BATCH_DELETE_POLL_MAX_ATTEMPTS;
+    const baseDelayMs = 1000;    // 1 second base delay between polls
+    const maxDelayMs = 10000;    // cap delay at 10 seconds
     let attempts = 0;
 
     while (attempts < maxAttempts) {
+      // Calculate exponential backoff delay for this attempt,
+      // capped to avoid excessively long waits.
+      const currentDelayMs = Math.min(baseDelayMs * (2 ** attempts), maxDelayMs);
       try {
         const progress = await fetchJSON(`/api/recordings/batch-delete/progress/${jobId}`, {
           method: 'GET',
@@ -490,13 +495,13 @@ export const recordingsAPI = {
           };
         }
 
-        // Wait 1 second before next poll
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Wait with exponential backoff before next poll
+        await new Promise(resolve => setTimeout(resolve, currentDelayMs));
         attempts++;
       } catch (error) {
         console.error('Error polling batch delete progress:', error);
-        // Continue polling on error
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Continue polling on error with exponential backoff
+        await new Promise(resolve => setTimeout(resolve, currentDelayMs));
         attempts++;
       }
     }
@@ -718,13 +723,12 @@ export const recordingsAPI = {
     console.log('Title:', title);
     console.log('Download URL:', downloadUrl);
 
-    // Check if we're using the context-based showVideoModal or the direct function
-    if (window.__modalContext && window.__modalContext.showVideoModal) {
-      // Use the context-based function if available
-      window.__modalContext.showVideoModal(videoUrl, title, downloadUrl);
-    } else {
-      // Fall back to the provided function
+    // Use the provided showVideoModal function; callers are responsible for
+    // obtaining it from any relevant context or dependency injection mechanism.
+    if (typeof showVideoModal === 'function') {
       showVideoModal(videoUrl, title, downloadUrl);
+    } else {
+      console.error('showVideoModal is not a function; cannot open recording modal');
     }
 
     console.log('Video modal should be shown now');
