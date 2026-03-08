@@ -15,7 +15,7 @@ export class TimelinePage extends BasePage {
   }
 
   get timelineContainer(): Locator {
-    return this.page.locator('.timeline-container, .timeline, [data-testid="timeline"]');
+    return this.page.locator('#timeline-container, .timeline-container, .timeline, [data-testid="timeline"]');
   }
 
   get timelineSegments(): Locator {
@@ -43,19 +43,19 @@ export class TimelinePage extends BasePage {
   }
 
   get streamFilter(): Locator {
-    return this.page.locator('select[name="stream"], #stream-filter, [data-testid="stream-filter"]').first();
+    return this.page.locator('#stream-selector, select[name="stream"], #stream-filter, [data-testid="stream-filter"]').first();
   }
 
   get playhead(): Locator {
-    return this.page.locator('.playhead, [data-testid="playhead"]').first();
+    return this.page.locator('#timeline-container .timeline-cursor, .playhead, [data-testid="playhead"]').first();
   }
 
   get timeDisplay(): Locator {
-    return this.page.locator('.time-display, [data-testid="time-display"]').first();
+    return this.page.locator('#time-display, .time-display, [data-testid="time-display"]').first();
   }
 
   get videoPlayer(): Locator {
-    return this.page.locator('video, .video-player, [data-testid="video-player"]').first();
+    return this.page.locator('#video-player video, video, .video-player, [data-testid="video-player"]').first();
   }
 
   get loadingIndicator(): Locator {

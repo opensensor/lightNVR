@@ -1,0 +1,118 @@
+import { test, expect, Page } from '@playwright/test';
+import { login, USERS } from '../fixtures/test-fixtures';
+import { TimelinePage } from '../pages/TimelinePage';
+
+type Segment = { id: number; stream: string; start_timestamp: number; end_timestamp: number };
+
+function localTimestamp(date: string, time: string): number {
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm, ss] = time.split(':').map(Number);
+  return Math.floor(new Date(y, m - 1, d, hh, mm, ss).getTime() / 1000);
+}
+
+async function mockTimelineApis(page: Page, stream: string, segments: Segment[], tagsById: Record<number, string[]> = {}) {
+  await page.route('**/api/streams', route => route.fulfill({ json: [{ name: stream }] }));
+  await page.route('**/api/timeline/segments?**', route => route.fulfill({ json: { segments } }));
+  await page.route('**/api/detection/results/**', route => route.fulfill({ json: { detections: [] } }));
+  await page.route('**/api/recordings/**', async route => {
+    const pathname = new URL(route.request().url()).pathname;
+    const play = pathname.match(/\/api\/recordings\/play\/(\d+)$/);
+    if (play) return route.fulfill({ status: 204, body: '' });
+
+    const tags = pathname.match(/\/api\/recordings\/(\d+)\/tags$/);
+    if (tags) return route.fulfill({ json: { tags: tagsById[Number(tags[1])] || [] } });
+
+    const info = pathname.match(/\/api\/recordings\/(\d+)$/);
+    if (info) {
+      const segment = segments.find(s => s.id === Number(info[1]));
+      if (segment) {
+        return route.fulfill({ json: {
+          id: segment.id,
+          stream: segment.stream,
+          start_time: new Date(segment.start_timestamp * 1000).toISOString(),
+          end_time: new Date(segment.end_timestamp * 1000).toISOString(),
+          protected: false
+        } });
+      }
+    }
+
+    return route.continue();
+  });
+}
+
+test.describe('Timeline boundary flows @ui @timeline', () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page, USERS.admin);
+  });
+
+  test('loads the intended recording from Recordings view at a boundary timestamp', async ({ page }) => {
+    const stream = 'front_door';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 101, stream, start_timestamp: localTimestamp(date, '12:00:00'), end_timestamp: localTimestamp(date, '12:10:00') },
+      { id: 102, stream, start_timestamp: localTimestamp(date, '12:10:00'), end_timestamp: localTimestamp(date, '12:20:00') }
+    ];
+
+    await page.addInitScript(() => localStorage.setItem('recordings_view_mode', 'table'));
+    await mockTimelineApis(page, stream, segments, { 102: ['person'] });
+    await page.route('**/api/recordings?**', route => route.fulfill({ json: {
+      recordings: [{ id: 102, stream, start_time_unix: segments[1].start_timestamp, duration: 600, size: '1 MB', protected: false, tags: [] }],
+      pagination: { total: 1, pages: 1, limit: 20 }
+    } }));
+
+    await page.goto('/recordings.html', { waitUntil: 'domcontentloaded' });
+    const link = page.locator('a[title="View in Timeline"]').first();
+    await expect(link).toBeVisible();
+
+    const href = await link.getAttribute('href');
+    const expectedTime = new URL(href!, 'http://localhost').searchParams.get('time');
+
+    await Promise.all([
+      page.waitForURL('**/timeline.html**'),
+      link.click()
+    ]);
+
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(timelinePage.timeDisplay).toHaveText(expectedTime!);
+    await expect(page.locator('button[title="Manage Recording Tags"]')).toContainText('Tags (1)');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/102(?:\?|$)/);
+  });
+
+  test('renders a recording that spans midnight on the selected day', async ({ page }) => {
+    const stream = 'overnight_drive';
+    const selectedDate = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 201, stream, start_timestamp: localTimestamp('2026-03-07', '23:58:00'), end_timestamp: localTimestamp(selectedDate, '00:05:00') }
+    ];
+
+    await mockTimelineApis(page, stream, segments, { 201: ['night'] });
+    await page.goto(`/timeline.html?stream=${stream}&date=${selectedDate}&time=00:02:00`, { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    const segmentBar = page.locator('#timeline-container .timeline-segment').first();
+
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(page.locator('button[title="Manage Recording Tags"]')).toContainText('Tags (1)');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/201(?:\?|$)/);
+    await expect(segmentBar).toBeVisible();
+    expect((await segmentBar.boundingBox())?.width ?? 0).toBeGreaterThan(0);
+  });
+
+  test('falls back to the nearest recording when the requested time is in a gap', async ({ page }) => {
+    const stream = 'garage';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 301, stream, start_timestamp: localTimestamp(date, '10:00:00'), end_timestamp: localTimestamp(date, '10:05:00') },
+      { id: 302, stream, start_timestamp: localTimestamp(date, '10:10:00'), end_timestamp: localTimestamp(date, '10:15:00') }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${date}&time=10:08:00`, { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(timelinePage.timeDisplay).toHaveText('10:10:00');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/302(?:\?|$)/);
+  });
+});

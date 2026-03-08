@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { findContainingSegmentIndex, findNearestSegmentIndex } from './timelineUtils.js';
 
 /**
  * TimelineControls component
@@ -80,33 +81,23 @@ export function TimelineControls() {
       console.log('TimelineControls: Using current time to find segment:', timelineState.currentTime);
 
       // First try to find a segment that contains the current time
-      for (let i = 0; i < timelineState.timelineSegments.length; i++) {
-        const segment = timelineState.timelineSegments[i];
-        if (timelineState.currentTime >= segment.start_timestamp &&
-            timelineState.currentTime <= segment.end_timestamp) {
-          segmentToPlay = segment;
-          segmentIndex = i;
-          relativeTime = timelineState.currentTime - segment.start_timestamp;
-          console.log(`TimelineControls: Found segment ${i} containing current time, relative time: ${relativeTime}s`);
-          break;
-        }
+      const containingIndex = findContainingSegmentIndex(
+        timelineState.timelineSegments,
+        timelineState.currentTime
+      );
+      if (containingIndex !== -1) {
+        segmentToPlay = timelineState.timelineSegments[containingIndex];
+        segmentIndex = containingIndex;
+        relativeTime = timelineState.currentTime - segmentToPlay.start_timestamp;
+        console.log(`TimelineControls: Found segment ${containingIndex} containing current time, relative time: ${relativeTime}s`);
       }
 
       // If no exact match, find the closest segment
       if (!segmentToPlay) {
-        let closestIndex = 0;
-        let minDistance = Infinity;
-
-        for (let i = 0; i < timelineState.timelineSegments.length; i++) {
-          const segment = timelineState.timelineSegments[i];
-          const midpoint = (segment.start_timestamp + segment.end_timestamp) / 2;
-          const distance = Math.abs(timelineState.currentTime - midpoint);
-
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestIndex = i;
-          }
-        }
+        const closestIndex = findNearestSegmentIndex(
+          timelineState.timelineSegments,
+          timelineState.currentTime
+        );
 
         segmentToPlay = timelineState.timelineSegments[closestIndex];
         segmentIndex = closestIndex;

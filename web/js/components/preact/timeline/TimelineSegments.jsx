@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
+import { findContainingSegmentIndex, getClippedSegmentHourRange } from './timelineUtils.js';
 
 /**
  * TimelineSegments component
@@ -119,21 +120,16 @@ export function TimelineSegments({ segments: propSegments }) {
     });
 
     // Find segment that contains this timestamp
-    let foundSegment = false;
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const st = segment.start_timestamp;
-      const et = segment.end_timestamp;
+    const foundIndex = findContainingSegmentIndex(segments, clickTimestamp);
+    const foundSegment = foundIndex !== -1;
 
-      if (clickTimestamp >= st && clickTimestamp <= et) {
-        timelineState.setState({ currentSegmentIndex: i });
+    if (foundSegment) {
+      const segment = segments[foundIndex];
+      timelineState.setState({ currentSegmentIndex: foundIndex });
 
-        // Direct click on a segment bar → start playback at that point
-        if (event.target.classList.contains('timeline-segment')) {
-          playSegment(i, clickTimestamp - st);
-        }
-        foundSegment = true;
-        break;
+      // Direct click on a segment bar → start playback at that point
+      if (event.target.classList.contains('timeline-segment')) {
+        playSegment(foundIndex, clickTimestamp - segment.start_timestamp);
       }
     }
 
@@ -230,8 +226,11 @@ export function TimelineSegments({ segments: propSegments }) {
     // Render each merged segment as a positioned bar
     const rendered = [];
     merged.forEach((seg, i) => {
-      const sh = timelineState.timestampToTimelineHour(seg.start_timestamp);
-      const eh = timelineState.timestampToTimelineHour(seg.end_timestamp);
+      const visibleRange = getClippedSegmentHourRange(seg, timelineState.selectedDate);
+      if (!visibleRange) return;
+
+      const sh = visibleRange.startHour;
+      const eh = visibleRange.endHour;
 
       // Clip to visible range
       if (eh <= startHour || sh >= endHour) return;
