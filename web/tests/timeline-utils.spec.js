@@ -113,8 +113,18 @@ describe('timelineUtils', () => {
   });
 
   test('formats exact minute boundaries without floating point drift', () => {
-    expect(formatTimestampAsClock(new Date(2026, 2, 8, 12, 10, 0).getTime() / 1000)).toBe('12:10:00');
-    expect(formatTimestampAsClock(new Date(2026, 2, 8, 0, 2, 0).getTime() / 1000)).toBe('00:02:00');
+    const exactTwelveTen = new Date(2026, 2, 8, 12, 10, 0).getTime() / 1000;
+    const exactTwelveTenPlusNearlyASecond = exactTwelveTen + 0.999;
+    const exactMidnightTwo = new Date(2026, 2, 8, 0, 2, 0).getTime() / 1000;
+    const exactMidnightTwoPlusSmallFraction = exactMidnightTwo + 0.001;
+
+    // Exact minute boundaries should format correctly.
+    expect(formatTimestampAsClock(exactTwelveTen)).toBe('12:10:00');
+    expect(formatTimestampAsClock(exactMidnightTwo)).toBe('00:02:00');
+
+    // Fractional seconds just below the next whole second/minute should not cause rounding drift.
+    expect(formatTimestampAsClock(exactTwelveTenPlusNearlyASecond)).toBe('12:10:00');
+    expect(formatTimestampAsClock(exactMidnightTwoPlusSmallFraction)).toBe('00:02:00');
   });
 
   test('formats playback labels with a stream name prefix when available', () => {
@@ -138,6 +148,10 @@ describe('timelineUtils', () => {
     // Subsecond precision: ensure fractional seconds do not cause rounding drift
     const nearlyNextSecond = new Date(2026, 2, 8, 12, 10, 30).getTime() / 1000 + 0.999;
     expect(formatTimestampAsClock(nearlyNextSecond)).toBe('12:10:30');
+
+    // Subsecond precision near zero: ensure small positive fractions do not change the displayed second
+    const justAfterSecond = new Date(2026, 2, 8, 12, 10, 30).getTime() / 1000 + 0.001;
+    expect(formatTimestampAsClock(justAfterSecond)).toBe('12:10:30');
   });
 
   test('formats timestamps as local YYYY-MM-DD keys', () => {
@@ -172,6 +186,18 @@ describe('timelineUtils', () => {
         id: 1,
         start_timestamp: mar8.endTimestamp - 600,
         end_timestamp: mar8.endTimestamp
+      }
+    ])).toEqual(['2026-03-08']);
+  });
+
+  test('does not add the previous day when a recording starts exactly at midnight', () => {
+    const mar8 = getLocalDayBounds('2026-03-08');
+
+    expect(getAvailableDatesForSegments([
+      {
+        id: 1,
+        start_timestamp: mar8.startTimestamp,
+        end_timestamp: mar8.startTimestamp + 600
       }
     ])).toEqual(['2026-03-08']);
   });
