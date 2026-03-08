@@ -83,6 +83,43 @@ test.describe('LightNVR Login', () => {
     await page.screenshot({ path: 'test-results/login-page.png' });
   });
 
+  test('should allow trusted-device force-MFA login without blocking blank code entry', async ({ page }) => {
+    await page.route('**/api/auth/login/config', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          force_mfa_on_login: true,
+          remember_device_enabled: true,
+          trusted_device_days: 30,
+        }),
+      });
+    });
+
+    await page.goto('/login.html', { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT });
+
+    const usernameInput = page.locator('#username');
+    const passwordInput = page.locator('#password');
+    const totpInput = page.locator('#totp-code-force');
+    const submitButton = page.getByRole('button', { name: 'Sign In' });
+
+    await expect(page.getByText('If this device is remembered, you may not be asked for this code on future logins.')).toBeVisible();
+
+    await usernameInput.fill(AUTH_USER);
+    await passwordInput.fill(AUTH_PASS);
+
+    await expect(submitButton).toBeEnabled();
+
+    await totpInput.fill('123');
+    await expect(submitButton).toBeDisabled();
+
+    await totpInput.fill('123456');
+    await expect(submitButton).toBeEnabled();
+
+    await totpInput.fill('');
+    await expect(submitButton).toBeEnabled();
+  });
+
   test('should login successfully', async ({ page }) => {
     await login(page);
 

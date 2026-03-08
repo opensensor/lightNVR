@@ -15,7 +15,7 @@ import {
 } from '../js/components/preact/timeline/timelineUtils.js';
 
 describe('timelineUtils', () => {
-  test('prefers the later segment when recordings overlap at the requested time', () => {
+  test('prefers the segment with later start time when recordings overlap', () => {
     const segments = [
       { id: 1, start_timestamp: 100, end_timestamp: 200 },
       { id: 2, start_timestamp: 190, end_timestamp: 300 }
@@ -25,7 +25,7 @@ describe('timelineUtils', () => {
     expect(findContainingSegmentIndex(segments, 200)).toBe(1);
   });
 
-  test('prefers the next segment when recordings touch exactly at a boundary', () => {
+  test('returns the later segment when timestamp matches boundary between segments', () => {
     const segments = [
       { id: 1, start_timestamp: 100, end_timestamp: 200 },
       { id: 2, start_timestamp: 200, end_timestamp: 260 }
@@ -53,7 +53,7 @@ describe('timelineUtils', () => {
     expect(findNearestSegmentIndex(segments, 195)).toBe(1);
   });
 
-  test('breaks equal nearest-distance ties toward the earlier segment', () => {
+  test('returns segment with earlier start time when multiple segments are equidistant from timestamp', () => {
     const segments = [
       { id: 1, start_timestamp: 100, end_timestamp: 150 },
       { id: 2, start_timestamp: 190, end_timestamp: 240 }

@@ -254,6 +254,10 @@ export function LoginView() {
     );
   };
 
+  const forceMfaCodeLength = forceMfaTotpCode.replace(/[^0-9]/g, '').length;
+  const hasPartialForceMfaCode = forceMfaEnabled && forceMfaCodeLength > 0 && forceMfaCodeLength !== 6;
+  const isPrimarySubmitDisabled = isLoggingIn || !username || !password || hasPartialForceMfaCode;
+
   return (
     <section id="login-page" className="page flex items-center justify-center min-h-screen">
       <div className="login-container w-full max-w-md p-6 bg-card text-card-foreground rounded-lg shadow-lg">
@@ -312,7 +316,7 @@ export function LoginView() {
                     pattern="[0-9]{6}"
                     autoComplete="one-time-code"
                 />
-                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app. On a remembered device, you can leave this blank next time.</span>
+                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app. If this device is remembered, you may not be asked for this code on future logins.</span>
               </div>
             )}
             {rememberDeviceEnabled && (
@@ -330,7 +334,7 @@ export function LoginView() {
               <button
                   type="submit"
                   className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isLoggingIn}
+                  disabled={isPrimarySubmitDisabled}
               >
                 {isLoggingIn ? 'Signing in...' : 'Sign In'}
               </button>
