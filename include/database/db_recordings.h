@@ -192,7 +192,10 @@ int get_recordings_for_retention(const char *stream_name,
 int get_protected_recordings_count(const char *stream_name);
 
 /**
- * Get recordings for quota enforcement (oldest unprotected first)
+ * Get recordings for quota enforcement.
+ * Returns lower-priority recordings first so quota cleanup preserves more
+ * important clips: lower retention tier first, then no manual override,
+ * then non-detection, then oldest first.
  *
  * @param stream_name Stream name
  * @param recordings Array to fill with recording metadata
@@ -236,9 +239,10 @@ int get_recordings_for_tiered_retention(const char *stream_name,
                                         int max_count);
 
 /**
- * Get recordings eligible for disk pressure cleanup
- * Returns disk_pressure_eligible recordings ordered by tier (ephemeral first)
- * then by age (oldest first), excluding protected recordings
+ * Get recordings eligible for disk pressure cleanup.
+ * Returns disk_pressure_eligible recordings ordered by deletion priority:
+ * lower retention tier first, then no manual override, then non-detection,
+ * then oldest first; protected recordings are excluded.
  *
  * @param recordings Array to fill with recording metadata
  * @param max_count Maximum number of recordings to return

@@ -7,6 +7,7 @@
  *   - disk_pressure_level_str() for an unknown enum value
  *   - evaluate_disk_pressure_level() at exact boundary values
  *   - Negative free_pct (treated as below emergency)
+ *   - should_continue_emergency_cleanup() stop/continue decisions
  *
  * Zero heavy dependencies — only unity_lib + project headers.
  */
@@ -99,6 +100,24 @@ void test_pressure_above_100_pct(void) {
                           evaluate_disk_pressure_level(150.0));
 }
 
+void test_emergency_cleanup_continues_while_pressure_is_still_critical(void) {
+    TEST_ASSERT_TRUE(should_continue_emergency_cleanup(DISK_PRESSURE_EMERGENCY,
+                                                       DISK_PRESSURE_CRITICAL,
+                                                       true));
+}
+
+void test_emergency_cleanup_stops_once_pressure_recovers_below_critical(void) {
+    TEST_ASSERT_FALSE(should_continue_emergency_cleanup(DISK_PRESSURE_EMERGENCY,
+                                                        DISK_PRESSURE_WARNING,
+                                                        true));
+}
+
+void test_forced_aggressive_cleanup_can_continue_when_initial_pressure_is_normal(void) {
+    TEST_ASSERT_TRUE(should_continue_emergency_cleanup(DISK_PRESSURE_NORMAL,
+                                                       DISK_PRESSURE_NORMAL,
+                                                       true));
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -118,6 +137,9 @@ int main(void) {
     RUN_TEST(test_pressure_very_negative_free_pct);
 
     RUN_TEST(test_pressure_above_100_pct);
+    RUN_TEST(test_emergency_cleanup_continues_while_pressure_is_still_critical);
+    RUN_TEST(test_emergency_cleanup_stops_once_pressure_recovers_below_critical);
+    RUN_TEST(test_forced_aggressive_cleanup_can_continue_when_initial_pressure_is_normal);
 
     return UNITY_END();
 }

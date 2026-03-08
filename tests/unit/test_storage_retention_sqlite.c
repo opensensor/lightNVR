@@ -5,7 +5,7 @@
  * Uses a real SQLite database (temp file, full schema via embedded migrations)
  * to verify:
  *   - get_recordings_for_retention()      (time-based culling)
- *   - get_recordings_for_quota_enforcement() (oldest-first quota)
+ *   - get_recordings_for_quota_enforcement() (priority-aware quota)
  *   - set_recording_protected()            (protection prevents deletion)
  *   - delete_recording_metadata()          (record gone after delete)
  *
@@ -169,6 +169,45 @@ void test_quota_enforcement_returns_oldest_first(void) {
     TEST_ASSERT_EQUAL_STRING("/rec/old.mp4", out[0].file_path);
 }
 
+void test_quota_enforcement_deprioritizes_overrides_and_detection(void) {
+    time_t now = time(NULL);
+
+    recording_metadata_t critical = make_recording("cam2b", "/rec/quota-critical.mp4",
+                                                   now - 50 * 86400, "scheduled", false);
+    uint64_t critical_id = add_recording_metadata(&critical);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(critical_id, RETENTION_TIER_CRITICAL));
+
+    recording_metadata_t standard_sched = make_recording("cam2b", "/rec/quota-standard-scheduled.mp4",
+                                                         now - 20 * 86400, "scheduled", false);
+    uint64_t standard_sched_id = add_recording_metadata(&standard_sched);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(standard_sched_id, RETENTION_TIER_STANDARD));
+
+    recording_metadata_t standard_detect = make_recording("cam2b", "/rec/quota-standard-detection.mp4",
+                                                          now - 30 * 86400, "detection", false);
+    uint64_t standard_detect_id = add_recording_metadata(&standard_detect);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(standard_detect_id, RETENTION_TIER_STANDARD));
+
+    recording_metadata_t standard_override = make_recording("cam2b", "/rec/quota-standard-override.mp4",
+                                                            now - 40 * 86400, "scheduled", false);
+    uint64_t standard_override_id = add_recording_metadata(&standard_override);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(standard_override_id, RETENTION_TIER_STANDARD));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_override(standard_override_id, 45));
+
+    recording_metadata_t ephemeral = make_recording("cam2b", "/rec/quota-ephemeral.mp4",
+                                                    now - 5 * 86400, "detection", false);
+    uint64_t ephemeral_id = add_recording_metadata(&ephemeral);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(ephemeral_id, RETENTION_TIER_EPHEMERAL));
+
+    recording_metadata_t out[10];
+    int n = get_recordings_for_quota_enforcement("cam2b", out, 10);
+    TEST_ASSERT_EQUAL_INT(5, n);
+    TEST_ASSERT_EQUAL_STRING("/rec/quota-ephemeral.mp4", out[0].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/quota-standard-scheduled.mp4", out[1].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/quota-standard-detection.mp4", out[2].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/quota-standard-override.mp4", out[3].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/quota-critical.mp4", out[4].file_path);
+}
+
 void test_tiered_retention_orders_by_tier_then_age(void) {
     time_t now = time(NULL);
     const double multipliers[4] = {3.0, 2.0, 1.0, 0.25};
@@ -311,6 +350,39 @@ void test_pressure_cleanup_filters_and_orders_candidates(void) {
     TEST_ASSERT_EQUAL_STRING("/rec/pressure-standard.mp4", out[2].file_path);
 }
 
+void test_pressure_cleanup_deprioritizes_overrides_and_detection_within_tier(void) {
+    time_t now = time(NULL);
+
+    recording_metadata_t standard_sched = make_recording("cam6", "/rec/pressure-std-scheduled.mp4",
+                                                         now - 15 * 86400, "scheduled", false);
+    uint64_t standard_sched_id = add_recording_metadata(&standard_sched);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(standard_sched_id, RETENTION_TIER_STANDARD));
+
+    recording_metadata_t standard_detect = make_recording("cam6", "/rec/pressure-std-detection.mp4",
+                                                          now - 30 * 86400, "detection", false);
+    uint64_t standard_detect_id = add_recording_metadata(&standard_detect);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(standard_detect_id, RETENTION_TIER_STANDARD));
+
+    recording_metadata_t standard_override = make_recording("cam6", "/rec/pressure-std-override.mp4",
+                                                            now - 40 * 86400, "scheduled", false);
+    uint64_t standard_override_id = add_recording_metadata(&standard_override);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(standard_override_id, RETENTION_TIER_STANDARD));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_override(standard_override_id, 45));
+
+    recording_metadata_t important = make_recording("cam6", "/rec/pressure-important.mp4",
+                                                    now - 50 * 86400, "scheduled", false);
+    uint64_t important_id = add_recording_metadata(&important);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_retention_tier(important_id, RETENTION_TIER_IMPORTANT));
+
+    recording_metadata_t out[10];
+    int n = get_recordings_for_pressure_cleanup(out, 10);
+    TEST_ASSERT_EQUAL_INT(4, n);
+    TEST_ASSERT_EQUAL_STRING("/rec/pressure-std-scheduled.mp4", out[0].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/pressure-std-detection.mp4", out[1].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/pressure-std-override.mp4", out[2].file_path);
+    TEST_ASSERT_EQUAL_STRING("/rec/pressure-important.mp4", out[3].file_path);
+}
+
 void test_delete_recording_removes_it(void) {
     time_t now = time(NULL);
     recording_metadata_t m = make_recording("cam1", "/rec/del.mp4",
@@ -355,10 +427,12 @@ int main(void) {
     RUN_TEST(test_detection_recording_uses_longer_detection_retention);
     RUN_TEST(test_detection_recording_expired_detection_retention);
     RUN_TEST(test_quota_enforcement_returns_oldest_first);
+    RUN_TEST(test_quota_enforcement_deprioritizes_overrides_and_detection);
     RUN_TEST(test_tiered_retention_orders_by_tier_then_age);
     RUN_TEST(test_tiered_retention_respects_retention_override_days);
     RUN_TEST(test_tiered_retention_with_null_stream_name_includes_all_streams);
     RUN_TEST(test_pressure_cleanup_filters_and_orders_candidates);
+    RUN_TEST(test_pressure_cleanup_deprioritizes_overrides_and_detection_within_tier);
     RUN_TEST(test_delete_recording_removes_it);
 
     int result = UNITY_END();

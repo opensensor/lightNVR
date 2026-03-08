@@ -273,4 +273,23 @@ static inline disk_pressure_level_t evaluate_disk_pressure_level(double free_pct
     return DISK_PRESSURE_NORMAL;
 }
 
+/**
+ * Decide whether emergency cleanup should continue deleting recordings.
+ *
+ * Automatic emergency cleanup should stop once pressure recovers below the
+ * critical band. Forced/manual aggressive cleanup keeps the existing behavior
+ * and may continue even if pressure is already normal.
+ */
+static inline bool should_continue_emergency_cleanup(disk_pressure_level_t initial_level,
+                                                     disk_pressure_level_t current_level,
+                                                     bool aggressive) {
+    (void)aggressive;
+
+    if (initial_level < DISK_PRESSURE_CRITICAL) {
+        return true;
+    }
+
+    return current_level >= DISK_PRESSURE_CRITICAL;
+}
+
 #endif // LIGHTNVR_STORAGE_MANAGER_H

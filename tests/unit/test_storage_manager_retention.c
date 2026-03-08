@@ -171,6 +171,26 @@ void test_apply_retention_policy_enforces_quota_with_oldest_eligible_first(void)
     TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_path(keep_path, &meta));
 }
 
+void test_apply_retention_policy_preserves_metadata_when_file_delete_fails(void) {
+    time_t now = time(NULL);
+    char blocked_path[PATH_MAX];
+    recording_metadata_t rec, meta;
+    struct stat st;
+
+    create_mp4_dir();
+    add_stream_with_quota("blocked_cam", 1);
+    mp4_path(blocked_path, sizeof(blocked_path), "quota-blocked.mp4");
+    TEST_ASSERT_EQUAL_INT(0, mkdir(blocked_path, 0755));
+
+    rec = make_recording("blocked_cam", blocked_path, now - 300, 2 * 1024 * 1024);
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&rec));
+
+    TEST_ASSERT_EQUAL_INT(0, apply_retention_policy());
+    TEST_ASSERT_EQUAL_INT(0, stat(blocked_path, &st));
+    TEST_ASSERT_TRUE(S_ISDIR(st.st_mode));
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_path(blocked_path, &meta));
+}
+
 void test_apply_retention_policy_skips_orphan_cleanup_when_ratio_is_too_high(void) {
     time_t now = time(NULL);
     create_mp4_dir();
@@ -238,6 +258,7 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_apply_retention_policy_enforces_quota_with_oldest_eligible_first);
+    RUN_TEST(test_apply_retention_policy_preserves_metadata_when_file_delete_fails);
     RUN_TEST(test_apply_retention_policy_skips_orphan_cleanup_when_ratio_is_too_high);
     RUN_TEST(test_apply_retention_policy_cleans_low_ratio_orphans_when_storage_is_healthy);
     RUN_TEST(test_apply_retention_policy_skips_orphans_when_mp4_storage_is_inaccessible);

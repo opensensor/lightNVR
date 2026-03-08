@@ -1365,7 +1365,11 @@ int get_recordings_for_retention(const char *stream_name,
 }
 
 /**
- * Get recordings for quota enforcement (oldest unprotected first)
+ * Get recordings for quota enforcement.
+ *
+ * Returns lower-priority recordings first so quota cleanup preserves more
+ * important clips: lower retention tier first, then no manual override,
+ * then non-detection, then oldest first.
  *
  * @param stream_name Stream name
  * @param recordings Array to fill with recording metadata
@@ -1394,8 +1398,7 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
 
     pthread_mutex_lock(db_mutex);
 
-    // Get oldest unprotected recordings first
-    // Order by protection status (unprotected first), then by start_time (oldest first)
+    // Get lower-priority unprotected recordings first.
     const char *sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, protected, retention_override_days "
@@ -1403,7 +1406,10 @@ int get_recordings_for_quota_enforcement(const char *stream_name,
         "WHERE stream_name = ? "
         "AND protected = 0 "
         "AND is_complete = 1 "
-        "ORDER BY start_time ASC "
+        "ORDER BY retention_tier DESC, "
+        "CASE WHEN retention_override_days IS NULL OR retention_override_days < 0 THEN 0 ELSE 1 END ASC, "
+        "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
+        "start_time ASC "
         "LIMIT ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1755,8 +1761,9 @@ int get_recordings_for_tiered_retention(const char *stream_name,
 
 /**
  * Get recordings eligible for disk pressure cleanup.
- * Returns disk_pressure_eligible recordings ordered by tier (ephemeral first)
- * then by age (oldest first), excluding protected recordings.
+ * Returns disk_pressure_eligible recordings ordered by deletion priority:
+ * lower retention tier first, then no manual override, then non-detection,
+ * then oldest first; protected recordings are excluded.
  */
 int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
                                         int max_count) {
@@ -1787,7 +1794,10 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
         "WHERE protected = 0 "
         "AND disk_pressure_eligible = 1 "
         "AND is_complete = 1 "
-        "ORDER BY retention_tier DESC, start_time ASC "
+        "ORDER BY retention_tier DESC, "
+        "CASE WHEN retention_override_days IS NULL OR retention_override_days < 0 THEN 0 ELSE 1 END ASC, "
+        "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
+        "start_time ASC "
         "LIMIT ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);

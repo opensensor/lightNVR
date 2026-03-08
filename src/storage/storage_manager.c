@@ -65,6 +65,47 @@ static struct {
     .reserved_space = 0
 };
 
+static bool delete_recording_file_and_metadata(const recording_metadata_t *recording,
+                                               const char *context,
+                                               uint64_t *freed_bytes) {
+    bool file_deleted = false;
+
+    if (freed_bytes) {
+        *freed_bytes = 0;
+    }
+
+    if (!recording) {
+        return false;
+    }
+
+    if (recording->file_path[0] != '\0') {
+        if (unlink(recording->file_path) == 0) {
+            file_deleted = true;
+        } else if (errno == ENOENT) {
+            log_warn("%s: file already missing, pruning stale metadata for %s",
+                     context, recording->file_path);
+        } else {
+            log_error("%s: failed to delete recording file: %s (error: %s)",
+                      context, recording->file_path, strerror(errno));
+            return false;
+        }
+    }
+
+    delete_recording_thumbnails(recording->id);
+
+    if (delete_recording_metadata(recording->id) != 0) {
+        log_warn("%s: failed to delete recording metadata for ID %llu",
+                 context, (unsigned long long)recording->id);
+        return false;
+    }
+
+    if (file_deleted && freed_bytes) {
+        *freed_bytes = recording->size_bytes;
+    }
+
+    return true;
+}
+
 // Initialize the storage manager
 int init_storage_manager(const char *storage_path, uint64_t max_size) {
     if (!storage_path) {
@@ -319,26 +360,12 @@ int apply_retention_policy(void) {
                 log_info("Stream %s: found %d recordings past retention", stream_name, count);
 
                 for (int i = 0; i < count; i++) {
-                    // Delete the file
-                    if (recordings[i].file_path[0] != '\0') {
-                        if (unlink(recordings[i].file_path) == 0) {
-                            log_debug("Deleted recording: %s (trigger: %s)",
-                                     recordings[i].file_path, recordings[i].trigger_type);
-                            total_freed += recordings[i].size_bytes;
-                            total_deleted++;
-                        } else if (errno != ENOENT) {
-                            log_error("Failed to delete recording file: %s (error: %s)",
-                                     recordings[i].file_path, strerror(errno));
-                        }
-                    }
-
-                    // Delete associated thumbnails
-                    delete_recording_thumbnails(recordings[i].id);
-
-                    // Delete the database entry
-                    if (delete_recording_metadata(recordings[i].id) != 0) {
-                        log_warn("Failed to delete recording metadata for ID %llu",
-                                (unsigned long long)recordings[i].id);
+                    uint64_t freed_bytes = 0;
+                    if (delete_recording_file_and_metadata(&recordings[i],
+                                                          "Retention cleanup",
+                                                          &freed_bytes)) {
+                        total_freed += freed_bytes;
+                        total_deleted++;
                     }
                 }
             }
@@ -361,26 +388,13 @@ int apply_retention_policy(void) {
 
                 uint64_t freed = 0;
                 for (int i = 0; i < count && freed < to_free; i++) {
-                    // Delete the file
-                    if (recordings[i].file_path[0] != '\0') {
-                        if (unlink(recordings[i].file_path) == 0) {
-                            log_debug("Deleted recording for quota: %s", recordings[i].file_path);
-                            freed += recordings[i].size_bytes;
-                            total_freed += recordings[i].size_bytes;
-                            total_deleted++;
-                        } else if (errno != ENOENT) {
-                            log_error("Failed to delete recording file: %s (error: %s)",
-                                     recordings[i].file_path, strerror(errno));
-                        }
-                    }
-
-                    // Delete associated thumbnails
-                    delete_recording_thumbnails(recordings[i].id);
-
-                    // Delete the database entry
-                    if (delete_recording_metadata(recordings[i].id) != 0) {
-                        log_warn("Failed to delete recording metadata for ID %llu",
-                                (unsigned long long)recordings[i].id);
+                    uint64_t freed_bytes = 0;
+                    if (delete_recording_file_and_metadata(&recordings[i],
+                                                          "Quota cleanup",
+                                                          &freed_bytes)) {
+                        freed += freed_bytes;
+                        total_freed += freed_bytes;
+                        total_deleted++;
                     }
                 }
 
@@ -727,6 +741,7 @@ static void emergency_cleanup(bool aggressive) {
     log_warn("Emergency cleanup triggered (aggressive=%s)", aggressive ? "true" : "false");
 
     int max_to_delete = aggressive ? MAX_EMERGENCY_RECORDINGS : (MAX_EMERGENCY_RECORDINGS / 2);
+    disk_pressure_level_t initial_pressure = get_disk_pressure_level();
 
     recording_metadata_t *recordings = calloc(max_to_delete, sizeof(recording_metadata_t));
     if (!recordings) {
@@ -747,24 +762,23 @@ static void emergency_cleanup(bool aggressive) {
     for (int i = 0; i < count; i++) {
         if (!unified_ctrl.running) break;  // Respect shutdown
 
-        if (recordings[i].file_path[0] != '\0') {
-            if (unlink(recordings[i].file_path) == 0) {
-                log_debug("Emergency: deleted %s (tier=%d, size=%llu)",
-                         recordings[i].file_path, recordings[i].retention_tier,
-                         (unsigned long long)recordings[i].size_bytes);
-                freed += recordings[i].size_bytes;
-                deleted++;
-            } else if (errno != ENOENT) {
-                log_error("Emergency: failed to delete %s: %s",
-                         recordings[i].file_path, strerror(errno));
-            }
-        }
+        uint64_t freed_bytes = 0;
+        if (delete_recording_file_and_metadata(&recordings[i],
+                                              "Emergency cleanup",
+                                              &freed_bytes)) {
+            freed += freed_bytes;
+            deleted++;
 
-        // Delete associated thumbnails and DB entry
-        delete_recording_thumbnails(recordings[i].id);
-        if (delete_recording_metadata(recordings[i].id) != 0) {
-            log_warn("Emergency: failed to delete DB entry for ID %llu",
-                     (unsigned long long)recordings[i].id);
+            if (freed_bytes > 0) {
+                heartbeat_check_disk_pressure();
+
+                disk_pressure_level_t current_pressure = get_disk_pressure_level();
+                if (!should_continue_emergency_cleanup(initial_pressure, current_pressure, aggressive)) {
+                    log_info("Emergency cleanup stopping after pressure recovered to %s",
+                             disk_pressure_level_str(current_pressure));
+                    break;
+                }
+            }
         }
     }
 
@@ -844,17 +858,13 @@ static void standard_cleanup_cycle(void) {
                 tier_recs, MAX_RECORDINGS_PER_STREAM);
 
             for (int i = 0; i < count && unified_ctrl.running; i++) {
-                if (tier_recs[i].file_path[0] != '\0') {
-                    if (unlink(tier_recs[i].file_path) == 0) {
-                        tier_freed += tier_recs[i].size_bytes;
-                        tier_deleted++;
-                    } else if (errno != ENOENT) {
-                        log_error("Tiered cleanup: failed to delete %s: %s",
-                                 tier_recs[i].file_path, strerror(errno));
-                    }
+                uint64_t freed_bytes = 0;
+                if (delete_recording_file_and_metadata(&tier_recs[i],
+                                                      "Tiered cleanup",
+                                                      &freed_bytes)) {
+                    tier_freed += freed_bytes;
+                    tier_deleted++;
                 }
-                delete_recording_thumbnails(tier_recs[i].id);
-                delete_recording_metadata(tier_recs[i].id);
             }
         }
         free(tier_recs);
