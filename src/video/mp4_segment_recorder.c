@@ -1513,10 +1513,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             avformat_close_input(&input_ctx);
             input_ctx = NULL;
         }
-        // Ensure the caller's pointer is also NULL so it opens a fresh connection
-        if (input_ctx_ptr) {
-            *input_ctx_ptr = NULL;
-        }
+        // Ensure the caller's pointer is also NULL so it opens a fresh connection.
+        // input_ctx_ptr was validated at function entry.
+        *input_ctx_ptr = NULL;
         ret = -1;
         goto cleanup;
     }
