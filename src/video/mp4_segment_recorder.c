@@ -38,10 +38,20 @@
 // Threshold at which we start clamping DTS to avoid approaching the max too closely.
 #define MP4_DTS_WARNING_THRESHOLD 0x70000000  // ~75% of MP4_DTS_MAX_VALUE
 
+// Safe DTS reset value used when clamping out-of-range timestamps.
+// Chosen as a small positive number well within the MP4 32-bit time scale range,
+// non-zero to preserve monotonicity, and large enough that minor backdated packets
+// are extremely unlikely to collide with it.
+#define DTS_RESET_SAFE_VALUE      1000
+
 // Upper bound for AVPacket.duration expressed in stream time_base units.
 // This is intentionally very large; typical frame durations are far smaller.
 // Used to clamp pathological packet durations that can trigger muxer errors.
 #define MAX_PACKET_DURATION_TIMEBASE_UNITS 10000000
+
+// Default packet duration used when capping excessive durations, expressed
+// as 1 second in a 90 kHz timebase (commonly used for video timestamps).
+#define DEFAULT_PACKET_DURATION_90KHZ 90000
 
 // Timeout for probing video dimensions from the bitstream, in microseconds.
 #define DIMENSION_PROBE_TIMEOUT_US 60000000LL  // 60 seconds
@@ -58,6 +68,12 @@
 // Expressed in stream time_base units; currently set to 1 (minimum positive
 // offset).
 #define TIMESTAMP_CONTINUITY_OFFSET 1
+
+// Safe baseline DTS value used when clamping or resetting audio timestamps.
+// Chosen as a small, positive value well above 0 and far below MP4_DTS_WARNING_THRESHOLD
+// so that rebased streams remain strictly positive and have ample headroom before
+// approaching the MP4 container's DTS limits.
+#define AUDIO_DTS_RESET_SAFE_VALUE 1000
 
 // Note: We can't directly access internal FFmpeg structures
 // So we'll use the public API for cleanup
@@ -237,7 +253,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         // framerate (e.g. 15fps) may not be propagated, causing FFmpeg to assume
         // a wrong framerate and produce incorrect timestamps.  genpts fixes this
         // by computing PTS from DTS and packet duration.
-        av_dict_set(&opts, "fflags", "nobuffer+genpts", 0);
+        av_dict_set(&opts, "fflags", "nobuffer", 0);
+        av_dict_set(&opts, "fflags", "+genpts", AV_DICT_APPEND);
         av_dict_set(&opts, "flags", "low_delay", 0);     // Low delay mode
         av_dict_set(&opts, "max_delay", "500000", 0);    // Maximum delay of 500ms
         av_dict_set(&opts, "stimeout", "5000000", 0);    // Socket timeout in microseconds (5 seconds)
@@ -989,7 +1006,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                 pts_dts_diff = pkt->pts - pkt->dts;
                             }
                             // Reset DTS to a safe value
-                            pkt->dts = 1000;
+                            pkt->dts = DTS_RESET_SAFE_VALUE;
                             // Reset PTS to maintain relationship or set to DTS
                             if (pkt->pts != AV_NOPTS_VALUE) {
                                 if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
@@ -1013,7 +1030,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                 pts_dts_diff = pkt->pts - pkt->dts;
                             }
                             // Reset DTS to a safe value
-                            pkt->dts = 1000;
+                            pkt->dts = DTS_RESET_SAFE_VALUE;
                             // Reset PTS to maintain relationship or set to DTS
                             if (pkt->pts != AV_NOPTS_VALUE) {
                                 if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
@@ -1033,8 +1050,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // This prevents the "Packet duration is out of range" error
                     if (pkt->duration > MAX_PACKET_DURATION_TIMEBASE_UNITS) {
                         log_warn("Packet duration too large: %lld, capping at reasonable value", (long long)pkt->duration);
-                        // Cap at a reasonable value (e.g., 1 second in timebase units)
-                        pkt->duration = 90000;
+                        // Cap at a reasonable value (e.g., 1 second in a 90 kHz timebase)
+                        pkt->duration = DEFAULT_PACKET_DURATION_90KHZ;
                     }
 
                     // Explicitly set duration for the final frame to prevent segmentation fault
@@ -1321,7 +1338,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         pts_dts_diff = pkt->pts - pkt->dts;
                     }
                     // Reset DTS to a safe value
-                    pkt->dts = 1000;
+                    pkt->dts = AUDIO_DTS_RESET_SAFE_VALUE;
                     // Reset PTS to maintain relationship or set to DTS
                     if (pkt->pts != AV_NOPTS_VALUE) {
                         if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
@@ -1348,7 +1365,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         pts_dts_diff = pkt->pts - pkt->dts;
                     }
                     // Reset DTS to a safe value
-                    pkt->dts = 1000;
+                    pkt->dts = AUDIO_DTS_RESET_SAFE_VALUE;
                     // Reset PTS to maintain relationship or set to DTS
                     if (pkt->pts != AV_NOPTS_VALUE) {
                         if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
