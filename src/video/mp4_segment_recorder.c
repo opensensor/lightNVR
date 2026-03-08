@@ -75,11 +75,103 @@
 // approaching the MP4 container's DTS limits.
 #define AUDIO_DTS_RESET_SAFE_VALUE 1000
 
+// Helper macro to obtain the channel count from AVCodecParameters in a way that
+// is compatible across FFmpeg versions.
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+#define GET_CODEC_CHANNEL_COUNT(codecpar_ptr) ((codecpar_ptr)->ch_layout.nb_channels)
+#else
+#define GET_CODEC_CHANNEL_COUNT(codecpar_ptr) ((codecpar_ptr)->channels)
+#endif
+
 // Note: We can't directly access internal FFmpeg structures
 // So we'll use the public API for cleanup
 
 // BUGFIX: Removed global static variables that were causing stream mixing
 // The input context and segment info are now per-stream, passed as parameters
+
+/**
+ * Compute a reasonable per-frame duration for the given stream, expressed in the
+ * stream's time_base units. If avg_frame_rate is unavailable or invalid, this
+ * falls back to a duration of 1 time_base unit to preserve existing behavior.
+ */
+static int64_t calculate_frame_duration_from_stream(const AVStream *stream) {
+    if (!stream) {
+        return 1;
+    }
+
+    if (stream->avg_frame_rate.num > 0 && stream->avg_frame_rate.den > 0) {
+        return av_rescale_q(
+            1,
+            av_inv_q(stream->avg_frame_rate),
+            stream->time_base);
+    }
+
+    return 1;
+}
+
+/**
+ * Clamp DTS/PTS values for MP4 output to avoid exceeding container limits.
+ *
+ * This helper encapsulates the common logic used for both audio and video streams:
+ * - If DTS exceeds MP4_DTS_MAX_VALUE, reset to a safe baseline.
+ * - If DTS exceeds a warning threshold, proactively reset to avoid overflow.
+ * - Preserve a reasonable PTS–DTS relationship when possible.
+ * - Update caller-provided last_dts/last_pts tracking variables.
+ *
+ * Parameters:
+ *   pkt             - Packet whose timestamps will be clamped.
+ *   reset_safe_val  - Safe DTS baseline to reset to (e.g., AUDIO_DTS_RESET_SAFE_VALUE).
+ *   warning_thresh  - Threshold below MP4_DTS_MAX_VALUE that triggers a pre-emptive reset.
+ *   stream_label    - Human-readable label used in log messages (e.g., "Audio", "Video").
+ *   last_dts        - Pointer to last DTS value tracked by caller; updated on reset.
+ *   last_pts        - Pointer to last PTS value tracked by caller; updated on reset.
+ */
+static void clamp_dts_pts_for_mp4(AVPacket *pkt,
+                                  int64_t reset_safe_val,
+                                  int64_t warning_thresh,
+                                  const char *stream_label,
+                                  int64_t *last_dts,
+                                  int64_t *last_pts)
+{
+    if (pkt->dts == AV_NOPTS_VALUE) {
+        return;
+    }
+
+    // Internal helper macro to perform reset and keep code reuse minimal.
+#define DO_DTS_RESET_IF_NEEDED(LOG_FUNC, reason_msg)                                      \
+    do {                                                                                  \
+        LOG_FUNC("%s DTS value " reason_msg ": %lld, resetting to safe value",           \
+                 stream_label, (long long)pkt->dts);                                      \
+        int64_t pts_dts_diff = 0;                                                         \
+        if (pkt->pts != AV_NOPTS_VALUE) {                                                 \
+            pts_dts_diff = pkt->pts - pkt->dts;                                           \
+        }                                                                                 \
+        pkt->dts = reset_safe_val;                                                        \
+        if (pkt->pts != AV_NOPTS_VALUE) {                                                 \
+            if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {                              \
+                pkt->pts = pkt->dts + pts_dts_diff;                                       \
+            } else {                                                                      \
+                pkt->pts = pkt->dts;                                                      \
+            }                                                                             \
+        } else {                                                                          \
+            pkt->pts = pkt->dts;                                                          \
+        }                                                                                 \
+        if (last_dts) {                                                                   \
+            *last_dts = pkt->dts;                                                         \
+        }                                                                                 \
+        if (last_pts) {                                                                   \
+            *last_pts = pkt->pts;                                                         \
+        }                                                                                 \
+    } while (0)
+
+    if (pkt->dts > MP4_DTS_MAX_VALUE) {
+        DO_DTS_RESET_IF_NEEDED(log_warn, "exceeds MP4 format limit");
+    } else if (pkt->dts > warning_thresh) {
+        DO_DTS_RESET_IF_NEEDED(log_info, "approaching MP4 format limit");
+    }
+
+#undef DO_DTS_RESET_IF_NEEDED
+}
 
 /**
  * Interrupt callback for FFmpeg operations
@@ -716,11 +808,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 log_error("Audio stream parameters: codec_id=%d, sample_rate=%d, channels=%d",
                          out_audio_stream->codecpar->codec_id,
                          out_audio_stream->codecpar->sample_rate,
-                         #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
-                             out_audio_stream->codecpar->ch_layout.nb_channels);
-                         #else
-                             out_audio_stream->codecpar->channels);
-                         #endif
+                         GET_CODEC_CHANNEL_COUNT(out_audio_stream->codecpar));
 
                 // Check for known incompatible audio codecs
                 if (out_audio_stream->codecpar->codec_id == AV_CODEC_ID_PCM_MULAW) {
@@ -900,6 +988,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
                 // Calculate how long we've been waiting for a key frame
                 int64_t wait_time = (av_gettime() - waiting_start_time) / 1000000;
+                bool keyframe_timeout_reached = (wait_time >= KEYFRAME_WAIT_TIMEOUT_S);
 
 				// Prefer ending on a keyframe to avoid gaps in the next segment.
 				// Allow ending without a keyframe on shutdown OR after a 5-second
@@ -907,7 +996,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				// enclosure cameras) cannot push segments past their configured length.
 				if (is_keyframe ||
 				    (shutdown_detected && wait_time > SHUTDOWN_KEYFRAME_WAIT_TIMEOUT_S) ||
-				    wait_time >= KEYFRAME_WAIT_TIMEOUT_S) {
+				    keyframe_timeout_reached) {
                     if (is_keyframe) {
                         log_info("Found final key frame, ending recording");
                         // Set flag to indicate the last frame was a key frame
@@ -933,7 +1022,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 							log_warn("Failed to allocate pending keyframe packet for overlap mode");
 						}
                     } else {
-	                        if (wait_time >= KEYFRAME_WAIT_TIMEOUT_S && !shutdown_detected) {
+	                        if (keyframe_timeout_reached && !shutdown_detected) {
                             log_warn("Keyframe wait timeout after %lld s — camera has long keyframe interval? "
                                      "Cutting segment without final keyframe to enforce configured segment length.",
                                      (long long)wait_time);
@@ -1055,16 +1144,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // Explicitly set duration for the final frame to prevent segmentation fault
                     if (pkt->duration == 0 || pkt->duration == AV_NOPTS_VALUE) {
                         // Use the time base of the video stream to calculate a reasonable duration
-                        if (input_ctx->streams[video_stream_idx]->avg_frame_rate.num > 0 &&
-                            input_ctx->streams[video_stream_idx]->avg_frame_rate.den > 0) {
-                            // Calculate duration based on framerate (time_base units)
-                            pkt->duration = av_rescale_q(1,
-                                                       av_inv_q(input_ctx->streams[video_stream_idx]->avg_frame_rate),
-                                                       input_ctx->streams[video_stream_idx]->time_base);
-                        } else {
-                            // Default to a reasonable value if framerate is not available
-                            pkt->duration = 1;
-                        }
+                        pkt->duration = calculate_frame_duration_from_stream(input_ctx->streams[video_stream_idx]);
                         log_debug("Set final frame duration to %lld", (long long)pkt->duration);
                     }
 
@@ -1327,60 +1407,12 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             }
 
             // CRITICAL FIX: Ensure DTS values don't exceed MP4 format limits (0x7fffffff) for audio packets
-            if (pkt->dts != AV_NOPTS_VALUE) {
-                if (pkt->dts > MP4_DTS_MAX_VALUE) {
-                    log_warn("Audio DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
-                    // Calculate PTS-DTS difference BEFORE modifying DTS
-                    int64_t pts_dts_diff = 0;
-                    if (pkt->pts != AV_NOPTS_VALUE) {
-                        pts_dts_diff = pkt->pts - pkt->dts;
-                    }
-                    // Reset DTS to a safe value
-                    pkt->dts = AUDIO_DTS_RESET_SAFE_VALUE;
-                    // Reset PTS to maintain relationship or set to DTS
-                    if (pkt->pts != AV_NOPTS_VALUE) {
-                        if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
-                            // Only maintain the relationship if the difference is reasonable
-                            pkt->pts = pkt->dts + pts_dts_diff;
-                        } else {
-                            // Otherwise just set PTS equal to DTS
-                            pkt->pts = pkt->dts;
-                        }
-                    } else {
-                        pkt->pts = pkt->dts;
-                    }
-                    // Reset the tracking variables to prevent monotonic errors
-                    last_audio_dts = pkt->dts;
-                    last_audio_pts = pkt->pts;
-                }
-
-                // Additional check to ensure DTS is always within safe range
-                if (pkt->dts > MP4_DTS_WARNING_THRESHOLD) {  // ~75% of max value
-                    log_info("Audio DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
-                    // Calculate PTS-DTS difference BEFORE modifying DTS
-                    int64_t pts_dts_diff = 0;
-                    if (pkt->pts != AV_NOPTS_VALUE) {
-                        pts_dts_diff = pkt->pts - pkt->dts;
-                    }
-                    // Reset DTS to a safe value
-                    pkt->dts = AUDIO_DTS_RESET_SAFE_VALUE;
-                    // Reset PTS to maintain relationship or set to DTS
-                    if (pkt->pts != AV_NOPTS_VALUE) {
-                        if (pts_dts_diff >= 0 && pts_dts_diff < 10000) {
-                            // Only maintain the relationship if the difference is reasonable
-                            pkt->pts = pkt->dts + pts_dts_diff;
-                        } else {
-                            // Otherwise just set PTS equal to DTS
-                            pkt->pts = pkt->dts;
-                        }
-                    } else {
-                        pkt->pts = pkt->dts;
-                    }
-                    // Reset the tracking variables to prevent monotonic errors
-                    last_audio_dts = pkt->dts;
-                    last_audio_pts = pkt->pts;
-                }
-            }
+            clamp_dts_pts_for_mp4(pkt,
+                                  AUDIO_DTS_RESET_SAFE_VALUE,
+                                  MP4_DTS_WARNING_THRESHOLD,
+                                  "Audio",
+                                  &last_audio_dts,
+                                  &last_audio_pts);
 
             // Update last timestamps
             if (pkt->dts != AV_NOPTS_VALUE) {
@@ -1644,8 +1676,7 @@ cleanup:
         // Don't close the input context as we're keeping it for the next segment
         input_ctx = NULL;
         log_debug("Stored input context for reuse in next segment");
-    } else
-    {
+    } else {
         // If there was an error, close the input context
         log_debug("Closing input context due to error");
 
