@@ -6,7 +6,13 @@
 import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
-import { findContainingSegmentIndex, findNearestSegmentIndex } from './timelineUtils.js';
+import {
+  findContainingSegmentIndex,
+  findNearestSegmentIndex,
+  MAX_TIMELINE_VIEW_HOURS,
+  MIN_TIMELINE_VIEW_HOURS,
+  zoomTimelineRange
+} from './timelineUtils.js';
 
 /**
  * TimelineControls component
@@ -20,9 +26,9 @@ export function TimelineControls() {
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
       setIsPlaying(state.isPlaying);
-      const range = (state.timelineEndHour ?? 24) - (state.timelineStartHour ?? 0);
-      setCanZoomIn(range > 0.5);    // don't zoom below 30 min
-      setCanZoomOut(range < 24);     // can't expand beyond 24 h
+      const range = (state.timelineEndHour ?? MAX_TIMELINE_VIEW_HOURS) - (state.timelineStartHour ?? 0);
+      setCanZoomIn(range > MIN_TIMELINE_VIEW_HOURS);
+      setCanZoomOut(range < MAX_TIMELINE_VIEW_HOURS);
     });
     return () => unsubscribe();
   }, []);
@@ -334,7 +340,7 @@ export function TimelineControls() {
   // ── Helper: get the center hour for zoom (cursor position or range midpoint) ──
   const getCenter = () => {
     const s = timelineState.timelineStartHour ?? 0;
-    const e = timelineState.timelineEndHour ?? 24;
+    const e = timelineState.timelineEndHour ?? MAX_TIMELINE_VIEW_HOURS;
     if (timelineState.currentTime !== null) {
       const d = new Date(timelineState.currentTime * 1000);
       const h = d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
@@ -347,35 +353,35 @@ export function TimelineControls() {
   // Zoom in — halve the visible range, centered on cursor
   const zoomIn = () => {
     const s = timelineState.timelineStartHour ?? 0;
-    const e = timelineState.timelineEndHour ?? 24;
+    const e = timelineState.timelineEndHour ?? MAX_TIMELINE_VIEW_HOURS;
     const range = e - s;
-    if (range <= 0.5) return;           // minimum 30 min view
+    if (range <= MIN_TIMELINE_VIEW_HOURS) return;
     const center = getCenter();
-    const newRange = range / 2;
-    let ns = Math.max(0, center - newRange / 2);
-    let ne = ns + newRange;
-    if (ne > 24) { ne = 24; ns = Math.max(0, ne - newRange); }
-    timelineState.setState({ timelineStartHour: ns, timelineEndHour: ne });
+    const nextRange = zoomTimelineRange(s, e, 0.5, center);
+    timelineState.setState({
+      timelineStartHour: nextRange.startHour,
+      timelineEndHour: nextRange.endHour
+    });
   };
 
   // Zoom out — double the visible range, centered on cursor, capped at 0-24
   const zoomOut = () => {
     const s = timelineState.timelineStartHour ?? 0;
-    const e = timelineState.timelineEndHour ?? 24;
+    const e = timelineState.timelineEndHour ?? MAX_TIMELINE_VIEW_HOURS;
     const range = e - s;
-    if (range >= 24) return;
+    if (range >= MAX_TIMELINE_VIEW_HOURS) return;
     const center = getCenter();
-    const newRange = Math.min(24, range * 2);
-    let ns = Math.max(0, center - newRange / 2);
-    let ne = ns + newRange;
-    if (ne > 24) { ne = 24; ns = Math.max(0, ne - newRange); }
-    timelineState.setState({ timelineStartHour: ns, timelineEndHour: ne });
+    const nextRange = zoomTimelineRange(s, e, 2, center);
+    timelineState.setState({
+      timelineStartHour: nextRange.startHour,
+      timelineEndHour: nextRange.endHour
+    });
   };
 
   // Fit — reset to the auto-fit range computed on data load
   const fitToSegments = () => {
     const fs = timelineState.autoFitStartHour ?? 0;
-    const fe = timelineState.autoFitEndHour ?? 24;
+    const fe = timelineState.autoFitEndHour ?? MAX_TIMELINE_VIEW_HOURS;
     timelineState.setState({ timelineStartHour: fs, timelineEndHour: fe });
   };
 

@@ -4,6 +4,64 @@
 
 const pad = (value) => String(value).padStart(2, '0');
 
+export const MIN_TIMELINE_VIEW_HOURS = 0.5;
+export const MAX_TIMELINE_VIEW_HOURS = 24;
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+export function normalizeTimelineRange(startHour, endHour) {
+  const safeStart = Number.isFinite(startHour) ? startHour : 0;
+  const safeEnd = Number.isFinite(endHour) ? endHour : MAX_TIMELINE_VIEW_HOURS;
+  const requestedRange = safeEnd - safeStart;
+  const range = clamp(requestedRange, MIN_TIMELINE_VIEW_HOURS, MAX_TIMELINE_VIEW_HOURS);
+  const maxStart = MAX_TIMELINE_VIEW_HOURS - range;
+  const start = clamp(safeStart, 0, maxStart);
+
+  return {
+    startHour: start,
+    endHour: start + range
+  };
+}
+
+export function panTimelineRange(startHour, endHour, deltaHours) {
+  const normalized = normalizeTimelineRange(startHour, endHour);
+  if (!Number.isFinite(deltaHours) || deltaHours === 0) {
+    return normalized;
+  }
+
+  const range = normalized.endHour - normalized.startHour;
+  const maxStart = MAX_TIMELINE_VIEW_HOURS - range;
+  const nextStart = clamp(normalized.startHour + deltaHours, 0, maxStart);
+
+  return {
+    startHour: nextStart,
+    endHour: nextStart + range
+  };
+}
+
+export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = null) {
+  const normalized = normalizeTimelineRange(startHour, endHour);
+  if (!Number.isFinite(zoomFactor) || zoomFactor <= 0 || zoomFactor === 1) {
+    return normalized;
+  }
+
+  const currentRange = normalized.endHour - normalized.startHour;
+  const nextRange = clamp(currentRange * zoomFactor, MIN_TIMELINE_VIEW_HOURS, MAX_TIMELINE_VIEW_HOURS);
+  const resolvedAnchorHour = clamp(
+    Number.isFinite(anchorHour) ? anchorHour : ((normalized.startHour + normalized.endHour) / 2),
+    normalized.startHour,
+    normalized.endHour
+  );
+  const anchorRatio = currentRange > 0
+    ? (resolvedAnchorHour - normalized.startHour) / currentRange
+    : 0.5;
+  const nextStart = resolvedAnchorHour - (anchorRatio * nextRange);
+
+  return normalizeTimelineRange(nextStart, nextStart + nextRange);
+}
+
 function formatLocalDate(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
