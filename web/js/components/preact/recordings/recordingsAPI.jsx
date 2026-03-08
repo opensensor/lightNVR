@@ -10,7 +10,6 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
-  usePostMutation,
 } from '../../../query-client.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -19,6 +18,9 @@ import customParseFormat from 'dayjs/plugin/customParseFormat';
 // Initialize dayjs plugins
 dayjs.extend(utc);
 dayjs.extend(customParseFormat);
+
+const getRecordingStartTime = (recording) =>
+  recording?.start_time_unix ?? recording?.start_time;
 
 // Default timeout/retry configuration for recordings API calls
 const DEFAULT_TIMEOUT = 15000;       // 15 second timeout
@@ -380,7 +382,7 @@ export const recordingsAPI = {
    */
   deleteSelectedRecordings: async (selectedRecordings) => {
     const selectedIds = Object.entries(selectedRecordings)
-      .filter(([_, isSelected]) => isSelected)
+      .filter(([recordingId, isSelected]) => isSelected)
       .map(([id, _]) => parseInt(id, 10));
 
     if (selectedIds.length === 0) {
@@ -546,7 +548,7 @@ export const recordingsAPI = {
         params.append('page', '1');
         params.append('limit', '1');
 
-        const data = await fetchJSON('/api/recordings', { searchParams: params });
+        const data = await fetchJSON('/api/recordings?' + params.toString());
         if (data?.pagination?.total) {
           totalCount = data.pagination.total;
           console.log(`Found ${totalCount} recordings matching filter`);
@@ -730,7 +732,7 @@ export const recordingsAPI = {
 
     // Build video URL
     const videoUrl = `/api/recordings/play/${recording.id}`;
-    const title = `${recording.stream} - ${formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}`;
+    const title = `${recording.stream} - ${formatUtils.formatDateTime(getRecordingStartTime(recording))}`;
     const downloadUrl = `/api/recordings/download/${recording.id}`;
 
     console.log('Video URL:', videoUrl);
