@@ -53,7 +53,7 @@ if(CMAKE_BUILD_TYPE MATCHES "^[Dd][Ee][Bb][Uu][Gg]$")
         add_link_options(-fsanitize=address,undefined)
         add_compile_options(-ggdb3)
 
-        # improved debugging experience
+        # Improved debugging experience
         add_compile_options(-fno-omit-frame-pointer -fno-optimize-sibling-calls)
         add_compile_options(-fno-inline -fno-inline-functions)
     else()
