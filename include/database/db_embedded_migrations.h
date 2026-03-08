@@ -599,6 +599,12 @@ static const char migration_0035_down[] =
     "DROP TABLE IF EXISTS trusted_devices;\n"
     "DROP INDEX IF EXISTS idx_sessions_user_last_activity;";
 
+static const char migration_0036_up[] =
+    "ALTER TABLE streams ADD COLUMN admin_url TEXT DEFAULT '';";
+
+static const char migration_0036_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -845,8 +851,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0035_down,
         .is_embedded = true
     },
+    {
+        .version = "0036",
+        .description = "add_stream_admin_url",
+        .sql_up = migration_0036_up,
+        .sql_down = migration_0036_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 35
+#define EMBEDDED_MIGRATIONS_COUNT 36
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

@@ -166,6 +166,7 @@ export function StreamsView() {
   const [currentStream, setCurrentStream] = useState({
     name: '',
     url: '',
+    adminUrl: '',
     enabled: true,
     streamingEnabled: true,
     width: 1280,
@@ -486,6 +487,7 @@ export function StreamsView() {
     const streamData = {
       name: currentStream.name,
       url: currentStream.url,
+      admin_url: currentStream.adminUrl || '',
       enabled: currentStream.enabled,
       streaming_enabled: currentStream.streamingEnabled,
       // Note: width, height, fps, and codec are auto-detected and not sent from the frontend
@@ -658,6 +660,7 @@ export function StreamsView() {
     setCurrentStream({
       name: '',
       url: '',
+      adminUrl: '',
       enabled: true,
       streamingEnabled: true,
       width: 0,
@@ -744,6 +747,7 @@ export function StreamsView() {
         detectionZones: stream.detection_zones || [],
         postBuffer: stream.post_detection_buffer || 30,
         // Map API fields to form fields
+        adminUrl: stream.admin_url || '',
         streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
         isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
         // ONVIF credentials
@@ -1202,6 +1206,7 @@ export function StreamsView() {
                   stream.status === 'Stopping' ? 'hsl(var(--warning, 45 93% 47%))' :
                   'hsl(var(--muted-foreground))';
                 const statusLabel = stream.status || 'Unknown';
+                const hasAdminLauncher = !shouldHideCredentials && /^https?:\/\//i.test(stream.admin_url || '');
 
                 return (
                   <Fragment key={stream.name}>
@@ -1255,6 +1260,24 @@ export function StreamsView() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex space-x-2">
+                          {hasAdminLauncher && (
+                            <a
+                              className="p-1 rounded-full focus:outline-none"
+                              style={{color: 'hsl(var(--primary))'}}
+                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
+                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                              href={stream.admin_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Open Camera Admin Page"
+                              aria-label={`Open admin page for ${stream.name}`}
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 3h7m0 0v7m0-7L10 14"></path>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5h5M5 5v14h14v-5"></path>
+                              </svg>
+                            </a>
+                          )}
                           {/* Edit button - only show if user can modify streams */}
                           {canModifyStreams && (
                             <button
@@ -1286,7 +1309,7 @@ export function StreamsView() {
                             </button>
                           )}
                           {/* Show dash when no actions available */}
-                          {!canModifyStreams && (
+                          {!canModifyStreams && !hasAdminLauncher && (
                             <span className="text-muted-foreground">—</span>
                           )}
                         </div>

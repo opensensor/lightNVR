@@ -49,6 +49,21 @@ const parseRecordingTimestamp = (value) => {
   return parsed.isValid() ? parsed.unix() : 0;
 };
 
+const getDetectionTimeRangeParams = (recording) => {
+  const startTime = parseRecordingTimestamp(recording.start_time);
+  const endTime = parseRecordingTimestamp(recording.end_time);
+
+  if (startTime === 0 || endTime === 0) {
+    return null;
+  }
+
+  return new URLSearchParams({
+    // Backend detection results API parses Unix timestamps in seconds.
+    start: startTime.toString(),
+    end: endTime.toString()
+  });
+};
+
 const appendMultiValueParam = (params, key, values) => {
   const serializedValue = urlUtils.serializeMultiValueParam(values);
   if (serializedValue) params.append(key, serializedValue);
@@ -426,44 +441,7 @@ export const recordingsAPI = {
         retryDelay: 2000 // 2 seconds between retries
       });
 
-      const result = await response.json();
-
-      // Check if we got a job_id (async operation) or direct result (sync operation)
-      if (result.job_id) {
-        console.log('Batch delete started with job_id:', result.job_id);
-
-        // Poll for progress
-        const finalResult = await recordingsAPI.pollBatchDeleteProgress(result.job_id);
-
-        // Show status message
-        const successCount = finalResult.succeeded || 0;
-        const errorCount = finalResult.failed || 0;
-
-        if (successCount > 0 && errorCount === 0) {
-          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-        } else if (successCount > 0 && errorCount > 0) {
-          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-        } else if (errorCount > 0) {
-          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-        }
-
-        return finalResult;
-      } else {
-        // Direct result (old sync behavior)
-        const successCount = result.succeeded || 0;
-        const errorCount = result.failed || 0;
-
-        // Show status message
-        if (successCount > 0 && errorCount === 0) {
-          showStatusMessage(`Successfully deleted ${successCount} recording${successCount !== 1 ? 's' : ''}`);
-        } else if (successCount > 0 && errorCount > 0) {
-          showStatusMessage(`Deleted ${successCount} recording${successCount !== 1 ? 's' : ''}, but failed to delete ${errorCount}`);
-        } else if (errorCount > 0) {
-          showStatusMessage(`Failed to delete ${errorCount} recording${errorCount !== 1 ? 's' : ''}`);
-        }
-
-        return result;
-      }
+      return await recordingsAPI.handleBatchDeleteResponse(response);
     } catch (error) {
       console.error('Error in HTTP batch delete operation:', error);
       showStatusMessage('Error in batch delete operation: ' + error.message);
@@ -663,24 +641,12 @@ export const recordingsAPI = {
     }
 
     try {
-      // Convert timestamps to Unix time in seconds using dayjs
-      const startTimeSec = parseRecordingTimestamp(recording.start_time);
-      const endTimeSec = parseRecordingTimestamp(recording.end_time);
+      const params = getDetectionTimeRangeParams(recording);
 
-      if (startTimeSec === 0 || endTimeSec === 0) {
+      if (!params) {
         console.error('Failed to parse recording timestamps');
         return false;
       }
-
-      // The detections API expects Unix timestamps in milliseconds
-      const startTimeMs = startTimeSec * 1000;
-      const endTimeMs = endTimeSec * 1000;
-
-      // Query the detections API to check if there are any detections in this time range
-      const params = new URLSearchParams({
-        start: startTimeMs.toString(),
-        end: endTimeMs.toString()
-      });
 
       const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
         timeout: 10000, // 10 second timeout
@@ -706,24 +672,12 @@ export const recordingsAPI = {
     }
 
     try {
-      // Convert timestamps using the same logic used elsewhere for detections queries
-      const startTime = parseRecordingTimestamp(recording.start_time);
-      const endTime = parseRecordingTimestamp(recording.end_time);
+      const params = getDetectionTimeRangeParams(recording);
 
-      if (startTime === 0 || endTime === 0) {
+      if (!params) {
         console.error('Failed to parse recording timestamps');
         return [];
       }
-
-      // Format timestamps consistently for the detections API (ISO-8601 strings)
-      const startParam = dayjs(startTime * 1000).toISOString();
-      const endParam = dayjs(endTime * 1000).toISOString();
-
-      // Query the detections API to get detections in this time range
-      const params = new URLSearchParams({
-        start: startParam,
-        end: endParam,
-      });
 
       const data = await fetchJSON(`/api/detection/results/${recording.stream}?${params.toString()}`, {
         timeout: 15000, // 15 second timeout

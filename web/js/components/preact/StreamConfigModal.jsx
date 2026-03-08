@@ -391,6 +391,26 @@ export function StreamConfigModal({
                   </p>
                 </div>
 
+                <div className="md:col-span-2">
+                  <label htmlFor="stream-admin-url" className="block text-sm font-medium mb-2">
+                    Camera Admin URL
+                  </label>
+                  <input
+                    type="text"
+                    id="stream-admin-url"
+                    name="adminUrl"
+                    className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
+                    placeholder="http://192.168.1.100/"
+                    value={hideCredentials ? obfuscateUrlCredentials(currentStream.adminUrl || '') : (currentStream.adminUrl || '')}
+                    onChange={onInputChange}
+                    readOnly={hideCredentials}
+                    title={hideCredentials ? 'URL credentials are hidden in demo/viewer mode' : ''}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Optional. If set, LightNVR will show a launcher button in the streams list that opens this page in a new tab. Use a full <span className="font-mono">http://</span> or <span className="font-mono">https://</span> URL.
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium mb-1" htmlFor="stream-tags">
                     Stream Tags

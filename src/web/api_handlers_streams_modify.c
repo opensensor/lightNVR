@@ -641,6 +641,14 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.tags[0] = '\0';
     }
 
+    cJSON *admin_url_post = cJSON_GetObjectItem(stream_json, "admin_url");
+    if (admin_url_post && cJSON_IsString(admin_url_post)) {
+        strncpy(config.admin_url, admin_url_post->valuestring, sizeof(config.admin_url) - 1);
+        config.admin_url[sizeof(config.admin_url) - 1] = '\0';
+    } else {
+        config.admin_url[0] = '\0';
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -1222,6 +1230,21 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     } else if (tags_put && cJSON_IsNull(tags_put)) {
         if (config.tags[0] != '\0') {
             config.tags[0] = '\0';
+            config_changed = true;
+        }
+    }
+
+    cJSON *admin_url_put = cJSON_GetObjectItem(stream_json, "admin_url");
+    if (admin_url_put && cJSON_IsString(admin_url_put)) {
+        if (strncmp(config.admin_url, admin_url_put->valuestring, sizeof(config.admin_url) - 1) != 0) {
+            strncpy(config.admin_url, admin_url_put->valuestring, sizeof(config.admin_url) - 1);
+            config.admin_url[sizeof(config.admin_url) - 1] = '\0';
+            config_changed = true;
+            log_info("Admin URL changed for stream %s", config.name);
+        }
+    } else if (admin_url_put && cJSON_IsNull(admin_url_put)) {
+        if (config.admin_url[0] != '\0') {
+            config.admin_url[0] = '\0';
             config_changed = true;
         }
     }

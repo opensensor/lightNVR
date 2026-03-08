@@ -89,6 +89,21 @@ void test_get_stream_config_by_name_round_trip(void) {
     TEST_ASSERT_TRUE(got.enabled);
 }
 
+void test_stream_admin_url_round_trip(void) {
+    stream_config_t s = make_stream("cam_admin", true);
+    strncpy(s.admin_url, "http://camera.local/", sizeof(s.admin_url) - 1);
+    add_stream_config(&s);
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_admin", &got));
+    TEST_ASSERT_EQUAL_STRING("http://camera.local/", got.admin_url);
+
+    strncpy(s.admin_url, "https://camera.local/settings", sizeof(s.admin_url) - 1);
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("cam_admin", &s));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_admin", &got));
+    TEST_ASSERT_EQUAL_STRING("https://camera.local/settings", got.admin_url);
+}
+
 /* ================================================================
  * update_stream_config
  * ================================================================ */
@@ -238,6 +253,7 @@ int main(void) {
 
     RUN_TEST(test_add_stream_config_returns_nonzero_id);
     RUN_TEST(test_get_stream_config_by_name_round_trip);
+    RUN_TEST(test_stream_admin_url_round_trip);
     RUN_TEST(test_update_stream_config_changes_url);
     RUN_TEST(test_delete_stream_config_disables);
     RUN_TEST(test_count_stream_configs);

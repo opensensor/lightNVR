@@ -82,6 +82,9 @@ typedef struct {
     // Camera tags (comma-separated, e.g. "outdoor,critical,entrance")
     // Replaces the former single group_name field — supports multi-label filtering and RBAC
     char tags[256];
+
+    // Optional camera admin page URL (e.g. http://192.168.1.100/)
+    char admin_url[MAX_URL_LENGTH];
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator
