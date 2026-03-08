@@ -339,6 +339,11 @@ set(INIH_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/external/inih/ini.c")
 add_library(inih_lib STATIC ${INIH_SOURCES})
 target_include_directories(inih_lib INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/external/inih")
 
+# Bundle ezXML implementation used by ONVIF parsing
+set(EZXML_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ezxml/ezxml.c"
+)
+
 # Define all include directories in one place
 set(LIGHTNVR_INCLUDE_DIRS
         ${LIGHTNVR_INCLUDE_DIR}
@@ -457,6 +462,7 @@ set(SOURCES
         ${VIDEO_SOURCES}
         ${HLS_SOURCES}
         ${HLS_UNIFIED_THREAD_SOURCES}
+        ${EZXML_SOURCES}
 )
 
 
