@@ -54,7 +54,7 @@
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 #include "database/db_streams.h"
-#include "video/ffmpeg_utils.h"  // For url_inject_credentials
+#include "core/url_utils.h"
 
 // Reconnection settings
 #define BASE_RECONNECT_DELAY_MS 500
@@ -453,10 +453,10 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // Get RTSP URL from go2rtc
     if (!go2rtc_stream_get_rtsp_url(stream_name, ctx->rtsp_url, sizeof(ctx->rtsp_url))) {
         // Fall back to direct stream URL, injecting ONVIF credentials if available
-        if (url_inject_credentials(config.url,
-                                   config.onvif_username[0] ? config.onvif_username : NULL,
-                                   config.onvif_password[0] ? config.onvif_password : NULL,
-                                   ctx->rtsp_url, sizeof(ctx->rtsp_url)) != 0) {
+        if (url_apply_credentials(config.url,
+                                  config.onvif_username[0] ? config.onvif_username : NULL,
+                                  config.onvif_password[0] ? config.onvif_password : NULL,
+                                  ctx->rtsp_url, sizeof(ctx->rtsp_url)) != 0) {
             strncpy(ctx->rtsp_url, config.url, sizeof(ctx->rtsp_url) - 1);
         }
     }

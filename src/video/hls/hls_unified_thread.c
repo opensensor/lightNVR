@@ -42,6 +42,7 @@
 
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/url_utils.h"
 #include "core/shutdown_coordinator.h"
 
 // MEMORY LEAK FIX: Forward declaration for FFmpeg buffer cleanup function
@@ -2347,7 +2348,7 @@ int start_hls_unified_stream(const char *stream_name) {
 
         while (rtsp_retries > 0 && !rtsp_url_success) {
             if (go2rtc_get_rtsp_url(stream_name, actual_url, sizeof(actual_url))) {
-                log_info("Using go2rtc RTSP URL for HLS streaming: %s", actual_url);
+                log_info("Using go2rtc RTSP URL for HLS streaming on stream %s", stream_name);
                 rtsp_url_success = true;
             } else {
                 log_warn("Failed to get go2rtc RTSP URL for stream %s (retries left: %d)",
@@ -2376,8 +2377,8 @@ int start_hls_unified_stream(const char *stream_name) {
             size_t suffix_len = strlen(suffix);
             if (url_len + suffix_len < sizeof(actual_url)) {
                 strncat(actual_url, suffix, sizeof(actual_url) - url_len - 1);
-                log_info("Audio recording disabled for %s, using video-only RTSP URL for HLS: %s",
-                         stream_name, actual_url);
+                log_info("Audio recording disabled for %s, using video-only go2rtc RTSP URL for HLS",
+                         stream_name);
             } else {
                 log_warn("RTSP URL too long to append ?video selector for stream %s", stream_name);
             }
@@ -2389,10 +2390,10 @@ int start_hls_unified_stream(const char *stream_name) {
     if (!go2rtc_integration_is_using_go2rtc_for_hls(stream_name) ||
         strcmp(actual_url, config.url) == 0) {
         char credentialed_url[MAX_PATH_LENGTH];
-        if (url_inject_credentials(actual_url,
-                                   config.onvif_username[0] ? config.onvif_username : NULL,
-                                   config.onvif_password[0] ? config.onvif_password : NULL,
-                                   credentialed_url, sizeof(credentialed_url)) == 0) {
+        if (url_apply_credentials(actual_url,
+                                  config.onvif_username[0] ? config.onvif_username : NULL,
+                                  config.onvif_password[0] ? config.onvif_password : NULL,
+                                  credentialed_url, sizeof(credentialed_url)) == 0) {
             strncpy(actual_url, credentialed_url, sizeof(actual_url) - 1);
             actual_url[sizeof(actual_url) - 1] = '\0';
         }

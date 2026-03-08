@@ -184,24 +184,4 @@ int chmod_path(const char *path, mode_t mode);
  */
 int chmod_recursive(const char *path, mode_t mode);
 
-/**
- * Inject credentials into a URL if not already present.
- *
- * If @p username and @p password are non-NULL/non-empty **and** the URL does
- * not already contain an '@' sign (i.e. embedded credentials), the function
- * rewrites the URL as  scheme://username:password@host...
- *
- * The result is written to @p out_url (up to @p out_size bytes).  If no
- * injection is needed the original @p url is copied verbatim.
- *
- * @param url        Original URL (e.g. "rtsp://cam/stream")
- * @param username   ONVIF / RTSP username (may be NULL or empty)
- * @param password   ONVIF / RTSP password (may be NULL or empty)
- * @param out_url    Output buffer for the (possibly modified) URL
- * @param out_size   Size of @p out_url buffer
- * @return 0 on success, -1 on error (e.g. buffer too small)
- */
-int url_inject_credentials(const char *url, const char *username,
-                           const char *password, char *out_url, size_t out_size);
-
 #endif /* FFMPEG_UTILS_H */

@@ -12,6 +12,7 @@
 #include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/url_utils.h"
 #include "video/onvif_discovery.h"
 #include "video/stream_manager.h"
 #include <cjson/cJSON.h>
@@ -317,8 +318,20 @@ void handle_get_onvif_device_profiles(const http_request_t *req, http_response_t
 
         cJSON_AddStringToObject(profile, "token", profiles[i].token);
         cJSON_AddStringToObject(profile, "name", profiles[i].name);
-        cJSON_AddStringToObject(profile, "snapshot_uri", profiles[i].snapshot_uri);
-        cJSON_AddStringToObject(profile, "stream_uri", profiles[i].stream_uri);
+        char safe_snapshot_uri[MAX_URL_LENGTH];
+        char safe_stream_uri[MAX_URL_LENGTH];
+
+        if (url_strip_credentials(profiles[i].snapshot_uri, safe_snapshot_uri, sizeof(safe_snapshot_uri)) != 0) {
+            strncpy(safe_snapshot_uri, profiles[i].snapshot_uri, sizeof(safe_snapshot_uri) - 1);
+            safe_snapshot_uri[sizeof(safe_snapshot_uri) - 1] = '\0';
+        }
+        if (url_strip_credentials(profiles[i].stream_uri, safe_stream_uri, sizeof(safe_stream_uri)) != 0) {
+            strncpy(safe_stream_uri, profiles[i].stream_uri, sizeof(safe_stream_uri) - 1);
+            safe_stream_uri[sizeof(safe_stream_uri) - 1] = '\0';
+        }
+
+        cJSON_AddStringToObject(profile, "snapshot_uri", safe_snapshot_uri);
+        cJSON_AddStringToObject(profile, "stream_uri", safe_stream_uri);
         cJSON_AddNumberToObject(profile, "width", profiles[i].width);
         cJSON_AddNumberToObject(profile, "height", profiles[i].height);
         cJSON_AddStringToObject(profile, "encoding", profiles[i].encoding);

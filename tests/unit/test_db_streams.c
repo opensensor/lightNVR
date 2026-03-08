@@ -54,6 +54,16 @@ static void clear_streams(void) {
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
 }
 
+static void exec_sql_or_fail(sqlite3 *db, const char *sql) {
+    char *err = NULL;
+    int rc = sqlite3_exec(db, sql, NULL, NULL, &err);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQL failed: %s\n", err ? err : "unknown");
+        sqlite3_free(err);
+    }
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+}
+
 /* ---- Unity boilerplate ---- */
 void setUp(void)    { clear_streams(); }
 void tearDown(void) {}
@@ -189,6 +199,31 @@ void test_get_all_stream_names(void) {
     TEST_ASSERT_EQUAL_INT(2, n);
 }
 
+void test_repair_onvif_embedded_credentials_migration_normalizes_legacy_rows(void) {
+    sqlite3 *db = get_db_handle();
+    exec_sql_or_fail(db, "DELETE FROM streams;");
+    exec_sql_or_fail(db,
+        "INSERT INTO streams ("
+        "name, url, enabled, streaming_enabled, width, height, fps, codec, priority, record, segment_duration, "
+        "detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, "
+        "detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, "
+        "retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
+        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags) VALUES ("
+        "'legacy_onvif', 'rtsp://legacy_user:legacy_pass@camera.example/live', 1, 1, 1920, 1080, 25, 'h264', 5, 1, 60, "
+        "0, '', 0.5, 10, 0, 3, '', 'none', '', 0, 1, 1, 0, 0, 0, 0, 3.0, 2.0, 0.25, 0, 0, 0.0, 0.0, 0.0, 0, '', '', 'profile1', 8899, 0, '', '');");
+    exec_sql_or_fail(db, "DELETE FROM schema_migrations WHERE version = '0034';");
+
+    shutdown_database();
+    TEST_ASSERT_EQUAL_INT(0, init_database(TEST_DB_PATH));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("legacy_onvif", &got));
+    TEST_ASSERT_EQUAL_STRING("rtsp://camera.example/live", got.url);
+    TEST_ASSERT_EQUAL_STRING("legacy_user", got.onvif_username);
+    TEST_ASSERT_EQUAL_STRING("legacy_pass", got.onvif_password);
+    TEST_ASSERT_TRUE(got.is_onvif);
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -210,6 +245,7 @@ int main(void) {
     RUN_TEST(test_get_enabled_stream_count);
     RUN_TEST(test_stream_retention_config_round_trip);
     RUN_TEST(test_get_all_stream_names);
+    RUN_TEST(test_repair_onvif_embedded_credentials_migration_normalizes_legacy_rows);
 
     int result = UNITY_END();
     shutdown_database();

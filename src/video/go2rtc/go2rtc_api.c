@@ -149,7 +149,7 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s&name=%s", // codeql[cpp/non-https-url] - localhost-only internal API
             g_api_host, g_api_port, encoded_url, stream_id);
 
-    log_info("Adding stream with URL: %s", url);
+    log_info("Adding go2rtc stream source for %s", stream_id);
 
     // Set CURL options for PUT request
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -267,7 +267,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
         log_warn("URL truncated building go2rtc request for stream %s", stream_id);
     }
 
-    log_info("Adding stream with multiple sources: %s", url);
+    log_info("Adding go2rtc stream with %d source(s) for %s", num_sources, stream_id);
 
     // Set CURL options for PUT request
     curl_easy_setopt(curl, CURLOPT_URL, url);

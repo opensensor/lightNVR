@@ -11,6 +11,7 @@
 #include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/url_utils.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
@@ -20,6 +21,53 @@
 #include "database/db_motion_config.h"
 #include "database/db_auth.h"
 #include "video/go2rtc/go2rtc_integration.h"
+
+static void get_stream_api_credentials(const stream_config_t *config,
+                                       char *safe_url, size_t safe_url_size,
+                                       char *onvif_username, size_t onvif_username_size,
+                                       char *onvif_password, size_t onvif_password_size) {
+    char extracted_username[128] = {0};
+    char extracted_password[128] = {0};
+    bool use_separate_credentials;
+
+    if (!config) {
+        return;
+    }
+
+    strncpy(safe_url, config->url, safe_url_size - 1);
+    safe_url[safe_url_size - 1] = '\0';
+
+    strncpy(onvif_username, config->onvif_username, onvif_username_size - 1);
+    onvif_username[onvif_username_size - 1] = '\0';
+    strncpy(onvif_password, config->onvif_password, onvif_password_size - 1);
+    onvif_password[onvif_password_size - 1] = '\0';
+
+    use_separate_credentials = config->is_onvif ||
+                              config->onvif_username[0] != '\0' ||
+                              config->onvif_password[0] != '\0';
+    if (!use_separate_credentials) {
+        return;
+    }
+
+    if ((onvif_username[0] == '\0' || onvif_password[0] == '\0') &&
+        url_extract_credentials(config->url,
+                                extracted_username, sizeof(extracted_username),
+                                extracted_password, sizeof(extracted_password)) == 0) {
+        if (onvif_username[0] == '\0' && extracted_username[0] != '\0') {
+            strncpy(onvif_username, extracted_username, onvif_username_size - 1);
+            onvif_username[onvif_username_size - 1] = '\0';
+        }
+        if (onvif_password[0] == '\0' && extracted_password[0] != '\0') {
+            strncpy(onvif_password, extracted_password, onvif_password_size - 1);
+            onvif_password[onvif_password_size - 1] = '\0';
+        }
+    }
+
+    if (url_strip_credentials(config->url, safe_url, safe_url_size) != 0) {
+        strncpy(safe_url, config->url, safe_url_size - 1);
+        safe_url[safe_url_size - 1] = '\0';
+    }
+}
 
 /**
  * @brief Backend-agnostic handler for GET /api/streams
@@ -99,9 +147,16 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
             return;
         }
 
+        char safe_url[MAX_URL_LENGTH];
+        char api_onvif_username[sizeof(db_streams[i].onvif_username)];
+        char api_onvif_password[sizeof(db_streams[i].onvif_password)];
+        get_stream_api_credentials(&db_streams[i], safe_url, sizeof(safe_url),
+                                   api_onvif_username, sizeof(api_onvif_username),
+                                   api_onvif_password, sizeof(api_onvif_password));
+
         // Add stream properties
         cJSON_AddStringToObject(stream_obj, "name", db_streams[i].name);
-        cJSON_AddStringToObject(stream_obj, "url", db_streams[i].url);
+        cJSON_AddStringToObject(stream_obj, "url", safe_url);
         cJSON_AddBoolToObject(stream_obj, "enabled", db_streams[i].enabled);
         cJSON_AddBoolToObject(stream_obj, "streaming_enabled", db_streams[i].streaming_enabled);
         cJSON_AddNumberToObject(stream_obj, "width", db_streams[i].width);
@@ -141,8 +196,8 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(stream_obj, "ptz_max_y", db_streams[i].ptz_max_y);
         cJSON_AddNumberToObject(stream_obj, "ptz_max_z", db_streams[i].ptz_max_z);
         cJSON_AddBoolToObject(stream_obj, "ptz_has_home", db_streams[i].ptz_has_home);
-        cJSON_AddStringToObject(stream_obj, "onvif_username", db_streams[i].onvif_username);
-        cJSON_AddStringToObject(stream_obj, "onvif_password", db_streams[i].onvif_password);
+        cJSON_AddStringToObject(stream_obj, "onvif_username", api_onvif_username);
+        cJSON_AddStringToObject(stream_obj, "onvif_password", api_onvif_password);
         cJSON_AddStringToObject(stream_obj, "onvif_profile", db_streams[i].onvif_profile);
         cJSON_AddNumberToObject(stream_obj, "onvif_port", db_streams[i].onvif_port);
         cJSON_AddBoolToObject(stream_obj, "record_on_schedule", db_streams[i].record_on_schedule);
@@ -266,9 +321,16 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    char safe_url[MAX_URL_LENGTH];
+    char api_onvif_username[sizeof(config.onvif_username)];
+    char api_onvif_password[sizeof(config.onvif_password)];
+    get_stream_api_credentials(&config, safe_url, sizeof(safe_url),
+                               api_onvif_username, sizeof(api_onvif_username),
+                               api_onvif_password, sizeof(api_onvif_password));
+
     // Add stream properties
     cJSON_AddStringToObject(stream_obj, "name", config.name);
-    cJSON_AddStringToObject(stream_obj, "url", config.url);
+    cJSON_AddStringToObject(stream_obj, "url", safe_url);
     cJSON_AddBoolToObject(stream_obj, "enabled", config.enabled);
     cJSON_AddBoolToObject(stream_obj, "streaming_enabled", config.streaming_enabled);
     cJSON_AddNumberToObject(stream_obj, "width", config.width);
@@ -308,8 +370,8 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_z", config.ptz_max_z);
     cJSON_AddBoolToObject(stream_obj, "ptz_has_home", config.ptz_has_home);
-    cJSON_AddStringToObject(stream_obj, "onvif_username", config.onvif_username);
-    cJSON_AddStringToObject(stream_obj, "onvif_password", config.onvif_password);
+    cJSON_AddStringToObject(stream_obj, "onvif_username", api_onvif_username);
+    cJSON_AddStringToObject(stream_obj, "onvif_password", api_onvif_password);
     cJSON_AddStringToObject(stream_obj, "onvif_profile", config.onvif_profile);
     cJSON_AddNumberToObject(stream_obj, "onvif_port", config.onvif_port);
     cJSON_AddBoolToObject(stream_obj, "record_on_schedule", config.record_on_schedule);
@@ -421,8 +483,15 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    char safe_url_full[MAX_URL_LENGTH];
+    char api_onvif_username_full[sizeof(config.onvif_username)];
+    char api_onvif_password_full[sizeof(config.onvif_password)];
+    get_stream_api_credentials(&config, safe_url_full, sizeof(safe_url_full),
+                               api_onvif_username_full, sizeof(api_onvif_username_full),
+                               api_onvif_password_full, sizeof(api_onvif_password_full));
+
     cJSON_AddStringToObject(stream_obj, "name", config.name);
-    cJSON_AddStringToObject(stream_obj, "url", config.url);
+    cJSON_AddStringToObject(stream_obj, "url", safe_url_full);
     cJSON_AddBoolToObject(stream_obj, "enabled", config.enabled);
     cJSON_AddBoolToObject(stream_obj, "streaming_enabled", config.streaming_enabled);
     cJSON_AddNumberToObject(stream_obj, "width", config.width);
@@ -459,8 +528,8 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(stream_obj, "ptz_max_y", config.ptz_max_y);
     cJSON_AddNumberToObject(stream_obj, "ptz_max_z", config.ptz_max_z);
     cJSON_AddBoolToObject(stream_obj, "ptz_has_home", config.ptz_has_home);
-    cJSON_AddStringToObject(stream_obj, "onvif_username", config.onvif_username);
-    cJSON_AddStringToObject(stream_obj, "onvif_password", config.onvif_password);
+    cJSON_AddStringToObject(stream_obj, "onvif_username", api_onvif_username_full);
+    cJSON_AddStringToObject(stream_obj, "onvif_password", api_onvif_password_full);
     cJSON_AddStringToObject(stream_obj, "onvif_profile", config.onvif_profile);
     cJSON_AddNumberToObject(stream_obj, "onvif_port", config.onvif_port);
     cJSON_AddBoolToObject(stream_obj, "record_on_schedule", config.record_on_schedule);

@@ -11,12 +11,12 @@
 #include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/url_utils.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
-#include "video/ffmpeg_utils.h"  // For url_inject_credentials and FFmpeg utilities
 
 // FFmpeg includes
 #include <libavformat/avformat.h>
@@ -166,14 +166,19 @@ void handle_test_stream(const http_request_t *req, http_response_t *res) {
 
     // Inject credentials into URL if provided and not already present
     char credentialed_url[MAX_URL_LENGTH];
-    if (url_inject_credentials(raw_url, username, password,
-                               credentialed_url, sizeof(credentialed_url)) != 0) {
+    if (url_apply_credentials(raw_url, username, password,
+                              credentialed_url, sizeof(credentialed_url)) != 0) {
         strncpy(credentialed_url, raw_url, sizeof(credentialed_url) - 1);
         credentialed_url[sizeof(credentialed_url) - 1] = '\0';
     }
     const char *stream_url = credentialed_url;
 
-    log_info("Testing stream connection: url=%s, protocol=%d", raw_url, stream_protocol);
+    char safe_url[MAX_URL_LENGTH];
+    if (url_redact_for_logging(raw_url, safe_url, sizeof(safe_url)) != 0) {
+        strncpy(safe_url, "[invalid-url]", sizeof(safe_url) - 1);
+        safe_url[sizeof(safe_url) - 1] = '\0';
+    }
+    log_info("Testing stream connection: url=%s, protocol=%d", safe_url, stream_protocol);
     
     // Create response
     cJSON *response = cJSON_CreateObject();

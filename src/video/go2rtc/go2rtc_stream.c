@@ -10,7 +10,7 @@
 #include "video/go2rtc/dns_cleanup.h"
 #include "core/config.h"
 #include "core/logger.h"
-#include "video/ffmpeg_utils.h"  // For url_inject_credentials
+#include "core/url_utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -148,12 +148,12 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     // Inject credentials into URL if provided and not already embedded
     {
         char credentialed_url[URL_BUFFER_SIZE];
-        if (url_inject_credentials(modified_url, username, password,
-                                   credentialed_url, sizeof(credentialed_url)) == 0) {
+        if (url_apply_credentials(modified_url, username, password,
+                                  credentialed_url, sizeof(credentialed_url)) == 0) {
             if (strcmp(credentialed_url, modified_url) != 0) {
                 strncpy(modified_url, credentialed_url, URL_BUFFER_SIZE - 1);
                 modified_url[URL_BUFFER_SIZE - 1] = '\0';
-                log_info("Injected credentials into stream URL for go2rtc registration");
+                log_info("Applied credentials to go2rtc source URL for registration");
             }
         }
     }
@@ -192,7 +192,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     strncpy(modified_url, new_url, URL_BUFFER_SIZE - 1);
     modified_url[URL_BUFFER_SIZE - 1] = '\0';
 
-    log_info("Final URL with go2rtc parameters: %s", modified_url);
+    log_info("Prepared go2rtc source URL for stream registration: %s", stream_id);
 
     bool result;
 

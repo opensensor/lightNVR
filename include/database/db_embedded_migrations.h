@@ -510,6 +510,64 @@ static const char migration_0033_up[] =
 static const char migration_0033_down[] =
     "SELECT 1;";
 
+static const char migration_0034_up[] =
+    "UPDATE streams\n"
+    "   SET url = substr(url, 1, instr(url, '://') + 2) ||\n"
+    "             substr(substr(url, instr(url, '://') + 3),\n"
+    "                    instr(substr(url, instr(url, '://') + 3), '@') + 1),\n"
+    "       onvif_username = CASE\n"
+    "           WHEN COALESCE(onvif_username, '') = '' THEN\n"
+    "               CASE\n"
+    "                   WHEN instr(substr(substr(url, instr(url, '://') + 3),\n"
+    "                                     1,\n"
+    "                                     instr(substr(url, instr(url, '://') + 3), '@') - 1),\n"
+    "                              ':') > 0 THEN\n"
+    "                       substr(substr(substr(url, instr(url, '://') + 3),\n"
+    "                                           1,\n"
+    "                                           instr(substr(url, instr(url, '://') + 3), '@') - 1),\n"
+    "                              1,\n"
+    "                              instr(substr(substr(url, instr(url, '://') + 3),\n"
+    "                                                  1,\n"
+    "                                                  instr(substr(url, instr(url, '://') + 3), '@') - 1),\n"
+    "                                     ':') - 1)\n"
+    "                   ELSE\n"
+    "                       substr(substr(url, instr(url, '://') + 3),\n"
+    "                              1,\n"
+    "                              instr(substr(url, instr(url, '://') + 3), '@') - 1)\n"
+    "               END\n"
+    "           ELSE onvif_username\n"
+    "       END,\n"
+    "       onvif_password = CASE\n"
+    "           WHEN COALESCE(onvif_password, '') = '' THEN\n"
+    "               CASE\n"
+    "                   WHEN instr(substr(substr(url, instr(url, '://') + 3),\n"
+    "                                     1,\n"
+    "                                     instr(substr(url, instr(url, '://') + 3), '@') - 1),\n"
+    "                              ':') > 0 THEN\n"
+    "                       substr(substr(substr(url, instr(url, '://') + 3),\n"
+    "                                           1,\n"
+    "                                           instr(substr(url, instr(url, '://') + 3), '@') - 1),\n"
+    "                              instr(substr(substr(url, instr(url, '://') + 3),\n"
+    "                                                  1,\n"
+    "                                                  instr(substr(url, instr(url, '://') + 3), '@') - 1),\n"
+    "                                     ':') + 1)\n"
+    "                   ELSE ''\n"
+    "               END\n"
+    "           ELSE onvif_password\n"
+    "       END\n"
+    " WHERE instr(url, '://') > 0\n"
+    "   AND instr(substr(url, instr(url, '://') + 3), '@') > 0\n"
+    "   AND (\n"
+    "        is_onvif = 1 OR\n"
+    "        COALESCE(onvif_profile, '') != '' OR\n"
+    "        COALESCE(onvif_username, '') != '' OR\n"
+    "        COALESCE(onvif_password, '') != '' OR\n"
+    "        COALESCE(onvif_port, 0) > 0\n"
+    "   );";
+
+static const char migration_0034_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -742,8 +800,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0033_down,
         .is_embedded = true
     },
+    {
+        .version = "0034",
+        .description = "repair_onvif_embedded_credentials",
+        .sql_up = migration_0034_up,
+        .sql_down = migration_0034_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 33
+#define EMBEDDED_MIGRATIONS_COUNT 34
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

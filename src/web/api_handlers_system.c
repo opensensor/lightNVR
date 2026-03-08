@@ -1331,6 +1331,11 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
             cJSON_AddBoolToObject(stream, "record", g_config.streams[i].record);
             cJSON_AddNumberToObject(stream, "priority", g_config.streams[i].priority);
             cJSON_AddNumberToObject(stream, "segment_duration", g_config.streams[i].segment_duration);
+            cJSON_AddBoolToObject(stream, "is_onvif", g_config.streams[i].is_onvif);
+            cJSON_AddStringToObject(stream, "onvif_username", g_config.streams[i].onvif_username);
+            cJSON_AddStringToObject(stream, "onvif_password", g_config.streams[i].onvif_password);
+            cJSON_AddStringToObject(stream, "onvif_profile", g_config.streams[i].onvif_profile);
+            cJSON_AddNumberToObject(stream, "onvif_port", g_config.streams[i].onvif_port);
 
             cJSON_AddItemToArray(streams, stream);
         }

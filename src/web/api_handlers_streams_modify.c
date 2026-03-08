@@ -13,6 +13,7 @@
 #include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/url_utils.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
@@ -60,6 +61,58 @@ typedef struct {
 static void put_stream_task_free(put_stream_task_t *task) {
     if (task) {
         free(task);
+    }
+}
+
+static void normalize_stream_url_credentials(stream_config_t *config) {
+    char extracted_username[sizeof(config->onvif_username)] = {0};
+    char extracted_password[sizeof(config->onvif_password)] = {0};
+    char stripped_url[MAX_URL_LENGTH];
+    bool use_separate_credentials;
+
+    if (!config) {
+        return;
+    }
+
+    use_separate_credentials = config->is_onvif ||
+                              config->onvif_username[0] != '\0' ||
+                              config->onvif_password[0] != '\0';
+    if (!use_separate_credentials) {
+        return;
+    }
+
+    if (url_extract_credentials(config->url,
+                                extracted_username, sizeof(extracted_username),
+                                extracted_password, sizeof(extracted_password)) == 0) {
+        if (config->onvif_username[0] == '\0' && extracted_username[0] != '\0') {
+            strncpy(config->onvif_username, extracted_username, sizeof(config->onvif_username) - 1);
+            config->onvif_username[sizeof(config->onvif_username) - 1] = '\0';
+        }
+        if (config->onvif_password[0] == '\0' && extracted_password[0] != '\0') {
+            strncpy(config->onvif_password, extracted_password, sizeof(config->onvif_password) - 1);
+            config->onvif_password[sizeof(config->onvif_password) - 1] = '\0';
+        }
+    }
+
+    if (url_strip_credentials(config->url, stripped_url, sizeof(stripped_url)) == 0) {
+        strncpy(config->url, stripped_url, sizeof(config->url) - 1);
+        config->url[sizeof(config->url) - 1] = '\0';
+    }
+}
+
+static int build_onvif_test_url(const stream_config_t *config, char *out_url, size_t out_size) {
+    if (!config || !out_url || out_size == 0) {
+        return -1;
+    }
+
+    return url_build_onvif_device_service_url(config->url, config->onvif_port,
+                                              out_url, out_size);
+}
+
+static void redact_url_for_log(const char *url, char *out_url, size_t out_size) {
+    if (url_redact_for_logging(url, out_url, out_size) != 0) {
+        strncpy(out_url, "[invalid-url]", out_size - 1);
+        out_url[out_size - 1] = '\0';
     }
 }
 
@@ -603,24 +656,13 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
             config.onvif_password[sizeof(config.onvif_password) - 1] = '\0';
         }
 
+        normalize_stream_url_credentials(&config);
+
         // Build ONVIF device URL, using onvif_port if specified
         char onvif_device_url[MAX_URL_LENGTH];
-        if (config.onvif_port > 0) {
-            // Extract host from stream URL (skip scheme and credentials)
-            const char *host_start = strstr(config.url, "://");
-            if (host_start) {
-                host_start += 3;
-                const char *at = strchr(host_start, '@');
-                if (at) host_start = at + 1;
-                const char *host_end = host_start;
-                while (*host_end && *host_end != ':' && *host_end != '/') host_end++;
-                snprintf(onvif_device_url, sizeof(onvif_device_url), "http://%.*s:%d/onvif/device_service",
-                         (int)(host_end - host_start), host_start, config.onvif_port);
-            } else {
-                snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
-            }
-        } else {
-            snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
+        if (build_onvif_test_url(&config, onvif_device_url, sizeof(onvif_device_url)) != 0) {
+            strncpy(onvif_device_url, config.url, sizeof(onvif_device_url) - 1);
+            onvif_device_url[sizeof(onvif_device_url) - 1] = '\0';
         }
 
         // Test ONVIF connection
@@ -801,7 +843,11 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             strncpy(config.url, url->valuestring, sizeof(config.url) - 1);
             config_changed = true;
             requires_restart = true;  // URL changes always require restart
-            log_info("URL changed from '%s' to '%s' - restart required", original_url, config.url);
+            char safe_original_url[MAX_URL_LENGTH];
+            char safe_new_url[MAX_URL_LENGTH];
+            redact_url_for_log(original_url, safe_original_url, sizeof(safe_original_url));
+            redact_url_for_log(config.url, safe_new_url, sizeof(safe_new_url));
+            log_info("URL changed from '%s' to '%s' - restart required", safe_original_url, safe_new_url);
         }
     }
 
@@ -1188,23 +1234,13 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config.onvif_password[sizeof(config.onvif_password) - 1] = '\0';
         }
 
+        normalize_stream_url_credentials(&config);
+
         // Build ONVIF device URL, using onvif_port if specified
         char onvif_device_url[MAX_URL_LENGTH];
-        if (config.onvif_port > 0) {
-            const char *host_start = strstr(config.url, "://");
-            if (host_start) {
-                host_start += 3;
-                const char *at = strchr(host_start, '@');
-                if (at) host_start = at + 1;
-                const char *host_end = host_start;
-                while (*host_end && *host_end != ':' && *host_end != '/') host_end++;
-                snprintf(onvif_device_url, sizeof(onvif_device_url), "http://%.*s:%d/onvif/device_service",
-                         (int)(host_end - host_start), host_start, config.onvif_port);
-            } else {
-                snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
-            }
-        } else {
-            snprintf(onvif_device_url, sizeof(onvif_device_url), "%s", config.url);
+        if (build_onvif_test_url(&config, onvif_device_url, sizeof(onvif_device_url)) != 0) {
+            strncpy(onvif_device_url, config.url, sizeof(onvif_device_url) - 1);
+            onvif_device_url[sizeof(onvif_device_url) - 1] = '\0';
         }
 
         // Test ONVIF connection

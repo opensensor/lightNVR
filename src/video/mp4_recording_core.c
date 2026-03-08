@@ -27,6 +27,7 @@
 
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/url_utils.h"
 #include "core/shutdown_coordinator.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
@@ -36,7 +37,6 @@
 #include "video/mp4_writer_thread.h"
 #include "video/mp4_segment_recorder.h"
 #include "video/stream_packet_processor.h"
-#include "video/ffmpeg_utils.h"
 #include "video/thread_utils.h"
 
 
@@ -219,7 +219,7 @@ static void *mp4_recording_thread(void *arg) {
 
         while (retries > 0 && !success) {
             if (go2rtc_get_rtsp_url(stream_name, actual_url, sizeof(actual_url))) {
-                log_info("Using go2rtc RTSP URL for MP4 recording: %s", actual_url);
+                log_info("Using go2rtc RTSP URL for MP4 recording on stream %s", stream_name);
                 using_go2rtc = true;
                 success = true;
             } else {
@@ -247,18 +247,18 @@ static void *mp4_recording_thread(void *arg) {
             size_t suffix_len = strlen(suffix);
             if (url_len + suffix_len < sizeof(actual_url)) {
                 strncat(actual_url, suffix, sizeof(actual_url) - url_len - 1);
-                log_info("Audio recording disabled for %s, using video-only RTSP URL: %s",
-                         stream_name, actual_url);
+                log_info("Audio recording disabled for %s, using video-only go2rtc RTSP URL",
+                         stream_name);
             } else {
                 log_warn("RTSP URL too long to append ?video selector for stream %s", stream_name);
             }
         }
     } else {
         // Use the original URL, injecting ONVIF credentials if available
-        if (url_inject_credentials(ctx->config.url,
-                                   ctx->config.onvif_username[0] ? ctx->config.onvif_username : NULL,
-                                   ctx->config.onvif_password[0] ? ctx->config.onvif_password : NULL,
-                                   actual_url, sizeof(actual_url)) != 0) {
+        if (url_apply_credentials(ctx->config.url,
+                                  ctx->config.onvif_username[0] ? ctx->config.onvif_username : NULL,
+                                  ctx->config.onvif_password[0] ? ctx->config.onvif_password : NULL,
+                                  actual_url, sizeof(actual_url)) != 0) {
             log_warn("Failed to inject credentials into URL for stream %s, using original URL",
                      stream_name);
             strncpy(actual_url, ctx->config.url, sizeof(actual_url) - 1);
@@ -329,7 +329,7 @@ static void *mp4_recording_thread(void *arg) {
                         if (go2rtc_get_rtsp_url(stream_name, fresh_url, sizeof(fresh_url))) {
                             strncpy(restart_url, fresh_url, sizeof(restart_url) - 1);
                             restart_url[sizeof(restart_url) - 1] = '\0';
-                            log_info("Refreshed go2rtc URL for stream %s: %s", stream_name, restart_url);
+                            log_info("Refreshed go2rtc URL for stream %s", stream_name);
                         }
                     }
 
@@ -686,7 +686,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
         cleanup_dead_recording(dead_ctx, stream_name);
     }
 
-    log_info("Using standalone recording thread for stream %s with custom URL: %s", stream_name, url);
+    log_info("Using standalone recording thread for stream %s with custom URL", stream_name);
 
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
@@ -794,7 +794,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     recording_contexts[slot] = ctx;
     pthread_mutex_unlock(&recording_contexts_mutex);
 
-    log_info("Started MP4 recording for %s in slot %d using URL: %s", stream_name, slot, url);
+    log_info("Started MP4 recording for %s in slot %d", stream_name, slot);
 
     return 0;
 }
@@ -1058,8 +1058,8 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
         cleanup_dead_recording(dead_ctx, stream_name);
     }
 
-    log_info("Using standalone recording thread for stream %s with URL %s and trigger_type: %s",
-             stream_name, url, trigger_type);
+    log_info("Using standalone recording thread for stream %s with trigger_type: %s",
+             stream_name, trigger_type);
 
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
@@ -1146,8 +1146,8 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     recording_contexts[slot] = ctx;
     pthread_mutex_unlock(&recording_contexts_mutex);
 
-    log_info("Started MP4 recording for %s in slot %d with URL %s and trigger_type: %s",
-             stream_name, slot, url, trigger_type);
+    log_info("Started MP4 recording for %s in slot %d with trigger_type: %s",
+             stream_name, slot, trigger_type);
 
     return 0;
 }
