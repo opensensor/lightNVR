@@ -567,10 +567,10 @@ if(ENABLE_SOD)
 
         # Additional direct RPATH via linker flags for older systems
         if(UNIX AND NOT APPLE)
-            set_target_properties(lightnvr PROPERTIES
-                    LINK_FLAGS "-Wl,-rpath,\$ORIGIN/../src/sod:\$ORIGIN/../lib"
-            )
+            target_link_options(lightnvr PRIVATE "LINKER:-rpath,\$ORIGIN/../src/sod:\$ORIGIN/../lib")
         endif()
+
+
     else()
         message(STATUS "Using static linking for SOD library")
     endif()
