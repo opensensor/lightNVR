@@ -73,7 +73,12 @@ set(LIGHTNVR_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Find required packages
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale libswresample)
+pkg_check_modules(FFMPEG REQUIRED
+    libavcodec>=61
+    libavformat>=61
+    libavutil>=59
+    libswscale>=8
+    libswresample>=5)
 pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
 find_package(Threads REQUIRED)

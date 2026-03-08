@@ -30,9 +30,6 @@ void log_ffmpeg_error(int err, const char *message) {
  */
 void init_ffmpeg(void) {
     // Initialize FFmpeg
-#if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 9, 100)
-    av_register_all();
-#endif
     avformat_network_init();
 
     // Initialize the FFmpeg leak detector

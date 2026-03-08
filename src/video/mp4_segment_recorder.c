@@ -43,6 +43,22 @@
 // Used to clamp pathological packet durations that can trigger muxer errors.
 #define MAX_PACKET_DURATION_TIMEBASE_UNITS 10000000
 
+// Timeout for probing video dimensions from the bitstream, in microseconds.
+#define DIMENSION_PROBE_TIMEOUT_US 60000000LL  // 60 seconds
+
+// Timeout thresholds (in seconds) for waiting on final keyframes.
+// SHUTDOWN_KEYFRAME_WAIT_TIMEOUT_S: how long to wait after shutdown before
+// ending without a keyframe.
+// KEYFRAME_WAIT_TIMEOUT_S: hard cap on how long to wait for a keyframe in
+// normal operation.
+#define SHUTDOWN_KEYFRAME_WAIT_TIMEOUT_S 1
+#define KEYFRAME_WAIT_TIMEOUT_S          5
+
+// Small fixed offset used to maintain timestamp continuity between segments.
+// Expressed in stream time_base units; currently set to 1 (minimum positive
+// offset).
+#define TIMESTAMP_CONTINUITY_OFFSET 1
+
 // Note: We can't directly access internal FFmpeg structures
 // So we'll use the public API for cleanup
 
@@ -83,14 +99,7 @@ static int interrupt_callback(void *ctx) {
  */
 void mp4_segment_recorder_init(void) {
     // Initialize FFmpeg network
-    #if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 9, 100)
-    // For older FFmpeg versions
-    av_register_all();
     avformat_network_init();
-    #else
-    // For newer FFmpeg versions
-    avformat_network_init();
-    #endif
 
     // BUGFIX: No longer need to reset global static variables
     // Each stream now has its own input context and segment info
@@ -239,7 +248,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         // forwarding frames — the dead-recording timer issue is separately handled
         // by updating last_packet_time during retries.
         av_dict_set(&opts, "analyzeduration", "5000000", 0);  // 5 seconds (FFmpeg default)
-        av_dict_set(&opts, "probesize", "5000000", 0);        // 5 MB (FFmpeg default)
+        av_dict_set(&opts, "probesize", "5242880", 0);        // 5 MB (5 * 1024 * 1024 bytes, FFmpeg default)
 
         // Open input
         log_info("Opening RTSP connection to %s (analyzeduration=5s, probesize=5MB)", rtsp_url);
@@ -355,7 +364,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                             // because reconnecting resets go2rtc's keyframe wait.
                             // If the network or go2rtc dies, av_read_frame returns an
                             // error and we exit the loop early.
-                            int64_t probe_timeout = 60000000; // 60 seconds
+                            int64_t probe_timeout = DIMENSION_PROBE_TIMEOUT_US;
                             bool dimensions_found = false;
                             int probe_packets = 0;
                             int probe_other_packets = 0;
@@ -881,7 +890,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				// Allow ending without a keyframe on shutdown OR after a 5-second
 				// hard timeout so cameras with long keyframe intervals (e.g. low-FPS
 				// enclosure cameras) cannot push segments past their configured length.
-				if (is_keyframe || (shutdown_detected && wait_time > 1) || wait_time >= 5) {
+				if (is_keyframe ||
+				    (shutdown_detected && wait_time > SHUTDOWN_KEYFRAME_WAIT_TIMEOUT_S) ||
+				    wait_time >= KEYFRAME_WAIT_TIMEOUT_S) {
                     if (is_keyframe) {
                         log_info("Found final key frame, ending recording");
                         // Set flag to indicate the last frame was a key frame
@@ -907,7 +918,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 							log_warn("Failed to allocate pending keyframe packet for overlap mode");
 						}
                     } else {
-                        if (wait_time >= 5 && !shutdown_detected) {
+	                        if (wait_time >= KEYFRAME_WAIT_TIMEOUT_S && !shutdown_detected) {
                             log_warn("Keyframe wait timeout after %lld s — camera has long keyframe interval? "
                                      "Cutting segment without final keyframe to enforce configured segment length.",
                                      (long long)wait_time);
@@ -948,14 +959,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         if (pkt->dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
                             // Calculate relative timestamp within this segment
                             int64_t relative_dts = pkt->dts - first_video_dts;
-                            // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
+                            // Add a small fixed offset in timebase units.
                             // This ensures continuity without timestamp inflation
-                            pkt->dts = relative_dts + 1;
+                            pkt->dts = relative_dts + TIMESTAMP_CONTINUITY_OFFSET;
                         }
 
                         if (pkt->pts != AV_NOPTS_VALUE && first_video_pts != AV_NOPTS_VALUE) {
                             int64_t relative_pts = pkt->pts - first_video_pts;
-                            pkt->pts = relative_pts + 1;
+                            pkt->pts = relative_pts + TIMESTAMP_CONTINUITY_OFFSET;
                         }
                     }
 
@@ -1106,14 +1117,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 if (pkt->dts != AV_NOPTS_VALUE && first_video_dts != AV_NOPTS_VALUE) {
                     // Calculate relative timestamp within this segment
                     int64_t relative_dts = pkt->dts - first_video_dts;
-                    // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
+                    // Add a small fixed offset in timebase units.
                     // This ensures continuity without timestamp inflation
-                    pkt->dts = relative_dts + 1;
+                    pkt->dts = relative_dts + TIMESTAMP_CONTINUITY_OFFSET;
                 }
 
                 if (pkt->pts != AV_NOPTS_VALUE && first_video_pts != AV_NOPTS_VALUE) {
                     int64_t relative_pts = pkt->pts - first_video_pts;
-                    pkt->pts = relative_pts + 1;
+                    pkt->pts = relative_pts + TIMESTAMP_CONTINUITY_OFFSET;
                 }
             }
 
@@ -1264,14 +1275,14 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 if (pkt->dts != AV_NOPTS_VALUE && first_audio_dts != AV_NOPTS_VALUE) {
                     // Calculate relative timestamp within this segment
                     int64_t relative_dts = pkt->dts - first_audio_dts;
-                    // Add a small fixed offset (e.g., 1/30th of a second in timebase units)
+                    // Add a small fixed offset in timebase units.
                     // This ensures continuity without timestamp inflation
-                    pkt->dts = relative_dts + 1;
+                    pkt->dts = relative_dts + TIMESTAMP_CONTINUITY_OFFSET;
                 }
 
                 if (pkt->pts != AV_NOPTS_VALUE && first_audio_pts != AV_NOPTS_VALUE) {
                     int64_t relative_pts = pkt->pts - first_audio_pts;
-                    pkt->pts = relative_pts + 1;
+                    pkt->pts = relative_pts + TIMESTAMP_CONTINUITY_OFFSET;
                 }
             }
 
