@@ -20,7 +20,9 @@ import {
   formatTimestampAsLocalDate,
   getAvailableDatesForSegments,
   getClippedSegmentHourRange,
-  getLocalDayBounds
+  getLocalDayBounds,
+  panTimelineRange,
+  zoomTimelineRange
 } from './timelineUtils.js';
 
 // Convert fractional hour (0–24) → Unix timestamp (seconds) for the given date
@@ -186,7 +188,8 @@ function TimelineHelp({ idsMode }) {
           <li>Drag the playhead to navigate precisely</li>
           <li>Click a segment (coloured bar) to play that recording</li>
           <li>Use the green play button to start playback from the current cursor position</li>
-          <li>Use the <strong>Fit</strong>, <strong>+</strong> and <strong>−</strong> buttons to zoom the timeline</li>
+          <li>Use the <strong>Fit</strong>, <strong>+</strong> and <strong>−</strong> buttons or <strong>Ctrl/Cmd + mouse wheel</strong> to zoom the timeline</li>
+          <li>Pan left/right at the current zoom level with <strong>Shift + mouse wheel</strong> or a horizontal trackpad scroll gesture</li>
           <li>Use <strong>Snapshot</strong>, <strong>Download</strong>, <strong>Protect</strong> or <strong>Delete</strong> on the currently playing recording</li>
         </ul>
       )}
@@ -225,6 +228,59 @@ export function TimelinePage() {
   useEffect(() => {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
+
+  useEffect(() => {
+    const container = timelineContainerRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    const handleWheel = (event) => {
+      const startHour = timelineState.timelineStartHour ?? 0;
+      const endHour = timelineState.timelineEndHour ?? 24;
+      const currentRange = endHour - startHour;
+      if (currentRange <= 0) {
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) {
+        return;
+      }
+
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const pointerRatio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
+        const anchorHour = startHour + (pointerRatio * currentRange);
+        const zoomFactor = event.deltaY < 0 ? 0.8 : 1.25;
+        const nextRange = zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour);
+        timelineState.setState({
+          timelineStartHour: nextRange.startHour,
+          timelineEndHour: nextRange.endHour
+        });
+        return;
+      }
+
+      const horizontalDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : (event.shiftKey ? event.deltaY : 0);
+
+      if (horizontalDelta !== 0) {
+        event.preventDefault();
+        const deltaHours = (horizontalDelta / rect.width) * currentRange;
+        const nextRange = panTimelineRange(startHour, endHour, deltaHours);
+        timelineState.setState({
+          timelineStartHour: nextRange.startHour,
+          timelineEndHour: nextRange.endHour
+        });
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   const idsAvailableDates = useMemo(() => (
     idsMode ? getAvailableDatesForSegments(idsTimelineSegments) : []
@@ -746,7 +802,7 @@ export function TimelinePage() {
 
           {/* Inline hint */}
           <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
-            Click segment to play · Drag playhead to navigate
+            Click segment to play · Drag playhead to seek · Shift+wheel pan · Ctrl/Cmd+wheel zoom
           </div>
         </div>
       </>

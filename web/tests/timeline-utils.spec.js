@@ -8,6 +8,9 @@ import {
   getAvailableDatesForSegments,
   getClippedSegmentHourRange,
   getLocalDayBounds,
+  normalizeTimelineRange,
+  panTimelineRange,
+  zoomTimelineRange,
   segmentIntersectsDay
 } from '../js/components/preact/timeline/timelineUtils.js';
 
@@ -175,6 +178,42 @@ describe('timelineUtils', () => {
     expect(countSegmentsForDate(segments, '2026-03-08')).toBe(2);
     expect(countSegmentsForDate(segments, '2026-03-09')).toBe(2);
     expect(findFirstVisibleSegmentIndex(segments, '2026-03-09')).toBe(1);
+  });
+
+  test('normalizes timeline ranges into the 0-24 hour window', () => {
+    expect(normalizeTimelineRange(-2, 30)).toEqual({
+      startHour: 0,
+      endHour: 24
+    });
+
+    expect(normalizeTimelineRange(23.9, 24.1)).toEqual({
+      startHour: 23.5,
+      endHour: 24
+    });
+  });
+
+  test('pans the visible timeline range while clamping at the day bounds', () => {
+    expect(panTimelineRange(6, 10, 2)).toEqual({
+      startHour: 8,
+      endHour: 12
+    });
+
+    expect(panTimelineRange(20, 24, 3)).toEqual({
+      startHour: 20,
+      endHour: 24
+    });
+  });
+
+  test('zooms around an anchor hour while preserving that anchor when possible', () => {
+    expect(zoomTimelineRange(4, 12, 0.5, 10)).toEqual({
+      startHour: 7,
+      endHour: 11
+    });
+
+    expect(zoomTimelineRange(4, 12, 2, 10)).toEqual({
+      startHour: 0,
+      endHour: 16
+    });
   });
 });
 
