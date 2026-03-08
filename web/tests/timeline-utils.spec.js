@@ -116,6 +116,18 @@ describe('timelineUtils', () => {
     expect(formatTimestampAsClock(new Date(2026, 2, 8, 0, 2, 0).getTime() / 1000)).toBe('00:02:00');
   });
 
+  test('handles clock boundary cases at midnight, end of day, and subsecond precision', () => {
+    // Midnight at the start of the day
+    expect(formatTimestampAsClock(new Date(2026, 2, 8, 0, 0, 0).getTime() / 1000)).toBe('00:00:00');
+
+    // Last second of the day
+    expect(formatTimestampAsClock(new Date(2026, 2, 8, 23, 59, 59).getTime() / 1000)).toBe('23:59:59');
+
+    // Subsecond precision: ensure fractional seconds do not cause rounding drift
+    const nearlyNextSecond = new Date(2026, 2, 8, 12, 10, 30).getTime() / 1000 + 0.999;
+    expect(formatTimestampAsClock(nearlyNextSecond)).toBe('12:10:30');
+  });
+
   test('formats timestamps as local YYYY-MM-DD keys', () => {
     expect(formatTimestampAsLocalDate(new Date(2026, 2, 8, 12, 10, 0).getTime() / 1000)).toBe('2026-03-08');
   });
@@ -186,7 +198,16 @@ describe('timelineUtils', () => {
       endHour: 24
     });
 
+    // normalizeTimelineRange enforces a minimum visible range (e.g. 0.5 hours)
+    // and clamps the resulting window to the 0–24 hour bounds.
     expect(normalizeTimelineRange(23.9, 24.1)).toEqual({
+      startHour: 23.5,
+      endHour: 24
+    });
+
+    // When the requested range is even smaller than the minimum, it is expanded
+    // to the minimum range while still clamping at the end of the day.
+    expect(normalizeTimelineRange(23.95, 24.0)).toEqual({
       startHour: 23.5,
       endHour: 24
     });
@@ -213,6 +234,27 @@ describe('timelineUtils', () => {
     expect(zoomTimelineRange(4, 12, 2, 10)).toEqual({
       startHour: 0,
       endHour: 16
+    });
+
+    // Zooming near the start of the day: anchor at 0 should remain at 0,
+    // and the visible range should be clamped to the [0, 24] window.
+    expect(zoomTimelineRange(0, 4, 0.5, 0)).toEqual({
+      startHour: 0,
+      endHour: 2
+    });
+
+    // Zooming near the end of the day: anchor at 24 should remain at 24,
+    // and the visible range should be clamped to the [0, 24] window.
+    expect(zoomTimelineRange(20, 24, 0.5, 24)).toEqual({
+      startHour: 22,
+      endHour: 24
+    });
+
+    // Extreme zoom-out around a mid-range anchor should expand to the full day
+    // and be clamped to the [0, 24] bounds.
+    expect(zoomTimelineRange(8, 16, 10, 12)).toEqual({
+      startHour: 0,
+      endHour: 24
     });
   });
 });
