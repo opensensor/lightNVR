@@ -213,3 +213,32 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
   });
 });
+
+test.describe('Timeline DST rendering @ui @timeline', () => {
+  test.use({ timezoneId: 'America/New_York' });
+
+  test.beforeEach(async ({ page }) => {
+    await login(page, USERS.admin);
+  });
+
+  test('skips the nonexistent 2am ruler label on spring-forward days while preserving playback selection', async ({ page }) => {
+    const stream = 'front_door';
+    const selectedDate = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 601, stream, start_timestamp: Math.floor(Date.parse('2026-03-08T06:50:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-03-08T06:55:00Z') / 1000) },
+      { id: 602, stream, start_timestamp: Math.floor(Date.parse('2026-03-08T07:10:00Z') / 1000), end_timestamp: Math.floor(Date.parse('2026-03-08T07:15:00Z') / 1000) }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${selectedDate}&time=03:10:00`, { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    const ruler = page.locator('.timeline-ruler');
+
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(timelinePage.timeDisplay).toHaveText('front_door - 03:10:00');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/602(?:\?|$)/);
+    await expect(ruler.getByText('3:00', { exact: true })).toBeVisible();
+    await expect(ruler.getByText('2:00', { exact: true })).toHaveCount(0);
+  });
+});

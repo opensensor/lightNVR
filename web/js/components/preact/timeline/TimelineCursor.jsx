@@ -8,7 +8,9 @@ import { timelineState } from './TimelinePage.jsx';
 import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
-  formatTimestampAsClock
+  formatTimestampAsClock,
+  getTimelineDayLengthHours,
+  timestampToTimelineOffset
 } from './timelineUtils.js';
 
 /**
@@ -55,12 +57,16 @@ export function TimelineCursor() {
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
       setStartHour(state.timelineStartHour || 0);
-      setEndHour(state.timelineEndHour || 24);
+      setEndHour(state.timelineEndHour || getTimelineDayLengthHours(state.selectedDate));
 
       // Only update current time if not dragging
       if (!isDraggingRef.current && !state.userControllingCursor) {
         updateTimeDisplay(state.currentTime);
-        debouncedUpdateCursorPosition(state.currentTime, state.timelineStartHour || 0, state.timelineEndHour || 24);
+        debouncedUpdateCursorPosition(
+          state.currentTime,
+          state.timelineStartHour || 0,
+          state.timelineEndHour || getTimelineDayLengthHours(state.selectedDate)
+        );
       }
     });
 
@@ -179,8 +185,11 @@ export function TimelineCursor() {
       return;
     }
 
-    const date = new Date(time * 1000);
-    const hour = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+    const hour = timestampToTimelineOffset(time, timelineState.selectedDate);
+    if (hour === null) {
+      setVisible(false);
+      return;
+    }
 
     if (hour < startHr || hour > endHr) {
       setVisible(false);
@@ -209,7 +218,7 @@ export function TimelineCursor() {
         updateCursorPosition(
           timelineState.currentTime,
           timelineState.timelineStartHour || 0,
-          timelineState.timelineEndHour || 24
+          timelineState.timelineEndHour || getTimelineDayLengthHours(timelineState.selectedDate)
         );
         return true;
       }
@@ -219,7 +228,11 @@ export function TimelineCursor() {
         timelineState.currentSegmentIndex = 0;
         timelineState.setState({});
         setVisible(true);
-        updateCursorPosition(t, timelineState.timelineStartHour || 0, timelineState.timelineEndHour || 24);
+        updateCursorPosition(
+          t,
+          timelineState.timelineStartHour || 0,
+          timelineState.timelineEndHour || getTimelineDayLengthHours(timelineState.selectedDate)
+        );
         return true;
       }
       return false;

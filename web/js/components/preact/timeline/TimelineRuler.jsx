@@ -7,17 +7,20 @@
 
 import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
+import { formatTimelineOffsetLabel, getTimelineDayLengthHours } from './timelineUtils.js';
 
 export function TimelineRuler() {
   const [startHour, setStartHour] = useState(timelineState.timelineStartHour ?? 0);
-  const [endHour, setEndHour]     = useState(timelineState.timelineEndHour ?? 24);
+  const [endHour, setEndHour] = useState(timelineState.timelineEndHour ?? getTimelineDayLengthHours(timelineState.selectedDate));
+  const [selectedDate, setSelectedDate] = useState(timelineState.selectedDate ?? null);
 
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
       const s = state.timelineStartHour ?? 0;
-      const e = state.timelineEndHour ?? 24;
+      const e = state.timelineEndHour ?? getTimelineDayLengthHours(state.selectedDate);
       setStartHour(s);
       setEndHour(e);
+      setSelectedDate(state.selectedDate ?? null);
     });
     return () => unsubscribe();
   }, []);
@@ -25,10 +28,11 @@ export function TimelineRuler() {
   // Generate hour markers and labels
   const generateHourMarkers = () => {
     const markers = [];
+    const dayLengthHours = getTimelineDayLengthHours(selectedDate);
 
     // Add hour markers and labels
     for (let hour = Math.floor(startHour); hour <= Math.ceil(endHour); hour++) {
-      if (hour >= 0 && hour <= 24) {
+      if (hour >= 0 && hour <= dayLengthHours) {
         const position = ((hour - startHour) / (endHour - startHour)) * 100;
 
         // Add hour marker
@@ -47,12 +51,12 @@ export function TimelineRuler() {
             className="absolute top-0 text-xs text-muted-foreground transform -translate-x-1/2"
             style={{ left: `${position}%` }}
           >
-            {hour}:00
+            {formatTimelineOffsetLabel(hour, selectedDate)}
           </div>
         );
 
         // Add half-hour marker when the visible range is ≤ 12 h (zoomed or auto-fit)
-        if (hour < 24 && (endHour - startHour) <= 12) {
+        if (hour < dayLengthHours && (endHour - startHour) <= 12) {
           const halfHourPosition = ((hour + 0.5 - startHour) / (endHour - startHour)) * 100;
           markers.push(
             <div

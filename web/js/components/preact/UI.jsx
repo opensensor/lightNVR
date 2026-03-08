@@ -159,7 +159,7 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
           </div>
           <h3 className="text-base font-semibold pt-2">{title}</h3>
         </div>
-        <p className="text-sm text-muted-foreground mb-6 ml-13">{message}</p>
+        <p className="text-sm text-muted-foreground mb-6 ml-12">{message}</p>
         <div className="flex justify-end space-x-3">
           <button
             className="px-4 py-2 border border-border rounded-md text-sm font-medium hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-gray-800"
@@ -722,9 +722,15 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       })
       : null;
 
+    const handleWindowResize = () => {
+      scheduleRedraw();
+    };
+
     if (resizeObserver) {
       resizeObserver.observe(container);
       resizeObserver.observe(videoRef.current);
+    } else {
+      window.addEventListener('resize', handleWindowResize);
     }
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -735,6 +741,9 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       resizeObserver?.disconnect();
+      if (!resizeObserver) {
+        window.removeEventListener('resize', handleWindowResize);
+      }
       if (redrawTimeoutId !== null) {
         clearTimeout(redrawTimeoutId);
       }
@@ -858,7 +867,6 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
                   className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-auto max-w-full object-contain'}
                   controls
                   controlsList="nofullscreen"
-                  autoPlay
                   key={videoUrl} /* Add key to force re-render when URL changes */
                   onError={(e) => {
                     console.error('Video error:', e);

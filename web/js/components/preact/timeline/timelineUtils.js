@@ -2,6 +2,8 @@
  * Shared timeline helpers for choosing segments and clipping them to a day view.
  */
 
+import dayjs from 'dayjs';
+
 const pad = (value) => String(value).padStart(2, '0');
 
 export const MIN_TIMELINE_VIEW_HOURS = 0.5;
@@ -11,12 +13,34 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-export function normalizeTimelineRange(startHour, endHour) {
+function getLocalDayStart(selectedDate) {
+  if (!selectedDate || typeof selectedDate !== 'string' || !selectedDate.includes('-')) {
+    return null;
+  }
+
+  const [year, month, day] = selectedDate.split('-').map(Number);
+  if (![year, month, day].every(Number.isFinite)) {
+    return null;
+  }
+
+  const localDayStart = dayjs(new Date(year, month - 1, day, 0, 0, 0, 0));
+  return localDayStart.isValid() ? localDayStart : null;
+}
+
+export function getTimelineDayLengthHours(selectedDate) {
+  const bounds = getLocalDayBounds(selectedDate);
+  return bounds?.durationHours ?? MAX_TIMELINE_VIEW_HOURS;
+}
+
+export function normalizeTimelineRange(startHour, endHour, maxHours = MAX_TIMELINE_VIEW_HOURS) {
+  const cappedMaxHours = Number.isFinite(maxHours) && maxHours > 0
+    ? maxHours
+    : MAX_TIMELINE_VIEW_HOURS;
   const safeStart = Number.isFinite(startHour) ? startHour : 0;
-  const safeEnd = Number.isFinite(endHour) ? endHour : MAX_TIMELINE_VIEW_HOURS;
+  const safeEnd = Number.isFinite(endHour) ? endHour : cappedMaxHours;
   const requestedRange = safeEnd - safeStart;
-  const range = clamp(requestedRange, MIN_TIMELINE_VIEW_HOURS, MAX_TIMELINE_VIEW_HOURS);
-  const maxStart = MAX_TIMELINE_VIEW_HOURS - range;
+  const range = clamp(requestedRange, MIN_TIMELINE_VIEW_HOURS, cappedMaxHours);
+  const maxStart = cappedMaxHours - range;
   const start = clamp(safeStart, 0, maxStart);
 
   return {
@@ -25,14 +49,17 @@ export function normalizeTimelineRange(startHour, endHour) {
   };
 }
 
-export function panTimelineRange(startHour, endHour, deltaHours) {
-  const normalized = normalizeTimelineRange(startHour, endHour);
+export function panTimelineRange(startHour, endHour, deltaHours, maxHours = MAX_TIMELINE_VIEW_HOURS) {
+  const normalized = normalizeTimelineRange(startHour, endHour, maxHours);
   if (!Number.isFinite(deltaHours) || deltaHours === 0) {
     return normalized;
   }
 
   const range = normalized.endHour - normalized.startHour;
-  const maxStart = MAX_TIMELINE_VIEW_HOURS - range;
+  const cappedMaxHours = Number.isFinite(maxHours) && maxHours > 0
+    ? maxHours
+    : MAX_TIMELINE_VIEW_HOURS;
+  const maxStart = cappedMaxHours - range;
   const nextStart = clamp(normalized.startHour + deltaHours, 0, maxStart);
 
   return {
@@ -41,14 +68,17 @@ export function panTimelineRange(startHour, endHour, deltaHours) {
   };
 }
 
-export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = null) {
-  const normalized = normalizeTimelineRange(startHour, endHour);
+export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = null, maxHours = MAX_TIMELINE_VIEW_HOURS) {
+  const normalized = normalizeTimelineRange(startHour, endHour, maxHours);
   if (!Number.isFinite(zoomFactor) || zoomFactor <= 0 || zoomFactor === 1) {
     return normalized;
   }
 
+  const cappedMaxHours = Number.isFinite(maxHours) && maxHours > 0
+    ? maxHours
+    : MAX_TIMELINE_VIEW_HOURS;
   const currentRange = normalized.endHour - normalized.startHour;
-  const nextRange = clamp(currentRange * zoomFactor, MIN_TIMELINE_VIEW_HOURS, MAX_TIMELINE_VIEW_HOURS);
+  const nextRange = clamp(currentRange * zoomFactor, MIN_TIMELINE_VIEW_HOURS, cappedMaxHours);
   const resolvedAnchorHour = clamp(
     Number.isFinite(anchorHour) ? anchorHour : ((normalized.startHour + normalized.endHour) / 2),
     normalized.startHour,
@@ -59,7 +89,7 @@ export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = n
     : 0.5;
   const nextStart = resolvedAnchorHour - (anchorRatio * nextRange);
 
-  return normalizeTimelineRange(nextStart, nextStart + nextRange);
+  return normalizeTimelineRange(nextStart, nextStart + nextRange, cappedMaxHours);
 }
 
 function formatLocalDate(date) {
@@ -71,25 +101,21 @@ export function formatTimestampAsLocalDate(timestamp) {
     return '';
   }
 
-  return formatLocalDate(new Date(timestamp * 1000));
+  return dayjs.unix(timestamp).format('YYYY-MM-DD');
 }
 
 export function getLocalDayBounds(selectedDate) {
-  if (!selectedDate || typeof selectedDate !== 'string' || !selectedDate.includes('-')) {
+  const dayStart = getLocalDayStart(selectedDate);
+  if (!dayStart) {
     return null;
   }
 
-  const [year, month, day] = selectedDate.split('-').map(Number);
-  if (![year, month, day].every(Number.isFinite)) {
-    return null;
-  }
-
-  const dayStart = new Date(year, month - 1, day, 0, 0, 0, 0);
-  const nextDayStart = new Date(year, month - 1, day + 1, 0, 0, 0, 0);
+  const nextDayStart = dayStart.add(1, 'day');
 
   return {
-    startTimestamp: Math.floor(dayStart.getTime() / 1000),
-    endTimestamp: Math.floor(nextDayStart.getTime() / 1000)
+    startTimestamp: dayStart.unix(),
+    endTimestamp: nextDayStart.unix(),
+    durationHours: nextDayStart.diff(dayStart, 'hour', true)
   };
 }
 
@@ -98,12 +124,7 @@ export function formatTimestampAsClock(timestamp) {
     return '';
   }
 
-  const date = new Date(timestamp * 1000);
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  const seconds = date.getSeconds().toString().padStart(2, '0');
-
-  return `${hours}:${minutes}:${seconds}`;
+  return dayjs.unix(timestamp).format('HH:mm:ss');
 }
 
 export function formatPlaybackTimeLabel(timestamp, streamName = '') {
@@ -157,6 +178,59 @@ export function countSegmentsForDate(segments, selectedDate) {
   return segments.reduce((count, segment) => (
     count + (segmentIntersectsDay(segment, selectedDate) ? 1 : 0)
   ), 0);
+}
+
+export function timelineOffsetToTimestamp(offsetHours, selectedDate) {
+  const bounds = getLocalDayBounds(selectedDate);
+  if (!bounds) {
+    throw new Error(`timelineOffsetToTimestamp: invalid selectedDate "${selectedDate}"`);
+  }
+
+  const numericOffset = Number(offsetHours);
+  if (!Number.isFinite(numericOffset)) {
+    throw new Error(`timelineOffsetToTimestamp: invalid offset value "${offsetHours}"`);
+  }
+
+  const normalizedOffset = clamp(numericOffset, 0, bounds.durationHours);
+  return Math.round(bounds.startTimestamp + normalizedOffset * 3600);
+}
+
+export function timestampToTimelineOffset(timestamp, selectedDate = null) {
+  if (timestamp === null || timestamp === undefined || !Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  const effectiveDate = selectedDate || formatTimestampAsLocalDate(timestamp);
+  const bounds = getLocalDayBounds(effectiveDate);
+  if (!bounds) {
+    return null;
+  }
+
+  return (timestamp - bounds.startTimestamp) / 3600;
+}
+
+export function localClockTimeToTimestamp(timeString, selectedDate) {
+  if (!selectedDate || typeof timeString !== 'string') {
+    return null;
+  }
+
+  const timeMatch = timeString.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+  if (!timeMatch) {
+    return null;
+  }
+
+  const timestamp = dayjs(`${selectedDate}T${timeString}`);
+  return timestamp.isValid() ? timestamp.unix() : null;
+}
+
+export function formatTimelineOffsetLabel(offsetHours, selectedDate) {
+  const bounds = getLocalDayBounds(selectedDate);
+  if (!bounds || !Number.isFinite(offsetHours)) {
+    return '';
+  }
+
+  const displayTimestamp = bounds.startTimestamp + (offsetHours * 3600);
+  return dayjs.unix(displayTimestamp).format('H:mm');
 }
 
 export function findFirstVisibleSegmentIndex(segments, selectedDate) {

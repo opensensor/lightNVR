@@ -319,7 +319,7 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
     rmdir(dir);
 }
 
-void test_env_integer_with_trailing_whitespace(void) {
+void test_env_integer_whitespace_handling(void) {
     char temp_dir[] = "/tmp/lightnvr_load_config_XXXXXX";
     char *dir = mkdtemp(temp_dir);
     TEST_ASSERT_NOT_NULL(dir);
@@ -393,6 +393,8 @@ void test_env_integer_with_trailing_whitespace(void) {
     }
 
     unlink(config_path);
+    unlink(db_path);
+    unlink(log_path);
     rmdir(storage_hls_path);
     rmdir(storage_path);
     rmdir(models_path);
@@ -454,7 +456,7 @@ int main(void) {
     RUN_TEST(test_custom_config_path_roundtrip);
     RUN_TEST(test_get_loaded_config_path_initially);
     RUN_TEST(test_save_config_accepts_hidden_ini_dotfile);
-    RUN_TEST(test_env_integer_with_trailing_whitespace);
+    RUN_TEST(test_env_integer_whitespace_handling);
 
     int result = UNITY_END();
     shutdown_logger();

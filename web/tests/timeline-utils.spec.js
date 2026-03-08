@@ -1,3 +1,5 @@
+import dayjs from 'dayjs';
+
 import {
   countSegmentsForDate,
   findFirstVisibleSegmentIndex,
@@ -6,16 +8,31 @@ import {
   findNearestSegmentIndex,
   formatPlaybackTimeLabel,
   formatTimestampAsClock,
+  formatTimelineOffsetLabel,
   getAvailableDatesForSegments,
   getClippedSegmentHourRange,
   getLocalDayBounds,
+  getTimelineDayLengthHours,
+  localClockTimeToTimestamp,
   normalizeTimelineRange,
   panTimelineRange,
+  timelineOffsetToTimestamp,
+  timestampToTimelineOffset,
   zoomTimelineRange,
   segmentIntersectsDay
 } from '../js/components/preact/timeline/timelineUtils.js';
 
 describe('timelineUtils', () => {
+  const originalTz = process.env.TZ;
+
+  afterEach(() => {
+    if (originalTz === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTz;
+    }
+  });
+
   test('prefers the segment with later start time when recordings overlap', () => {
     const segments = [
       { id: 1, start_timestamp: 100, end_timestamp: 200 },
@@ -136,6 +153,37 @@ describe('timelineUtils', () => {
 
   test('returns only the stream name when playback time is unavailable', () => {
     expect(formatPlaybackTimeLabel(null, 'garage')).toBe('garage');
+  });
+
+  test('uses the actual local day length on a DST spring-forward day', () => {
+    process.env.TZ = 'America/New_York';
+
+    const bounds = getLocalDayBounds('2026-03-08');
+
+    expect(bounds.endTimestamp - bounds.startTimestamp).toBe(23 * 3600);
+    expect(bounds.durationHours).toBe(23);
+    expect(getTimelineDayLengthHours('2026-03-08')).toBe(23);
+  });
+
+  test('maps DST spring-forward timestamps to elapsed timeline offsets', () => {
+    process.env.TZ = 'America/New_York';
+
+    const selectedDate = '2026-03-08';
+    const timestamp = dayjs(`${selectedDate}T03:10:00`).unix();
+
+    expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
+    expect(timelineOffsetToTimestamp(2 + (10 / 60), selectedDate)).toBe(timestamp);
+    expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('3:00');
+  });
+
+  test('parses wall-clock query times on DST days without treating them as elapsed offsets', () => {
+    process.env.TZ = 'America/New_York';
+
+    const selectedDate = '2026-03-08';
+    const timestamp = localClockTimeToTimestamp('03:10:00', selectedDate);
+
+    expect(timestamp).toBe(dayjs(`${selectedDate}T03:10:00`).unix());
+    expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
   });
 
   test('handles clock boundary cases at midnight, end of day, and subsecond precision', () => {

@@ -22,36 +22,24 @@ import {
   getAvailableDatesForSegments,
   getClippedSegmentHourRange,
   getLocalDayBounds,
+  getTimelineDayLengthHours,
+  localClockTimeToTimestamp,
   panTimelineRange,
+  timelineOffsetToTimestamp,
+  timestampToTimelineOffset,
   zoomTimelineRange
 } from './timelineUtils.js';
 
 const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
 
-// Convert fractional hour (0–24) → Unix timestamp (seconds) for the given date
+// Convert an elapsed timeline offset → Unix timestamp (seconds) for the selected local day.
 function timelineHourToTimestamp(hour, selectedDate) {
-  const numericHour = Number(hour);
-  if (!Number.isFinite(numericHour)) {
-    throw new Error(`timelineHourToTimestamp: invalid hour value "${hour}"`);
-  }
-
-  const normalizedHour = Math.min(24, Math.max(0, numericHour));
-
-  let date;
-  if (selectedDate && typeof selectedDate === 'string' && selectedDate.includes('-')) {
-    const [year, month, day] = selectedDate.split('-').map(Number);
-    date = new Date(year, month - 1, day, 0, 0, 0, 0);
-  } else {
-    date = new Date();
-    date.setHours(0, 0, 0, 0);
-  }
-  return Math.floor((date.getTime() + normalizedHour * 3600000) / 1000);
+  return timelineOffsetToTimestamp(hour, selectedDate);
 }
 
-// Utility function to convert timestamp to timeline hour
-function timestampToTimelineHour(timestamp) {
-  const date = new Date(timestamp * 1000);
-  return date.getHours() + (date.getMinutes() / 60) + (date.getSeconds() / 3600);
+// Convert a Unix timestamp to an elapsed timeline offset for the selected local day.
+function timestampToTimelineHour(timestamp, selectedDate = null) {
+  return timestampToTimelineOffset(timestamp, selectedDate);
 }
 
 // Global timeline state for child components
@@ -264,7 +252,7 @@ export function TimelinePage() {
 
     const handleWheel = (event) => {
       const startHour = timelineState.timelineStartHour ?? 0;
-      const endHour = timelineState.timelineEndHour ?? 24;
+      const endHour = timelineState.timelineEndHour ?? getTimelineDayLengthHours(timelineState.selectedDate);
       const currentRange = endHour - startHour;
       if (currentRange <= 0) {
         return;
@@ -280,7 +268,7 @@ export function TimelinePage() {
         const pointerRatio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
         const anchorHour = startHour + (pointerRatio * currentRange);
         const zoomFactor = event.deltaY < 0 ? 0.8 : 1.25;
-        const nextRange = zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour);
+        const nextRange = zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour, getTimelineDayLengthHours(timelineState.selectedDate));
         timelineState.setState({
           timelineStartHour: nextRange.startHour,
           timelineEndHour: nextRange.endHour
@@ -295,7 +283,7 @@ export function TimelinePage() {
       if (horizontalDelta !== 0) {
         event.preventDefault();
         const deltaHours = (horizontalDelta / rect.width) * currentRange;
-        const nextRange = panTimelineRange(startHour, endHour, deltaHours);
+        const nextRange = panTimelineRange(startHour, endHour, deltaHours, getTimelineDayLengthHours(timelineState.selectedDate));
         timelineState.setState({
           timelineStartHour: nextRange.startHour,
           timelineEndHour: nextRange.endHour
@@ -360,10 +348,11 @@ export function TimelinePage() {
     setSegments(segmentsCopy);
 
     const dayBounds = getLocalDayBounds(effectiveDate);
+    const dayLengthHours = getTimelineDayLengthHours(effectiveDate);
     const visibleIndices = [];
 
     // Compute auto-fit range from segments for the selected day
-    let earliest = 24;
+    let earliest = dayLengthHours;
     let latest = 0;
     segmentsCopy.forEach((seg, index) => {
       const visibleRange = getClippedSegmentHourRange(seg, effectiveDate);
@@ -382,9 +371,9 @@ export function TimelinePage() {
         isPlaying: false,
         selectedDate: effectiveDate,
         timelineStartHour: 0,
-        timelineEndHour: 24,
+        timelineEndHour: dayLengthHours,
         autoFitStartHour: 0,
-        autoFitEndHour: 24
+        autoFitEndHour: dayLengthHours
       });
       return false;
     }
@@ -428,10 +417,8 @@ export function TimelinePage() {
     }
 
     if (initialSegmentIndex === -1 && initialTimeRef.current) {
-      const timeParts = initialTimeRef.current.match(/^(\d{2}):(\d{2}):(\d{2})$/);
-      if (timeParts) {
-        const [, h, m, s] = timeParts.map(Number);
-        const seekTs = timelineHourToTimestamp(h + m / 60 + s / 3600, effectiveDate);
+      const seekTs = localClockTimeToTimestamp(initialTimeRef.current, effectiveDate);
+      if (seekTs !== null) {
 
         const containingIndex = findContainingSegmentIndex(segmentsCopy, seekTs);
         if (containingIndex !== -1 && getClippedSegmentHourRange(segmentsCopy[containingIndex], effectiveDate)) {
@@ -460,16 +447,16 @@ export function TimelinePage() {
     }
 
     let fitStart = 0;
-    let fitEnd = 24;
-    if (earliest < 24 && latest > 0) {
+    let fitEnd = dayLengthHours;
+    if (earliest < dayLengthHours && latest > 0) {
       const span = latest - earliest;
       const pad = Math.max(0.5, Math.min(1, span * 0.1));
       fitStart = Math.max(0, Math.floor((earliest - pad) * 2) / 2);
-      fitEnd = Math.min(24, Math.ceil((latest + pad) * 2) / 2);
+      fitEnd = Math.min(dayLengthHours, Math.ceil((latest + pad) * 2) / 2);
       if (fitEnd - fitStart < 2) {
         const center = (earliest + latest) / 2;
         fitStart = Math.max(0, Math.floor((center - 1) * 2) / 2);
-        fitEnd = Math.min(24, fitStart + 2);
+        fitEnd = Math.min(dayLengthHours, fitStart + 2);
       }
     }
 
