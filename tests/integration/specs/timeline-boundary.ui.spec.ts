@@ -71,7 +71,13 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     await expect(link).toBeVisible();
 
     const href = await link.getAttribute('href');
-    const expectedTime = new URL(href!, 'http://localhost').searchParams.get('time');
+    if (!href) {
+      throw new Error('Expected "View in Timeline" link to have an href attribute');
+    }
+    const expectedTime = new URL(href, 'http://localhost').searchParams.get('time');
+    if (expectedTime === null) {
+      throw new Error('Expected "time" search parameter in timeline link href but none was found');
+    }
 
     await Promise.all([
       page.waitForURL('**/timeline.html**'),
@@ -80,7 +86,7 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     const timelinePage = new TimelinePage(page);
     await expect(timelinePage.timelineContainer).toBeVisible();
-    await expect(timelinePage.timeDisplay).toHaveText(`${stream} - ${expectedTime!}`);
+    await expect(timelinePage.timeDisplay).toHaveText(`${stream} - ${expectedTime}`);
     await expect(page.locator('button[title="Manage Recording Tags"]')).toContainText('Tags (1)');
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/102(?:\?|$)/);
   });
@@ -199,7 +205,17 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     const timelinePage = new TimelinePage(page);
     await expect(timelinePage.timelineContainer).toBeVisible();
-    await expect.poll(() => timelinePage.videoPlayer.evaluate(video => video.controlsList?.contains('nofullscreen') ?? false)).toBe(true);
+    await expect.poll(() => timelinePage.videoPlayer.evaluate(video => {
+      if (!video) {
+        return false;
+      }
+      const anyVideo: any = video;
+      const controlsList = anyVideo.controlsList;
+      if (!controlsList || typeof controlsList.contains !== 'function') {
+        return false;
+      }
+      return controlsList.contains('nofullscreen');
+    })).toBe(true);
 
     await page.locator('#timeline-detection-overlay').check();
     await expect(page.locator('[data-testid="timeline-video-container"] canvas')).toBeVisible();
