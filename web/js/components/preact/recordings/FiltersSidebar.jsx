@@ -104,11 +104,12 @@ export function FiltersSidebar({
     } catch { return { ...DEFAULT_SECTIONS }; }
   });
 
-  const [detectionInput, setDetectionInput] = useState('');
+  const [availableDetectionLabels, setAvailableDetectionLabels] = useState([]);
   const [availableTags, setAvailableTags] = useState([]);
 
   useEffect(() => {
     recordingsAPI.getAllRecordingTags().then(setAvailableTags);
+    recordingsAPI.getAllDetectionLabels().then(setAvailableDetectionLabels);
   }, []);
 
   const toggleCollapsed = () => {
@@ -138,12 +139,6 @@ export function FiltersSidebar({
       ...prev,
       [key]: urlUtils.removeMultiValue(prev[key], value)
     }));
-  };
-
-  const handleAddDetectionLabel = () => {
-    if (!detectionInput.trim()) return;
-    addMultiFilterValue('detectionLabels', detectionInput);
-    setDetectionInput('');
   };
 
   const dateRangeBadge = filters.dateRange !== 'last7days'
@@ -264,25 +259,20 @@ export function FiltersSidebar({
           </FilterSection>
 
           <FilterSection title="Detection Objects" badge={getCountBadge(filters.detectionLabels)} isExpanded={sections.detectionObject} onToggle={() => toggleSection('detectionObject')}>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                id="detection-label-filter"
-                className="flex-1 p-2 text-sm border border-input rounded-md bg-background text-foreground"
-                placeholder="e.g., car, person, bicycle"
-                value={detectionInput}
-                onChange={(e) => setDetectionInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddDetectionLabel();
-                  }
-                }}
-              />
-              <button type="button" className="btn-secondary px-3 text-sm" onClick={handleAddDetectionLabel}>
-                Add
-              </button>
-            </div>
+            <select
+              id="detection-label-filter"
+              className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) addMultiFilterValue('detectionLabels', e.target.value);
+                e.target.value = '';
+              }}
+            >
+              <option value="">Add detection object…</option>
+              {availableDetectionLabels.map((label) => (
+                <option key={label} value={label}>{label}</option>
+              ))}
+            </select>
             <SelectedValues
               values={filters.detectionLabels}
               onRemove={(value) => removeMultiFilterValue('detectionLabels', value)}

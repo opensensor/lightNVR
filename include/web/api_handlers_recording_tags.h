@@ -10,6 +10,12 @@
 void handle_get_recording_tags(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief GET /api/recordings/detection-labels
+ * Returns all unique detection labels across all recordings.
+ */
+void handle_get_recording_detection_labels(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief GET /api/recordings/:id/tags
  * Returns tags for a specific recording.
  */

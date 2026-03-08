@@ -17,6 +17,7 @@
 #include "web/httpd_utils.h"
 #include "core/logger.h"
 #include "core/config.h"
+#include "database/db_detections.h"
 #include "database/db_recording_tags.h"
 #include "database/db_auth.h"
 
@@ -47,6 +48,40 @@ void handle_get_recording_tags(const http_request_t *req, http_response_t *res) 
         cJSON_AddItemToArray(arr, cJSON_CreateString(tags[i]));
     }
     cJSON_AddItemToObject(response, "tags", arr);
+
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+    free(json_str);
+    cJSON_Delete(response);
+}
+
+/* ------------------------------------------------------------------ */
+/* GET /api/recordings/detection-labels — list all unique labels       */
+/* ------------------------------------------------------------------ */
+void handle_get_recording_detection_labels(const http_request_t *req, http_response_t *res) {
+    log_debug("Handling GET /api/recordings/detection-labels");
+
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (!httpd_check_viewer_access(req, &user)) {
+            http_response_set_json_error(res, 401, "Unauthorized");
+            return;
+        }
+    }
+
+    char labels[MAX_UNIQUE_DETECTION_LABELS][MAX_LABEL_LENGTH];
+    int count = get_all_unique_detection_labels(labels, MAX_UNIQUE_DETECTION_LABELS);
+    if (count < 0) {
+        http_response_set_json_error(res, 500, "Failed to get detection labels");
+        return;
+    }
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON *arr = cJSON_CreateArray();
+    for (int i = 0; i < count; i++) {
+        cJSON_AddItemToArray(arr, cJSON_CreateString(labels[i]));
+    }
+    cJSON_AddItemToObject(response, "labels", arr);
 
     char *json_str = cJSON_PrintUnformatted(response);
     http_response_set_json(res, 200, json_str);

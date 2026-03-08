@@ -769,6 +769,24 @@ export const recordingsAPI = {
   },
 
   /**
+   * Get all unique detection labels
+   * @returns {Promise<string[]>} Array of unique detection labels
+   */
+  getAllDetectionLabels: async () => {
+    try {
+      const data = await fetchJSON('/api/recordings/detection-labels', {
+        timeout: 10000,
+        retries: 1,
+        retryDelay: 500
+      });
+      return data.labels || [];
+    } catch (error) {
+      console.error('Error fetching detection labels:', error);
+      return [];
+    }
+  },
+
+  /**
    * Get tags for a specific recording
    * @param {number} recordingId Recording ID
    * @returns {Promise<string[]>} Array of tags

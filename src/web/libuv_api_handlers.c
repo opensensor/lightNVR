@@ -189,6 +189,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/recordings/batch-protect", "POST", handle_batch_protect_recordings);
     http_server_register_handler(server, "/api/recordings/sync", "POST", handle_post_recordings_sync);
     http_server_register_handler(server, "/api/recordings/tags", "GET", handle_get_recording_tags);
+    http_server_register_handler(server, "/api/recordings/detection-labels", "GET", handle_get_recording_detection_labels);
     http_server_register_handler(server, "/api/recordings/batch-tags", "POST", handle_batch_recording_tags);
     http_server_register_handler(server, "/api/recordings/#/tags", "GET", handle_get_recording_tags_by_id);
     http_server_register_handler(server, "/api/recordings/#/tags", "PUT", handle_put_recording_tags);

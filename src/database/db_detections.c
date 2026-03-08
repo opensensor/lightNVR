@@ -724,6 +724,67 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
     return count;
 }
 
+int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_labels) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!labels || max_labels <= 0) {
+        log_error("Invalid parameters for get_all_unique_detection_labels");
+        return -1;
+    }
+
+    memset(labels, 0, (size_t)max_labels * MAX_LABEL_LENGTH);
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql =
+        "SELECT DISTINCT label "
+        "FROM detections "
+        "WHERE label IS NOT NULL AND TRIM(label) <> '' "
+        "ORDER BY label ASC "
+        "LIMIT ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare statement for get_all_unique_detection_labels: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int(stmt, 1, max_labels);
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_labels) {
+        const char *label = (const char *)sqlite3_column_text(stmt, 0);
+
+        if (label) {
+            strncpy(labels[count], label, MAX_LABEL_LENGTH - 1);
+            labels[count][MAX_LABEL_LENGTH - 1] = '\0';
+            count++;
+        }
+    }
+
+    if (rc != SQLITE_DONE && rc != SQLITE_ROW) {
+        log_error("Failed to fetch unique detection labels: %s", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return count;
+}
+
 /**
  * Update recent detections with a recording_id
  * This links detections that were stored before the recording was created to the recording.

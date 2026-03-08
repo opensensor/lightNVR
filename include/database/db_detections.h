@@ -79,6 +79,11 @@ int delete_old_detections(uint64_t max_age);
 #define MAX_DETECTION_LABELS 10
 
 /**
+ * Maximum number of unique detection labels to return for filter pickers.
+ */
+#define MAX_UNIQUE_DETECTION_LABELS 128
+
+/**
  * Structure to hold a detection label summary entry
  */
 typedef struct {
@@ -99,6 +104,15 @@ typedef struct {
  */
 int get_detection_labels_summary(const char *stream_name, time_t start_time, time_t end_time,
                                  detection_label_summary_t *labels, int max_labels);
+
+/**
+ * Get all unique detection labels across all detections.
+ *
+ * @param labels Output array of label strings (caller provides buffer)
+ * @param max_labels Maximum number of labels to return
+ * @return Number of unique labels found, or -1 on error
+ */
+int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_labels);
 
 /**
  * Update recent detections with a recording_id

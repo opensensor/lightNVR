@@ -147,8 +147,7 @@ export class RecordingsPage extends BasePage {
 
   async addDetectionLabel(label: string): Promise<void> {
     await this.expandDetectionObjectsSection();
-    await this.detectionLabelFilter.fill(label);
-    await this.page.getByRole('button', { name: 'Add' }).click();
+    await this.detectionLabelFilter.selectOption({ value: label });
     await sleep(300);
   }
 

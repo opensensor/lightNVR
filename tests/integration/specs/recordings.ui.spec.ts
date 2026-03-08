@@ -179,6 +179,9 @@ test.describe('Recordings Page @ui @recordings', () => {
       await page.route('**/api/streams*', route => route.fulfill({
         json: [{ name: 'cam1' }, { name: 'cam2' }, { name: 'cam3' }]
       }));
+      await page.route('**/api/recordings/detection-labels*', route => route.fulfill({
+        json: { labels: ['person', 'car', 'dog'] }
+      }));
       await page.route('**/api/recordings/tags*', route => route.fulfill({
         json: { tags: ['urgent', 'review', 'night'] }
       }));
@@ -210,6 +213,8 @@ test.describe('Recordings Page @ui @recordings', () => {
       await recordingsPage.expandDetectionObjectsSection();
       await recordingsPage.expandCaptureMethodSection();
       await recordingsPage.expandRecordingTagsSection();
+
+      await expect(recordingsPage.detectionLabelFilter.locator('option')).toContainText(['Add detection object…', 'person', 'car', 'dog']);
 
       await recordingsPage.filterByStream('cam1');
       await recordingsPage.filterByStream('cam2');
@@ -260,6 +265,18 @@ test.describe('Recordings Page @ui @recordings', () => {
       await expect(page.locator('#recordings-table tbody')).toContainText('cam2');
       await expect(page.locator('#recordings-table tbody')).toContainText('Manual');
       await expect(page.locator('#recordings-table tbody')).not.toContainText('cam1');
+
+      await recordingsPage.getActiveFilter('Object: person').getByRole('button').click();
+
+      await expect(recordingsPage.getActiveFilter('Object: person')).toHaveCount(0);
+      await expect(recordingsPage.getActiveFilter('Object: car')).toBeVisible();
+      await expect.poll(() => seenRequests.some(search => {
+        const params = new URL(`http://localhost/${search}`).searchParams;
+        return params.get('stream') === 'cam2' &&
+          params.get('detection_label') === 'car' &&
+          params.get('capture_method') === 'scheduled,manual' &&
+          params.get('tag') === 'urgent,review';
+      })).toBe(true);
     });
 
     test('uses container fullscreen so recording detection overlays remain visible', async ({ page }) => {
@@ -271,6 +288,7 @@ test.describe('Recordings Page @ui @recordings', () => {
 
       await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
       await page.route('**/api/streams*', route => route.fulfill({ json: [{ name: 'cam1' }] }));
+      await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: ['person'] } }));
       await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
       await page.route('**/api/recordings?**', route => route.fulfill({ json: {
         recordings: [{
