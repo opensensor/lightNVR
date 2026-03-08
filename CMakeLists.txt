@@ -347,8 +347,12 @@ set(LIGHTNVR_INCLUDE_DIRS
         ${SQLITE_INCLUDE_DIRS}
         ${CURL_INCLUDE_DIRS}
         ${SSL_INCLUDE_DIRS}
-        ${EZXML_INCLUDE_DIR}
 )
+
+# Add ezXML include directory if provided
+if(DEFINED EZXML_INCLUDE_DIR)
+    list(APPEND LIGHTNVR_INCLUDE_DIRS ${EZXML_INCLUDE_DIR})
+endif()
 
 # Add conditional include directories
 if(ENABLE_SOD)
