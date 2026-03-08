@@ -206,7 +206,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 	// Any carried-over keyframe belongs to the previous connection and must be discarded.
 	if (!*input_ctx_ptr && segment_info_ptr->pending_video_keyframe) {
 		log_debug("Discarding pending keyframe because input context is not being reused (new connection)");
-		av_packet_unref(segment_info_ptr->pending_video_keyframe);
 		av_packet_free(&segment_info_ptr->pending_video_keyframe);
 		segment_info_ptr->pending_video_keyframe = NULL;
 	}
@@ -821,7 +820,6 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 				log_debug("Using carried-over keyframe packet to start segment immediately (overlap mode)");
 				av_packet_unref(pkt);
 				av_packet_move_ref(pkt, segment_info_ptr->pending_video_keyframe);
-				av_packet_free(&segment_info_ptr->pending_video_keyframe);
 				segment_info_ptr->pending_video_keyframe = NULL;
 				ret = 0;
 			} else {
@@ -923,9 +921,9 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 						}
 						if (segment_info_ptr->pending_video_keyframe) {
 							av_packet_unref(segment_info_ptr->pending_video_keyframe);
-							int pref_ret = av_packet_ref(segment_info_ptr->pending_video_keyframe, pkt);
-							if (pref_ret < 0) {
-								log_warn("Failed to store pending keyframe for next segment (ret=%d)", pref_ret);
+							int ref_ret = av_packet_ref(segment_info_ptr->pending_video_keyframe, pkt);
+							if (ref_ret < 0) {
+								log_warn("Failed to store pending keyframe for next segment (ret=%d)", ref_ret);
 								av_packet_free(&segment_info_ptr->pending_video_keyframe);
 								segment_info_ptr->pending_video_keyframe = NULL;
 							} else {
@@ -1229,15 +1227,15 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         log_warn("Too many consecutive timestamp errors (%d), resetting all timestamps",
                                 consecutive_timestamp_errors);
 
-                        // Reset timestamps to small values
-                        first_video_dts = 0;
-                        first_video_pts = 0;
-                        last_video_dts = 0;
-                        last_video_pts = 0;
-                        first_audio_dts = 0;
-                        first_audio_pts = 0;
-                        last_audio_dts = 0;
-                        last_audio_pts = 0;
+                        // Reset timestamps to an unset state so they will be reinitialized
+                        first_video_dts = AV_NOPTS_VALUE;
+                        first_video_pts = AV_NOPTS_VALUE;
+                        last_video_dts = AV_NOPTS_VALUE;
+                        last_video_pts = AV_NOPTS_VALUE;
+                        first_audio_dts = AV_NOPTS_VALUE;
+                        first_audio_pts = AV_NOPTS_VALUE;
+                        last_audio_dts = AV_NOPTS_VALUE;
+                        last_audio_pts = AV_NOPTS_VALUE;
 
                         // Reset the error counter
                         consecutive_timestamp_errors = 0;
@@ -1499,15 +1497,16 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         log_warn("Too many consecutive audio timestamp errors (%d), resetting all timestamps",
                                 consecutive_timestamp_errors);
 
-                        // Reset timestamps to small values
-                        first_video_dts = 0;
-                        first_video_pts = 0;
-                        last_video_dts = 0;
-                        last_video_pts = 0;
-                        first_audio_dts = 0;
-                        first_audio_pts = 0;
-                        last_audio_dts = 0;
-                        last_audio_pts = 0;
+                        // Reset timestamps to an undefined state; they will be reinitialized
+                        // based on the next valid packet's timestamps.
+                        first_video_dts = AV_NOPTS_VALUE;
+                        first_video_pts = AV_NOPTS_VALUE;
+                        last_video_dts = AV_NOPTS_VALUE;
+                        last_video_pts = AV_NOPTS_VALUE;
+                        first_audio_dts = AV_NOPTS_VALUE;
+                        first_audio_pts = AV_NOPTS_VALUE;
+                        last_audio_dts = AV_NOPTS_VALUE;
+                        last_audio_pts = AV_NOPTS_VALUE;
 
                         // Reset the error counter
                         consecutive_timestamp_errors = 0;
