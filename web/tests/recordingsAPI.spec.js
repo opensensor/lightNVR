@@ -36,8 +36,8 @@ describe('recordingsAPI', () => {
       start_time: '2026-02-18T05:00:00Z',
       end_time: '2026-02-18T05:01:00Z'
     };
-    const start = Math.floor(Date.parse(recording.start_time) / 1000);
-    const end = Math.floor(Date.parse(recording.end_time) / 1000);
+    const start = recordingsAPI.parseRecordingTimestamp(recording.start_time);
+    const end = recordingsAPI.parseRecordingTimestamp(recording.end_time);
 
     fetchJSON.mockResolvedValue({ detections: [{ label: 'person' }] });
 
@@ -55,8 +55,8 @@ describe('recordingsAPI', () => {
       start_time: '2026-02-18T05:02:00Z',
       end_time: '2026-02-18T05:03:30Z'
     };
-    const start = Math.floor(Date.parse(recording.start_time) / 1000);
-    const end = Math.floor(Date.parse(recording.end_time) / 1000);
+    const start = recordingsAPI.parseRecordingTimestamp(recording.start_time);
+    const end = recordingsAPI.parseRecordingTimestamp(recording.end_time);
     const detections = [{ label: 'car' }];
 
     fetchJSON.mockResolvedValue({ detections });

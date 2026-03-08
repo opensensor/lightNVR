@@ -154,6 +154,8 @@ const buildFilterObject = (filters) => {
  * RecordingsAPI - Handles all API calls related to recordings
  */
 export const recordingsAPI = {
+  parseRecordingTimestamp,
+
   /**
    * Custom hooks for preact-query
    */
