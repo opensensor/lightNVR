@@ -446,15 +446,10 @@ endif()
 
 # Combine all sources (excluding inih, bundled cjson)
 set(SOURCES
-        ${CORE_SOURCES}
-        ${DATABASE_SOURCES}
-        ${STORAGE_SOURCES}
-        ${UTILS_SOURCES}
+        ${ROOT_SOURCES}
         ${VIDEO_SOURCES}
         ${HLS_SOURCES}
         ${HLS_UNIFIED_THREAD_SOURCES}
-        ${WEB_SOURCES}
-        ${ROOT_SOURCES}
 )
 
 
