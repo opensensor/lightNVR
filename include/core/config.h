@@ -260,12 +260,12 @@ int save_config(const config_t *config, const char *path);
 void load_default_config(config_t *config);
 
 /**
- * Validate configuration values
+ * Validate and normalize configuration values
  * 
  * @param config Pointer to config structure to validate
  * @return 0 if valid, non-zero if invalid
  */
-int validate_config(const config_t *config);
+int validate_config(config_t *config);
 
 /**
  * Print configuration to stdout (for debugging)

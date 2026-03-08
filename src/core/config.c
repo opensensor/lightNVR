@@ -28,13 +28,25 @@ config_t g_config;
  */
 static int safe_atoi(const char *str, int fallback) {
     if (!str || !*str) return fallback;
-    char *end;
+
+    int parsed = 0;
+    char *end = NULL;
     errno = 0;
     long val = strtol(str, &end, 10);
-    if (end == str || errno == ERANGE || val < INT_MIN || val > INT_MAX) {
+    if (end == str) {
         return fallback;
     }
-    return (int)val;
+
+    while (*end != '\0' && isspace((unsigned char)*end)) {
+        end++;
+    }
+
+    if (*end != '\0' || errno == ERANGE || val < INT_MIN || val > INT_MAX) {
+        return fallback;
+    }
+
+    parsed = (int)val;
+    return parsed;
 }
 
 // ============================================================================
@@ -205,8 +217,13 @@ static void apply_env_overrides(config_t *config) {
             case CONFIG_TYPE_INT: {
                 int *int_ptr = (int *)field_ptr;
                 char *endptr;
+                int new_value;
                 errno = 0;
                 long parsed = strtol(env_value, &endptr, 10);
+
+                while (*endptr != '\0' && isspace((unsigned char)*endptr)) {
+                    endptr++;
+                }
 
                 if (endptr == env_value || *endptr != '\0' ||
                     errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX) {
@@ -216,7 +233,7 @@ static void apply_env_overrides(config_t *config) {
                     break;
                 }
 
-                int new_value = (int)parsed;
+                new_value = (int)parsed;
                 *int_ptr = new_value;
                 log_info("Applied env override: %s=%s (int: %d)",
                          env_name, env_value, new_value);
@@ -550,9 +567,15 @@ static int ensure_directories(const config_t *config) {
     return 0;
 }
 
-// Validate configuration values
-int validate_config(const config_t *config) {
+// Validate and normalize configuration values
+int validate_config(config_t *config) {
     if (!config) return -1;
+
+    if (config->auth_absolute_timeout_hours < config->auth_timeout_hours) {
+        log_warn("auth_absolute_timeout_hours (%d) is less than auth_timeout_hours (%d); clamping to the idle timeout",
+                 config->auth_absolute_timeout_hours, config->auth_timeout_hours);
+        config->auth_absolute_timeout_hours = config->auth_timeout_hours;
+    }
     
     // Check for required paths
     if (strlen(config->storage_path) == 0) {
@@ -933,10 +956,6 @@ static int config_ini_handler(void* user, const char* section, const char* name,
         }
     }
 
-    if (config->auth_absolute_timeout_hours < config->auth_timeout_hours) {
-        config->auth_absolute_timeout_hours = config->auth_timeout_hours;
-    }
-
     return 1; // Return 1 to continue processing
 }
 
@@ -1064,9 +1083,32 @@ int save_stream_configs(const config_t *config) {
     // Check if configurations are identical to avoid unnecessary updates
     if (loaded == count) {
         int identical = 1;
-        for (int i = 0; i < loaded && identical; i++) {
-            if (strlen(config->streams[i].name) == 0 ||
-                strcmp(config->streams[i].name, db_streams[i].name) != 0) {
+        int config_named_streams = 0;
+
+        for (int i = 0; i < config->max_streams; i++) {
+            if (config->streams[i].name[0] != '\0') {
+                config_named_streams++;
+            }
+        }
+
+        if (config_named_streams != loaded) {
+            identical = 0;
+        }
+
+        for (int i = 0; i < config->max_streams && identical; i++) {
+            if (config->streams[i].name[0] == '\0') {
+                continue;
+            }
+
+            int found = 0;
+            for (int j = 0; j < loaded; j++) {
+                if (strcmp(config->streams[i].name, db_streams[j].name) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found) {
                 identical = 0;
             }
         }
@@ -1453,7 +1495,7 @@ int save_config(const config_t *config, const char *path) {
 
         /* Allowlist: only permit config files ending in ".ini". */
         size_t fname_len = strlen(fname);
-        if (fname_len < 5 || strcmp(fname + fname_len - 4, ".ini") != 0) {
+        if (fname_len < 4 || strcmp(fname + fname_len - 4, ".ini") != 0) {
             log_error("Config filename must end with .ini: '%s'", fname);
             return -1;
         }
