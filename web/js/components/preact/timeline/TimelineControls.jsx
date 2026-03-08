@@ -9,6 +9,7 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
+  formatPlaybackTimeLabel,
   MAX_TIMELINE_VIEW_HOURS,
   MIN_TIMELINE_VIEW_HOURS,
   zoomTimelineRange
@@ -22,14 +23,25 @@ export function TimelineControls() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [canZoomIn, setCanZoomIn] = useState(true);
   const [canZoomOut, setCanZoomOut] = useState(true);
+  const [timeDisplayText, setTimeDisplayText] = useState('00:00:00');
 
   useEffect(() => {
-    const unsubscribe = timelineState.subscribe(state => {
+    const syncControlsState = (state) => {
       setIsPlaying(state.isPlaying);
       const range = (state.timelineEndHour ?? MAX_TIMELINE_VIEW_HOURS) - (state.timelineStartHour ?? 0);
       setCanZoomIn(range > MIN_TIMELINE_VIEW_HOURS);
       setCanZoomOut(range < MAX_TIMELINE_VIEW_HOURS);
-    });
+
+      const currentSegment = state.currentSegmentIndex >= 0 && state.currentSegmentIndex < state.timelineSegments.length
+        ? state.timelineSegments[state.currentSegmentIndex]
+        : null;
+      const nextTimeDisplayText = formatPlaybackTimeLabel(state.currentTime, currentSegment?.stream);
+      setTimeDisplayText(nextTimeDisplayText || '00:00:00');
+    };
+
+    syncControlsState(timelineState);
+
+    const unsubscribe = timelineState.subscribe(syncControlsState);
     return () => unsubscribe();
   }, []);
 
@@ -411,7 +423,7 @@ export function TimelineControls() {
       {/* Current time display */}
       <div id="time-display"
         className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border">
-        00:00:00
+        {timeDisplayText}
       </div>
 
       <div className="flex items-center gap-1">

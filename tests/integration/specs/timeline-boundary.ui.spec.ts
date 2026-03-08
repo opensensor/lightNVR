@@ -80,7 +80,7 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     const timelinePage = new TimelinePage(page);
     await expect(timelinePage.timelineContainer).toBeVisible();
-    await expect(timelinePage.timeDisplay).toHaveText(expectedTime!);
+    await expect(timelinePage.timeDisplay).toHaveText(`${stream} - ${expectedTime!}`);
     await expect(page.locator('button[title="Manage Recording Tags"]')).toContainText('Tags (1)');
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/102(?:\?|$)/);
   });
@@ -118,7 +118,7 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     const timelinePage = new TimelinePage(page);
     await expect(timelinePage.timelineContainer).toBeVisible();
-    await expect(timelinePage.timeDisplay).toHaveText('10:10:00');
+    await expect(timelinePage.timeDisplay).toHaveText('garage - 10:10:00');
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/302(?:\?|$)/);
   });
 
@@ -128,7 +128,7 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     const returnUrl = `/recordings.html?dateRange=custom&startDate=${date}&endDate=${date}&startTime=00:00&endTime=23:59&page=1`;
     const segments: Segment[] = [
       { id: 401, stream, start_timestamp: localTimestamp(date, '09:00:00'), end_timestamp: localTimestamp(date, '09:10:00') },
-      { id: 402, stream, start_timestamp: localTimestamp(date, '09:15:00'), end_timestamp: localTimestamp(date, '09:25:00') }
+      { id: 402, stream: 'garage', start_timestamp: localTimestamp(date, '09:15:00'), end_timestamp: localTimestamp(date, '09:25:00') }
     ];
 
     await page.addInitScript(({ selectedIds, url }) => {
@@ -157,6 +157,10 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     const timelinePage = new TimelinePage(page);
     await expect(timelinePage.timelineContainer).toBeVisible();
     await expect(page.getByText('Loading selected recordings...')).toHaveCount(0);
+    await expect(timelinePage.timeDisplay).toHaveText('front_door - 09:00:00');
+
+    await timelinePage.timelineSegments.nth(1).click();
+    await expect(timelinePage.timeDisplay).toHaveText('garage - 09:15:00');
 
     await page.getByRole('button', { name: '↓ Download All (2)' }).click();
     await expect(page.getByRole('heading', { name: 'Download Selected Recordings' })).toBeVisible();

@@ -4,6 +4,7 @@ import {
   formatTimestampAsLocalDate,
   findContainingSegmentIndex,
   findNearestSegmentIndex,
+  formatPlaybackTimeLabel,
   formatTimestampAsClock,
   getAvailableDatesForSegments,
   getClippedSegmentHourRange,
@@ -114,6 +115,17 @@ describe('timelineUtils', () => {
   test('formats exact minute boundaries without floating point drift', () => {
     expect(formatTimestampAsClock(new Date(2026, 2, 8, 12, 10, 0).getTime() / 1000)).toBe('12:10:00');
     expect(formatTimestampAsClock(new Date(2026, 2, 8, 0, 2, 0).getTime() / 1000)).toBe('00:02:00');
+  });
+
+  test('formats playback labels with a stream name prefix when available', () => {
+    const timestamp = new Date(2026, 2, 8, 9, 15, 0).getTime() / 1000;
+
+    expect(formatPlaybackTimeLabel(timestamp, 'front_door')).toBe('front_door - 09:15:00');
+    expect(formatPlaybackTimeLabel(timestamp, '')).toBe('09:15:00');
+  });
+
+  test('returns only the stream name when playback time is unavailable', () => {
+    expect(formatPlaybackTimeLabel(null, 'garage')).toBe('garage');
   });
 
   test('handles clock boundary cases at midnight, end of day, and subsecond precision', () => {

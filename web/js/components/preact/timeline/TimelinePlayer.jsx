@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
-import { formatTimestampAsClock } from './timelineUtils.js';
+import { formatPlaybackTimeLabel } from './timelineUtils.js';
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
@@ -487,7 +487,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
     });
 
     // Directly update the time display as well
-    updateTimeDisplay(currentTime);
+    updateTimeDisplay(currentTime, segment);
 
     // Check if the user is controlling the cursor
     // If so, don't update the timeline state to avoid overriding the user's position
@@ -521,17 +521,17 @@ export function TimelinePlayer({ videoElementRef = null }) {
   };
 
   // Add a direct time display update function
-  const updateTimeDisplay = (time) => {
-    if (time === null) return;
-
+  const updateTimeDisplay = (time, segment = null) => {
     const timeDisplay = document.getElementById('time-display');
     if (!timeDisplay) return;
-    const formatted = formatTimestampAsClock(time);
-    timeDisplay.textContent = formatted;
+    const streamName = segment?.stream || segmentRecordingData?.stream || '';
+    const formatted = formatPlaybackTimeLabel(time, streamName);
+    timeDisplay.textContent = formatted || '00:00:00';
 
     console.log('TimelinePlayer: Updated time display', {
       timestamp: time,
       formatted,
+      stream: streamName || null,
       localTime: new Date(time * 1000).toLocaleString()
     });
   };
@@ -550,6 +550,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
     const segment = segments[currentSegmentIndex];
     if (!segment || !segment.id) return;
 
+    setSegmentRecordingData(null);
+    setRecordingTags([]);
+
     // Don't refetch if same segment
     if (lastDetectionSegmentIdRef.current === segment.id) return;
     lastDetectionSegmentIdRef.current = segment.id;
@@ -563,6 +566,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
         // Store recording data for action buttons
         setSegmentRecordingData(data);
         setIsProtected(!!data.protected);
+        updateTimeDisplay(timelineState.currentTime ?? segment.start_timestamp, {
+          stream: data.stream || segment.stream
+        });
 
         // Fetch recording tags
         fetch(`/api/recordings/${segment.id}/tags`)

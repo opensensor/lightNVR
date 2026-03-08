@@ -106,6 +106,17 @@ export function formatTimestampAsClock(timestamp) {
   return `${hours}:${minutes}:${seconds}`;
 }
 
+export function formatPlaybackTimeLabel(timestamp, streamName = '') {
+  const formattedTime = formatTimestampAsClock(timestamp);
+  const trimmedStreamName = typeof streamName === 'string' ? streamName.trim() : '';
+
+  if (!formattedTime) {
+    return trimmedStreamName;
+  }
+
+  return trimmedStreamName ? `${trimmedStreamName} - ${formattedTime}` : formattedTime;
+}
+
 export function segmentIntersectsDay(segment, selectedDate) {
   return getClippedSegmentHourRange(segment, selectedDate) !== null;
 }
