@@ -46,7 +46,7 @@ add_compile_options(
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Add ASan/UBSan flags for Debug builds with GCC/Clang
-if(CMAKE_BUILD_TYPE MATCHES "^[Dd][Ee][Bb][Uu][Gg]$")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         message(STATUS "Enabling AddressSanitizer and UndefinedBehaviorSanitizer for Debug build")
         add_compile_options(-fsanitize=address,undefined)
