@@ -16,13 +16,12 @@ jest.mock('../js/query-client.js', () => ({
   usePostMutation: jest.fn()
 }));
 
-const { fetchJSON, enhancedFetch } = jest.requireMock('../js/fetch-utils.js');
-const { showStatusMessage } = jest.requireMock('../js/components/preact/ToastContainer.jsx');
+const { fetchJSON, enhancedFetch } = require('../js/fetch-utils.js');
+const { showStatusMessage } = require('../js/components/preact/ToastContainer.jsx');
 
 describe('recordingsAPI', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    global.window = global.window || {};
   });
 
   afterEach(() => {

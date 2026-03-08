@@ -27,9 +27,10 @@ import {
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-// Note: JavaScript Date months are 0-indexed, so month 2 = March.
+// JavaScript Date months are 0-indexed, so month index 2 represents March.
+const MARCH = 2;
 const baseTestDateTimestamp = (hours, minutes, seconds = 0) =>
-  new Date(2026, 2, 8, hours, minutes, seconds).getTime() / 1000;
+  new Date(2026, MARCH, 8, hours, minutes, seconds).getTime() / 1000;
 
 describe('timelineUtils', () => {
   const originalTz = process.env.TZ;
@@ -206,10 +207,15 @@ describe('timelineUtils', () => {
     // by checking the local wall-clock times at the start and end of the day.
     const startLocal = dayjs.unix(bounds.startTimestamp);
     const endLocal = dayjs.unix(bounds.endTimestamp);
+    const expectedStartInTimezone = dayjs.tz('2026-03-08T00:00:00', 'America/New_York');
+
+    // Explicitly verify the TZ-dependent local boundary matches New York midnight.
+    expect(startLocal.unix()).toBe(expectedStartInTimezone.unix());
+    expect(startLocal.utcOffset()).toBe(expectedStartInTimezone.utcOffset());
 
     // The selected local day should start at midnight on 2026-03-08 in America/New_York.
     expect(startLocal.year()).toBe(2026);
-    expect(startLocal.month()).toBe(2); // March (0-based month index)
+    expect(startLocal.month()).toBe(MARCH); // March (0-based month index)
     expect(startLocal.date()).toBe(8);
     expect(startLocal.hour()).toBe(0);
     expect(startLocal.minute()).toBe(0);
