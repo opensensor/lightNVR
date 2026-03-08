@@ -197,93 +197,113 @@ describe('timelineUtils', () => {
   test('uses the actual local day length on a DST spring-forward day', () => {
     process.env.TZ = 'America/New_York';
 
-    const bounds = getLocalDayBounds('2026-03-08');
+    try {
+      const bounds = getLocalDayBounds('2026-03-08');
 
-    expect(bounds.endTimestamp - bounds.startTimestamp).toBe(23 * 3600);
-    expect(bounds.durationHours).toBe(23);
-    expect(getTimelineDayLengthHours('2026-03-08')).toBe(23);
+      expect(bounds.endTimestamp - bounds.startTimestamp).toBe(23 * 3600);
+      expect(bounds.durationHours).toBe(23);
+      expect(getTimelineDayLengthHours('2026-03-08')).toBe(23);
 
-    // Verify that dayjs interprets the boundary timestamps using the configured timezone
-    // by checking the local wall-clock times at the start and end of the day.
-    const startLocal = dayjs.unix(bounds.startTimestamp);
-    const endLocal = dayjs.unix(bounds.endTimestamp);
-    const expectedStartInTimezone = dayjs.tz('2026-03-08T00:00:00', 'America/New_York');
+      // Verify that dayjs interprets the boundary timestamps using the configured timezone
+      // by checking the local wall-clock times at the start and end of the day.
+      const startLocal = dayjs.unix(bounds.startTimestamp);
+      const endLocal = dayjs.unix(bounds.endTimestamp);
+      const expectedStartInTimezone = dayjs.tz('2026-03-08T00:00:00', 'America/New_York');
 
-    // Explicitly verify the TZ-dependent local boundary matches New York midnight.
-    expect(startLocal.unix()).toBe(expectedStartInTimezone.unix());
-    expect(startLocal.utcOffset()).toBe(expectedStartInTimezone.utcOffset());
+      // Explicitly verify the TZ-dependent local boundary matches New York midnight.
+      expect(startLocal.unix()).toBe(expectedStartInTimezone.unix());
+      expect(startLocal.utcOffset()).toBe(expectedStartInTimezone.utcOffset());
 
-    // The selected local day should start at midnight on 2026-03-08 in America/New_York.
-    expect(startLocal.year()).toBe(2026);
-    expect(startLocal.month()).toBe(MARCH);
-    expect(startLocal.date()).toBe(8);
-    expect(startLocal.hour()).toBe(0);
-    expect(startLocal.minute()).toBe(0);
-    expect(startLocal.second()).toBe(0);
+      // The selected local day should start at midnight on 2026-03-08 in America/New_York.
+      expect(startLocal.year()).toBe(2026);
+      expect(startLocal.month()).toBe(MARCH);
+      expect(startLocal.date()).toBe(8);
+      expect(startLocal.hour()).toBe(0);
+      expect(startLocal.minute()).toBe(0);
+      expect(startLocal.second()).toBe(0);
 
-    // The end timestamp should represent the end of that shortened 23-hour local day.
-    expect(endLocal.unix() - startLocal.unix()).toBe(23 * 3600);
+      // The end timestamp should represent the end of that shortened 23-hour local day.
+      expect(endLocal.unix() - startLocal.unix()).toBe(23 * 3600);
+    } finally {
+      process.env.TZ = originalTz;
+    }
   });
 
   test('maps DST spring-forward timestamps to elapsed timeline offsets', () => {
     process.env.TZ = 'America/New_York';
 
-    const selectedDate = '2026-03-08';
-    const timestamp = dayjs(`${selectedDate}T03:10:00`).unix();
+    try {
+      const selectedDate = '2026-03-08';
+      const timestamp = dayjs(`${selectedDate}T03:10:00`).unix();
 
-    expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
-    expect(timelineOffsetToTimestamp(2 + (10 / 60), selectedDate)).toBe(timestamp);
-    expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('3:00');
+      expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
+      expect(timelineOffsetToTimestamp(2 + (10 / 60), selectedDate)).toBe(timestamp);
+      expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('3:00');
 
-    // Confirm that dayjs sees this instant as the expected local wall-clock time.
-    const local = dayjs.unix(timestamp);
-    expect(local.year()).toBe(2026);
-    expect(local.month()).toBe(MARCH); // March
-    expect(local.date()).toBe(8);
-    expect(local.hour()).toBe(3);
-    expect(local.minute()).toBe(10);
+      // Confirm that dayjs sees this instant as the expected local wall-clock time.
+      const local = dayjs.unix(timestamp);
+      expect(local.year()).toBe(2026);
+      expect(local.month()).toBe(MARCH); // March
+      expect(local.date()).toBe(8);
+      expect(local.hour()).toBe(3);
+      expect(local.minute()).toBe(10);
+    } finally {
+      process.env.TZ = originalTz;
+    }
   });
 
   test('parses wall-clock query times on DST days without treating them as elapsed offsets', () => {
     process.env.TZ = 'America/New_York';
 
-    const selectedDate = '2026-03-08';
-    const timestamp = localClockTimeToTimestamp('03:10:00', selectedDate);
+    try {
+      const selectedDate = '2026-03-08';
+      const timestamp = localClockTimeToTimestamp('03:10:00', selectedDate);
 
-    expect(timestamp).toBe(dayjs(`${selectedDate}T03:10:00`).unix());
-    expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
+      expect(timestamp).toBe(dayjs(`${selectedDate}T03:10:00`).unix());
+      expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
 
-    // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
-    const parsedLocal = dayjs.unix(timestamp);
-    expect(parsedLocal.year()).toBe(2026);
-    expect(parsedLocal.month()).toBe(MARCH); // March
-    expect(parsedLocal.date()).toBe(8);
-    expect(parsedLocal.hour()).toBe(3);
-    expect(parsedLocal.minute()).toBe(10);
+      // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
+      const parsedLocal = dayjs.unix(timestamp);
+      expect(parsedLocal.year()).toBe(2026);
+      expect(parsedLocal.month()).toBe(MARCH); // March
+      expect(parsedLocal.date()).toBe(8);
+      expect(parsedLocal.hour()).toBe(3);
+      expect(parsedLocal.minute()).toBe(10);
+    } finally {
+      process.env.TZ = originalTz;
+    }
   });
 
   test('uses the actual local day length on a DST fall-back day', () => {
     process.env.TZ = 'America/New_York';
 
-    const bounds = getLocalDayBounds('2026-11-01');
+    try {
+      const bounds = getLocalDayBounds('2026-11-01');
 
-    expect(bounds.endTimestamp - bounds.startTimestamp).toBe(25 * 3600);
-    expect(bounds.durationHours).toBe(25);
-    expect(getTimelineDayLengthHours('2026-11-01')).toBe(25);
+      expect(bounds.endTimestamp - bounds.startTimestamp).toBe(25 * 3600);
+      expect(bounds.durationHours).toBe(25);
+      expect(getTimelineDayLengthHours('2026-11-01')).toBe(25);
+    } finally {
+      process.env.TZ = originalTz;
+    }
   });
 
   test('shows the repeated local hour twice on a DST fall-back day', () => {
     process.env.TZ = 'America/New_York';
 
-    const selectedDate = '2026-11-01';
-    const firstRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T05:10:00Z') / 1000);
-    const secondRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T06:10:00Z') / 1000);
+    try {
+      const selectedDate = '2026-11-01';
+      const firstRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T05:10:00Z') / 1000);
+      const secondRepeatedHourTimestamp = Math.floor(Date.parse('2026-11-01T06:10:00Z') / 1000);
 
-    expect(timestampToTimelineOffset(firstRepeatedHourTimestamp, selectedDate)).toBeCloseTo(1 + (10 / 60), 6);
-    expect(timestampToTimelineOffset(secondRepeatedHourTimestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
-    expect(formatTimelineOffsetLabel(1, selectedDate)).toBe('1:00');
-    expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('1:00');
-    expect(formatTimelineOffsetLabel(3, selectedDate)).toBe('2:00');
+      expect(timestampToTimelineOffset(firstRepeatedHourTimestamp, selectedDate)).toBeCloseTo(1 + (10 / 60), 6);
+      expect(timestampToTimelineOffset(secondRepeatedHourTimestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
+      expect(formatTimelineOffsetLabel(1, selectedDate)).toBe('1:00');
+      expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('1:00');
+      expect(formatTimelineOffsetLabel(3, selectedDate)).toBe('2:00');
+    } finally {
+      process.env.TZ = originalTz;
+    }
   });
 
   test('handles clock boundary cases at midnight, end of day, and subsecond precision', () => {
