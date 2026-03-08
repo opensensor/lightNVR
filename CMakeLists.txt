@@ -398,7 +398,10 @@ message(STATUS "Excluding main.c and rebuild_recordings.c from ROOT_SOURCES")
 
 # Explicitly list video sources to exclude motion_detection_optimized.c, detection_thread_pool.c,
 # and the original hls_writer_thread.c (since we're using our split version)
-file(GLOB VIDEO_SOURCES "src/video/*.c")
+set(VIDEO_SOURCES
+    # TODO: Replace this placeholder comment with the full explicit list of src/video/*.c files
+    # (excluding motion_detection_optimized.c, detection_thread_pool.c, and hls_writer_thread.c).
+)
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*motion_detection_optimized\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*detection_thread_pool\\.c$")
 list(FILTER VIDEO_SOURCES EXCLUDE REGEX ".*hls_writer_thread\\.c$")
