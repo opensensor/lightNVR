@@ -1,4 +1,6 @@
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 
 import {
   countSegmentsForDate,
@@ -22,6 +24,9 @@ import {
   segmentIntersectsDay
 } from '../js/components/preact/timeline/timelineUtils.js';
 
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 describe('timelineUtils', () => {
   const originalTz = process.env.TZ;
 
@@ -31,6 +36,18 @@ describe('timelineUtils', () => {
     } else {
       process.env.TZ = originalTz;
     }
+  });
+
+  test('dayjs timezone plugin is configured for DST-sensitive calculations', () => {
+    // This instant is the same moment in time regardless of DST;
+    // we verify that dayjs.tz is available and returns a valid date.
+    const instant = '2020-03-08T07:30:00Z';
+    const nyTime = dayjs.tz(instant, 'America/New_York');
+
+    // 2020-03-08 is the US DST start date; at 02:00 local time clocks
+    // jump to 03:00. The converted time should be shortly after 03:00.
+    expect(nyTime.isValid()).toBe(true);
+    expect(nyTime.format('YYYY-MM-DD')).toBe('2020-03-08');
   });
 
   test('prefers the segment with later start time when recordings overlap', () => {
@@ -70,6 +87,7 @@ describe('timelineUtils', () => {
 
     expect(findNearestSegmentIndex(segments, 170)).toBe(0);
     expect(findNearestSegmentIndex(segments, 195)).toBe(1);
+    expect(findNearestSegmentIndex(segments, 175)).toBe(0);
   });
 
   test('returns segment with earlier start time when multiple segments are equidistant from timestamp', () => {
@@ -97,17 +115,19 @@ describe('timelineUtils', () => {
   test('clips a boundary-spanning segment to the selected local day', () => {
     const selectedDate = '2026-03-08';
     const { startTimestamp } = getLocalDayBounds(selectedDate);
+    const SECONDS_BEFORE_DAY_START = 120; // 2 minutes before day start
+    const SECONDS_AFTER_DAY_START = 300; // 5 minutes into the day
     const range = getClippedSegmentHourRange(
       {
-        start_timestamp: startTimestamp - 120,
-        end_timestamp: startTimestamp + 300
+        start_timestamp: startTimestamp - SECONDS_BEFORE_DAY_START,
+        end_timestamp: startTimestamp + SECONDS_AFTER_DAY_START
       },
       selectedDate
     );
 
     expect(range).toEqual({
       startHour: 0,
-      endHour: 300 / 3600
+      endHour: SECONDS_AFTER_DAY_START / 3600
     });
   });
 
@@ -177,6 +197,22 @@ describe('timelineUtils', () => {
     expect(bounds.endTimestamp - bounds.startTimestamp).toBe(23 * 3600);
     expect(bounds.durationHours).toBe(23);
     expect(getTimelineDayLengthHours('2026-03-08')).toBe(23);
+
+    // Verify that dayjs interprets the boundary timestamps using the configured timezone
+    // by checking the local wall-clock times at the start and end of the day.
+    const startLocal = dayjs.unix(bounds.startTimestamp);
+    const endLocal = dayjs.unix(bounds.endTimestamp);
+
+    // The selected local day should start at midnight on 2026-03-08 in America/New_York.
+    expect(startLocal.year()).toBe(2026);
+    expect(startLocal.month()).toBe(2); // March (0-based month index)
+    expect(startLocal.date()).toBe(8);
+    expect(startLocal.hour()).toBe(0);
+    expect(startLocal.minute()).toBe(0);
+    expect(startLocal.second()).toBe(0);
+
+    // The end timestamp should represent the end of that shortened 23-hour local day.
+    expect(endLocal.unix() - startLocal.unix()).toBe(23 * 3600);
   });
 
   test('maps DST spring-forward timestamps to elapsed timeline offsets', () => {
@@ -188,6 +224,14 @@ describe('timelineUtils', () => {
     expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
     expect(timelineOffsetToTimestamp(2 + (10 / 60), selectedDate)).toBe(timestamp);
     expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('3:00');
+
+    // Confirm that dayjs sees this instant as the expected local wall-clock time.
+    const local = dayjs.unix(timestamp);
+    expect(local.year()).toBe(2026);
+    expect(local.month()).toBe(2); // March
+    expect(local.date()).toBe(8);
+    expect(local.hour()).toBe(3);
+    expect(local.minute()).toBe(10);
   });
 
   test('parses wall-clock query times on DST days without treating them as elapsed offsets', () => {
@@ -198,6 +242,14 @@ describe('timelineUtils', () => {
 
     expect(timestamp).toBe(dayjs(`${selectedDate}T03:10:00`).unix());
     expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
+
+    // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
+    const parsedLocal = dayjs.unix(timestamp);
+    expect(parsedLocal.year()).toBe(2026);
+    expect(parsedLocal.month()).toBe(2); // March
+    expect(parsedLocal.date()).toBe(8);
+    expect(parsedLocal.hour()).toBe(3);
+    expect(parsedLocal.minute()).toBe(10);
   });
 
   test('uses the actual local day length on a DST fall-back day', () => {
