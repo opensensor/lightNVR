@@ -78,31 +78,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
     preloadedVideoCleanupRef.current = null;
   }, []);
 
-  // Subscribe to timeline state changes
-  useEffect(() => {
-    const listener = state => {
-      // Update local state
-      setCurrentSegmentIndex(state.currentSegmentIndex);
-      setSegments(state.timelineSegments || []);
-      setPlaybackSpeed(state.playbackSpeed);
-
-      // Handle video playback
-      handleVideoPlayback(state);
-    };
-
-    const unsubscribe = timelineState.subscribe(listener);
-
-    // Initialize with current state immediately so we don't miss
-    // segments that were already loaded before this component mounted
-    listener(timelineState);
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => cleanupPreloadedVideo, [cleanupPreloadedVideo]);
-
   // Handle video playback based on state changes
-  const handleVideoPlayback = (state) => {
+  const handleVideoPlayback = useCallback((state) => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -184,7 +161,35 @@ export function TimelinePlayer({ videoElementRef = null }) {
     if (video.playbackRate !== state.playbackSpeed) {
       video.playbackRate = state.playbackSpeed;
     }
-  };
+  }, [
+    cleanupPreloadedVideo,
+    releaseDirectVideoControl,
+    playbackSpeed,
+    detectionOverlayEnabled,
+  ]);
+
+  // Subscribe to timeline state changes
+  useEffect(() => {
+    const listener = state => {
+      // Update local state
+      setCurrentSegmentIndex(state.currentSegmentIndex);
+      setSegments(state.timelineSegments || []);
+      setPlaybackSpeed(state.playbackSpeed);
+
+      // Handle video playback
+      handleVideoPlayback(state);
+    };
+
+    const unsubscribe = timelineState.subscribe(listener);
+
+    // Initialize with current state immediately so we don't miss
+    // segments that were already loaded before this component mounted
+    listener(timelineState);
+
+    return () => unsubscribe();
+  }, [handleVideoPlayback]);
+
+  useEffect(() => cleanupPreloadedVideo, [cleanupPreloadedVideo]);
 
   // Load a segment
   const loadSegment = useCallback((segment, seekTime = 0, autoplay = false) => {
@@ -196,8 +201,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
     // Pause current playback
     video.pause();
 
-    // Set new source with timestamp to prevent caching
-    const recordingUrl = `/api/recordings/play/${segment.id}?t=${Date.now()}`;
+    // Set new source using a deterministic version to allow caching of identical segments
+    const segmentVersion = `${segment.id}-${segment.start_timestamp}-${segment.end_timestamp}`;
+    const recordingUrl = `/api/recordings/play/${segment.id}?v=${encodeURIComponent(segmentVersion)}`;
 
     // Set up event listeners for the new video
     const onLoadedMetadata = () => {
@@ -302,7 +308,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
       // Preload the next segment's video immediately
       const nextSegment = segments[nextIndex];
-      const nextVideoUrl = `/api/recordings/play/${nextSegment.id}?t=${Date.now()}`;
+      const nextVideoUrl = `/api/recordings/play/${nextSegment.id}`;
 
       cleanupPreloadedVideo();
       
@@ -564,7 +570,28 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
     // Fetch recording info to get stream name, timestamps, and protection status
     fetch(`/api/recordings/${segment.id}`)
-      .then(res => res.ok ? res.json() : null)
+      .then(async res => {
+        if (res.ok) {
+          return res.json();
+        }
+
+        // Log details for non-OK HTTP responses to aid debugging.
+        let errorText = '';
+        try {
+          errorText = await res.text();
+        } catch (e) {
+          // Ignore secondary errors while attempting to read the body.
+        }
+        console.warn(
+          'Failed to load recording info for timeline segment:',
+          segment.id,
+          'status:',
+          res.status,
+          res.statusText,
+          errorText || '(no response body)'
+        );
+        return null;
+      })
       .then(data => {
         if (!data) return;
 
@@ -577,7 +604,13 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
         // Fetch recording tags
         fetch(`/api/recordings/${segment.id}/tags`)
-          .then(res => res.ok ? res.json() : null)
+          .then(res => {
+            if (!res.ok) {
+              console.warn('Failed to load recording tags:', segment.id, 'status:', res.status, res.statusText);
+              throw new Error(`Failed to load recording tags: ${res.status} ${res.statusText}`);
+            }
+            return res.json();
+          })
           .then(tagData => setRecordingTags(tagData?.tags || []))
           .catch(() => setRecordingTags([]));
 
@@ -589,7 +622,30 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
         return fetch(`/api/detection/results/${encodeURIComponent(data.stream)}?start=${startTime}&end=${endTime}`);
       })
-      .then(res => res && res.ok ? res.json() : null)
+      .then(async res => {
+        if (!res) {
+          return null;
+        }
+        if (res.ok) {
+          return res.json();
+        }
+
+        // Log details for non-OK HTTP responses when loading detections.
+        let errorText = '';
+        try {
+          errorText = await res.text();
+        } catch (e) {
+          // Ignore secondary errors while attempting to read the body.
+        }
+        console.warn(
+          'Failed to load detections HTTP response for timeline segment:',
+          'status:',
+          res.status,
+          res.statusText,
+          errorText || '(no response body)'
+        );
+        return null;
+      })
       .then(data => {
         if (data && data.detections) {
           setDetections(data.detections);
