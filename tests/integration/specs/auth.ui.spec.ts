@@ -67,9 +67,8 @@ test.describe('Authentication @ui @auth', () => {
       const loginPage = new LoginPage(page);
       await loginPage.goto();
       
-      // Try to submit empty form
-      await loginPage.submitButton.click();
-      await sleep(1000);
+      // Empty credentials should be blocked client-side
+      await expect(loginPage.submitButton).toBeDisabled();
       
       // Should still be on login page
       expect(page.url()).toContain('login');
