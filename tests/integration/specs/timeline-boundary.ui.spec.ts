@@ -159,8 +159,11 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     await expect(page.getByText('Loading selected recordings...')).toHaveCount(0);
     await expect(timelinePage.timeDisplay).toHaveText('front_door - 09:00:00');
 
-    await timelinePage.timelineSegments.nth(1).click();
-    await expect(timelinePage.timeDisplay).toHaveText('garage - 09:15:00');
+    // Click near the left edge to keep the selected timestamp close to the
+    // recording start while still exercising direct segment selection.
+    await timelinePage.timelineSegments.nth(1).click({ position: { x: 3, y: 3 } });
+    await expect(timelinePage.timeDisplay).toContainText('garage - 09:15:');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/402(?:\?|$)/);
 
     await page.getByRole('button', { name: '↓ Download All (2)' }).click();
     await expect(page.getByRole('heading', { name: 'Download Selected Recordings' })).toBeVisible();
