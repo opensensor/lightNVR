@@ -11,6 +11,11 @@ import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
 import { TagIcon, TagsOverlay } from '../recordings/TagsOverlay.jsx';
 
+// Timeout for cleaning up preloaded temporary video elements (in milliseconds).
+const PRELOAD_CLEANUP_TIMEOUT_MS = 15000;
+const DETECTION_TIME_WINDOW_SECONDS = 2; // Time window (seconds) for filtering visible detections around current playback time
+const DETECTION_SCALE_BASE = 400; // Baseline display dimension (px) for detection overlay scaling
+
 /**
  * TimelinePlayer component
  * @returns {JSX.Element} TimelinePlayer component
@@ -182,7 +187,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
   };
 
   // Load a segment
-  const loadSegment = (segment, seekTime = 0, autoplay = false) => {
+  const loadSegment = useCallback((segment, seekTime = 0, autoplay = false) => {
     const video = videoRef.current;
     if (!video) return;
 
@@ -276,7 +281,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
     // Set new source
     video.src = recordingUrl;
     video.load();
-  };
+  }, [videoRef, playbackSpeed]);
 
   // Handle video ended event
   const handleEnded = () => {
@@ -346,7 +351,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       tempVideo.addEventListener('error', onTempVideoError);
       tempVideoCleanupTimeoutId = setTimeout(() => {
         cleanupTempVideo();
-      }, 15000);
+      }, PRELOAD_CLEANUP_TIMEOUT_MS);
       tempVideo.load();
       
       console.log(`Preloading next segment ${nextIndex} (ID: ${nextSegment.id})`);
@@ -642,12 +647,12 @@ export function TimelinePlayer({ videoElementRef = null }) {
     }
 
     // Filter detections within a 2-second window of current time
-    const timeWindow = 2;
+    const timeWindow = DETECTION_TIME_WINDOW_SECONDS;
     const visibleDetections = detections.filter(d =>
       d.timestamp && Math.abs(d.timestamp - currentTimestamp) <= timeWindow
     );
 
-    const scale = Math.max(1, Math.min(drawWidth, drawHeight) / 400);
+    const scale = Math.max(1, Math.min(drawWidth, drawHeight) / DETECTION_SCALE_BASE);
 
     visibleDetections.forEach(detection => {
       const x = (detection.x * drawWidth) + offsetX;
