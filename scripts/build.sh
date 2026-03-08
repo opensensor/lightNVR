@@ -168,15 +168,20 @@ else
 fi
 
 # Configure go2rtc options
-GO2RTC_OPTION=""
+GO2RTC_OPTIONS=()
 if [ "$ENABLE_GO2RTC" -eq 1 ]; then
-    GO2RTC_OPTION="-DENABLE_GO2RTC=ON -DGO2RTC_BINARY_PATH=\"$GO2RTC_BINARY_PATH\" -DGO2RTC_CONFIG_DIR=\"$GO2RTC_CONFIG_DIR\" -DGO2RTC_API_PORT=$GO2RTC_API_PORT"
+    GO2RTC_OPTIONS=(
+        -DENABLE_GO2RTC=ON
+        "-DGO2RTC_BINARY_PATH=$GO2RTC_BINARY_PATH"
+        "-DGO2RTC_CONFIG_DIR=$GO2RTC_CONFIG_DIR"
+        "-DGO2RTC_API_PORT=$GO2RTC_API_PORT"
+    )
     echo "Building with go2rtc integration"
     echo "  go2rtc binary path: $GO2RTC_BINARY_PATH"
     echo "  go2rtc config directory: $GO2RTC_CONFIG_DIR"
     echo "  go2rtc API port: $GO2RTC_API_PORT"
 else
-    GO2RTC_OPTION="-DENABLE_GO2RTC=OFF"
+    GO2RTC_OPTIONS=(-DENABLE_GO2RTC=OFF)
     echo "Building without go2rtc integration"
 fi
 
@@ -269,7 +274,7 @@ cd "$BUILD_DIR"
 
 # Use our custom module path
 CMAKE_MODULE_PATH="$(pwd)/../../cmake/modules"
-cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION $GO2RTC_OPTION $HTTP_BACKEND_OPTION $FFMPEG_CMAKE_OPTIONS \
+cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" $SOD_OPTION $TEST_OPTION "${GO2RTC_OPTIONS[@]}" $HTTP_BACKEND_OPTION $FFMPEG_CMAKE_OPTIONS \
       -DCMAKE_MODULE_PATH="$CMAKE_MODULE_PATH" ../..
 
 # Return to project root
