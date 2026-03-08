@@ -215,7 +215,7 @@ describe('timelineUtils', () => {
 
     // The selected local day should start at midnight on 2026-03-08 in America/New_York.
     expect(startLocal.year()).toBe(2026);
-    expect(startLocal.month()).toBe(MARCH); // March (0-based month index)
+    expect(startLocal.month()).toBe(MARCH);
     expect(startLocal.date()).toBe(8);
     expect(startLocal.hour()).toBe(0);
     expect(startLocal.minute()).toBe(0);
@@ -238,7 +238,7 @@ describe('timelineUtils', () => {
     // Confirm that dayjs sees this instant as the expected local wall-clock time.
     const local = dayjs.unix(timestamp);
     expect(local.year()).toBe(2026);
-    expect(local.month()).toBe(2); // March
+    expect(local.month()).toBe(MARCH); // March
     expect(local.date()).toBe(8);
     expect(local.hour()).toBe(3);
     expect(local.minute()).toBe(10);
@@ -256,7 +256,7 @@ describe('timelineUtils', () => {
     // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
     const parsedLocal = dayjs.unix(timestamp);
     expect(parsedLocal.year()).toBe(2026);
-    expect(parsedLocal.month()).toBe(2); // March
+    expect(parsedLocal.month()).toBe(MARCH); // March
     expect(parsedLocal.date()).toBe(8);
     expect(parsedLocal.hour()).toBe(3);
     expect(parsedLocal.minute()).toBe(10);
