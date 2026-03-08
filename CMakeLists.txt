@@ -16,6 +16,9 @@ set(GO2RTC_BINARY_PATH "/usr/local/bin/go2rtc" CACHE STRING "Path to go2rtc bina
 set(GO2RTC_CONFIG_DIR "/etc/lightnvr/go2rtc" CACHE STRING "Directory for go2rtc configuration files")
 set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
 
+# llhttp download configuration
+set(LLHTTP_VERSION "release/v9.2.1" CACHE STRING "llhttp version to download from GitHub")
+
 # SSL/TLS options
 option(ENABLE_SSL "Enable SSL/TLS support" OFF)
 option(USE_MBEDTLS "Use mbedTLS instead of OpenSSL (if SSL is enabled)" OFF)
@@ -250,7 +253,6 @@ if(NOT LLHTTP_FOUND)
         file(MAKE_DIRECTORY "${LLHTTP_DIR}/include")
 
         # Download llhttp release (v9.2.1 - stable release)
-        set(LLHTTP_VERSION "release/v9.2.1")
         set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_VERSION}")
 
         file(DOWNLOAD
@@ -268,19 +270,34 @@ if(NOT LLHTTP_FOUND)
             "${LLHTTP_BASE_URL}/src/api.c"
             "${LLHTTP_DIR}/src/api.c"
             SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS_API
         )
+        list(GET DOWNLOAD_STATUS_API 0 STATUS_CODE_API)
+        if(NOT STATUS_CODE_API EQUAL 0)
+            message(FATAL_ERROR "Failed to download llhttp api.c")
+        endif()
 
         file(DOWNLOAD
             "${LLHTTP_BASE_URL}/src/http.c"
             "${LLHTTP_DIR}/src/http.c"
             SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS_HTTP
         )
+        list(GET DOWNLOAD_STATUS_HTTP 0 STATUS_CODE_HTTP)
+        if(NOT STATUS_CODE_HTTP EQUAL 0)
+            message(FATAL_ERROR "Failed to download llhttp http.c")
+        endif()
 
         file(DOWNLOAD
             "${LLHTTP_BASE_URL}/include/llhttp.h"
             "${LLHTTP_DIR}/include/llhttp.h"
             SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS_HEADER
         )
+        list(GET DOWNLOAD_STATUS_HEADER 0 STATUS_CODE_HEADER)
+        if(NOT STATUS_CODE_HEADER EQUAL 0)
+            message(FATAL_ERROR "Failed to download llhttp.h header")
+        endif()
 
         message(STATUS "llhttp downloaded successfully")
     endif()
