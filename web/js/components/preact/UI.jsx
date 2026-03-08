@@ -697,22 +697,28 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
     if (!isOpen || !videoRef.current || !videoContainerRef.current) return;
 
     const container = videoContainerRef.current;
+    let redrawTimeoutId = null;
 
-    const handleFullscreenChange = () => {
-      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
-      setIsFullscreen(fullscreenElement === container);
-      setTimeout(() => {
+    const scheduleRedraw = () => {
+      if (redrawTimeoutId !== null) {
+        clearTimeout(redrawTimeoutId);
+      }
+      redrawTimeoutId = setTimeout(() => {
         if (detectionOverlayEnabled) {
           drawDetections();
         }
       }, 100);
     };
 
+    const handleFullscreenChange = () => {
+      const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+      setIsFullscreen(fullscreenElement === container);
+      scheduleRedraw();
+    };
+
     const resizeObserver = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(() => {
-        if (detectionOverlayEnabled) {
-          drawDetections();
-        }
+        scheduleRedraw();
       })
       : null;
 
@@ -729,6 +735,9 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       resizeObserver?.disconnect();
+      if (redrawTimeoutId !== null) {
+        clearTimeout(redrawTimeoutId);
+      }
     };
   }, [isOpen, detectionOverlayEnabled, drawDetections]);
 
@@ -823,7 +832,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-100 opacity-100 w-full md:w-[90%]`}>
+      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]`}>
         <div className="flex justify-between items-center p-3 border-b border-border flex-shrink-0">
           <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white truncate mr-2">
             {title || 'Video'}
@@ -842,11 +851,11 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
               <div
                 ref={videoContainerRef}
                 data-testid="recording-video-container"
-                className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full w-full bg-black'}
+                className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full w-full max-h-[50vh] bg-black'}
               >
                 <video
                   ref={videoRef}
-                  className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-auto max-w-full max-h-[50vh] object-contain'}
+                  className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-auto max-w-full object-contain'}
                   controls
                   controlsList="nofullscreen"
                   autoPlay
