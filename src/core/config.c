@@ -204,7 +204,19 @@ static void apply_env_overrides(config_t *config) {
             }
             case CONFIG_TYPE_INT: {
                 int *int_ptr = (int *)field_ptr;
-                int new_value = safe_atoi(env_value, 0);
+                char *endptr;
+                errno = 0;
+                long parsed = strtol(env_value, &endptr, 10);
+
+                if (endptr == env_value || *endptr != '\0' ||
+                    errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX) {
+                    // Invalid or out-of-range integer: keep existing/default value
+                    log_warn("Invalid integer for %s: '%s'; keeping existing value %d",
+                                env_name, env_value, *int_ptr);
+                    break;
+                }
+
+                int new_value = (int)parsed;
                 *int_ptr = new_value;
                 log_info("Applied env override: %s=%s (int: %d)",
                          env_name, env_value, new_value);
@@ -253,7 +265,20 @@ void load_default_config(config_t *config) {
 
     // --- Web thread pool default: 2x online CPUs, clamped [2, 128] ---
     {
-        int num_cores = (int)sysconf(_SC_NPROCESSORS_ONLN);
+        long sc_cores = sysconf(_SC_NPROCESSORS_ONLN);
+        int num_cores;
+
+        if (sc_cores == -1) {
+            // sysconf failed; log and fall back to a reasonable default.
+            log_error("load_default_config: sysconf(_SC_NPROCESSORS_ONLN) failed, using default web thread pool size");
+            num_cores = 0;
+        } else if (sc_cores > INT_MAX) {
+            // Extremely unlikely, but guard against overflow when casting.
+            num_cores = INT_MAX;
+        } else {
+            num_cores = (int)sc_cores;
+        }
+
         config->web_thread_pool_size = (num_cores > 0) ? (num_cores * 2) : 8;
         if (config->web_thread_pool_size < 2)   config->web_thread_pool_size = 2;
         if (config->web_thread_pool_size > 128) config->web_thread_pool_size = 128;
@@ -1246,9 +1271,20 @@ int reload_config(config_t *config) {
     
     log_info("Reloading configuration from disk");
     
-    // Save a copy of the current config for comparison
-    config_t old_config;
-    memcpy(&old_config, config, sizeof(config_t));
+    // Save copies of the current config fields needed for comparison
+    int old_log_level = config->log_level;
+    int old_web_port = config->web_port;
+    char old_storage_path[MAX_PATH_LENGTH];
+    strncpy(old_storage_path, config->storage_path, sizeof(old_storage_path) - 1);
+    old_storage_path[sizeof(old_storage_path) - 1] = '\0';
+    char old_storage_path_hls[MAX_PATH_LENGTH];
+    strncpy(old_storage_path_hls, config->storage_path_hls, sizeof(old_storage_path_hls) - 1);
+    old_storage_path_hls[sizeof(old_storage_path_hls) - 1] = '\0';
+    char old_models_path[MAX_PATH_LENGTH];
+    strncpy(old_models_path, config->models_path, sizeof(old_models_path) - 1);
+    old_models_path[sizeof(old_models_path) - 1] = '\0';
+    uint64_t old_max_storage_size = config->max_storage_size;
+    int old_retention_days = config->retention_days;
     
     // Load the configuration
     int result = load_config(config);
@@ -1258,45 +1294,47 @@ int reload_config(config_t *config) {
     }
     
     // Log changes
-    if (old_config.log_level != config->log_level) {
-        log_info("Log level changed: %d -> %d", old_config.log_level, config->log_level);
+    if (old_log_level != config->log_level) {
+        log_info("Log level changed: %d -> %d", old_log_level, config->log_level);
     }
     
-    if (old_config.web_port != config->web_port) {
-        log_info("Web port changed: %d -> %d", old_config.web_port, config->web_port);
+    if (old_web_port != config->web_port) {
+        log_info("Web port changed: %d -> %d", old_web_port, config->web_port);
         log_warn("Web port change requires restart to take effect");
     }
     
-    if (strcmp(old_config.storage_path, config->storage_path) != 0) {
-        log_info("Storage path changed: %s -> %s", old_config.storage_path, config->storage_path);
+    if (strcmp(old_storage_path, config->storage_path) != 0) {
+        log_info("Storage path changed: %s -> %s", old_storage_path, config->storage_path);
     }
     
     // Log changes to storage_path_hls
-    if (old_config.storage_path_hls[0] == '\0' && config->storage_path_hls[0] != '\0') {
+    if (old_storage_path_hls[0] == '\0' && config->storage_path_hls[0] != '\0') {
         log_info("HLS storage path set: %s", config->storage_path_hls);
-    } else if (old_config.storage_path_hls[0] != '\0' && config->storage_path_hls[0] == '\0') {
+    } else if (old_storage_path_hls[0] != '\0' && config->storage_path_hls[0] == '\0') {
         log_info("HLS storage path cleared, will use storage_path");
-    } else if (old_config.storage_path_hls[0] != '\0' && config->storage_path_hls[0] != '\0' && 
-               strcmp(old_config.storage_path_hls, config->storage_path_hls) != 0) {
-        log_info("HLS storage path changed: %s -> %s", old_config.storage_path_hls, config->storage_path_hls);
+    } else if (old_storage_path_hls[0] != '\0' && config->storage_path_hls[0] != '\0' && 
+               strcmp(old_storage_path_hls, config->storage_path_hls) != 0) {
+        log_info("HLS storage path changed: %s -> %s", old_storage_path_hls, config->storage_path_hls);
     }
     
-    if (strcmp(old_config.models_path, config->models_path) != 0) {
-        log_info("Models path changed: %s -> %s", old_config.models_path, config->models_path);
+    if (strcmp(old_models_path, config->models_path) != 0) {
+        log_info("Models path changed: %s -> %s", old_models_path, config->models_path);
     }
     
-    if (old_config.max_storage_size != config->max_storage_size) {
+    if (old_max_storage_size != config->max_storage_size) {
         log_info("Max storage size changed: %lu -> %lu bytes", 
-                (unsigned long)old_config.max_storage_size, 
+                (unsigned long)old_max_storage_size, 
                 (unsigned long)config->max_storage_size);
     }
     
-    if (old_config.retention_days != config->retention_days) {
-        log_info("Retention days changed: %d -> %d", old_config.retention_days, config->retention_days);
+    if (old_retention_days != config->retention_days) {
+        log_info("Retention days changed: %d -> %d", old_retention_days, config->retention_days);
     }
     
-    // Update global config
-    memcpy(&g_config, config, sizeof(config_t));
+    // Note: Do not shallow-copy the entire config struct into g_config, as this
+    // would copy dynamic pointers (e.g., streams) and can lead to dangling
+    // references or ownership confusion. Assume reload_config operates directly
+    // on the global configuration instance when called with &g_config.
     
     log_info("Configuration reloaded successfully");
     return 0;
