@@ -13,6 +13,11 @@ import { CalendarPicker } from './CalendarPicker.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
+import {
+  findContainingSegmentIndex,
+  findNearestSegmentIndex,
+  getClippedSegmentHourRange
+} from './timelineUtils.js';
 
 // Convert fractional hour (0–24) → Unix timestamp (seconds) for the given date
 function timelineHourToTimestamp(hour, selectedDate) {
@@ -401,23 +406,16 @@ export function TimelinePage() {
         const [, h, m, s] = timeParts.map(Number);
         const seekTs = timelineHourToTimestamp(h + m / 60 + s / 3600, selectedDate);
 
-        let found = false;
-        for (let i = 0; i < segmentsCopy.length; i++) {
-          if (seekTs >= segmentsCopy[i].start_timestamp && seekTs <= segmentsCopy[i].end_timestamp) {
-            initialSegmentIndex = i;
-            initialTime = seekTs;
-            found = true;
-            break;
+        const containingIndex = findContainingSegmentIndex(segmentsCopy, seekTs);
+        if (containingIndex !== -1) {
+          initialSegmentIndex = containingIndex;
+          initialTime = seekTs;
+        } else {
+          const nearestIndex = findNearestSegmentIndex(segmentsCopy, seekTs);
+          if (nearestIndex !== -1) {
+            initialSegmentIndex = nearestIndex;
+            initialTime = segmentsCopy[nearestIndex].start_timestamp;
           }
-        }
-        if (!found) {
-          let best = 0, bestDist = Infinity;
-          for (let i = 0; i < segmentsCopy.length; i++) {
-            const d = Math.abs(segmentsCopy[i].start_timestamp - seekTs);
-            if (d < bestDist) { bestDist = d; best = i; }
-          }
-          initialSegmentIndex = best;
-          initialTime = segmentsCopy[best].start_timestamp;
         }
       }
       initialTimeRef.current = '';
@@ -426,19 +424,24 @@ export function TimelinePage() {
     // Compute auto-fit range from segments
     let earliest = 24, latest = 0;
     segmentsCopy.forEach(seg => {
-      const s = new Date(seg.start_timestamp * 1000);
-      const e = new Date(seg.end_timestamp * 1000);
-      earliest = Math.min(earliest, s.getHours() + s.getMinutes() / 60 + s.getSeconds() / 3600);
-      latest   = Math.max(latest,   e.getHours() + e.getMinutes() / 60 + e.getSeconds() / 3600);
+      const visibleRange = getClippedSegmentHourRange(seg, selectedDate);
+      if (!visibleRange) return;
+      earliest = Math.min(earliest, visibleRange.startHour);
+      latest = Math.max(latest, visibleRange.endHour);
     });
-    const span = latest - earliest;
-    const pad  = Math.max(0.5, Math.min(1, span * 0.1));
-    let fitStart = Math.max(0, Math.floor((earliest - pad) * 2) / 2);
-    let fitEnd   = Math.min(24, Math.ceil((latest + pad) * 2) / 2);
-    if (fitEnd - fitStart < 2) {
-      const center = (earliest + latest) / 2;
-      fitStart = Math.max(0, Math.floor((center - 1) * 2) / 2);
-      fitEnd   = Math.min(24, fitStart + 2);
+
+    let fitStart = 0;
+    let fitEnd = 24;
+    if (earliest < 24 && latest > 0) {
+      const span = latest - earliest;
+      const pad = Math.max(0.5, Math.min(1, span * 0.1));
+      fitStart = Math.max(0, Math.floor((earliest - pad) * 2) / 2);
+      fitEnd = Math.min(24, Math.ceil((latest + pad) * 2) / 2);
+      if (fitEnd - fitStart < 2) {
+        const center = (earliest + latest) / 2;
+        fitStart = Math.max(0, Math.floor((center - 1) * 2) / 2);
+        fitEnd = Math.min(24, fitStart + 2);
+      }
     }
 
     // Push to global state

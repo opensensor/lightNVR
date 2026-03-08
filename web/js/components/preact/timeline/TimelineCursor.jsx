@@ -5,6 +5,11 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
+import {
+  findContainingSegmentIndex,
+  findNearestSegmentIndex,
+  formatTimestampAsClock
+} from './timelineUtils.js';
 
 /**
  * TimelineCursor component
@@ -137,9 +142,8 @@ export function TimelineCursor() {
 
       // Snap-guard: nudge away from segment start to prevent snap-back
       if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
-        const seg = timelineState.timelineSegments.find(s =>
-          timestamp >= s.start_timestamp && timestamp <= s.end_timestamp
-        );
+        const segIndex = findContainingSegmentIndex(timelineState.timelineSegments, timestamp);
+        const seg = segIndex !== -1 ? timelineState.timelineSegments[segIndex] : null;
         if (seg && (timestamp - seg.start_timestamp) < 1.0) {
           timelineState.currentTime = seg.start_timestamp + 1.0;
         }
@@ -151,27 +155,11 @@ export function TimelineCursor() {
 
       // Find the segment at the drop position (exact match or closest)
       const segs = timelineState.timelineSegments || [];
-      let found = false;
-      let closestIdx = -1;
-      let minDist = Infinity;
-
-      for (let i = 0; i < segs.length; i++) {
-        const st = segs[i].start_timestamp;
-        const et = segs[i].end_timestamp;
-        if (timestamp >= st && timestamp <= et) {
-          timelineState.currentSegmentIndex = i;
-          timelineState.setState({});
-          found = true;
-          break;
-        }
-        const dist = Math.abs(timestamp - (st + et) / 2);
-        if (dist < minDist) { minDist = dist; closestIdx = i; }
-      }
-
-      if (!found) {
-        timelineState.currentSegmentIndex = closestIdx >= 0 ? closestIdx : -1;
-        timelineState.setState({});
-      }
+      const containingIndex = findContainingSegmentIndex(segs, timestamp);
+      timelineState.currentSegmentIndex = containingIndex !== -1
+        ? containingIndex
+        : findNearestSegmentIndex(segs, timestamp);
+      timelineState.setState({});
     };
 
     // Add event listeners
@@ -210,15 +198,7 @@ export function TimelineCursor() {
     const timeDisplay = document.getElementById('time-display');
     if (!timeDisplay) return;
 
-    const date = new Date(time * 1000);
-
-    // Format date and time
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const seconds = date.getSeconds().toString().padStart(2, '0');
-
-    // Display time only (HH:MM:SS)
-    timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
+    timeDisplay.textContent = formatTimestampAsClock(time);
   };
 
   // Initialise cursor on mount (with retries for async data)

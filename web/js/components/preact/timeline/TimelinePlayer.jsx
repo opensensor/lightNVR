@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
+import { formatTimestampAsClock } from './timelineUtils.js';
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
@@ -346,6 +347,24 @@ export function TimelinePlayer() {
     const segment = segments[currentSegmentIndex];
     if (!segment) return;
 
+    const desiredTime = timelineState.currentTime;
+    const isInitialPausedSyncEvent =
+      !timelineState.isPlaying &&
+      video.currentTime === 0 &&
+      desiredTime !== null &&
+      desiredTime > segment.start_timestamp &&
+      desiredTime <= segment.end_timestamp;
+
+    if (isInitialPausedSyncEvent) {
+      console.log('TimelinePlayer: Ignoring initial 0s timeupdate before seek position is applied', {
+        segmentId: segment.id,
+        segmentStart: segment.start_timestamp,
+        desiredTime,
+        videoTime: video.currentTime
+      });
+      return;
+    }
+
     // Calculate current timestamp, handling timezone correctly
     const currentTime = segment.start_timestamp + video.currentTime;
 
@@ -397,22 +416,12 @@ export function TimelinePlayer() {
 
     const timeDisplay = document.getElementById('time-display');
     if (!timeDisplay) return;
-
-    // Convert timestamp to timeline hour
-    const hour = timelineState.timestampToTimelineHour(time);
-
-    // Format time
-    const hours = Math.floor(hour).toString().padStart(2, '0');
-    const minutes = Math.floor((hour % 1) * 60).toString().padStart(2, '0');
-    const seconds = Math.floor(((hour % 1) * 60) % 1 * 60).toString().padStart(2, '0');
-
-    // Display time only (HH:MM:SS)
-    timeDisplay.textContent = `${hours}:${minutes}:${seconds}`;
+    const formatted = formatTimestampAsClock(time);
+    timeDisplay.textContent = formatted;
 
     console.log('TimelinePlayer: Updated time display', {
       timestamp: time,
-      hour,
-      formatted: `${hours}:${minutes}:${seconds}`,
+      formatted,
       localTime: new Date(time * 1000).toLocaleString()
     });
   };
