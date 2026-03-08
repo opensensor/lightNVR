@@ -77,6 +77,22 @@ static int default_trusted_device_expiry_seconds(void) {
     return (int)seconds;
 }
 
+static bool should_refresh_session_tracking(time_t now, time_t last_activity_at, time_t idle_expires_at) {
+    const time_t refresh_interval = 60;
+
+    if (last_activity_at <= 0) {
+        return true;
+    }
+    if (now - last_activity_at >= refresh_interval) {
+        return true;
+    }
+    if (idle_expires_at <= now + refresh_interval) {
+        return true;
+    }
+
+    return false;
+}
+
 /**
  * Generate a random string
  *
@@ -1409,10 +1425,16 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
 
     bool has_idle_expires_column = cached_column_exists("sessions", "idle_expires_at");
     bool has_last_activity_column = cached_column_exists("sessions", "last_activity_at");
+    bool has_tracking_columns = has_idle_expires_column && has_last_activity_column;
 
     // Query the session
     sqlite3_stmt *stmt;
-    const char *sql = has_idle_expires_column
+    const char *sql = has_tracking_columns
+        ? "SELECT s.id, s.user_id, s.expires_at, s.idle_expires_at, COALESCE(s.last_activity_at, s.created_at), u.is_active "
+          "FROM sessions s "
+          "JOIN users u ON s.user_id = u.id "
+          "WHERE s.token = ?;"
+        : has_idle_expires_column
         ? "SELECT s.id, s.user_id, s.expires_at, s.idle_expires_at, u.is_active "
           "FROM sessions s "
           "JOIN users u ON s.user_id = u.id "
@@ -1440,6 +1462,7 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
     // Check if the session has expired
     time_t expires_at = sqlite3_column_int64(stmt, 2);
     time_t idle_expires_at = has_idle_expires_column ? sqlite3_column_int64(stmt, 3) : expires_at;
+    time_t last_activity_at = has_tracking_columns ? sqlite3_column_int64(stmt, 4) : 0;
     time_t now = time(NULL);
 
     if (now > expires_at || now > idle_expires_at) {
@@ -1449,7 +1472,7 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
     }
 
     // Check if the user is active
-    int is_active = sqlite3_column_int(stmt, has_idle_expires_column ? 4 : 3);
+    int is_active = sqlite3_column_int(stmt, has_tracking_columns ? 5 : (has_idle_expires_column ? 4 : 3));
     if (!is_active) {
         log_debug("User is inactive");
         sqlite3_finalize(stmt);
@@ -1464,7 +1487,7 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
 
     sqlite3_finalize(stmt);
 
-    if (has_idle_expires_column && has_last_activity_column) {
+    if (has_tracking_columns && should_refresh_session_tracking(now, last_activity_at, idle_expires_at)) {
         time_t new_idle_expires_at = now + default_session_idle_expiry_seconds();
         if (new_idle_expires_at > expires_at) {
             new_idle_expires_at = expires_at;
@@ -1624,22 +1647,47 @@ int db_auth_list_user_sessions(int64_t user_id, session_t *sessions, int max_cou
         return -1;
     }
 
+    bool has_idle_expires_column = cached_column_exists("sessions", "idle_expires_at");
+    bool has_last_activity_column = cached_column_exists("sessions", "last_activity_at");
+    time_t now = time(NULL);
+
+    const char *sql = has_idle_expires_column && has_last_activity_column
+        ? "SELECT id, user_id, token, created_at, "
+          "COALESCE(last_activity_at, created_at), "
+          "COALESCE(idle_expires_at, expires_at), "
+          "expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+          "FROM sessions WHERE user_id = ? "
+          "AND expires_at >= ? "
+          "AND (idle_expires_at IS NULL OR idle_expires_at >= ?) "
+          "ORDER BY COALESCE(last_activity_at, created_at) DESC LIMIT ?;"
+        : has_idle_expires_column
+        ? "SELECT id, user_id, token, created_at, "
+          "created_at, COALESCE(idle_expires_at, expires_at), "
+          "expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+          "FROM sessions WHERE user_id = ? "
+          "AND expires_at >= ? "
+          "AND (idle_expires_at IS NULL OR idle_expires_at >= ?) "
+          "ORDER BY created_at DESC LIMIT ?;"
+        : "SELECT id, user_id, token, created_at, "
+          "created_at, expires_at, expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
+          "FROM sessions WHERE user_id = ? "
+          "AND expires_at >= ? "
+          "ORDER BY created_at DESC LIMIT ?;";
+
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db,
-                               "SELECT id, user_id, token, created_at, "
-                               "COALESCE(last_activity_at, created_at), "
-                               "COALESCE(idle_expires_at, expires_at), "
-                               "expires_at, COALESCE(ip_address, ''), COALESCE(user_agent, '') "
-                               "FROM sessions WHERE user_id = ? "
-                               "ORDER BY COALESCE(last_activity_at, created_at) DESC LIMIT ?;",
-                               -1, &stmt, NULL);
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
     }
 
-    sqlite3_bind_int64(stmt, 1, user_id);
-    sqlite3_bind_int(stmt, 2, max_count);
+    int param = 1;
+    sqlite3_bind_int64(stmt, param++, user_id);
+    sqlite3_bind_int64(stmt, param++, now);
+    if (has_idle_expires_column) {
+        sqlite3_bind_int64(stmt, param++, now);
+    }
+    sqlite3_bind_int(stmt, param, max_count);
 
     int count = 0;
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
@@ -1682,8 +1730,9 @@ int db_auth_delete_session_by_id(int64_t user_id, int64_t session_id) {
     sqlite3_bind_int64(stmt, 1, session_id);
     sqlite3_bind_int64(stmt, 2, user_id);
     rc = sqlite3_step(stmt);
+    int changes = (rc == SQLITE_DONE) ? sqlite3_changes(db) : 0;
     sqlite3_finalize(stmt);
-    return rc == SQLITE_DONE ? 0 : -1;
+    return (rc == SQLITE_DONE && changes > 0) ? 0 : -1;
 }
 
 int db_auth_create_trusted_device(int64_t user_id, const char *ip_address, const char *user_agent,
@@ -1838,11 +1887,13 @@ int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int
         return -1;
     }
 
+    time_t now = time(NULL);
+
     sqlite3_stmt *stmt;
     int rc = sqlite3_prepare_v2(db,
                                "SELECT id, user_id, created_at, COALESCE(last_used_at, created_at), expires_at, "
                                "COALESCE(ip_address, ''), COALESCE(user_agent, '') "
-                               "FROM trusted_devices WHERE user_id = ? "
+                               "FROM trusted_devices WHERE user_id = ? AND expires_at >= ? "
                                "ORDER BY COALESCE(last_used_at, created_at) DESC LIMIT ?;",
                                -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -1851,7 +1902,8 @@ int db_auth_list_trusted_devices(int64_t user_id, trusted_device_t *devices, int
     }
 
     sqlite3_bind_int64(stmt, 1, user_id);
-    sqlite3_bind_int(stmt, 2, max_count);
+    sqlite3_bind_int64(stmt, 2, now);
+    sqlite3_bind_int(stmt, 3, max_count);
 
     int count = 0;
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
@@ -1891,8 +1943,9 @@ int db_auth_delete_trusted_device_by_id(int64_t user_id, int64_t trusted_device_
     sqlite3_bind_int64(stmt, 1, trusted_device_id);
     sqlite3_bind_int64(stmt, 2, user_id);
     rc = sqlite3_step(stmt);
+    int changes = (rc == SQLITE_DONE) ? sqlite3_changes(db) : 0;
     sqlite3_finalize(stmt);
-    return rc == SQLITE_DONE ? 0 : -1;
+    return (rc == SQLITE_DONE && changes > 0) ? 0 : -1;
 }
 
 /**

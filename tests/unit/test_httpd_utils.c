@@ -43,6 +43,16 @@ static void add_header(http_request_t *req, const char *name, const char *value)
     req->num_headers++;
 }
 
+static const char *find_response_header(const http_response_t *res, const char *name) {
+    if (!res || !name) return NULL;
+    for (int i = 0; i < res->num_headers; i++) {
+        if (strcmp(res->headers[i].name, name) == 0) {
+            return res->headers[i].value;
+        }
+    }
+    return NULL;
+}
+
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     /* Ensure auth is enabled by default so we control path in each test */
@@ -210,6 +220,43 @@ void test_get_cookie_value_returns_error_for_missing_cookie(void) {
     TEST_ASSERT_EQUAL_INT(-1, rc);
 }
 
+void test_auth_cookie_helpers_add_and_clear_expected_headers(void) {
+    http_response_t res;
+    http_response_init(&res);
+    g_config.auth_absolute_timeout_hours = 48;
+
+    httpd_add_session_cookie(&res, "session-token");
+    httpd_clear_session_cookie(&res);
+
+    TEST_ASSERT_EQUAL_INT(2, res.num_headers);
+    TEST_ASSERT_EQUAL_STRING("Set-Cookie", res.headers[0].name);
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "session=session-token"));
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "Max-Age=172800"));
+    TEST_ASSERT_EQUAL_STRING("Set-Cookie", res.headers[1].name);
+    TEST_ASSERT_EQUAL_STRING("session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax", res.headers[1].value);
+}
+
+void test_trusted_device_cookie_helpers_honor_lifetime_setting(void) {
+    http_response_t res;
+    http_response_init(&res);
+    g_config.trusted_device_days = 7;
+
+    httpd_add_trusted_device_cookie(&res, "trusted-token");
+    TEST_ASSERT_EQUAL_INT(1, res.num_headers);
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "trusted_device=trusted-token"));
+    TEST_ASSERT_NOT_NULL(strstr(res.headers[0].value, "Max-Age=604800"));
+
+    httpd_clear_trusted_device_cookie(&res);
+    TEST_ASSERT_EQUAL_INT(2, res.num_headers);
+    TEST_ASSERT_EQUAL_STRING("trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax", res.headers[1].value);
+
+    http_response_t disabled_res;
+    http_response_init(&disabled_res);
+    g_config.trusted_device_days = 0;
+    httpd_add_trusted_device_cookie(&disabled_res, "skipped-token");
+    TEST_ASSERT_NULL(find_response_header(&disabled_res, "Set-Cookie"));
+}
+
 /* ================================================================
  * httpd_is_demo_mode
  * ================================================================ */
@@ -305,6 +352,8 @@ int main(void) {
     RUN_TEST(test_get_session_token_no_session_key_returns_error);
     RUN_TEST(test_get_cookie_value_extracts_named_cookie);
     RUN_TEST(test_get_cookie_value_returns_error_for_missing_cookie);
+    RUN_TEST(test_auth_cookie_helpers_add_and_clear_expected_headers);
+    RUN_TEST(test_trusted_device_cookie_helpers_honor_lifetime_setting);
     RUN_TEST(test_is_demo_mode_false_by_default);
     RUN_TEST(test_is_demo_mode_true_when_set);
     RUN_TEST(test_get_authenticated_user_auth_disabled_returns_admin);

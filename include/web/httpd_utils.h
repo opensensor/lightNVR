@@ -73,6 +73,24 @@ int httpd_get_cookie_value(const http_request_t *req, const char *cookie_name,
                            char *value, size_t value_size);
 
 /**
+ * @brief Resolve the configured absolute session cookie lifetime in seconds.
+ */
+int httpd_auth_absolute_timeout_seconds(void);
+
+/**
+ * @brief Resolve the configured trusted-device cookie lifetime in seconds.
+ */
+int httpd_trusted_device_lifetime_seconds(void);
+
+/**
+ * @brief Add or clear auth-related cookies on an HTTP response.
+ */
+void httpd_add_session_cookie(http_response_t *res, const char *token);
+void httpd_clear_session_cookie(http_response_t *res);
+void httpd_add_trusted_device_cookie(http_response_t *res, const char *token);
+void httpd_clear_trusted_device_cookie(http_response_t *res);
+
+/**
  * @brief Check if the request has viewer-level access
  *
  * In demo mode, unauthenticated users are granted viewer-level access.

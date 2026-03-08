@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <strings.h>
 
@@ -137,6 +138,63 @@ int httpd_get_cookie_value(const http_request_t *req, const char *cookie_name,
 
 int httpd_get_session_token(const http_request_t *req, char *token, size_t token_size) {
     return httpd_get_cookie_value(req, "session", token, token_size);
+}
+
+int httpd_auth_absolute_timeout_seconds(void) {
+    int64_t seconds = (int64_t)g_config.auth_absolute_timeout_hours * 3600;
+    if (seconds <= 0 || seconds > INT32_MAX) {
+        return 604800;
+    }
+    return (int)seconds;
+}
+
+int httpd_trusted_device_lifetime_seconds(void) {
+    int64_t seconds = (int64_t)g_config.trusted_device_days * 86400;
+    if (seconds <= 0 || seconds > INT32_MAX) {
+        return 0;
+    }
+    return (int)seconds;
+}
+
+void httpd_add_session_cookie(http_response_t *res, const char *token) {
+    if (!res || !token || token[0] == '\0') {
+        return;
+    }
+
+    char cookie_header[256];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+             token, httpd_auth_absolute_timeout_seconds());
+    http_response_add_header(res, "Set-Cookie", cookie_header);
+}
+
+void httpd_clear_session_cookie(http_response_t *res) {
+    if (!res) {
+        return;
+    }
+    http_response_add_header(res, "Set-Cookie",
+                             "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+}
+
+void httpd_add_trusted_device_cookie(http_response_t *res, const char *token) {
+    int lifetime = httpd_trusted_device_lifetime_seconds();
+    if (!res || !token || token[0] == '\0' || lifetime <= 0) {
+        return;
+    }
+
+    char cookie_header[256];
+    snprintf(cookie_header, sizeof(cookie_header),
+             "trusted_device=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+             token, lifetime);
+    http_response_add_header(res, "Set-Cookie", cookie_header);
+}
+
+void httpd_clear_trusted_device_cookie(http_response_t *res) {
+    if (!res) {
+        return;
+    }
+    http_response_add_header(res, "Set-Cookie",
+                             "trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
 }
 
 int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {

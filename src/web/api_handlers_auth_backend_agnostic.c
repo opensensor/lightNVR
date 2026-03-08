@@ -131,51 +131,9 @@ static void clear_rate_limit(const char *username) {
     }
 }
 
-static int auth_absolute_timeout_seconds(void) {
-    int64_t seconds = (int64_t)g_config.auth_absolute_timeout_hours * 3600;
-    if (seconds <= 0 || seconds > INT32_MAX) {
-        return 604800;
-    }
-    return (int)seconds;
-}
-
-static int trusted_device_lifetime_seconds(void) {
-    int64_t seconds = (int64_t)g_config.trusted_device_days * 86400;
-    if (seconds <= 0 || seconds > INT32_MAX) {
-        return 0;
-    }
-    return (int)seconds;
-}
-
-static void add_session_cookie(http_response_t *res, const char *token) {
-    char cookie_header[256];
-    snprintf(cookie_header, sizeof(cookie_header),
-             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             token, auth_absolute_timeout_seconds());
-    http_response_add_header(res, "Set-Cookie", cookie_header);
-}
-
-static void clear_session_cookie(http_response_t *res) {
-    http_response_add_header(res, "Set-Cookie",
-                             "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
-}
-
-static void add_trusted_device_cookie(http_response_t *res, const char *token) {
-    int lifetime = trusted_device_lifetime_seconds();
-    if (lifetime <= 0) {
-        return;
-    }
-
-    char cookie_header[256];
-    snprintf(cookie_header, sizeof(cookie_header),
-             "trusted_device=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             token, lifetime);
-    http_response_add_header(res, "Set-Cookie", cookie_header);
-}
-
 static bool request_has_valid_trusted_device(const http_request_t *req, int64_t user_id) {
     char trusted_token[128] = {0};
-    if (trusted_device_lifetime_seconds() <= 0) {
+    if (httpd_trusted_device_lifetime_seconds() <= 0) {
         return false;
     }
     if (httpd_get_cookie_value(req, "trusted_device", trusted_token, sizeof(trusted_token)) != 0) {
@@ -455,14 +413,14 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    add_session_cookie(res, token);
+    httpd_add_session_cookie(res, token);
 
-    if (totp_verified && remember_device && !trusted_device_used && trusted_device_lifetime_seconds() > 0) {
+    if (totp_verified && remember_device && !trusted_device_used && httpd_trusted_device_lifetime_seconds() > 0) {
         char trusted_token[33];
         if (db_auth_create_trusted_device(user_id, req->client_ip, req->user_agent,
-                                          trusted_device_lifetime_seconds(),
+                                          httpd_trusted_device_lifetime_seconds(),
                                           trusted_token, sizeof(trusted_token)) == 0) {
-            add_trusted_device_cookie(res, trusted_token);
+            httpd_add_trusted_device_cookie(res, trusted_token);
         } else {
             log_warn("Failed to create trusted device for user: %s", username);
         }
@@ -501,7 +459,7 @@ void handle_auth_logout(const http_request_t *req, http_response_t *res) {
         log_info("Session deleted for logout request");
     }
 
-    clear_session_cookie(res);
+    httpd_clear_session_cookie(res);
 
     // Check if this is an API request or browser request
     const char *accept = http_request_get_header(req, "Accept");
@@ -688,7 +646,7 @@ void handle_auth_sessions_delete(const http_request_t *req, http_response_t *res
     }
 
     if (deleted_current_session) {
-        clear_session_cookie(res);
+        httpd_clear_session_cookie(res);
     }
 
     http_response_set_json(res, 200, "{\"success\":true}");
@@ -769,8 +727,7 @@ void handle_auth_trusted_devices_delete(const http_request_t *req, http_response
     }
 
     if (deleted_current_device) {
-        http_response_add_header(res, "Set-Cookie",
-                                 "trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+        httpd_clear_trusted_device_cookie(res);
     }
 
     http_response_set_json(res, 200, "{\"success\":true}");

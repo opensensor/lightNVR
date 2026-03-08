@@ -109,6 +109,41 @@ void test_create_and_validate_session(void) {
     TEST_ASSERT_EQUAL_INT(uid, out_uid);
 }
 
+void test_validate_session_throttles_tracking_updates(void) {
+    int64_t uid = 0;
+    db_auth_create_user("trackuser", "pass", NULL, USER_ROLE_USER, true, &uid);
+
+    char token[128];
+    int rc = db_auth_create_session(uid, "127.0.0.1", "TestAgent", 3600,
+                                    token, sizeof(token));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    rc = sqlite3_prepare_v2(db,
+                            "SELECT last_activity_at, idle_expires_at FROM sessions WHERE token = ?;",
+                            -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    int64_t last_activity_before = sqlite3_column_int64(stmt, 0);
+    int64_t idle_expires_before = sqlite3_column_int64(stmt, 1);
+    sqlite3_finalize(stmt);
+
+    rc = db_auth_validate_session(token, NULL);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = sqlite3_prepare_v2(db,
+                            "SELECT last_activity_at, idle_expires_at FROM sessions WHERE token = ?;",
+                            -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_INT64(last_activity_before, sqlite3_column_int64(stmt, 0));
+    TEST_ASSERT_EQUAL_INT64(idle_expires_before, sqlite3_column_int64(stmt, 1));
+    sqlite3_finalize(stmt);
+}
+
 /* delete_session invalidates */
 void test_delete_session(void) {
     int64_t uid = 0;
@@ -139,6 +174,31 @@ void test_list_sessions_and_trusted_devices(void) {
     TEST_ASSERT_EQUAL_INT(uid, sessions[0].user_id);
     TEST_ASSERT_TRUE(sessions[0].last_activity_at >= sessions[0].created_at);
     TEST_ASSERT_TRUE(sessions[0].idle_expires_at <= sessions[0].expires_at);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_delete_session_by_id(uid, sessions[0].id));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_delete_session_by_id(uid, sessions[0].id));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(session_token, NULL));
+
+    char expired_session_token[128];
+    rc = db_auth_create_session(uid, "127.0.0.1", "ExpiredAgent", 3600,
+                                expired_session_token, sizeof(expired_session_token));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    rc = sqlite3_prepare_v2(db,
+                            "UPDATE sessions SET expires_at = ?, idle_expires_at = ?, last_activity_at = ? WHERE token = ?;",
+                            -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    int64_t expired_at = (int64_t)time(NULL) - 5;
+    sqlite3_bind_int64(stmt, 1, expired_at);
+    sqlite3_bind_int64(stmt, 2, expired_at);
+    sqlite3_bind_int64(stmt, 3, expired_at);
+    sqlite3_bind_text(stmt, 4, expired_session_token, -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+
+    session_count = db_auth_list_user_sessions(uid, sessions, 8);
+    TEST_ASSERT_EQUAL_INT(0, session_count);
 
     char trusted_token[128];
     rc = db_auth_create_trusted_device(uid, "127.0.0.1", "TestAgent", 86400,
@@ -151,8 +211,6 @@ void test_list_sessions_and_trusted_devices(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, device_count);
     TEST_ASSERT_EQUAL_INT(uid, devices[0].user_id);
 
-    sqlite3 *db = get_db_handle();
-    sqlite3_stmt *stmt = NULL;
     rc = sqlite3_prepare_v2(db, "SELECT token FROM trusted_devices WHERE id = ?;", -1, &stmt, NULL);
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
     sqlite3_bind_int64(stmt, 1, devices[0].id);
@@ -164,7 +222,27 @@ void test_list_sessions_and_trusted_devices(void) {
 
     rc = db_auth_delete_trusted_device_by_id(uid, devices[0].id);
     TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_delete_trusted_device_by_id(uid, devices[0].id));
     TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_trusted_device(uid, trusted_token));
+
+    char expired_trusted_token[128];
+    rc = db_auth_create_trusted_device(uid, "127.0.0.1", "ExpiredDevice", 86400,
+                                       expired_trusted_token, sizeof(expired_trusted_token));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_trusted_device(uid, expired_trusted_token));
+
+    device_count = db_auth_list_trusted_devices(uid, devices, 8);
+    TEST_ASSERT_EQUAL_INT(1, device_count);
+
+    rc = sqlite3_prepare_v2(db, "UPDATE trusted_devices SET expires_at = ? WHERE id = ?;", -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    sqlite3_bind_int64(stmt, 1, expired_at);
+    sqlite3_bind_int64(stmt, 2, devices[0].id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+
+    device_count = db_auth_list_trusted_devices(uid, devices, 8);
+    TEST_ASSERT_EQUAL_INT(0, device_count);
 }
 
 /* role name / id conversions */
@@ -228,6 +306,7 @@ int main(void) {
     RUN_TEST(test_authenticate_wrong_password);
     RUN_TEST(test_change_password);
     RUN_TEST(test_create_and_validate_session);
+    RUN_TEST(test_validate_session_throttles_tracking_updates);
     RUN_TEST(test_delete_session);
     RUN_TEST(test_list_sessions_and_trusted_devices);
     RUN_TEST(test_role_name_conversions);

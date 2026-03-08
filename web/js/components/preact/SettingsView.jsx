@@ -180,7 +180,9 @@ export function SettingsView() {
   const {
     data: authSessionsData,
     refetch: refetchAuthSessions,
-    isLoading: authSessionsLoading
+    isLoading: authSessionsLoading,
+    isError: authSessionsIsError,
+    error: authSessionsError
   } = useQuery(['auth-sessions'], '/api/auth/sessions', {
     timeout: 10000,
     retries: 1,
@@ -190,7 +192,9 @@ export function SettingsView() {
   const {
     data: trustedDevicesData,
     refetch: refetchTrustedDevices,
-    isLoading: trustedDevicesLoading
+    isLoading: trustedDevicesLoading,
+    isError: trustedDevicesIsError,
+    error: trustedDevicesError
   } = useQuery(['trusted-devices'], '/api/auth/trusted-devices', {
     timeout: 10000,
     retries: 1,
@@ -899,6 +903,8 @@ export function SettingsView() {
             <div class="space-y-3">
               {authSessionsLoading ? (
                 <p class="text-sm text-muted-foreground">Loading sessions…</p>
+              ) : authSessionsIsError ? (
+                <p class="text-sm text-destructive">Failed to load sessions. {authSessionsError?.message || ''}</p>
               ) : ((authSessionsData?.sessions || []).length === 0 ? (
                 <p class="text-sm text-muted-foreground">No active sessions found.</p>
               ) : (
@@ -928,6 +934,8 @@ export function SettingsView() {
             <div class="space-y-3">
               {trustedDevicesLoading ? (
                 <p class="text-sm text-muted-foreground">Loading trusted devices…</p>
+              ) : trustedDevicesIsError ? (
+                <p class="text-sm text-destructive">Failed to load trusted devices. {trustedDevicesError?.message || ''}</p>
               ) : ((trustedDevicesData?.trusted_devices || []).length === 0 ? (
                 <p class="text-sm text-muted-foreground">No remembered devices found.</p>
               ) : (

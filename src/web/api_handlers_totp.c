@@ -34,43 +34,6 @@
 
 static const char BASE32_ALPHABET[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-static int auth_absolute_timeout_seconds(void) {
-    int64_t seconds = (int64_t)g_config.auth_absolute_timeout_hours * 3600;
-    if (seconds <= 0 || seconds > INT32_MAX) {
-        return 604800;
-    }
-    return (int)seconds;
-}
-
-static int trusted_device_lifetime_seconds(void) {
-    int64_t seconds = (int64_t)g_config.trusted_device_days * 86400;
-    if (seconds <= 0 || seconds > INT32_MAX) {
-        return 0;
-    }
-    return (int)seconds;
-}
-
-static void add_session_cookie(http_response_t *res, const char *token) {
-    char cookie_header[256];
-    snprintf(cookie_header, sizeof(cookie_header),
-             "session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             token, auth_absolute_timeout_seconds());
-    http_response_add_header(res, "Set-Cookie", cookie_header);
-}
-
-static void add_trusted_device_cookie(http_response_t *res, const char *token) {
-    int lifetime = trusted_device_lifetime_seconds();
-    if (lifetime <= 0) {
-        return;
-    }
-
-    char cookie_header[256];
-    snprintf(cookie_header, sizeof(cookie_header),
-             "trusted_device=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
-             token, lifetime);
-    http_response_add_header(res, "Set-Cookie", cookie_header);
-}
-
 /**
  * @brief Encode binary data to base32 string
  */
@@ -564,14 +527,14 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    add_session_cookie(res, session_token);
+    httpd_add_session_cookie(res, session_token);
 
-    if (remember_device && trusted_device_lifetime_seconds() > 0) {
+    if (remember_device && httpd_trusted_device_lifetime_seconds() > 0) {
         char trusted_token[33];
         if (db_auth_create_trusted_device(user_id, req->client_ip, req->user_agent,
-                                          trusted_device_lifetime_seconds(),
+                                          httpd_trusted_device_lifetime_seconds(),
                                           trusted_token, sizeof(trusted_token)) == 0) {
-            add_trusted_device_cookie(res, trusted_token);
+            httpd_add_trusted_device_cookie(res, trusted_token);
         } else {
             log_warn("Failed to create trusted device during TOTP login for user %lld", (long long)user_id);
         }
