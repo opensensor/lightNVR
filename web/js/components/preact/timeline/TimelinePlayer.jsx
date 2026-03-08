@@ -52,6 +52,15 @@ export function TimelinePlayer({ videoElementRef = null }) {
     videoElementRef.current = node;
   }, [videoElementRef]);
 
+  const releaseDirectVideoControl = useCallback(() => {
+    if (!timelineState.directVideoControl) {
+      return;
+    }
+
+    timelineState.directVideoControl = false;
+    timelineState.setState({});
+  }, []);
+
   // Subscribe to timeline state changes
   useEffect(() => {
     const listener = state => {
@@ -301,26 +310,46 @@ export function TimelinePlayer({ videoElementRef = null }) {
         video.pause();
         video.src = nextVideoUrl;
         video.load();
-        
+
+        const cleanupTransitionListeners = () => {
+          video.removeEventListener('loadedmetadata', onLoadedMetadata);
+          video.removeEventListener('error', onTransitionError);
+        };
+
         // Set up event listener for when metadata is loaded
         const onLoadedMetadata = () => {
           console.log('Next segment metadata loaded, starting playback immediately');
           video.currentTime = 0; // Start from the beginning of the next segment
-          video.play().catch(e => {
-            if (e.name === 'AbortError') return;
-            console.error('Error playing next segment:', e);
-          });
-          video.removeEventListener('loadedmetadata', onLoadedMetadata);
-        };
-        
-        video.addEventListener('loadedmetadata', onLoadedMetadata);
-      }
+          const playPromise = video.play();
 
-      // Reset the directVideoControl flag after a delay
-      setTimeout(() => {
-        timelineState.directVideoControl = false;
-        timelineState.setState({});
-      }, 1000);
+          if (playPromise && typeof playPromise.finally === 'function') {
+            playPromise
+              .catch(e => {
+                if (e.name === 'AbortError') return;
+                console.error('Error playing next segment:', e);
+              })
+              .finally(() => {
+                cleanupTransitionListeners();
+                releaseDirectVideoControl();
+              });
+            return;
+          }
+
+          cleanupTransitionListeners();
+          releaseDirectVideoControl();
+        };
+
+        const onTransitionError = () => {
+          cleanupTransitionListeners();
+          releaseDirectVideoControl();
+        };
+
+        video.addEventListener('loadedmetadata', onLoadedMetadata);
+        video.addEventListener('error', onTransitionError);
+      } else {
+        // If we don't have a video element, clear the direct control flag immediately.
+        releaseDirectVideoControl();
+      }
     } else {
       // End of all segments
       console.log('End of all segments');
@@ -740,10 +769,22 @@ export function TimelinePlayer({ videoElementRef = null }) {
       link.download = fileName;
       document.body.appendChild(link);
       link.click();
-      setTimeout(() => {
+
+      const cleanupDownload = () => {
         if (document.body.contains(link)) document.body.removeChild(link);
         URL.revokeObjectURL(blobUrl);
-      }, 1000);
+      };
+
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          cleanupDownload();
+        });
+      } else {
+        setTimeout(() => {
+          cleanupDownload();
+        }, 0);
+      }
+
       showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
     }, 'image/jpeg', 0.95);
   }, [segmentRecordingData]);

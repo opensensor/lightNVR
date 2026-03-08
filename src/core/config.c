@@ -1357,13 +1357,14 @@ int save_config(const config_t *config, const char *path) {
     // and rejoining the basename. This neutralises any ".." or symlink traversal
     // remaining in save_path before the file descriptor is opened.
     char canonical_save_path[PATH_MAX];
+    char resolved_dir[PATH_MAX];
+    char validated_filename[MAX_PATH_LENGTH];
     {
         char tmp[MAX_PATH_LENGTH];
         strncpy(tmp, save_path, MAX_PATH_LENGTH - 1);
         tmp[MAX_PATH_LENGTH - 1] = '\0';
 
         const char *fname;
-        char resolved_dir[PATH_MAX];
 
         char *sl = strrchr(tmp, '/');
         if (sl) {
@@ -1408,20 +1409,48 @@ int save_config(const config_t *config, const char *path) {
             log_error("Canonical config path too long");
             return -1;
         }
+
+        int fname_written = snprintf(validated_filename, sizeof(validated_filename), "%s", fname);
+        if (fname_written < 0 || (size_t)fname_written >= sizeof(validated_filename)) {
+            log_error("Config filename too long: '%s'", fname);
+            return -1;
+        }
     }
 
     // Open the config file with 0600 permissions so passwords written to it
     // are not world-readable. Using open()+fdopen() instead of fopen() lets us
     // specify the mode explicitly and avoid relying on the process umask.
     //
-    // Security: canonical_save_path is built from a realpath()-resolved directory
-    // joined with a validated filename (no path separators, no "..", must end in
-    // ".ini"). This ensures the path cannot escape the intended directory.
-    int config_fd = open(canonical_save_path, O_WRONLY | O_CREAT | O_TRUNC, 0600); // codeql[cpp/path-injection] -- canonical_save_path is built from realpath()-resolved directory joined with a filename validated to contain no path separators and to end in ".ini"
+    // Security: open the file relative to a trusted directory fd so the final
+    // file open is anchored to the realpath()-resolved directory while the
+    // untrusted portion is limited to a validated basename.
+    int dir_fd = open(resolved_dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dir_fd < 0) {
+        log_error("Could not open config directory for writing: %s (error: %s)", resolved_dir, strerror(errno));
+        return -1;
+    }
+
+    int config_fd = openat(dir_fd, validated_filename,
+                           O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC,
+                           0600);
+    close(dir_fd);
     if (config_fd < 0) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
         return -1;
     }
+
+    struct stat config_stat;
+    if (fstat(config_fd, &config_stat) != 0) {
+        log_error("Could not stat config file after opening: %s (error: %s)", canonical_save_path, strerror(errno));
+        close(config_fd);
+        return -1;
+    }
+    if (!S_ISREG(config_stat.st_mode)) {
+        log_error("Config save target is not a regular file: %s", canonical_save_path);
+        close(config_fd);
+        return -1;
+    }
+
     FILE *file = fdopen(config_fd, "w");
     if (!file) {
         log_error("Could not open config file for writing: %s (error: %s)", canonical_save_path, strerror(errno));
