@@ -32,6 +32,17 @@
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_segment_recorder.h"
 
+// DTS/PTS limits for MP4 format handling
+// MP4 containers use a signed 32-bit time scale; exceeding this can cause failures.
+#define MP4_DTS_MAX_VALUE         0x7fffffff
+// Threshold at which we start clamping DTS to avoid approaching the max too closely.
+#define MP4_DTS_WARNING_THRESHOLD 0x70000000  // ~75% of MP4_DTS_MAX_VALUE
+
+// Upper bound for AVPacket.duration expressed in stream time_base units.
+// This is intentionally very large; typical frame durations are far smaller.
+// Used to clamp pathological packet durations that can trigger muxer errors.
+#define MAX_PACKET_DURATION_TIMEBASE_UNITS 10000000
+
 // Note: We can't directly access internal FFmpeg structures
 // So we'll use the public API for cleanup
 
@@ -140,8 +151,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
     int64_t first_audio_pts = AV_NOPTS_VALUE;
     int64_t last_video_dts = AV_NOPTS_VALUE;  // BUGFIX: Use AV_NOPTS_VALUE sentinel so first-frame DTS=0 duplicate pairs are caught
     int64_t last_video_pts = AV_NOPTS_VALUE;
-    int64_t last_audio_dts = 0;
-    int64_t last_audio_pts = 0;
+    int64_t last_audio_dts = AV_NOPTS_VALUE;
+    int64_t last_audio_pts = AV_NOPTS_VALUE;
     int audio_packet_count = 0;
     int video_packet_count = 0;
     int64_t start_time = 0;  // CRITICAL FIX: Initialize to 0 to prevent using uninitialized value
@@ -959,7 +970,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     // CRITICAL FIX: Ensure DTS values don't exceed MP4 format limits (0x7fffffff)
                     // This prevents the "Assertion next_dts <= 0x7fffffff failed" error
                     if (pkt->dts != AV_NOPTS_VALUE) {
-                        if (pkt->dts > 0x7fffffff) {
+                        if (pkt->dts > MP4_DTS_MAX_VALUE) {
                             log_warn("DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
                             // Calculate PTS-DTS difference BEFORE modifying DTS
                             int64_t pts_dts_diff = 0;
@@ -983,7 +994,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                         }
                         // Additional check to ensure DTS is always within safe range
                         // This handles cases where DTS might be close to the limit
-                        if (pkt->dts > 0x70000000) {  // ~75% of max value
+                        if (pkt->dts > MP4_DTS_WARNING_THRESHOLD) {  // ~75% of max value
                             log_info("DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
                             // Calculate PTS-DTS difference BEFORE modifying DTS
                             int64_t pts_dts_diff = 0;
@@ -1009,7 +1020,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
                     // CRITICAL FIX: Ensure packet duration is within reasonable limits
                     // This prevents the "Packet duration is out of range" error
-                    if (pkt->duration > 10000000) {
+                    if (pkt->duration > MAX_PACKET_DURATION_TIMEBASE_UNITS) {
                         log_warn("Packet duration too large: %lld, capping at reasonable value", (long long)pkt->duration);
                         // Cap at a reasonable value (e.g., 1 second in timebase units)
                         pkt->duration = 90000;
@@ -1291,7 +1302,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 
             // CRITICAL FIX: Ensure DTS values don't exceed MP4 format limits (0x7fffffff) for audio packets
             if (pkt->dts != AV_NOPTS_VALUE) {
-                if (pkt->dts > 0x7fffffff) {
+                if (pkt->dts > MP4_DTS_MAX_VALUE) {
                     log_warn("Audio DTS value exceeds MP4 format limit: %lld, resetting to safe value", (long long)pkt->dts);
                     // Calculate PTS-DTS difference BEFORE modifying DTS
                     int64_t pts_dts_diff = 0;
@@ -1318,7 +1329,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                 }
 
                 // Additional check to ensure DTS is always within safe range
-                if (pkt->dts > 0x70000000) {  // ~75% of max value
+                if (pkt->dts > MP4_DTS_WARNING_THRESHOLD) {  // ~75% of max value
                     log_info("Audio DTS value approaching MP4 format limit: %lld, resetting to prevent overflow", (long long)pkt->dts);
                     // Calculate PTS-DTS difference BEFORE modifying DTS
                     int64_t pts_dts_diff = 0;
@@ -1780,7 +1791,7 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
             }
 
             // Ensure monotonically increasing audio DTS values
-            if (out_pkt->dts != AV_NOPTS_VALUE && writer->audio.last_dts != 0 && out_pkt->dts <= writer->audio.last_dts) {
+            if (out_pkt->dts != AV_NOPTS_VALUE && writer->audio.last_dts != AV_NOPTS_VALUE && out_pkt->dts <= writer->audio.last_dts) {
                 int64_t fixed_dts = writer->audio.last_dts + 1;
                 if (out_pkt->pts != AV_NOPTS_VALUE) {
                     int64_t pts_dts_diff = out_pkt->pts - out_pkt->dts;
