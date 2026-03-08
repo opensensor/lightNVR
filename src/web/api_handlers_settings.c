@@ -421,6 +421,9 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
 
     // Update settings
     bool settings_changed = false;
+    bool restart_required = false;
+    bool web_thread_pool_restart_required = false;
+    bool max_streams_restart_required = false;
     bool go2rtc_config_changed = false;  // Track if go2rtc-related settings changed
     bool go2rtc_becoming_enabled = false;  // Track transition direction
     bool mqtt_config_changed = false;     // Track if MQTT-related settings changed
@@ -453,9 +456,13 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         int v = web_thread_pool_size_j->valueint;
         if (v < 2)   v = 2;
         if (v > 128) v = 128;
-        g_config.web_thread_pool_size = v;
-        settings_changed = true;
-        log_info("Updated web_thread_pool_size: %d (restart required)", v);
+        if (v != g_config.web_thread_pool_size) {
+            g_config.web_thread_pool_size = v;
+            settings_changed = true;
+            restart_required = true;
+            web_thread_pool_restart_required = true;
+            log_info("Updated web_thread_pool_size: %d (restart required)", v);
+        }
     }
 
     // Web port
@@ -640,6 +647,8 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         if (new_max != g_config.max_streams) {
             g_config.max_streams = new_max;
             settings_changed = true;
+            restart_required = true;
+            max_streams_restart_required = true;
             log_info("Updated max_streams: %d (restart required)", new_max);
         }
     }
@@ -1607,6 +1616,20 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     }
     
     cJSON_AddBoolToObject(success, "success", true);
+    cJSON_AddBoolToObject(success, "restart_required", restart_required);
+
+    if (restart_required) {
+        if (web_thread_pool_restart_required && max_streams_restart_required) {
+            cJSON_AddStringToObject(success, "restart_required_message",
+                                    "Worker thread pool size and Max Streams were saved, but LightNVR must be restarted before the new runtime capacity takes effect.");
+        } else if (web_thread_pool_restart_required) {
+            cJSON_AddStringToObject(success, "restart_required_message",
+                                    "Worker thread pool size was saved, but LightNVR must be restarted before the new thread pool takes effect.");
+        } else if (max_streams_restart_required) {
+            cJSON_AddStringToObject(success, "restart_required_message",
+                                    "Max Streams was saved, but LightNVR must be restarted before the new camera capacity takes effect.");
+        }
+    }
     
     // Convert to string
     char *json_str = cJSON_PrintUnformatted(success);

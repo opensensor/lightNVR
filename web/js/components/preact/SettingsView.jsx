@@ -16,6 +16,7 @@ import { validateSession } from '../../utils/auth-utils.js';
  */
 export function SettingsView() {
   const [userRole, setUserRole] = useState(null);
+  const [restartNotice, setRestartNotice] = useState(null);
   const [settings, setSettings] = useState({
     logLevel: '2',
     syslogEnabled: false,
@@ -158,8 +159,14 @@ export function SettingsView() {
         retryDelay: 2000 // 2 seconds between retries
       });
     },
-    onSuccess: () => {
-      showStatusMessage('Settings saved successfully');
+    onSuccess: (response) => {
+      if (response?.restart_required) {
+        setRestartNotice(response.restart_required_message ||
+          'Restart LightNVR before runtime capacity changes take effect.');
+        showStatusMessage('Settings saved. Restart required for runtime capacity changes.', 'warning', 7000);
+      } else {
+        showStatusMessage('Settings saved successfully');
+      }
       refetch(); // Refresh settings after saving
     },
     onError: (error) => {
@@ -415,6 +422,23 @@ export function SettingsView() {
         emptyMessage="No settings available. Please try again later."
       >
         <div class="settings-container space-y-6">
+          {restartNotice && (
+            <div class="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100 shadow p-4">
+              <div class="flex items-start gap-3">
+                <div class="text-lg leading-none">⚠️</div>
+                <div>
+                  <div class="font-semibold">Restart required</div>
+                  <p class="text-sm mt-1">
+                    {restartNotice}
+                  </p>
+                  <p class="text-sm mt-2 opacity-90">
+                    Until LightNVR restarts, the running instance keeps using the old stream capacity and thread pool.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Appearance Settings - available to all users */}
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
             <button
@@ -620,6 +644,11 @@ export function SettingsView() {
           
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
           <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Web Interface Settings</h3>
+          {restartNotice && (
+            <div class="mb-4 rounded border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-100">
+              <strong>Pending restart:</strong> {restartNotice}
+            </div>
+          )}
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-web-port" class="font-medium">Web Port</label>
             <input
