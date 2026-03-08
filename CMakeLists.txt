@@ -253,6 +253,7 @@ if(NOT LLHTTP_FOUND)
         file(MAKE_DIRECTORY "${LLHTTP_DIR}/include")
 
         # Download llhttp release (v9.2.1 - stable release)
+        set(LLHTTP_VERSION "v9.2.1")
         set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_VERSION}")
 
         file(DOWNLOAD
