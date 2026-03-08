@@ -253,6 +253,7 @@ if(NOT LLHTTP_FOUND)
         file(MAKE_DIRECTORY "${LLHTTP_DIR}/include")
 
         # Download llhttp release (v9.2.1 - stable release)
+        set(LLHTTP_VERSION "v9.2.1")
         set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_VERSION}")
 
         file(DOWNLOAD
@@ -546,7 +547,7 @@ if(ENABLE_SOD)
         # Set proper RPATH settings for the main executable when using dynamic SOD
         set_target_properties(lightnvr PROPERTIES
                 BUILD_WITH_INSTALL_RPATH TRUE
-                INSTALL_RPATH "$ORIGIN/../src/sod:$ORIGIN/../lib"
+                INSTALL_RPATH "$ORIGIN/../lib"
         )
 
         # Make sure the shared library gets installed to lib directory
