@@ -20,6 +20,17 @@ import customParseFormat from 'dayjs/plugin/customParseFormat';
 dayjs.extend(utc);
 dayjs.extend(customParseFormat);
 
+// Default timeout/retry configuration for recordings API calls
+const DEFAULT_TIMEOUT = 15000;       // 15 second timeout
+const DEFAULT_RETRIES = 2;           // Retry twice
+const DEFAULT_RETRY_DELAY = 1000;    // 1 second between retries
+
+// Batch delete specific configuration
+const BATCH_DELETE_TIMEOUT = 60000;          // 60 second timeout for batch operations
+const BATCH_DELETE_RETRIES = 1;              // Retry once
+const BATCH_DELETE_RETRY_DELAY = 2000;       // 2 seconds between retries
+const BATCH_DELETE_POLL_MAX_ATTEMPTS = 120;  // 2 minutes max (120 * 1 second)
+
 /**
  * Parse a recording timestamp to Unix seconds.
  * Accepts a Unix epoch number (already in seconds), an ISO 8601 string
@@ -208,9 +219,9 @@ export const recordingsAPI = {
       return usePostMutation(
         '/api/recordings/batch-delete',
         {
-          timeout: 60000, // 60 second timeout for batch operations
-          retries: 1,     // Retry once
-          retryDelay: 2000 // 2 seconds between retries
+          timeout: BATCH_DELETE_TIMEOUT,
+          retries: BATCH_DELETE_RETRIES,
+          retryDelay: BATCH_DELETE_RETRY_DELAY
         },
         {
           onSuccess: (result) => {
@@ -244,9 +255,9 @@ export const recordingsAPI = {
   loadStreams: async () => {
     try {
       const data = await fetchJSON('/api/streams', {
-        timeout: 15000, // 15 second timeout
-        retries: 2,     // Retry twice
-        retryDelay: 1000 // 1 second between retries
+        timeout: DEFAULT_TIMEOUT,
+        retries: DEFAULT_RETRIES,
+        retryDelay: DEFAULT_RETRY_DELAY
       });
 
       return data || [];
@@ -322,18 +333,9 @@ export const recordingsAPI = {
       // Set has_detections to false by default instead of making API calls
       // This prevents unnecessary detection API calls on the recordings page
       if (data.recordings && data.recordings.length > 0) {
-        // Process recordings in batches to avoid too many parallel requests
-        const batchSize = 5;
-        for (let i = 0; i < data.recordings.length; i += batchSize) {
-          const batch = data.recordings.slice(i, i + batchSize);
-          await Promise.all(batch.map(async (recording) => {
-            try {
-              recording.has_detections = await recordingsAPI.checkRecordingHasDetections(recording);
-            } catch (error) {
-              console.error(`Error checking detections for recording ${recording.id}:`, error);
-              recording.has_detections = false;
-            }
-          }));
+        for (const recording of data.recordings) {
+          // Default to false on the recordings list; detailed checks can be done on-demand elsewhere
+          recording.has_detections = false;
         }
       }
 
@@ -469,7 +471,7 @@ export const recordingsAPI = {
    * @returns {Promise<Object>} Final result with success and error counts
    */
   pollBatchDeleteProgress: async (jobId) => {
-    const maxAttempts = 120; // 2 minutes max (120 * 1 second)
+    const maxAttempts = BATCH_DELETE_POLL_MAX_ATTEMPTS;
     let attempts = 0;
 
     while (attempts < maxAttempts) {
