@@ -802,6 +802,13 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
     chunk.memory = malloc(1);
+    if (chunk.memory == NULL) {
+        log_error("API Detection (snapshot): Failed to allocate memory for curl response buffer");
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(local_curl);
+        return -1;
+    }
     chunk.size = 0;
 
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
