@@ -123,7 +123,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libavcodec62 libavformat62 libavutil60 libswscale9 \
-    libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl \
+    libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl ca-certificates \
     libmosquitto1 libuv1t64 libllhttp9.3 && \
     rm -rf /var/lib/apt/lists/*
 

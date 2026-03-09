@@ -54,6 +54,48 @@ static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, v
     return realsize;
 }
 
+static bool is_tls_ca_error(CURLcode res) {
+#ifdef CURLE_SSL_CACERT_BADFILE
+    if (res == CURLE_SSL_CACERT_BADFILE) {
+        return true;
+    }
+#endif
+#ifdef CURLE_SSL_CACERT
+    if (res == CURLE_SSL_CACERT) {
+        return true;
+    }
+#endif
+#ifdef CURLE_PEER_FAILED_VERIFICATION
+    if (res == CURLE_PEER_FAILED_VERIFICATION) {
+        return true;
+    }
+#endif
+    return false;
+}
+
+static void log_tls_error_details(const char *context, CURL *curl, CURLcode res, const char *url) {
+    if (!is_tls_ca_error(res)) {
+        return;
+    }
+
+    long ssl_verify_result = 0;
+    if (curl) {
+        curl_easy_getinfo(curl, CURLINFO_SSL_VERIFYRESULT, &ssl_verify_result);
+    }
+
+    const char *ssl_cert_file = getenv("SSL_CERT_FILE");
+    const char *ssl_cert_dir = getenv("SSL_CERT_DIR");
+
+    log_error("%s: TLS certificate verification failed for %s", context, url ? url : "(unknown URL)");
+    log_error("%s: libcurl SSL verify result=%ld, SSL_CERT_FILE=%s, SSL_CERT_DIR=%s",
+              context,
+              ssl_verify_result,
+              (ssl_cert_file && ssl_cert_file[0] != '\0') ? ssl_cert_file : "(unset)",
+              (ssl_cert_dir && ssl_cert_dir[0] != '\0') ? ssl_cert_dir : "(unset)");
+    log_error("%s: Ensure a readable CA bundle is installed (for containers, install ca-certificates) or configure SSL_CERT_FILE/SSL_CERT_DIR to valid paths.",
+              context);
+}
+
 /**
  * Initialize the API detection system
  */
@@ -354,6 +396,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     // Check for errors
     if (res != CURLE_OK) {
         log_error("API Detection: curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        log_tls_error_details("API Detection", curl_handle, res, url_with_params);
 
         // Check if it's a connection error
         if (res == CURLE_COULDNT_CONNECT) {
@@ -771,6 +814,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     if (res != CURLE_OK) {
         log_error("API Detection (snapshot): curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        log_tls_error_details("API Detection (snapshot)", local_curl, res, url_with_params);
         free(chunk.memory);
         curl_mime_free(mime);
         curl_slist_free_all(headers);
