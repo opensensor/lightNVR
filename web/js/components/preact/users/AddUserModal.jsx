@@ -3,6 +3,7 @@
  */
 
 import { USER_ROLES } from './UserRoles.js';
+import { useEffect, useRef } from 'preact/hooks';
 
 /**
  * Add User Modal Component
@@ -14,6 +15,9 @@ import { USER_ROLES } from './UserRoles.js';
  * @returns {JSX.Element} Add user modal
  */
 export function AddUserModal({ formData, handleInputChange, handleAddUser, onClose }) {
+  const dialogRef = useRef(null);
+  const firstFieldRef = useRef(null);
+
   // Direct submit handler
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -26,19 +30,59 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
     e.stopPropagation();
   };
 
-  // Handle Escape key to close the modal for keyboard users
-  const handleKeyDown = (e) => {
+  // Handle keyboard interactions within the dialog (Escape to close, Tab to trap focus)
+  const handleDialogKeyDown = (e) => {
     if (e.key === 'Escape' || e.key === 'Esc') {
       e.stopPropagation();
       onClose();
+      return;
+    }
+
+    if (e.key === 'Tab' && dialogRef.current) {
+      const focusableSelectors = [
+        'a[href]',
+        'area[href]',
+        'button:not([disabled])',
+        'input:not([disabled]):not([type="hidden"])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])'
+      ];
+      const focusableElements = Array.prototype.slice.call(
+        dialogRef.current.querySelectorAll(focusableSelectors.join(','))
+      ).filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+
+      if (focusableElements.length === 0) {
+        return;
+      }
+
+      const firstEl = focusableElements[0];
+      const lastEl = focusableElements[focusableElements.length - 1];
+      const current = document.activeElement;
+
+      if (!e.shiftKey && current === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      } else if (e.shiftKey && current === firstEl) {
+        e.preventDefault();
+        lastEl.focus();
+      }
     }
   };
+
+  // Move focus into the modal when it opens
+  useEffect(() => {
+    if (firstFieldRef.current && typeof firstFieldRef.current.focus === 'function') {
+      firstFieldRef.current.focus();
+    } else if (dialogRef.current && typeof dialogRef.current.focus === 'function') {
+      dialogRef.current.focus();
+    }
+  }, []);
 
   return (
     <div
       className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
       onClick={onClose}
-      onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
       <div className="flex min-h-full items-center justify-center">
@@ -48,6 +92,9 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           aria-labelledby="add-user-modal-title"
           className="bg-card text-card-foreground my-8 max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-lg p-6"
           onClick={stopPropagation}
+          onKeyDown={handleDialogKeyDown}
+          ref={dialogRef}
+          tabIndex={-1}
         >
           <h2 id="add-user-modal-title" className="text-xl font-bold mb-4">Add New User</h2>
 
@@ -65,6 +112,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               onChange={handleInputChange}
               required
               aria-required="true"
+              ref={firstFieldRef}
             />
           </div>
 
