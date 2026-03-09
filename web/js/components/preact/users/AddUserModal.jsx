@@ -124,7 +124,6 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 checked={formData.is_active}
                 onChange={handleInputChange}
                 className="mr-2"
-                aria-label="Active"
               />
               <span className="text-sm font-bold">Active</span>
             </label>
