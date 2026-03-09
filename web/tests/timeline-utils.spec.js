@@ -228,8 +228,11 @@ describe('timelineUtils', () => {
       { id: 1, stream: 'front_door', start_timestamp: baseTestDateTimestamp(9, 0, 0), end_timestamp: baseTestDateTimestamp(9, 5, 0) },
       { id: 2, stream: 'garage', start_timestamp: baseTestDateTimestamp(9, 10, 0), end_timestamp: baseTestDateTimestamp(9, 15, 0) }
     ];
+    const timestampInContainingSegment = baseTestDateTimestamp(9, 10, 30);
 
-    expect(resolvePlaybackStreamName(segments, -1, baseTestDateTimestamp(9, 10, 30))).toBe('garage');
+    expect(resolvePlaybackStreamName(segments, -1, timestampInContainingSegment)).toBe('garage');
+    expect(resolvePlaybackStreamName(segments, segments.length, timestampInContainingSegment)).toBe('garage');
+    expect(resolvePlaybackStreamName(segments, segments.length + 1, timestampInContainingSegment)).toBe('garage');
   });
 
   test('falls back to the nearest segment stream when the current timestamp is in a gap', () => {
@@ -237,8 +240,12 @@ describe('timelineUtils', () => {
       { id: 1, stream: 'front_door', start_timestamp: baseTestDateTimestamp(9, 0, 0), end_timestamp: baseTestDateTimestamp(9, 5, 0) },
       { id: 2, stream: 'garage', start_timestamp: baseTestDateTimestamp(9, 10, 0), end_timestamp: baseTestDateTimestamp(9, 15, 0) }
     ];
+    const timestampInGap = baseTestDateTimestamp(9, 8, 0);
+    const distanceToFrontDoor = timestampInGap - segments[0].end_timestamp;
+    const distanceToGarage = segments[1].start_timestamp - timestampInGap;
 
-    expect(resolvePlaybackStreamName(segments, -1, baseTestDateTimestamp(9, 8, 0))).toBe('garage');
+    expect(distanceToGarage).toBeLessThan(distanceToFrontDoor);
+    expect(resolvePlaybackStreamName(segments, -1, timestampInGap)).toBe('garage');
   });
 
   test('uses the actual local day length on a DST spring-forward day', () => {
