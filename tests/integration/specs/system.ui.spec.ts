@@ -64,6 +64,11 @@ test.describe('System Page @ui @system', () => {
       await expect(systemPage.versionsTable).toBeVisible();
       await expect(systemPage.versionsTable).toContainText('LightNVR');
       await expect(systemPage.versionsTable).toContainText('Base OS');
+      await expect(systemPage.versionsTable).toContainText('SQLite');
+      await expect(systemPage.versionsTable).toContainText('libcurl');
+
+      const versionRowCount = await systemPage.versionRows.count();
+      expect(versionRowCount).toBeGreaterThanOrEqual(4);
       await expect(systemPage.versionRows.first()).toBeVisible();
     });
 

@@ -46,15 +46,26 @@ describe('timelineUtils', () => {
   });
 
   test('dayjs timezone plugin is configured for DST-sensitive calculations', () => {
-    // This instant is the same moment in time regardless of DST;
-    // we verify that dayjs.tz is available and returns a valid date.
-    const instant = '2020-03-08T07:30:00Z';
-    const nyTime = dayjs.tz(instant, 'America/New_York');
+    // Verify that dayjs.tz is available and correctly handles the US DST
+    // "spring forward" transition on 2020-03-08 in America/New_York.
+    //
+    // Before the transition: 2020-03-08T06:30:00Z = 01:30 local time, UTC-5 (EST).
+    const preDstInstant = '2020-03-08T06:30:00Z';
+    const preDstNyTime = dayjs.tz(preDstInstant, 'America/New_York');
 
-    // 2020-03-08 is the US DST start date; at 02:00 local time clocks
-    // jump to 03:00. The converted time should be shortly after 03:00.
-    expect(nyTime.isValid()).toBe(true);
-    expect(nyTime.format('YYYY-MM-DD')).toBe('2020-03-08');
+    expect(preDstNyTime.isValid()).toBe(true);
+    expect(preDstNyTime.format('YYYY-MM-DD')).toBe('2020-03-08');
+    expect(preDstNyTime.format('HH:mm')).toBe('01:30');
+    expect(preDstNyTime.utcOffset()).toBe(-300); // minutes, UTC-5
+
+    // After the transition: 2020-03-08T07:30:00Z = 03:30 local time, UTC-4 (EDT).
+    const postDstInstant = '2020-03-08T07:30:00Z';
+    const postDstNyTime = dayjs.tz(postDstInstant, 'America/New_York');
+
+    expect(postDstNyTime.isValid()).toBe(true);
+    expect(postDstNyTime.format('YYYY-MM-DD')).toBe('2020-03-08');
+    expect(postDstNyTime.format('HH:mm')).toBe('03:30');
+    expect(postDstNyTime.utcOffset()).toBe(-240); // minutes, UTC-4
   });
 
   test('prefers the segment with later start time when recordings overlap', () => {
@@ -333,6 +344,11 @@ describe('timelineUtils', () => {
       expect(formatTimelineOffsetLabel(1, selectedDate)).toBe('1:00');
       expect(formatTimelineOffsetLabel(2, selectedDate)).toBe('1:00');
       expect(formatTimelineOffsetLabel(3, selectedDate)).toBe('2:00');
+
+      // Also verify the reverse conversion from wall-clock time back to timeline offset
+      const parsedFirstRepeatedHourTimestamp = localClockTimeToTimestamp('01:10:00', selectedDate);
+      expect(parsedFirstRepeatedHourTimestamp).toBe(firstRepeatedHourTimestamp);
+      expect(timestampToTimelineOffset(parsedFirstRepeatedHourTimestamp, selectedDate)).toBeCloseTo(1 + (10 / 60), 6);
     } finally {
       process.env.TZ = originalTz;
     }
@@ -428,6 +444,29 @@ describe('timelineUtils', () => {
     expect(countSegmentsForDate(segments, '2026-03-08')).toBe(2);
     expect(countSegmentsForDate(segments, '2026-03-09')).toBe(2);
     expect(findFirstVisibleSegmentIndex(segments, '2026-03-09')).toBe(1);
+  });
+
+  test('returns 0 and -1 when segments are only on adjacent days', () => {
+    const mar8 = getLocalDayBounds('2026-03-08');
+    const mar10 = getLocalDayBounds('2026-03-10');
+
+    const segments = [
+      {
+        // segment fully within previous day
+        id: 1,
+        start_timestamp: mar8.startTimestamp + 600,
+        end_timestamp: mar8.startTimestamp + 1200
+      },
+      {
+        // segment fully within next day
+        id: 2,
+        start_timestamp: mar10.startTimestamp + 600,
+        end_timestamp: mar10.startTimestamp + 1200
+      }
+    ];
+
+    expect(countSegmentsForDate(segments, '2026-03-09')).toBe(0);
+    expect(findFirstVisibleSegmentIndex(segments, '2026-03-09')).toBe(-1);
   });
 
   test('normalizes timeline ranges into the 0-24 hour window', () => {
