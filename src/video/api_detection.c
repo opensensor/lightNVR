@@ -608,7 +608,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_info("API Detection: Filtering %d detections by zones for stream %s", result->count, stream_name);
         int filter_ret = filter_detections_by_zones(stream_name, result);
         if (filter_ret != 0) {
-            log_warn("Failed to filter detections by zones, aborting detection pipeline for this frame");
+            log_error("Failed to filter detections by zones, aborting detection pipeline for this frame");
             goto cleanup;
         }
 
