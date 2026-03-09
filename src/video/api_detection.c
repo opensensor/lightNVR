@@ -451,6 +451,8 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_mime_free(mime);
         curl_slist_free_all(headers);
 
+        // Initialize result to empty to prevent inconsistent state
+        result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
