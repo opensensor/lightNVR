@@ -125,151 +125,151 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               />
             </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="password">
-              Password
-            </label>
-            <input
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="password"
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleInputChange}
-              required
-              aria-required="true"
-              autoComplete="new-password"
-            />
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="email">
-              Email
-            </label>
-            <input
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="email"
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              autoComplete="email"
-            />
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="role">
-              Role
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleInputChange}
-            >
-              {Object.entries(USER_ROLES).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mb-4">
-            <label className="flex items-center" htmlFor="is_active">
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="password">
+                Password
+              </label>
               <input
-                type="checkbox"
-                id="is_active"
-                name="is_active"
-                checked={formData.is_active}
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="password"
+                type="password"
+                name="password"
+                value={formData.password}
                 onChange={handleInputChange}
-                className="mr-2"
+                required
+                aria-required="true"
+                autoComplete="new-password"
               />
-              <span className="text-sm font-bold">Active</span>
-            </label>
-          </div>
+            </div>
 
-          <div className="mb-6">
-            <label className="flex items-center" htmlFor="password_change_locked">
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="email">
+                Email
+              </label>
               <input
-                id="password_change_locked"
-                type="checkbox"
-                name="password_change_locked"
-                checked={formData.password_change_locked}
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="email"
+                type="email"
+                name="email"
+                value={formData.email}
                 onChange={handleInputChange}
-                className="mr-2"
-                aria-describedby="password-change-locked-description"
+                autoComplete="email"
               />
-              <span className="text-sm font-bold">Lock Password Changes</span>
-            </label>
-            <p
-              id="password-change-locked-description"
-              className="text-xs text-muted-foreground mt-1 ml-6"
-            >
-              When locked, this user cannot change their own password
-            </p>
-          </div>
+            </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-              Allowed Stream Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
-            </label>
-            <input
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="allowed_tags"
-              type="text"
-              name="allowed_tags"
-              value={formData.allowed_tags || ''}
-              onChange={handleInputChange}
-              placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
-              maxLength={255}
-              aria-describedby="allowed-tags-description"
-            />
-            <p id="allowed-tags-description" className="text-xs text-muted-foreground mt-1">
-              Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
-            </p>
-            {(() => {
-              const parsedAllowedTags = (formData.allowed_tags || '')
-                .split(',')
-                .map(t => t.trim())
-                .filter(Boolean);
-              return parsedAllowedTags.length > 0 ? (
-                <ul
-                  className="mt-2 flex flex-wrap gap-1"
-                  role="list"
-                  aria-label="Current allowed stream tags"
-                >
-                  {parsedAllowedTags.map(tag => (
-                    <li key={tag} className="badge-info">
-                      #{tag}
-                    </li>
-                  ))}
-                </ul>
-              ) : null;
-            })()}
-          </div>
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="role">
+                Role
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="role"
+                name="role"
+                value={formData.role}
+                onChange={handleInputChange}
+              >
+                {Object.entries(USER_ROLES).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
-              Allowed Login IP Ranges <span className="font-normal text-muted-foreground">(CIDR)</span>
-            </label>
-            <textarea
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="allowed_login_cidrs"
-              name="allowed_login_cidrs"
-              value={formData.allowed_login_cidrs || ''}
-              onChange={handleInputChange}
-              placeholder={ALLOWED_LOGIN_CIDRS_PLACEHOLDER}
-              rows={4}
-              maxLength={1023}
-              aria-describedby="allowed-login-cidrs-description"
-            />
-            <p
-              id="allowed-login-cidrs-description"
-              className="text-xs text-muted-foreground mt-1"
-            >
-              One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted.
-            </p>
-          </div>
+            <div className="mb-4">
+              <label className="flex items-center" htmlFor="is_active">
+                <input
+                  type="checkbox"
+                  id="is_active"
+                  name="is_active"
+                  checked={formData.is_active}
+                  onChange={handleInputChange}
+                  className="mr-2"
+                />
+                <span className="text-sm font-bold">Active</span>
+              </label>
+            </div>
+
+            <div className="mb-6">
+              <label className="flex items-center" htmlFor="password_change_locked">
+                <input
+                  id="password_change_locked"
+                  type="checkbox"
+                  name="password_change_locked"
+                  checked={formData.password_change_locked}
+                  onChange={handleInputChange}
+                  className="mr-2"
+                  aria-describedby="password-change-locked-description"
+                />
+                <span className="text-sm font-bold">Lock Password Changes</span>
+              </label>
+              <p
+                id="password-change-locked-description"
+                className="text-xs text-muted-foreground mt-1 ml-6"
+              >
+                When locked, this user cannot change their own password
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
+                Allowed Stream Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
+              </label>
+              <input
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="allowed_tags"
+                type="text"
+                name="allowed_tags"
+                value={formData.allowed_tags || ''}
+                onChange={handleInputChange}
+                placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
+                maxLength={255}
+                aria-describedby="allowed-tags-description"
+              />
+              <p id="allowed-tags-description" className="text-xs text-muted-foreground mt-1">
+                Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
+              </p>
+              {(() => {
+                const parsedAllowedTags = (formData.allowed_tags || '')
+                  .split(',')
+                  .map(t => t.trim())
+                  .filter(Boolean);
+                return parsedAllowedTags.length > 0 ? (
+                  <ul
+                    className="mt-2 flex flex-wrap gap-1"
+                    role="list"
+                    aria-label="Current allowed stream tags"
+                  >
+                    {parsedAllowedTags.map(tag => (
+                      <li key={tag} className="badge-info">
+                        #{tag}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null;
+              })()}
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
+                Allowed Login IP Ranges <span className="font-normal text-muted-foreground">(CIDR)</span>
+              </label>
+              <textarea
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="allowed_login_cidrs"
+                name="allowed_login_cidrs"
+                value={formData.allowed_login_cidrs || ''}
+                onChange={handleInputChange}
+                placeholder={ALLOWED_LOGIN_CIDRS_PLACEHOLDER}
+                rows={4}
+                maxLength={1023}
+                aria-describedby="allowed-login-cidrs-description"
+              />
+              <p
+                id="allowed-login-cidrs-description"
+                className="text-xs text-muted-foreground mt-1"
+              >
+                One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted.
+              </p>
+            </div>
 
             <div className="flex justify-end mt-6">
               <button

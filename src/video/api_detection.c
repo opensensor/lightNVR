@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <curl/curl.h>
@@ -37,6 +38,9 @@ static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Maximum number of bytes to log from the API response, including the null terminator.
 #define API_DETECTION_RESPONSE_PREVIEW_LEN 64
 
+// Initial buffer size (in bytes) for CURL responses to reduce realloc churn.
+#define API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE 1024
+
 // ASCII printable character range used when sanitizing response previews.
 #define ASCII_PRINTABLE_MIN 32
 #define ASCII_PRINTABLE_MAX 126
@@ -45,7 +49,23 @@ static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
     char *memory;
     size_t size;
+    size_t capacity;
 } memory_struct_t;
+
+// Basic validation to ensure the base URL does not contain control characters or spaces.
+static bool is_safe_base_url(const char *url) {
+    if (url == NULL) {
+        return false;
+    }
+
+    for (const unsigned char *p = (const unsigned char *)url; *p != '\0'; ++p) {
+        if (*p < 32 || *p == 127 || *p == ' ') {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 // Set common curl options used across API detection requests.
 static void setup_common_curl_options(CURL *handle) {
@@ -55,6 +75,16 @@ static void setup_common_curl_options(CURL *handle) {
 
     // Prevent curl from using signals (required for multi-threaded apps)
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
+    // API detection URLs are admin-configured and commonly point to localhost/private services,
+    // so we explicitly disable redirects instead of blocking private address ranges.
+    curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 0L);
+#if defined(CURLOPT_PROTOCOLS_STR) && defined(CURLOPT_REDIR_PROTOCOLS_STR)
+    curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, "http,https");
+    curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+#elif defined(CURLOPT_PROTOCOLS) && defined(CURLOPT_REDIR_PROTOCOLS)
+    curl_easy_setopt(handle, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+    curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+#endif
 }
 
 static bool is_api_detection_system_initialized(void) {
@@ -101,8 +131,33 @@ static bool validate_api_detection_base_url(const char *base_url, const char *co
         return false;
     }
 
+    if (!is_safe_base_url(base_url)) {
+        log_error("%s: Invalid API URL '%s' (contains spaces or control characters).", context, base_url);
+        return false;
+    }
+
     if (strncmp(base_url, "http://", 7) != 0 && strncmp(base_url, "https://", 8) != 0) {
         log_error("%s: Invalid URL format: %s (must start with http:// or https://)", context, base_url);
+        return false;
+    }
+
+    const char *authority_start = strstr(base_url, "://");
+    if (authority_start == NULL) {
+        log_error("%s: Invalid API URL '%s' (missing scheme separator).", context, base_url);
+        return false;
+    }
+    authority_start += 3;
+
+    const char *authority_end = authority_start;
+    while (*authority_end != '\0' && *authority_end != '/' && *authority_end != '?' && *authority_end != '#') {
+        authority_end++;
+    }
+    if (authority_end == authority_start) {
+        log_error("%s: Invalid API URL '%s' (missing host).", context, base_url);
+        return false;
+    }
+    if (memchr(authority_start, '@', (size_t)(authority_end - authority_start)) != NULL) {
+        log_error("%s: Invalid API URL '%s' (userinfo is not allowed).", context, base_url);
         return false;
     }
 
@@ -128,7 +183,7 @@ static int build_api_detection_url(char *buffer,
                                    const char *backend,
                                    float threshold,
                                    bool return_image_flag) {
-    if (buffer == NULL || buffer_size == 0 || base_url == NULL) {
+    if (buffer == NULL || buffer_size == 0 || base_url == NULL || !is_safe_base_url(base_url)) {
         return -1;
     }
 
@@ -154,16 +209,40 @@ static int build_api_detection_url(char *buffer,
 
 // Callback function for curl to write data
 static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, void *userp) {
-    size_t realsize = size * nmemb;
-    memory_struct_t *mem = (memory_struct_t *)userp;
-
-    char *ptr = realloc(mem->memory, mem->size + realsize + 1);
-    if (!ptr) {
-        log_error("Not enough memory for curl response");
+    if (nmemb != 0 && size > (SIZE_MAX / nmemb)) {
+        log_error("Not enough memory for curl response (size overflow)");
         return 0;
     }
 
-    mem->memory = ptr;
+    size_t realsize = size * nmemb;
+    memory_struct_t *mem = (memory_struct_t *)userp;
+
+    if (realsize > SIZE_MAX - mem->size - 1) {
+        log_error("Not enough memory for curl response (size overflow)");
+        return 0;
+    }
+
+    size_t required_size = mem->size + realsize + 1;
+    if (required_size > mem->capacity) {
+        size_t new_capacity = mem->capacity > 0 ? mem->capacity : API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE;
+        while (new_capacity < required_size) {
+            if (new_capacity > (SIZE_MAX / 2)) {
+                new_capacity = required_size;
+                break;
+            }
+            new_capacity *= 2;
+        }
+
+        char *new_memory = realloc(mem->memory, new_capacity);
+        if (new_memory == NULL) {
+            log_error("Not enough memory for curl response");
+            return 0;
+        }
+
+        mem->memory = new_memory;
+        mem->capacity = new_capacity;
+    }
+
     memcpy(&(mem->memory[mem->size]), contents, realsize);
     mem->size += realsize;
     mem->memory[mem->size] = 0;
@@ -325,11 +404,22 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     struct curl_slist *headers = NULL;
     cJSON *root = NULL;
     int ret = -1;
+    bool go2rtc_initialized = false;
+    bool snapshot_ok = false;
 
-    if (stream_name && go2rtc_integration_is_initialized() && go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
+    if (stream_name && stream_name[0] != '\0') {
+        go2rtc_initialized = go2rtc_integration_is_initialized();
+        if (go2rtc_initialized) {
+            snapshot_ok = go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size);
+        }
+    }
+
+    if (snapshot_ok) {
         log_info("API Detection: Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
     } else {
-        if (!go2rtc_integration_is_initialized()) {
+        if (!stream_name || stream_name[0] == '\0') {
+            log_debug("API Detection: No stream name provided for go2rtc snapshot, using cached JPEG encoding");
+        } else if (!go2rtc_initialized) {
             log_debug("API Detection: go2rtc not initialized, using cached JPEG encoding");
         } else {
             log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to cached JPEG encoding");
@@ -444,12 +534,14 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     headers = curl_slist_append(headers, "accept: application/json");
     curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
-    chunk.memory = malloc(1);
+    chunk.memory = malloc(API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE);
     if (chunk.memory == NULL) {
         log_error("API Detection: Failed to allocate memory for curl response buffer");
         goto cleanup;
     }
     chunk.size = 0;
+    chunk.capacity = API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE;
+    chunk.memory[0] = '\0';
 
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
@@ -823,7 +915,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     headers = curl_slist_append(headers, "accept: application/json");
     curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
-    chunk.memory = malloc(1);
+    chunk.memory = malloc(API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE);
     if (chunk.memory == NULL) {
         log_error("API Detection (snapshot): Failed to allocate memory for curl response buffer");
         curl_mime_free(mime);
@@ -832,6 +924,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         return -1;
     }
     chunk.size = 0;
+    chunk.capacity = API_DETECTION_INITIAL_RESPONSE_BUFFER_SIZE;
+    chunk.memory[0] = '\0';
 
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
