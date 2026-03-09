@@ -31,6 +31,9 @@ static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Default JPEG quality used for API detection snapshots (range typically 0–100).
 #define API_DETECTION_JPEG_QUALITY_DEFAULT 85
 
+// Timeout (in seconds) for API detection HTTP requests.
+#define API_DETECTION_TIMEOUT_SECONDS 10L
+
 // Maximum number of bytes to log from the API response, including the null terminator.
 #define API_DETECTION_RESPONSE_PREVIEW_LEN 64
 
@@ -832,7 +835,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
-    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, 10);
+    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, API_DETECTION_TIMEOUT_SECONDS);
     setup_common_curl_options(local_curl);
 
     // Perform the request
