@@ -842,6 +842,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     mime_result = curl_mime_type(part, "image/jpeg");
     if (mime_result != CURLE_OK) {
+        log_error("API Detection (snapshot): curl_mime_type failed: %s",
+                  curl_easy_strerror(mime_result));
         curl_mime_free(mime);
         free(jpeg_data);
         curl_easy_cleanup(local_curl);
@@ -852,11 +854,9 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     free(jpeg_data);
     jpeg_data = NULL;
 
-    // Get backend from config
+    // Get backend from config and sanitize it to prevent URL injection
     const char *backend = g_config.api_detection_backend;
-    if (!backend || strlen(backend) == 0) {
-        backend = "onnx";
-    }
+    const char *sanitized_backend = sanitize_backend(backend);
 
     float actual_threshold = (threshold > 0.0f) ? threshold : 0.5f;
 
@@ -864,7 +864,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     char url_with_params[1024];
     int url_len = snprintf(url_with_params, sizeof(url_with_params),
              "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
-             actual_api_url, backend, actual_threshold);
+             actual_api_url, sanitized_backend, actual_threshold);
     if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
         log_error("API Detection (snapshot): URL too long when constructing request");
         curl_mime_free(mime);
