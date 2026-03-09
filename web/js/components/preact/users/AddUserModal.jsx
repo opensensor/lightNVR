@@ -26,8 +26,21 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
     e.stopPropagation();
   };
 
+  // Handle Escape key to close the modal for keyboard users
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      e.stopPropagation();
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
+      onClick={onClose}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
       <div className="flex min-h-full items-center justify-center">
         <div
           role="dialog"
@@ -51,6 +64,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               value={formData.username}
               onChange={handleInputChange}
               required
+              aria-required="true"
             />
           </div>
 
@@ -66,6 +80,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               value={formData.password}
               onChange={handleInputChange}
               required
+              aria-required="true"
             />
           </div>
 
@@ -101,9 +116,10 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           </div>
 
           <div className="mb-4">
-            <label className="flex items-center">
+            <label className="flex items-center" htmlFor="is_active">
               <input
                 type="checkbox"
+                id="is_active"
                 name="is_active"
                 checked={formData.is_active}
                 onChange={handleInputChange}
@@ -114,8 +130,9 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           </div>
 
           <div className="mb-6">
-            <label className="flex items-center">
+            <label className="flex items-center" htmlFor="password_change_locked">
               <input
+                id="password_change_locked"
                 type="checkbox"
                 name="password_change_locked"
                 checked={formData.password_change_locked}
