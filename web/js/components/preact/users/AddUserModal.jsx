@@ -225,11 +225,14 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
             </p>
             {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
-                {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(tag => (
-                  <span key={tag.trim()} className="badge-info">
-                    #{tag.trim()}
-                  </span>
-                ))}
+                {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(rawTag => {
+                  const tag = rawTag.trim();
+                  return (
+                    <span key={tag} className="badge-info">
+                      #{tag}
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
