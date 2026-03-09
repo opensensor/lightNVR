@@ -454,7 +454,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
 
-    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, API_DETECTION_TIMEOUT_SECONDS);
     setup_common_curl_options(local_curl);
 
     log_info("API Detection: Sending request to %s", url_with_params);
@@ -608,7 +608,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_info("API Detection: Filtering %d detections by zones for stream %s", result->count, stream_name);
         int filter_ret = filter_detections_by_zones(stream_name, result);
         if (filter_ret != 0) {
-            log_warn("Failed to filter detections by zones, aborting detection pipeline for this frame");
+            log_error("Failed to filter detections by zones, aborting detection pipeline for this frame");
             goto cleanup;
         }
 
