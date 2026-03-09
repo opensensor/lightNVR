@@ -35,11 +35,25 @@ static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Maximum number of bytes to log from the API response, including the null terminator.
 #define API_DETECTION_RESPONSE_PREVIEW_LEN 64
 
+// ASCII printable character range used when sanitizing response previews.
+#define ASCII_PRINTABLE_MIN 32
+#define ASCII_PRINTABLE_MAX 126
+
 // Structure to hold memory for curl response
 typedef struct {
     char *memory;
     size_t size;
 } memory_struct_t;
+
+// Set common curl options used across API detection requests.
+static void setup_common_curl_options(CURL *handle) {
+    if (handle == NULL) {
+        return;
+    }
+
+    // Prevent curl from using signals (required for multi-threaded apps)
+    curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
+}
 
 // Sanitize backend parameter to avoid breaking URL/query structure.
 // Allows only [A-Za-z0-9_-]; falls back to "onnx" if invalid.
@@ -439,7 +453,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Set a timeout
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
-    curl_easy_setopt(curl_handle, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals (required for multi-threaded apps)
+    setup_common_curl_options(curl_handle);
 
     // Perform the request
     log_info("API Detection: Sending request to %s", url_with_params);
@@ -538,7 +552,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     preview[preview_len] = '\0';
     // Replace non-printable characters with dots
     for (int i = 0; i < preview_len; i++) {
-        if (preview[i] < 32 || preview[i] > 126) {
+        if (preview[i] < ASCII_PRINTABLE_MIN || preview[i] > ASCII_PRINTABLE_MAX) {
             preview[i] = '.';
         }
     }
@@ -903,7 +917,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, 10);
-    curl_easy_setopt(local_curl, CURLOPT_NOSIGNAL, 1L); // Prevent curl from using signals (required for multi-threaded apps)
+    setup_common_curl_options(local_curl);
 
     // Perform the request
     CURLcode res = curl_easy_perform(local_curl);
