@@ -842,6 +842,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     mime_result = curl_mime_type(part, "image/jpeg");
     if (mime_result != CURLE_OK) {
+        log_error("API Detection (snapshot): curl_mime_type failed: %s",
+                  curl_easy_strerror(mime_result));
         curl_mime_free(mime);
         free(jpeg_data);
         curl_easy_cleanup(local_curl);
