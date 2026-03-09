@@ -27,11 +27,18 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
-        <h2 className="text-xl font-bold mb-4">Add New User</h2>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+      <div className="flex min-h-full items-center justify-center">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-user-modal-title"
+          className="bg-card text-card-foreground my-8 max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-lg p-6"
+          onClick={stopPropagation}
+        >
+          <h2 id="add-user-modal-title" className="text-xl font-bold mb-4">Add New User</h2>
 
-        <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block text-sm font-bold mb-2" htmlFor="username">
               Username
@@ -169,22 +176,23 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
             </p>
           </div>
 
-          <div className="flex justify-end mt-6">
-            <button
-              type="button"
-              className="btn-secondary mr-2"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn-primary"
-            >
-              Add User
-            </button>
-          </div>
-        </form>
+            <div className="flex justify-end mt-6">
+              <button
+                type="button"
+                className="btn-secondary mr-2"
+                onClick={onClose}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-primary"
+              >
+                Add User
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
