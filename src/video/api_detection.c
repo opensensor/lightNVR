@@ -404,7 +404,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Get the backend from config (default to "onnx" if not set)
     const char *backend = g_config.api_detection_backend;
-    if (!backend || strlen(backend) == 0) {
+    if (backend == NULL || backend[0] == '\0') {
         backend = "onnx";
     }
 
