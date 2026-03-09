@@ -232,8 +232,17 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             log_warn("API Detection: Failed to get snapshot from go2rtc, falling back to cached JPEG encoding");
         }
 
-        // FALLBACK: Use cached JPEG encoder to encode raw frame to JPEG in memory
-        // This reuses the expensive AVCodecContext instead of recreating it every time
+        // FALLBACK: Use cached JPEG encoder to encode raw frame to JPEG in memory.
+        // The cache is keyed by (width, height, channels, quality) so encoders are only
+        // reused when the frame characteristics and JPEG quality match. The underlying
+        // AVCodecContext is kept alive and reused to avoid recreating it on every call.
+        //
+        // Thread-safety / lifetime notes:
+        // - jpeg_encoder_get_cached() and jpeg_encoder_cache_encode_to_memory() are expected
+        //   to be safe to call from multiple threads, or must be protected by higher-level
+        //   synchronization (e.g. the curl_mutex held in this function).
+        // - Encoders remain cached for the lifetime of the process (or until an explicit
+        //   cache-clear in the encoder module); there is no per-call teardown here.
         jpeg_encoder_cache_t *encoder = jpeg_encoder_get_cached(width, height, channels, API_DETECTION_JPEG_QUALITY_DEFAULT);
         if (!encoder) {
             log_error("API Detection: Failed to get cached JPEG encoder");
