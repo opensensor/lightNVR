@@ -13,6 +13,7 @@
 // Compile-time ceiling for per-stream static arrays (pointer arrays, watchdog trackers, etc.).
 // The actual operational limit is g_config.max_streams (default 32, configurable up to this value).
 #define MAX_STREAMS 256
+#define WEB_TRUSTED_PROXY_CIDRS_MAX 1024
 
 // Stream protocol enum
 typedef enum {
@@ -145,6 +146,7 @@ typedef struct {
     int auth_timeout_hours; // Session idle timeout in hours (default: 24)
     int auth_absolute_timeout_hours; // Absolute session lifetime in hours (default: 168)
     int trusted_device_days; // Remember-device lifetime in days (default: 30, 0 disables)
+    char trusted_proxy_cidrs[WEB_TRUSTED_PROXY_CIDRS_MAX]; // Trusted reverse-proxy CIDRs for X-Forwarded-For handling
     bool demo_mode;         // Demo mode: allows unauthenticated viewer access while still allowing login
 
     // Security settings

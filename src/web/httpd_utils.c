@@ -3,8 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <ctype.h>
 #include <string.h>
 #include <strings.h>
+#include <arpa/inet.h>
 
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
@@ -73,6 +76,146 @@ static int base64_decode(const char *src, size_t src_len, char *dst, size_t dst_
     return (int)j;
 }
 
+static char *trim_ascii_whitespace(char *value) {
+    if (!value) {
+        return NULL;
+    }
+
+    while (*value && isspace((unsigned char)*value)) {
+        value++;
+    }
+
+    size_t len = strlen(value);
+    while (len > 0 && isspace((unsigned char)value[len - 1])) {
+        value[--len] = '\0';
+    }
+
+    return value;
+}
+
+static bool copy_trimmed_value(const char *input, char *output, size_t output_size) {
+    if (!input || !output || output_size == 0) {
+        return false;
+    }
+
+    output[0] = '\0';
+
+    char buffer[1024] = {0};
+    if (strlen(input) >= sizeof(buffer)) {
+        return false;
+    }
+    strncpy(buffer, input, sizeof(buffer) - 1);
+
+    char *trimmed = trim_ascii_whitespace(buffer);
+    if (!trimmed || trimmed[0] == '\0' || strlen(trimmed) >= output_size) {
+        return false;
+    }
+
+    strncpy(output, trimmed, output_size - 1);
+    output[output_size - 1] = '\0';
+    return true;
+}
+
+static bool normalize_ip_literal(const char *input, char *normalized, size_t normalized_size) {
+    if (!input || !normalized || normalized_size == 0) {
+        return false;
+    }
+
+    normalized[0] = '\0';
+
+    char candidate_buffer[INET6_ADDRSTRLEN + 8] = {0};
+    if (strlen(input) >= sizeof(candidate_buffer)) {
+        return false;
+    }
+    strncpy(candidate_buffer, input, sizeof(candidate_buffer) - 1);
+
+    char *candidate = trim_ascii_whitespace(candidate_buffer);
+    if (!candidate || candidate[0] == '\0') {
+        return false;
+    }
+
+    if (candidate[0] == '[') {
+        char *closing = strchr(candidate, ']');
+        if (!closing || closing[1] != '\0') {
+            return false;
+        }
+        *closing = '\0';
+        candidate++;
+    }
+
+    unsigned char addr[sizeof(struct in6_addr)] = {0};
+    if (inet_pton(AF_INET, candidate, addr) == 1) {
+        return inet_ntop(AF_INET, addr, normalized, (socklen_t)normalized_size) != NULL;
+    }
+    if (inet_pton(AF_INET6, candidate, addr) == 1) {
+        return inet_ntop(AF_INET6, addr, normalized, (socklen_t)normalized_size) != NULL;
+    }
+    return false;
+}
+
+static bool ip_matches_cidr_list(const char *cidr_list, const char *ip) {
+    if (!cidr_list || cidr_list[0] == '\0' || !ip || ip[0] == '\0') {
+        return false;
+    }
+
+    user_t rules;
+    memset(&rules, 0, sizeof(rules));
+    strncpy(rules.allowed_login_cidrs, cidr_list, sizeof(rules.allowed_login_cidrs) - 1);
+    rules.allowed_login_cidrs[sizeof(rules.allowed_login_cidrs) - 1] = '\0';
+    rules.has_login_cidr_restriction = true;
+    return db_auth_ip_allowed_for_user(&rules, ip);
+}
+
+static int resolve_client_ip_from_forwarded_headers(const http_request_t *req,
+                                                    char *client_ip,
+                                                    size_t client_ip_size) {
+    const char *xff = http_request_get_header(req, "X-Forwarded-For");
+    if (xff && xff[0] != '\0') {
+        char xff_copy[1024] = {0};
+        if (strlen(xff) >= sizeof(xff_copy)) {
+            return -1;
+        }
+        strncpy(xff_copy, xff, sizeof(xff_copy) - 1);
+
+        char normalized_tokens[16][INET6_ADDRSTRLEN] = {{0}};
+        int token_count = 0;
+        char *saveptr = NULL;
+        for (char *token = strtok_r(xff_copy, ",", &saveptr);
+             token != NULL && token_count < 16;
+             token = strtok_r(NULL, ",", &saveptr)) {
+            char normalized[INET6_ADDRSTRLEN] = {0};
+            if (!normalize_ip_literal(token, normalized, sizeof(normalized))) {
+                return -1;
+            }
+            strncpy(normalized_tokens[token_count], normalized, sizeof(normalized_tokens[token_count]) - 1);
+            token_count++;
+        }
+
+        if (token_count > 0) {
+            for (int i = token_count - 1; i >= 0; --i) {
+                if (!ip_matches_cidr_list(g_config.trusted_proxy_cidrs, normalized_tokens[i])) {
+                    strncpy(client_ip, normalized_tokens[i], client_ip_size - 1);
+                    client_ip[client_ip_size - 1] = '\0';
+                    return 0;
+                }
+            }
+        }
+    }
+
+    const char *x_real_ip = http_request_get_header(req, "X-Real-IP");
+    if (x_real_ip && x_real_ip[0] != '\0') {
+        char normalized[INET6_ADDRSTRLEN] = {0};
+        if (!normalize_ip_literal(x_real_ip, normalized, sizeof(normalized))) {
+            return -1;
+        }
+        strncpy(client_ip, normalized, client_ip_size - 1);
+        client_ip[client_ip_size - 1] = '\0';
+        return 0;
+    }
+
+    return -1;
+}
+
 int httpd_get_basic_auth_credentials(const http_request_t *req,
                                       char *username, size_t username_size,
                                       char *password, size_t password_size) {
@@ -104,6 +247,52 @@ int httpd_get_basic_auth_credentials(const http_request_t *req,
     strncpy(password, colon + 1, password_size - 1);
     password[password_size - 1] = '\0';
 
+    return 0;
+}
+
+int httpd_get_api_key(const http_request_t *req, char *api_key, size_t api_key_size) {
+    if (!req || !api_key || api_key_size == 0) {
+        return -1;
+    }
+
+    api_key[0] = '\0';
+
+    const char *header_value = http_request_get_header(req, "X-API-Key");
+    if (header_value && copy_trimmed_value(header_value, api_key, api_key_size)) {
+        return 0;
+    }
+
+    const char *auth = http_request_get_header(req, "Authorization");
+    if (!auth || strncasecmp(auth, "Bearer ", 7) != 0) {
+        return -1;
+    }
+
+    return copy_trimmed_value(auth + 7, api_key, api_key_size) ? 0 : -1;
+}
+
+int httpd_get_effective_client_ip(const http_request_t *req, char *client_ip, size_t client_ip_size) {
+    if (!req || !client_ip || client_ip_size == 0) {
+        return -1;
+    }
+
+    client_ip[0] = '\0';
+    if (req->client_ip[0] == '\0') {
+        return -1;
+    }
+
+    char peer_ip[INET6_ADDRSTRLEN] = {0};
+    if (!normalize_ip_literal(req->client_ip, peer_ip, sizeof(peer_ip))) {
+        return copy_trimmed_value(req->client_ip, client_ip, client_ip_size) ? 0 : -1;
+    }
+
+    if (g_config.trusted_proxy_cidrs[0] != '\0' &&
+        ip_matches_cidr_list(g_config.trusted_proxy_cidrs, peer_ip) &&
+        resolve_client_ip_from_forwarded_headers(req, client_ip, client_ip_size) == 0) {
+        return 0;
+    }
+
+    strncpy(client_ip, peer_ip, client_ip_size - 1);
+    client_ip[client_ip_size - 1] = '\0';
     return 0;
 }
 
@@ -200,6 +389,12 @@ void httpd_clear_trusted_device_cookie(http_response_t *res) {
 int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
     if (!req || !user) return 0;
 
+    char effective_client_ip[64] = {0};
+    if (httpd_get_effective_client_ip(req, effective_client_ip, sizeof(effective_client_ip)) != 0) {
+        strncpy(effective_client_ip, req->client_ip, sizeof(effective_client_ip) - 1);
+        effective_client_ip[sizeof(effective_client_ip) - 1] = '\0';
+    }
+
     // If authentication is disabled, return a dummy admin user
     if (!g_config.web_auth_enabled) {
         memset(user, 0, sizeof(user_t));
@@ -213,12 +408,18 @@ int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
     char session_token[64] = {0};
     if (httpd_get_session_token(req, session_token, sizeof(session_token)) == 0) {
         int64_t user_id;
-        int rc = db_auth_validate_session_with_context(session_token, &user_id,
-                                                       req->client_ip, req->user_agent);
+        int rc = db_auth_validate_session(session_token, &user_id);
         if (rc == 0) {
             rc = db_auth_get_user_by_id(user_id, user);
-            if (rc == 0) {
-                return 1;
+            if (rc == 0 && db_auth_ip_allowed_for_user(user, effective_client_ip)) {
+                rc = db_auth_validate_session_with_context(session_token, &user_id,
+                                                           effective_client_ip, req->user_agent);
+                if (rc == 0) {
+                    return 1;
+                }
+            } else if (rc == 0) {
+                log_warn("Session auth blocked by allowed_login_cidrs for user '%s' from IP %s",
+                         user->username, effective_client_ip[0] != '\0' ? effective_client_ip : "(unknown)");
             }
         }
     }
@@ -233,12 +434,27 @@ int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
             int rc = db_auth_authenticate(username, password, &user_id);
             if (rc == 0) {
                 rc = db_auth_get_user_by_id(user_id, user);
-                if (rc == 0) {
+                if (rc == 0 && db_auth_ip_allowed_for_user(user, effective_client_ip)) {
                     return 1;
+                } else if (rc == 0) {
+                    log_warn("Basic auth blocked by allowed_login_cidrs for user '%s' from IP %s",
+                             user->username, effective_client_ip[0] != '\0' ? effective_client_ip : "(unknown)");
                 }
             }
 
             // Config-based authentication fallback removed - all auth is now database-based
+        }
+    }
+
+    char api_key[128] = {0};
+    if (httpd_get_api_key(req, api_key, sizeof(api_key)) == 0) {
+        int rc = db_auth_get_user_by_api_key(api_key, user);
+        if (rc == 0 && user->is_active && db_auth_ip_allowed_for_user(user, effective_client_ip)) {
+            return 1;
+        }
+        if (rc == 0 && user->is_active) {
+            log_warn("API key auth blocked by allowed_login_cidrs for user '%s' from IP %s",
+                     user->username, effective_client_ip[0] != '\0' ? effective_client_ip : "(unknown)");
         }
     }
 

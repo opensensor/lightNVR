@@ -10,8 +10,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <arpa/inet.h>
 
 #include "database/db_auth.h"
 #include "database/db_core.h"
@@ -100,6 +102,241 @@ static bool tracking_value_differs(const char *stored_value, const char *current
 
     const char *normalized_stored = stored_value ? stored_value : "";
     return strcmp(normalized_stored, current_value) != 0;
+}
+
+static char *trim_ascii_whitespace(char *value) {
+    if (!value) {
+        return NULL;
+    }
+
+    while (*value && isspace((unsigned char)*value)) {
+        value++;
+    }
+
+    size_t len = strlen(value);
+    while (len > 0 && isspace((unsigned char)value[len - 1])) {
+        value[--len] = '\0';
+    }
+
+    return value;
+}
+
+static int parse_cidr_entry(const char *cidr, int *family, unsigned char *network, int *prefix_len) {
+    if (!cidr || !family || !network || !prefix_len) {
+        return -1;
+    }
+
+    char entry[INET6_ADDRSTRLEN + 5] = {0};
+    if (strlen(cidr) >= sizeof(entry)) {
+        return -1;
+    }
+    strncpy(entry, cidr, sizeof(entry) - 1);
+
+    char *trimmed = trim_ascii_whitespace(entry);
+    if (!trimmed || trimmed[0] == '\0') {
+        return -1;
+    }
+
+    char *slash = strrchr(trimmed, '/');
+    if (!slash || slash == trimmed || slash[1] == '\0') {
+        return -1;
+    }
+
+    *slash = '\0';
+    char *address = trim_ascii_whitespace(trimmed);
+    char *prefix_text = trim_ascii_whitespace(slash + 1);
+    if (!address || address[0] == '\0' || !prefix_text || prefix_text[0] == '\0') {
+        return -1;
+    }
+
+    char *endptr = NULL;
+    long prefix = strtol(prefix_text, &endptr, 10);
+    if (endptr == prefix_text || *endptr != '\0') {
+        return -1;
+    }
+
+    if (inet_pton(AF_INET, address, network) == 1) {
+        if (prefix < 0 || prefix > 32) {
+            return -1;
+        }
+        *family = AF_INET;
+        *prefix_len = (int)prefix;
+        return 0;
+    }
+
+    if (inet_pton(AF_INET6, address, network) == 1) {
+        if (prefix < 0 || prefix > 128) {
+            return -1;
+        }
+        *family = AF_INET6;
+        *prefix_len = (int)prefix;
+        return 0;
+    }
+
+    return -1;
+}
+
+static int normalize_allowed_login_cidrs(const char *allowed_login_cidrs,
+                                         char *normalized,
+                                         size_t normalized_size,
+                                         bool *has_entries) {
+    if (!normalized || normalized_size == 0 || !has_entries) {
+        return -1;
+    }
+
+    normalized[0] = '\0';
+    *has_entries = false;
+
+    if (!allowed_login_cidrs) {
+        return 0;
+    }
+
+    if (strlen(allowed_login_cidrs) >= USER_ALLOWED_LOGIN_CIDRS_MAX) {
+        return -1;
+    }
+
+    char input[USER_ALLOWED_LOGIN_CIDRS_MAX] = {0};
+    strncpy(input, allowed_login_cidrs, sizeof(input) - 1);
+
+    char *saveptr = NULL;
+    for (char *token = strtok_r(input, ",\n", &saveptr);
+         token != NULL;
+         token = strtok_r(NULL, ",\n", &saveptr)) {
+        char *trimmed = trim_ascii_whitespace(token);
+        if (!trimmed || trimmed[0] == '\0') {
+            continue;
+        }
+
+        int family = 0;
+        int prefix_len = 0;
+        unsigned char network[sizeof(struct in6_addr)] = {0};
+        if (parse_cidr_entry(trimmed, &family, network, &prefix_len) != 0) {
+            (void)family;
+            (void)prefix_len;
+            return -1;
+        }
+
+        size_t current_len = strlen(normalized);
+        size_t token_len = strlen(trimmed);
+        size_t separator_len = *has_entries ? 1 : 0;
+        if (current_len + separator_len + token_len + 1 > normalized_size) {
+            return -1;
+        }
+
+        if (*has_entries) {
+            normalized[current_len++] = '\n';
+            normalized[current_len] = '\0';
+        }
+
+        memcpy(normalized + current_len, trimmed, token_len + 1);
+        *has_entries = true;
+    }
+
+    return 0;
+}
+
+static bool ip_matches_cidr(const char *client_ip, const char *cidr) {
+    if (!client_ip || !cidr) {
+        return false;
+    }
+
+    unsigned char ip[sizeof(struct in6_addr)] = {0};
+    int ip_family = 0;
+    if (inet_pton(AF_INET, client_ip, ip) == 1) {
+        ip_family = AF_INET;
+    } else if (inet_pton(AF_INET6, client_ip, ip) == 1) {
+        ip_family = AF_INET6;
+    } else {
+        return false;
+    }
+
+    unsigned char network[sizeof(struct in6_addr)] = {0};
+    int cidr_family = 0;
+    int prefix_len = 0;
+    if (parse_cidr_entry(cidr, &cidr_family, network, &prefix_len) != 0 || cidr_family != ip_family) {
+        return false;
+    }
+
+    int full_bytes = prefix_len / 8;
+    int remaining_bits = prefix_len % 8;
+    if (full_bytes > 0 && memcmp(ip, network, (size_t)full_bytes) != 0) {
+        return false;
+    }
+
+    if (remaining_bits == 0) {
+        return true;
+    }
+
+    unsigned char mask = (unsigned char)(0xFFu << (8 - remaining_bits));
+    return (ip[full_bytes] & mask) == (network[full_bytes] & mask);
+}
+
+static int prepare_user_lookup_stmt(sqlite3 *db, const char *where_clause, sqlite3_stmt **stmt) {
+    if (!db || !where_clause || !stmt) {
+        return SQLITE_MISUSE;
+    }
+
+    bool has_totp = cached_column_exists("users", "totp_enabled");
+    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
+    bool has_allowed_login_cidrs = cached_column_exists("users", "allowed_login_cidrs");
+
+    char sql[768] = {0};
+    int written = snprintf(sql, sizeof(sql),
+                           "SELECT id, username, email, role, api_key, created_at, "
+                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s "
+                           "FROM users %s;",
+                           has_totp ? "totp_enabled" : "0",
+                           has_allowed_tags ? "allowed_tags" : "NULL",
+                           has_allowed_login_cidrs ? "allowed_login_cidrs" : "NULL",
+                           where_clause);
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        return SQLITE_TOOBIG;
+    }
+
+    return sqlite3_prepare_v2(db, sql, -1, stmt, NULL);
+}
+
+static void populate_user_from_stmt(sqlite3_stmt *stmt, user_t *user) {
+    memset(user, 0, sizeof(*user));
+
+    user->id = sqlite3_column_int64(stmt, 0);
+    strncpy(user->username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user->username) - 1);
+    user->username[sizeof(user->username) - 1] = '\0';
+
+    const char *email = (const char *)sqlite3_column_text(stmt, 2);
+    if (email) {
+        strncpy(user->email, email, sizeof(user->email) - 1);
+        user->email[sizeof(user->email) - 1] = '\0';
+    }
+
+    user->role = (user_role_t)sqlite3_column_int(stmt, 3);
+
+    const char *api_key = (const char *)sqlite3_column_text(stmt, 4);
+    if (api_key) {
+        strncpy(user->api_key, api_key, sizeof(user->api_key) - 1);
+        user->api_key[sizeof(user->api_key) - 1] = '\0';
+    }
+
+    user->created_at = sqlite3_column_int64(stmt, 5);
+    user->updated_at = sqlite3_column_int64(stmt, 6);
+    user->last_login = sqlite3_column_int64(stmt, 7);
+    user->is_active = sqlite3_column_int(stmt, 8) != 0;
+    user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
+    user->totp_enabled = sqlite3_column_int(stmt, 10) != 0;
+
+    const char *allowed_tags = (const char *)sqlite3_column_text(stmt, 11);
+    if (allowed_tags && allowed_tags[0] != '\0') {
+        strncpy(user->allowed_tags, allowed_tags, sizeof(user->allowed_tags) - 1);
+        user->allowed_tags[sizeof(user->allowed_tags) - 1] = '\0';
+        user->has_tag_restriction = true;
+    }
+
+    const char *allowed_login_cidrs = (const char *)sqlite3_column_text(stmt, 12);
+    if (allowed_login_cidrs && allowed_login_cidrs[0] != '\0') {
+        strncpy(user->allowed_login_cidrs, allowed_login_cidrs, sizeof(user->allowed_login_cidrs) - 1);
+        user->allowed_login_cidrs[sizeof(user->allowed_login_cidrs) - 1] = '\0';
+        user->has_login_cidr_restriction = true;
+    }
 }
 
 /**
@@ -702,32 +939,8 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
         return -1;
     }
 
-    // Check if TOTP and allowed_tags columns exist for backward compatibility
-    bool has_totp = cached_column_exists("users", "totp_enabled");
-    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
-
-    // Query the user
     sqlite3_stmt *stmt;
-    int rc;
-    if (has_totp && has_allowed_tags) {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
-                                "FROM users WHERE id = ?;",
-                                -1, &stmt, NULL);
-    } else if (has_totp) {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
-                                "FROM users WHERE id = ?;",
-                                -1, &stmt, NULL);
-    } else {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked "
-                                "FROM users WHERE id = ?;",
-                                -1, &stmt, NULL);
-    }
+    int rc = prepare_user_lookup_stmt(db, "WHERE id = ?", &stmt);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -741,49 +954,7 @@ int db_auth_get_user_by_id(int64_t user_id, user_t *user) {
         return -1;
     }
 
-    // Fill the user structure
-    user->id = sqlite3_column_int64(stmt, 0);
-    strncpy(user->username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user->username) - 1);
-    user->username[sizeof(user->username) - 1] = '\0';
-
-    const char *email = (const char *)sqlite3_column_text(stmt, 2);
-    if (email) {
-        strncpy(user->email, email, sizeof(user->email) - 1);
-        user->email[sizeof(user->email) - 1] = '\0';
-    } else {
-        user->email[0] = '\0';
-    }
-
-    user->role = (user_role_t)sqlite3_column_int(stmt, 3);
-
-    const char *api_key = (const char *)sqlite3_column_text(stmt, 4);
-    if (api_key) {
-        strncpy(user->api_key, api_key, sizeof(user->api_key) - 1);
-        user->api_key[sizeof(user->api_key) - 1] = '\0';
-    } else {
-        user->api_key[0] = '\0';
-    }
-
-    user->created_at = sqlite3_column_int64(stmt, 5);
-    user->updated_at = sqlite3_column_int64(stmt, 6);
-    user->last_login = sqlite3_column_int64(stmt, 7);
-    user->is_active = sqlite3_column_int(stmt, 8) != 0;
-    user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
-    user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
-    if (has_allowed_tags && has_totp) {
-        const char *at = (const char *)sqlite3_column_text(stmt, 11);
-        if (at && at[0] != '\0') {
-            strncpy(user->allowed_tags, at, sizeof(user->allowed_tags) - 1);
-            user->allowed_tags[sizeof(user->allowed_tags) - 1] = '\0';
-            user->has_tag_restriction = true;
-        } else {
-            user->allowed_tags[0] = '\0';
-            user->has_tag_restriction = (sqlite3_column_type(stmt, 11) != SQLITE_NULL && at && at[0] == '\0');
-        }
-    } else {
-        user->allowed_tags[0] = '\0';
-        user->has_tag_restriction = false;
-    }
+    populate_user_from_stmt(stmt, user);
 
     sqlite3_finalize(stmt);
 
@@ -805,32 +976,8 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
         return -1;
     }
 
-    // Check if TOTP and allowed_tags columns exist for backward compatibility
-    bool has_totp = cached_column_exists("users", "totp_enabled");
-    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
-
-    // Query the user
     sqlite3_stmt *stmt;
-    int rc;
-    if (has_totp && has_allowed_tags) {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
-                                "FROM users WHERE username = ?;",
-                                -1, &stmt, NULL);
-    } else if (has_totp) {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
-                                "FROM users WHERE username = ?;",
-                                -1, &stmt, NULL);
-    } else {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked "
-                                "FROM users WHERE username = ?;",
-                                -1, &stmt, NULL);
-    }
+    int rc = prepare_user_lookup_stmt(db, "WHERE username = ?", &stmt);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -844,49 +991,7 @@ int db_auth_get_user_by_username(const char *username, user_t *user) {
         return -1;
     }
 
-    // Fill the user structure
-    user->id = sqlite3_column_int64(stmt, 0);
-    strncpy(user->username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user->username) - 1);
-    user->username[sizeof(user->username) - 1] = '\0';
-
-    const char *email = (const char *)sqlite3_column_text(stmt, 2);
-    if (email) {
-        strncpy(user->email, email, sizeof(user->email) - 1);
-        user->email[sizeof(user->email) - 1] = '\0';
-    } else {
-        user->email[0] = '\0';
-    }
-
-    user->role = (user_role_t)sqlite3_column_int(stmt, 3);
-
-    const char *api_key = (const char *)sqlite3_column_text(stmt, 4);
-    if (api_key) {
-        strncpy(user->api_key, api_key, sizeof(user->api_key) - 1);
-        user->api_key[sizeof(user->api_key) - 1] = '\0';
-    } else {
-        user->api_key[0] = '\0';
-    }
-
-    user->created_at = sqlite3_column_int64(stmt, 5);
-    user->updated_at = sqlite3_column_int64(stmt, 6);
-    user->last_login = sqlite3_column_int64(stmt, 7);
-    user->is_active = sqlite3_column_int(stmt, 8) != 0;
-    user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
-    user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
-    if (has_allowed_tags && has_totp) {
-        const char *at = (const char *)sqlite3_column_text(stmt, 11);
-        if (at && at[0] != '\0') {
-            strncpy(user->allowed_tags, at, sizeof(user->allowed_tags) - 1);
-            user->allowed_tags[sizeof(user->allowed_tags) - 1] = '\0';
-            user->has_tag_restriction = true;
-        } else {
-            user->allowed_tags[0] = '\0';
-            user->has_tag_restriction = false;
-        }
-    } else {
-        user->allowed_tags[0] = '\0';
-        user->has_tag_restriction = false;
-    }
+    populate_user_from_stmt(stmt, user);
 
     sqlite3_finalize(stmt);
 
@@ -908,32 +1013,8 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
         return -1;
     }
 
-    // Check if TOTP and allowed_tags columns exist for backward compatibility
-    bool has_totp = cached_column_exists("users", "totp_enabled");
-    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
-
-    // Query the user
     sqlite3_stmt *stmt;
-    int rc;
-    if (has_totp && has_allowed_tags) {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked, totp_enabled, allowed_tags "
-                                "FROM users WHERE api_key = ?;",
-                                -1, &stmt, NULL);
-    } else if (has_totp) {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked, totp_enabled "
-                                "FROM users WHERE api_key = ?;",
-                                -1, &stmt, NULL);
-    } else {
-        rc = sqlite3_prepare_v2(db,
-                                "SELECT id, username, email, role, api_key, created_at, "
-                                "updated_at, last_login, is_active, password_change_locked "
-                                "FROM users WHERE api_key = ?;",
-                                -1, &stmt, NULL);
-    }
+    int rc = prepare_user_lookup_stmt(db, "WHERE api_key = ?", &stmt);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -947,49 +1028,7 @@ int db_auth_get_user_by_api_key(const char *api_key, user_t *user) {
         return -1;
     }
 
-    // Fill the user structure
-    user->id = sqlite3_column_int64(stmt, 0);
-    strncpy(user->username, (const char *)sqlite3_column_text(stmt, 1), sizeof(user->username) - 1);
-    user->username[sizeof(user->username) - 1] = '\0';
-
-    const char *email = (const char *)sqlite3_column_text(stmt, 2);
-    if (email) {
-        strncpy(user->email, email, sizeof(user->email) - 1);
-        user->email[sizeof(user->email) - 1] = '\0';
-    } else {
-        user->email[0] = '\0';
-    }
-
-    user->role = (user_role_t)sqlite3_column_int(stmt, 3);
-
-    const char *key = (const char *)sqlite3_column_text(stmt, 4);
-    if (key) {
-        strncpy(user->api_key, key, sizeof(user->api_key) - 1);
-        user->api_key[sizeof(user->api_key) - 1] = '\0';
-    } else {
-        user->api_key[0] = '\0';
-    }
-
-    user->created_at = sqlite3_column_int64(stmt, 5);
-    user->updated_at = sqlite3_column_int64(stmt, 6);
-    user->last_login = sqlite3_column_int64(stmt, 7);
-    user->is_active = sqlite3_column_int(stmt, 8) != 0;
-    user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
-    user->totp_enabled = has_totp ? (sqlite3_column_int(stmt, 10) != 0) : false;
-    if (has_allowed_tags && has_totp) {
-        const char *at = (const char *)sqlite3_column_text(stmt, 11);
-        if (at && at[0] != '\0') {
-            strncpy(user->allowed_tags, at, sizeof(user->allowed_tags) - 1);
-            user->allowed_tags[sizeof(user->allowed_tags) - 1] = '\0';
-            user->has_tag_restriction = true;
-        } else {
-            user->allowed_tags[0] = '\0';
-            user->has_tag_restriction = false;
-        }
-    } else {
-        user->allowed_tags[0] = '\0';
-        user->has_tag_restriction = false;
-    }
+    populate_user_from_stmt(stmt, user);
 
     sqlite3_finalize(stmt);
 
@@ -2258,6 +2297,95 @@ int db_auth_set_allowed_tags(int64_t user_id, const char *allowed_tags) {
     log_info("allowed_tags updated for user %lld: %s", (long long)user_id,
              allowed_tags ? allowed_tags : "(unrestricted)");
     return 0;
+}
+
+int db_auth_validate_allowed_login_cidrs(const char *allowed_login_cidrs) {
+    char normalized[USER_ALLOWED_LOGIN_CIDRS_MAX] = {0};
+    bool has_entries = false;
+    return normalize_allowed_login_cidrs(allowed_login_cidrs, normalized, sizeof(normalized), &has_entries);
+}
+
+int db_auth_set_allowed_login_cidrs(int64_t user_id, const char *allowed_login_cidrs) {
+    sqlite3 *db = get_db_handle();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    if (!cached_column_exists("users", "allowed_login_cidrs")) {
+        log_error("allowed_login_cidrs column not available");
+        return -1;
+    }
+
+    char normalized[USER_ALLOWED_LOGIN_CIDRS_MAX] = {0};
+    bool has_entries = false;
+    if (normalize_allowed_login_cidrs(allowed_login_cidrs, normalized, sizeof(normalized), &has_entries) != 0) {
+        log_error("Invalid allowed_login_cidrs value for user %lld", (long long)user_id);
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db,
+        "UPDATE users SET allowed_login_cidrs = ?, updated_at = ? WHERE id = ?;",
+        -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare allowed_login_cidrs update: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    if (has_entries) {
+        sqlite3_bind_text(stmt, 1, normalized, -1, SQLITE_TRANSIENT);
+    } else {
+        sqlite3_bind_null(stmt, 1);
+    }
+    sqlite3_bind_int64(stmt, 2, (int64_t)time(NULL));
+    sqlite3_bind_int64(stmt, 3, user_id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to update allowed_login_cidrs: %s", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    log_info("allowed_login_cidrs updated for user %lld: %s", (long long)user_id,
+             has_entries ? normalized : "(unrestricted)");
+    return 0;
+}
+
+bool db_auth_ip_allowed_for_user(const user_t *user, const char *client_ip) {
+    if (!user) {
+        return false;
+    }
+
+    if (!user->has_login_cidr_restriction) {
+        return true;
+    }
+
+    if (!client_ip || client_ip[0] == '\0') {
+        return false;
+    }
+
+    char cidr_list[USER_ALLOWED_LOGIN_CIDRS_MAX] = {0};
+    size_t cidr_len = strnlen(user->allowed_login_cidrs, sizeof(cidr_list) - 1);
+    memcpy(cidr_list, user->allowed_login_cidrs, cidr_len);
+    cidr_list[cidr_len] = '\0';
+
+    char *saveptr = NULL;
+    for (char *token = strtok_r(cidr_list, "\n", &saveptr);
+         token != NULL;
+         token = strtok_r(NULL, "\n", &saveptr)) {
+        char *trimmed = trim_ascii_whitespace(token);
+        if (!trimmed || trimmed[0] == '\0') {
+            continue;
+        }
+        if (ip_matches_cidr(client_ip, trimmed)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**

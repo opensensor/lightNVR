@@ -231,6 +231,25 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
             )}
           </div>
 
+          <div className="mb-4">
+            <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
+              Allowed Login IP Ranges <span className="font-normal text-muted-foreground">(CIDR)</span>
+            </label>
+            <textarea
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              id="allowed_login_cidrs"
+              name="allowed_login_cidrs"
+              value={formData.allowed_login_cidrs || ''}
+              onChange={handleInputChange}
+              placeholder={"e.g.\n192.168.1.0/24\n2001:db8::/32\n(leave blank for unrestricted)"}
+              rows={4}
+              maxLength={1023}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted.
+            </p>
+          </div>
+
           <div className="flex justify-end mt-6">
             <button
               type="button"

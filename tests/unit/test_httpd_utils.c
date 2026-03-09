@@ -21,6 +21,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
+
+#include <sqlite3.h>
 
 #include <cjson/cJSON.h>
 
@@ -29,9 +32,12 @@
 #include "web/request_response.h"
 #include "core/config.h"
 #include "database/db_auth.h"
+#include "database/db_core.h"
 
 /* ---- external globals from lightnvr_lib ---- */
 extern config_t g_config;
+
+#define TEST_DB_PATH "/tmp/lightnvr_test_httpd_utils.db"
 
 /* ---- header helper ---- */
 static void add_header(http_request_t *req, const char *name, const char *value) {
@@ -53,11 +59,32 @@ static const char *find_response_header(const http_response_t *res, const char *
     return NULL;
 }
 
+static void clear_auth_data(void) {
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_NOT_NULL(db);
+
+    char *errmsg = NULL;
+    int rc = sqlite3_exec(db,
+        "DELETE FROM trusted_devices;"
+        "DELETE FROM sessions;"
+        "DELETE FROM users WHERE username != 'admin';",
+        NULL, NULL, &errmsg);
+    if (rc != SQLITE_OK) {
+        if (errmsg) {
+            fprintf(stderr, "clear_auth_data failed: %s\n", errmsg);
+            sqlite3_free(errmsg);
+        }
+        TEST_FAIL_MESSAGE("Failed to clear auth data");
+    }
+}
+
 /* ---- Unity boilerplate ---- */
 void setUp(void) {
     /* Ensure auth is enabled by default so we control path in each test */
     g_config.web_auth_enabled = true;
     g_config.demo_mode = false;
+    g_config.trusted_proxy_cidrs[0] = '\0';
+    clear_auth_data();
 }
 void tearDown(void) {}
 
@@ -152,6 +179,80 @@ void test_basic_auth_null_params_returns_error(void) {
     /* pass buffer NULL */
     int rc = httpd_get_basic_auth_credentials(&req, user, sizeof(user), NULL, 0);
     TEST_ASSERT_EQUAL_INT(-1, rc);
+}
+
+void test_get_api_key_prefers_x_api_key_header(void) {
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "X-API-Key", "  key-from-header  ");
+    add_header(&req, "Authorization", "Bearer ignored-token");
+
+    char api_key[64] = {0};
+    int rc = httpd_get_api_key(&req, api_key, sizeof(api_key));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("key-from-header", api_key);
+}
+
+void test_get_api_key_supports_bearer_token(void) {
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "Authorization", "Bearer token-123");
+
+    char api_key[64] = {0};
+    int rc = httpd_get_api_key(&req, api_key, sizeof(api_key));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("token-123", api_key);
+}
+
+void test_get_api_key_returns_error_when_missing(void) {
+    http_request_t req;
+    http_request_init(&req);
+
+    char api_key[64] = {0};
+    int rc = httpd_get_api_key(&req, api_key, sizeof(api_key));
+    TEST_ASSERT_EQUAL_INT(-1, rc);
+}
+
+void test_get_effective_client_ip_uses_peer_by_default(void) {
+    g_config.trusted_proxy_cidrs[0] = '\0';
+
+    http_request_t req;
+    http_request_init(&req);
+    strncpy(req.client_ip, "198.51.100.10", sizeof(req.client_ip) - 1);
+    add_header(&req, "X-Forwarded-For", "192.0.2.25");
+
+    char client_ip[64] = {0};
+    int rc = httpd_get_effective_client_ip(&req, client_ip, sizeof(client_ip));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("198.51.100.10", client_ip);
+}
+
+void test_get_effective_client_ip_uses_forwarded_for_from_trusted_proxy(void) {
+    strncpy(g_config.trusted_proxy_cidrs, "127.0.0.1/32", sizeof(g_config.trusted_proxy_cidrs) - 1);
+
+    http_request_t req;
+    http_request_init(&req);
+    strncpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip) - 1);
+    add_header(&req, "X-Forwarded-For", "198.51.100.44, 127.0.0.1");
+
+    char client_ip[64] = {0};
+    int rc = httpd_get_effective_client_ip(&req, client_ip, sizeof(client_ip));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("198.51.100.44", client_ip);
+}
+
+void test_get_effective_client_ip_ignores_forwarded_for_from_untrusted_proxy(void) {
+    strncpy(g_config.trusted_proxy_cidrs, "127.0.0.1/32", sizeof(g_config.trusted_proxy_cidrs) - 1);
+
+    http_request_t req;
+    http_request_init(&req);
+    strncpy(req.client_ip, "198.51.100.10", sizeof(req.client_ip) - 1);
+    add_header(&req, "X-Forwarded-For", "192.0.2.25");
+
+    char client_ip[64] = {0};
+    int rc = httpd_get_effective_client_ip(&req, client_ip, sizeof(client_ip));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("198.51.100.10", client_ip);
 }
 
 /* ================================================================
@@ -298,6 +399,106 @@ void test_get_authenticated_user_null_params_returns_zero(void) {
     TEST_ASSERT_EQUAL_INT(0, rc);
 }
 
+void test_get_authenticated_user_allows_basic_auth_from_allowed_ip(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("test", "password123", NULL, USER_ROLE_USER, true, &uid));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_allowed_login_cidrs(uid, "192.0.2.0/24"));
+
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "Authorization", "Basic dGVzdDpwYXNzd29yZDEyMw==");
+    strncpy(req.client_ip, "192.0.2.25", sizeof(req.client_ip) - 1);
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    int rc = httpd_get_authenticated_user(&req, &user);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+    TEST_ASSERT_EQUAL_STRING("test", user.username);
+}
+
+void test_get_authenticated_user_rejects_basic_auth_from_disallowed_ip(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("test", "password123", NULL, USER_ROLE_USER, true, &uid));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_allowed_login_cidrs(uid, "192.0.2.0/24"));
+
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "Authorization", "Basic dGVzdDpwYXNzd29yZDEyMw==");
+    strncpy(req.client_ip, "198.51.100.25", sizeof(req.client_ip) - 1);
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    int rc = httpd_get_authenticated_user(&req, &user);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+}
+
+void test_get_authenticated_user_rejects_session_from_disallowed_ip(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("sessip", "password123", NULL, USER_ROLE_USER, true, &uid));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_allowed_login_cidrs(uid, "192.0.2.0/24"));
+
+    char token[128] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(uid, "192.0.2.10", "TestAgent", 3600, token, sizeof(token)));
+
+    http_request_t req;
+    http_request_init(&req);
+    char cookie[160] = {0};
+    snprintf(cookie, sizeof(cookie), "session=%s", token);
+    add_header(&req, "Cookie", cookie);
+    strncpy(req.client_ip, "198.51.100.10", sizeof(req.client_ip) - 1);
+    strncpy(req.user_agent, "TestAgent", sizeof(req.user_agent) - 1);
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    int rc = httpd_get_authenticated_user(&req, &user);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+}
+
+void test_get_authenticated_user_allows_api_key_from_trusted_forwarded_ip(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("apitest", "password123", NULL, USER_ROLE_API, true, &uid));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_allowed_login_cidrs(uid, "192.0.2.0/24"));
+
+    char api_key[64] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(uid, api_key, sizeof(api_key)));
+    strncpy(g_config.trusted_proxy_cidrs, "127.0.0.1/32", sizeof(g_config.trusted_proxy_cidrs) - 1);
+
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "X-API-Key", api_key);
+    add_header(&req, "X-Forwarded-For", "192.0.2.55, 127.0.0.1");
+    strncpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip) - 1);
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    int rc = httpd_get_authenticated_user(&req, &user);
+    TEST_ASSERT_EQUAL_INT(1, rc);
+    TEST_ASSERT_EQUAL_STRING("apitest", user.username);
+}
+
+void test_get_authenticated_user_rejects_api_key_with_spoofed_forwarded_ip_from_untrusted_proxy(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user("apireject", "password123", NULL, USER_ROLE_API, true, &uid));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_allowed_login_cidrs(uid, "192.0.2.0/24"));
+
+    char api_key[64] = {0};
+    char auth_header[96] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(uid, api_key, sizeof(api_key)));
+    snprintf(auth_header, sizeof(auth_header), "Bearer %s", api_key);
+    strncpy(g_config.trusted_proxy_cidrs, "127.0.0.1/32", sizeof(g_config.trusted_proxy_cidrs) - 1);
+
+    http_request_t req;
+    http_request_init(&req);
+    add_header(&req, "Authorization", auth_header);
+    add_header(&req, "X-Forwarded-For", "192.0.2.55");
+    strncpy(req.client_ip, "198.51.100.10", sizeof(req.client_ip) - 1);
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    int rc = httpd_get_authenticated_user(&req, &user);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+}
+
 /* ================================================================
  * httpd_check_admin_privileges — auth-disabled path
  * ================================================================ */
@@ -337,6 +538,10 @@ void test_check_admin_privileges_no_auth_returns_zero(void) {
  * ================================================================ */
 
 int main(void) {
+    unlink(TEST_DB_PATH);
+    TEST_ASSERT_EQUAL_INT(0, init_database(TEST_DB_PATH));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_init());
+
     UNITY_BEGIN();
     RUN_TEST(test_parse_json_valid_body);
     RUN_TEST(test_parse_json_invalid_body_returns_null);
@@ -346,6 +551,12 @@ int main(void) {
     RUN_TEST(test_basic_auth_no_header_returns_error);
     RUN_TEST(test_basic_auth_wrong_scheme_returns_error);
     RUN_TEST(test_basic_auth_null_params_returns_error);
+    RUN_TEST(test_get_api_key_prefers_x_api_key_header);
+    RUN_TEST(test_get_api_key_supports_bearer_token);
+    RUN_TEST(test_get_api_key_returns_error_when_missing);
+    RUN_TEST(test_get_effective_client_ip_uses_peer_by_default);
+    RUN_TEST(test_get_effective_client_ip_uses_forwarded_for_from_trusted_proxy);
+    RUN_TEST(test_get_effective_client_ip_ignores_forwarded_for_from_untrusted_proxy);
     RUN_TEST(test_get_session_token_valid_cookie);
     RUN_TEST(test_get_session_token_cookie_with_other_fields);
     RUN_TEST(test_get_session_token_no_cookie_header_returns_error);
@@ -358,8 +569,16 @@ int main(void) {
     RUN_TEST(test_is_demo_mode_true_when_set);
     RUN_TEST(test_get_authenticated_user_auth_disabled_returns_admin);
     RUN_TEST(test_get_authenticated_user_null_params_returns_zero);
+    RUN_TEST(test_get_authenticated_user_allows_basic_auth_from_allowed_ip);
+    RUN_TEST(test_get_authenticated_user_rejects_basic_auth_from_disallowed_ip);
+    RUN_TEST(test_get_authenticated_user_rejects_session_from_disallowed_ip);
+    RUN_TEST(test_get_authenticated_user_allows_api_key_from_trusted_forwarded_ip);
+    RUN_TEST(test_get_authenticated_user_rejects_api_key_with_spoofed_forwarded_ip_from_untrusted_proxy);
     RUN_TEST(test_check_admin_privileges_auth_disabled_returns_one);
     RUN_TEST(test_check_admin_privileges_no_auth_returns_zero);
-    return UNITY_END();
+    int result = UNITY_END();
+    shutdown_database();
+    unlink(TEST_DB_PATH);
+    return result;
 }
 

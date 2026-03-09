@@ -328,6 +328,52 @@ void test_totp_set_get_enable(void) {
     TEST_ASSERT_EQUAL_STRING("JBSWY3DPEHPK3PXP", secret);
 }
 
+void test_allowed_login_cidrs_validation_and_storage(void) {
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs(NULL));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs("  \n  "));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs("192.0.2.0/24, 2001:db8::/32"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_allowed_login_cidrs("192.0.2.15"));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_allowed_login_cidrs("2001:db8::/129"));
+
+    int64_t uid = 0;
+    int rc = db_auth_create_user("cidruser", "password123", NULL, USER_ROLE_USER, true, &uid);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = db_auth_set_allowed_login_cidrs(uid, "192.0.2.0/24, 2001:db8::/32");
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    user_t user;
+    rc = db_auth_get_user_by_id(uid, &user);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_TRUE(user.has_login_cidr_restriction);
+    TEST_ASSERT_EQUAL_STRING("192.0.2.0/24\n2001:db8::/32", user.allowed_login_cidrs);
+
+    rc = db_auth_set_allowed_login_cidrs(uid, NULL);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    rc = db_auth_get_user_by_id(uid, &user);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_FALSE(user.has_login_cidr_restriction);
+}
+
+void test_ip_allowed_for_user_matches_cidrs(void) {
+    int64_t uid = 0;
+    int rc = db_auth_create_user("cidrmatch", "password123", NULL, USER_ROLE_USER, true, &uid);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = db_auth_set_allowed_login_cidrs(uid, "192.0.2.0/24\n2001:db8::/32");
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    user_t user;
+    rc = db_auth_get_user_by_id(uid, &user);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    TEST_ASSERT_TRUE(db_auth_ip_allowed_for_user(&user, "192.0.2.55"));
+    TEST_ASSERT_TRUE(db_auth_ip_allowed_for_user(&user, "2001:db8::1"));
+    TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, "198.51.100.10"));
+    TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, "2001:db9::1"));
+    TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, NULL));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -350,6 +396,8 @@ int main(void) {
     RUN_TEST(test_role_name_conversions);
     RUN_TEST(test_generate_and_use_api_key);
     RUN_TEST(test_totp_set_get_enable);
+    RUN_TEST(test_allowed_login_cidrs_validation_and_storage);
+    RUN_TEST(test_ip_allowed_for_user_matches_cidrs);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
