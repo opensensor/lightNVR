@@ -224,16 +224,20 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
             </p>
             {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
+              <ul
+                className="mt-2 flex flex-wrap gap-1"
+                role="list"
+                aria-label="Current allowed stream tags"
+              >
                 {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(rawTag => {
                   const tag = rawTag.trim();
                   return (
-                    <span key={tag} className="badge-info">
+                    <li key={tag} className="badge-info">
                       #{tag}
-                    </span>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </div>
 
