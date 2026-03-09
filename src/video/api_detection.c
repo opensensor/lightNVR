@@ -362,7 +362,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             curl_slist_free_all(headers);
         }
         pthread_mutex_unlock(&curl_mutex);
-        return false;
+        return -1;
     }
     log_info("API Detection: Using URL with parameters: %s (backend: %s, threshold: %.2f)",
              url_with_params, backend, actual_threshold);
