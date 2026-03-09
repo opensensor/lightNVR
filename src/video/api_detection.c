@@ -202,8 +202,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     // cause memory corruption. curl_easy_reset() clears all previously set options.
     curl_easy_reset(curl_handle);
 
-    // cppcheck-suppress knownConditionTrueFalse
-    if (!actual_api_url || !result) {
+    if (!actual_api_url) {
         log_error("Invalid parameters for detect_objects_api");
         pthread_mutex_unlock(&curl_mutex);
         return -1;
