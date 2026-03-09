@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
-import { formatPlaybackTimeLabel } from './timelineUtils.js';
+import { formatPlaybackTimeLabel, resolvePlaybackStreamName } from './timelineUtils.js';
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
@@ -536,7 +536,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
   const updateTimeDisplay = (time, segment = null) => {
     const timeDisplay = document.getElementById('time-display');
     if (!timeDisplay) return;
-    const streamName = segment?.stream || segmentRecordingData?.stream || '';
+    const streamName = segment?.stream
+      || segmentRecordingData?.stream
+      || resolvePlaybackStreamName(segments, currentSegmentIndex, time);
     const formatted = formatPlaybackTimeLabel(time, streamName);
     timeDisplay.textContent = formatted || '00:00:00';
 

@@ -12,6 +12,7 @@ import {
   formatPlaybackTimeLabel,
   getTimelineDayLengthHours,
   MIN_TIMELINE_VIEW_HOURS,
+  resolvePlaybackStreamName,
   timestampToTimelineOffset,
   zoomTimelineRange
 } from './timelineUtils.js';
@@ -35,10 +36,12 @@ export function TimelineControls() {
       setCanZoomIn(range > MIN_TIMELINE_VIEW_HOURS);
       setCanZoomOut(range < dayLengthHours);
 
-      const currentSegment = state.currentSegmentIndex >= 0 && state.currentSegmentIndex < state.timelineSegments.length
-        ? state.timelineSegments[state.currentSegmentIndex]
-        : null;
-      const nextTimeDisplayText = formatPlaybackTimeLabel(state.currentTime, currentSegment?.stream);
+      const streamName = resolvePlaybackStreamName(
+        state.timelineSegments,
+        state.currentSegmentIndex,
+        state.currentTime
+      );
+      const nextTimeDisplayText = formatPlaybackTimeLabel(state.currentTime, streamName);
       setTimeDisplayText(nextTimeDisplayText || '00:00:00');
     };
 

@@ -9,6 +9,7 @@ import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
   formatPlaybackTimeLabel,
+  resolvePlaybackStreamName,
   formatTimestampAsClock,
   formatTimelineOffsetLabel,
   getAvailableDatesForSegments,
@@ -193,6 +194,33 @@ describe('timelineUtils', () => {
 
   test('returns only the stream name when playback time is unavailable', () => {
     expect(formatPlaybackTimeLabel(null, 'garage')).toBe('garage');
+  });
+
+  test('resolves playback stream names from the current segment when available', () => {
+    const segments = [
+      { id: 1, stream: 'front_door', start_timestamp: baseTestDateTimestamp(9, 0, 0), end_timestamp: baseTestDateTimestamp(9, 5, 0) },
+      { id: 2, stream: 'garage', start_timestamp: baseTestDateTimestamp(9, 10, 0), end_timestamp: baseTestDateTimestamp(9, 15, 0) }
+    ];
+
+    expect(resolvePlaybackStreamName(segments, 1, baseTestDateTimestamp(9, 0, 30))).toBe('garage');
+  });
+
+  test('falls back to the segment containing the current timestamp when the active index is transiently invalid', () => {
+    const segments = [
+      { id: 1, stream: 'front_door', start_timestamp: baseTestDateTimestamp(9, 0, 0), end_timestamp: baseTestDateTimestamp(9, 5, 0) },
+      { id: 2, stream: 'garage', start_timestamp: baseTestDateTimestamp(9, 10, 0), end_timestamp: baseTestDateTimestamp(9, 15, 0) }
+    ];
+
+    expect(resolvePlaybackStreamName(segments, -1, baseTestDateTimestamp(9, 10, 30))).toBe('garage');
+  });
+
+  test('falls back to the nearest segment stream when the current timestamp is in a gap', () => {
+    const segments = [
+      { id: 1, stream: 'front_door', start_timestamp: baseTestDateTimestamp(9, 0, 0), end_timestamp: baseTestDateTimestamp(9, 5, 0) },
+      { id: 2, stream: 'garage', start_timestamp: baseTestDateTimestamp(9, 10, 0), end_timestamp: baseTestDateTimestamp(9, 15, 0) }
+    ];
+
+    expect(resolvePlaybackStreamName(segments, -1, baseTestDateTimestamp(9, 8, 0))).toBe('garage');
   });
 
   test('uses the actual local day length on a DST spring-forward day', () => {

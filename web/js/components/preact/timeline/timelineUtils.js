@@ -131,6 +131,36 @@ export function formatPlaybackTimeLabel(timestamp, streamName = '') {
   return trimmedStreamName ? `${trimmedStreamName} - ${formattedTime}` : formattedTime;
 }
 
+export function resolvePlaybackStreamName(segments, currentSegmentIndex, timestamp = null) {
+  if (!Array.isArray(segments) || segments.length === 0) {
+    return '';
+  }
+
+  const currentSegment = Number.isInteger(currentSegmentIndex) && currentSegmentIndex >= 0 && currentSegmentIndex < segments.length
+    ? segments[currentSegmentIndex]
+    : null;
+  const currentStreamName = typeof currentSegment?.stream === 'string' ? currentSegment.stream.trim() : '';
+  if (currentStreamName) {
+    return currentStreamName;
+  }
+
+  if (!Number.isFinite(timestamp)) {
+    return '';
+  }
+
+  const containingIndex = findContainingSegmentIndex(segments, timestamp);
+  if (containingIndex !== -1) {
+    return typeof segments[containingIndex]?.stream === 'string'
+      ? segments[containingIndex].stream.trim()
+      : '';
+  }
+
+  const nearestIndex = findNearestSegmentIndex(segments, timestamp);
+  return nearestIndex !== -1 && typeof segments[nearestIndex]?.stream === 'string'
+    ? segments[nearestIndex].stream.trim()
+    : '';
+}
+
 export function segmentIntersectsDay(segment, selectedDate) {
   return getClippedSegmentHourRange(segment, selectedDate) !== null;
 }

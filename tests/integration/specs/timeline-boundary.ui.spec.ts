@@ -240,6 +240,35 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     await page.evaluate(() => document.exitFullscreen());
     await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
   });
+
+  test('keeps the stream name prefix while dragging the timeline playhead', async ({ page }) => {
+    const stream = 'front_door';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 801, stream, start_timestamp: localTimestamp(date, '09:00:00'), end_timestamp: localTimestamp(date, '09:10:00') }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${date}&time=09:00:00`, { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(timelinePage.timeDisplay).toContainText(`${stream} - 09:00:00`);
+
+    const playheadBox = await timelinePage.playhead.boundingBox();
+    if (!playheadBox) {
+      throw new Error('Expected timeline playhead to have a bounding box');
+    }
+
+    await page.mouse.move(playheadBox.x + (playheadBox.width / 2), playheadBox.y + (playheadBox.height / 2));
+    await page.mouse.down();
+    await page.mouse.move(playheadBox.x + 80, playheadBox.y + (playheadBox.height / 2), { steps: 4 });
+
+    await expect(timelinePage.timeDisplay).toContainText(`${stream} -`);
+
+    await page.mouse.up();
+    await expect(timelinePage.timeDisplay).toContainText(`${stream} -`);
+  });
 });
 
 test.describe('Timeline DST rendering @ui @timeline', () => {

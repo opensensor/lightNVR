@@ -8,8 +8,9 @@ import { timelineState } from './TimelinePage.jsx';
 import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
-  formatTimestampAsClock,
+  formatPlaybackTimeLabel,
   getTimelineDayLengthHours,
+  resolvePlaybackStreamName,
   timestampToTimelineOffset
 } from './timelineUtils.js';
 
@@ -207,7 +208,12 @@ export function TimelineCursor() {
     const timeDisplay = document.getElementById('time-display');
     if (!timeDisplay) return;
 
-    timeDisplay.textContent = formatTimestampAsClock(time);
+    const streamName = resolvePlaybackStreamName(
+      timelineState.timelineSegments,
+      timelineState.currentSegmentIndex,
+      time
+    );
+    timeDisplay.textContent = formatPlaybackTimeLabel(time, streamName) || '00:00:00';
   };
 
   // Initialise cursor on mount (with retries for async data)
