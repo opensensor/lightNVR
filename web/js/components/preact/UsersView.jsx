@@ -36,7 +36,8 @@ export function UsersView() {
     role: 1,
     is_active: true,
     password_change_locked: false,
-    allowed_tags: ''  // empty string = no tag restriction
+    allowed_tags: '',
+    allowed_login_cidrs: ''
   });
 
   /**
@@ -79,7 +80,8 @@ export function UsersView() {
       role: 1,
       is_active: true,
       password_change_locked: false,
-      allowed_tags: ''
+      allowed_tags: '',
+      allowed_login_cidrs: ''
     });
     setActiveModal('add');
   }, []);
@@ -223,8 +225,11 @@ export function UsersView() {
     if (e) e.preventDefault();
 
     console.log('Adding user:', formData.username);
-    // Send allowed_tags as null when empty (means no restriction)
-    const userData = { ...formData, allowed_tags: formData.allowed_tags?.trim() || null };
+    const userData = {
+      ...formData,
+      allowed_tags: formData.allowed_tags?.trim() || null,
+      allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
+    };
     addUserMutate(userData);
   }, [formData, addUserMutate]);
 
@@ -236,8 +241,11 @@ export function UsersView() {
     if (e) e.preventDefault();
 
     console.log('Editing user:', selectedUser.id, selectedUser.username);
-    // Send allowed_tags as null when empty (means no restriction)
-    const userData = { ...formData, allowed_tags: formData.allowed_tags?.trim() || null };
+    const userData = {
+      ...formData,
+      allowed_tags: formData.allowed_tags?.trim() || null,
+      allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
+    };
     editUserMutation.mutate({
       userId: selectedUser.id,
       userData
@@ -287,8 +295,9 @@ export function UsersView() {
       role: user.role,
       is_active: user.is_active,
       password_change_locked: user.password_change_locked || false,
-      // allowed_tags: null from API means no restriction, convert to '' for the text input
-      allowed_tags: user.allowed_tags || ''
+      // null from API means unrestricted; convert to '' for form controls
+      allowed_tags: user.allowed_tags || '',
+      allowed_login_cidrs: user.allowed_login_cidrs || ''
     });
     setActiveModal('edit');
   }, []);

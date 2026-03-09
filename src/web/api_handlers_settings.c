@@ -331,6 +331,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
     cJSON_AddNumberToObject(settings, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
     cJSON_AddNumberToObject(settings, "trusted_device_days", g_config.trusted_device_days);
+    cJSON_AddStringToObject(settings, "trusted_proxy_cidrs", g_config.trusted_proxy_cidrs);
 
     // Security settings
     cJSON_AddBoolToObject(settings, "force_mfa_on_login", g_config.force_mfa_on_login);
@@ -544,6 +545,21 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.trusted_device_days = value;
         settings_changed = true;
         log_info("Updated trusted_device_days: %d", g_config.trusted_device_days);
+    }
+
+    cJSON *trusted_proxy_cidrs = cJSON_GetObjectItem(settings, "trusted_proxy_cidrs");
+    if (trusted_proxy_cidrs && cJSON_IsString(trusted_proxy_cidrs)) {
+        if (db_auth_validate_allowed_login_cidrs(trusted_proxy_cidrs->valuestring) != 0) {
+            log_warn("Rejected invalid trusted_proxy_cidrs setting");
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400, "Invalid trusted_proxy_cidrs: expected comma- or newline-separated IPv4/IPv6 CIDRs");
+            return;
+        }
+        strncpy(g_config.trusted_proxy_cidrs, trusted_proxy_cidrs->valuestring,
+                sizeof(g_config.trusted_proxy_cidrs) - 1);
+        g_config.trusted_proxy_cidrs[sizeof(g_config.trusted_proxy_cidrs) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated trusted_proxy_cidrs");
     }
 
     if (g_config.auth_absolute_timeout_hours < g_config.auth_timeout_hours) {

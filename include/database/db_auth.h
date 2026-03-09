@@ -10,6 +10,9 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define USER_ALLOWED_TAGS_MAX 256
+#define USER_ALLOWED_LOGIN_CIDRS_MAX 1024
+
 /**
  * @brief User roles
  */
@@ -35,8 +38,10 @@ typedef struct {
     bool is_active;          /**< Whether the user is active */
     bool password_change_locked; /**< Whether password changes are locked (for demo accounts) */
     bool totp_enabled;       /**< Whether TOTP MFA is enabled */
-    char allowed_tags[256];  /**< Comma-separated tag whitelist for RBAC (empty = no restriction) */
+    char allowed_tags[USER_ALLOWED_TAGS_MAX];  /**< Comma-separated tag whitelist for RBAC (empty = no restriction) */
     bool has_tag_restriction; /**< Whether allowed_tags is set (true) or NULL/unrestricted (false) */
+    char allowed_login_cidrs[USER_ALLOWED_LOGIN_CIDRS_MAX]; /**< Newline-separated CIDR whitelist for login/auth IPs */
+    bool has_login_cidr_restriction; /**< Whether allowed_login_cidrs is set (true) or NULL/unrestricted (false) */
 } user_t;
 
 /**
@@ -332,6 +337,38 @@ int db_auth_enable_totp(int64_t user_id, bool enabled);
  * @return 0 on success, non-zero on failure
  */
 int db_auth_set_allowed_tags(int64_t user_id, const char *allowed_tags);
+
+/**
+ * @brief Validate a per-user allowed_login_cidrs list.
+ *
+ * Accepts IPv4 and IPv6 CIDR entries separated by commas and/or newlines.
+ * NULL or blank input is treated as unrestricted and therefore valid.
+ *
+ * @param allowed_login_cidrs CIDR list to validate
+ * @return 0 when valid, non-zero when invalid
+ */
+int db_auth_validate_allowed_login_cidrs(const char *allowed_login_cidrs);
+
+/**
+ * @brief Set the allowed_login_cidrs restriction for a user.
+ *
+ * @param user_id User ID
+ * @param allowed_login_cidrs CIDR list, or NULL to remove restriction
+ * @return 0 on success, non-zero on failure
+ */
+int db_auth_set_allowed_login_cidrs(int64_t user_id, const char *allowed_login_cidrs);
+
+/**
+ * @brief Check whether a client's IP is allowed for a user.
+ *
+ * Returns true when the user has no login CIDR restriction, or when the
+ * supplied client_ip matches at least one configured CIDR.
+ *
+ * @param user Pointer to the authenticated user
+ * @param client_ip Client IP address string
+ * @return true if authentication is permitted from client_ip
+ */
+bool db_auth_ip_allowed_for_user(const user_t *user, const char *client_ip);
 
 /**
  * @brief Check whether a stream's tags satisfy a user's allowed_tags restriction

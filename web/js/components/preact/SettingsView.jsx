@@ -39,6 +39,7 @@ export function SettingsView() {
     authTimeoutHours: '24',
     authAbsoluteTimeoutHours: '168',
     trustedDeviceDays: '30',
+    trustedProxyCidrs: '',
     // Security settings
     forceMfaOnLogin: false,
     loginRateLimitEnabled: true,
@@ -258,6 +259,7 @@ export function SettingsView() {
         authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
         authAbsoluteTimeoutHours: settingsData.auth_absolute_timeout_hours?.toString() || '168',
         trustedDeviceDays: settingsData.trusted_device_days?.toString() || '30',
+        trustedProxyCidrs: settingsData.trusted_proxy_cidrs || '',
         // Security settings
         forceMfaOnLogin: settingsData.force_mfa_on_login || false,
         loginRateLimitEnabled: settingsData.login_rate_limit_enabled !== undefined ? settingsData.login_rate_limit_enabled : true,
@@ -347,6 +349,7 @@ export function SettingsView() {
       auth_timeout_hours: parseInt(settings.authTimeoutHours, 10),
       auth_absolute_timeout_hours: parseInt(settings.authAbsoluteTimeoutHours, 10),
       trusted_device_days: parseInt(settings.trustedDeviceDays, 10),
+      trusted_proxy_cidrs: settings.trustedProxyCidrs,
       // Security settings
       force_mfa_on_login: settings.forceMfaOnLogin,
       login_rate_limit_enabled: settings.loginRateLimitEnabled,
@@ -866,6 +869,22 @@ export function SettingsView() {
                 disabled={!canModifySettings}
               />
               <span class="hint text-sm text-muted-foreground block mt-1">How long a successfully MFA-verified device can skip the next TOTP prompt. Set to 0 to disable remembered devices.</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
+            <label for="setting-trusted-proxy-cidrs" class="font-medium">Trusted Proxy CIDRs</label>
+            <div class="col-span-2">
+              <textarea
+                id="setting-trusted-proxy-cidrs"
+                name="trustedProxyCidrs"
+                rows="3"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-2xl disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.trustedProxyCidrs}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="127.0.0.1/32,::1/128"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Only honor <code>X-Forwarded-For</code> / <code>X-Real-IP</code> when the immediate peer IP matches one of these CIDRs. Leave blank to ignore forwarded headers.</span>
             </div>
           </div>
           {/* Setup Wizard reset */}

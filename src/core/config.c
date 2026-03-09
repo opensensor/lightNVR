@@ -110,6 +110,7 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"WEB_PORT",           CONFIG_TYPE_INT,    CONFIG_OFFSET(web_port),           0,   NULL, 8080, false},
     {"WEB_AUTH_ENABLED",   CONFIG_TYPE_BOOL,   CONFIG_OFFSET(web_auth_enabled),   0,   NULL, 0, true},
     {"WEB_USERNAME",       CONFIG_TYPE_STRING, CONFIG_OFFSET(web_username),       32,  "admin", 0, false},
+    {"WEB_TRUSTED_PROXY_CIDRS", CONFIG_TYPE_STRING, CONFIG_OFFSET(trusted_proxy_cidrs), WEB_TRUSTED_PROXY_CIDRS_MAX, "", 0, false},
     {"DEMO_MODE",          CONFIG_TYPE_BOOL,   CONFIG_OFFSET(demo_mode),          0,   NULL, 0, false},
 
     // General settings
@@ -354,6 +355,7 @@ void load_default_config(config_t *config) {
     config->auth_timeout_hours = 24; // Default session idle timeout: 24 hours
     config->auth_absolute_timeout_hours = 168; // Default absolute session lifetime: 7 days
     config->trusted_device_days = 30; // Default trusted-device lifetime: 30 days
+    config->trusted_proxy_cidrs[0] = '\0';
     config->demo_mode = false; // Demo mode disabled by default
 
     // Security settings
@@ -753,6 +755,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             } else if (config->trusted_device_days > (INT_MAX / 86400)) {
                 config->trusted_device_days = (INT_MAX / 86400);
             }
+        } else if (strcmp(name, "trusted_proxy_cidrs") == 0) {
+            strncpy(config->trusted_proxy_cidrs, value, sizeof(config->trusted_proxy_cidrs) - 1);
+            config->trusted_proxy_cidrs[sizeof(config->trusted_proxy_cidrs) - 1] = '\0';
         } else if (strcmp(name, "demo_mode") == 0) {
             config->demo_mode = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "force_mfa_on_login") == 0) {
@@ -1638,6 +1643,7 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "auth_timeout_hours = %d  ; Session idle timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "auth_absolute_timeout_hours = %d  ; Absolute session lifetime in hours (default: 168)\n", config->auth_absolute_timeout_hours);
     fprintf(file, "trusted_device_days = %d  ; Remember trusted device for N days (0 disables, default: 30)\n", config->trusted_device_days);
+    fprintf(file, "trusted_proxy_cidrs = %s  ; Trusted reverse-proxy CIDRs for X-Forwarded-For (blank disables trust)\n", config->trusted_proxy_cidrs);
     fprintf(file, "demo_mode = %s  ; Demo mode: allows unauthenticated viewer access\n", config->demo_mode ? "true" : "false");
     fprintf(file, "force_mfa_on_login = %s  ; Require TOTP code with password at login (prevents password-only brute force)\n", config->force_mfa_on_login ? "true" : "false");
     fprintf(file, "login_rate_limit_enabled = %s  ; Enable login rate limiting\n", config->login_rate_limit_enabled ? "true" : "false");

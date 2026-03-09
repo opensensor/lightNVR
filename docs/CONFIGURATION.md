@@ -62,6 +62,7 @@ username = admin
 ; Password is auto-generated on first run - check logs for the generated password
 ; password =
 auth_timeout_hours = 24  ; Session timeout in hours (default: 24)
+; trusted_proxy_cidrs = 127.0.0.1/32,::1/128  ; Only trust X-Forwarded-For from these reverse proxies
 web_thread_pool_size = 8
 
 [streams]

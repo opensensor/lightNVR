@@ -35,6 +35,25 @@ int httpd_get_basic_auth_credentials(const http_request_t *req,
                                       char *password, size_t password_size);
 
 /**
+ * @brief Extract an API key from request headers
+ *
+ * Supports either X-API-Key or Authorization: Bearer <token>.
+ *
+ * @return 0 if an API key was found, -1 otherwise
+ */
+int httpd_get_api_key(const http_request_t *req, char *api_key, size_t api_key_size);
+
+/**
+ * @brief Resolve the effective client IP for the request.
+ *
+ * Returns the direct peer IP unless that peer is in trusted_proxy_cidrs, in
+ * which case X-Forwarded-For / X-Real-IP may be honored.
+ *
+ * @return 0 on success, -1 on error
+ */
+int httpd_get_effective_client_ip(const http_request_t *req, char *client_ip, size_t client_ip_size);
+
+/**
  * @brief Get the authenticated user from the HTTP request
  *
  * Checks session cookie first, then falls back to HTTP Basic Auth.

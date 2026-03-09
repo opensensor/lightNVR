@@ -605,6 +605,12 @@ static const char migration_0036_up[] =
 static const char migration_0036_down[] =
     "SELECT 1;";
 
+static const char migration_0037_up[] =
+    "ALTER TABLE users ADD COLUMN allowed_login_cidrs TEXT DEFAULT NULL;";
+
+static const char migration_0037_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -858,8 +864,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0036_down,
         .is_embedded = true
     },
+    {
+        .version = "0037",
+        .description = "add_user_allowed_login_cidrs",
+        .sql_up = migration_0037_up,
+        .sql_down = migration_0037_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 36
+#define EMBEDDED_MIGRATIONS_COUNT 37
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

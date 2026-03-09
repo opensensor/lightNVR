@@ -217,10 +217,16 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     char username[64] = {0};
     char password[64] = {0};
     char totp_code[8] = {0};  // Optional TOTP code for force-MFA mode
+    char effective_client_ip[64] = {0};
     bool is_form = false;
     bool remember_device = false;
     bool trusted_device_used = false;
     bool totp_verified = false;
+
+    if (httpd_get_effective_client_ip(req, effective_client_ip, sizeof(effective_client_ip)) != 0) {
+        strncpy(effective_client_ip, req->client_ip, sizeof(effective_client_ip) - 1);
+        effective_client_ip[sizeof(effective_client_ip) - 1] = '\0';
+    }
 
     // Check Content-Type to determine if it's form data or JSON
     const char *content_type = http_request_get_header(req, "Content-Type");
@@ -320,6 +326,29 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     // Login successful (password verified)
     log_info("Password verified for user: %s (ID: %lld)", username, (long long)user_id);
 
+    user_t authenticated_user;
+    if (db_auth_get_user_by_id(user_id, &authenticated_user) != 0) {
+        log_error("Failed to load authenticated user record for %s", username);
+        http_response_set_json_error(res, 500, "Failed to load user");
+        return;
+    }
+
+    if (!db_auth_ip_allowed_for_user(&authenticated_user, effective_client_ip)) {
+        record_failed_attempt(username);
+        log_warn("Login blocked by allowed_login_cidrs for user '%s' from IP %s",
+                 username, effective_client_ip[0] != '\0' ? effective_client_ip : "(unknown)");
+
+        if (is_form) {
+            http_response_add_header(res, "Location", "/login.html?error=1");
+            res->status_code = 302;
+            res->body = NULL;
+            res->body_length = 0;
+        } else {
+            http_response_set_json_error(res, 401, "Invalid credentials");
+        }
+        return;
+    }
+
     // Check if user has TOTP enabled (only for API/JSON requests)
     if (!is_form) {
         char totp_secret[64] = {0};
@@ -371,7 +400,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
                 // Standard two-step MFA flow
                 // Create a short-lived pending MFA session (5 minutes)
                 char totp_token[33];
-                rc = db_auth_create_session(user_id, req->client_ip, req->user_agent, 300, totp_token, sizeof(totp_token));
+                rc = db_auth_create_session(user_id, effective_client_ip, req->user_agent, 300, totp_token, sizeof(totp_token));
                 if (rc != 0) {
                     log_error("Failed to create pending MFA session for user: %s", username);
                     http_response_set_json_error(res, 500, "Failed to create MFA session");
@@ -404,7 +433,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
 
     // Create a session token using the configured absolute session lifetime.
     char token[33];
-    rc = db_auth_create_session(user_id, req->client_ip, req->user_agent,
+    rc = db_auth_create_session(user_id, effective_client_ip, req->user_agent,
                                 0, token, sizeof(token));
 
     if (rc != 0) {
@@ -417,7 +446,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
 
     if (totp_verified && remember_device && !trusted_device_used && httpd_trusted_device_lifetime_seconds() > 0) {
         char trusted_token[33];
-        if (db_auth_create_trusted_device(user_id, req->client_ip, req->user_agent,
+        if (db_auth_create_trusted_device(user_id, effective_client_ip, req->user_agent,
                                           httpd_trusted_device_lifetime_seconds(),
                                           trusted_token, sizeof(trusted_token)) == 0) {
             httpd_add_trusted_device_cookie(res, trusted_token);
