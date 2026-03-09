@@ -12,6 +12,7 @@
 #include <string.h>
 #include "unity.h"
 #include "web/request_response.h"
+#include "web/libuv_connection.h"
 #include "core/logger.h"
 
 /* ---- Unity boilerplate ---- */
@@ -172,6 +173,33 @@ void test_response_add_cors_headers(void) {
     http_response_free(&res);
 }
 
+void test_libuv_connection_reset_preserves_client_ip(void) {
+    uv_loop_t loop;
+    TEST_ASSERT_EQUAL_INT(0, uv_loop_init(&loop));
+
+    libuv_server_t server;
+    memset(&server, 0, sizeof(server));
+    server.loop = &loop;
+
+    libuv_connection_t *conn = libuv_connection_create(&server);
+    TEST_ASSERT_NOT_NULL(conn);
+
+    strncpy(conn->request.client_ip, "192.0.2.55", sizeof(conn->request.client_ip) - 1);
+    strncpy(conn->request.user_agent, "RegressionAgent/1.0", sizeof(conn->request.user_agent) - 1);
+    strncpy(conn->request.path, "/api/auth/login", sizeof(conn->request.path) - 1);
+
+    libuv_connection_reset(conn);
+
+    TEST_ASSERT_EQUAL_STRING("192.0.2.55", conn->request.client_ip);
+    TEST_ASSERT_EQUAL_STRING("", conn->request.user_agent);
+    TEST_ASSERT_EQUAL_STRING("", conn->request.path);
+    TEST_ASSERT_EQUAL_INT(1, conn->requests_handled);
+
+    libuv_connection_close(conn);
+    uv_run(&loop, UV_RUN_DEFAULT);
+    TEST_ASSERT_EQUAL_INT(0, uv_loop_close(&loop));
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -200,6 +228,7 @@ int main(void) {
     RUN_TEST(test_response_set_json_error);
     RUN_TEST(test_response_add_header);
     RUN_TEST(test_response_add_cors_headers);
+    RUN_TEST(test_libuv_connection_reset_preserves_client_ip);
 
     int result = UNITY_END();
     shutdown_logger();

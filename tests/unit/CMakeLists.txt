@@ -85,6 +85,7 @@ macro(add_layer2_test TEST_NAME)
         unity_lib
         lightnvr_lib
         ${SQLITE_LIBRARIES}
+        ${CURL_LIBRARIES}
         ${SSL_LIBRARIES}
         ${HTTP_BACKEND_LIBS}
         inih_lib

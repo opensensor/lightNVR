@@ -90,12 +90,16 @@ libuv_connection_t *libuv_connection_create(libuv_server_t *server) {
 void libuv_connection_reset(libuv_connection_t *conn) {
     if (!conn) return;
 
+    char client_ip[sizeof(conn->request.client_ip)] = {0};
+    strncpy(client_ip, conn->request.client_ip, sizeof(client_ip) - 1);
+
     // Free any allocated response body
     http_response_free(&conn->response);
 
     // Reset request/response
     http_request_init(&conn->request);
     http_response_init(&conn->response);
+    strncpy(conn->request.client_ip, client_ip, sizeof(conn->request.client_ip) - 1);
 
     // Reset parser state
     llhttp_reset(&conn->parser);

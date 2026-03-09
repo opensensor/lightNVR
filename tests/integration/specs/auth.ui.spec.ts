@@ -131,6 +131,11 @@ test.describe('Authentication @ui @auth', () => {
       await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
       await sleep(1000);
       expect(page.url()).not.toContain('login');
+
+      const currentSession = page.locator('div.border.rounded').filter({ hasText: 'Current session' }).first();
+      await expect(currentSession).toBeVisible();
+      await expect(currentSession).not.toContainText('Unknown IP');
+      await expect(currentSession).toContainText(/(Chrome|Chromium|Firefox|WebKit|Safari)/i);
       
       await page.screenshot({ path: 'test-results/auth-session-maintained.png' });
     });
