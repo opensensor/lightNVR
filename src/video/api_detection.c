@@ -1043,7 +1043,19 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (stream_name && stream_name[0] != '\0') {
         log_info("API Detection (snapshot): Filtering %d detections by zones for stream %s",
                  result->count, stream_name);
-        filter_detections_by_zones(stream_name, result);
+        if (filter_detections_by_zones(stream_name, result) != 0) {
+            log_error("API Detection (snapshot): Failed to filter detections by zones for stream %s",
+                      stream_name);
+
+            // Clean up on error to avoid leaking resources
+            cJSON_Delete(root);
+            free(chunk.memory);
+            curl_mime_free(mime);
+            curl_slist_free_all(headers);
+            curl_easy_cleanup(local_curl);
+
+            return -1;
+        }
 
         // Filter detections by per-stream object include/exclude lists
         filter_detections_by_stream_objects(stream_name, result);
