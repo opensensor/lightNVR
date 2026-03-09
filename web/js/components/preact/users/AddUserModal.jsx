@@ -101,9 +101,10 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           </div>
 
           <div className="mb-4">
-            <label className="flex items-center">
+            <label className="flex items-center" htmlFor="is_active">
               <input
                 type="checkbox"
+                id="is_active"
                 name="is_active"
                 checked={formData.is_active}
                 onChange={handleInputChange}
