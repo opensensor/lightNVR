@@ -148,7 +148,18 @@ void shutdown_api_detection_system(void) {
         curl_handle = NULL;
     }
 
-    // Cleanup cached JPEG encoders to free memory
+    /*
+     * Cleanup cached JPEG encoders used for API detection snapshots.
+     *
+     * jpeg_encoder_cleanup_all() releases any process-wide encoder instances
+     * and associated buffers that may have been cached for performance during
+     * detection. This prevents a persistent memory footprint across repeated
+     * init/shutdown cycles of the API detection system.
+     *
+     * It is safe to call multiple times, but it must be done as part of the
+     * shutdown sequence to ensure all encoder resources are freed once API
+     * detection is no longer in use.
+     */
     jpeg_encoder_cleanup_all();
 
     // Note: Don't call curl_global_cleanup() here - it's managed centrally in curl_init.c
