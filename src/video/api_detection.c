@@ -202,8 +202,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     // cause memory corruption. curl_easy_reset() clears all previously set options.
     curl_easy_reset(curl_handle);
 
-    // cppcheck-suppress knownConditionTrueFalse
-    if (!actual_api_url || !result) {
+    if (!actual_api_url) {
         log_error("Invalid parameters for detect_objects_api");
         pthread_mutex_unlock(&curl_mutex);
         return -1;
@@ -366,6 +365,12 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Set up the response buffer
     chunk.memory = malloc(1);
+    if (chunk.memory == NULL) {
+        log_error("API Detection: Failed to allocate memory for curl response buffer");
+        // Note: cleanup of curl/mime/headers should match other error paths in this function
+        pthread_mutex_unlock(&curl_mutex);
+        return false;
+    }
     chunk.size = 0;
 
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
@@ -802,6 +807,13 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
     chunk.memory = malloc(1);
+    if (chunk.memory == NULL) {
+        log_error("API Detection (snapshot): Failed to allocate memory for curl response buffer");
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(local_curl);
+        return -1;
+    }
     chunk.size = 0;
 
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
