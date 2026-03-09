@@ -401,6 +401,8 @@ GET /api/system/info
 
 Returns system information including version, uptime, CPU/memory/storage usage, and stream counts.
 
+The response also includes a `versions.items` array summarizing runtime-detected software versions such as the base OS, LightNVR, optional services, and linked libraries.
+
 #### Get System Status
 
 ```

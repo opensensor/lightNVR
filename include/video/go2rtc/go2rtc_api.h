@@ -91,6 +91,20 @@ bool go2rtc_api_update_config(void);
 bool go2rtc_api_get_server_info(int *rtsp_port);
 
 /**
+ * @brief Get go2rtc application information exposed by the /api endpoint
+ *
+ * @param rtsp_port Pointer to store the RTSP port (can be NULL)
+ * @param version Buffer to store the go2rtc version string (can be NULL)
+ * @param version_size Size of the version buffer
+ * @param revision Buffer to store the go2rtc revision string (can be NULL)
+ * @param revision_size Size of the revision buffer
+ * @return true if information was retrieved successfully, false otherwise
+ */
+bool go2rtc_api_get_application_info(int *rtsp_port,
+                                     char *version, size_t version_size,
+                                     char *revision, size_t revision_size);
+
+/**
  * @brief Preload a stream in go2rtc to keep it active
  *
  * This keeps a persistent consumer connected to the stream, ensuring

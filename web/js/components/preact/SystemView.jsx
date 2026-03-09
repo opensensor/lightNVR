@@ -18,6 +18,7 @@ import { StorageHealth } from './system/StorageHealth.jsx';
 import { NetworkInfo } from './system/NetworkInfo.jsx';
 import { StreamsInfo } from './system/StreamsInfo.jsx';
 import { WebServiceInfo } from './system/WebServiceInfo.jsx';
+import { VersionsTable } from './system/VersionsTable.jsx';
 import { LogsView } from './system/LogsView.jsx';
 import { LogsPoller } from './system/LogsPoller.jsx';
 import { ClearLogsModal } from './system/ClearLogsModal.jsx';
@@ -79,6 +80,9 @@ export function SystemView() {
     recordings: {
       count: 0,
       size: 0
+    },
+    versions: {
+      items: []
     }
   });
   const [logs, setLogs] = useState([]);
@@ -92,6 +96,7 @@ export function SystemView() {
   const [isRestarting, setIsRestarting] = useState(false);
   const [showClearLogsModal, setShowClearLogsModal] = useState(false);
   const [hasData, setHasData] = useState(false);
+  const [activeTab, setActiveTab] = useState('system');
 
   // User role state for permission-based UI
   const [userRole, setUserRole] = useState(null);
@@ -258,48 +263,87 @@ export function SystemView() {
         loadingMessage="Loading system information..."
         emptyMessage="System information not available. Please try again later."
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <SystemInfo systemInfo={systemInfo} formatUptime={formatUptime} />
-          <MemoryStorage systemInfo={systemInfo} formatBytes={formatBytes} />
+        <div className="mb-4 border-b border-border" role="tablist" aria-label="System sections">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              role="tab"
+              data-testid="system-tab"
+              aria-selected={activeTab === 'system'}
+              className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'system'
+                  ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setActiveTab('system')}
+            >
+              System
+            </button>
+            <button
+              type="button"
+              role="tab"
+              data-testid="versions-tab"
+              aria-selected={activeTab === 'versions'}
+              className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'versions'
+                  ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              onClick={() => setActiveTab('versions')}
+            >
+              Versions
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <StreamsInfo systemInfo={systemInfo} formatBytes={formatBytes} />
-          <StorageHealth formatBytes={formatBytes} />
-        </div>
+        {activeTab === 'system' ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <SystemInfo systemInfo={systemInfo} formatUptime={formatUptime} />
+              <MemoryStorage systemInfo={systemInfo} formatBytes={formatBytes} />
+            </div>
 
-        <div className="mb-4">
-          <StreamStorage systemInfo={systemInfo} formatBytes={formatBytes} />
-        </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <StreamsInfo systemInfo={systemInfo} formatBytes={formatBytes} />
+              <StorageHealth formatBytes={formatBytes} />
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <NetworkInfo systemInfo={systemInfo} />
-          <WebServiceInfo systemInfo={systemInfo} />
-        </div>
+            <div className="mb-4">
+              <StreamStorage systemInfo={systemInfo} formatBytes={formatBytes} />
+            </div>
 
-        <LogsView
-          logs={logs}
-          logLevel={logLevel}
-          logCount={logCount}
-          pollingInterval={pollingInterval}
-          setLogLevel={handleSetLogLevel}
-          setLogCount={setLogCount}
-          setPollingInterval={handleSetPollingInterval}
-          loadLogs={() => {
-            // Trigger a manual log refresh
-            console.log('Manually triggering log refresh');
-            const event = new CustomEvent('refresh-logs');
-            window.dispatchEvent(event);
-          }}
-          clearLogs={clearLogs}
-        />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <NetworkInfo systemInfo={systemInfo} />
+              <WebServiceInfo systemInfo={systemInfo} />
+            </div>
 
-        <LogsPoller
-          logLevel={logLevel}
-          logCount={logCount}
-          pollingInterval={pollingInterval}
-          onLogsReceived={handleLogsReceived}
-        />
+            <LogsView
+              logs={logs}
+              logLevel={logLevel}
+              logCount={logCount}
+              pollingInterval={pollingInterval}
+              setLogLevel={handleSetLogLevel}
+              setLogCount={setLogCount}
+              setPollingInterval={handleSetPollingInterval}
+              loadLogs={() => {
+                // Trigger a manual log refresh
+                console.log('Manually triggering log refresh');
+                const event = new CustomEvent('refresh-logs');
+                window.dispatchEvent(event);
+              }}
+              clearLogs={clearLogs}
+            />
+
+            <LogsPoller
+              logLevel={logLevel}
+              logCount={logCount}
+              pollingInterval={pollingInterval}
+              onLogsReceived={handleLogsReceived}
+            />
+          </>
+        ) : (
+          <VersionsTable versions={systemInfo.versions} />
+        )}
       </ContentLoader>
 
       <ClearLogsModal

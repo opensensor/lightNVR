@@ -600,10 +600,19 @@ bool go2rtc_api_get_streams(char *buffer, size_t buffer_size) {
     return success;
 }
 
-bool go2rtc_api_get_server_info(int *rtsp_port) {
+bool go2rtc_api_get_application_info(int *rtsp_port,
+                                     char *version, size_t version_size,
+                                     char *revision, size_t revision_size) {
     if (!g_initialized) {
         log_error("go2rtc API client not initialized");
         return false;
+    }
+
+    if (version && version_size > 0) {
+        version[0] = '\0';
+    }
+    if (revision && revision_size > 0) {
+        revision[0] = '\0';
     }
 
     CURL *curl;
@@ -646,6 +655,20 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
             // Parse JSON response
             cJSON *json = cJSON_Parse(resp.buffer);
             if (json) {
+                if (version && version_size > 0) {
+                    cJSON *version_obj = cJSON_GetObjectItem(json, "version");
+                    if (version_obj && cJSON_IsString(version_obj)) {
+                        snprintf(version, version_size, "%s", cJSON_GetStringValue(version_obj));
+                    }
+                }
+
+                if (revision && revision_size > 0) {
+                    cJSON *revision_obj = cJSON_GetObjectItem(json, "revision");
+                    if (revision_obj && cJSON_IsString(revision_obj)) {
+                        snprintf(revision, revision_size, "%s", cJSON_GetStringValue(revision_obj));
+                    }
+                }
+
                 // Extract RTSP port if requested
                 if (rtsp_port) {
                     cJSON *rtsp = cJSON_GetObjectItem(json, "rtsp");
@@ -685,6 +708,10 @@ bool go2rtc_api_get_server_info(int *rtsp_port) {
     curl_easy_cleanup(curl);
 
     return success;
+}
+
+bool go2rtc_api_get_server_info(int *rtsp_port) {
+    return go2rtc_api_get_application_info(rtsp_port, NULL, 0, NULL, 0);
 }
 
 /**

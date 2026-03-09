@@ -18,6 +18,22 @@ export class SystemPage extends BasePage {
     return this.page.locator('[data-testid="version"], .version, :text-matches("version", "i")').first();
   }
 
+  get systemTab(): Locator {
+    return this.page.getByTestId('system-tab');
+  }
+
+  get versionsTab(): Locator {
+    return this.page.getByTestId('versions-tab');
+  }
+
+  get versionsTable(): Locator {
+    return this.page.getByTestId('versions-table');
+  }
+
+  get versionRows(): Locator {
+    return this.page.getByTestId('version-row');
+  }
+
   get uptimeInfo(): Locator {
     return this.page.locator('[data-testid="uptime"], .uptime, :text-matches("uptime", "i")').first();
   }
@@ -99,6 +115,11 @@ export class SystemPage extends BasePage {
       await this.refreshButton.click();
       await sleep(1000);
     }
+  }
+
+  async openVersionsTab(): Promise<void> {
+    await this.versionsTab.click();
+    await sleep(300);
   }
 
   /**

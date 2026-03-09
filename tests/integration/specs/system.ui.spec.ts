@@ -47,6 +47,21 @@ test.describe('System Page @ui @system', () => {
       await page.screenshot({ path: 'test-results/system-version.png' });
     });
 
+    test('should display versions summary in a dedicated tab', async ({ page }) => {
+      const systemPage = new SystemPage(page);
+      await systemPage.goto();
+
+      await expect(systemPage.systemTab).toBeVisible();
+      await expect(systemPage.versionsTab).toBeVisible();
+
+      await systemPage.openVersionsTab();
+
+      await expect(systemPage.versionsTable).toBeVisible();
+      await expect(systemPage.versionsTable).toContainText('LightNVR');
+      await expect(systemPage.versionsTable).toContainText('Base OS');
+      await expect(systemPage.versionRows.first()).toBeVisible();
+    });
+
     test('should display uptime information', async ({ page }) => {
       const systemPage = new SystemPage(page);
       await systemPage.goto();
