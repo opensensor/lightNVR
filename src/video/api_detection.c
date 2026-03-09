@@ -454,7 +454,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
     curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
 
-    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, 10L);
+    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, API_DETECTION_TIMEOUT_SECONDS);
     setup_common_curl_options(local_curl);
 
     log_info("API Detection: Sending request to %s", url_with_params);
