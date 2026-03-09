@@ -45,9 +45,9 @@ export function VersionsTable({ versions }) {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {items.map((item, index) => (
                 <tr
-                  key={`${item.category}-${item.name}`}
+                  key={`${item.category}-${item.name}-${index}`}
                   className="border-b border-border/60 align-top last:border-b-0"
                   data-testid="version-row"
                 >
