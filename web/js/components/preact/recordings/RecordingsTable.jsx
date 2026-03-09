@@ -9,6 +9,7 @@ import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.jsx';
 /** Columns that can be hidden by the user */
 const HIDEABLE_COLUMNS = [
   { key: 'stream', label: 'Stream' },
+  { key: 'capture_method', label: 'Capture Method' },
   { key: 'duration', label: 'Duration' },
   { key: 'size', label: 'Size' },
   { key: 'detections', label: 'Detections' },
@@ -292,9 +293,11 @@ export function RecordingsTable({
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
                       <span>{recording.stream || ''}</span>
-                      <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
-                        {formatUtils.formatCaptureMethod(recording.capture_method)}
-                      </span>
+                      {show('capture_method') && (
+                        <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
+                          {formatUtils.formatCaptureMethod(recording.capture_method)}
+                        </span>
+                      )}
                     </div>
                   </td>
                 )}
