@@ -352,9 +352,18 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
     // Construct the URL with query parameters
     char url_with_params[1024];
-    snprintf(url_with_params, sizeof(url_with_params),
-             "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
-             actual_api_url, backend, actual_threshold);
+    int url_len = snprintf(url_with_params, sizeof(url_with_params),
+                           "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
+                           actual_api_url, backend, actual_threshold);
+    if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
+        log_error("API Detection: Failed to construct URL (length=%d, buffer=%zu).", url_len, sizeof(url_with_params));
+        curl_mime_free(mime);
+        if (headers) {
+            curl_slist_free_all(headers);
+        }
+        pthread_mutex_unlock(&curl_mutex);
+        return false;
+    }
     log_info("API Detection: Using URL with parameters: %s (backend: %s, threshold: %.2f)",
              url_with_params, backend, actual_threshold);
 
@@ -371,6 +380,8 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (chunk.memory == NULL) {
         log_error("API Detection: Failed to allocate memory for curl response buffer");
         // Note: cleanup of curl/mime/headers should match other error paths in this function
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
@@ -451,6 +462,8 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         curl_mime_free(mime);
         curl_slist_free_all(headers);
 
+        // Initialize result to empty to prevent inconsistent state
+        result->count = 0;
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
@@ -796,9 +809,16 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     // Construct URL with parameters
     char url_with_params[1024];
-    snprintf(url_with_params, sizeof(url_with_params),
+    int url_len = snprintf(url_with_params, sizeof(url_with_params),
              "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
              actual_api_url, backend, actual_threshold);
+    if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
+        log_error("API Detection (snapshot): URL too long when constructing request");
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(local_curl);
+        return -1;
+    }
 
     log_info("API Detection (snapshot): Sending request to %s", url_with_params);
 
