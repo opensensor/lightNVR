@@ -98,7 +98,6 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-user-modal-title"
-          aria-label="Add New User"
           className="bg-card text-card-foreground my-8 max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-lg p-6"
           onClick={stopPropagation}
           onKeyDown={handleDialogKeyDown}
