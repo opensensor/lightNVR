@@ -488,7 +488,8 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
 
     /* Validate the pending MFA session token */
     int64_t user_id;
-    int rc = db_auth_validate_session(token_json->valuestring, &user_id);
+    int rc = db_auth_validate_session_with_context(token_json->valuestring, &user_id,
+                                                   req->client_ip, req->user_agent);
     if (rc != 0) {
         cJSON_Delete(body);
         http_response_set_json_error(res, 401, "Invalid or expired MFA token. Please login again.");

@@ -93,6 +93,15 @@ static bool should_refresh_session_tracking(time_t now, time_t last_activity_at,
     return false;
 }
 
+static bool tracking_value_differs(const char *stored_value, const char *current_value) {
+    if (!current_value) {
+        return false;
+    }
+
+    const char *normalized_stored = stored_value ? stored_value : "";
+    return strcmp(normalized_stored, current_value) != 0;
+}
+
 /**
  * Generate a random string
  *
@@ -1411,7 +1420,8 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
 /**
  * Validate a session token
  */
-int db_auth_validate_session(const char *token, int64_t *user_id) {
+int db_auth_validate_session_with_context(const char *token, int64_t *user_id,
+                                          const char *ip_address, const char *user_agent) {
     if (!token) {
         log_error("Token is required");
         return -1;
@@ -1425,6 +1435,8 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
 
     bool has_idle_expires_column = cached_column_exists("sessions", "idle_expires_at");
     bool has_last_activity_column = cached_column_exists("sessions", "last_activity_at");
+    bool has_ip_column = cached_column_exists("sessions", "ip_address");
+    bool has_ua_column = cached_column_exists("sessions", "user_agent");
     bool has_tracking_columns = has_idle_expires_column && has_last_activity_column;
 
     // Query the session
@@ -1487,31 +1499,115 @@ int db_auth_validate_session(const char *token, int64_t *user_id) {
 
     sqlite3_finalize(stmt);
 
-    if (has_tracking_columns && should_refresh_session_tracking(now, last_activity_at, idle_expires_at)) {
+    bool update_ip = false;
+    bool update_ua = false;
+    if ((has_ip_column && ip_address) || (has_ua_column && user_agent)) {
+        const char *tracking_sql = has_ip_column && has_ua_column
+            ? "SELECT COALESCE(ip_address, ''), COALESCE(user_agent, '') FROM sessions WHERE id = ?;"
+            : has_ip_column
+            ? "SELECT COALESCE(ip_address, '') FROM sessions WHERE id = ?;"
+            : has_ua_column
+            ? "SELECT COALESCE(user_agent, '') FROM sessions WHERE id = ?;"
+            : NULL;
+        if (tracking_sql) {
+            rc = sqlite3_prepare_v2(db, tracking_sql, -1, &stmt, NULL);
+            if (rc == SQLITE_OK) {
+                sqlite3_bind_int64(stmt, 1, session_id);
+                if (sqlite3_step(stmt) == SQLITE_ROW) {
+                    int column_index = 0;
+                    const char *stored_ip = has_ip_column
+                        ? (const char *)sqlite3_column_text(stmt, column_index++)
+                        : "";
+                    const char *stored_ua = has_ua_column
+                        ? (const char *)sqlite3_column_text(stmt, column_index)
+                        : "";
+                    update_ip = has_ip_column && tracking_value_differs(stored_ip, ip_address);
+                    update_ua = has_ua_column && tracking_value_differs(stored_ua, user_agent);
+                }
+                sqlite3_finalize(stmt);
+            } else {
+                log_warn("Failed to prepare session client-context lookup for session %lld: %s",
+                         (long long)session_id, sqlite3_errmsg(db));
+            }
+        }
+    }
+
+    bool refresh_tracking = has_tracking_columns && should_refresh_session_tracking(now, last_activity_at, idle_expires_at);
+    if (refresh_tracking || update_ip || update_ua) {
         time_t new_idle_expires_at = now + default_session_idle_expiry_seconds();
         if (new_idle_expires_at > expires_at) {
             new_idle_expires_at = expires_at;
         }
 
-        rc = sqlite3_prepare_v2(db,
-                               "UPDATE sessions SET last_activity_at = ?, idle_expires_at = ? WHERE id = ?;",
-                               -1, &stmt, NULL);
+        char update_sql[256] = "UPDATE sessions SET ";
+        size_t sql_len = strlen(update_sql);
+        bool need_comma = false;
+        if (refresh_tracking) {
+            int written = snprintf(update_sql + sql_len, sizeof(update_sql) - sql_len,
+                                   "%slast_activity_at = ?, idle_expires_at = ?",
+                                   need_comma ? ", " : "");
+            if (written < 0 || (size_t)written >= sizeof(update_sql) - sql_len) {
+                log_warn("Failed to build session refresh SQL for session %lld", (long long)session_id);
+                return 0;
+            }
+            sql_len += (size_t)written;
+            need_comma = true;
+        }
+        if (update_ip) {
+            int written = snprintf(update_sql + sql_len, sizeof(update_sql) - sql_len,
+                                   "%sip_address = ?", need_comma ? ", " : "");
+            if (written < 0 || (size_t)written >= sizeof(update_sql) - sql_len) {
+                log_warn("Failed to build session IP refresh SQL for session %lld", (long long)session_id);
+                return 0;
+            }
+            sql_len += (size_t)written;
+            need_comma = true;
+        }
+        if (update_ua) {
+            int written = snprintf(update_sql + sql_len, sizeof(update_sql) - sql_len,
+                                   "%suser_agent = ?", need_comma ? ", " : "");
+            if (written < 0 || (size_t)written >= sizeof(update_sql) - sql_len) {
+                log_warn("Failed to build session user-agent refresh SQL for session %lld", (long long)session_id);
+                return 0;
+            }
+            sql_len += (size_t)written;
+        }
+        int written = snprintf(update_sql + sql_len, sizeof(update_sql) - sql_len, " WHERE id = ?;");
+        if (written < 0 || (size_t)written >= sizeof(update_sql) - sql_len) {
+            log_warn("Failed to finalize session refresh SQL for session %lld", (long long)session_id);
+            return 0;
+        }
+
+        rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
         if (rc == SQLITE_OK) {
-            sqlite3_bind_int64(stmt, 1, now);
-            sqlite3_bind_int64(stmt, 2, new_idle_expires_at);
-            sqlite3_bind_int64(stmt, 3, session_id);
+            int param = 1;
+            if (refresh_tracking) {
+                sqlite3_bind_int64(stmt, param++, now);
+                sqlite3_bind_int64(stmt, param++, new_idle_expires_at);
+            }
+            if (update_ip) {
+                sqlite3_bind_text(stmt, param++, ip_address ? ip_address : "", -1, SQLITE_STATIC);
+            }
+            if (update_ua) {
+                sqlite3_bind_text(stmt, param++, user_agent ? user_agent : "", -1, SQLITE_STATIC);
+            }
+            sqlite3_bind_int64(stmt, param, session_id);
             if (sqlite3_step(stmt) != SQLITE_DONE) {
-                log_warn("Failed to refresh idle timeout for session %lld: %s",
+                log_warn("Failed to refresh tracking for session %lld: %s",
                          (long long)session_id, sqlite3_errmsg(db));
             }
             sqlite3_finalize(stmt);
         } else {
-            log_warn("Failed to prepare idle-timeout refresh for session %lld: %s",
+            log_warn("Failed to prepare tracking refresh for session %lld: %s",
                      (long long)session_id, sqlite3_errmsg(db));
         }
     }
 
     return 0;
+}
+
+int db_auth_validate_session(const char *token, int64_t *user_id) {
+    return db_auth_validate_session_with_context(token, user_id, NULL, NULL);
 }
 
 /**

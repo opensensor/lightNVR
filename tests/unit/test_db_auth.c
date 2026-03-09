@@ -144,6 +144,43 @@ void test_validate_session_throttles_tracking_updates(void) {
     sqlite3_finalize(stmt);
 }
 
+void test_validate_session_updates_client_context_when_changed(void) {
+    int64_t uid = 0;
+    db_auth_create_user("contextuser", "pass", NULL, USER_ROLE_USER, true, &uid);
+
+    char token[128];
+    int rc = db_auth_create_session(uid, "127.0.0.1", "TestAgent/1.0", 3600,
+                                    token, sizeof(token));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    rc = sqlite3_prepare_v2(db,
+                            "SELECT last_activity_at, idle_expires_at, ip_address, user_agent FROM sessions WHERE token = ?;",
+                            -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    int64_t last_activity_before = sqlite3_column_int64(stmt, 0);
+    int64_t idle_expires_before = sqlite3_column_int64(stmt, 1);
+    sqlite3_finalize(stmt);
+
+    rc = db_auth_validate_session_with_context(token, NULL, "10.0.0.42", "TestAgent/2.0");
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = sqlite3_prepare_v2(db,
+                            "SELECT last_activity_at, idle_expires_at, ip_address, user_agent FROM sessions WHERE token = ?;",
+                            -1, &stmt, NULL);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, rc);
+    sqlite3_bind_text(stmt, 1, token, -1, SQLITE_STATIC);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_INT64(last_activity_before, sqlite3_column_int64(stmt, 0));
+    TEST_ASSERT_EQUAL_INT64(idle_expires_before, sqlite3_column_int64(stmt, 1));
+    TEST_ASSERT_EQUAL_STRING("10.0.0.42", (const char *)sqlite3_column_text(stmt, 2));
+    TEST_ASSERT_EQUAL_STRING("TestAgent/2.0", (const char *)sqlite3_column_text(stmt, 3));
+    sqlite3_finalize(stmt);
+}
+
 /* delete_session invalidates */
 void test_delete_session(void) {
     int64_t uid = 0;
@@ -307,6 +344,7 @@ int main(void) {
     RUN_TEST(test_change_password);
     RUN_TEST(test_create_and_validate_session);
     RUN_TEST(test_validate_session_throttles_tracking_updates);
+    RUN_TEST(test_validate_session_updates_client_context_when_changed);
     RUN_TEST(test_delete_session);
     RUN_TEST(test_list_sessions_and_trusted_devices);
     RUN_TEST(test_role_name_conversions);

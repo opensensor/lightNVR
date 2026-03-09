@@ -213,7 +213,8 @@ int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
     char session_token[64] = {0};
     if (httpd_get_session_token(req, session_token, sizeof(session_token)) == 0) {
         int64_t user_id;
-        int rc = db_auth_validate_session(session_token, &user_id);
+        int rc = db_auth_validate_session_with_context(session_token, &user_id,
+                                                       req->client_ip, req->user_agent);
         if (rc == 0) {
             rc = db_auth_get_user_by_id(user_id, user);
             if (rc == 0) {

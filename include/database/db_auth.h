@@ -204,6 +204,18 @@ int db_auth_create_session(int64_t user_id, const char *ip_address, const char *
  * 
  * @param token Session token
  * @param user_id Pointer to store the user ID (optional, can be NULL)
+ * @param ip_address Current client IP address for session tracking (optional, can be NULL)
+ * @param user_agent Current client user agent for session tracking (optional, can be NULL)
+ * @return 0 on success, non-zero on failure
+ */
+int db_auth_validate_session_with_context(const char *token, int64_t *user_id,
+                                          const char *ip_address, const char *user_agent);
+
+/**
+ * @brief Validate a session token without request context
+ * 
+ * @param token Session token
+ * @param user_id Pointer to store the user ID (optional, can be NULL)
  * @return 0 on success, non-zero on failure
  */
 int db_auth_validate_session(const char *token, int64_t *user_id);
