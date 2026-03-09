@@ -885,8 +885,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     // Construct URL with parameters
     char url_with_params[1024];
     int url_len = snprintf(url_with_params, sizeof(url_with_params),
-             "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
-             actual_api_url, sanitized_backend, actual_threshold);
+                            "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
+                            actual_api_url, sanitized_backend, actual_threshold);
     if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
         log_error("API Detection (snapshot): URL too long when constructing request");
         curl_mime_free(mime);
