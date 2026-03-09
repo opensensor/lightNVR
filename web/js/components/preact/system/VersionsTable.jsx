@@ -1,8 +1,8 @@
 const CATEGORY_STYLES = {
-  Application: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-  OS: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
-  Service: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  Library: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  'Application': 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  'OS': 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  'Service': 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  'Library': 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
 };
 
 function CategoryBadge({ category }) {
