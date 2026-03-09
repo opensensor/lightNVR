@@ -106,23 +106,23 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
         >
           <h2 id="add-user-modal-title" className="text-xl font-bold mb-4">Add New User</h2>
 
-            <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label className="block text-sm font-bold mb-2" htmlFor="username">
-                  Username
-                </label>
-                <input
-                  className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                  id="username"
-                  type="text"
-                  name="username"
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  required
-                  aria-required="true"
-                  ref={firstFieldRef}
-                />
-              </div>
+          <form onSubmit={handleSubmit}>
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="username">
+                Username
+              </label>
+              <input
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="username"
+                type="text"
+                name="username"
+                value={formData.username}
+                onChange={handleInputChange}
+                required
+                aria-required="true"
+                ref={firstFieldRef}
+              />
+            </div>
 
           <div className="mb-4">
             <label className="block text-sm font-bold mb-2" htmlFor="password">
