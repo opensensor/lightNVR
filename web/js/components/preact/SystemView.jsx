@@ -267,9 +267,11 @@ export function SystemView() {
           <div className="flex gap-2">
             <button
               type="button"
+              id="system-tab"
               role="tab"
               data-testid="system-tab"
               aria-selected={activeTab === 'system'}
+              aria-controls="system-panel"
               className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === 'system'
                   ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
@@ -281,9 +283,11 @@ export function SystemView() {
             </button>
             <button
               type="button"
+              id="versions-tab"
               role="tab"
               data-testid="versions-tab"
               aria-selected={activeTab === 'versions'}
+              aria-controls="versions-panel"
               className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === 'versions'
                   ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
@@ -297,7 +301,7 @@ export function SystemView() {
         </div>
 
         {activeTab === 'system' ? (
-          <>
+          <div role="tabpanel" id="system-panel" aria-labelledby="system-tab">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <SystemInfo systemInfo={systemInfo} formatUptime={formatUptime} />
               <MemoryStorage systemInfo={systemInfo} formatBytes={formatBytes} />
@@ -340,9 +344,11 @@ export function SystemView() {
               pollingInterval={pollingInterval}
               onLogsReceived={handleLogsReceived}
             />
-          </>
+          </div>
         ) : (
-          <VersionsTable versions={systemInfo.versions} />
+          <div role="tabpanel" id="versions-panel" aria-labelledby="versions-tab">
+            <VersionsTable versions={systemInfo.versions} />
+          </div>
         )}
       </ContentLoader>
 

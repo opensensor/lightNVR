@@ -53,9 +53,14 @@ test.describe('System Page @ui @system', () => {
 
       await expect(systemPage.systemTab).toBeVisible();
       await expect(systemPage.versionsTab).toBeVisible();
+      await expect(systemPage.systemTab).toHaveAttribute('role', 'tab');
+      await expect(systemPage.systemTab).toHaveAttribute('aria-controls', 'system-panel');
+      await expect(systemPage.versionsTab).toHaveAttribute('aria-controls', 'versions-panel');
 
       await systemPage.openVersionsTab();
 
+      await expect(page.locator('#versions-panel')).toHaveAttribute('role', 'tabpanel');
+      await expect(page.locator('#versions-panel')).toHaveAttribute('aria-labelledby', 'versions-tab');
       await expect(systemPage.versionsTable).toBeVisible();
       await expect(systemPage.versionsTable).toContainText('LightNVR');
       await expect(systemPage.versionsTable).toContainText('Base OS');

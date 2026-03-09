@@ -638,6 +638,9 @@ bool go2rtc_api_get_application_info(int *rtsp_port,
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
     // Perform the request
     res = curl_easy_perform(curl);
