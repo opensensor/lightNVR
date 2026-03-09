@@ -55,7 +55,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
     }
 
     if (e.key === 'Tab' && dialogRef.current) {
-      const focusableElements = Array.prototype.slice.call(
+      const focusableElements = Array.from(
         dialogRef.current.querySelectorAll(FOCUSABLE_SELECTOR_QUERY)
       ).filter(
         (el) => el.getAttribute('aria-hidden') !== 'true'
