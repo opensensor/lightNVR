@@ -113,10 +113,6 @@ macro(add_layer2_test_with_curl TEST_NAME)
 endmacro()
 
 # Convenience wrappers for Layer 2 tests with common external deps.
-macro(add_layer2_test_with_curl TEST_NAME)
-    add_layer2_test(${TEST_NAME})
-    target_link_libraries(${TEST_NAME} ${CURL_LIBRARIES})
-endmacro()
 
 macro(add_layer2_test_with_ffmpeg TEST_NAME)
     add_layer2_test(${TEST_NAME})
