@@ -16,6 +16,10 @@ const FOCUSABLE_SELECTORS = [
 ];
 
 const FOCUSABLE_SELECTOR_QUERY = FOCUSABLE_SELECTORS.join(',');
+const ALLOWED_LOGIN_CIDRS_PLACEHOLDER = `e.g.
+192.168.1.0/24
+2001:db8::/32
+(leave blank for unrestricted)`;
 
 /**
  * Add User Modal Component
@@ -240,7 +244,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               name="allowed_login_cidrs"
               value={formData.allowed_login_cidrs || ''}
               onChange={handleInputChange}
-              placeholder={"e.g.\n192.168.1.0/24\n2001:db8::/32\n(leave blank for unrestricted)"}
+              placeholder={ALLOWED_LOGIN_CIDRS_PLACEHOLDER}
               rows={4}
               maxLength={1023}
             />

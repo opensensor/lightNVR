@@ -30,12 +30,15 @@ dayjs.extend(timezone);
 
 // JavaScript Date months are 0-indexed, so month index 2 represents March.
 const MARCH = 2;
+const SPRING_FORWARD_DATE = '2020-03-08';
+const SPRING_FORWARD_NEXT_DATE = '2020-03-09';
+const FALL_BACK_DATE = '2020-11-01';
 const padClockPart = (value) => String(value).padStart(2, '0');
 const baseTestDateTimestamp = (hours, minutes, seconds = 0) =>
   // Use UTC to avoid environment-dependent DST/local time interpretation in tests.
-  Date.UTC(2026, MARCH, 8, hours, minutes, seconds) / 1000;
+  Date.UTC(2020, MARCH, 8, hours, minutes, seconds) / 1000;
 const baseLocalTestDateTimestamp = (hours, minutes, seconds = 0) =>
-  dayjs(`2026-03-08T${padClockPart(hours)}:${padClockPart(minutes)}:${padClockPart(seconds)}`).unix();
+  dayjs(`${SPRING_FORWARD_DATE}T${padClockPart(hours)}:${padClockPart(minutes)}:${padClockPart(seconds)}`).unix();
 
 describe('timelineUtils', () => {
   const originalTz = process.env.TZ;
@@ -135,7 +138,7 @@ describe('timelineUtils', () => {
   });
 
   test('clips a boundary-spanning segment to the selected local day', () => {
-    const selectedDate = '2026-03-08';
+    const selectedDate = SPRING_FORWARD_DATE;
     const { startTimestamp } = getLocalDayBounds(selectedDate);
     const secondsBeforeDayStart = 120; // 2 minutes before day start
     const secondsAfterDayStart = 300; // 5 minutes into the day
@@ -154,7 +157,7 @@ describe('timelineUtils', () => {
   });
 
   test('clips a segment that continues into the next local day', () => {
-    const selectedDate = '2026-03-08';
+    const selectedDate = SPRING_FORWARD_DATE;
     const { startTimestamp, endTimestamp } = getLocalDayBounds(selectedDate);
     const range = getClippedSegmentHourRange(
       {
@@ -171,7 +174,7 @@ describe('timelineUtils', () => {
   });
 
   test('returns null when a segment is fully outside the selected day', () => {
-    const selectedDate = '2026-03-08';
+    const selectedDate = SPRING_FORWARD_DATE;
     const { startTimestamp, endTimestamp } = getLocalDayBounds(selectedDate);
 
     expect(getClippedSegmentHourRange({
@@ -242,7 +245,8 @@ describe('timelineUtils', () => {
     process.env.TZ = 'America/New_York';
 
     try {
-      const selectedDate = '2026-03-08';
+      // 2020-03-08 is a known DST spring-forward date in America/New_York.
+      const selectedDate = SPRING_FORWARD_DATE;
       const bounds = getLocalDayBounds(selectedDate);
 
       expect(bounds.endTimestamp - bounds.startTimestamp).toBe(23 * 3600);
@@ -260,7 +264,7 @@ describe('timelineUtils', () => {
       expect(startLocal.utcOffset()).toBe(expectedStartInTimezone.utcOffset());
 
       // The selected local day should start at midnight on the selected date in America/New_York.
-      expect(startLocal.year()).toBe(2026);
+      expect(startLocal.year()).toBe(dayjs(selectedDate).year());
       expect(startLocal.month()).toBe(MARCH);
       expect(startLocal.date()).toBe(dayjs(selectedDate).date());
       expect(startLocal.hour()).toBe(0);
@@ -278,7 +282,7 @@ describe('timelineUtils', () => {
     process.env.TZ = 'America/New_York';
 
     try {
-      const selectedDate = '2026-03-08';
+      const selectedDate = SPRING_FORWARD_DATE;
       const timestamp = dayjs.tz(`${selectedDate}T03:10:00`, 'America/New_York').unix();
 
       expect(timestampToTimelineOffset(timestamp, selectedDate)).toBeCloseTo(2 + (10 / 60), 6);
@@ -287,9 +291,9 @@ describe('timelineUtils', () => {
 
       // Confirm that dayjs sees this instant as the expected local wall-clock time.
       const local = dayjs.unix(timestamp);
-      expect(local.year()).toBe(2026);
+      expect(local.year()).toBe(dayjs(selectedDate).year());
       expect(local.month()).toBe(MARCH);
-      expect(local.date()).toBe(8);
+      expect(local.date()).toBe(dayjs(selectedDate).date());
       expect(local.hour()).toBe(3);
       expect(local.minute()).toBe(10);
     } finally {
@@ -301,7 +305,7 @@ describe('timelineUtils', () => {
     process.env.TZ = 'America/New_York';
 
     try {
-      const selectedDate = '2026-03-08';
+      const selectedDate = SPRING_FORWARD_DATE;
       const timestamp = localClockTimeToTimestamp('03:10:00', selectedDate);
 
       expect(timestamp).toBe(dayjs.tz(`${selectedDate}T03:10:00`, 'America/New_York').unix());
@@ -309,9 +313,9 @@ describe('timelineUtils', () => {
 
       // Again, assert that dayjs interprets this timestamp as 03:10:00 local time on the selected day.
       const parsedLocal = dayjs.unix(timestamp);
-      expect(parsedLocal.year()).toBe(2026);
+      expect(parsedLocal.year()).toBe(dayjs(selectedDate).year());
       expect(parsedLocal.month()).toBe(MARCH);
-      expect(parsedLocal.date()).toBe(8);
+      expect(parsedLocal.date()).toBe(dayjs(selectedDate).date());
       expect(parsedLocal.hour()).toBe(3);
       expect(parsedLocal.minute()).toBe(10);
     } finally {
@@ -323,11 +327,11 @@ describe('timelineUtils', () => {
     process.env.TZ = 'America/New_York';
 
     try {
-      const bounds = getLocalDayBounds('2026-11-01');
+      const bounds = getLocalDayBounds(FALL_BACK_DATE);
 
       expect(bounds.endTimestamp - bounds.startTimestamp).toBe(25 * 3600);
       expect(bounds.durationHours).toBe(25);
-      expect(getTimelineDayLengthHours('2026-11-01')).toBe(25);
+      expect(getTimelineDayLengthHours(FALL_BACK_DATE)).toBe(25);
     } finally {
       process.env.TZ = originalTz;
     }
@@ -337,10 +341,10 @@ describe('timelineUtils', () => {
     process.env.TZ = 'America/New_York';
 
     try {
-      const selectedDate = '2026-11-01';
-      const firstRepeatedHourTimestamp = dayjs.tz('2026-11-01T01:10:00', 'America/New_York').unix();
+      const selectedDate = FALL_BACK_DATE;
+      const firstRepeatedHourTimestamp = dayjs.tz(`${selectedDate}T01:10:00`, 'America/New_York').unix();
       const secondRepeatedHourTimestamp = dayjs
-        .tz('2026-11-01T01:10:00', 'America/New_York')
+        .tz(`${selectedDate}T01:10:00`, 'America/New_York')
         .add(1, 'hour')
         .unix();
 
@@ -376,12 +380,12 @@ describe('timelineUtils', () => {
   });
 
   test('formats timestamps as local YYYY-MM-DD keys', () => {
-    expect(formatTimestampAsLocalDate(baseTestDateTimestamp(12, 10, 0))).toBe('2026-03-08');
+    expect(formatTimestampAsLocalDate(baseTestDateTimestamp(12, 10, 0))).toBe(SPRING_FORWARD_DATE);
   });
 
   test('returns all local dates touched by selected recordings, including overnight spans', () => {
-    const mar8 = getLocalDayBounds('2026-03-08');
-    const mar9 = getLocalDayBounds('2026-03-09');
+    const mar8 = getLocalDayBounds(SPRING_FORWARD_DATE);
+    const mar9 = getLocalDayBounds(SPRING_FORWARD_NEXT_DATE);
 
     const dates = getAvailableDatesForSegments([
       {
@@ -396,11 +400,11 @@ describe('timelineUtils', () => {
       }
     ]);
 
-    expect(dates).toEqual(['2026-03-08', '2026-03-09']);
+    expect(dates).toEqual([SPRING_FORWARD_DATE, SPRING_FORWARD_NEXT_DATE]);
   });
 
   test('does not add the next day when a recording ends exactly at midnight', () => {
-    const mar8 = getLocalDayBounds('2026-03-08');
+    const mar8 = getLocalDayBounds(SPRING_FORWARD_DATE);
 
     expect(getAvailableDatesForSegments([
       {
@@ -408,11 +412,11 @@ describe('timelineUtils', () => {
         start_timestamp: mar8.endTimestamp - 600,
         end_timestamp: mar8.endTimestamp
       }
-    ])).toEqual(['2026-03-08']);
+    ])).toEqual([SPRING_FORWARD_DATE]);
   });
 
   test('does not add the previous day when a recording starts exactly at midnight', () => {
-    const mar8 = getLocalDayBounds('2026-03-08');
+    const mar8 = getLocalDayBounds(SPRING_FORWARD_DATE);
 
     expect(getAvailableDatesForSegments([
       {
@@ -420,12 +424,12 @@ describe('timelineUtils', () => {
         start_timestamp: mar8.startTimestamp,
         end_timestamp: mar8.startTimestamp + 600
       }
-    ])).toEqual(['2026-03-08']);
+    ])).toEqual([SPRING_FORWARD_DATE]);
   });
 
   test('counts and locates segments visible on a selected day', () => {
-    const mar8 = getLocalDayBounds('2026-03-08');
-    const mar9 = getLocalDayBounds('2026-03-09');
+    const mar8 = getLocalDayBounds(SPRING_FORWARD_DATE);
+    const mar9 = getLocalDayBounds(SPRING_FORWARD_NEXT_DATE);
     const segments = [
       {
         id: 1,
@@ -444,16 +448,16 @@ describe('timelineUtils', () => {
       }
     ];
 
-    expect(segmentIntersectsDay(segments[1], '2026-03-08')).toBe(true);
-    expect(segmentIntersectsDay(segments[1], '2026-03-09')).toBe(true);
-    expect(countSegmentsForDate(segments, '2026-03-08')).toBe(2);
-    expect(countSegmentsForDate(segments, '2026-03-09')).toBe(2);
-    expect(findFirstVisibleSegmentIndex(segments, '2026-03-09')).toBe(1);
+    expect(segmentIntersectsDay(segments[1], SPRING_FORWARD_DATE)).toBe(true);
+    expect(segmentIntersectsDay(segments[1], SPRING_FORWARD_NEXT_DATE)).toBe(true);
+    expect(countSegmentsForDate(segments, SPRING_FORWARD_DATE)).toBe(2);
+    expect(countSegmentsForDate(segments, SPRING_FORWARD_NEXT_DATE)).toBe(2);
+    expect(findFirstVisibleSegmentIndex(segments, SPRING_FORWARD_NEXT_DATE)).toBe(1);
   });
 
   test('returns 0 and -1 when segments are only on adjacent days', () => {
-    const mar8 = getLocalDayBounds('2026-03-08');
-    const mar10 = getLocalDayBounds('2026-03-10');
+    const mar8 = getLocalDayBounds(SPRING_FORWARD_DATE);
+    const mar10 = getLocalDayBounds('2020-03-10');
 
     const segments = [
       {
@@ -470,8 +474,8 @@ describe('timelineUtils', () => {
       }
     ];
 
-    expect(countSegmentsForDate(segments, '2026-03-09')).toBe(0);
-    expect(findFirstVisibleSegmentIndex(segments, '2026-03-09')).toBe(-1);
+    expect(countSegmentsForDate(segments, SPRING_FORWARD_NEXT_DATE)).toBe(0);
+    expect(findFirstVisibleSegmentIndex(segments, SPRING_FORWARD_NEXT_DATE)).toBe(-1);
   });
 
   test('normalizes timeline ranges into the 0-24 hour window', () => {
