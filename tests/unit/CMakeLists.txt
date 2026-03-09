@@ -85,7 +85,6 @@ macro(add_layer2_test TEST_NAME)
         unity_lib
         lightnvr_lib
         ${SQLITE_LIBRARIES}
-        ${CURL_LIBRARIES}
         ${SSL_LIBRARIES}
         ${HTTP_BACKEND_LIBS}
         inih_lib
@@ -105,6 +104,12 @@ macro(add_layer2_test TEST_NAME)
     endif()
     set_target_properties(${TEST_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endmacro()
+
+# Variant for Layer 2 tests that require CURL
+macro(add_layer2_test_with_curl TEST_NAME)
+    add_layer2_test(${TEST_NAME})
+    target_link_libraries(${TEST_NAME} ${CURL_LIBRARIES})
 endmacro()
 
 # Convenience wrappers for Layer 2 tests with common external deps.
