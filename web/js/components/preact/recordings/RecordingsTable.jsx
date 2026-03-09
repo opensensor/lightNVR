@@ -138,7 +138,7 @@ export function RecordingsTable({
 
   // Count visible columns for colSpan on empty row
   const visibleCount = (canDelete ? 1 : 0) + 1 /* start_time always */ +
-    (show('stream') ? 1 : 0) + (show('capture_method') ? 1 : 0) +
+    (show('stream') ? 1 : 0) +
     (show('duration') ? 1 : 0) + (show('size') ? 1 : 0) +
     (show('detections') ? 1 : 0) + (show('tags') ? 1 : 0) + (show('actions') ? 1 : 0);
 
@@ -294,12 +294,14 @@ export function RecordingsTable({
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
                       <span>{recording.stream || ''}</span>
-                      {show('capture_method') && (
-                        <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
-                          {formatUtils.formatCaptureMethod(recording.capture_method)}
-                        </span>
-                      )}
                     </div>
+                  </td>
+                )}
+                {show('capture_method') && (
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
+                      {formatUtils.formatCaptureMethod(recording.capture_method)}
+                    </span>
                   </td>
                 )}
                 <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}</td>
