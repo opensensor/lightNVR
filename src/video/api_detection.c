@@ -38,6 +38,30 @@ typedef struct {
     size_t size;
 } memory_struct_t;
 
+// Sanitize backend parameter to avoid breaking URL/query structure.
+// Allows only [A-Za-z0-9_-]; falls back to "onnx" if invalid.
+static const char *sanitize_backend(const char *backend) {
+    static const char *default_backend = "onnx";
+
+    if (backend == NULL || backend[0] == '\0') {
+        return default_backend;
+    }
+
+    for (const char *p = backend; *p != '\0'; ++p) {
+        char c = *p;
+        if (!((c >= 'A' && c <= 'Z') ||
+              (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') ||
+              c == '_' || c == '-')) {
+            log_warn("API Detection: Invalid character '%c' in backend '%s', using default '%s' instead.",
+                     c, backend, default_backend);
+            return default_backend;
+        }
+    }
+
+    return backend;
+}
+
 // Callback function for curl to write data
 static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
@@ -367,6 +391,9 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         backend = "onnx";
     }
 
+    // Sanitize backend to avoid URL injection via query parameter.
+    const char *safe_backend = sanitize_backend(backend);
+
     // Use passed threshold, or default to 0.5 if negative/zero
     float actual_threshold = (threshold > 0.0f) ? threshold : 0.5f;
 
@@ -374,7 +401,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     char url_with_params[1024];
     int url_len = snprintf(url_with_params, sizeof(url_with_params),
                            "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
-                           actual_api_url, backend, actual_threshold);
+                           actual_api_url, safe_backend, actual_threshold);
     if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
         log_error("API Detection: Failed to construct URL (length=%d, buffer=%zu).", url_len, sizeof(url_with_params));
         curl_mime_free(mime);
@@ -385,7 +412,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
     log_info("API Detection: Using URL with parameters: %s (backend: %s, threshold: %.2f)",
-             url_with_params, backend, actual_threshold);
+             url_with_params, safe_backend, actual_threshold);
 
     // Set up the request with the URL including query parameters
     curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
@@ -785,6 +812,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     CURLcode mime_result;
     mime_result = curl_mime_name(part, "file");
     if (mime_result != CURLE_OK) {
+        log_error("API Detection (snapshot): curl_mime_name failed: %s",
+                  curl_easy_strerror(mime_result));
         curl_mime_free(mime);
         free(jpeg_data);
         curl_easy_cleanup(local_curl);
@@ -793,6 +822,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     mime_result = curl_mime_data(part, (const char *)jpeg_data, jpeg_size);
     if (mime_result != CURLE_OK) {
+        log_error("API Detection (snapshot): curl_mime_data failed: %s",
+                  curl_easy_strerror(mime_result));
         curl_mime_free(mime);
         free(jpeg_data);
         curl_easy_cleanup(local_curl);
@@ -801,6 +832,8 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     mime_result = curl_mime_filename(part, "snapshot.jpg");
     if (mime_result != CURLE_OK) {
+        log_error("API Detection (snapshot): curl_mime_filename failed: %s",
+                  curl_easy_strerror(mime_result));
         curl_mime_free(mime);
         free(jpeg_data);
         curl_easy_cleanup(local_curl);
@@ -835,7 +868,9 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
         log_error("API Detection (snapshot): URL too long when constructing request");
         curl_mime_free(mime);
-        curl_slist_free_all(headers);
+        if (headers != NULL) {
+            curl_slist_free_all(headers);
+        }
         curl_easy_cleanup(local_curl);
         return -1;
     }
