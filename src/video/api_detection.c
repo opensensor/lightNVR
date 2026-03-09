@@ -796,9 +796,16 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
 
     // Construct URL with parameters
     char url_with_params[1024];
-    snprintf(url_with_params, sizeof(url_with_params),
+    int url_len = snprintf(url_with_params, sizeof(url_with_params),
              "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
              actual_api_url, backend, actual_threshold);
+    if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
+        log_error("API Detection (snapshot): URL too long when constructing request");
+        curl_mime_free(mime);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(local_curl);
+        return -1;
+    }
 
     log_info("API Detection (snapshot): Sending request to %s", url_with_params);
 
