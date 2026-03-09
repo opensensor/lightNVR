@@ -374,6 +374,18 @@ void test_ip_allowed_for_user_matches_cidrs(void) {
     TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, NULL));
 }
 
+void test_ip_allowed_for_user_accepts_comma_separated_cidrs(void) {
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    user.has_login_cidr_restriction = true;
+    strncpy(user.allowed_login_cidrs, "127.0.0.1/32, ::1/128",
+            sizeof(user.allowed_login_cidrs) - 1);
+
+    TEST_ASSERT_TRUE(db_auth_ip_allowed_for_user(&user, "127.0.0.1"));
+    TEST_ASSERT_TRUE(db_auth_ip_allowed_for_user(&user, "::1"));
+    TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, "192.0.2.10"));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -398,6 +410,7 @@ int main(void) {
     RUN_TEST(test_totp_set_get_enable);
     RUN_TEST(test_allowed_login_cidrs_validation_and_storage);
     RUN_TEST(test_ip_allowed_for_user_matches_cidrs);
+    RUN_TEST(test_ip_allowed_for_user_accepts_comma_separated_cidrs);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

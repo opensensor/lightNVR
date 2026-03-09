@@ -2373,9 +2373,9 @@ bool db_auth_ip_allowed_for_user(const user_t *user, const char *client_ip) {
     cidr_list[cidr_len] = '\0';
 
     char *saveptr = NULL;
-    for (char *token = strtok_r(cidr_list, "\n", &saveptr);
+    for (char *token = strtok_r(cidr_list, ",\n", &saveptr);
          token != NULL;
-         token = strtok_r(NULL, "\n", &saveptr)) {
+         token = strtok_r(NULL, ",\n", &saveptr)) {
         char *trimmed = trim_ascii_whitespace(token);
         if (!trimmed || trimmed[0] == '\0') {
             continue;

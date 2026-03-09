@@ -241,6 +241,21 @@ void test_get_effective_client_ip_uses_forwarded_for_from_trusted_proxy(void) {
     TEST_ASSERT_EQUAL_STRING("198.51.100.44", client_ip);
 }
 
+void test_get_effective_client_ip_uses_forwarded_for_from_comma_separated_trusted_proxies(void) {
+    strncpy(g_config.trusted_proxy_cidrs, "10.0.0.0/8, 127.0.0.1/32",
+            sizeof(g_config.trusted_proxy_cidrs) - 1);
+
+    http_request_t req;
+    http_request_init(&req);
+    strncpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip) - 1);
+    add_header(&req, "X-Forwarded-For", "198.51.100.44, 127.0.0.1");
+
+    char client_ip[64] = {0};
+    int rc = httpd_get_effective_client_ip(&req, client_ip, sizeof(client_ip));
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_EQUAL_STRING("198.51.100.44", client_ip);
+}
+
 void test_get_effective_client_ip_ignores_forwarded_for_from_untrusted_proxy(void) {
     strncpy(g_config.trusted_proxy_cidrs, "127.0.0.1/32", sizeof(g_config.trusted_proxy_cidrs) - 1);
 
@@ -556,6 +571,7 @@ int main(void) {
     RUN_TEST(test_get_api_key_returns_error_when_missing);
     RUN_TEST(test_get_effective_client_ip_uses_peer_by_default);
     RUN_TEST(test_get_effective_client_ip_uses_forwarded_for_from_trusted_proxy);
+    RUN_TEST(test_get_effective_client_ip_uses_forwarded_for_from_comma_separated_trusted_proxies);
     RUN_TEST(test_get_effective_client_ip_ignores_forwarded_for_from_untrusted_proxy);
     RUN_TEST(test_get_session_token_valid_cookie);
     RUN_TEST(test_get_session_token_cookie_with_other_fields);
