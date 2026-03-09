@@ -26,8 +26,21 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
     e.stopPropagation();
   };
 
+  // Handle Escape key to close the modal for keyboard users
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      e.stopPropagation();
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
+      onClick={onClose}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+    >
       <div className="flex min-h-full items-center justify-center">
         <div
           role="dialog"
