@@ -26,7 +26,6 @@
 
 // Global variables
 static bool initialized = false;
-static CURL *curl_handle = NULL;
 static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Default JPEG quality used for API detection snapshots (range typically 0–100).
@@ -55,6 +54,20 @@ static void setup_common_curl_options(CURL *handle) {
     curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
 }
 
+static bool is_api_detection_system_initialized(void) {
+    bool is_ready = false;
+
+    pthread_mutex_lock(&curl_mutex);
+    is_ready = initialized;
+    pthread_mutex_unlock(&curl_mutex);
+
+    return is_ready;
+}
+
+static float normalize_api_detection_threshold(float threshold) {
+    return (threshold > 0.0f) ? threshold : 0.5f;
+}
+
 // Sanitize backend parameter to avoid breaking URL/query structure.
 // Allows only [A-Za-z0-9_-]; falls back to "onnx" if invalid.
 static const char *sanitize_backend(const char *backend) {
@@ -77,6 +90,63 @@ static const char *sanitize_backend(const char *backend) {
     }
 
     return backend;
+}
+
+static bool validate_api_detection_base_url(const char *base_url, const char *context) {
+    if (base_url == NULL) {
+        log_error("%s: API URL is NULL.", context);
+        return false;
+    }
+
+    if (strncmp(base_url, "http://", 7) != 0 && strncmp(base_url, "https://", 8) != 0) {
+        log_error("%s: Invalid URL format: %s (must start with http:// or https://)", context, base_url);
+        return false;
+    }
+
+    const char *first_qmark = strchr(base_url, '?');
+    const char *second_qmark = NULL;
+    if (first_qmark != NULL) {
+        second_qmark = strchr(first_qmark + 1, '?');
+    }
+
+    if (strchr(base_url, '#') != NULL || second_qmark != NULL) {
+        log_error("%s: Invalid API URL '%s' (contains fragment or multiple '?').", context, base_url);
+        return false;
+    }
+
+    return true;
+}
+
+// Helper to build the API detection URL with common query parameters.
+// Returns 0 on success, -1 on error (e.g., buffer too small or invalid args).
+static int build_api_detection_url(char *buffer,
+                                   size_t buffer_size,
+                                   const char *base_url,
+                                   const char *backend,
+                                   float threshold,
+                                   bool return_image_flag) {
+    if (buffer == NULL || buffer_size == 0 || base_url == NULL) {
+        return -1;
+    }
+
+    const char *backend_param = sanitize_backend(backend);
+    float actual_threshold = normalize_api_detection_threshold(threshold);
+    const char *return_image_value = return_image_flag ? "true" : "false";
+    char separator = (strchr(base_url, '?') != NULL) ? '&' : '?';
+
+    int url_len = snprintf(buffer,
+                           buffer_size,
+                           "%s%cbackend=%s&confidence_threshold=%.2f&return_image=%s",
+                           base_url,
+                           separator,
+                           backend_param,
+                           actual_threshold,
+                           return_image_value);
+    if (url_len < 0 || (size_t)url_len >= buffer_size) {
+        return -1;
+    }
+
+    return 0;
 }
 
 // Callback function for curl to write data
@@ -144,32 +214,24 @@ static void log_tls_error_details(const char *context, CURL *curl, CURLcode res,
  * Initialize the API detection system
  */
 int init_api_detection_system(void) {
-    if (initialized && curl_handle) {
-        log_info("API detection system already initialized");
-        return 0;  // Already initialized and curl handle is valid
-    }
+    pthread_mutex_lock(&curl_mutex);
 
-    // If we have a curl handle but initialized is false, clean it up first
-    if (curl_handle) {
-        log_warn("API detection system has a curl handle but is marked as uninitialized, cleaning up");
-        curl_easy_cleanup(curl_handle);
-        curl_handle = NULL;
+    if (initialized) {
+        pthread_mutex_unlock(&curl_mutex);
+        log_info("API detection system already initialized");
+        return 0;
     }
 
     // Initialize curl global (thread-safe, idempotent)
     if (curl_init_global() != 0) {
+        pthread_mutex_unlock(&curl_mutex);
         log_error("Failed to initialize curl global");
         return -1;
     }
 
-    curl_handle = curl_easy_init();
-    if (!curl_handle) {
-        log_error("Failed to initialize curl handle");
-        // Note: Don't call curl_global_cleanup() here - it's managed centrally
-        return -1;
-    }
-
     initialized = true;
+    pthread_mutex_unlock(&curl_mutex);
+
     log_info("API detection system initialized successfully");
     return 0;
 }
@@ -178,16 +240,16 @@ int init_api_detection_system(void) {
  * Shutdown the API detection system
  */
 void shutdown_api_detection_system(void) {
-    // CRITICAL FIX: Always attempt to clean up resources, even if not marked as initialized
-    log_info("Shutting down API detection system (initialized: %s, curl_handle: %p)",
-             initialized ? "yes" : "no", (void*)curl_handle);
+    bool was_initialized = false;
 
-    // Cleanup curl handle if it exists
-    if (curl_handle) {
-        log_info("Cleaning up curl handle");
-        curl_easy_cleanup(curl_handle);
-        curl_handle = NULL;
-    }
+    pthread_mutex_lock(&curl_mutex);
+    was_initialized = initialized;
+    initialized = false;
+    pthread_mutex_unlock(&curl_mutex);
+
+    // Always attempt to clean up resources, even if not marked as initialized.
+    log_info("Shutting down API detection system (initialized: %s)",
+             was_initialized ? "yes" : "no");
 
     /*
      * Cleanup cached JPEG encoders used for API detection snapshots.
@@ -206,7 +268,6 @@ void shutdown_api_detection_system(void) {
     // Note: Don't call curl_global_cleanup() here - it's managed centrally in curl_init.c
     // The global cleanup will happen at program shutdown
 
-    initialized = false;
     log_info("API detection system shutdown complete");
 }
 
@@ -216,29 +277,24 @@ void shutdown_api_detection_system(void) {
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
                       const char *stream_name, float threshold, uint64_t recording_id) {
-    // CRITICAL FIX: Check if we're in shutdown mode or if the stream has been stopped
+    // Check if we're in shutdown mode or if the stream has been stopped.
     if (is_shutdown_initiated()) {
         log_info("API Detection: System shutdown in progress, skipping detection");
         return -1;
     }
 
-    // CRITICAL FIX: Add thread safety for curl operations
-    pthread_mutex_lock(&curl_mutex);
-
-    // Initialize result to empty at the beginning to prevent segmentation fault
+    // Initialize result to empty at the beginning to prevent segmentation faults.
     if (result) {
         memset(result, 0, sizeof(detection_result_t));
     } else {
         log_error("API Detection: NULL result pointer provided");
-        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
-    // CRITICAL FIX: Check if api_url is the special "api-detection" string
-    // If so, get the actual URL from the global config
+    // Check if api_url is the special "api-detection" string.
+    // If so, get the actual URL from the global config.
     const char *actual_api_url = api_url;
     if (api_url && strcmp(api_url, "api-detection") == 0) {
-        // Get the API URL from the global config
         actual_api_url = g_config.api_detection_url;
         log_info("API Detection: Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
     }
@@ -246,34 +302,26 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     log_info("API Detection: Starting detection with API URL: %s", actual_api_url);
     log_info("API Detection: Stream name: %s", stream_name ? stream_name : "NULL");
 
-    if (!initialized || !curl_handle) {
+    if (!is_api_detection_system_initialized()) {
         log_error("API detection system not initialized");
-        pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
 
-    // CRITICAL FIX: Reset the curl handle to prevent heap corruption from stale state
-    // When reusing a curl handle, options from previous requests can persist and
-    // cause memory corruption. curl_easy_reset() clears all previously set options.
-    curl_easy_reset(curl_handle);
-
-    if (!actual_api_url) {
-        log_error("Invalid parameters for detect_objects_api");
-        pthread_mutex_unlock(&curl_mutex);
+    if (!validate_api_detection_base_url(actual_api_url, "API Detection")) {
         return -1;
     }
 
-    // Check if the URL is valid (must start with http:// or https://)
-    if (strncmp(actual_api_url, "http://", 7) != 0 && strncmp(actual_api_url, "https://", 8) != 0) {
-        log_error("API Detection: Invalid URL format: %s (must start with http:// or https://)", actual_api_url);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    // Use go2rtc to get a JPEG snapshot directly if go2rtc is initialized
-    // This eliminates the need for ffmpeg conversion and all the associated logs
+    // Use go2rtc to get a JPEG snapshot directly if go2rtc is initialized.
+    // This eliminates the need for ffmpeg conversion and all the associated logs.
     unsigned char *jpeg_data = NULL;
     size_t jpeg_size = 0;
+    CURL *local_curl = NULL;
+    curl_mime *mime = NULL;
+    curl_mimepart *part = NULL;
+    memory_struct_t chunk = {0};
+    struct curl_slist *headers = NULL;
+    cJSON *root = NULL;
+    int ret = -1;
 
     if (stream_name && go2rtc_integration_is_initialized() && go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size)) {
         log_info("API Detection: Successfully fetched snapshot from go2rtc: %zu bytes", jpeg_size);
@@ -290,260 +338,154 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         // AVCodecContext is kept alive and reused to avoid recreating it on every call.
         //
         // Thread-safety / lifetime notes:
-        // - jpeg_encoder_get_cached() and jpeg_encoder_cache_encode_to_memory() are expected
-        //   to be safe to call from multiple threads, or must be protected by higher-level
-        //   synchronization (e.g. the curl_mutex held in this function).
+        // - jpeg_encoder_get_cached() and jpeg_encoder_cache_encode_to_memory() are
+        //   synchronized internally by the encoder cache implementation.
         // - Encoders remain cached for the lifetime of the process (or until an explicit
         //   cache-clear in the encoder module); there is no per-call teardown here.
         jpeg_encoder_cache_t *encoder = jpeg_encoder_get_cached(width, height, channels, API_DETECTION_JPEG_QUALITY_DEFAULT);
         if (!encoder) {
             log_error("API Detection: Failed to get cached JPEG encoder");
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
+            goto cleanup;
         }
 
         // Encode directly to memory - no temp file needed
         int encode_result = jpeg_encoder_cache_encode_to_memory(encoder, frame_data, &jpeg_data, &jpeg_size);
         if (encode_result != 0) {
             log_error("API Detection: Failed to encode frame to JPEG using cached encoder");
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
+            goto cleanup;
         }
 
         log_info("API Detection: Encoded frame to JPEG using cached encoder: %zu bytes", jpeg_size);
     }
 
-    // Validate JPEG data
+    // Validate JPEG data.
     if (!jpeg_data || jpeg_size == 0) {
         log_error("API Detection: No JPEG data available");
-        if (jpeg_data) free(jpeg_data);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Set up curl for multipart/form-data using modern mime API
-    // Note: curl_mime_* API replaced deprecated curl_formadd in libcurl 7.56.0
-    curl_mime *mime = NULL;
-    curl_mimepart *part = NULL;
-    memory_struct_t chunk = {0};
-    chunk.memory = NULL;
-    struct curl_slist *headers = NULL;
+    // Use a per-call curl handle so detection requests can run concurrently.
+    local_curl = curl_easy_init();
+    if (local_curl == NULL) {
+        log_error("API Detection: Failed to initialize CURL handle");
+        goto cleanup;
+    }
 
-    // Create the mime structure
-    mime = curl_mime_init(curl_handle);
+    // Set up curl for multipart/form-data using the modern mime API.
+    // Note: curl_mime_* replaced deprecated curl_formadd in libcurl 7.56.0.
+    mime = curl_mime_init(local_curl);
     if (!mime) {
         log_error("API Detection: Failed to create mime structure");
-        free(jpeg_data);
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Add the file part
     part = curl_mime_addpart(mime);
     if (!part) {
         log_error("API Detection: Failed to add mime part");
-        curl_mime_free(mime);
-        free(jpeg_data);
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Set the part name
     CURLcode mime_result;
     mime_result = curl_mime_name(part, "file");
     if (mime_result != CURLE_OK) {
         log_error("API Detection: Failed to set mime name: %s", curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Use curl_mime_data to pass data directly from memory (CURL_ZERO_TERMINATED not used, we pass size)
-    // Note: curl_mime_data copies the data, so we can free jpeg_data after this call
+    // Use curl_mime_data to pass data directly from memory (CURL_ZERO_TERMINATED not used; we pass size).
+    // curl_mime_data copies the data, so jpeg_data can be freed after this call.
     mime_result = curl_mime_data(part, (const char *)jpeg_data, jpeg_size);
     if (mime_result != CURLE_OK) {
         log_error("API Detection: Failed to set mime data: %s", curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Set the filename (required for proper multipart form upload)
     mime_result = curl_mime_filename(part, "snapshot.jpg");
     if (mime_result != CURLE_OK) {
         log_error("API Detection: Failed to set mime filename: %s", curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Set the content type
     mime_result = curl_mime_type(part, "image/jpeg");
     if (mime_result != CURLE_OK) {
         log_error("API Detection: Failed to set mime type: %s", curl_easy_strerror(mime_result));
-        curl_mime_free(mime);
-        free(jpeg_data);
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Free the JPEG data now that curl has copied it
+    // Free the JPEG data now that curl has copied it.
     free(jpeg_data);
     jpeg_data = NULL;
 
     log_info("API Detection: Successfully added JPEG data to form (%zu bytes)", jpeg_size);
 
-    // Get the backend from config (default to "onnx" if not set)
     const char *backend = g_config.api_detection_backend;
-    if (backend == NULL || backend[0] == '\0') {
-        backend = "onnx";
-    }
-
-    // Sanitize backend to avoid URL injection via query parameter.
     const char *safe_backend = sanitize_backend(backend);
+    float actual_threshold = normalize_api_detection_threshold(threshold);
 
-    // Use passed threshold, or default to 0.5 if negative/zero
-    float actual_threshold = (threshold > 0.0f) ? threshold : 0.5f;
-
-    // Construct the URL with query parameters
     char url_with_params[1024];
-    int url_len = snprintf(url_with_params, sizeof(url_with_params),
-                           "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
-                           actual_api_url, safe_backend, actual_threshold);
-    if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
-        log_error("API Detection: Failed to construct URL (length=%d, buffer=%zu).", url_len, sizeof(url_with_params));
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+    if (build_api_detection_url(url_with_params,
+                                sizeof(url_with_params),
+                                actual_api_url,
+                                backend,
+                                threshold,
+                                false) != 0) {
+        log_error("API Detection: Failed to construct URL with parameters.");
+        goto cleanup;
     }
     log_info("API Detection: Using URL with parameters: %s (backend: %s, threshold: %.2f)",
              url_with_params, safe_backend, actual_threshold);
 
-    // Set up the request with the URL including query parameters
-    curl_easy_setopt(curl_handle, CURLOPT_URL, url_with_params);
-    curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
+    curl_easy_setopt(local_curl, CURLOPT_URL, url_with_params);
+    curl_easy_setopt(local_curl, CURLOPT_MIMEPOST, mime);
 
-    // Add the accept header
     headers = curl_slist_append(headers, "accept: application/json");
-    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(local_curl, CURLOPT_HTTPHEADER, headers);
 
-    // Set up the response buffer
     chunk.memory = malloc(1);
     if (chunk.memory == NULL) {
         log_error("API Detection: Failed to allocate memory for curl response buffer");
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
     chunk.size = 0;
 
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_memory_callback);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
+    curl_easy_setopt(local_curl, CURLOPT_WRITEFUNCTION, write_memory_callback);
+    curl_easy_setopt(local_curl, CURLOPT_WRITEDATA, (void *)&chunk);
 
-    // Set a timeout
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 10);
-    setup_common_curl_options(curl_handle);
+    curl_easy_setopt(local_curl, CURLOPT_TIMEOUT, 10L);
+    setup_common_curl_options(local_curl);
 
-    // Perform the request
     log_info("API Detection: Sending request to %s", url_with_params);
 
-    // CRITICAL FIX: Check if curl handle is still valid before performing the request
-    if (!curl_handle || !initialized) {
-        log_error("API Detection: curl handle is invalid or API detection system not initialized");
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
+    CURLcode res = curl_easy_perform(local_curl);
 
-        // Initialize result to empty to prevent segmentation fault
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
-    }
-
-    CURLcode res = curl_easy_perform(curl_handle);
-
-    // Check for errors
     if (res != CURLE_OK) {
         log_error("API Detection: curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        log_tls_error_details("API Detection", curl_handle, res, url_with_params);
+        log_tls_error_details("API Detection", local_curl, res, url_with_params);
 
-        // Check if it's a connection error
         if (res == CURLE_COULDNT_CONNECT) {
             log_error("API Detection: Could not connect to server at %s. Is the API server running?", url_with_params);
         } else if (res == CURLE_OPERATION_TIMEDOUT) {
             log_error("API Detection: Connection to %s timed out. Server might be slow or unreachable.", url_with_params);
         } else if (res == CURLE_COULDNT_RESOLVE_HOST) {
             log_error("API Detection: Could not resolve host %s. Check your network connection and DNS settings.", url_with_params);
-        } else if (res == CURLE_FAILED_INIT) {
-            log_error("API Detection: Curl initialization failed. Reinitializing curl handle...");
-
-            // Attempt to reinitialize curl
-            if (curl_handle) {
-                curl_easy_cleanup(curl_handle);
-                curl_handle = NULL;
-            }
-
-            curl_handle = curl_easy_init();
-            if (!curl_handle) {
-                log_error("API Detection: Failed to reinitialize curl handle");
-                initialized = false; // Mark as uninitialized to force reinitialization next time
-            } else {
-                log_info("API Detection: Successfully reinitialized curl handle");
-            }
         }
 
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-
-        // Initialize result to empty to prevent segmentation fault
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Get the HTTP response code
     long http_code = 0;
-    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
+    curl_easy_getinfo(local_curl, CURLINFO_RESPONSE_CODE, &http_code);
 
     if (http_code != 200) {
         log_error("API request failed with HTTP code %ld", http_code);
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-
-        // Initialize result to empty to prevent inconsistent state
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Parse the JSON response
-    // CRITICAL FIX: Add additional logging and validation for JSON parsing
     if (!chunk.memory || chunk.size == 0) {
         log_error("API Detection: Empty response from server");
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-
-        // Initialize result to empty to prevent segmentation fault
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Log the first few bytes of the response for debugging
     char preview[API_DETECTION_RESPONSE_PREVIEW_LEN] = {0};
     int preview_len = (int)(chunk.size < (API_DETECTION_RESPONSE_PREVIEW_LEN - 1)
                                 ? chunk.size
@@ -558,46 +500,27 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     }
     log_info("API Detection: Response preview: %s", preview);
 
-    cJSON *root = cJSON_Parse(chunk.memory);
+    root = cJSON_Parse(chunk.memory);
 
     if (!root) {
         const char *error_ptr = cJSON_GetErrorPtr();
         log_error("Failed to parse JSON response: %s", error_ptr ? error_ptr : "Unknown error");
-        // Log more details about the response
         log_error("API Detection: Response size: %zu bytes", chunk.size);
         log_error("API Detection: Response preview: %s", preview);
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-
-        // Initialize result to empty to prevent segmentation fault
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Extract the detections
     cJSON *detections = cJSON_GetObjectItem(root, "detections");
     if (!detections || !cJSON_IsArray(detections)) {
         log_error("Invalid JSON response: missing or invalid 'detections' array");
-        // Log the JSON for debugging
         char *json_str = cJSON_Print(root);
         if (json_str) {
             log_error("API Detection: Full JSON response: %s", json_str);
             free(json_str);
         }
-        cJSON_Delete(root);
-        free(chunk.memory);
-        curl_mime_free(mime);
-        curl_slist_free_all(headers);
-
-        // Initialize result to empty to prevent segmentation fault
-        result->count = 0;
-        pthread_mutex_unlock(&curl_mutex);
-        return -1;
+        goto cleanup;
     }
 
-    // Process each detection
     int array_size = cJSON_GetArraySize(detections);
     for (int i = 0; i < array_size; i++) {
         if (result->count >= MAX_DETECTIONS) {
@@ -620,14 +543,12 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         cJSON *y_max = NULL;
 
         if (bounding_box) {
-            // Get coordinates from the nested bounding_box object
             x_min = cJSON_GetObjectItem(bounding_box, "x_min");
             y_min = cJSON_GetObjectItem(bounding_box, "y_min");
             x_max = cJSON_GetObjectItem(bounding_box, "x_max");
             y_max = cJSON_GetObjectItem(bounding_box, "y_max");
             log_info("API Detection: Found bounding_box object in JSON response");
         } else {
-            // Try to get coordinates directly from the detection object (old format)
             x_min = cJSON_GetObjectItem(detection, "x_min");
             y_min = cJSON_GetObjectItem(detection, "y_min");
             x_max = cJSON_GetObjectItem(detection, "x_max");
@@ -642,7 +563,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
             !x_max || !cJSON_IsNumber(x_max) ||
             !y_max || !cJSON_IsNumber(y_max)) {
             log_warn("Invalid detection data in JSON response");
-            // Log the actual JSON for debugging
             char *json_str = cJSON_Print(detection);
             if (json_str) {
                 log_warn("Detection JSON: %s", json_str);
@@ -686,22 +606,14 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         int filter_ret = filter_detections_by_zones(stream_name, result);
         if (filter_ret != 0) {
             log_warn("Failed to filter detections by zones, aborting detection pipeline for this frame");
-            cJSON_Delete(root);
-            free(chunk.memory);
-            curl_mime_free(mime);
-            curl_slist_free_all(headers);
-            pthread_mutex_unlock(&curl_mutex);
-            return -1;
+            goto cleanup;
         }
 
-        // Filter detections by per-stream object include/exclude lists
         filter_detections_by_stream_objects(stream_name, result);
 
-        // Store the detections in the database with recording_id linkage
         time_t timestamp = time(NULL);
         store_detections_in_db(stream_name, result, timestamp, recording_id);
 
-        // Publish to MQTT if enabled
         if (result->count > 0) {
             mqtt_publish_detection(stream_name, result, timestamp);
             mqtt_set_motion_state(stream_name, result);
@@ -710,14 +622,21 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_warn("No stream name provided, skipping database storage");
     }
 
-    // Clean up
+    ret = 0;
+
+cleanup:
     cJSON_Delete(root);
     free(chunk.memory);
     curl_mime_free(mime);
     curl_slist_free_all(headers);
+    curl_easy_cleanup(local_curl);
+    free(jpeg_data);
 
-    pthread_mutex_unlock(&curl_mutex);
-    return 0;
+    if (ret != 0) {
+        result->count = 0;
+    }
+
+    return ret;
 }
 
 /**
@@ -758,17 +677,12 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         log_info("API Detection (snapshot): Using API URL from config: %s", actual_api_url ? actual_api_url : "NULL");
     }
 
-    // Note: We no longer check initialized/curl_handle here because we create a per-call handle
-    // This allows parallel detection requests from multiple threads
-
-    if (!actual_api_url) {
-        log_error("API Detection (snapshot): Invalid API URL");
+    if (!is_api_detection_system_initialized()) {
+        log_error("API detection system not initialized");
         return -1;
     }
 
-    // Check URL format
-    if (strncmp(actual_api_url, "http://", 7) != 0 && strncmp(actual_api_url, "https://", 8) != 0) {
-        log_error("API Detection (snapshot): Invalid URL format: %s", actual_api_url);
+    if (!validate_api_detection_base_url(actual_api_url, "API Detection (snapshot)")) {
         return -1;
     }
 
@@ -876,18 +790,17 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     free(jpeg_data);
     jpeg_data = NULL;
 
-    // Get backend from config and sanitize it to prevent URL injection
     const char *backend = g_config.api_detection_backend;
     const char *sanitized_backend = sanitize_backend(backend);
+    float actual_threshold = normalize_api_detection_threshold(threshold);
 
-    float actual_threshold = (threshold > 0.0f) ? threshold : 0.5f;
-
-    // Construct URL with parameters
     char url_with_params[1024];
-    int url_len = snprintf(url_with_params, sizeof(url_with_params),
-                            "%s?backend=%s&confidence_threshold=%.2f&return_image=false",
-                            actual_api_url, sanitized_backend, actual_threshold);
-    if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
+    if (build_api_detection_url(url_with_params,
+                                sizeof(url_with_params),
+                                actual_api_url,
+                                backend,
+                                threshold,
+                                false) != 0) {
         log_error("API Detection (snapshot): URL too long when constructing request");
         curl_mime_free(mime);
         curl_slist_free_all(headers);
@@ -895,7 +808,10 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         return -1;
     }
 
-    log_info("API Detection (snapshot): Sending request to %s", url_with_params);
+    log_info("API Detection (snapshot): Sending request to %s (backend: %s, threshold: %.2f)",
+             url_with_params,
+             sanitized_backend,
+             actual_threshold);
 
     // Set up the request
     curl_easy_setopt(local_curl, CURLOPT_URL, url_with_params);
