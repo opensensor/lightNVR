@@ -120,6 +120,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 onChange={handleInputChange}
                 required
                 aria-required="true"
+                autoComplete="username"
                 ref={firstFieldRef}
               />
             </div>
@@ -137,6 +138,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               onChange={handleInputChange}
               required
               aria-required="true"
+              autoComplete="new-password"
             />
           </div>
 
@@ -151,6 +153,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               name="email"
               value={formData.email}
               onChange={handleInputChange}
+              autoComplete="email"
             />
           </div>
 
