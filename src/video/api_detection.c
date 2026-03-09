@@ -29,6 +29,9 @@ static bool initialized = false;
 static CURL *curl_handle = NULL;
 static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Default JPEG quality used for API detection snapshots (range typically 0–100).
+#define API_DETECTION_JPEG_QUALITY_DEFAULT 85
+
 // Structure to hold memory for curl response
 typedef struct {
     char *memory;
@@ -231,7 +234,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
         // FALLBACK: Use cached JPEG encoder to encode raw frame to JPEG in memory
         // This reuses the expensive AVCodecContext instead of recreating it every time
-        jpeg_encoder_cache_t *encoder = jpeg_encoder_get_cached(width, height, channels, 85);
+        jpeg_encoder_cache_t *encoder = jpeg_encoder_get_cached(width, height, channels, API_DETECTION_JPEG_QUALITY_DEFAULT);
         if (!encoder) {
             log_error("API Detection: Failed to get cached JPEG encoder");
             pthread_mutex_unlock(&curl_mutex);
@@ -369,7 +372,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("API Detection: Failed to allocate memory for curl response buffer");
         // Note: cleanup of curl/mime/headers should match other error paths in this function
         pthread_mutex_unlock(&curl_mutex);
-        return false;
+        return -1;
     }
     chunk.size = 0;
 
