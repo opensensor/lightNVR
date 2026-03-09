@@ -482,6 +482,21 @@ target_include_directories(lightnvr_lib PRIVATE
 # Add HTTP backend include directories to library
 target_include_directories(lightnvr_lib PRIVATE ${HTTP_BACKEND_INCLUDE_DIRS})
 
+# Publish core link dependencies for the static library so downstream
+# test binaries and utilities automatically receive the libraries needed
+# by objects pulled from lightnvr_lib.
+target_link_libraries(lightnvr_lib PUBLIC
+        ${HTTP_BACKEND_LIBS}
+        inih_lib
+        ${FFMPEG_LIBRARIES}
+        ${SQLITE_LIBRARIES}
+        ${CURL_LIBRARIES}
+        ${SSL_LIBRARIES}
+        pthread
+        dl
+        m
+)
+
 # Define the main executable
 add_executable(lightnvr src/core/main.c)
 

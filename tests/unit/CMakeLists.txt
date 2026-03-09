@@ -12,20 +12,6 @@ target_include_directories(unity_lib PUBLIC
 )
 
 # ====================================================================
-# Layer 1: test_storage_pressure
-# Pure unit test — only needs unity_lib + project headers.
-# disk_pressure_level_str() and evaluate_disk_pressure_level() are
-# both static inline in storage_manager.h, so no .c files are linked.
-# ====================================================================
-add_layer1_test(test_storage_pressure)
-
-# ====================================================================
-# Layer 2: test_storage_retention_sqlite
-# Integration test — runs real SQL queries via db_core / db_recordings.
-# ====================================================================
-add_layer2_test(test_storage_retention_sqlite)
-
-# ====================================================================
 # CMake helper macros — reduce boilerplate for test registration
 # ====================================================================
 macro(add_layer1_test TEST_NAME)
@@ -110,6 +96,20 @@ macro(add_layer3_test TEST_NAME)
     set_target_properties(${TEST_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endmacro()
+
+# ====================================================================
+# Layer 1: test_storage_pressure
+# Pure unit test — only needs unity_lib + project headers.
+# disk_pressure_level_str() and evaluate_disk_pressure_level() are
+# both static inline in storage_manager.h, so no .c files are linked.
+# ====================================================================
+add_layer1_test(test_storage_pressure)
+
+# ====================================================================
+# Layer 2: test_storage_retention_sqlite
+# Integration test — runs real SQL queries via db_core / db_recordings.
+# ====================================================================
+add_layer2_test(test_storage_retention_sqlite)
 
 # ====================================================================
 # Layer 1: Pure logic tests — unity_lib + project headers only
