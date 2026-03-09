@@ -369,7 +369,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_error("API Detection: Failed to allocate memory for curl response buffer");
         // Note: cleanup of curl/mime/headers should match other error paths in this function
         pthread_mutex_unlock(&curl_mutex);
-        return false;
+        return -1;
     }
     chunk.size = 0;
 
