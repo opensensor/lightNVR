@@ -51,6 +51,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               value={formData.username}
               onChange={handleInputChange}
               required
+              aria-required="true"
             />
           </div>
 
