@@ -58,7 +58,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
       const focusableElements = Array.prototype.slice.call(
         dialogRef.current.querySelectorAll(FOCUSABLE_SELECTOR_QUERY)
       ).filter(
-        (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true'
+        (el) => el.getAttribute('aria-hidden') !== 'true'
       );
 
       if (focusableElements.length === 0) {
