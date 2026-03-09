@@ -21,6 +21,16 @@
 #include <errno.h>
 #include <dirent.h>
 #include <limits.h>
+#include <sqlite3.h>
+#include <curl/curl.h>
+#include <uv.h>
+#include <llhttp.h>
+#include <mbedtls/version.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/avutil.h>
+#include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
@@ -35,11 +45,219 @@
 #include "storage/storage_manager_streams.h"
 #include "storage/storage_manager_streams_cache.h"
 
+#ifdef USE_GO2RTC
+#include "video/go2rtc/go2rtc_api.h"
+#endif
+
 // External function from api_handlers_system_go2rtc.c
 extern bool get_go2rtc_memory_usage(unsigned long long *memory_usage);
 
 // External declarations
 extern bool daemon_mode;
+
+static void trim_copy_value(char *dest, size_t dest_size, const char *src) {
+    if (!dest || dest_size == 0) {
+        return;
+    }
+
+    dest[0] = '\0';
+    if (!src) {
+        return;
+    }
+
+    while (*src && isspace((unsigned char)*src)) {
+        src++;
+    }
+
+    size_t len = strlen(src);
+    while (len > 0 && isspace((unsigned char)src[len - 1])) {
+        len--;
+    }
+
+    if (len >= 2 && ((src[0] == '"' && src[len - 1] == '"') ||
+                     (src[0] == '\'' && src[len - 1] == '\''))) {
+        src++;
+        len -= 2;
+    }
+
+    if (len >= dest_size) {
+        len = dest_size - 1;
+    }
+
+    memcpy(dest, src, len);
+    dest[len] = '\0';
+}
+
+static bool read_os_release_value(const char *key, char *value, size_t value_size) {
+    if (!key || !value || value_size == 0) {
+        return false;
+    }
+
+    FILE *fp = fopen("/etc/os-release", "r");
+    if (!fp) {
+        return false;
+    }
+
+    bool found = false;
+    char line[512];
+    size_t key_len = strlen(key);
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strncmp(line, key, key_len) == 0 && line[key_len] == '=') {
+            trim_copy_value(value, value_size, line + key_len + 1);
+            found = value[0] != '\0';
+            break;
+        }
+    }
+
+    fclose(fp);
+    return found;
+}
+
+static void add_version_entry(cJSON *items,
+                              const char *name,
+                              const char *category,
+                              const char *version,
+                              const char *details) {
+    if (!items || !name || !category || !version) {
+        return;
+    }
+
+    cJSON *item = cJSON_CreateObject();
+    if (!item) {
+        return;
+    }
+
+    cJSON_AddStringToObject(item, "name", name);
+    cJSON_AddStringToObject(item, "category", category);
+    cJSON_AddStringToObject(item, "version", (version[0] != '\0') ? version : "Unknown");
+    if (details && details[0] != '\0') {
+        cJSON_AddStringToObject(item, "details", details);
+    }
+
+    cJSON_AddItemToArray(items, item);
+}
+
+static void format_triplet_version(unsigned version_int, char *buffer, size_t buffer_size) {
+    if (!buffer || buffer_size == 0) {
+        return;
+    }
+
+    snprintf(buffer, buffer_size, "%u.%u.%u",
+             AV_VERSION_MAJOR(version_int),
+             AV_VERSION_MINOR(version_int),
+             AV_VERSION_MICRO(version_int));
+}
+
+static void add_versions_to_json(cJSON *info) {
+    if (!info) {
+        return;
+    }
+
+    cJSON *versions = cJSON_CreateObject();
+    cJSON *items = cJSON_CreateArray();
+    if (!versions || !items) {
+        if (versions) cJSON_Delete(versions);
+        if (items) cJSON_Delete(items);
+        return;
+    }
+
+    char details[256];
+    snprintf(details, sizeof(details), "Build date %s%s%s",
+             LIGHTNVR_BUILD_DATE,
+             (LIGHTNVR_GIT_COMMIT[0] != '\0') ? " • commit " : "",
+             (LIGHTNVR_GIT_COMMIT[0] != '\0') ? LIGHTNVR_GIT_COMMIT : "");
+    add_version_entry(items, "LightNVR", "Application", LIGHTNVR_VERSION_STRING, details);
+
+    struct utsname system_info;
+    if (uname(&system_info) == 0) {
+        char pretty_name[256] = {0};
+        char name[128] = {0};
+        char version_id[128] = {0};
+        char os_version[256] = {0};
+
+        if (read_os_release_value("PRETTY_NAME", pretty_name, sizeof(pretty_name))) {
+            snprintf(os_version, sizeof(os_version), "%s", pretty_name);
+        } else if (read_os_release_value("NAME", name, sizeof(name))) {
+            if (read_os_release_value("VERSION_ID", version_id, sizeof(version_id))) {
+                snprintf(os_version, sizeof(os_version), "%s %s", name, version_id);
+            } else {
+                snprintf(os_version, sizeof(os_version), "%s", name);
+            }
+        } else {
+            snprintf(os_version, sizeof(os_version), "%s", system_info.sysname);
+        }
+
+        snprintf(details, sizeof(details), "%s %s • %s",
+                 system_info.sysname,
+                 system_info.release,
+                 system_info.machine);
+        add_version_entry(items, "Base OS", "OS", os_version, details);
+    }
+
+#ifdef USE_GO2RTC
+    char go2rtc_version[64] = {0};
+    char go2rtc_revision[64] = {0};
+    int rtsp_port = 0;
+    if (go2rtc_api_get_application_info(&rtsp_port,
+                                        go2rtc_version, sizeof(go2rtc_version),
+                                        go2rtc_revision, sizeof(go2rtc_revision))) {
+        snprintf(details, sizeof(details), "RTSP port %d%s%s",
+                 (rtsp_port > 0) ? rtsp_port : 8554,
+                 (go2rtc_revision[0] != '\0') ? " • revision " : "",
+                 (go2rtc_revision[0] != '\0') ? go2rtc_revision : "");
+        add_version_entry(items, "go2rtc", "Service", go2rtc_version, details);
+    } else {
+        add_version_entry(items, "go2rtc", "Service", "Unavailable", "go2rtc API not reachable");
+    }
+#endif
+
+    add_version_entry(items, "SQLite", "Library", sqlite3_libversion(), NULL);
+
+    const curl_version_info_data *curl_info = curl_version_info(CURLVERSION_NOW);
+    if (curl_info && curl_info->version) {
+        char curl_details[256] = {0};
+        if (curl_info->ssl_version && curl_info->libz_version) {
+            snprintf(curl_details, sizeof(curl_details), "%s • zlib %s",
+                     curl_info->ssl_version, curl_info->libz_version);
+        } else if (curl_info->ssl_version) {
+            snprintf(curl_details, sizeof(curl_details), "%s", curl_info->ssl_version);
+        } else if (curl_info->libz_version) {
+            snprintf(curl_details, sizeof(curl_details), "zlib %s", curl_info->libz_version);
+        }
+        add_version_entry(items, "libcurl", "Library", curl_info->version, curl_details);
+    }
+
+    char mbedtls_version[64] = {0};
+    mbedtls_version_get_string_full(mbedtls_version);
+    add_version_entry(items, "mbedTLS", "Library", mbedtls_version, NULL);
+
+    add_version_entry(items, "libuv", "Library", uv_version_string(), NULL);
+
+    char llhttp_version[32] = {0};
+    snprintf(llhttp_version, sizeof(llhttp_version), "%d.%d.%d",
+             LLHTTP_VERSION_MAJOR, LLHTTP_VERSION_MINOR, LLHTTP_VERSION_PATCH);
+    add_version_entry(items, "llhttp", "Library", llhttp_version, NULL);
+
+    char version_buf[32] = {0};
+    format_triplet_version(avformat_version(), version_buf, sizeof(version_buf));
+    add_version_entry(items, "libavformat", "Library", version_buf, NULL);
+
+    format_triplet_version(avcodec_version(), version_buf, sizeof(version_buf));
+    add_version_entry(items, "libavcodec", "Library", version_buf, NULL);
+
+    format_triplet_version(avutil_version(), version_buf, sizeof(version_buf));
+    add_version_entry(items, "libavutil", "Library", version_buf, NULL);
+
+    format_triplet_version(swscale_version(), version_buf, sizeof(version_buf));
+    add_version_entry(items, "libswscale", "Library", version_buf, NULL);
+
+    format_triplet_version(swresample_version(), version_buf, sizeof(version_buf));
+    add_version_entry(items, "libswresample", "Library", version_buf, NULL);
+
+    cJSON_AddItemToObject(versions, "items", items);
+    cJSON_AddItemToObject(info, "versions", versions);
+}
 
 /**
  * @brief Get memory usage of light-object-detect process
@@ -791,6 +1009,9 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
     // Add global storage policy settings so the frontend can display effective retention per stream
     cJSON_AddNumberToObject(info, "global_retention_days", g_config.retention_days);
+
+    // Add runtime software/library versions for vulnerability auditing and support
+    add_versions_to_json(info);
 
     // Create network object
     cJSON *network = cJSON_CreateObject();

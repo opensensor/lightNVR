@@ -25,13 +25,19 @@ test.describe('LightNVR API @api', () => {
   });
 
   test.describe('System API', () => {
-    test('GET /api/system returns system info', async () => {
-      const response = await request.get('/api/system');
+    test('GET /api/system/info returns system info and version summary', async () => {
+      const response = await request.get('/api/system/info');
       expect(response.ok()).toBeTruthy();
 
       const data = await response.json();
       expect(data).toHaveProperty('version');
       expect(typeof data.version).toBe('string');
+      expect(data).toHaveProperty('versions.items');
+      expect(Array.isArray(data.versions.items)).toBeTruthy();
+      expect(data.versions.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'LightNVR', category: 'Application' }),
+        expect.objectContaining({ name: 'Base OS', category: 'OS' }),
+      ]));
     });
   });
 
