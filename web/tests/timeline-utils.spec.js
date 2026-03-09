@@ -30,9 +30,12 @@ dayjs.extend(timezone);
 
 // JavaScript Date months are 0-indexed, so month index 2 represents March.
 const MARCH = 2;
+const padClockPart = (value) => String(value).padStart(2, '0');
 const baseTestDateTimestamp = (hours, minutes, seconds = 0) =>
   // Use UTC to avoid environment-dependent DST/local time interpretation in tests.
   Date.UTC(2026, MARCH, 8, hours, minutes, seconds) / 1000;
+const baseLocalTestDateTimestamp = (hours, minutes, seconds = 0) =>
+  dayjs(`2026-03-08T${padClockPart(hours)}:${padClockPart(minutes)}:${padClockPart(seconds)}`).unix();
 
 describe('timelineUtils', () => {
   const originalTz = process.env.TZ;
@@ -46,12 +49,13 @@ describe('timelineUtils', () => {
   });
 
   test('dayjs timezone plugin is configured for DST-sensitive calculations', () => {
-    // Verify that dayjs.tz is available and correctly handles the US DST
+    // Prerequisite verification: ensure that dayjs.tz is available and correctly
+    // configured for the DST-sensitive timeline tests below, using the US
     // "spring forward" transition on 2020-03-08 in America/New_York.
     //
     // Before the transition: 2020-03-08T06:30:00Z = 01:30 local time, UTC-5 (EST).
     const preDstInstant = '2020-03-08T06:30:00Z';
-    const preDstNyTime = dayjs.tz(preDstInstant, 'America/New_York');
+    const preDstNyTime = dayjs.utc(preDstInstant).tz('America/New_York');
 
     expect(preDstNyTime.isValid()).toBe(true);
     expect(preDstNyTime.format('YYYY-MM-DD')).toBe('2020-03-08');
@@ -60,7 +64,7 @@ describe('timelineUtils', () => {
 
     // After the transition: 2020-03-08T07:30:00Z = 03:30 local time, UTC-4 (EDT).
     const postDstInstant = '2020-03-08T07:30:00Z';
-    const postDstNyTime = dayjs.tz(postDstInstant, 'America/New_York');
+    const postDstNyTime = dayjs.utc(postDstInstant).tz('America/New_York');
 
     expect(postDstNyTime.isValid()).toBe(true);
     expect(postDstNyTime.format('YYYY-MM-DD')).toBe('2020-03-08');
@@ -133,19 +137,19 @@ describe('timelineUtils', () => {
   test('clips a boundary-spanning segment to the selected local day', () => {
     const selectedDate = '2026-03-08';
     const { startTimestamp } = getLocalDayBounds(selectedDate);
-    const SECONDS_BEFORE_DAY_START = 120; // 2 minutes before day start
-    const SECONDS_AFTER_DAY_START = 300; // 5 minutes into the day
+    const secondsBeforeDayStart = 120; // 2 minutes before day start
+    const secondsAfterDayStart = 300; // 5 minutes into the day
     const range = getClippedSegmentHourRange(
       {
-        start_timestamp: startTimestamp - SECONDS_BEFORE_DAY_START,
-        end_timestamp: startTimestamp + SECONDS_AFTER_DAY_START
+        start_timestamp: startTimestamp - secondsBeforeDayStart,
+        end_timestamp: startTimestamp + secondsAfterDayStart
       },
       selectedDate
     );
 
     expect(range).toEqual({
       startHour: 0,
-      endHour: SECONDS_AFTER_DAY_START / 3600
+      endHour: secondsAfterDayStart / 3600
     });
   });
 
@@ -182,9 +186,9 @@ describe('timelineUtils', () => {
   });
 
   test('formats exact minute boundaries without floating point drift', () => {
-    const exactTwelveTen = baseTestDateTimestamp(12, 10, 0);
+    const exactTwelveTen = baseLocalTestDateTimestamp(12, 10, 0);
     const exactTwelveTenPlusNearlyASecond = exactTwelveTen + 0.999;
-    const exactMidnightTwo = baseTestDateTimestamp(0, 2, 0);
+    const exactMidnightTwo = baseLocalTestDateTimestamp(0, 2, 0);
     const exactMidnightTwoPlusSmallFraction = exactMidnightTwo + 0.001;
 
     // Exact minute boundaries should format correctly.
@@ -197,7 +201,7 @@ describe('timelineUtils', () => {
   });
 
   test('formats playback labels with a stream name prefix when available', () => {
-    const timestamp = baseTestDateTimestamp(9, 15, 0);
+    const timestamp = baseLocalTestDateTimestamp(9, 15, 0);
 
     expect(formatPlaybackTimeLabel(timestamp, 'front_door')).toBe('front_door - 09:15:00');
     expect(formatPlaybackTimeLabel(timestamp, '')).toBe('09:15:00');
@@ -238,26 +242,27 @@ describe('timelineUtils', () => {
     process.env.TZ = 'America/New_York';
 
     try {
-      const bounds = getLocalDayBounds('2026-03-08');
+      const selectedDate = '2026-03-08';
+      const bounds = getLocalDayBounds(selectedDate);
 
       expect(bounds.endTimestamp - bounds.startTimestamp).toBe(23 * 3600);
       expect(bounds.durationHours).toBe(23);
-      expect(getTimelineDayLengthHours('2026-03-08')).toBe(23);
+      expect(getTimelineDayLengthHours(selectedDate)).toBe(23);
 
       // Verify that dayjs interprets the boundary timestamps using the configured timezone
       // by checking the local wall-clock times at the start and end of the day.
       const startLocal = dayjs.unix(bounds.startTimestamp);
       const endLocal = dayjs.unix(bounds.endTimestamp);
-      const expectedStartInTimezone = dayjs.tz('2026-03-08T00:00:00', 'America/New_York');
+      const expectedStartInTimezone = dayjs.tz(`${selectedDate}T00:00:00`, 'America/New_York');
 
       // Explicitly verify the TZ-dependent local boundary matches New York midnight.
       expect(startLocal.unix()).toBe(expectedStartInTimezone.unix());
       expect(startLocal.utcOffset()).toBe(expectedStartInTimezone.utcOffset());
 
-      // The selected local day should start at midnight on 2026-03-08 in America/New_York.
+      // The selected local day should start at midnight on the selected date in America/New_York.
       expect(startLocal.year()).toBe(2026);
       expect(startLocal.month()).toBe(MARCH);
-      expect(startLocal.date()).toBe(8);
+      expect(startLocal.date()).toBe(dayjs(selectedDate).date());
       expect(startLocal.hour()).toBe(0);
       expect(startLocal.minute()).toBe(0);
       expect(startLocal.second()).toBe(0);
@@ -283,7 +288,7 @@ describe('timelineUtils', () => {
       // Confirm that dayjs sees this instant as the expected local wall-clock time.
       const local = dayjs.unix(timestamp);
       expect(local.year()).toBe(2026);
-      expect(local.month()).toBe(MARCH); // March
+      expect(local.month()).toBe(MARCH);
       expect(local.date()).toBe(8);
       expect(local.hour()).toBe(3);
       expect(local.minute()).toBe(10);
@@ -356,17 +361,17 @@ describe('timelineUtils', () => {
 
   test('handles clock boundary cases at midnight, end of day, and subsecond precision', () => {
     // Midnight at the start of the day
-    expect(formatTimestampAsClock(baseTestDateTimestamp(0, 0, 0))).toBe('00:00:00');
+    expect(formatTimestampAsClock(baseLocalTestDateTimestamp(0, 0, 0))).toBe('00:00:00');
 
     // Last second of the day
-    expect(formatTimestampAsClock(baseTestDateTimestamp(23, 59, 59))).toBe('23:59:59');
+    expect(formatTimestampAsClock(baseLocalTestDateTimestamp(23, 59, 59))).toBe('23:59:59');
 
     // Subsecond precision: ensure fractional seconds do not cause rounding drift
-    const nearlyNextSecond = baseTestDateTimestamp(12, 10, 30) + 0.999;
+    const nearlyNextSecond = baseLocalTestDateTimestamp(12, 10, 30) + 0.999;
     expect(formatTimestampAsClock(nearlyNextSecond)).toBe('12:10:30');
 
     // Subsecond precision near zero: ensure small positive fractions do not change the displayed second
-    const justAfterSecond = baseTestDateTimestamp(12, 10, 30) + 0.001;
+    const justAfterSecond = baseLocalTestDateTimestamp(12, 10, 30) + 0.001;
     expect(formatTimestampAsClock(justAfterSecond)).toBe('12:10:30');
   });
 

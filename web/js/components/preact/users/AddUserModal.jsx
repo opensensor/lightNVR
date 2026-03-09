@@ -5,6 +5,18 @@
 import { USER_ROLES } from './UserRoles.js';
 import { useEffect, useRef } from 'preact/hooks';
 
+const FOCUSABLE_SELECTORS = [
+  'a[href]',
+  'area[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+];
+
+const FOCUSABLE_SELECTOR_QUERY = FOCUSABLE_SELECTORS.join(',');
+
 /**
  * Add User Modal Component
  * @param {Object} props - Component props
@@ -39,18 +51,11 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
     }
 
     if (e.key === 'Tab' && dialogRef.current) {
-      const focusableSelectors = [
-        'a[href]',
-        'area[href]',
-        'button:not([disabled])',
-        'input:not([disabled]):not([type="hidden"])',
-        'select:not([disabled])',
-        'textarea:not([disabled])',
-        '[tabindex]:not([tabindex="-1"])'
-      ];
       const focusableElements = Array.prototype.slice.call(
-        dialogRef.current.querySelectorAll(focusableSelectors.join(','))
-      ).filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+        dialogRef.current.querySelectorAll(FOCUSABLE_SELECTOR_QUERY)
+      ).filter(
+        (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true'
+      );
 
       if (focusableElements.length === 0) {
         return;
@@ -83,7 +88,6 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
     <div
       className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
       onClick={onClose}
-      tabIndex={-1}
     >
       <div className="flex min-h-full items-center justify-center">
         <div

@@ -32,6 +32,9 @@ static pthread_mutex_t curl_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Default JPEG quality used for API detection snapshots (range typically 0–100).
 #define API_DETECTION_JPEG_QUALITY_DEFAULT 85
 
+// Maximum number of bytes to log from the API response, including the null terminator.
+#define API_DETECTION_RESPONSE_PREVIEW_LEN 64
+
 // Structure to hold memory for curl response
 typedef struct {
     char *memory;
@@ -405,9 +408,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
         log_error("API Detection: Failed to construct URL (length=%d, buffer=%zu).", url_len, sizeof(url_with_params));
         curl_mime_free(mime);
-        if (headers) {
-            curl_slist_free_all(headers);
-        }
+        curl_slist_free_all(headers);
         pthread_mutex_unlock(&curl_mutex);
         return -1;
     }
@@ -426,7 +427,6 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     chunk.memory = malloc(1);
     if (chunk.memory == NULL) {
         log_error("API Detection: Failed to allocate memory for curl response buffer");
-        // Note: cleanup of curl/mime/headers should match other error paths in this function
         curl_mime_free(mime);
         curl_slist_free_all(headers);
         pthread_mutex_unlock(&curl_mutex);
@@ -530,8 +530,10 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     }
 
     // Log the first few bytes of the response for debugging
-    char preview[64] = {0};
-    int preview_len = (int)(chunk.size < 63 ? chunk.size : 63);
+    char preview[API_DETECTION_RESPONSE_PREVIEW_LEN] = {0};
+    int preview_len = (int)(chunk.size < (API_DETECTION_RESPONSE_PREVIEW_LEN - 1)
+                                ? chunk.size
+                                : (API_DETECTION_RESPONSE_PREVIEW_LEN - 1));
     memcpy(preview, chunk.memory, preview_len);
     preview[preview_len] = '\0';
     // Replace non-printable characters with dots
@@ -669,7 +671,13 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         log_info("API Detection: Filtering %d detections by zones for stream %s", result->count, stream_name);
         int filter_ret = filter_detections_by_zones(stream_name, result);
         if (filter_ret != 0) {
-            log_warn("Failed to filter detections by zones, storing all detections");
+            log_warn("Failed to filter detections by zones, aborting detection pipeline for this frame");
+            cJSON_Delete(root);
+            free(chunk.memory);
+            curl_mime_free(mime);
+            curl_slist_free_all(headers);
+            pthread_mutex_unlock(&curl_mutex);
+            return -1;
         }
 
         // Filter detections by per-stream object include/exclude lists
@@ -868,9 +876,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
     if (url_len < 0 || (size_t)url_len >= sizeof(url_with_params)) {
         log_error("API Detection (snapshot): URL too long when constructing request");
         curl_mime_free(mime);
-        if (headers != NULL) {
-            curl_slist_free_all(headers);
-        }
+        curl_slist_free_all(headers);
         curl_easy_cleanup(local_curl);
         return -1;
     }
