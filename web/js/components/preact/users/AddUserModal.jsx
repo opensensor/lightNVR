@@ -124,6 +124,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 checked={formData.is_active}
                 onChange={handleInputChange}
                 className="mr-2"
+                aria-label="Active"
               />
               <span className="text-sm font-bold">Active</span>
             </label>
@@ -138,10 +139,14 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 checked={formData.password_change_locked}
                 onChange={handleInputChange}
                 className="mr-2"
+                aria-describedby="password-change-locked-description"
               />
               <span className="text-sm font-bold">Lock Password Changes</span>
             </label>
-            <p className="text-xs text-muted-foreground mt-1 ml-6">
+            <p
+              id="password-change-locked-description"
+              className="text-xs text-muted-foreground mt-1 ml-6"
+            >
               When locked, this user cannot change their own password
             </p>
           </div>
