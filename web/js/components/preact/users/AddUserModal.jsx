@@ -114,8 +114,9 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           </div>
 
           <div className="mb-6">
-            <label className="flex items-center">
+            <label className="flex items-center" htmlFor="password_change_locked">
               <input
+                id="password_change_locked"
                 type="checkbox"
                 name="password_change_locked"
                 checked={formData.password_change_locked}
