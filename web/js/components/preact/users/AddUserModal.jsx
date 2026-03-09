@@ -98,6 +98,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-user-modal-title"
+          aria-label="Add New User"
           className="bg-card text-card-foreground my-8 max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-lg p-6"
           onClick={stopPropagation}
           onKeyDown={handleDialogKeyDown}
@@ -222,8 +223,9 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               onChange={handleInputChange}
               placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
               maxLength={255}
+              aria-describedby="allowed-tags-description"
             />
-            <p className="text-xs text-muted-foreground mt-1">
+            <p id="allowed-tags-description" className="text-xs text-muted-foreground mt-1">
               Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
             </p>
             {(() => {
@@ -260,8 +262,12 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
               placeholder={ALLOWED_LOGIN_CIDRS_PLACEHOLDER}
               rows={4}
               maxLength={1023}
+              aria-describedby="allowed-login-cidrs-description"
             />
-            <p className="text-xs text-muted-foreground mt-1">
+            <p
+              id="allowed-login-cidrs-description"
+              className="text-xs text-muted-foreground mt-1"
+            >
               One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted.
             </p>
           </div>
