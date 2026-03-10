@@ -631,9 +631,14 @@ endif()
 string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 
 # Create a version.h file
-configure_file(
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h
+file(READ
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h.in"
+        VERSION_H_IN
+)
+string(CONFIGURE "${VERSION_H_IN}" VERSION_H_OUT @ONLY)
+file(GENERATE
+        OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/include/core/version.h"
+        CONTENT "${VERSION_H_OUT}"
 )
 
 # Generate version.js for web interface
