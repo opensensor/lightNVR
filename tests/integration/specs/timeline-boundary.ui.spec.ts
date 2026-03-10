@@ -132,6 +132,41 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/302(?:\?|$)/);
   });
 
+  test('jumps sequentially between recordings using previous and next recording buttons', async ({ page }) => {
+    const stream = 'front_door';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 311, stream, start_timestamp: localTimestamp(date, '11:00:00'), end_timestamp: localTimestamp(date, '11:05:00') },
+      { id: 312, stream, start_timestamp: localTimestamp(date, '11:10:00'), end_timestamp: localTimestamp(date, '11:15:00') },
+      { id: 313, stream, start_timestamp: localTimestamp(date, '11:20:00'), end_timestamp: localTimestamp(date, '11:25:00') }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${date}&time=11:10:00`, { waitUntil: 'domcontentloaded' });
+
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    await expect(timelinePage.timeDisplay).toHaveText('front_door - 11:10:00');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/312(?:\?|$)/);
+
+    await expect(timelinePage.previousRecordingButton).toBeEnabled();
+    await expect(timelinePage.nextRecordingButton).toBeEnabled();
+
+    await timelinePage.previousRecordingButton.click();
+    await expect(timelinePage.timeDisplay).toHaveText('front_door - 11:00:00');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/311(?:\?|$)/);
+    await expect(timelinePage.previousRecordingButton).toBeDisabled();
+
+    await timelinePage.nextRecordingButton.click();
+    await expect(timelinePage.timeDisplay).toHaveText('front_door - 11:10:00');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/312(?:\?|$)/);
+
+    await timelinePage.nextRecordingButton.click();
+    await expect(timelinePage.timeDisplay).toHaveText('front_door - 11:20:00');
+    await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/313(?:\?|$)/);
+    await expect(timelinePage.nextRecordingButton).toBeDisabled();
+  });
+
   test('loads selected recordings mode, reuses batch download modal, and restores selections when refining', async ({ page }) => {
     const stream = 'front_door';
     const date = '2026-03-08';

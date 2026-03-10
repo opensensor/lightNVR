@@ -27,10 +27,38 @@ export function TimelineControls() {
   const [canZoomIn, setCanZoomIn] = useState(true);
   const [canZoomOut, setCanZoomOut] = useState(true);
   const [timeDisplayText, setTimeDisplayText] = useState('00:00:00');
+  const [activeSegmentIndex, setActiveSegmentIndex] = useState(-1);
+  const [segmentCount, setSegmentCount] = useState(0);
+
+  const resolveActiveSegmentIndex = (state) => {
+    const segments = state.timelineSegments;
+    if (!Array.isArray(segments) || segments.length === 0) {
+      return -1;
+    }
+
+    if (state.currentTime !== null && state.currentTime !== undefined) {
+      const containingIndex = findContainingSegmentIndex(segments, state.currentTime);
+      if (containingIndex !== -1) {
+        return containingIndex;
+      }
+
+      return findNearestSegmentIndex(segments, state.currentTime);
+    }
+
+    if (Number.isInteger(state.currentSegmentIndex) &&
+        state.currentSegmentIndex >= 0 &&
+        state.currentSegmentIndex < segments.length) {
+      return state.currentSegmentIndex;
+    }
+
+    return -1;
+  };
 
   useEffect(() => {
     const syncControlsState = (state) => {
       setIsPlaying(state.isPlaying);
+      setSegmentCount(state.timelineSegments?.length || 0);
+      setActiveSegmentIndex(resolveActiveSegmentIndex(state));
       const dayLengthHours = getTimelineDayLengthHours(state.selectedDate);
       const range = (state.timelineEndHour ?? dayLengthHours) - (state.timelineStartHour ?? 0);
       setCanZoomIn(range > MIN_TIMELINE_VIEW_HOURS);
@@ -405,6 +433,37 @@ export function TimelineControls() {
     timelineState.setState({ timelineStartHour: fs, timelineEndHour: fe });
   };
 
+  const jumpToAdjacentSegment = (direction) => {
+    const segments = timelineState.timelineSegments;
+    if (!Array.isArray(segments) || segments.length === 0) {
+      showStatusMessage('No recordings to navigate', 'warning');
+      return;
+    }
+
+    const currentIndex = resolveActiveSegmentIndex(timelineState);
+    if (currentIndex === -1) {
+      showStatusMessage('No active recording selected', 'warning');
+      return;
+    }
+
+    const targetIndex = currentIndex + direction;
+    if (targetIndex < 0 || targetIndex >= segments.length) {
+      return;
+    }
+
+    const targetSegment = segments[targetIndex];
+    timelineState.setState({
+      currentSegmentIndex: targetIndex,
+      currentTime: targetSegment.start_timestamp,
+      prevCurrentTime: timelineState.currentTime,
+      isPlaying: timelineState.isPlaying,
+      forceReload: true
+    });
+  };
+
+  const canJumpBackward = activeSegmentIndex > 0;
+  const canJumpForward = activeSegmentIndex !== -1 && activeSegmentIndex < segmentCount - 1;
+
   return (
     <div className="timeline-controls flex justify-between items-center mb-1">
       <div className="flex items-center gap-1.5">
@@ -429,9 +488,35 @@ export function TimelineControls() {
       </div>
 
       {/* Current time display */}
-      <div id="time-display"
-        className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border">
-        {timeDisplayText}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          onClick={() => jumpToAdjacentSegment(-1)}
+          title="Previous recording"
+          aria-label="Previous recording"
+          disabled={!canJumpBackward}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <div id="time-display"
+          className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border min-w-[140px] text-center">
+          {timeDisplayText}
+        </div>
+        <button
+          type="button"
+          className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+          onClick={() => jumpToAdjacentSegment(1)}
+          title="Next recording"
+          aria-label="Next recording"
+          disabled={!canJumpForward}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
 
       <div className="flex items-center gap-1">

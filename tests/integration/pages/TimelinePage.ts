@@ -54,6 +54,14 @@ export class TimelinePage extends BasePage {
     return this.page.locator('#time-display, .time-display, [data-testid="time-display"]').first();
   }
 
+  get previousRecordingButton(): Locator {
+    return this.page.getByRole('button', { name: 'Previous recording' }).first();
+  }
+
+  get nextRecordingButton(): Locator {
+    return this.page.getByRole('button', { name: 'Next recording' }).first();
+  }
+
   get videoPlayer(): Locator {
     return this.page.locator('#video-player video, video, .video-player, [data-testid="video-player"]').first();
   }
