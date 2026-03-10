@@ -24,6 +24,7 @@
 #include "../../include/video/sod_realnet.h"
 #include "../../include/video/motion_detection.h"
 #include "../../include/video/api_detection.h"
+#include "../../include/video/onvif_detection.h"
 #include "../../include/video/unified_detection_thread.h"
 #include "../../include/video/ffmpeg_utils.h"  // For comprehensive_ffmpeg_cleanup
 #include "../../include/core/logger.h"
@@ -72,6 +73,15 @@ int init_detection_system(void) {
         log_info("API detection system initialized");
     }
 
+    // Initialize ONVIF detection system
+    int onvif_ret = init_onvif_detection_system();
+    if (onvif_ret != 0) {
+        log_error("Failed to initialize ONVIF detection system");
+        log_warn("ONVIF detection will not be available");
+    } else {
+        log_info("ONVIF detection system initialized");
+    }
+
     // Initialize unified detection thread system
     int unified_ret = init_unified_detection_system();
     if (unified_ret != 0) {
@@ -102,6 +112,10 @@ void shutdown_detection_system(void) {
     // Shutdown API detection system
     shutdown_api_detection_system();
     log_info("API detection system shutdown");
+
+    // Shutdown ONVIF detection system
+    shutdown_onvif_detection_system();
+    log_info("ONVIF detection system shutdown");
 
     log_info("Detection system shutdown");
 }
