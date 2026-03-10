@@ -1,6 +1,7 @@
 #ifndef LIGHTNVR_API_DETECTION_H
 #define LIGHTNVR_API_DETECTION_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "video/detection_result.h"
 
@@ -22,6 +23,10 @@ void shutdown_api_detection_system(void);
 /**
  * Detect objects using the API
  *
+ * Uses the provided decoded frame when available. If no decoded frame is
+ * supplied and a stream name is available, the implementation may fetch a
+ * JPEG snapshot from go2rtc instead.
+ *
  * @param api_url The URL of the detection API
  * @param frame_data The frame data to detect objects in
  * @param width The width of the frame
@@ -36,6 +41,18 @@ void shutdown_api_detection_system(void);
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
                       const char *stream_name, float threshold, uint64_t recording_id);
+
+/**
+ * @brief Determine whether API detection should fetch a go2rtc snapshot.
+ *
+ * This prevents fallback callers from re-entering the go2rtc snapshot path
+ * after they already decoded a local frame for the same detection attempt.
+ */
+bool api_detection_should_use_go2rtc_snapshot(const unsigned char *frame_data,
+                                              int width,
+                                              int height,
+                                              int channels,
+                                              const char *stream_name);
 
 /**
  * Detect objects using the API with go2rtc snapshot only (no frame data required)

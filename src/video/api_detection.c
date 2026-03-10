@@ -101,6 +101,15 @@ static float normalize_api_detection_threshold(float threshold) {
     return (threshold > 0.0f) ? threshold : 0.5f;
 }
 
+bool api_detection_should_use_go2rtc_snapshot(const unsigned char *frame_data,
+                                              int width,
+                                              int height,
+                                              int channels,
+                                              const char *stream_name) {
+    bool has_decoded_frame = frame_data && width > 0 && height > 0 && channels > 0;
+    return !has_decoded_frame && stream_name && stream_name[0] != '\0';
+}
+
 // Sanitize backend parameter to avoid breaking URL/query structure.
 // Allows only [A-Za-z0-9_-]; falls back to "onnx" if invalid.
 static const char *sanitize_backend(const char *backend) {
@@ -393,8 +402,9 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         return -1;
     }
 
-    // Use go2rtc to get a JPEG snapshot directly if go2rtc is initialized.
-    // This eliminates the need for ffmpeg conversion and all the associated logs.
+    // Use go2rtc to get a JPEG snapshot directly only when we do not already
+    // have a decoded frame. This avoids re-entering the go2rtc snapshot path
+    // during fallback flows that already decoded a local frame.
     unsigned char *jpeg_data = NULL;
     size_t jpeg_size = 0;
     CURL *local_curl = NULL;
@@ -407,7 +417,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
     bool go2rtc_initialized = false;
     bool snapshot_ok = false;
 
-    if (stream_name && stream_name[0] != '\0') {
+    if (api_detection_should_use_go2rtc_snapshot(frame_data, width, height, channels, stream_name)) {
         go2rtc_initialized = go2rtc_integration_is_initialized();
         if (go2rtc_initialized) {
             snapshot_ok = go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size);
