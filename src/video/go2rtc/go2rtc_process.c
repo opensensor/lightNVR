@@ -83,6 +83,102 @@ static int scan_proc_for_cmdline(const char *pattern, pid_t *pids, int max_pids)
 }
 
 /**
+ * @brief Return true when @p path_or_name has basename exactly @p expected_name.
+ */
+static bool basename_equals(const char *path_or_name, const char *expected_name) {
+    if (!path_or_name || !expected_name || expected_name[0] == '\0') {
+        return false;
+    }
+
+    const char *base = strrchr(path_or_name, '/');
+    base = base ? base + 1 : path_or_name;
+    return strcmp(base, expected_name) == 0;
+}
+
+/**
+ * @brief Read /proc/<pid>/cmdline into @p cmdline.
+ *
+ * @return true if the file was read successfully, false otherwise.
+ */
+static bool read_proc_cmdline(pid_t pid, char *cmdline, size_t cmdline_size, size_t *bytes_read) {
+    if (!cmdline || cmdline_size == 0) {
+        return false;
+    }
+
+    char cmdline_path[64];
+    snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%d/cmdline", pid);
+
+    FILE *fp = fopen(cmdline_path, "r");
+    if (!fp) {
+        return false;
+    }
+
+    size_t bytes = fread(cmdline, 1, cmdline_size - 1, fp);
+    fclose(fp);
+    cmdline[bytes] = '\0';
+
+    if (bytes_read) {
+        *bytes_read = bytes;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Check whether /proc/<pid>/cmdline argv[0] basename exactly matches @p name.
+ */
+static bool proc_first_cmdline_arg_basename_equals(pid_t pid, const char *name) {
+    char cmdline[1024] = {0};
+    size_t bytes_read = 0;
+
+    if (!read_proc_cmdline(pid, cmdline, sizeof(cmdline), &bytes_read) || bytes_read == 0) {
+        return false;
+    }
+
+    size_t arg0_len = strnlen(cmdline, bytes_read);
+    if (arg0_len == 0) {
+        return false;
+    }
+
+    char arg0[PATH_MAX];
+    if (arg0_len >= sizeof(arg0)) {
+        arg0_len = sizeof(arg0) - 1;
+    }
+
+    memcpy(arg0, cmdline, arg0_len);
+    arg0[arg0_len] = '\0';
+    return basename_equals(arg0, name);
+}
+
+/**
+ * @brief Scan /proc for processes whose argv[0] basename exactly matches @p name.
+ */
+static int scan_proc_for_argv0_basename(const char *name, pid_t *pids, int max_pids) {
+    int found = 0;
+    pid_t self = getpid();
+
+    DIR *proc_dir = opendir("/proc");
+    if (!proc_dir) return 0;
+
+    const struct dirent *entry;
+    while ((entry = readdir(proc_dir)) != NULL && found < max_pids) {
+        const char *d = entry->d_name;
+        if (*d < '1' || *d > '9') continue;
+
+        char *ep;
+        pid_t pid = (pid_t)strtol(d, &ep, 10);
+        if (*ep != '\0' || pid <= 0 || pid == self) continue;
+
+        if (proc_first_cmdline_arg_basename_equals(pid, name)) {
+            pids[found++] = pid;
+        }
+    }
+
+    closedir(proc_dir);
+    return found;
+}
+
+/**
  * @brief Check whether a TCP port is open (LISTEN state) via /proc/net/tcp.
  *
  * Replaces: popen("netstat -tlpn 2>/dev/null | grep ':<port>'")
@@ -174,13 +270,13 @@ static void find_binary_in_path(const char *name, char *out, size_t out_size) {
 }
 
 /**
- * @brief Read /proc/<pid>/comm and check whether it contains @p name.
+ * @brief Read /proc/<pid>/comm and check whether it exactly matches @p name.
  *
  * Replaces: system("ps -p <pid> -o comm= | grep -q <name>")
  *
- * @return true if /proc/<pid>/comm contains @p name
+ * @return true if /proc/<pid>/comm exactly matches @p name
  */
-static bool proc_comm_contains(pid_t pid, const char *name) {
+static bool proc_comm_equals(pid_t pid, const char *name) {
     char path[64];
     snprintf(path, sizeof(path), "/proc/%d/comm", pid);
     FILE *fp = fopen(path, "r");
@@ -188,7 +284,13 @@ static bool proc_comm_contains(pid_t pid, const char *name) {
     char comm[256] = {0};
     bool ok = (fgets(comm, sizeof(comm), fp) != NULL);
     fclose(fp);
-    return ok && (strstr(comm, name) != NULL);
+
+    if (!ok) {
+        return false;
+    }
+
+    comm[strcspn(comm, "\n")] = '\0';
+    return strcmp(comm, name) == 0;
 }
 
 /**
@@ -293,7 +395,7 @@ static bool is_go2rtc_running_as_service(int api_port) {
     if (port_in_use) {
         // Also confirm that a go2rtc process is among those found by /proc scan
         pid_t pids[64];
-        int n = scan_proc_for_cmdline("go2rtc", pids, 64);
+        int n = scan_proc_for_argv0_basename("go2rtc", pids, 64);
         if (n > 0) {
             log_debug("go2rtc is already running as a service on port %d", api_port);
             return true;
@@ -732,8 +834,6 @@ static bool wait_for_process_termination(pid_t pid, int timeout_ms) {
  * @return true if it's a go2rtc process, false otherwise
  */
 static bool is_go2rtc_process(pid_t pid) {
-    char proc_path[64];
-
     // First check if the process exists
     if (kill(pid, 0) != 0) {
         return false;
@@ -745,31 +845,14 @@ static bool is_go2rtc_process(pid_t pid) {
         return false;
     }
 
-    // Check if it's a go2rtc process by examining /proc/{pid}/cmdline
-    snprintf(proc_path, sizeof(proc_path), "/proc/%d/cmdline", pid);
-    FILE *fp = fopen(proc_path, "r");
-    if (fp) {
-        char cmdline[1024] = {0};
-        size_t bytes_read = fread(cmdline, 1, sizeof(cmdline) - 1, fp);
-        fclose(fp);
-
-        if (bytes_read > 0) {
-            // Replace null bytes with spaces for easier searching
-            for (size_t i = 0; i < bytes_read; i++) {
-                if (cmdline[i] == '\0') {
-                    cmdline[i] = ' ';
-                }
-            }
-
-            // Check if cmdline contains go2rtc as the executable name
-            if (strstr(cmdline, "go2rtc") != NULL) {
-                return true;
-            }
-        }
+    // Check argv[0] basename only so later arguments or directory names do not
+    // produce false positives.
+    if (proc_first_cmdline_arg_basename_equals(pid, "go2rtc")) {
+        return true;
     }
 
-    // Alternative: read /proc/{pid}/comm and check for "go2rtc"
-    if (proc_comm_contains(pid, "go2rtc")) {
+    // Fallback: read /proc/{pid}/comm and require an exact name match.
+    if (proc_comm_equals(pid, "go2rtc")) {
         return true;
     }
 
@@ -828,7 +911,7 @@ static bool kill_all_go2rtc_processes(void) {
     // Scan /proc for go2rtc processes (replaces "ps | grep go2rtc | awk '{print $1}'")
     {
         pid_t scan_pids[64];
-        int nscan = scan_proc_for_cmdline("go2rtc", scan_pids, 64);
+        int nscan = scan_proc_for_argv0_basename("go2rtc", scan_pids, 64);
         num_pids = 0;
         for (int i = 0; i < nscan && num_pids < 64; i++) {
             pid_t pid = scan_pids[i];
@@ -860,7 +943,7 @@ static bool kill_all_go2rtc_processes(void) {
             // Check if any processes are still running and force kill them
             if (!all_terminated) {
                 pid_t still_pids[64];
-                int nstill = scan_proc_for_cmdline("go2rtc", still_pids, 64);
+                int nstill = scan_proc_for_argv0_basename("go2rtc", still_pids, 64);
                 for (int j = 0; j < nstill; j++) {
                     if (is_go2rtc_process(still_pids[j])) {
                         log_warn("go2rtc process %d still running, sending SIGKILL", still_pids[j]);
@@ -878,7 +961,7 @@ static bool kill_all_go2rtc_processes(void) {
             // Final verification - check one more time
             {
                 pid_t final_pids[64];
-                int nfinal = scan_proc_for_cmdline("go2rtc", final_pids, 64);
+                int nfinal = scan_proc_for_argv0_basename("go2rtc", final_pids, 64);
                 bool still_running = false;
                 for (int j = 0; j < nfinal; j++) {
                     pid_t pid = final_pids[j];
@@ -898,7 +981,7 @@ static bool kill_all_go2rtc_processes(void) {
                     reap_zombie_children();
 
                     pid_t last_pids[64];
-                    int nlast = scan_proc_for_cmdline("go2rtc", last_pids, 64);
+                    int nlast = scan_proc_for_argv0_basename("go2rtc", last_pids, 64);
                     for (int j = 0; j < nlast; j++) {
                         if (is_go2rtc_process(last_pids[j]) && !is_zombie_process(last_pids[j])) {
                             log_error("go2rtc process %d could not be killed", last_pids[j]);
@@ -933,7 +1016,7 @@ static bool kill_all_go2rtc_processes(void) {
     // (correlating /proc/net/tcp inodes to PIDs is expensive; a live-process check suffices)
     {
         pid_t leftover[64];
-        int nleft = scan_proc_for_cmdline("go2rtc", leftover, 64);
+        int nleft = scan_proc_for_argv0_basename("go2rtc", leftover, 64);
         bool found_ports = false;
         for (int i = 0; i < nleft; i++) {
             if (is_go2rtc_process(leftover[i]) && !is_zombie_process(leftover[i])) {
@@ -981,7 +1064,7 @@ bool go2rtc_process_is_running(void) {
     bool found = false;
     {
         pid_t scan_pids[64];
-        int n = scan_proc_for_cmdline("go2rtc", scan_pids, 64);
+        int n = scan_proc_for_argv0_basename("go2rtc", scan_pids, 64);
         for (int i = 0; i < n && !found; i++) {
             if (is_go2rtc_process(scan_pids[i])) {
                 if (g_process_pid <= 0 || g_process_pid != scan_pids[i]) {
@@ -1186,7 +1269,7 @@ bool go2rtc_process_start(int api_port) {
         // Execute go2rtc with explicit config path (using correct argument format).
         // Always use "go2rtc" as argv[0] (the process name visible in /proc/<pid>/cmdline
         // and /proc/<pid>/comm) regardless of the actual binary path, so that
-        // scan_proc_for_cmdline("go2rtc") can reliably find the process even when
+        // scan_proc_for_argv0_basename("go2rtc") can reliably find the process even when
         // g_binary_path is a full path or an alternate filename.
         log_info("Executing go2rtc with command: %s --config %s", resolved_binary, g_config_path);
         execl(resolved_binary, "go2rtc", "--config", g_config_path, NULL);
@@ -1383,9 +1466,9 @@ int go2rtc_process_get_pid(void) {
         }
     }
 
-    // Scan /proc for go2rtc processes (replaces "ps | grep go2rtc | awk '{print $1}'")
+    // Scan /proc for go2rtc processes (by exact argv[0] basename)
     pid_t scan_pids[64];
-    int n = scan_proc_for_cmdline("go2rtc", scan_pids, 64);
+    int n = scan_proc_for_argv0_basename("go2rtc", scan_pids, 64);
     for (int i = 0; i < n; i++) {
         if (is_go2rtc_process(scan_pids[i])) {
             g_process_pid = scan_pids[i];  // Update our tracked PID
