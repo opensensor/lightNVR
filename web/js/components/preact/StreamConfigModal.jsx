@@ -330,7 +330,7 @@ export function StreamConfigModal({
           onClose={() => setShowZoneEditor(false)}
         />
       )}
-    <div id="stream-config-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div id="stream-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-card text-card-foreground rounded-lg shadow-xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-border flex-shrink-0">
@@ -1416,6 +1416,7 @@ export function StreamConfigModal({
         {/* Footer */}
         <div className="flex justify-between items-center p-6 border-t border-border flex-shrink-0 bg-muted/20">
           <button
+            id="stream-test-btn"
             type="button"
             onClick={onTestConnection}
             className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors font-medium"
@@ -1424,6 +1425,7 @@ export function StreamConfigModal({
           </button>
           <div className="flex space-x-3">
             <button
+              id="stream-cancel-btn"
               type="button"
               onClick={onClose}
               className="px-6 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-background hover:bg-muted transition-colors"
@@ -1431,6 +1433,7 @@ export function StreamConfigModal({
               {t('common.cancel')}
             </button>
             <button
+              id="stream-save-btn"
               type="button"
               onClick={onSave}
               className="px-6 py-2 btn-primary font-medium"
