@@ -7,9 +7,11 @@ import { render } from 'preact';
 import { LoginView } from '../components/preact/LoginView.jsx';
 import { QueryClientProvider, queryClient } from '../query-client.js';
 import { ToastContainer } from "../components/preact/ToastContainer.jsx";
+import { initI18n } from '../i18n.js';
 
 // Render the LoginView component when the DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await initI18n();
   // Get the container element
   const container = document.getElementById('main-content');
 

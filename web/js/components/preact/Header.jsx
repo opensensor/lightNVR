@@ -11,6 +11,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { EditUserModal } from './users/EditUserModal.jsx';
 import { getAuthHeaders, isDemoMode, validateSession } from '../../utils/auth-utils.js';
 import { forceNavigation } from '../../utils/navigation-utils.js';
+import { useI18n } from '../../i18n.js';
 
 const buildProfileFormData = (user = {}) => ({
   username: user.username || '',
@@ -42,6 +43,7 @@ export function Header({ version = VERSION }) {
   const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
   const [demoMode, setDemoMode] = useState(false); // Demo mode state
   const [userRole, setUserRole] = useState(null); // null = still loading
+  const { t, locale, localePreference, setLocalePreference, availableLocales, AUTO_LOCALE } = useI18n();
 
   const syncSessionState = useCallback((session) => {
     if (session.valid && session.role) {
@@ -55,10 +57,8 @@ export function Header({ version = VERSION }) {
 
     if (session.username) {
       setUsername(session.username);
-    } else if (isSessionDemoMode) {
-      setUsername('Demo Viewer');
     } else {
-      setUsername('User');
+      setUsername('');
     }
 
     if (session.id) {
@@ -86,10 +86,9 @@ export function Header({ version = VERSION }) {
       .catch(() => {
         setUserRole('viewer');
         if (isDemoMode()) {
-          setUsername('Demo Viewer');
           setDemoMode(true);
         } else {
-          setUsername('User');
+          setUsername('');
         }
       });
 
@@ -115,7 +114,7 @@ export function Header({ version = VERSION }) {
       if (window._demoMode === true) {
         setDemoMode(true);
         if (!currentUser?.id) {
-          setUsername('Demo Viewer');
+          setUsername('');
         }
       }
     };
@@ -190,14 +189,14 @@ export function Header({ version = VERSION }) {
       setProfileFormData(buildProfileFormData(nextUser));
       setUsername(updatedUser.username);
       setIsProfileModalOpen(false);
-      showStatusMessage('Profile updated successfully', 'success', 5000);
+      showStatusMessage(t('auth.profileUpdated'), 'success', 5000);
     } catch (error) {
       console.error('Error updating current user:', error);
-      showStatusMessage(`Error updating profile: ${error.message}`, 'error', 8000);
+      showStatusMessage(t('auth.profileUpdateError', { message: error.message }), 'error', 8000);
     } finally {
       setIsSavingProfile(false);
     }
-  }, [currentUser, isSavingProfile, profileFormData.email, profileFormData.username]);
+  }, [currentUser, isSavingProfile, profileFormData.email, profileFormData.username, t]);
 
   // Toggle mobile menu
   const toggleMobileMenu = () => {
@@ -223,17 +222,31 @@ export function Header({ version = VERSION }) {
   // so the nav doesn't flash/reorder after load.
   const isAdmin = userRole === null || userRole === 'admin';
   const canEditCurrentUser = authEnabled && !demoMode && Boolean(currentUser?.id);
+  const displayUsername = username || (demoMode ? t('auth.demoViewer') : t('auth.user'));
+  const activeLocale = availableLocales.find((item) => item.code === locale);
+  const browserDefaultLabel = activeLocale
+    ? `${t('language.browserDefault')} (${activeLocale.nativeName})`
+    : t('language.browserDefault');
 
   // Navigation items - don't preserve query parameters when navigating via header
   // Admin-only tabs (System, Users) are hidden from non-admin roles.
   const navItems = [
-    { id: 'nav-live', href: getLiveViewHref(), label: 'Live View' },
-    { id: 'nav-recordings', href: 'recordings.html', label: 'Recordings' },
-    { id: 'nav-streams', href: 'streams.html', label: 'Streams' },
-    { id: 'nav-settings', href: 'settings.html', label: 'Settings' },
-    ...(isAdmin ? [{ id: 'nav-users', href: 'users.html', label: 'Users' }] : []),
-    ...(isAdmin ? [{ id: 'nav-system', href: 'system.html', label: 'System' }] : []),
+    { id: 'nav-live', href: getLiveViewHref(), label: t('nav.live') },
+    { id: 'nav-recordings', href: 'recordings.html', label: t('nav.recordings') },
+    { id: 'nav-streams', href: 'streams.html', label: t('nav.streams') },
+    { id: 'nav-settings', href: 'settings.html', label: t('nav.settings') },
+    ...(isAdmin ? [{ id: 'nav-users', href: 'users.html', label: t('nav.users') }] : []),
+    ...(isAdmin ? [{ id: 'nav-system', href: 'system.html', label: t('nav.system') }] : []),
   ];
+
+  const handleLocaleSelection = useCallback(async (value) => {
+    try {
+      await setLocalePreference(value === AUTO_LOCALE ? null : value);
+    } catch (error) {
+      console.error('Error changing locale:', error);
+      showStatusMessage(t('language.changeError'), 'error', 5000);
+    }
+  }, [AUTO_LOCALE, setLocalePreference, t]);
 
   // Render navigation item
   const renderNavItem = (item) => {
@@ -267,7 +280,7 @@ export function Header({ version = VERSION }) {
 
   const renderUsername = (mobile = false) => {
     if (!canEditCurrentUser) {
-      return <span>{username}</span>;
+      return <span>{displayUsername}</span>;
     }
 
     return (
@@ -276,12 +289,35 @@ export function Header({ version = VERSION }) {
         className={`bg-transparent border-0 p-0 font-medium transition-colors ${mobile ? 'text-left' : ''}`}
         style={{ color: 'hsl(var(--card-foreground))' }}
         onClick={openProfileModal}
-        title="Edit profile"
+        title={t('auth.editProfile')}
       >
-        {username}
+        {displayUsername}
       </button>
     );
   };
+
+  const renderLanguageSelector = (mobile = false) => (
+    <div className={mobile ? 'w-full px-4 py-2' : 'mr-3'}>
+      {mobile && (
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+          {t('language.label')}
+        </div>
+      )}
+      <select
+        aria-label={t('language.label')}
+        className="rounded border border-input bg-background px-2 py-1 text-sm text-foreground"
+        value={localePreference || AUTO_LOCALE}
+        onChange={(e) => {
+          void handleLocaleSelection(e.currentTarget.value);
+        }}
+      >
+        <option value={AUTO_LOCALE}>{browserDefaultLabel}</option>
+        {availableLocales.map((item) => (
+          <option key={item.code} value={item.code}>{item.nativeName}</option>
+        ))}
+      </select>
+    </div>
+  );
 
   return (
       <>
@@ -301,8 +337,9 @@ export function Header({ version = VERSION }) {
 
           {/* User Menu (Desktop) */}
           <div className="user-menu hidden md:flex items-center">
+            {renderLanguageSelector()}
             {demoMode && !localStorage.getItem('auth') && (
-              <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>Demo Mode</span>
+              <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>{t('auth.demoMode')}</span>
             )}
             <div className="mr-2">{renderUsername()}</div>
             {authEnabled && (
@@ -317,7 +354,7 @@ export function Header({ version = VERSION }) {
                   onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
                   onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary))'}
                 >
-                  Login
+                  {t('auth.login')}
                 </a>
               ) : (
                 <a
@@ -330,7 +367,7 @@ export function Header({ version = VERSION }) {
                   onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
                   onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                 >
-                  Logout
+                  {t('auth.logout')}
                 </a>
               )
             )}
@@ -341,7 +378,7 @@ export function Header({ version = VERSION }) {
               className="md:hidden p-2 focus:outline-none"
               style={{color: 'hsl(var(--card-foreground))'}}
               onClick={toggleMobileMenu}
-              aria-label="Toggle menu"
+              aria-label={t('nav.toggleMenu')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={mobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
@@ -353,13 +390,14 @@ export function Header({ version = VERSION }) {
         {mobileMenuOpen && (
             <div className="md:hidden mt-2 border-t pt-2 container mx-auto px-4" style={{borderColor: 'hsl(var(--border))'}}>
               <ul className="list-none m-0 p-0 flex flex-col w-full">
+                <li className="w-full">{renderLanguageSelector(true)}</li>
                 {navItems.map(renderNavItem)}
                 {authEnabled && (
                   <li className="w-full mt-2 pt-2 border-t" style={{borderColor: 'hsl(var(--border))'}}>
                     <div className="flex justify-between items-center px-4 py-2">
                       <div className="flex items-center">
                         {demoMode && !localStorage.getItem('auth') && (
-                          <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>Demo</span>
+                          <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>{t('auth.demoShort')}</span>
                         )}
                         {renderUsername(true)}
                       </div>
@@ -374,7 +412,7 @@ export function Header({ version = VERSION }) {
                           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
                           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary))'}
                         >
-                          Login
+                          {t('auth.login')}
                         </a>
                       ) : (
                         <a
@@ -387,7 +425,7 @@ export function Header({ version = VERSION }) {
                           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
                           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                         >
-                          Logout
+                          {t('auth.logout')}
                         </a>
                       )}
                     </div>
@@ -404,8 +442,8 @@ export function Header({ version = VERSION }) {
           handleInputChange={handleProfileInputChange}
           handleEditUser={handleProfileSave}
           onClose={closeProfileModal}
-          title="Edit Profile"
-          submitLabel={isSavingProfile ? 'Saving...' : 'Save Changes'}
+          title={t('auth.editProfileTitle')}
+          submitLabel={isSavingProfile ? t('common.saving') : t('common.saveChanges')}
           showPasswordField={false}
           showRoleField={false}
           showActiveField={false}

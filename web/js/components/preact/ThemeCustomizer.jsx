@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'preact/hooks';
 import { COLOR_THEMES, applyThemeColors } from '../../utils/theme-init.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * ThemeCustomizer component
@@ -16,6 +17,9 @@ export function ThemeCustomizer() {
   const [isDark, setIsDark] = useState(false);
   const [colorIntensity, setColorIntensity] = useState(50);
   const [colorTheme, setColorTheme] = useState('default');
+  const { t } = useI18n();
+
+  const getThemeDisplayName = (themeConfig) => themeConfig.nameKey ? t(themeConfig.nameKey) : themeConfig.name;
 
   // Load saved preferences from localStorage
   useEffect(() => {
@@ -100,9 +104,9 @@ export function ThemeCustomizer() {
             {isDark ? '🌙' : '☀️'}
           </div>
           <div>
-            <h3 class="font-semibold text-card-foreground">Dark Mode</h3>
+            <h3 class="font-semibold text-card-foreground">{t('appearance.darkMode')}</h3>
             <p class="text-sm text-muted-foreground">
-              {isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              {isDark ? t('appearance.switchToLightMode') : t('appearance.switchToDarkMode')}
             </p>
           </div>
         </div>
@@ -126,7 +130,7 @@ export function ThemeCustomizer() {
       <div class="p-4 bg-card rounded-lg border border-border">
         <div class="flex items-center gap-2 mb-4">
           <span class="text-xl">🎨</span>
-          <h3 class="font-semibold text-card-foreground">Color Theme</h3>
+          <h3 class="font-semibold text-card-foreground">{t('appearance.colorTheme')}</h3>
         </div>
         
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -142,7 +146,7 @@ export function ThemeCustomizer() {
             >
               <span class="text-2xl">{themeConfig.icon}</span>
               <span class="text-xs font-medium text-center text-card-foreground">
-                {themeConfig.name}
+                {getThemeDisplayName(themeConfig)}
               </span>
             </button>
           ))}
@@ -153,14 +157,14 @@ export function ThemeCustomizer() {
       <div class="p-4 bg-card rounded-lg border border-border">
         <div class="flex items-center gap-2 mb-4">
           <span class="text-xl">🎚️</span>
-          <h3 class="font-semibold text-card-foreground">Color Intensity</h3>
+          <h3 class="font-semibold text-card-foreground">{t('appearance.colorIntensity')}</h3>
         </div>
 
         <div class="space-y-4">
           <div class="flex items-center justify-between text-sm text-muted-foreground">
-            <span>{isDark ? 'Darker' : 'Lighter'}</span>
+            <span>{isDark ? t('appearance.darker') : t('appearance.lighter')}</span>
             <span class="font-semibold text-card-foreground">{colorIntensity}%</span>
-            <span>{isDark ? 'Brighter' : 'Higher Contrast'}</span>
+            <span>{isDark ? t('appearance.brighter') : t('appearance.higherContrast')}</span>
           </div>
 
           <input
@@ -182,7 +186,7 @@ export function ThemeCustomizer() {
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
               }`}
             >
-              Subtle
+              {t('appearance.subtle')}
             </button>
             <button
               onClick={() => handlePresetIntensity(50)}
@@ -192,7 +196,7 @@ export function ThemeCustomizer() {
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
               }`}
             >
-              Balanced
+              {t('appearance.balanced')}
             </button>
             <button
               onClick={() => handlePresetIntensity(75)}
@@ -202,7 +206,7 @@ export function ThemeCustomizer() {
                   : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
               }`}
             >
-              Bold
+              {t('appearance.bold')}
             </button>
           </div>
         </div>
@@ -212,40 +216,40 @@ export function ThemeCustomizer() {
       <div class="p-4 bg-accent/50 rounded-lg border border-border">
         <div class="flex items-center justify-between mb-2">
           <span class="text-sm font-medium text-accent-foreground">
-            {COLOR_THEMES[colorTheme].icon} {COLOR_THEMES[colorTheme].name}
+            {COLOR_THEMES[colorTheme].icon} {getThemeDisplayName(COLOR_THEMES[colorTheme])}
           </span>
           <span class="text-sm text-muted-foreground">
-            {isDark ? 'Dark' : 'Light'} Mode
+            {isDark ? t('appearance.modeDark') : t('appearance.modeLight')}
           </span>
         </div>
         <p class="text-xs text-muted-foreground">
-          💡 Tip: Themes work in both light and dark modes with automatic color adaptation
+          {t('appearance.tipAdaptiveThemes')}
         </p>
       </div>
 
       {/* Preview Section */}
       <div class="p-4 bg-card rounded-lg border border-border">
-        <h3 class="font-semibold text-card-foreground mb-3">Preview</h3>
+        <h3 class="font-semibold text-card-foreground mb-3">{t('appearance.preview')}</h3>
         <div class="space-y-2">
           <div class="flex gap-2">
             <div class="flex-1 h-12 rounded bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium">
-              Primary
+              {t('appearance.previewPrimary')}
             </div>
             <div class="flex-1 h-12 rounded bg-secondary flex items-center justify-center text-secondary-foreground text-xs font-medium">
-              Secondary
+              {t('appearance.previewSecondary')}
             </div>
           </div>
           <div class="flex gap-2">
             <div class="flex-1 h-12 rounded bg-accent flex items-center justify-center text-accent-foreground text-xs font-medium">
-              Accent
+              {t('appearance.previewAccent')}
             </div>
             <div class="flex-1 h-12 rounded bg-muted flex items-center justify-center text-muted-foreground text-xs font-medium">
-              Muted
+              {t('appearance.previewMuted')}
             </div>
           </div>
           <div class="p-3 rounded border border-border bg-background">
             <p class="text-sm text-foreground">
-              This is how text looks on the background color
+              {t('appearance.previewText')}
             </p>
           </div>
         </div>

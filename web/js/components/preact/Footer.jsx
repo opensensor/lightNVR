@@ -5,6 +5,7 @@
 
 import { useState } from 'preact/hooks';
 import { getCurrentYear } from '../../utils/date-utils.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * Footer component
@@ -13,17 +14,18 @@ import { getCurrentYear } from '../../utils/date-utils.js';
  */
 export function Footer() {
   const [year] = useState(getCurrentYear());
+  const { t } = useI18n();
 
   return (
     <footer class="bg-card text-card-foreground py-3 px-4 mt-4 shadow-inner">
       <div class="container mx-auto flex justify-between items-center">
         <div class="text-sm text-muted-foreground">
-          Lightweight Network Video Recorder© {year}
+          {t('footer.tagline')} © {year}
         </div>
         <div>
           <a href="https://github.com/opensensor/lightnvr" class="text-sm no-underline hover:underline"
              style={{color: 'hsl(var(--primary))'}}
-             target="_blank" rel="noopener noreferrer">GitHub</a>
+             target="_blank" rel="noopener noreferrer">{t('footer.github')}</a>
         </div>
       </div>
     </footer>

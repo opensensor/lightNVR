@@ -8,48 +8,56 @@
 export const COLOR_THEMES = {
   default: {
     name: 'Default',
+    nameKey: 'theme.default',
     light: { hue: 240, saturation: 5.9 },
     dark: { hue: 240, saturation: 3.7 },
     icon: '🎨'
   },
   blue: {
     name: 'Ocean Blue',
+    nameKey: 'theme.blue',
     light: { hue: 217, saturation: 32 },
     dark: { hue: 217, saturation: 25 },
     icon: '🌊'
   },
   emerald: {
     name: 'Forest Green',
+    nameKey: 'theme.emerald',
     light: { hue: 160, saturation: 30 },
     dark: { hue: 160, saturation: 25 },
     icon: '🌲'
   },
   purple: {
     name: 'Royal Purple',
+    nameKey: 'theme.purple',
     light: { hue: 265, saturation: 28 },
     dark: { hue: 265, saturation: 20 },
     icon: '👑'
   },
   rose: {
     name: 'Sunset Rose',
+    nameKey: 'theme.rose',
     light: { hue: 350, saturation: 25 },
     dark: { hue: 350, saturation: 18 },
     icon: '🌹'
   },
   amber: {
     name: 'Golden Amber',
+    nameKey: 'theme.amber',
     light: { hue: 45, saturation: 28 },
     dark: { hue: 45, saturation: 20 },
     icon: '⚡'
   },
   slate: {
     name: 'Cool Slate',
+    nameKey: 'theme.slate',
     light: { hue: 215, saturation: 8 },
     dark: { hue: 215, saturation: 6 },
     icon: '🗿'
   },
   retro80s: {
     name: 'Retro 80s',
+    nameKey: 'theme.retro80s',
     light: { hue: 18, saturation: 58 },
     dark: { hue: 18, saturation: 48 },
     icon: '📼'

@@ -1,3 +1,5 @@
+import { useI18n } from '../../../i18n.js';
+
 /**
  * API Key Modal Component
  */
@@ -13,6 +15,8 @@
  * @returns {JSX.Element} API key modal
  */
 export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copyApiKey, onClose }) {
+  const { t } = useI18n();
+
   // Stop click propagation on modal content
   const stopPropagation = (e) => {
     e.stopPropagation();
@@ -24,7 +28,7 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
   // Create a custom close handler that prevents closing if an API key is displayed
   const handleClose = (e) => {
     // If we have an API key, prevent closing when clicking outside
-    if (newApiKey && newApiKey !== 'Generating...') {
+    if (newApiKey && newApiKey !== t('users.generatingApiKey')) {
       // Only allow closing via the close button
       return;
     }
@@ -35,13 +39,13 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleClose}>
       <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
-        <h2 className="text-xl font-bold mb-4">API Key for {currentUser.username}</h2>
+        <h2 className="text-xl font-bold mb-4">{t('users.apiKeyFor', { username: currentUser.username })}</h2>
 
         <div className="mb-6">
           {newApiKey ? (
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2">
-                API Key
+                {t('users.apiKey')}
               </label>
               <div className="flex">
                 <input
@@ -54,23 +58,23 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
                   className="btn-primary font-bold py-2 px-4 rounded-r"
                   onClick={copyApiKey}
                 >
-                  Copy
+                  {t('common.copy')}
                 </button>
               </div>
               <p className="text-sm text-muted-foreground mt-2">
-                This key will only be shown once. Save it securely.
+                {t('users.apiKeyShownOnce')}
               </p>
             </div>
           ) : (
             <>
               <p className="mb-4">
-                Generate a new API key for this user. This will invalidate any existing API key.
+                {t('users.generateApiKeyDescription')}
               </p>
               <button
                 className="btn-primary w-full font-bold py-2 px-4 rounded mb-4"
                 onClick={handleGenerateApiKey}
               >
-                Generate New API Key
+                {t('users.generateNewApiKey')}
               </button>
             </>
           )}
@@ -78,10 +82,10 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
 
         <div className="flex justify-end">
           <button
-            className={newApiKey && newApiKey !== 'Generating...' ? 'btn-primary' : 'btn-secondary'}
+            className={newApiKey && newApiKey !== t('users.generatingApiKey') ? 'btn-primary' : 'btn-secondary'}
             onClick={onClose}
           >
-            {newApiKey && newApiKey !== 'Generating...' ? 'Done' : 'Close'}
+            {newApiKey && newApiKey !== t('users.generatingApiKey') ? t('common.done') : t('common.close')}
           </button>
         </div>
       </div>

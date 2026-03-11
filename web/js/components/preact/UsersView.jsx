@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
+import { useI18n } from '../../i18n.js';
 
 // Import user components
 
@@ -21,6 +22,8 @@ import { TotpSetupModal } from './users/TotpSetupModal.jsx';
  * @returns {JSX.Element} UsersView component
  */
 export function UsersView() {
+  const { t } = useI18n();
+
   // State for modal visibility
   const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', 'totp', or null
 
@@ -72,7 +75,7 @@ export function UsersView() {
 
   const renderPageHeader = (actionButton = null) => (
     <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
-      <h2 className="text-xl font-semibold">User Management</h2>
+      <h2 className="text-xl font-semibold">{t('users.userManagement')}</h2>
       {actionButton}
     </div>
   );
@@ -124,14 +127,14 @@ export function UsersView() {
     onSuccess: () => {
       // Close modal and show success message
       setActiveModal(null);
-      showStatusMessage('User added successfully', 'success', 5000);
+      showStatusMessage(t('users.userAdded'), 'success', 5000);
 
       // Refresh users list
       refetchUsers();
     },
     onError: (error) => {
       console.error('Error adding user:', error);
-      showStatusMessage(`Error adding user: ${error.message}`, 'error', 8000);
+      showStatusMessage(t('users.userAddError', { message: error.message }), 'error', 8000);
     }
   });
 
@@ -153,14 +156,14 @@ export function UsersView() {
     onSuccess: () => {
       // Close modal and show success message
       setActiveModal(null);
-      showStatusMessage('User updated successfully', 'success', 5000);
+      showStatusMessage(t('users.userUpdated'), 'success', 5000);
 
       // Refresh users list
       refetchUsers();
     },
     onError: (error) => {
       console.error('Error updating user:', error);
-      showStatusMessage(`Error updating user: ${error.message}`, 'error', 8000);
+      showStatusMessage(t('users.userUpdateError', { message: error.message }), 'error', 8000);
     }
   });
 
@@ -178,14 +181,14 @@ export function UsersView() {
     onSuccess: () => {
       // Close modal and show success message
       setActiveModal(null);
-      showStatusMessage('User deleted successfully', 'success', 5000);
+      showStatusMessage(t('users.userDeleted'), 'success', 5000);
 
       // Refresh users list
       refetchUsers();
     },
     onError: (error) => {
       console.error('Error deleting user:', error);
-      showStatusMessage(`Error deleting user: ${error.message}`, 'error', 8000);
+      showStatusMessage(t('users.userDeleteError', { message: error.message }), 'error', 8000);
     }
   });
 
@@ -202,12 +205,12 @@ export function UsersView() {
     },
     onMutate: () => {
       // Show loading state
-      setApiKey('Generating...');
+      setApiKey(t('users.generatingApiKey'));
     },
     onSuccess: (data) => {
       // Set the API key and ensure the modal stays open
       setApiKey(data.api_key);
-      showStatusMessage('API key generated successfully', 'success');
+      showStatusMessage(t('users.apiKeyGenerated'), 'success');
 
       // Refresh users list without affecting the modal
       // We'll use a separate function to avoid closing the modal
@@ -218,7 +221,7 @@ export function UsersView() {
     onError: (error) => {
       console.error('Error generating API key:', error);
       setApiKey('');
-      showStatusMessage(`Error generating API key: ${error.message}`, 'error');
+      showStatusMessage(t('users.apiKeyGenerateError', { message: error.message }), 'error');
     }
   });
 
@@ -233,12 +236,12 @@ export function UsersView() {
       });
     },
     onSuccess: (data) => {
-      showStatusMessage(data?.message || 'Login lockout cleared successfully', 'success', 5000);
+      showStatusMessage(data?.message || t('users.loginLockoutCleared'), 'success', 5000);
       refetchUsers();
     },
     onError: (error) => {
       console.error('Error clearing login lockout:', error);
-      showStatusMessage(`Error clearing login lockout: ${error.message}`, 'error', 8000);
+      showStatusMessage(t('users.loginLockoutClearError', { message: error.message }), 'error', 8000);
     }
   });
 
@@ -308,11 +311,11 @@ export function UsersView() {
   const copyApiKey = useCallback(() => {
     navigator.clipboard.writeText(apiKey)
       .then(() => {
-        showStatusMessage('API key copied to clipboard', 'success');
+        showStatusMessage(t('users.apiKeyCopied'), 'success');
       })
       .catch((err) => {
         console.error('Error copying API key:', err);
-        showStatusMessage('Failed to copy API key', 'error');
+        showStatusMessage(t('users.apiKeyCopyError'), 'error');
       });
   }, [apiKey]);
 
@@ -376,7 +379,7 @@ export function UsersView() {
     return (
       <div className="flex justify-center items-center p-8">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <span className="sr-only">Loading...</span>
+        <span className="sr-only">{t('common.loading')}</span>
       </div>
     );
   }
@@ -394,19 +397,19 @@ export function UsersView() {
 
         <div className={`border px-4 py-3 rounded relative mb-4 ${isForbiddenError ? 'bg-yellow-100 border-yellow-400 text-yellow-700 dark:bg-yellow-900 dark:border-yellow-600 dark:text-yellow-200' : 'bg-red-100 border-red-400 text-red-700 dark:bg-red-900 dark:border-red-600 dark:text-red-200'}`}>
           <h4 className="font-bold mb-2">
-            {isForbiddenError ? 'Access Denied' : 'Authentication Required'}
+              {isForbiddenError ? t('users.accessDenied') : t('auth.authenticationRequired')}
           </h4>
           <p>
             {isForbiddenError
-              ? 'You do not have permission to view the users list. Admin privileges are required.'
-              : 'Your session has expired or you are not logged in. Please log in again.'}
+              ? t('users.accessDeniedDescription')
+              : t('auth.sessionExpiredLoginAgain')}
           </p>
           {isUnauthorizedError && (
             <button
               className="mt-3 btn-primary"
               onClick={() => window.location.href = '/login.html'}
             >
-              Go to Login
+              {t('auth.goToLogin')}
             </button>
           )}
         </div>
@@ -423,13 +426,13 @@ export function UsersView() {
             className="btn-primary"
             onClick={() => refetchUsers()}
           >
-            Retry
+            {t('common.retry')}
           </button>
         )}
 
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 dark:bg-red-900 dark:border-red-600 dark:text-red-200">
-          <h4 className="font-bold mb-2">Error Loading Users</h4>
-          <p>{error.message || 'An unexpected error occurred while loading users.'}</p>
+          <h4 className="font-bold mb-2">{t('users.errorLoadingUsers')}</h4>
+          <p>{error.message || t('users.errorLoadingUsersDescription')}</p>
         </div>
       </div>
     );
@@ -444,13 +447,13 @@ export function UsersView() {
             className="btn-primary"
             onClick={handleAddUserClick}
           >
-            Add User
+            {t('users.addUser')}
           </button>
         )}
 
         <div className="badge-info border px-4 py-3 rounded relative mb-4">
-          <h4 className="font-bold mb-2">No Users Found</h4>
-          <p>Click the "Add User" button to create your first user.</p>
+          <h4 className="font-bold mb-2">{t('users.noUsersFound')}</h4>
+          <p>{t('users.noUsersDescription')}</p>
         </div>
         {activeModal === 'add' && (
           <AddUserModal
@@ -472,7 +475,7 @@ export function UsersView() {
           className="btn-primary"
           onClick={handleAddUserClick}
         >
-          Add User
+          {t('users.addUser')}
         </button>
       )}
 

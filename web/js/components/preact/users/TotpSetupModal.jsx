@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import QRCode from 'qrcode';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * TOTP Setup Modal Component
@@ -22,6 +23,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
   const [error, setError] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
   const canvasRef = useRef(null);
+  const { t } = useI18n();
 
   const stopPropagation = (e) => e.stopPropagation();
 
@@ -75,10 +77,10 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         setStep('setup');
       } else {
         const data = await res.json();
-        setError(data.error || 'Failed to set up TOTP');
+        setError(data.error || t('users.mfaSetupFailed'));
       }
     } catch (err) {
-      setError('Network error during TOTP setup');
+      setError(t('users.networkErrorDuringMfaSetup'));
     }
   };
 
@@ -86,7 +88,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
     e.preventDefault();
     setError('');
     if (verifyCode.length !== 6) {
-      setError('Please enter a 6-digit code');
+      setError(t('users.enterSixDigitCode'));
       return;
     }
     try {
@@ -100,11 +102,11 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         if (onSuccess) onSuccess();
       } else {
         const data = await res.json();
-        setError(data.error || 'Invalid verification code');
+        setError(data.error || t('users.invalidVerificationCode'));
         setVerifyCode('');
       }
     } catch (err) {
-      setError('Network error during verification');
+      setError(t('users.networkErrorDuringVerification'));
     }
   };
 
@@ -121,34 +123,33 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         if (onSuccess) onSuccess();
       } else {
         const data = await res.json();
-        setError(data.error || 'Failed to disable TOTP');
+        setError(data.error || t('users.disableMfaFailed'));
       }
     } catch (err) {
-      setError('Network error during disable');
+      setError(t('users.networkErrorDuringDisableMfa'));
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-card text-card-foreground rounded-lg p-6 max-w-md w-full" onClick={stopPropagation}>
-        <h2 className="text-xl font-bold mb-4">MFA Setup — {user.username}</h2>
+        <h2 className="text-xl font-bold mb-4">{t('users.mfaSetupNamed', { username: user.username })}</h2>
 
         {error && (
           <div className="mb-4 p-3 rounded-lg badge-danger">{error}</div>
         )}
 
         {step === 'loading' && (
-          <div className="text-center py-4">Loading...</div>
+          <div className="text-center py-4">{t('common.loading')}</div>
         )}
 
         {step === 'status' && !totpEnabled && (
           <div>
             <p className="mb-4 text-sm text-muted-foreground">
-              Two-factor authentication adds an extra layer of security.
-              You'll need an authenticator app like Google Authenticator or Authy.
+              {t('users.mfaDescription')}
             </p>
             <button className="btn-primary w-full" onClick={handleSetup}>
-              Set Up Two-Factor Authentication
+              {t('users.setupTwoFactorAuthentication')}
             </button>
           </div>
         )}
@@ -156,10 +157,10 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         {step === 'status' && totpEnabled && (
           <div>
             <div className="mb-4 p-3 rounded-lg badge-success">
-              ✓ Two-factor authentication is enabled
+              {t('users.twoFactorEnabled')}
             </div>
             <button className="btn-danger w-full" onClick={handleDisable}>
-              Disable Two-Factor Authentication
+              {t('users.disableTwoFactorAuthentication')}
             </button>
           </div>
         )}
@@ -167,19 +168,19 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         {step === 'setup' && (
           <div>
             <p className="mb-3 text-sm">
-              Scan this QR code with your authenticator app:
+              {t('users.scanQrCode')}
             </p>
             <div className="flex justify-center mb-3 bg-white p-2 rounded">
               <canvas ref={canvasRef}></canvas>
             </div>
             <div className="mb-4">
-              <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
+              <p className="text-xs text-muted-foreground mb-1">{t('users.enterKeyManually')}</p>
               <code className="block p-2 bg-muted text-foreground rounded text-sm font-mono break-all select-all">
                 {secret}
               </code>
             </div>
             <form onSubmit={handleVerify}>
-              <label className="block text-sm font-medium mb-1">Enter verification code:</label>
+              <label className="block text-sm font-medium mb-1">{t('users.enterVerificationCode')}</label>
               <input
                 type="text"
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-center text-xl tracking-widest mb-3"
@@ -195,7 +196,7 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
                 className="btn-primary w-full"
                 disabled={verifyCode.length !== 6}
               >
-                Verify & Enable
+                {t('users.verifyAndEnable')}
               </button>
             </form>
           </div>
@@ -204,17 +205,17 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
         {step === 'enabled' && (
           <div>
             <div className="mb-4 p-3 rounded-lg badge-success">
-              ✓ Two-factor authentication has been enabled successfully!
+              {t('users.twoFactorEnabledSuccess')}
             </div>
             <p className="mb-4 text-sm text-muted-foreground">
-              You will now be required to enter a verification code from your authenticator app each time you log in.
+              {t('users.mfaNowRequired')}
             </p>
           </div>
         )}
 
         <div className="flex justify-end mt-4">
           <button className="btn-secondary" onClick={onClose}>
-            {step === 'enabled' ? 'Done' : 'Close'}
+            {step === 'enabled' ? t('common.done') : t('common.close')}
           </button>
         </div>
       </div>

@@ -2,8 +2,9 @@
  * Add User Modal Component
  */
 
-import { USER_ROLES } from './UserRoles.js';
+import { USER_ROLE_KEYS } from './UserRoles.js';
 import { useEffect, useRef } from 'preact/hooks';
+import { useI18n } from '../../../i18n.js';
 
 const FOCUSABLE_SELECTORS = [
   'a[href]',
@@ -16,12 +17,6 @@ const FOCUSABLE_SELECTORS = [
 ];
 
 const FOCUSABLE_SELECTOR_QUERY = FOCUSABLE_SELECTORS.join(',');
-const ALLOWED_LOGIN_CIDRS_PLACEHOLDER = `e.g.
-192.168.1.25
-192.168.1.0/24
-2001:db8::1
-(leave blank for unrestricted)`;
-
 /**
  * Add User Modal Component
  * @param {Object} props - Component props
@@ -35,6 +30,13 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
   const dialogRef = useRef(null);
   const firstFieldRef = useRef(null);
   const backdropPointerDownRef = useRef(false);
+  const { t } = useI18n();
+
+  const allowedLoginCidrsPlaceholder = `${t('common.example')}
+192.168.1.25
+192.168.1.0/24
+2001:db8::1
+${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
   // Direct submit handler
   const handleSubmit = (e) => {
@@ -118,12 +120,12 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
           ref={dialogRef}
           tabIndex={-1}
         >
-          <h2 id="add-user-modal-title" className="text-xl font-bold mb-4">Add New User</h2>
+          <h2 id="add-user-modal-title" className="text-xl font-bold mb-4">{t('users.addNewUser')}</h2>
 
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="username">
-                Username
+                {t('fields.username')}
               </label>
               <input
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -141,7 +143,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
 
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="password">
-                Password
+                {t('fields.password')}
               </label>
               <input
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -158,7 +160,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
 
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="email">
-                Email
+                {t('fields.email')}
               </label>
               <input
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -173,7 +175,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
 
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="role">
-                Role
+                {t('fields.role')}
               </label>
               <select
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -182,8 +184,8 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 value={formData.role}
                 onChange={handleInputChange}
               >
-                {Object.entries(USER_ROLES).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                {Object.entries(USER_ROLE_KEYS).map(([value, key]) => (
+                  <option key={value} value={value}>{t(key)}</option>
                 ))}
               </select>
             </div>
@@ -198,7 +200,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-bold">Active</span>
+                <span className="text-sm font-bold">{t('users.active')}</span>
               </label>
             </div>
 
@@ -213,19 +215,19 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                   className="mr-2"
                   aria-describedby="password-change-locked-description"
                 />
-                <span className="text-sm font-bold">Lock Password Changes</span>
+                <span className="text-sm font-bold">{t('users.lockPasswordChanges')}</span>
               </label>
               <p
                 id="password-change-locked-description"
                 className="text-xs text-muted-foreground mt-1 ml-6"
               >
-                When locked, this user cannot change their own password
+                {t('users.lockPasswordChangesHelp')}
               </p>
             </div>
 
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-                Allowed Stream Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
+                {t('users.allowedStreamTags')} <span className="font-normal text-muted-foreground">(RBAC)</span>
               </label>
               <input
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -234,12 +236,12 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 name="allowed_tags"
                 value={formData.allowed_tags || ''}
                 onChange={handleInputChange}
-                placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
+                placeholder={t('users.allowedTagsPlaceholder')}
                 maxLength={255}
                 aria-describedby="allowed-tags-description"
               />
               <p id="allowed-tags-description" className="text-xs text-muted-foreground mt-1">
-                Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
+                {t('users.allowedTagsHelp')}
               </p>
               {(() => {
                 const parsedAllowedTags = (formData.allowed_tags || '')
@@ -250,7 +252,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                   <ul
                     className="mt-2 flex flex-wrap gap-1"
                     role="list"
-                    aria-label="Current allowed stream tags"
+                    aria-label={t('users.currentAllowedStreamTags')}
                   >
                     {parsedAllowedTags.map(tag => (
                       <li key={tag} className="badge-info">
@@ -264,7 +266,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
 
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
-                Allowed Login IP Ranges <span className="font-normal text-muted-foreground">(CIDR)</span>
+                {t('users.allowedLoginIpRanges')} <span className="font-normal text-muted-foreground">(CIDR)</span>
               </label>
               <textarea
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -272,7 +274,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 name="allowed_login_cidrs"
                 value={formData.allowed_login_cidrs || ''}
                 onChange={handleInputChange}
-                placeholder={ALLOWED_LOGIN_CIDRS_PLACEHOLDER}
+                placeholder={allowedLoginCidrsPlaceholder}
                 rows={4}
                 maxLength={1023}
                 aria-describedby="allowed-login-cidrs-description"
@@ -281,7 +283,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 id="allowed-login-cidrs-description"
                 className="text-xs text-muted-foreground mt-1"
               >
-                One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted. Bare IPs are treated as a single host.
+                {t('users.allowedLoginCidrsHelp')}
               </p>
             </div>
 
@@ -291,13 +293,13 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 className="btn-secondary mr-2"
                 onClick={onClose}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="submit"
                 className="btn-primary"
               >
-                Add User
+                {t('users.addUser')}
               </button>
             </div>
           </form>

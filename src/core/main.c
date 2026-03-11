@@ -1705,8 +1705,9 @@ static void check_and_ensure_services(void) {
     // Read current stream configurations from the database instead of using the
     // stale global config, which is only populated at startup. This ensures that
     // runtime changes (e.g., toggling recording via the web UI) are respected
-    // by the maintenance loop.
-    config_t *current_config = get_streaming_config();
+    // by the maintenance loop. get_streaming_config() returns a borrowed pointer
+    // to an internal static snapshot, so there is nothing to free here.
+    const config_t *current_config = get_streaming_config();
 
     log_info("Running periodic service check (%d max streams)", g_config.max_streams);
 

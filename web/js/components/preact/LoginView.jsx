@@ -4,6 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'preact/hooks';
+import { useI18n } from '../../i18n.js';
 
 /**
  * Returns a safe same-origin redirect path from a candidate URL string.
@@ -50,6 +51,11 @@ export function LoginView() {
   const [trustedDeviceDays, setTrustedDeviceDays] = useState(30);
   const [rememberDevice, setRememberDevice] = useState(false);
   const abortControllerRef = useRef(null);
+  const { t, locale } = useI18n();
+
+  useEffect(() => {
+    document.title = `${t('login.signIn')} - LightNVR`;
+  }, [locale, t]);
 
   // Fetch login config to determine if force MFA is enabled
   useEffect(() => {
@@ -75,23 +81,25 @@ export function LoginView() {
     if (urlParams.has('error')) {
       const errorType = urlParams.get('error');
       if (errorType === 'rate_limited') {
-        setErrorMessage('Too many login attempts. Please try again later.');
+        setErrorMessage(t('login.error.rateLimited'));
       } else {
-        setErrorMessage('Invalid username or password');
+        setErrorMessage(t('login.error.invalidUsernamePassword'));
       }
     } else if (urlParams.has('auth_required') && urlParams.has('logout')) {
-      setErrorMessage('You have been successfully logged out.');
+      setErrorMessage(t('login.error.loggedOut'));
     } else if (urlParams.has('auth_required')) {
       const reason = urlParams.get('reason');
       if (reason === 'session_expired') {
-        setErrorMessage('Your session has expired. Please log in again.');
+        setErrorMessage(t('login.error.sessionExpired'));
       } else {
-        setErrorMessage('Authentication required. Please log in to continue.');
+        setErrorMessage(t('login.error.authRequired'));
       }
     } else if (urlParams.has('logout')) {
-      setErrorMessage('You have been successfully logged out.');
+      setErrorMessage(t('login.error.loggedOut'));
+    } else {
+      setErrorMessage('');
     }
-  }, []);
+  }, [locale, t]);
 
   // Cancel any in-flight login request when the component unmounts
   useEffect(() => {
@@ -107,13 +115,13 @@ export function LoginView() {
     e.preventDefault();
 
     if (!username || !password) {
-      setErrorMessage('Please enter both username and password');
+      setErrorMessage(t('login.error.enterUsernamePassword'));
       return;
     }
 
     // When force MFA is enabled and a TOTP code is provided, validate it's 6 digits
     if (forceMfaEnabled && forceMfaTotpCode && forceMfaTotpCode.length > 0 && forceMfaTotpCode.length !== 6) {
-      setErrorMessage('Verification code must be exactly 6 digits');
+      setErrorMessage(t('login.error.codeSixDigits'));
       return;
     }
 
@@ -176,9 +184,9 @@ export function LoginView() {
         // Failed login
         setIsLoggingIn(false);
         if (response.status === 429) {
-          setErrorMessage('Too many login attempts. Please try again later.');
+          setErrorMessage(t('login.error.rateLimited'));
         } else {
-          setErrorMessage('Invalid credentials');
+          setErrorMessage(t('login.error.invalidCredentials'));
         }
         if (forceMfaEnabled) {
           setForceMfaTotpCode('');
@@ -188,7 +196,7 @@ export function LoginView() {
       console.error('Login error:', error);
       // Reset login state on error
       setIsLoggingIn(false);
-      setErrorMessage('An error occurred during login. Please try again.');
+      setErrorMessage(t('login.error.generic'));
     }
   };
 
@@ -197,7 +205,7 @@ export function LoginView() {
     e.preventDefault();
 
     if (!totpCode || totpCode.length !== 6) {
-      setErrorMessage('Please enter a 6-digit verification code');
+      setErrorMessage(t('login.error.enterVerificationCode'));
       return;
     }
 
@@ -225,16 +233,16 @@ export function LoginView() {
           setTotpRequired(false);
           setTotpToken('');
           setTotpCode('');
-          setErrorMessage('MFA session expired. Please login again.');
+          setErrorMessage(t('login.error.mfaExpired'));
         } else {
-          setErrorMessage(data.error || 'Invalid verification code');
+          setErrorMessage(data.error || t('login.error.invalidVerificationCode'));
           setTotpCode('');
         }
       }
     } catch (error) {
       console.error('TOTP verification error:', error);
       setIsLoggingIn(false);
-      setErrorMessage('An error occurred during verification. Please try again.');
+      setErrorMessage(t('login.error.generic'));
     }
   };
 
@@ -244,7 +252,7 @@ export function LoginView() {
 
     // Check for success messages
     const isSuccess = (
-      errorMessage.includes('successfully logged out')
+      errorMessage === t('login.error.loggedOut')
     );
 
     return baseClass + (
@@ -263,7 +271,7 @@ export function LoginView() {
       <div className="login-container w-full max-w-md p-6 bg-card text-card-foreground rounded-lg shadow-lg">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold">LightNVR</h1>
-          <p className="text-muted-foreground">Please sign in to continue</p>
+          <p className="text-muted-foreground">{t('login.subtitle')}</p>
         </div>
 
         {errorMessage && (
@@ -275,13 +283,13 @@ export function LoginView() {
         {!totpRequired ? (
           <form id="login-form" className="space-y-6" onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="username" className="block text-sm font-medium mb-1">Username</label>
+              <label htmlFor="username" className="block text-sm font-medium mb-1">{t('login.username')}</label>
               <input
                   type="text"
                   id="username"
                   name="username"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  placeholder="Enter your username"
+                  placeholder={t('login.usernamePlaceholder')}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -289,13 +297,13 @@ export function LoginView() {
               />
             </div>
             <div className="form-group">
-              <label htmlFor="password" className="block text-sm font-medium mb-1">Password</label>
+              <label htmlFor="password" className="block text-sm font-medium mb-1">{t('login.password')}</label>
               <input
                   type="password"
                   id="password"
                   name="password"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  placeholder="Enter your password"
+                  placeholder={t('login.passwordPlaceholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -304,7 +312,7 @@ export function LoginView() {
             </div>
             {forceMfaEnabled && (
               <div className="form-group">
-                <label htmlFor="totp-code-force" className="block text-sm font-medium mb-1">Verification Code</label>
+                <label htmlFor="totp-code-force" className="block text-sm font-medium mb-1">{t('login.verificationCode')}</label>
                 <input
                     type="text"
                     id="totp-code-force"
@@ -316,7 +324,7 @@ export function LoginView() {
                     pattern="[0-9]{6}"
                     autoComplete="one-time-code"
                 />
-                <span className="hint text-sm text-muted-foreground block mt-1">Enter the 6-digit code from your authenticator app. If this device is remembered, you may not be asked for this code on future logins.</span>
+                <span className="hint text-sm text-muted-foreground block mt-1">{t('login.verificationHint')}</span>
               </div>
             )}
             {rememberDeviceEnabled && (
@@ -327,7 +335,7 @@ export function LoginView() {
                   onChange={(e) => setRememberDevice(e.target.checked)}
                   disabled={isLoggingIn}
                 />
-                <span>Remember this device for {trustedDeviceDays} days</span>
+                <span>{t('login.rememberDevice', { days: trustedDeviceDays })}</span>
               </label>
             )}
             <div className="form-group">
@@ -336,7 +344,7 @@ export function LoginView() {
                   className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isPrimarySubmitDisabled}
               >
-                {isLoggingIn ? 'Signing in...' : 'Sign In'}
+                {isLoggingIn ? t('login.signingIn') : t('login.signIn')}
               </button>
             </div>
           </form>
@@ -344,11 +352,11 @@ export function LoginView() {
           <form id="totp-form" className="space-y-6" onSubmit={handleTotpSubmit}>
             <div className="text-center mb-4">
               <p className="text-sm text-muted-foreground">
-                Enter the 6-digit code from your authenticator app
+                {t('login.enterAuthenticatorCode')}
               </p>
             </div>
             <div className="form-group">
-              <label htmlFor="totp-code" className="block text-sm font-medium mb-1">Verification Code</label>
+              <label htmlFor="totp-code" className="block text-sm font-medium mb-1">{t('login.verificationCode')}</label>
               <input
                   type="text"
                   id="totp-code"
@@ -371,7 +379,7 @@ export function LoginView() {
                   onChange={(e) => setRememberDevice(e.target.checked)}
                   disabled={isLoggingIn}
                 />
-                <span>Remember this device for {trustedDeviceDays} days</span>
+                <span>{t('login.rememberDevice', { days: trustedDeviceDays })}</span>
               </label>
             )}
             <div className="form-group">
@@ -380,7 +388,7 @@ export function LoginView() {
                   className="btn-primary w-full focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={isLoggingIn || totpCode.length !== 6}
               >
-                {isLoggingIn ? 'Verifying...' : 'Verify'}
+                {isLoggingIn ? t('login.verifying') : t('login.verify')}
               </button>
             </div>
             <div className="form-group text-center">
@@ -394,7 +402,7 @@ export function LoginView() {
                     setErrorMessage('');
                   }}
               >
-                ← Back to login
+                {t('login.backToLogin')}
               </button>
             </div>
           </form>
@@ -402,8 +410,8 @@ export function LoginView() {
 
         {!totpRequired && (
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Default credentials: admin / admin</p>
-            <p className="mt-2">You can change this password in Users after login</p>
+            <p>{t('login.defaultCredentials', { username: 'admin', password: 'admin' })}</p>
+            <p className="mt-2">{t('login.changePasswordHint')}</p>
           </div>
         )}
       </div>

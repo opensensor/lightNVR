@@ -13,6 +13,7 @@ import { Footer } from "../components/preact/Footer.jsx";
 import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 import { setupSessionValidation } from '../utils/auth-utils.js';
 import { SetupWizard } from '../components/preact/SetupWizard.jsx';
+import { initI18n } from '../i18n.js';
 
 /**
  * Main App component that conditionally renders WebRTCView or LiveView
@@ -75,7 +76,8 @@ function App() {
 }
 
 // Render the App component when the DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await initI18n();
     // Setup session validation (checks every 5 minutes)
     setupSessionValidation();
 

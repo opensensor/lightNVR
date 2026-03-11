@@ -3,6 +3,8 @@
  * Displays a loading spinner and optional message
  */
 
+import { useI18n } from '../../i18n.js';
+
 /**
  * LoadingIndicator component
  * @param {Object} props - Component props
@@ -11,7 +13,10 @@
  * @param {boolean} props.fullPage - Whether to display as a full page overlay
  * @returns {JSX.Element} LoadingIndicator component
  */
-export function LoadingIndicator({ message = 'Loading...', size = 'md', fullPage = false }) {
+export function LoadingIndicator({ message, size = 'md', fullPage = false }) {
+  const { t } = useI18n();
+  const resolvedMessage = message ?? t('common.loading');
+
   // Determine spinner size classes
   const sizeClasses = {
     sm: 'w-6 h-6',
@@ -27,7 +32,7 @@ export function LoadingIndicator({ message = 'Loading...', size = 'md', fullPage
       <div className="fixed inset-0 bg-white bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center z-50">
         <div className="text-center">
           <div className={`inline-block animate-spin rounded-full border-4 border-input border-t-blue-600 dark:border-t-blue-500 ${spinnerSize}`}></div>
-          {message && <p className="mt-4 text-gray-700 dark:text-gray-300 text-lg">{message}</p>}
+          {resolvedMessage && <p className="mt-4 text-gray-700 dark:text-gray-300 text-lg">{resolvedMessage}</p>}
         </div>
       </div>
     );
@@ -37,7 +42,7 @@ export function LoadingIndicator({ message = 'Loading...', size = 'md', fullPage
   return (
     <div className="flex flex-col items-center justify-center py-8">
       <div className={`inline-block animate-spin rounded-full border-4 border-input border-t-blue-600 dark:border-t-blue-500 ${spinnerSize}`}></div>
-      {message && <p className="mt-4 text-gray-700 dark:text-gray-300">{message}</p>}
+      {resolvedMessage && <p className="mt-4 text-gray-700 dark:text-gray-300">{resolvedMessage}</p>}
     </div>
   );
 }
@@ -56,11 +61,15 @@ export function ContentLoader({
   isLoading, 
   hasData, 
   children, 
-  loadingMessage = 'Loading data...', 
-  emptyMessage = 'No data available' 
+  loadingMessage,
+  emptyMessage,
 }) {
+  const { t } = useI18n();
+  const resolvedLoadingMessage = loadingMessage ?? t('common.loadingData');
+  const resolvedEmptyMessage = emptyMessage ?? t('common.noDataAvailable');
+
   if (isLoading) {
-    return <LoadingIndicator message={loadingMessage} />;
+    return <LoadingIndicator message={resolvedLoadingMessage} />;
   }
   
   if (!hasData) {
@@ -69,7 +78,7 @@ export function ContentLoader({
         <svg className="w-16 h-16 text-gray-400 dark:text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
         </svg>
-        <p className="text-muted-foreground text-lg">{emptyMessage}</p>
+        <p className="text-muted-foreground text-lg">{resolvedEmptyMessage}</p>
       </div>
     );
   }

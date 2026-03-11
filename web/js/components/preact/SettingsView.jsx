@@ -10,12 +10,14 @@ import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 import { ThemeCustomizer } from './ThemeCustomizer.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
 import { formatLocalDateTime } from '../../utils/date-utils.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * SettingsView component
  * @returns {JSX.Element} SettingsView component
  */
 export function SettingsView() {
+  const { t } = useI18n();
   const [userRole, setUserRole] = useState(null);
   const [restartNotice, setRestartNotice] = useState(null);
   const [settings, setSettings] = useState({
@@ -168,17 +170,16 @@ export function SettingsView() {
     },
     onSuccess: (response) => {
       if (response?.restart_required) {
-        setRestartNotice(response.restart_required_message ||
-          'Restart LightNVR before runtime capacity changes take effect.');
-        showStatusMessage('Settings saved. Restart required for runtime capacity changes.', 'warning', 7000);
+        setRestartNotice(t('settings.restartNotice'));
+        showStatusMessage(t('settings.savedRestart'), 'warning', 7000);
       } else {
-        showStatusMessage('Settings saved successfully');
+        showStatusMessage(t('settings.saved'));
       }
       refetch(); // Refresh settings after saving
     },
     onError: (error) => {
       console.error('Error saving settings:', error);
-      showStatusMessage(`Error saving settings: ${error.message}`);
+      showStatusMessage(t('settings.saveError', { message: error.message }));
     }
   });
 
@@ -444,7 +445,7 @@ export function SettingsView() {
     return (
       <section id="settings-page" class="page">
         <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
-          <h2 class="text-xl font-bold">Settings</h2>
+          <h2 class="text-xl font-bold">{t('settings.title')}</h2>
         </div>
 
         <div class="settings-container space-y-6">
@@ -456,7 +457,7 @@ export function SettingsView() {
               aria-expanded={showAppearance}
               aria-controls="appearance-settings-content"
             >
-              <h3 class="text-lg font-semibold">Appearance</h3>
+              <h3 class="text-lg font-semibold">{t('settings.appearance')}</h3>
               <span class={`text-muted-foreground transition-transform duration-200 ${showAppearance ? 'rotate-0' : '-rotate-90'}`}>
                 ▾
               </span>
@@ -470,7 +471,7 @@ export function SettingsView() {
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
             <p class="text-muted-foreground">
-              System settings are only available to administrators.
+              {t('settings.adminOnly')}
             </p>
           </div>
         </div>
@@ -481,11 +482,11 @@ export function SettingsView() {
   return (
     <section id="settings-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
-        <h2 class="text-xl font-bold">Settings</h2>
+        <h2 class="text-xl font-bold">{t('settings.title')}</h2>
         <div class="controls flex items-center gap-4">
           {!canModifySettings && userRole && (
             <span class="text-sm text-muted-foreground italic">
-              Read-only (admin privileges required to modify)
+              {t('settings.readOnly')}
             </span>
           )}
         </div>
@@ -494,8 +495,8 @@ export function SettingsView() {
       <ContentLoader
         isLoading={isLoading}
         hasData={!!settingsData}
-        loadingMessage="Loading settings..."
-        emptyMessage="No settings available. Please try again later."
+        loadingMessage={t('settings.loading')}
+        emptyMessage={t('settings.empty')}
       >
         <div class="settings-container space-y-6">
           {restartNotice && (
@@ -503,12 +504,12 @@ export function SettingsView() {
               <div class="flex items-start gap-3">
                 <div class="text-lg leading-none">⚠️</div>
                 <div>
-                  <div class="font-semibold">Restart required</div>
+                  <div class="font-semibold">{t('settings.restartRequired')}</div>
                   <p class="text-sm mt-1">
                     {restartNotice}
                   </p>
                   <p class="text-sm mt-2 opacity-90">
-                    Until LightNVR restarts, the running instance keeps using the old stream capacity and thread pool.
+                    {t('settings.restartExplanation')}
                   </p>
                 </div>
               </div>
@@ -523,7 +524,7 @@ export function SettingsView() {
               aria-expanded={showAppearance}
               aria-controls="appearance-settings-content"
             >
-              <h3 class="text-lg font-semibold">Appearance</h3>
+              <h3 class="text-lg font-semibold">{t('settings.appearance')}</h3>
               <span class={`text-muted-foreground transition-transform duration-200 ${showAppearance ? 'rotate-0' : '-rotate-90'}`}>
                 ▾
               </span>
@@ -1882,7 +1883,7 @@ export function SettingsView() {
                 class="px-6 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                 onClick={saveSettings}
               >
-                Save Settings
+                {t('settings.save')}
               </button>
             </div>
           )}

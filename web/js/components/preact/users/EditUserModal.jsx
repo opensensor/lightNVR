@@ -2,8 +2,9 @@
  * Edit User Modal Component
  */
 
-import { USER_ROLES } from './UserRoles.js';
+import { USER_ROLE_KEYS } from './UserRoles.js';
 import { useEffect, useRef } from 'preact/hooks';
+import { useI18n } from '../../../i18n.js';
 
 const FOCUSABLE_SELECTORS = [
   'a[href]',
@@ -33,7 +34,7 @@ export function EditUserModal({
   isClearingLoginLockout = false,
   onClose,
   title,
-  submitLabel = 'Update User',
+  submitLabel,
   showPasswordField = true,
   showRoleField = true,
   showActiveField = true,
@@ -45,6 +46,15 @@ export function EditUserModal({
   const modalRef = useRef(null);
   const previousFocusedElementRef = useRef(null);
   const backdropPointerDownRef = useRef(false);
+  const { t } = useI18n();
+
+  const resolvedSubmitLabel = submitLabel || t('users.updateUser');
+  const resolvedTitle = title || t('users.editUserNamed', { username: currentUser.username });
+  const allowedLoginCidrsPlaceholder = `${t('common.example')}
+192.168.1.25
+192.168.1.0/24
+2001:db8::1
+${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
   useEffect(() => {
     // Remember previously focused element
@@ -140,13 +150,13 @@ export function EditUserModal({
         onKeyDown={handleKeyDown}
       >
         <h2 id="edit-user-modal-title" className="text-xl font-bold mb-4">
-          {title || `Edit User: ${currentUser.username}`}
+          {resolvedTitle}
         </h2>
 
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <label className="block text-sm font-bold mb-2" htmlFor="username">
-              Username
+              {t('fields.username')}
             </label>
             <input
               className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -162,7 +172,7 @@ export function EditUserModal({
           {showPasswordField && (
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="password">
-                Password (leave blank to keep current)
+                {t('users.passwordKeepCurrent')}
               </label>
               <input
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -177,7 +187,7 @@ export function EditUserModal({
 
           <div className="mb-4">
             <label className="block text-sm font-bold mb-2" htmlFor="email">
-              Email
+              {t('fields.email')}
             </label>
             <input
               className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -192,7 +202,7 @@ export function EditUserModal({
           {showRoleField && (
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="role">
-                Role
+                {t('fields.role')}
               </label>
               <select
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -201,8 +211,8 @@ export function EditUserModal({
                 value={formData.role}
                 onChange={handleInputChange}
               >
-                {Object.entries(USER_ROLES).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                {Object.entries(USER_ROLE_KEYS).map(([value, key]) => (
+                  <option key={value} value={value}>{t(key)}</option>
                 ))}
               </select>
             </div>
@@ -218,7 +228,7 @@ export function EditUserModal({
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-bold">Active</span>
+                <span className="text-sm font-bold">{t('users.active')}</span>
               </label>
             </div>
           )}
@@ -233,10 +243,10 @@ export function EditUserModal({
                   onChange={handleInputChange}
                   className="mr-2"
                 />
-                <span className="text-sm font-bold">Lock Password Changes</span>
+                <span className="text-sm font-bold">{t('users.lockPasswordChanges')}</span>
               </label>
               <p className="text-xs text-muted-foreground mt-1 ml-6">
-                When locked, this user cannot change their own password
+                {t('users.lockPasswordChangesHelp')}
               </p>
             </div>
           )}
@@ -244,7 +254,7 @@ export function EditUserModal({
           {showAllowedTagsField && (
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-                Allowed Stream Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
+                {t('users.allowedStreamTags')} <span className="font-normal text-muted-foreground">(RBAC)</span>
               </label>
               <input
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -253,11 +263,11 @@ export function EditUserModal({
                 name="allowed_tags"
                 value={formData.allowed_tags || ''}
                 onChange={handleInputChange}
-                placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
+                placeholder={t('users.allowedTagsPlaceholder')}
                 maxLength={255}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
+                {t('users.allowedTagsHelp')}
               </p>
               {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -274,7 +284,7 @@ export function EditUserModal({
           {showAllowedLoginCidrsField && (
             <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
-                Allowed Login IP Ranges <span className="font-normal text-muted-foreground">(CIDR)</span>
+                {t('users.allowedLoginIpRanges')} <span className="font-normal text-muted-foreground">(CIDR)</span>
               </label>
               <textarea
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
@@ -282,12 +292,12 @@ export function EditUserModal({
                 name="allowed_login_cidrs"
                 value={formData.allowed_login_cidrs || ''}
                 onChange={handleInputChange}
-                placeholder={"e.g.\n192.168.1.25\n192.168.1.0/24\n2001:db8::1\n(leave blank for unrestricted)"}
+                placeholder={allowedLoginCidrsPlaceholder}
                 rows={4}
                 maxLength={1023}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted. Bare IPs are treated as a single host.
+                {t('users.allowedLoginCidrsHelp')}
               </p>
             </div>
           )}
@@ -300,7 +310,7 @@ export function EditUserModal({
                 onClick={handleClearLoginLockout}
                 disabled={isClearingLoginLockout}
               >
-                {isClearingLoginLockout ? 'Clearing Lockout...' : 'Clear Login Lockout'}
+                {isClearingLoginLockout ? t('users.clearingLoginLockout') : t('users.clearLoginLockout')}
               </button>
             )}
 
@@ -310,13 +320,13 @@ export function EditUserModal({
               className="btn-secondary mr-2"
               onClick={onClose}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="submit"
               className="btn-primary"
             >
-              {submitLabel}
+              {resolvedSubmitLabel}
             </button>
             </div>
           </div>

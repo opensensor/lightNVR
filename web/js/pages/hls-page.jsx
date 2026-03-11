@@ -11,6 +11,7 @@ import { QueryClientProvider, queryClient } from '../query-client.js';
 import { Header } from "../components/preact/Header.jsx";
 import { Footer } from "../components/preact/Footer.jsx";
 import { setupSessionValidation } from '../utils/auth-utils.js';
+import { initI18n } from '../i18n.js';
 
 /**
  * Main App component that conditionally renders WebRTCView or LiveView
@@ -65,7 +66,8 @@ function App() {
 }
 
 // Render the App component when the DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await initI18n();
     // Setup session validation (checks every 5 minutes)
     setupSessionValidation();
 

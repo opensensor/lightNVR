@@ -56,10 +56,13 @@ hls_writer_t *get_stream_hls_writer(stream_handle_t stream) {
  * Get current streaming configuration from database
  * 
  * This function queries the database for all stream configurations
- * and returns a pointer to a static config_t structure containing
- * the latest stream configurations.
+ * and returns a borrowed pointer to an internal static config_t
+ * structure containing the latest stream configurations.
+ *
+ * The caller must not free the returned pointer.
  * 
- * @return Pointer to a static config_t structure with the latest stream configurations
+ * @return Borrowed pointer to an internal static config_t structure with
+ *         the latest stream configurations
  */
 config_t* get_streaming_config(void) {
     static config_t db_config;
