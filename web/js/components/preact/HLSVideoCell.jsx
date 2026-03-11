@@ -198,7 +198,7 @@ export function HLSVideoCell({
       } else {
         // Mode is 'failed' - don't attempt anything
         console.error(`[HLS ${stream.name}] All HLS modes have failed`);
-        setError('HLS streaming unavailable - both go2rtc and native HLS failed');
+        setError(t('live.hlsStreamingUnavailableBoth'));
         setIsLoading(false);
         return;
       }
@@ -360,7 +360,7 @@ export function HLSVideoCell({
                 fatalErrorCountRef.current = 0;
                 setHlsMode('native');
               } else {
-                setError(data.details || 'HLS playback error');
+                setError(data.details || t('live.hlsPlaybackError'));
                 setIsLoading(false);
                 setIsPlaying(false);
               }
@@ -394,7 +394,7 @@ export function HLSVideoCell({
               setHlsMode('native');
             }
           } else {
-            setError('HLS stream failed to load');
+            setError(t('live.hlsStreamFailedToLoad'));
             setIsLoading(false);
             setIsPlaying(false);
           }
@@ -406,7 +406,7 @@ export function HLSVideoCell({
         // Fallback for truly unsupported browsers
         console.error(`HLS not supported for stream ${stream.name} - neither HLS.js nor native support available`);
         if (isMounted) {
-          setError('HLS not supported by your browser - please use a modern browser');
+          setError(t('live.hlsNotSupportedModernBrowser'));
           setIsLoading(false);
         }
       }
@@ -621,7 +621,7 @@ export function HLSVideoCell({
 
               // Ensure valid video dimensions for native resolution capture
               if (!videoElement.videoWidth || !videoElement.videoHeight) {
-                showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+                showStatusMessage(t('live.cannotTakeSnapshotVideoNotLoaded'), 'error');
                 return;
               }
 
@@ -648,7 +648,7 @@ export function HLSVideoCell({
 
               canvas.toBlob((blob) => {
                 if (!blob) {
-                  showStatusMessage('Failed to create snapshot', 'error');
+                  showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
                   return;
                 }
 
@@ -811,7 +811,7 @@ export function HLSVideoCell({
           data-testid="stream-starting-placeholder"
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5, pointerEvents: 'none' }}
         >
-          <LoadingIndicator message="Stream starting..." />
+          <LoadingIndicator message={t('live.streamStarting')} />
         </div>
       )}
 

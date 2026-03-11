@@ -1112,7 +1112,7 @@ export function WebRTCVideoCell({
 
               // Ensure valid video dimensions for native resolution capture
               if (!videoElement.videoWidth || !videoElement.videoHeight) {
-                showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+                showStatusMessage(t('live.cannotTakeSnapshotVideoNotLoaded'), 'error');
                 return;
               }
 

@@ -171,7 +171,7 @@ export function MSEVideoCell({
 
     } catch (err) {
       console.error(`[MSE ${stream.name}] Init error:`, err);
-      setError(err.message || 'Failed to initialize MSE stream');
+      setError(err.message || t('live.failedToInitializeMseStream'));
       setIsLoading(false);
     }
   };
@@ -183,7 +183,7 @@ export function MSEVideoCell({
   const handleMessage = (msg, ms, MediaSourceClass) => {
     if (msg.type !== 'mse') {
       if (msg.type === 'error') {
-        setError(msg.value || 'Stream error');
+        setError(msg.value || t('live.streamError'));
         setIsLoading(false);
       }
       return;
@@ -252,7 +252,7 @@ export function MSEVideoCell({
       autoRetryCountRef.current = 0;
     } catch (err) {
       console.error(`[MSE ${stream.name}] SourceBuffer error:`, err);
-      setError('Failed to create media buffer');
+      setError(t('live.failedToCreateMediaBuffer'));
       setIsLoading(false);
     }
   };
@@ -286,7 +286,7 @@ export function MSEVideoCell({
         }
       }, delay);
     } else {
-      setError('WebSocket connection error');
+      setError(t('live.webSocketConnectionError'));
     }
   };
 
@@ -403,7 +403,7 @@ export function MSEVideoCell({
 
     canvas.toBlob((blob) => {
       if (!blob) {
-        showStatusMessage('Failed to create snapshot', 'error');
+        showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
         return;
       }
 
@@ -535,7 +535,7 @@ export function MSEVideoCell({
           data-testid="stream-starting-placeholder"
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5, pointerEvents: 'none' }}
         >
-          <LoadingIndicator message="Stream starting..." />
+          <LoadingIndicator message={t('live.streamStarting')} />
         </div>
       )}
 
