@@ -6,12 +6,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import { nowMilliseconds } from '../../utils/date-utils.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * ZoneEditor Component
  * Allows users to draw and edit detection zones on a stream preview
  */
 export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
+  const { t } = useI18n();
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
   const [currentZone, setCurrentZone] = useState(null);
@@ -343,7 +345,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       if (!currentZone) {
         setCurrentZone({
           id: `zone_${nowMilliseconds()}`,
-          name: `Zone ${zoneList.length + 1}`,
+          name: t('zoneEditor.zoneNumber', { number: zoneList.length + 1 }),
           polygon: [{ x, y }],
           enabled: true,
           color: '#3b82f6'
@@ -432,8 +434,8 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `HTTP error ${response.status}`);
+        const errorData = await response.json().catch(() => ({ error: t('zoneEditor.unknownError') }));
+        throw new Error(errorData.error || t('zoneEditor.httpError', { status: response.status }));
       }
 
       const result = await response.json();
@@ -444,7 +446,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       onClose();
     } catch (error) {
       console.error('Failed to save zones:', error);
-      alert(`Failed to save zones: ${error.message}`);
+      alert(t('zoneEditor.failedToSaveZones', { message: error.message }));
     }
   };
 
@@ -461,14 +463,16 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-border">
           <div>
-            <h3 className="text-2xl font-bold">Detection Zone Editor</h3>
+            <h3 className="text-2xl font-bold">{t('zoneEditor.title')}</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Draw zones where you want to detect objects for {streamName}
+              {t('zoneEditor.subtitle', { streamName })}
             </p>
           </div>
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground transition-colors p-2 rounded-full hover:bg-muted"
+            aria-label={t('common.close')}
+            title={t('common.close')}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -485,7 +489,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
                 <img
                   ref={imageRef}
                   src={snapshotUrl}
-                  alt="Stream preview"
+                  alt={t('zoneEditor.streamPreviewAlt')}
                   className="hidden"
                   crossOrigin="anonymous"
                   onLoad={() => {
@@ -515,13 +519,13 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
               {!imageLoaded && (
                 <div className="absolute inset-0 flex items-center justify-center flex-col space-y-2">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                  <p className="text-muted-foreground">Loading stream snapshot...</p>
-                  <p className="text-xs text-muted-foreground">Using go2rtc snapshot API</p>
+                  <p className="text-muted-foreground">{t('zoneEditor.loadingSnapshot')}</p>
+                  <p className="text-xs text-muted-foreground">{t('zoneEditor.usingGo2rtcSnapshotApi')}</p>
                 </div>
               )}
               {imageLoaded && snapshotError && (
                 <div className="absolute top-4 left-4 bg-yellow-500/20 border border-yellow-500 text-yellow-200 px-3 py-2 rounded text-sm">
-                  ⚠️ Snapshot unavailable - drawing on grid background
+                  ⚠️ {t('zoneEditor.snapshotUnavailable')}
                 </div>
               )}
             </div>
@@ -533,29 +537,29 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
                   onClick={() => setEditMode('draw')}
                   className={`px-4 py-2 rounded ${editMode === 'draw' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
                 >
-                  ✏️ Draw Zone
+                  ✏️ {t('zoneEditor.drawZone')}
                 </button>
                 <button
                   onClick={() => setEditMode('edit')}
                   className={`px-4 py-2 rounded ${editMode === 'edit' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}
                 >
-                  ✋ Select
+                  ✋ {t('zoneEditor.selectZone')}
                 </button>
                 <button
                   onClick={() => setEditMode('delete')}
                   className={`px-4 py-2 rounded ${editMode === 'delete' ? 'bg-danger text-white' : 'bg-background'}`}
                 >
-                  🗑️ Delete
+                  🗑️ {t('common.delete')}
                 </button>
               </div>
               
               {currentZone && (
                 <div className="flex space-x-2">
                   <button onClick={completeZone} className="btn-success">
-                    Complete Zone ({currentZone.polygon.length} points)
+                    {t('zoneEditor.completeZoneWithPoints', { count: currentZone.polygon.length })}
                   </button>
                   <button onClick={cancelZone} className="btn-secondary">
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               )}
@@ -564,11 +568,11 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
           {/* Sidebar - Zone List */}
           <div className="w-80 border-l border-border p-6 overflow-y-auto">
-            <h4 className="font-semibold mb-4">Zones ({zoneList.length})</h4>
+            <h4 className="font-semibold mb-4">{t('zoneEditor.zonesCount', { count: zoneList.length })}</h4>
             
             {zoneList.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No zones defined. Click "Draw Zone" and click on the canvas to create a zone.
+                {t('zoneEditor.noZonesDefined')}
               </p>
             )}
 
@@ -585,11 +589,11 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
                   value={zone.name}
                   onChange={(e) => updateZoneProperty(index, 'name', e.target.value)}
                   className="w-full mb-2 px-2 py-1 border border-input rounded bg-background text-foreground"
-                  placeholder="Zone name"
+                  placeholder={t('zoneEditor.zoneNamePlaceholder')}
                 />
                 
                 <div className="flex items-center space-x-2 mb-2">
-                  <label className="text-sm">Color:</label>
+                  <label className="text-sm">{t('zoneEditor.color')}</label>
                   <input
                     type="color"
                     value={zone.color || '#3b82f6'}
@@ -605,11 +609,11 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
                     onChange={(e) => updateZoneProperty(index, 'enabled', e.target.checked)}
                     id={`zone-enabled-${index}`}
                   />
-                  <label htmlFor={`zone-enabled-${index}`} className="text-sm">Enabled</label>
+                  <label htmlFor={`zone-enabled-${index}`} className="text-sm">{t('common.enabled')}</label>
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  {zone.polygon.length} points
+                  {t('zoneEditor.pointsCount', { count: zone.polygon.length })}
                 </p>
               </div>
             ))}
@@ -619,10 +623,10 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
         {/* Footer */}
         <div className="flex justify-end space-x-3 p-6 border-t border-border">
           <button onClick={onClose} className="btn-secondary">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button onClick={handleSave} className="btn-primary">
-            Save Zones
+            {t('zoneEditor.saveZones')}
           </button>
         </div>
       </div>

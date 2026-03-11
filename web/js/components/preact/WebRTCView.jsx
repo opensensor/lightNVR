@@ -13,6 +13,7 @@ import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
+import { useI18n } from '../../i18n.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -34,6 +35,7 @@ function legacyLayoutToColsRowsWebRTC(layout) {
  * @returns {JSX.Element} WebRTCView component
  */
 export function WebRTCView() {
+  const { t } = useI18n();
 
   // Use the snapshot manager hook
   useSnapshotManager();
@@ -220,7 +222,7 @@ export function WebRTCView() {
           }
         } catch (error) {
           console.error('Error processing streams:', error);
-          showStatusMessage('Error processing streams: ' + error.message);
+          showStatusMessage(t('live.errorProcessingStreams', { message: error.message }));
         }
       };
 
@@ -360,7 +362,7 @@ export function WebRTCView() {
       return filteredStreams || [];
     } catch (error) {
       console.error('Error filtering streams for WebRTC view:', error);
-      showStatusMessage('Error processing streams: ' + error.message);
+      showStatusMessage(t('live.errorProcessingStreams', { message: error.message }));
       return [];
     }
   };
@@ -480,14 +482,14 @@ export function WebRTCView() {
 
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center space-x-2">
-          <h2 className="text-xl font-bold mr-4">Live View (WebRTC)</h2>
+          <h2 className="text-xl font-bold mr-4">{t('live.liveViewMode', { mode: 'WebRTC' })}</h2>
           <div className="flex space-x-2">
             <a
               href="/hls.html"
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }}
             >
-              HLS View
+              {t('live.hlsView')}
             </a>
             {go2rtcAvailable && (
             <a
@@ -495,7 +497,7 @@ export function WebRTCView() {
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }}
             >
-              MSE View
+              {t('live.mseView')}
             </a>
                 )}
 
@@ -504,19 +506,19 @@ export function WebRTCView() {
         <div className="controls flex items-center space-x-2">
           {availableTags.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-sm whitespace-nowrap">Tags:</span>
+              <span className="text-sm whitespace-nowrap">{t('live.tags')}:</span>
               <button
                 className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${!tagFilter ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:border-primary'}`}
                 onClick={() => { setTagFilter(''); setCurrentPage(0); }}
               >
-                All
+                {t('live.allTags')}
               </button>
               {availableTags.map(tag => (
                 <button
                   key={tag}
                   className={`px-2 py-1 rounded text-xs font-medium border transition-colors ${tagFilter === tag ? 'bg-primary text-primary-foreground border-primary' : 'bg-background text-foreground border-border hover:border-primary'}`}
                   onClick={() => { setTagFilter(tagFilter === tag ? '' : tag); setCurrentPage(0); }}
-                  title={`Filter by tag: ${tag}`}
+                  title={t('live.filterByTag', { tag })}
                 >
                   #{tag}
                 </button>
@@ -526,7 +528,7 @@ export function WebRTCView() {
 
           {/* Grid layout picker */}
           <div className="flex items-center gap-1.5">
-            <label className="text-sm whitespace-nowrap">Layout:</label>
+            <label className="text-sm whitespace-nowrap">{t('live.layout')}:</label>
             <GridPicker
               cols={cols}
               rows={rows}
@@ -537,7 +539,7 @@ export function WebRTCView() {
 
           {isSingleStream && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="stream-selector" className="text-sm whitespace-nowrap">Stream:</label>
+              <label htmlFor="stream-selector" className="text-sm whitespace-nowrap">{t('live.stream')}:</label>
               <select
                 id="stream-selector"
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
@@ -554,7 +556,7 @@ export function WebRTCView() {
           <button
             className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showLabels ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowLabels(v => !v)}
-            title={showLabels ? 'Hide Stream Labels' : 'Show Stream Labels'}
+            title={showLabels ? t('live.hideStreamLabels') : t('live.showStreamLabels')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -567,7 +569,7 @@ export function WebRTCView() {
           <button
             className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showControls ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowControls(v => !v)}
-            title={showControls ? 'Hide Stream Controls' : 'Show Stream Controls'}
+            title={showControls ? t('live.hideStreamControls') : t('live.showStreamControls')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -587,7 +589,7 @@ export function WebRTCView() {
           <button
             className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showDetections ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowDetections(v => !v)}
-            title={showDetections ? 'Hide All Detection Overlays' : 'Show All Detection Overlays'}
+            title={showDetections ? t('live.hideAllDetectionOverlays') : t('live.showAllDetectionOverlays')}
           >
             {/* Eye icon for detection overlay toggle */}
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -602,7 +604,7 @@ export function WebRTCView() {
             <button
               className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
               onClick={toggleReorderMode}
-              title={reorderMode ? 'Exit reorder mode' : 'Drag to reorder cameras'}
+              title={reorderMode ? t('live.exitReorderMode') : t('live.dragToReorderCameras')}
             >
               {/* Drag-handle dots icon */}
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -618,7 +620,7 @@ export function WebRTCView() {
             <button
               className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               onClick={resetOrder}
-              title="Reset camera order to default"
+              title={t('live.resetCameraOrder')}
             >
               {/* Reset / circular-arrow icon */}
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -633,7 +635,7 @@ export function WebRTCView() {
             id="fullscreen-btn"
             className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             onClick={() => toggleFullscreen()}
-            title="Toggle Fullscreen"
+            title={t('live.toggleFullscreen')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -655,7 +657,7 @@ export function WebRTCView() {
                 <div className="flex flex-col items-center justify-center py-8">
                 <div
                   className="inline-block animate-spin rounded-full border-4 border-secondary border-t-primary w-16 h-16"></div>
-                <p className="mt-4 text-muted-foreground">Loading streams...</p>
+                <p className="mt-4 text-muted-foreground">{t('live.loadingStreams')}</p>
               </div>
             </div>
           ) : isLoading ? (
@@ -670,23 +672,23 @@ export function WebRTCView() {
               <div className="flex flex-col items-center justify-center py-8">
                 <div
                   className="inline-block animate-spin rounded-full border-4 border-secondary border-t-primary w-16 h-16"></div>
-                <p className="mt-4 text-muted-foreground">Loading streams...</p>
+                <p className="mt-4 text-muted-foreground">{t('live.loadingStreams')}</p>
               </div>
             </div>
           ) : (streamsError) ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-6 text-muted-foreground text-lg">Error loading streams: {streamsError.message}</p>
+              <p className="mb-6 text-muted-foreground text-lg">{t('live.errorLoadingStreams', { message: streamsError.message })}</p>
               <button
                 onClick={() => window.location.reload()}
                 className="btn-primary"
               >
-                Retry
+                {t('common.retry')}
               </button>
             </div>
           ) : streams.length === 0 ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-6 text-muted-foreground text-lg">No streams configured</p>
-              <a href="streams.html" className="btn-primary">Configure Streams</a>
+              <p className="mb-6 text-muted-foreground text-lg">{t('live.noStreamsConfigured')}</p>
+              <a href="streams.html" className="btn-primary">{t('live.configureStreams')}</a>
             </div>
           ) : (
             // Render video cells with staggered initialization to avoid
@@ -718,7 +720,7 @@ export function WebRTCView() {
                            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
                       </svg>
-                      Drag to reorder
+                      {t('live.dragToReorder')}
                     </div>
                   )}
                   <WebRTCVideoCell
@@ -746,11 +748,11 @@ export function WebRTCView() {
               }}
               disabled={currentPage === 0}
             >
-              Previous
+              {t('common.previous')}
             </button>
 
             <span className="text-foreground">
-              Page {currentPage + 1} of {Math.ceil(orderedStreams.length / maxStreams)}
+              {t('live.pageOf', { current: currentPage + 1, total: Math.ceil(orderedStreams.length / maxStreams) })}
             </span>
 
             <button
@@ -762,7 +764,7 @@ export function WebRTCView() {
               }}
               disabled={currentPage >= Math.ceil(orderedStreams.length / maxStreams) - 1}
             >
-              Next
+              {t('common.next')}
             </button>
           </div>
         ) : null}
