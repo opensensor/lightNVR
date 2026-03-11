@@ -91,7 +91,8 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     const timelinePage = new TimelinePage(page);
     await expect(timelinePage.timelineContainer).toBeVisible();
     await expect(timelinePage.timeDisplay).toHaveText(`${stream} - ${expectedTime}`);
-    await expect(page.locator('button[title="Manage Recording Tags"]')).toContainText('Tags (1)');
+    await expect(timelinePage.tagsRecordingButton).toHaveAttribute('aria-label', 'Manage Recording Tags (1)');
+    await expect(timelinePage.protectRecordingButton).toBeVisible();
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/102(?:\?|$)/);
   });
 
@@ -109,7 +110,7 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     const segmentBar = page.locator('#timeline-container .timeline-segment').first();
 
     await expect(timelinePage.timelineContainer).toBeVisible();
-    await expect(page.locator('button[title="Manage Recording Tags"]')).toContainText('Tags (1)');
+    await expect(timelinePage.tagsRecordingButton).toHaveAttribute('aria-label', 'Manage Recording Tags (1)');
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/201(?:\?|$)/);
     await expect(segmentBar).toBeVisible();
     expect((await segmentBar.boundingBox())?.width ?? 0).toBeGreaterThan(0);
@@ -149,6 +150,8 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     await expect(timelinePage.timeDisplay).toHaveText('front_door - 11:10:00');
     await expect(timelinePage.videoPlayer).toHaveAttribute('src', /\/api\/recordings\/play\/312(?:\?|$)/);
 
+    await expect(timelinePage.protectRecordingButton).toBeVisible();
+    await expect(timelinePage.tagsRecordingButton).toBeVisible();
     await expect(timelinePage.previousRecordingButton).toBeEnabled();
     await expect(timelinePage.nextRecordingButton).toBeEnabled();
 

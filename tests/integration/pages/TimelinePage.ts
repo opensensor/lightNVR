@@ -62,6 +62,14 @@ export class TimelinePage extends BasePage {
     return this.page.getByRole('button', { name: 'Next recording' }).first();
   }
 
+  get protectRecordingButton(): Locator {
+    return this.page.getByRole('button', { name: /protect recording|unprotect recording/i }).first();
+  }
+
+  get tagsRecordingButton(): Locator {
+    return this.page.getByRole('button', { name: /manage recording tags/i }).first();
+  }
+
   get videoPlayer(): Locator {
     return this.page.locator('#video-player video, video, .video-player, [data-testid="video-player"]').first();
   }

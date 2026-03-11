@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { TagIcon, TagsOverlay } from '../recordings/TagsOverlay.jsx';
 import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
@@ -29,6 +30,10 @@ export function TimelineControls() {
   const [timeDisplayText, setTimeDisplayText] = useState('00:00:00');
   const [activeSegmentIndex, setActiveSegmentIndex] = useState(-1);
   const [segmentCount, setSegmentCount] = useState(0);
+  const [currentRecordingId, setCurrentRecordingId] = useState(null);
+  const [isProtected, setIsProtected] = useState(false);
+  const [recordingTags, setRecordingTags] = useState([]);
+  const [showTagsOverlay, setShowTagsOverlay] = useState(false);
 
   const resolveActiveSegmentIndex = (state) => {
     const segments = state.timelineSegments;
@@ -59,6 +64,9 @@ export function TimelineControls() {
       setIsPlaying(state.isPlaying);
       setSegmentCount(state.timelineSegments?.length || 0);
       setActiveSegmentIndex(resolveActiveSegmentIndex(state));
+      setCurrentRecordingId(state.currentRecordingId ?? null);
+      setIsProtected(!!state.currentRecordingProtected);
+      setRecordingTags(Array.isArray(state.currentRecordingTags) ? state.currentRecordingTags : []);
       const dayLengthHours = getTimelineDayLengthHours(state.selectedDate);
       const range = (state.timelineEndHour ?? dayLengthHours) - (state.timelineStartHour ?? 0);
       setCanZoomIn(range > MIN_TIMELINE_VIEW_HOURS);
@@ -78,6 +86,10 @@ export function TimelineControls() {
     const unsubscribe = timelineState.subscribe(syncControlsState);
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    setShowTagsOverlay(false);
+  }, [currentRecordingId]);
 
   // Toggle playback (play/pause)
   const togglePlayback = () => {
@@ -464,8 +476,38 @@ export function TimelineControls() {
   const canJumpBackward = activeSegmentIndex > 0;
   const canJumpForward = activeSegmentIndex !== -1 && activeSegmentIndex < segmentCount - 1;
 
+  const handleToggleProtection = async () => {
+    if (!currentRecordingId) return;
+
+    const newState = !isProtected;
+    try {
+      const response = await fetch(`/api/recordings/${currentRecordingId}/protect`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ protected: newState }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to ${newState ? 'protect' : 'unprotect'} recording`);
+      }
+
+      timelineState.setState({ currentRecordingProtected: newState });
+      showStatusMessage(
+        newState ? 'Recording protected from automatic deletion' : 'Recording protection removed',
+        'success'
+      );
+    } catch (error) {
+      console.error('Error toggling protection:', error);
+      showStatusMessage(`Error: ${error.message}`, 'error');
+    }
+  };
+
+  const handleTagsChanged = (_id, newTags) => {
+    timelineState.setState({ currentRecordingTags: newTags });
+  };
+
   return (
-    <div className="timeline-controls flex justify-between items-center mb-1">
+    <div className="timeline-controls flex flex-wrap justify-between items-center gap-2 mb-1">
       <div className="flex items-center gap-1.5">
         <button
           id="play-button"
@@ -505,6 +547,49 @@ export function TimelineControls() {
           className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border min-w-[140px] text-center">
           {timeDisplayText}
         </div>
+        {currentRecordingId && (
+          <button
+            type="button"
+            className={`w-6 h-6 rounded border flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors ${
+              isProtected
+                ? 'border-yellow-500 bg-yellow-500 text-white hover:bg-yellow-600'
+                : 'border-border bg-secondary text-secondary-foreground hover:bg-secondary/80'
+            }`}
+            onClick={handleToggleProtection}
+            title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
+            aria-label={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
+            aria-pressed={isProtected}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3l7 4v5c0 4.3-2.9 8.2-7 9-4.1-.8-7-4.7-7-9V7l7-4z" />
+            </svg>
+          </button>
+        )}
+        {currentRecordingId && (
+          <div className="relative inline-block">
+            <button
+              type="button"
+              className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+              onClick={() => setShowTagsOverlay(!showTagsOverlay)}
+              title="Manage Recording Tags"
+              aria-label={recordingTags.length > 0 ? `Manage Recording Tags (${recordingTags.length})` : 'Manage Recording Tags'}
+            >
+              <TagIcon className="w-3.5 h-3.5" />
+              {recordingTags.length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-primary text-primary-foreground text-[9px] leading-[14px] text-center">
+                  {recordingTags.length}
+                </span>
+              )}
+            </button>
+            {showTagsOverlay && (
+              <TagsOverlay
+                recording={{ id: currentRecordingId, tags: recordingTags }}
+                onClose={() => setShowTagsOverlay(false)}
+                onTagsChanged={handleTagsChanged}
+              />
+            )}
+          </div>
+        )}
         <button
           type="button"
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"

@@ -9,7 +9,6 @@ import { formatPlaybackTimeLabel, resolvePlaybackStreamName } from './timelineUt
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
-import { TagIcon, TagsOverlay } from '../recordings/TagsOverlay.jsx';
 import { formatFilenameTimestamp, formatLocalDateTime, toUnixSeconds } from '../../../utils/date-utils.js';
 
 // Timeout for cleaning up preloaded temporary video elements (in milliseconds).
@@ -29,11 +28,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
   const [detections, setDetections] = useState([]);
   const [detectionOverlayEnabled, setDetectionOverlayEnabled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isProtected, setIsProtected] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [segmentRecordingData, setSegmentRecordingData] = useState(null);
-  const [showTagsOverlay, setShowTagsOverlay] = useState(false);
-  const [recordingTags, setRecordingTags] = useState([]);
 
   // Refs
   const videoRef = useRef(null);
@@ -556,19 +552,27 @@ export function TimelinePlayer({ videoElementRef = null }) {
         currentSegmentIndex >= segments.length) {
       setDetections([]);
       setSegmentRecordingData(null);
-      setRecordingTags([]);
-      setShowTagsOverlay(false);
+      lastDetectionSegmentIdRef.current = null;
+      timelineState.setState({
+        currentRecordingId: null,
+        currentRecordingProtected: false,
+        currentRecordingTags: []
+      });
       return;
     }
 
     const segment = segments[currentSegmentIndex];
     if (!segment || !segment.id) return;
 
-    setSegmentRecordingData(null);
-    setRecordingTags([]);
-
     // Don't refetch if same segment
     if (lastDetectionSegmentIdRef.current === segment.id) return;
+
+    setSegmentRecordingData(null);
+    timelineState.setState({
+      currentRecordingId: segment.id,
+      currentRecordingProtected: false,
+      currentRecordingTags: []
+    });
     lastDetectionSegmentIdRef.current = segment.id;
 
     // Fetch recording info to get stream name, timestamps, and protection status
@@ -600,7 +604,10 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
         // Store recording data for action buttons
         setSegmentRecordingData(data);
-        setIsProtected(!!data.protected);
+        timelineState.setState({
+          currentRecordingId: segment.id,
+          currentRecordingProtected: !!data.protected
+        });
         updateTimeDisplay(timelineState.currentTime ?? segment.start_timestamp, {
           stream: data.stream || segment.stream
         });
@@ -614,8 +621,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
             }
             return res.json();
           })
-          .then(tagData => setRecordingTags(tagData?.tags || []))
-          .catch(() => setRecordingTags([]));
+          .then(tagData => timelineState.setState({ currentRecordingTags: tagData?.tags || [] }))
+          .catch(() => timelineState.setState({ currentRecordingTags: [] }));
 
         if (!data.stream || !data.start_time || !data.end_time) return;
 
@@ -831,28 +838,6 @@ export function TimelinePlayer({ videoElementRef = null }) {
   const currentSegmentId = (currentSegmentIndex >= 0 && segments.length > 0 && currentSegmentIndex < segments.length)
     ? segments[currentSegmentIndex].id : null;
 
-  // Toggle protection for the current segment's recording
-  const handleToggleProtection = useCallback(async () => {
-    if (!currentSegmentId) return;
-    const newState = !isProtected;
-    try {
-      const response = await fetch(`/api/recordings/${currentSegmentId}/protect`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ protected: newState }),
-      });
-      if (!response.ok) throw new Error(`Failed to ${newState ? 'protect' : 'unprotect'} recording`);
-      setIsProtected(newState);
-      showStatusMessage(
-        newState ? 'Recording protected from automatic deletion' : 'Recording protection removed',
-        'success'
-      );
-    } catch (error) {
-      console.error('Error toggling protection:', error);
-      showStatusMessage(`Error: ${error.message}`, 'error');
-    }
-  }, [currentSegmentId, isProtected]);
-
   // Delete the current segment's recording
   const handleDeleteRecording = useCallback(async () => {
     if (!currentSegmentId) return;
@@ -1010,33 +995,6 @@ export function TimelinePlayer({ videoElementRef = null }) {
             >
               ↓ Download
             </a>
-            <button
-              className={`px-2 py-1 rounded transition-colors flex items-center text-[11px] ${
-                isProtected
-                  ? 'bg-yellow-500 text-white hover:bg-yellow-600'
-                  : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-              }`}
-              onClick={handleToggleProtection}
-              title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
-            >
-              🛡 {isProtected ? 'Protected' : 'Protect'}
-            </button>
-            <div className="relative inline-block">
-              <button
-                className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center gap-1 text-[11px]"
-                onClick={() => setShowTagsOverlay(!showTagsOverlay)}
-                title="Manage Recording Tags"
-              >
-                <TagIcon className="w-3 h-3" /> Tags{recordingTags.length > 0 ? ` (${recordingTags.length})` : ''}
-              </button>
-              {showTagsOverlay && (
-                <TagsOverlay
-                  recording={{ id: currentSegmentId, tags: recordingTags }}
-                  onClose={() => setShowTagsOverlay(false)}
-                  onTagsChanged={(_id, newTags) => setRecordingTags(newTags)}
-                />
-              )}
-            </div>
             <button
               className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-[11px]"
               onClick={() => setShowDeleteConfirm(true)}
