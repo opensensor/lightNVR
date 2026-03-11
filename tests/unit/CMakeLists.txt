@@ -149,6 +149,9 @@ add_layer2_test(test_db_recordings_sync)
 add_layer2_test(test_httpd_utils)
 add_layer2_test(test_zone_filter)
 add_layer2_test_with_curl(test_go2rtc_process_detection)
+if(ENABLE_GO2RTC)
+    add_layer2_test_with_curl(test_go2rtc_process_config_generation)
+endif()
 
 # ====================================================================
 # Layer 3: Integration tests — lightnvr_lib + FFmpeg

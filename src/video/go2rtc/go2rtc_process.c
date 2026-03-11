@@ -732,6 +732,33 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     return true;
 }
 
+bool go2rtc_process_generate_startup_config(const char *binary_path,
+                                            const char *config_dir,
+                                            int api_port) {
+    if (!config_dir || config_dir[0] == '\0') {
+        log_error("Invalid config_dir for go2rtc startup config generation");
+        return false;
+    }
+
+    int resolved_api_port = api_port > 0 ? api_port : 1984;
+    if (!go2rtc_process_init(binary_path, config_dir, resolved_api_port)) {
+        log_error("Failed to initialize go2rtc process manager for startup config generation");
+        return false;
+    }
+
+    char config_path[PATH_MAX];
+    int written = snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
+    if (written < 0 || (size_t)written >= sizeof(config_path)) {
+        log_error("go2rtc config path too long for startup config generation: %s", config_dir);
+        go2rtc_process_cleanup();
+        return false;
+    }
+
+    bool ok = go2rtc_process_generate_config(config_path, resolved_api_port);
+    go2rtc_process_cleanup();
+    return ok;
+}
+
 /**
  * @brief Check if a process is a zombie
  *

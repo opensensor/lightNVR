@@ -50,6 +50,21 @@ bool go2rtc_process_is_running(void);
 bool go2rtc_process_generate_config(const char *config_path, int api_port);
 
 /**
+ * @brief Generate <config_dir>/go2rtc.yaml from the currently loaded settings.
+ *
+ * This initializes the go2rtc process manager just long enough to write the
+ * startup configuration file, then cleans up without starting go2rtc.
+ *
+ * @param binary_path Path to the go2rtc binary, or NULL to resolve automatically
+ * @param config_dir Directory where go2rtc.yaml should be written
+ * @param api_port Port for the go2rtc HTTP API
+ * @return true if the startup config was generated successfully, false otherwise
+ */
+bool go2rtc_process_generate_startup_config(const char *binary_path,
+                                            const char *config_dir,
+                                            int api_port);
+
+/**
  * @brief Clean up resources used by the go2rtc process manager
  */
 void go2rtc_process_cleanup(void);

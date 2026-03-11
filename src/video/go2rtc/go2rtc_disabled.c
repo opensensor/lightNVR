@@ -25,6 +25,9 @@ bool go2rtc_process_is_running(void) { return false; }
 bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     UNUSED(config_path); UNUSED(api_port); return false;
 }
+bool go2rtc_process_generate_startup_config(const char *binary_path, const char *config_dir, int api_port) {
+    UNUSED(binary_path); UNUSED(config_dir); UNUSED(api_port); return false;
+}
 void go2rtc_process_cleanup(void) {}
 int go2rtc_process_get_rtsp_port(void) { return 0; }
 int go2rtc_process_get_pid(void) { return -1; }

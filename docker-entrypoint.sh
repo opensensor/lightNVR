@@ -167,8 +167,8 @@ EOF
     
     # Always regenerate go2rtc.yaml fresh at startup to avoid stale/corrupted
     # configs from prior versions causing stream errors (see issue #165).
-    # The C code in go2rtc_process_generate_config() will overwrite this with
-    # the full config derived from lightNVR settings once the application starts.
+    # The entrypoint will then ask LightNVR to rewrite this file from the saved
+    # runtime settings before go2rtc itself is launched.
     if [ -f /etc/lightnvr/go2rtc/go2rtc.yaml ]; then
         log_info "Removing old go2rtc configuration to regenerate fresh..."
         rm -f /etc/lightnvr/go2rtc/go2rtc.yaml
@@ -247,6 +247,20 @@ setup_go2rtc_config() {
     fi
 }
 
+generate_go2rtc_config_from_settings() {
+    if [ ! -x /bin/lightnvr ]; then
+        log_warn "Cannot regenerate go2rtc configuration from saved settings: /bin/lightnvr not found"
+        return 0
+    fi
+
+    log_info "Regenerating go2rtc configuration from saved LightNVR settings..."
+    if /bin/lightnvr --generate-go2rtc-config -c /etc/lightnvr/lightnvr.ini; then
+        log_info "go2rtc configuration regenerated from saved settings"
+    else
+        log_warn "Failed to regenerate go2rtc configuration from saved settings; continuing with default config"
+    fi
+}
+
 # Function to display startup information
 display_startup_info() {
     echo ""
@@ -278,6 +292,9 @@ init_config
 
 # Setup go2rtc configuration
 setup_go2rtc_config
+
+# Regenerate go2rtc.yaml from saved LightNVR settings before go2rtc starts
+generate_go2rtc_config_from_settings
 
 # Display startup information
 display_startup_info

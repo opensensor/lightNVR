@@ -46,6 +46,7 @@
 
 // Include go2rtc headers if USE_GO2RTC is defined
 #ifdef USE_GO2RTC
+#include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #endif
@@ -539,6 +540,7 @@ int main(int argc, char *argv[]) {
 
     // Parse command line arguments
     bool verbose_mode = false;
+    bool generate_go2rtc_config_only = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--daemon") == 0) {
             daemon_mode = true;
@@ -552,6 +554,8 @@ int main(int argc, char *argv[]) {
                 log_error("Missing config file path");
                 return EXIT_FAILURE;
             }
+        } else if (strcmp(argv[i], "--generate-go2rtc-config") == 0) {
+            generate_go2rtc_config_only = true;
         } else if (strcmp(argv[i], "--verbose") == 0) {
             verbose_mode = true;
         } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -559,6 +563,8 @@ int main(int argc, char *argv[]) {
             printf("Options:\n");
             printf("  -d, --daemon        Run as daemon\n");
             printf("  -c, --config FILE   Use config file\n");
+            printf("  --generate-go2rtc-config\n");
+            printf("                     Generate go2rtc.yaml from saved settings and exit\n");
             printf("  --verbose           Enable verbose logging (debug level)\n");
             printf("  -h, --help          Show this help\n");
             printf("  -v, --version       Show version\n");
@@ -589,6 +595,28 @@ int main(int argc, char *argv[]) {
 
     // Copy to global config
     memcpy(&g_config, &config, sizeof(config_t));
+
+    if (generate_go2rtc_config_only) {
+#ifdef USE_GO2RTC
+        if (curl_init_global() != 0) {
+            log_error("Failed to initialize libcurl globally for go2rtc config generation");
+            return EXIT_FAILURE;
+        }
+
+        const char *go2rtc_binary = config.go2rtc_binary_path[0] != '\0'
+                                   ? config.go2rtc_binary_path : NULL;
+        const char *go2rtc_config_dir = config.go2rtc_config_dir[0] != '\0'
+                                       ? config.go2rtc_config_dir : "/etc/lightnvr/go2rtc";
+        bool generated = go2rtc_process_generate_startup_config(go2rtc_binary,
+                                                                go2rtc_config_dir,
+                                                                config.go2rtc_api_port);
+        curl_cleanup_global();
+        return generated ? EXIT_SUCCESS : EXIT_FAILURE;
+#else
+        log_error("--generate-go2rtc-config requested but go2rtc support is disabled in this build");
+        return EXIT_FAILURE;
+#endif
+    }
 
     log_info("LightNVR v%s starting up", LIGHTNVR_VERSION_STRING);
 
