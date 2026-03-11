@@ -1,11 +1,15 @@
 # Stage 1: Build image
 ARG SQLITE_YEAR=2026
 ARG SQLITE_AUTOCONF_VERSION=3520000
+ARG LIBUV_VERSION=1.52.1
+ARG LLHTTP_VERSION=9.3.1
 
 FROM debian:sid-slim AS builder
 
 ARG SQLITE_YEAR
 ARG SQLITE_AUTOCONF_VERSION
+ARG LIBUV_VERSION
+ARG LLHTTP_VERSION
 
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
@@ -17,7 +21,7 @@ RUN apt-get update && apt-get install -y \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev \
     libmbedtls-dev curl wget ca-certificates gpg libcjson-dev \
-    libmosquitto-dev libuv1-dev libllhttp-dev \
+    libmosquitto-dev \
     nodejs npm libsimdjson30 \
     golang-go && \
     # Verify installation
@@ -35,6 +39,40 @@ RUN cd /tmp && \
     make -j"$(nproc)" && \
     make install && \
     sqlite3 --version
+
+# Build upstream libuv because distro packages can lag the latest stable release
+RUN cd /tmp && \
+    wget -q "https://github.com/libuv/libuv/archive/refs/tags/v${LIBUV_VERSION}.tar.gz" -O libuv.tar.gz && \
+    tar -xzf libuv.tar.gz && \
+    cd "libuv-${LIBUV_VERSION}" && \
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build build -j"$(nproc)" && \
+    cmake --install build && \
+    ARCH=$(uname -m) && \
+    case $ARCH in \
+        x86_64) LIBUV_DIR="/usr/lib/x86_64-linux-gnu" ;; \
+        aarch64) LIBUV_DIR="/usr/lib/aarch64-linux-gnu" ;; \
+        armv7l) LIBUV_DIR="/usr/lib/arm-linux-gnueabihf" ;; \
+        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    esac && \
+    cp -a "$LIBUV_DIR"/libuv.so* /usr/lib/ && \
+    pkg-config --modversion libuv
+
+# Build upstream llhttp so container builds use the latest parser without relying on distro lag
+RUN mkdir -p /tmp/llhttp/include /tmp/llhttp/src /usr/include && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/include/llhttp.h" -O /tmp/llhttp/include/llhttp.h && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/llhttp.c" -O /tmp/llhttp/src/llhttp.c && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/api.c" -O /tmp/llhttp/src/api.c && \
+    wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/v${LLHTTP_VERSION}/src/http.c" -O /tmp/llhttp/src/http.c && \
+    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/llhttp.c -o /tmp/llhttp/llhttp.o && \
+    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/api.c -o /tmp/llhttp/api.o && \
+    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/http.c -o /tmp/llhttp/http.o && \
+    cc -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp/llhttp.o /tmp/llhttp/api.o /tmp/llhttp/http.o && \
+    ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so.9 && \
+    ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so && \
+    install -m 644 /tmp/llhttp/include/llhttp.h /usr/include/llhttp.h && \
+    printf 'prefix=/usr\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: libllhttp\nDescription: llhttp parser\nVersion: %s\nLibs: -L${libdir} -lllhttp\nCflags: -I${includedir}\n' "$LLHTTP_VERSION" > /usr/lib/pkgconfig/libllhttp.pc && \
+    pkg-config --modversion libllhttp
 
 # Fetch external dependencies
 RUN mkdir -p /opt/external && \
@@ -144,7 +182,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libavcodec62 libavformat62 libavutil60 libswscale9 \
     libcurl4t64 libmbedtls21 libmbedcrypto16 procps curl ca-certificates \
-    libmosquitto1 libuv1t64 libllhttp9.3 && \
+    libmosquitto1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure
@@ -162,6 +200,8 @@ RUN mkdir -p \
 COPY --from=builder /bin/lightnvr /bin/lightnvr
 COPY --from=builder /bin/go2rtc /bin/go2rtc
 COPY --from=builder /usr/bin/sqlite3 /usr/bin/sqlite3
+COPY --from=builder /usr/lib/libuv.so* /usr/lib/
+COPY --from=builder /usr/lib/libllhttp.so* /usr/lib/
 
 # Copy latest upstream SQLite shared library built in the builder stage
 COPY --from=builder /usr/lib/libsqlite3.so* /usr/lib/

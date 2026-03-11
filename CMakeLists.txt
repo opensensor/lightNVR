@@ -252,7 +252,7 @@ if(NOT LLHTTP_FOUND)
         file(MAKE_DIRECTORY "${LLHTTP_DIR}/src")
         file(MAKE_DIRECTORY "${LLHTTP_DIR}/include")
 
-        # Download llhttp release (v9.2.1 - stable release)
+        # Download the pinned llhttp release
         # LLHTTP_VERSION is defined as a cache variable earlier; use it here without overriding it
         set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_VERSION}")
 
