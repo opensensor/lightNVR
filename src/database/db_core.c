@@ -687,8 +687,7 @@ int init_database(const char *db_path) {
         return -1;
     }
 
-    // MEMORY LEAK FIX: dirname() returns a pointer to internal memory that becomes invalid when dir_path is freed
-    // So we need to make a copy of the directory name before freeing dir_path
+    // Make a copy of the directory name before freeing dir_path
     char *dir = dirname(dir_path);
     char *dir_copy = strdup(dir);
     if (!dir_copy) {
