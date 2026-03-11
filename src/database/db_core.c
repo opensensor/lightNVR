@@ -667,7 +667,6 @@ int init_database(const char *db_path) {
                 sqlite3_close_v2(test_db);
                 test_db = NULL;
             }
-            sqlite3_close_v2(test_db);
         }
     } else {
         log_info("Database file does not exist, will be created");
