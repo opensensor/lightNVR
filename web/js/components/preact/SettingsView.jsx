@@ -211,11 +211,11 @@ export function SettingsView() {
     mutationKey: ['revokeSession'],
     mutationFn: async (sessionId) => fetchJSON(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' }),
     onSuccess: () => {
-      showStatusMessage('Session revoked');
+      showStatusMessage(t('settings.sessionRevoked'));
       refetchAuthSessions();
     },
     onError: (error) => {
-      showStatusMessage(`Error revoking session: ${error.message}`);
+      showStatusMessage(t('settings.revokeSessionError', { message: error.message }));
     }
   });
 
@@ -223,16 +223,16 @@ export function SettingsView() {
     mutationKey: ['revokeTrustedDevice'],
     mutationFn: async (deviceId) => fetchJSON(`/api/auth/trusted-devices/${deviceId}`, { method: 'DELETE' }),
     onSuccess: () => {
-      showStatusMessage('Trusted device revoked');
+      showStatusMessage(t('settings.trustedDeviceRevoked'));
       refetchTrustedDevices();
     },
     onError: (error) => {
-      showStatusMessage(`Error revoking trusted device: ${error.message}`);
+      showStatusMessage(t('settings.revokeTrustedDeviceError', { message: error.message }));
     }
   });
 
   const formatTimestamp = (timestamp) => {
-    if (!timestamp) return '—';
+    if (!timestamp) return t('settings.notAvailable');
     return formatLocalDateTime(timestamp);
   };
 
@@ -537,9 +537,9 @@ export function SettingsView() {
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">General Settings</h3>
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.general')}</h3>
             <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-              <label for="setting-log-level" class="font-medium">Log Level</label>
+              <label for="setting-log-level" class="font-medium">{t('settings.logLevel')}</label>
               <select
                 id="setting-log-level"
                 name="logLevel"
@@ -548,14 +548,14 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               >
-                <option value="0">Error</option>
-                <option value="1">Warning</option>
-                <option value="2">Info</option>
-                <option value="3">Debug</option>
+                <option value="0">{t('settings.logLevelError')}</option>
+                <option value="1">{t('settings.logLevelWarning')}</option>
+                <option value="2">{t('settings.logLevelInfo')}</option>
+                <option value="3">{t('settings.logLevelDebug')}</option>
               </select>
             </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-syslog-enabled" class="font-medium">Enable Syslog</label>
+            <label for="setting-syslog-enabled" class="font-medium">{t('settings.enableSyslog')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -567,13 +567,13 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint ml-2 text-sm text-muted-foreground">Send log messages to syslog</span>
+              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.enableSyslogHelp')}</span>
             </div>
           </div>
           {settings.syslogEnabled && (
             <>
             <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-              <label for="setting-syslog-ident" class="font-medium">Syslog Ident</label>
+              <label for="setting-syslog-ident" class="font-medium">{t('settings.syslogIdent')}</label>
               <div class="col-span-2">
                 <input
                   type="text"
@@ -585,11 +585,11 @@ export function SettingsView() {
                   disabled={!canModifySettings}
                   placeholder="lightnvr"
                 />
-                <span class="hint text-sm text-muted-foreground block mt-1">Identifier prepended to syslog messages</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.syslogIdentHelp')}</span>
               </div>
             </div>
             <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-              <label for="setting-syslog-facility" class="font-medium">Syslog Facility</label>
+              <label for="setting-syslog-facility" class="font-medium">{t('settings.syslogFacility')}</label>
               <div class="col-span-2">
                 <select
                   id="setting-syslog-facility"
@@ -610,16 +610,16 @@ export function SettingsView() {
                   <option value="LOG_LOCAL6">LOG_LOCAL6</option>
                   <option value="LOG_LOCAL7">LOG_LOCAL7</option>
                 </select>
-                <span class="hint text-sm text-muted-foreground block mt-1">Syslog facility for message routing</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.syslogFacilityHelp')}</span>
               </div>
             </div>
             </>
           )}
           </div>
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Settings</h3>
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.storage')}</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-storage-path" class="font-medium">Storage Path</label>
+            <label for="setting-storage-path" class="font-medium">{t('settings.storagePath')}</label>
             <input
               type="text"
               id="setting-storage-path"
@@ -631,7 +631,7 @@ export function SettingsView() {
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-storage-path-hls" class="font-medium">HLS Storage Path</label>
+            <label for="setting-storage-path-hls" class="font-medium">{t('settings.hlsStoragePath')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -642,11 +642,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground">Optional path for HLS segments. If not specified, storage path will be used.</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.hlsStoragePathHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-max-storage" class="font-medium">Maximum Storage Size (GB)</label>
+            <label for="setting-max-storage" class="font-medium">{t('settings.maxStorageGb')}</label>
             <div class="col-span-2 flex items-center">
               <input
                 type="number"
@@ -658,11 +658,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint ml-2 text-sm text-muted-foreground">0 = unlimited</span>
+              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.zeroUnlimited')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-retention" class="font-medium">Retention Period (days)</label>
+            <label for="setting-retention" class="font-medium">{t('settings.retentionDays')}</label>
             <input
               type="number"
               id="setting-retention"
@@ -675,7 +675,7 @@ export function SettingsView() {
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auto-delete" class="font-medium">Auto Delete Oldest</label>
+            <label for="setting-auto-delete" class="font-medium">{t('settings.autoDeleteOldest')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -690,7 +690,7 @@ export function SettingsView() {
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-generate-thumbnails" class="font-medium">Enable Grid View (Thumbnails)</label>
+            <label for="setting-generate-thumbnails" class="font-medium">{t('settings.enableGridViewThumbnails')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -702,11 +702,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Allow grid view with thumbnail previews on recordings page</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableGridViewThumbnailsHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-db-path" class="font-medium">Database Path</label>
+            <label for="setting-db-path" class="font-medium">{t('settings.databasePath')}</label>
             <input
               type="text"
               id="setting-db-path"
@@ -718,7 +718,7 @@ export function SettingsView() {
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-db-backup-interval" class="font-medium">Database Backup Interval (minutes)</label>
+            <label for="setting-db-backup-interval" class="font-medium">{t('settings.databaseBackupIntervalMinutes')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -730,11 +730,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">How often to flush, verify, and back up the SQLite database while the system is running. Set to 0 to keep startup/shutdown backups only.</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.databaseBackupIntervalHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-db-backup-retention" class="font-medium">Database Backup Retention (copies)</label>
+            <label for="setting-db-backup-retention" class="font-medium">{t('settings.databaseBackupRetentionCopies')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -746,11 +746,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">How many timestamped backups to keep. Set to 0 to retain only the latest <code>.bak</code> recovery copy.</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.databaseBackupRetentionHelpBefore')} <code>.bak</code> {t('settings.databaseBackupRetentionHelpAfter')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
-            <label for="setting-db-post-backup-script" class="font-medium">Post-backup Script</label>
+            <label for="setting-db-post-backup-script" class="font-medium">{t('settings.postBackupScript')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -762,20 +762,20 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="/usr/local/bin/lightnvr-post-backup"
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Optional absolute path to an executable that runs after a verified backup. It receives: backup path, database path, and backup directory.</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.postBackupScriptHelp')}</span>
             </div>
           </div>
           </div>
           
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Web Interface Settings</h3>
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.webInterface')}</h3>
           {restartNotice && (
             <div class="mb-4 rounded border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-100">
-              <strong>Pending restart:</strong> {restartNotice}
+              <strong>{t('settings.pendingRestartLabel')}</strong> {restartNotice}
             </div>
           )}
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-web-port" class="font-medium">Web Port</label>
+            <label for="setting-web-port" class="font-medium">{t('settings.webPort')}</label>
             <input
               type="number"
               id="setting-web-port"
@@ -790,8 +790,8 @@ export function SettingsView() {
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-thread-pool" class="font-medium">
-              Thread Pool Size
-              <span class="ml-1 text-xs text-muted-foreground">(requires restart)</span>
+              {t('settings.threadPoolSize')}
+              <span class="ml-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
             </label>
             <div class="col-span-2">
               <input
@@ -800,21 +800,21 @@ export function SettingsView() {
                 name="webThreadPoolSize"
                 min="2"
                 max="128"
-                placeholder="Default: 2× CPU cores"
+                placeholder={t('settings.threadPoolPlaceholder')}
                 class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
                 value={settings.webThreadPoolSize}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
               <p class="text-xs text-muted-foreground mt-1">
-                Number of libuv worker threads. Default is 2× the number of CPU cores (clamped 2–128).
+                {t('settings.threadPoolHelp')}
               </p>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
             <label for="setting-max-streams" class="font-medium">
-              Max Streams
-              <span class="ml-1 text-xs text-muted-foreground">(requires restart)</span>
+              {t('settings.maxStreams')}
+              <span class="ml-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
             </label>
             <div class="col-span-2">
               <input
@@ -829,14 +829,12 @@ export function SettingsView() {
                 disabled={!canModifySettings}
               />
               <p class="text-xs text-muted-foreground mt-1">
-                Stream engine capacity — how many cameras can run simultaneously. Changing this
-                requires a <strong>service restart</strong>. Use the Streams page to add cameras
-                up to this limit.
+                {t('settings.maxStreamsHelpBefore')} <strong>{t('settings.serviceRestart')}</strong>. {t('settings.maxStreamsHelpAfter')}
               </p>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auth-enabled" class="font-medium">Enable Authentication</label>
+            <label for="setting-auth-enabled" class="font-medium">{t('settings.enableAuthentication')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -851,7 +849,7 @@ export function SettingsView() {
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-demo-mode" class="font-medium">Demo Mode</label>
+            <label for="setting-demo-mode" class="font-medium">{t('auth.demoMode')}</label>
             <div class="col-span-2 flex items-center">
               <input
                 type="checkbox"
@@ -863,12 +861,12 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings || !settings.authEnabled}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Allow unauthenticated users to view streams (viewer access only)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.demoModeHelp')}</span>
             </div>
           </div>
 
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-webrtc-disabled" class="font-medium">Disable WebRTC (Use HLS Only)</label>
+            <label for="setting-webrtc-disabled" class="font-medium">{t('settings.disableWebrtcUseHlsOnly')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -880,11 +878,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint ml-2 text-sm text-muted-foreground">When enabled, all streams will use HLS instead of WebRTC</span>
+              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.disableWebrtcHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auth-timeout" class="font-medium">Session Idle Timeout (hours)</label>
+            <label for="setting-auth-timeout" class="font-medium">{t('settings.sessionIdleTimeoutHours')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -896,11 +894,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">How long a signed-in session may sit inactive before re-authentication is required.</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.sessionIdleTimeoutHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auth-absolute-timeout" class="font-medium">Absolute Session Lifetime (hours)</label>
+            <label for="setting-auth-absolute-timeout" class="font-medium">{t('settings.absoluteSessionLifetimeHours')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -912,11 +910,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Hard cap for a session even if the user stays active. Should be greater than or equal to the idle timeout.</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.absoluteSessionLifetimeHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-trusted-device-days" class="font-medium">Remember Device (days)</label>
+            <label for="setting-trusted-device-days" class="font-medium">{t('settings.rememberDeviceDays')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -928,11 +926,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">How long a successfully MFA-verified device can skip the next TOTP prompt. Set to 0 to disable remembered devices.</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.rememberDeviceDaysHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
-            <label for="setting-trusted-proxy-cidrs" class="font-medium">Trusted Proxy CIDRs</label>
+            <label for="setting-trusted-proxy-cidrs" class="font-medium">{t('settings.trustedProxyCidrs')}</label>
             <div class="col-span-2">
               <textarea
                 id="setting-trusted-proxy-cidrs"
@@ -944,12 +942,12 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="127.0.0.1/32,::1/128"
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Only honor <code>X-Forwarded-For</code> / <code>X-Real-IP</code> when the immediate peer IP matches one of these CIDRs. Leave blank to ignore forwarded headers.</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.trustedProxyCidrsHelpBefore')} <code>X-Forwarded-For</code> / <code>X-Real-IP</code> {t('settings.trustedProxyCidrsHelpAfter')}</span>
             </div>
           </div>
           {/* Setup Wizard reset */}
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label class="font-medium">Setup Wizard</label>
+            <label class="font-medium">{t('settings.setupWizard')}</label>
             <div class="col-span-2">
               <button
                 type="button"
@@ -965,38 +963,38 @@ export function SettingsView() {
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     window.location.href = 'index.html';
                   } catch (err) {
-                    showStatusMessage('Failed to reset wizard: ' + err.message, 'error');
+                    showStatusMessage(t('settings.resetWizardError', { message: err.message }), 'error');
                   }
                 }}
               >
-                Re-run Setup Wizard
+                {t('settings.rerunSetupWizard')}
               </button>
               <p class="text-xs text-muted-foreground mt-1">
-                Resets the first-run wizard so it appears again on the dashboard.
+                {t('settings.setupWizardHelp')}
               </p>
             </div>
           </div>
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Session &amp; Device Management</h3>
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.sessionAndDeviceManagement')}</h3>
           <div class="mb-6">
-            <h4 class="font-medium mb-2">Active Sessions</h4>
+            <h4 class="font-medium mb-2">{t('settings.activeSessions')}</h4>
             <div class="space-y-3">
               {authSessionsLoading ? (
-                <p class="text-sm text-muted-foreground">Loading sessions…</p>
+                <p class="text-sm text-muted-foreground">{t('settings.loadingSessions')}</p>
               ) : authSessionsIsError ? (
-                <p class="text-sm text-destructive">Failed to load sessions. {authSessionsError?.message || ''}</p>
+                <p class="text-sm text-destructive">{t('settings.failedToLoadSessions', { message: authSessionsError?.message || '' })}</p>
               ) : ((authSessionsData?.sessions || []).length === 0 ? (
-                <p class="text-sm text-muted-foreground">No active sessions found.</p>
+                <p class="text-sm text-muted-foreground">{t('settings.noActiveSessionsFound')}</p>
               ) : (
                 (authSessionsData?.sessions || []).map((session) => (
                   <div key={session.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div class="text-sm">
-                      <div class="font-medium">{session.current ? 'Current session' : `Session #${session.id}`}</div>
-                      <div class="text-muted-foreground">Last active: {formatTimestamp(session.last_activity_at)}</div>
-                      <div class="text-muted-foreground">Idle expiry: {formatTimestamp(session.idle_expires_at)} · Absolute expiry: {formatTimestamp(session.expires_at)}</div>
-                      <div class="text-muted-foreground">{session.ip_address || 'Unknown IP'} · {session.user_agent || 'Unknown browser'}</div>
+                      <div class="font-medium">{session.current ? t('settings.currentSession') : t('settings.sessionNumber', { id: session.id })}</div>
+                      <div class="text-muted-foreground">{t('settings.lastActive')}: {formatTimestamp(session.last_activity_at)}</div>
+                      <div class="text-muted-foreground">{t('settings.idleExpiry')}: {formatTimestamp(session.idle_expires_at)} · {t('settings.absoluteExpiry')}: {formatTimestamp(session.expires_at)}</div>
+                      <div class="text-muted-foreground">{session.ip_address || t('settings.unknownIp')} · {session.user_agent || t('settings.unknownBrowser')}</div>
                     </div>
                     <button
                       type="button"
@@ -1004,7 +1002,7 @@ export function SettingsView() {
                       disabled={revokeSessionMutation.isPending}
                       onClick={() => revokeSessionMutation.mutate(session.id)}
                     >
-                      Revoke
+                      {t('settings.revoke')}
                     </button>
                   </div>
                 ))
@@ -1012,22 +1010,22 @@ export function SettingsView() {
             </div>
           </div>
           <div>
-            <h4 class="font-medium mb-2">Trusted Devices</h4>
+            <h4 class="font-medium mb-2">{t('settings.trustedDevices')}</h4>
             <div class="space-y-3">
               {trustedDevicesLoading ? (
-                <p class="text-sm text-muted-foreground">Loading trusted devices…</p>
+                <p class="text-sm text-muted-foreground">{t('settings.loadingTrustedDevices')}</p>
               ) : trustedDevicesIsError ? (
-                <p class="text-sm text-destructive">Failed to load trusted devices. {trustedDevicesError?.message || ''}</p>
+                <p class="text-sm text-destructive">{t('settings.failedToLoadTrustedDevices', { message: trustedDevicesError?.message || '' })}</p>
               ) : ((trustedDevicesData?.trusted_devices || []).length === 0 ? (
-                <p class="text-sm text-muted-foreground">No remembered devices found.</p>
+                <p class="text-sm text-muted-foreground">{t('settings.noRememberedDevicesFound')}</p>
               ) : (
                 (trustedDevicesData?.trusted_devices || []).map((device) => (
                   <div key={device.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div class="text-sm">
-                      <div class="font-medium">{device.current ? 'This device' : `Trusted device #${device.id}`}</div>
-                      <div class="text-muted-foreground">Last used: {formatTimestamp(device.last_used_at)}</div>
-                      <div class="text-muted-foreground">Expires: {formatTimestamp(device.expires_at)}</div>
-                      <div class="text-muted-foreground">{device.ip_address || 'Unknown IP'} · {device.user_agent || 'Unknown browser'}</div>
+                      <div class="font-medium">{device.current ? t('settings.thisDevice') : t('settings.trustedDeviceNumber', { id: device.id })}</div>
+                      <div class="text-muted-foreground">{t('settings.lastUsed')}: {formatTimestamp(device.last_used_at)}</div>
+                      <div class="text-muted-foreground">{t('settings.expires')}: {formatTimestamp(device.expires_at)}</div>
+                      <div class="text-muted-foreground">{device.ip_address || t('settings.unknownIp')} · {device.user_agent || t('settings.unknownBrowser')}</div>
                     </div>
                     <button
                       type="button"
@@ -1035,7 +1033,7 @@ export function SettingsView() {
                       disabled={revokeTrustedDeviceMutation.isPending}
                       onClick={() => revokeTrustedDeviceMutation.mutate(device.id)}
                     >
-                      Revoke
+                      {t('settings.revoke')}
                     </button>
                   </div>
                 ))
@@ -1045,9 +1043,9 @@ export function SettingsView() {
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Login Security</h3>
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.loginSecurity')}</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-force-mfa" class="font-medium">Force MFA on Login</label>
+            <label for="setting-force-mfa" class="font-medium">{t('settings.forceMfaOnLogin')}</label>
             <div class="col-span-2 flex items-center">
               <input
                 type="checkbox"
@@ -1059,11 +1057,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Require TOTP on untrusted devices. Users can still mark a device as trusted after a successful MFA verification.</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.forceMfaOnLoginHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-rate-limit-enabled" class="font-medium">Login Rate Limiting</label>
+            <label for="setting-rate-limit-enabled" class="font-medium">{t('settings.loginRateLimiting')}</label>
             <div class="col-span-2 flex items-center">
               <input
                 type="checkbox"
@@ -1075,11 +1073,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Limit login attempts to prevent brute force attacks</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.loginRateLimitingHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-rate-limit-max" class="font-medium">Max Login Attempts</label>
+            <label for="setting-rate-limit-max" class="font-medium">{t('settings.maxLoginAttempts')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1091,11 +1089,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings || !settings.loginRateLimitEnabled}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Maximum failed login attempts before lockout (minimum 1)</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.maxLoginAttemptsHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-rate-limit-window" class="font-medium">Rate Limit Window (seconds)</label>
+            <label for="setting-rate-limit-window" class="font-medium">{t('settings.rateLimitWindowSeconds')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1107,15 +1105,15 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings || !settings.loginRateLimitEnabled}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Time window in seconds for rate limiting (minimum 10 seconds, default 300 = 5 minutes)</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.rateLimitWindowSecondsHelp')}</span>
             </div>
           </div>
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Memory Optimization</h3>
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.memoryOptimization')}</h3>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-buffer-size" class="font-medium">Buffer Size (KB)</label>
+            <label for="setting-buffer-size" class="font-medium">{t('settings.bufferSizeKb')}</label>
             <input
               type="number"
               id="setting-buffer-size"
@@ -1128,7 +1126,7 @@ export function SettingsView() {
             />
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-use-swap" class="font-medium">Use Swap File</label>
+            <label for="setting-use-swap" class="font-medium">{t('settings.useSwapFile')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1143,7 +1141,7 @@ export function SettingsView() {
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-swap-size" class="font-medium">Swap Size (MB)</label>
+            <label for="setting-swap-size" class="font-medium">{t('settings.swapSizeMb')}</label>
             <input
               type="number"
               id="setting-swap-size"
@@ -1158,22 +1156,20 @@ export function SettingsView() {
           </div>
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">Detection-Based Recording</h3>
+          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.detectionBasedRecording')}</h3>
           <div class="setting mb-4">
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              Configure detection-based recording for streams. When enabled, recordings will only be saved when objects are detected.
+              {t('settings.detectionBasedRecordingDescription')}
             </p>
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              <strong>Motion Detection:</strong> Built-in motion detection is available without requiring any external models.
-              Select "motion" as the detection model in stream settings to use this feature. You can configure the detection model for each stream in the Stream Settings page.
+              <strong>{t('settings.motionDetectionLabel')}</strong> {t('settings.motionDetectionDescription')}
             </p>
             <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              <strong>Optimized Motion Detection:</strong> A memory- and CPU-optimized variant of motion detection designed for embedded and low-power devices.
-              When "motion" is selected as the detection model, this optimized implementation is used automatically on supported devices; no additional configuration is required.
+              <strong>{t('settings.optimizedMotionDetectionLabel')}</strong> {t('settings.optimizedMotionDetectionDescription')}
             </p>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-detection-models-path" class="font-medium">Detection Models Path</label>
+            <label for="setting-detection-models-path" class="font-medium">{t('settings.detectionModelsPath')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1185,11 +1181,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground">Directory where detection models are stored</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.detectionModelsPathHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-api-detection-url" class="font-medium">API Detection URL</label>
+            <label for="setting-api-detection-url" class="font-medium">{t('settings.apiDetectionUrl')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1201,11 +1197,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="http://localhost:8000/detect"
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">URL of the external object detection API endpoint</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionUrlHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-api-detection-backend" class="font-medium">API Detection Backend</label>
+            <label for="setting-api-detection-backend" class="font-medium">{t('settings.apiDetectionBackend')}</label>
             <div class="col-span-2">
               <select
                 id="setting-api-detection-backend"
@@ -1215,15 +1211,15 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               >
-                <option value="onnx">ONNX Runtime</option>
-                <option value="tflite">TensorFlow Lite</option>
-                <option value="opencv">OpenCV DNN</option>
+                <option value="onnx">{t('settings.apiDetectionBackendOnnx')}</option>
+                <option value="tflite">{t('settings.apiDetectionBackendTflite')}</option>
+                <option value="opencv">{t('settings.apiDetectionBackendOpencv')}</option>
               </select>
-              <span class="hint text-sm text-muted-foreground block mt-1">Inference backend used by the detection API</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionBackendHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-default-detection-threshold" class="font-medium">Default Detection Threshold</label>
+            <label for="setting-default-detection-threshold" class="font-medium">{t('settings.defaultDetectionThreshold')}</label>
             <div class="col-span-2">
               <div class="flex items-center">
                 <input
@@ -1240,11 +1236,11 @@ export function SettingsView() {
                 />
                 <span id="threshold-value" class="ml-2 min-w-[3rem] text-center">{settings.defaultDetectionThreshold}%</span>
               </div>
-              <span class="hint text-sm text-muted-foreground">Confidence threshold for detection (0-100%)</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.defaultDetectionThresholdHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-default-pre-buffer" class="font-medium">Default Pre-detection Buffer (seconds)</label>
+            <label for="setting-default-pre-buffer" class="font-medium">{t('settings.defaultPreDetectionBufferSeconds')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1257,11 +1253,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground">Seconds of video to keep before detection</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.defaultPreDetectionBufferHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-default-post-buffer" class="font-medium">Default Post-detection Buffer (seconds)</label>
+            <label for="setting-default-post-buffer" class="font-medium">{t('settings.defaultPostDetectionBufferSeconds')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1274,11 +1270,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground">Seconds of video to keep after detection</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.defaultPostDetectionBufferHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-buffer-strategy" class="font-medium">Default Buffer Strategy</label>
+            <label for="setting-buffer-strategy" class="font-medium">{t('settings.defaultBufferStrategy')}</label>
             <div class="col-span-2">
               <select
                 id="setting-buffer-strategy"
@@ -1288,14 +1284,14 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               >
-                <option value="auto">Auto (recommended)</option>
-                <option value="go2rtc">go2rtc Native</option>
-                <option value="hls_segment">HLS Segment Tracking</option>
-                <option value="memory_packet">Memory Packet Buffer</option>
-                <option value="mmap_hybrid">Memory-Mapped Hybrid</option>
+                <option value="auto">{t('settings.bufferStrategyAuto')}</option>
+                <option value="go2rtc">{t('settings.bufferStrategyGo2rtc')}</option>
+                <option value="hls_segment">{t('settings.bufferStrategyHlsSegment')}</option>
+                <option value="memory_packet">{t('settings.bufferStrategyMemoryPacket')}</option>
+                <option value="mmap_hybrid">{t('settings.bufferStrategyMmapHybrid')}</option>
               </select>
               <p class="hint text-sm text-muted-foreground mt-1">
-                How pre-detection video is buffered. "Auto" selects the best strategy based on your setup.
+                {t('settings.defaultBufferStrategyHelp')}
               </p>
             </div>
           </div>
@@ -1303,12 +1299,12 @@ export function SettingsView() {
 
           {/* go2rtc Settings */}
           <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">go2rtc Integration</h3>
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.go2rtcIntegration')}</h3>
             <p class="text-sm text-muted-foreground mb-4">
-              go2rtc provides WebRTC and HLS streaming. Changes require a restart to take effect.
+              {t('settings.go2rtcIntegrationDescription')}
             </p>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-enabled" class="font-medium">Enable go2rtc</label>
+            <label for="setting-go2rtc-enabled" class="font-medium">{t('settings.enableGo2rtc')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1319,13 +1315,13 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">When disabled, go2rtc will not be started and HLS will connect directly to camera streams. This saves bandwidth for WiFi cameras but disables WebRTC live view.</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableGo2rtcHelp')}</span>
             </div>
           </div>
           {settings.go2rtcEnabled && (
           <>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-force-native-hls" class="font-medium">Force Native HLS</label>
+            <label for="setting-go2rtc-force-native-hls" class="font-medium">{t('settings.forceNativeHls')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1336,11 +1332,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Use lightNVR's native FFmpeg-based HLS instead of go2rtc HLS for live view. Useful if go2rtc HLS has compatibility issues. WebRTC is not affected.</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.forceNativeHlsHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-binary-path" class="font-medium">Binary Path</label>
+            <label for="setting-go2rtc-binary-path" class="font-medium">{t('settings.binaryPath')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1352,11 +1348,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="/usr/local/bin/go2rtc"
               />
-              <span class="hint text-sm text-muted-foreground">Path to the go2rtc binary</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.go2rtcBinaryPathHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-config-dir" class="font-medium">Config Directory</label>
+            <label for="setting-go2rtc-config-dir" class="font-medium">{t('settings.configDirectory')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1368,11 +1364,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="/etc/lightnvr/go2rtc"
               />
-              <span class="hint text-sm text-muted-foreground">Directory for go2rtc configuration files</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.go2rtcConfigDirectoryHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-api-port" class="font-medium">API Port</label>
+            <label for="setting-go2rtc-api-port" class="font-medium">{t('settings.apiPort')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1385,11 +1381,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">go2rtc API port (default: 1984)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.go2rtcApiPortHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-rtsp-port" class="font-medium">RTSP Port</label>
+            <label for="setting-go2rtc-rtsp-port" class="font-medium">{t('settings.rtspPort')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1402,11 +1398,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">RTSP listen port (default: 8554)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.go2rtcRtspPortHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-webrtc-enabled" class="font-medium">Enable WebRTC</label>
+            <label for="setting-go2rtc-webrtc-enabled" class="font-medium">{t('settings.enableWebrtc')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1417,11 +1413,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Enable WebRTC streaming via go2rtc</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableWebrtcHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-webrtc-listen-port" class="font-medium">WebRTC Listen Port</label>
+            <label for="setting-go2rtc-webrtc-listen-port" class="font-medium">{t('settings.webrtcListenPort')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1434,11 +1430,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">WebRTC listen port (default: 8555)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.webrtcListenPortHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-stun-enabled" class="font-medium">Enable STUN</label>
+            <label for="setting-go2rtc-stun-enabled" class="font-medium">{t('settings.enableStun')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1449,11 +1445,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Enable STUN for NAT traversal (needed for remote WebRTC)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableStunHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-stun-server" class="font-medium">STUN Server</label>
+            <label for="setting-go2rtc-stun-server" class="font-medium">{t('settings.stunServer')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1465,11 +1461,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="stun.l.google.com:19302"
               />
-              <span class="hint text-sm text-muted-foreground">STUN server address for NAT traversal</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.stunServerHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-external-ip" class="font-medium">External IP</label>
+            <label for="setting-go2rtc-external-ip" class="font-medium">{t('settings.externalIp')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1479,13 +1475,13 @@ export function SettingsView() {
                 value={settings.go2rtcExternalIp}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="Auto-detect"
+                placeholder={t('settings.autoDetect')}
               />
-              <span class="hint text-sm text-muted-foreground">Optional: External IP for NAT (leave empty for auto-detect)</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.externalIpHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-ice-servers" class="font-medium">ICE Servers</label>
+            <label for="setting-go2rtc-ice-servers" class="font-medium">{t('settings.iceServers')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1495,9 +1491,9 @@ export function SettingsView() {
                 value={settings.go2rtcIceServers}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="Optional comma-separated ICE servers"
+                placeholder={t('settings.iceServersPlaceholder')}
               />
-              <span class="hint text-sm text-muted-foreground">Optional: Custom ICE servers (comma-separated)</span>
+              <span class="hint text-sm text-muted-foreground">{t('settings.iceServersHelp')}</span>
             </div>
           </div>
           </>
@@ -1506,12 +1502,12 @@ export function SettingsView() {
 
           {/* MQTT Settings */}
           <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">MQTT Event Streaming</h3>
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.mqttEventStreaming')}</h3>
             <p class="text-sm text-muted-foreground mb-4">
-              Publish detection events to an MQTT broker for integration with Home Assistant or other systems.
+              {t('settings.mqttEventStreamingDescription')}
             </p>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-enabled" class="font-medium">Enable MQTT</label>
+            <label for="setting-mqtt-enabled" class="font-medium">{t('settings.enableMqtt')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1522,11 +1518,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Stream detection events to MQTT broker</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableMqttHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-broker-host" class="font-medium">Broker Host</label>
+            <label for="setting-mqtt-broker-host" class="font-medium">{t('settings.brokerHost')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1538,11 +1534,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="localhost"
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">MQTT broker hostname or IP address</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.brokerHostHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-broker-port" class="font-medium">Broker Port</label>
+            <label for="setting-mqtt-broker-port" class="font-medium">{t('settings.brokerPort')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1555,11 +1551,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Default: 1883 (8883 for TLS)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.brokerPortHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-username" class="font-medium">Username</label>
+            <label for="setting-mqtt-username" class="font-medium">{t('auth.username')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1569,13 +1565,13 @@ export function SettingsView() {
                 value={settings.mqttUsername}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="(optional)"
+                placeholder={t('settings.optionalPlaceholder')}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Leave empty for anonymous access</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.leaveEmptyForAnonymousAccess')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-password" class="font-medium">Password</label>
+            <label for="setting-mqtt-password" class="font-medium">{t('auth.password')}</label>
             <div class="col-span-2">
               <input
                 type="password"
@@ -1585,12 +1581,12 @@ export function SettingsView() {
                 value={settings.mqttPassword}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="(optional)"
+                placeholder={t('settings.optionalPlaceholder')}
               />
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-client-id" class="font-medium">Client ID</label>
+            <label for="setting-mqtt-client-id" class="font-medium">{t('settings.clientId')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1602,11 +1598,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="lightnvr"
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Unique identifier for this client</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.clientIdHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-topic-prefix" class="font-medium">Topic Prefix</label>
+            <label for="setting-mqtt-topic-prefix" class="font-medium">{t('settings.topicPrefix')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1618,11 +1614,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="lightnvr"
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Events published to: {settings.mqttTopicPrefix}/detections/&lt;stream_name&gt;</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.topicPrefixPublishedTo', { prefix: settings.mqttTopicPrefix })}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-tls-enabled" class="font-medium">Enable TLS</label>
+            <label for="setting-mqtt-tls-enabled" class="font-medium">{t('settings.enableTls')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1633,11 +1629,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Use encrypted connection (typically port 8883)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableTlsHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-keepalive" class="font-medium">Keepalive (seconds)</label>
+            <label for="setting-mqtt-keepalive" class="font-medium">{t('settings.keepaliveSeconds')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1650,11 +1646,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Interval to check connection health</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.keepaliveSecondsHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-qos" class="font-medium">QoS Level</label>
+            <label for="setting-mqtt-qos" class="font-medium">{t('settings.qosLevel')}</label>
             <div class="col-span-2">
               <select
                 id="setting-mqtt-qos"
@@ -1664,14 +1660,14 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               >
-                <option value="0">0 - At most once (fire and forget)</option>
-                <option value="1">1 - At least once (recommended)</option>
-                <option value="2">2 - Exactly once (highest overhead)</option>
+                <option value="0">{t('settings.qosAtMostOnce')}</option>
+                <option value="1">{t('settings.qosAtLeastOnce')}</option>
+                <option value="2">{t('settings.qosExactlyOnce')}</option>
               </select>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-retain" class="font-medium">Retain Messages</label>
+            <label for="setting-mqtt-retain" class="font-medium">{t('settings.retainMessages')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1682,17 +1678,17 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Broker stores last message for new subscribers</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.retainMessagesHelp')}</span>
             </div>
           </div>
 
           {/* Home Assistant Auto-Discovery sub-section */}
-          <h4 class="text-md font-semibold mt-6 mb-3 pb-1 border-b border-border">Home Assistant Auto-Discovery</h4>
+          <h4 class="text-md font-semibold mt-6 mb-3 pb-1 border-b border-border">{t('settings.homeAssistantAutoDiscovery')}</h4>
           <p class="text-sm text-muted-foreground mb-4">
-            Automatically register cameras and sensors in Home Assistant via MQTT discovery. Requires the same MQTT broker used by Home Assistant.
+            {t('settings.homeAssistantAutoDiscoveryDescription')}
           </p>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-ha-discovery" class="font-medium">Enable HA Discovery</label>
+            <label for="setting-mqtt-ha-discovery" class="font-medium">{t('settings.enableHaDiscovery')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1703,13 +1699,13 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Cameras and motion sensors appear automatically in Home Assistant</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableHaDiscoveryHelp')}</span>
             </div>
           </div>
           {settings.mqttHaDiscovery && (
           <>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-ha-discovery-prefix" class="font-medium">Discovery Prefix</label>
+            <label for="setting-mqtt-ha-discovery-prefix" class="font-medium">{t('settings.discoveryPrefix')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1721,11 +1717,11 @@ export function SettingsView() {
                 disabled={!canModifySettings}
                 placeholder="homeassistant"
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">Must match Home Assistant's MQTT discovery prefix (default: homeassistant)</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.discoveryPrefixHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-ha-snapshot-interval" class="font-medium">Snapshot Interval (seconds)</label>
+            <label for="setting-mqtt-ha-snapshot-interval" class="font-medium">{t('settings.snapshotIntervalSeconds')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1738,7 +1734,7 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">How often to publish camera snapshots (0 = disabled, max 300)</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.snapshotIntervalSecondsHelp')}</span>
             </div>
           </div>
           </>
@@ -1747,12 +1743,12 @@ export function SettingsView() {
 
           {/* TURN Server Settings */}
           <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">WebRTC TURN Server</h3>
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.webrtcTurnServer')}</h3>
             <p class="text-sm text-muted-foreground mb-4">
-              Configure a TURN relay server for WebRTC when direct peer-to-peer connections fail (e.g., behind restrictive NAT/firewall).
+              {t('settings.webrtcTurnServerDescription')}
             </p>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-enabled" class="font-medium">Enable TURN Relay</label>
+            <label for="setting-turn-enabled" class="font-medium">{t('settings.enableTurnRelay')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1763,11 +1759,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground ml-2">Use TURN server for WebRTC relay when direct connection fails</span>
+              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableTurnRelayHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-server-url" class="font-medium">TURN Server URL</label>
+            <label for="setting-turn-server-url" class="font-medium">{t('settings.turnServerUrl')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1777,15 +1773,15 @@ export function SettingsView() {
                 value={settings.turnServerUrl}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="turn:turn.example.com:3478"
+                placeholder={t('settings.turnServerUrlPlaceholder')}
               />
               <span class="hint text-sm text-muted-foreground block mt-1">
-                Format: turn:hostname:port or turn:hostname:port?transport=tcp
+                {t('settings.turnServerUrlHelp')}
               </span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-username" class="font-medium">Username</label>
+            <label for="setting-turn-username" class="font-medium">{t('auth.username')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1795,12 +1791,12 @@ export function SettingsView() {
                 value={settings.turnUsername}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="(optional)"
+                placeholder={t('settings.optionalPlaceholder')}
               />
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-password" class="font-medium">Password</label>
+            <label for="setting-turn-password" class="font-medium">{t('auth.password')}</label>
             <div class="col-span-2">
               <input
                 type="password"
@@ -1810,7 +1806,7 @@ export function SettingsView() {
                 value={settings.turnPassword}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="(optional)"
+                placeholder={t('settings.optionalPlaceholder')}
               />
             </div>
           </div>
@@ -1818,12 +1814,12 @@ export function SettingsView() {
 
           {/* ONVIF Discovery Settings */}
           <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">ONVIF Discovery</h3>
+            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.onvifDiscovery')}</h3>
             <p class="text-sm text-muted-foreground mb-4">
-              Configure ONVIF camera discovery settings. Use CIDR notation (e.g., 192.168.1.0/24) or "auto" for automatic network detection.
+              {t('settings.onvifDiscoveryDescription')}
             </p>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-onvif-discovery-enabled" class="font-medium">Enable ONVIF Discovery</label>
+            <label for="setting-onvif-discovery-enabled" class="font-medium">{t('settings.enableOnvifDiscovery')}</label>
             <div class="col-span-2">
               <input
                 type="checkbox"
@@ -1835,11 +1831,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint ml-2 text-sm text-muted-foreground">Automatically discover ONVIF cameras on the network</span>
+              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.enableOnvifDiscoveryHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-onvif-discovery-interval" class="font-medium">Discovery Interval (seconds)</label>
+            <label for="setting-onvif-discovery-interval" class="font-medium">{t('settings.discoveryIntervalSeconds')}</label>
             <div class="col-span-2">
               <input
                 type="number"
@@ -1852,11 +1848,11 @@ export function SettingsView() {
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
               />
-              <span class="hint text-sm text-muted-foreground block mt-1">How often to scan for cameras (30–3600 seconds)</span>
+              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.discoveryIntervalSecondsRangeHelp')}</span>
             </div>
           </div>
           <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-onvif-discovery-network" class="font-medium">Discovery Network</label>
+            <label for="setting-onvif-discovery-network" class="font-medium">{t('settings.discoveryNetwork')}</label>
             <div class="col-span-2">
               <input
                 type="text"
@@ -1866,10 +1862,10 @@ export function SettingsView() {
                 value={settings.onvifDiscoveryNetwork}
                 onChange={handleInputChange}
                 disabled={!canModifySettings}
-                placeholder="auto"
+                placeholder={t('streams.auto')}
               />
               <span class="hint text-sm text-muted-foreground block mt-1">
-                Examples: 192.168.1.0/24, 10.0.0.0/16, auto
+                {t('settings.discoveryNetworkExamples')}
               </span>
             </div>
           </div>
@@ -1883,7 +1879,7 @@ export function SettingsView() {
                 class="px-6 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                 onClick={saveSettings}
               >
-                {t('settings.save')}
+                {t('settings.saveSettings')}
               </button>
             </div>
           )}
