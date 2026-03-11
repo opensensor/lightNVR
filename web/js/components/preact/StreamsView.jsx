@@ -1743,14 +1743,14 @@ export function StreamsView() {
         <div id="onvif-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-4 border-b border-border">
-              <h3 className="text-lg font-medium">ONVIF Camera Discovery</h3>
+              <h3 className="text-lg font-medium">{t('streams.onvifCameraDiscovery')}</h3>
               <span className="text-2xl cursor-pointer" onClick={() => setOnvifModalVisible(false)}>×</span>
             </div>
             <div className="p-4">
               <div className="mb-4 p-3 bg-muted/50 rounded-lg">
                 <div className="flex items-center gap-3">
                   <label htmlFor="onvif-network-override" className="text-sm font-medium whitespace-nowrap">
-                    Discovery Network
+                    {t('streams.discoveryNetwork')}
                   </label>
                   <input
                     type="text"
@@ -1759,15 +1759,15 @@ export function StreamsView() {
                     value={onvifNetworkOverride}
                     onChange={(e) => setOnvifNetworkOverride(e.target.value)}
                     disabled={isDiscovering}
-                    placeholder="auto"
+                    placeholder={t('streams.auto')}
                   />
                   <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    CIDR (e.g. 192.168.1.0/24) or "auto"
+                    {t('streams.discoveryNetworkHelp')}
                   </span>
                 </div>
               </div>
               <div className="mb-4 flex justify-between items-center">
-                <h4 className="text-md font-medium">Discovered Devices</h4>
+                <h4 className="text-md font-medium">{t('streams.discoveredDevices')}</h4>
                 <button
                     id="discover-btn"
                     className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
@@ -1777,14 +1777,14 @@ export function StreamsView() {
                 >
                   {isDiscovering ? (
                     <span className="flex items-center">
-                      Discovering
+                      {t('streams.discovering')}
                       <span className="ml-1 flex space-x-1">
                         <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
                         <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
                         <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>
                       </span>
                     </span>
-                  ) : 'Start Discovery'}
+                  ) : t('streams.startDiscovery')}
                 </button>
               </div>
 
@@ -1792,10 +1792,10 @@ export function StreamsView() {
                 <table className="min-w-full divide-y divide-border">
                   <thead className="bg-muted">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">IP Address</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Manufacturer</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Model</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.ipAddress')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.manufacturer')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.model')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
                   </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
@@ -1804,14 +1804,14 @@ export function StreamsView() {
                       <td colSpan="4" className="px-6 py-4 text-center text-muted-foreground">
                         {isDiscovering ? (
                           <div className="flex items-center justify-center">
-                            <span>Discovering devices</span>
+                            <span>{t('streams.discoveringDevices')}</span>
                             <span className="ml-1 flex space-x-1">
                                 <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
                                 <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
                                 <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-muted-foreground rounded-full"></span>
                               </span>
                           </div>
-                        ) : 'No devices discovered yet. Click "Start Discovery" to scan your network.'}
+                        ) : t('streams.noDevicesDiscoveredYet')}
                       </td>
                     </tr>
                   ) : discoveredDevices.map(device => {
@@ -1823,30 +1823,30 @@ export function StreamsView() {
                           <span>{device.ip_address}</span>
                           {alreadyAdded && (
                             <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-muted text-muted-foreground border border-border">
-                              Already Added
+                              {t('streams.alreadyAdded')}
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">{device.manufacturer || 'Unknown'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{device.model || 'Unknown'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">{device.manufacturer || t('common.unknown')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">{device.model || t('common.unknown')}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
                               className={alreadyAdded ? 'btn-secondary focus:outline-none' : 'btn-primary focus:outline-none'}
                               onClick={() => testOnvifConnection(device)}
                               disabled={isConnecting}
                               type="button"
-                              title={alreadyAdded ? 'This IP is already in use by an existing stream. Click to connect anyway.' : undefined}
+                              title={alreadyAdded ? t('streams.deviceAlreadyInUseTitle') : undefined}
                           >
                             {isConnecting ? (
                               <span className="flex items-center">
-                                  Loading
+                                  {t('common.loading')}
                                   <span className="ml-1 flex space-x-1">
                                     <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-current rounded-full"></span>
                                     <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-current rounded-full"></span>
                                     <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-current rounded-full"></span>
                                   </span>
                                 </span>
-                            ) : alreadyAdded ? 'Connect Anyway' : 'Connect'}
+                            ) : alreadyAdded ? t('streams.connectAnyway') : t('streams.connect')}
                           </button>
                         </td>
                       </tr>
@@ -1857,13 +1857,13 @@ export function StreamsView() {
               </div>
 
               <div className="mt-6 mb-4">
-                <h4 className="text-md font-medium mb-2">Authentication</h4>
+                <h4 className="text-md font-medium mb-2">{t('streams.authentication')}</h4>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Enter credentials to connect to the selected ONVIF device. Credentials are not needed for discovery, only for connecting to devices.
+                  {t('streams.onvifAuthenticationHelp')}
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="form-group">
-                    <label for="onvif-username" className="block text-sm font-medium mb-1">Username</label>
+                    <label for="onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
                     <input
                         type="text"
                         id="onvif-username"
@@ -1875,7 +1875,7 @@ export function StreamsView() {
                     />
                   </div>
                   <div className="form-group">
-                    <label for="onvif-password" className="block text-sm font-medium mb-1">Password</label>
+                    <label for="onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
                     <input
                         type="password"
                         id="onvif-password"
@@ -1891,16 +1891,16 @@ export function StreamsView() {
 
               {selectedDevice && deviceProfiles.length > 0 && (
                 <div className="mt-6">
-                  <h4 className="text-md font-medium mb-2">Available Profiles for {selectedDevice.ip_address}</h4>
+                  <h4 className="text-md font-medium mb-2">{t('streams.availableProfilesFor', { ip: selectedDevice.ip_address })}</h4>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-border">
                       <thead className="bg-muted">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Resolution</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Encoding</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">FPS</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.name')}</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.resolution')}</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.encoding')}</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.fps')}</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
                       </tr>
                       </thead>
                       <tbody className="bg-card divide-y divide-border">
@@ -1916,7 +1916,7 @@ export function StreamsView() {
                                 onClick={() => addOnvifDeviceAsStream(profile)}
                                 type="button"
                             >
-                              Add as Stream
+                              {t('streams.addAsStream')}
                             </button>
                           </td>
                         </tr>
@@ -1934,7 +1934,7 @@ export function StreamsView() {
                   onClick={() => setOnvifModalVisible(false)}
                   type="button"
               >
-                Close
+                {t('common.close')}
               </button>
             </div>
           </div>
@@ -1945,12 +1945,12 @@ export function StreamsView() {
         <div id="custom-name-modal" className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
           <div className="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
             <div className="flex justify-between items-center p-4 border-b border-border">
-              <h3 className="text-lg font-medium">Stream Name</h3>
+              <h3 className="text-lg font-medium">{t('streams.streamName')}</h3>
               <span className="text-2xl cursor-pointer" onClick={() => setShowCustomNameInput(false)}>×</span>
             </div>
             <div className="p-4">
               <div className="mb-4">
-                <label for="custom-stream-name" className="block text-sm font-medium mb-1">Enter a name for this stream:</label>
+                <label for="custom-stream-name" className="block text-sm font-medium mb-1">{t('streams.enterNameForStream')}</label>
                 <input
                     type="text"
                     id="custom-stream-name"
@@ -1959,7 +1959,7 @@ export function StreamsView() {
                     onChange={(e) => setCustomStreamName(e.target.value)}
                 />
                 <p className="mt-1 text-sm text-muted-foreground">
-                  This name will be used to identify the stream in the system.
+                  {t('streams.streamNameHelp')}
                 </p>
               </div>
             </div>
@@ -1969,7 +1969,7 @@ export function StreamsView() {
                   onClick={() => setShowCustomNameInput(false)}
                   type="button"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                   className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary"
@@ -1979,14 +1979,14 @@ export function StreamsView() {
               >
                 {isAddingStream ? (
                   <span className="flex items-center">
-                    Adding
+                    {t('common.adding')}
                     <span className="ml-1 flex space-x-1">
                       <span className="animate-pulse delay-0 h-1.5 w-1.5 bg-white rounded-full"></span>
                       <span className="animate-pulse delay-150 h-1.5 w-1.5 bg-white rounded-full"></span>
                       <span className="animate-pulse delay-300 h-1.5 w-1.5 bg-white rounded-full"></span>
                     </span>
                   </span>
-                ) : 'Add Stream'}
+                ) : t('streams.addStream')}
               </button>
             </div>
           </div>
