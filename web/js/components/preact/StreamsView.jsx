@@ -572,7 +572,7 @@ export function StreamsView() {
             }
           }
         } catch (err) {
-          showStatusMessage(`Motion config save failed: ${err.message}`, 'error', 5000);
+          showStatusMessage(t('streams.motionConfigSaveFailed', { message: err.message }), 'error', 5000);
         }
         // Close the modal after successful save
         closeModal();
@@ -601,11 +601,11 @@ export function StreamsView() {
   // Trigger a simulated ONVIF motion event for the current stream
   const triggerTestMotionEvent = async () => {
     if (!currentStream?.name) {
-      showStatusMessage('Please set a stream name and save before testing motion.', 'error', 5000);
+      showStatusMessage(t('streams.setStreamNameAndSaveBeforeTestingMotion'), 'error', 5000);
       return;
     }
     if (!currentStream?.isOnvif) {
-      showStatusMessage('Enable "ONVIF Camera" in Basic Settings first.', 'error', 5000);
+      showStatusMessage(t('streams.enableOnvifCameraFirst'), 'error', 5000);
       return;
     }
     try {
@@ -635,12 +635,12 @@ export function StreamsView() {
         timeout: 15000
       });
       if (data?.success) {
-        showStatusMessage('Test motion event triggered successfully.', 'success', 3000);
+        showStatusMessage(t('streams.testMotionEventTriggeredSuccessfully'), 'success', 3000);
       } else {
-        showStatusMessage(`Test motion event failed: ${data?.message || 'Unknown error'}`, 'error', 5000);
+        showStatusMessage(t('streams.testMotionEventFailed', { message: data?.message || t('common.unknown') }), 'error', 5000);
       }
     } catch (err) {
-      showStatusMessage(`Error triggering test motion: ${err.message}`, 'error', 5000);
+      showStatusMessage(t('streams.errorTriggeringTestMotion', { message: err.message }), 'error', 5000);
     }
   };
 
@@ -794,7 +794,7 @@ export function StreamsView() {
       setModalVisible(true);
     } catch (error) {
       console.error('Error loading stream details:', error);
-      showStatusMessage('Error loading stream details: ' + error.message);
+      showStatusMessage(t('streams.errorLoadingStreamDetails', { message: error.message }));
     }
   };
 
@@ -909,7 +909,7 @@ export function StreamsView() {
         setIsDiscovering(false);
       },
       onError: (error) => {
-        showStatusMessage(`Error discovering ONVIF devices: ${error.message}`, 'error', 5000);
+        showStatusMessage(t('streams.errorDiscoveringOnvifDevices', { message: error.message }), 'error', 5000);
         setIsDiscovering(false);
       }
     }
@@ -944,7 +944,7 @@ export function StreamsView() {
       setIsLoadingProfiles(false);
     },
     onError: (error) => {
-      showStatusMessage(`Error loading device profiles: ${error.message}`, 'error', 5000);
+      showStatusMessage(t('streams.errorLoadingDeviceProfiles', { message: error.message }), 'error', 5000);
       setIsLoadingProfiles(false);
     }
   });
@@ -962,19 +962,19 @@ export function StreamsView() {
       },
       onSuccess: (data, variables) => {
         if (data.success) {
-          showStatusMessage('Connection successful!', 'success', 3000);
+          showStatusMessage(t('streams.connectionSuccessful'), 'success', 3000);
           // The device object is no longer passed directly in variables
           // We need to use the selectedDevice state instead
           if (selectedDevice) {
             getDeviceProfiles(selectedDevice);
           }
         } else {
-          showStatusMessage(`Connection failed: ${data.message}`, 'error', 5000);
+          showStatusMessage(t('streams.connectionFailed', { message: data.message }), 'error', 5000);
           setIsLoadingProfiles(false);
         }
       },
       onError: (error) => {
-        showStatusMessage(`Error testing connection: ${error.message}`, 'error', 5000);
+        showStatusMessage(t('streams.errorTestingConnection', { message: error.message }), 'error', 5000);
         setIsLoadingProfiles(false);
       }
     }
@@ -985,7 +985,7 @@ export function StreamsView() {
   // Submit ONVIF device
   const submitOnvifDevice = () => {
     if (!selectedDevice || !selectedProfile || !customStreamName.trim()) {
-      showStatusMessage('Missing required information', 'error', 5000);
+      showStatusMessage(t('streams.missingRequiredInformation'), 'error', 5000);
       return;
     }
 
@@ -1044,7 +1044,7 @@ export function StreamsView() {
   // Add ONVIF device as stream with selected profile
   const addOnvifDeviceAsStream = (profile) => {
     setSelectedProfile(profile);
-    setCustomStreamName(`${selectedDevice.name || 'ONVIF'}_${profile.name || 'Stream'}`);
+    setCustomStreamName(`${selectedDevice.name || t('streams.onvifDefaultName')}_${profile.name || t('streams.defaultStreamName')}`);
     setShowCustomNameInput(true);
   };
 

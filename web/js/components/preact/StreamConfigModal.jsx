@@ -6,16 +6,26 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ZoneEditor } from './ZoneEditor.jsx';
 import { obfuscateUrlCredentials } from '../../utils/url-utils.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * Recording Schedule Grid Component
  * Interactive 7-day × 24-hour weekly grid for scheduling continuous recording
  */
 function RecordingScheduleGrid({ schedule, onChange }) {
+  const { t } = useI18n();
   const isDragging = useRef(false);
   const dragValue = useRef(true);
 
-  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const DAYS = [
+    t('streamsConfig.sunShort'),
+    t('streamsConfig.monShort'),
+    t('streamsConfig.tueShort'),
+    t('streamsConfig.wedShort'),
+    t('streamsConfig.thuShort'),
+    t('streamsConfig.friShort'),
+    t('streamsConfig.satShort')
+  ];
   const HOURS = Array.from({ length: 24 }, (_, i) => {
     if (i === 0) return '12am';
     if (i < 12) return `${i}am`;
@@ -102,18 +112,18 @@ function RecordingScheduleGrid({ schedule, onChange }) {
   const scheduledHours = schedule.filter(Boolean).length;
   const PRESETS = [
     { key: 'all', label: '24/7' },
-    { key: 'weekdays', label: 'Weekdays' },
-    { key: 'business', label: 'Business Hours' },
-    { key: 'nights', label: 'Nights' },
-    { key: 'weekends', label: 'Weekends' },
-    { key: 'none', label: 'Clear All' },
+    { key: 'weekdays', label: t('streamsConfig.weekdays') },
+    { key: 'business', label: t('streamsConfig.businessHours') },
+    { key: 'nights', label: t('streamsConfig.nights') },
+    { key: 'weekends', label: t('streamsConfig.weekends') },
+    { key: 'none', label: t('streamsConfig.clearAll') },
   ];
 
   return (
     <div className="space-y-2 select-none" style={{ userSelect: 'none' }}>
       {/* Presets & counter */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs text-muted-foreground font-medium">Quick select:</span>
+        <span className="text-xs text-muted-foreground font-medium">{t('streamsConfig.quickSelect')}:</span>
         {PRESETS.map(p => {
           const toggleable = p.key !== 'all' && p.key !== 'none';
           const active = toggleable && isPresetActive(p.key);
@@ -133,7 +143,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
           );
         })}
         <span className="ml-auto text-xs font-semibold text-primary tabular-nums">
-          {scheduledHours}h<span className="text-muted-foreground font-normal">/week</span>
+          {t('streamsConfig.hoursPerWeek', { count: scheduledHours })}
         </span>
       </div>
 
@@ -147,7 +157,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
               <button
                 key={day}
                 type="button"
-                title={`Toggle all ${day}`}
+                title={t('streamsConfig.toggleAllDay', { day })}
                 onClick={() => toggleDay(dayIdx)}
                 className="flex-1 text-center text-[10px] font-semibold text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors py-0.5 leading-none"
               >
@@ -162,7 +172,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
               {/* Hour label — clickable to toggle row */}
               <button
                 type="button"
-                title={`Toggle ${hourLabel} for all days`}
+                title={t('streamsConfig.toggleHourAllDays', { hour: hourLabel })}
                 onClick={() => toggleHour(hourIdx)}
                 className="flex-shrink-0 flex items-center justify-end pr-1.5 hover:text-primary transition-colors"
                 style={{ width: '28px', height: '13px' }}
@@ -195,13 +205,13 @@ function RecordingScheduleGrid({ schedule, onChange }) {
           <div className="flex items-center justify-end gap-3 mt-2 pt-2 border-t border-border/50">
             <div className="flex items-center gap-1">
               <div className="w-3 h-2.5 rounded-sm bg-muted/40 border border-border/30" />
-              <span className="text-[10px] text-muted-foreground">No recording</span>
+              <span className="text-[10px] text-muted-foreground">{t('streamsConfig.noRecording')}</span>
             </div>
             <div className="flex items-center gap-1">
               <div className="w-3 h-2.5 rounded-sm bg-primary/70" />
-              <span className="text-[10px] text-muted-foreground">Recording active</span>
+              <span className="text-[10px] text-muted-foreground">{t('streamsConfig.recordingActive')}</span>
             </div>
-            <span className="text-[10px] text-muted-foreground italic">Click headers or drag cells</span>
+            <span className="text-[10px] text-muted-foreground italic">{t('streamsConfig.clickHeadersOrDragCells')}</span>
           </div>
         </div>
       </div>
@@ -264,6 +274,7 @@ export function StreamConfigModal({
   onRefreshModels,
   hideCredentials = false
 }) {
+  const { t } = useI18n();
   const [showZoneEditor, setShowZoneEditor] = useState(false);
   const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
 
@@ -324,9 +335,9 @@ export function StreamConfigModal({
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-border flex-shrink-0">
           <div>
-            <h3 className="text-2xl font-bold">{isEditing ? 'Edit Stream' : 'Add Stream'}</h3>
+            <h3 className="text-2xl font-bold">{isEditing ? t('streams.editStream') : t('streams.addStream')}</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Configure stream settings, recording options, and detection parameters
+              {t('streamsConfig.subtitle')}
             </p>
           </div>
           <button
@@ -345,14 +356,14 @@ export function StreamConfigModal({
 
             {/* Basic Settings Section */}
             <AccordionSection
-              title="Basic Settings"
+              title={t('streamsConfig.basicSettings')}
               isExpanded={expandedSections.basic}
               onToggle={() => onToggleSection('basic')}
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
                   <label htmlFor="stream-name" className="block text-sm font-medium mb-2">
-                    Stream Name <span className="text-danger">*</span>
+                    {t('streamsConfig.streamName')} <span className="text-danger">*</span>
                   </label>
                   <input
                     type="text"
@@ -363,37 +374,37 @@ export function StreamConfigModal({
                     onChange={onInputChange}
                     disabled={isEditing}
                     required
-                    placeholder="e.g., front_door, backyard"
+                    placeholder={t('streamsConfig.streamNamePlaceholder')}
                   />
                   {isEditing && (
-                    <p className="mt-1 text-xs text-muted-foreground">Stream name cannot be changed after creation</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.streamNameImmutable')}</p>
                   )}
                 </div>
 
                 <div className="md:col-span-2">
                   <label htmlFor="stream-url" className="block text-sm font-medium mb-2">
-                    Stream URL <span className="text-danger">*</span>
+                    {t('streamsConfig.streamUrl')} <span className="text-danger">*</span>
                   </label>
                   <input
                     type="text"
                     id="stream-url"
                     name="url"
                     className={`w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground ${hideCredentials ? 'cursor-not-allowed opacity-75' : ''}`}
-                    placeholder="rtsp://username:password@192.168.1.100:554/stream"
+                    placeholder={t('streamsConfig.streamUrlPlaceholder')}
                     value={hideCredentials ? obfuscateUrlCredentials(currentStream.url) : currentStream.url}
                     onChange={onInputChange}
                     required
                     readOnly={hideCredentials}
-                    title={hideCredentials ? 'URL credentials are hidden in demo/viewer mode' : ''}
+                    title={hideCredentials ? t('streamsConfig.urlCredentialsHiddenTitle') : ''}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {hideCredentials ? 'URL credentials hidden for security' : 'RTSP URL for the camera stream'}
+                    {hideCredentials ? t('streamsConfig.urlCredentialsHidden') : t('streamsConfig.rtspUrlHelp')}
                   </p>
                 </div>
 
                 <div className="md:col-span-2">
                   <label htmlFor="stream-admin-url" className="block text-sm font-medium mb-2">
-                    Camera Admin URL
+                    {t('streamsConfig.cameraAdminUrl')}
                   </label>
                   <input
                     type="text"
@@ -404,29 +415,29 @@ export function StreamConfigModal({
                     value={hideCredentials ? obfuscateUrlCredentials(currentStream.adminUrl || '') : (currentStream.adminUrl || '')}
                     onChange={onInputChange}
                     readOnly={hideCredentials}
-                    title={hideCredentials ? 'URL credentials are hidden in demo/viewer mode' : ''}
+                    title={hideCredentials ? t('streamsConfig.urlCredentialsHiddenTitle') : ''}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Optional. If set, LightNVR will show a launcher button in the streams list that opens this page in a new tab. Use a full <span className="font-mono">http://</span> or <span className="font-mono">https://</span> URL.
+                    {t('streamsConfig.cameraAdminUrlHelpBefore')} <span className="font-mono">http://</span> {t('streamsConfig.cameraAdminUrlHelpOr')} <span className="font-mono">https://</span> {t('streamsConfig.cameraAdminUrlHelpAfter')}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium mb-1" htmlFor="stream-tags">
-                    Stream Tags
+                    {t('streamsConfig.streamTags')}
                   </label>
                   <input
                     type="text"
                     id="stream-tags"
                     name="tags"
                     className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                    placeholder="e.g., outdoor,critical,entrance"
+                    placeholder={t('streamsConfig.streamTagsPlaceholder')}
                     value={currentStream.tags || ''}
                     onChange={onInputChange}
                     maxLength={255}
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Comma-separated stream tags for access control and dashboard filtering (e.g. <span className="font-mono">outdoor,critical</span>). Used for RBAC user permission restrictions.
+                    {t('streamsConfig.streamTagsHelpBefore')} <span className="font-mono">outdoor,critical</span>. {t('streamsConfig.streamTagsHelpAfter')}
                   </p>
                   {(currentStream.tags || '').split(',').filter(t => t.trim()).length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
@@ -450,7 +461,7 @@ export function StreamConfigModal({
                       checked={currentStream.enabled}
                       onChange={onInputChange}
                     />
-                    <span className="text-sm font-medium">Stream Active</span>
+                    <span className="text-sm font-medium">{t('streamsConfig.streamActive')}</span>
                   </label>
                   <label className="flex items-center space-x-2 cursor-pointer">
                     <input
@@ -462,7 +473,7 @@ export function StreamConfigModal({
                       checked={currentStream.streamingEnabled}
                       onChange={onInputChange}
                     />
-                    <span className="text-sm font-medium">Live View Enabled</span>
+                    <span className="text-sm font-medium">{t('streamsConfig.liveViewEnabled')}</span>
                   </label>
                 </div>
 
@@ -477,21 +488,21 @@ export function StreamConfigModal({
                       checked={currentStream.isOnvif}
                       onChange={onInputChange}
                     />
-                    <span className="text-sm font-medium">ONVIF Camera</span>
+                    <span className="text-sm font-medium">{t('streamsConfig.onvifCamera')}</span>
                   </label>
-                  <span className="ml-2 text-xs text-muted-foreground">Enables motion detection and PTZ features</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{t('streamsConfig.onvifCameraHelp')}</span>
                 </div>
 
                 {/* ONVIF Credentials - shown when ONVIF Camera is enabled */}
                 {currentStream.isOnvif && (
                   <div className="col-span-2 p-4 bg-muted/50 rounded-lg border border-border">
-                    <h4 className="text-sm font-medium mb-3">ONVIF Settings</h4>
+                    <h4 className="text-sm font-medium mb-3">{t('streamsConfig.onvifSettings')}</h4>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Enter credentials and connection settings for ONVIF features (motion detection, PTZ control). Leave empty if your camera doesn't require authentication.
+                      {t('streamsConfig.onvifSettingsHelp')}
                     </p>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div>
-                        <label htmlFor="stream-onvif-username" className="block text-sm font-medium mb-1">Username</label>
+                        <label htmlFor="stream-onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
                         <input
                           type="text"
                           id="stream-onvif-username"
@@ -503,7 +514,7 @@ export function StreamConfigModal({
                         />
                       </div>
                       <div>
-                        <label htmlFor="stream-onvif-password" className="block text-sm font-medium mb-1">Password</label>
+                        <label htmlFor="stream-onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
                         <input
                           type="password"
                           id="stream-onvif-password"
@@ -515,7 +526,7 @@ export function StreamConfigModal({
                         />
                       </div>
                       <div>
-                        <label htmlFor="stream-onvif-profile" className="block text-sm font-medium mb-1">Profile (optional)</label>
+                        <label htmlFor="stream-onvif-profile" className="block text-sm font-medium mb-1">{t('streamsConfig.profileOptional')}</label>
                         <input
                           type="text"
                           id="stream-onvif-profile"
@@ -527,7 +538,7 @@ export function StreamConfigModal({
                         />
                       </div>
                       <div>
-                        <label htmlFor="stream-onvif-port" className="block text-sm font-medium mb-1">ONVIF Port</label>
+                        <label htmlFor="stream-onvif-port" className="block text-sm font-medium mb-1">{t('streamsConfig.onvifPort')}</label>
                         <input
                           type="number"
                           id="stream-onvif-port"
@@ -539,40 +550,40 @@ export function StreamConfigModal({
                           value={currentStream.onvifPort || 0}
                           onChange={onInputChange}
                         />
-                        <p className="text-xs text-muted-foreground mt-1">0 = auto-detect</p>
+                        <p className="text-xs text-muted-foreground mt-1">{t('streamsConfig.zeroAutoDetect')}</p>
                       </div>
                     </div>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Resolution</label>
+                  <label className="block text-sm font-medium mb-2">{t('streams.resolution')}</label>
                   <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
                     {currentStream.width > 0 && currentStream.height > 0
                       ? `${currentStream.width}×${currentStream.height}`
-                      : 'Auto-detected'}
+                      : t('streamsConfig.autoDetected')}
                   </span>
-                  <span className="text-xs text-muted-foreground mt-1 block">Detected from stream source</span>
+                  <span className="text-xs text-muted-foreground mt-1 block">{t('streamsConfig.detectedFromSource')}</span>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">FPS</label>
+                  <label className="block text-sm font-medium mb-2">{t('streams.fps')}</label>
                   <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
-                    {currentStream.fps > 0 ? currentStream.fps : 'Auto-detected'}
+                    {currentStream.fps > 0 ? currentStream.fps : t('streamsConfig.autoDetected')}
                   </span>
-                  <span className="text-xs text-muted-foreground mt-1 block">Detected from stream source</span>
+                  <span className="text-xs text-muted-foreground mt-1 block">{t('streamsConfig.detectedFromSource')}</span>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Codec</label>
+                  <label className="block text-sm font-medium mb-2">{t('streams.codec')}</label>
                   <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
-                    {currentStream.codec ? currentStream.codec.toUpperCase() : 'Auto-detected'}
+                    {currentStream.codec ? currentStream.codec.toUpperCase() : t('streamsConfig.autoDetected')}
                   </span>
-                  <span className="text-xs text-muted-foreground mt-1 block">Detected from stream source</span>
+                  <span className="text-xs text-muted-foreground mt-1 block">{t('streamsConfig.detectedFromSource')}</span>
                 </div>
 
                 <div>
-                  <label htmlFor="stream-protocol" className="block text-sm font-medium mb-2">Protocol</label>
+                  <label htmlFor="stream-protocol" className="block text-sm font-medium mb-2">{t('streamsConfig.protocol')}</label>
                   <select
                     id="stream-protocol"
                     name="protocol"
@@ -589,14 +600,14 @@ export function StreamConfigModal({
 
             {/* Recording Settings Section */}
             <AccordionSection
-              title="Recording Settings"
+              title={t('streamsConfig.recordingSettings')}
               isExpanded={expandedSections.recording}
               onToggle={() => onToggleSection('recording')}
             >
               <div className="space-y-4">
                 {/* Recording Mode Selection */}
                 <div className="space-y-3">
-                  <h5 className="text-sm font-semibold">Recording Mode</h5>
+                  <h5 className="text-sm font-semibold">{t('streamsConfig.recordingMode')}</h5>
                   <div className="space-y-2">
                     {/* Continuous Recording block (with optional schedule sub-option) */}
                     <div className={`rounded-lg border transition-colors ${currentStream.record ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
@@ -611,11 +622,11 @@ export function StreamConfigModal({
                           onChange={onInputChange}
                         />
                         <div>
-                          <span className="text-sm font-medium">Enable Continuous Recording</span>
+                          <span className="text-sm font-medium">{t('streamsConfig.enableContinuousRecording')}</span>
                           <p className="text-xs text-muted-foreground mt-1">
                             {currentStream.record && currentStream.recordOnSchedule
-                              ? 'Recording only during configured schedule windows'
-                              : 'Record all video continuously to disk'}
+                              ? t('streamsConfig.recordingScheduleOnly')
+                              : t('streamsConfig.recordAllVideoContinuously')}
                           </p>
                         </div>
                       </label>
@@ -634,16 +645,16 @@ export function StreamConfigModal({
                               onChange={onInputChange}
                             />
                             <span className="text-xs font-semibold group-hover:text-primary transition-colors">
-                              📅 On a Schedule
+                              📅 {t('streamsConfig.onASchedule')}
                             </span>
-                            <span className="text-xs text-muted-foreground">— restrict recording to specific days &amp; hours</span>
+                            <span className="text-xs text-muted-foreground">— {t('streamsConfig.restrictRecordingToSchedule')}</span>
                           </label>
 
                           {currentStream.recordOnSchedule && (
                             <div className="rounded-xl border border-primary/25 bg-background p-3 shadow-sm">
                               <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
                                 <span className="text-primary">●</span>
-                                Click day/hour headers to toggle columns or rows. Drag across cells to paint a range.
+                                {t('streamsConfig.scheduleGridHelp')}
                               </p>
                               <RecordingScheduleGrid
                                 schedule={currentStream.recordingSchedule && currentStream.recordingSchedule.length === 168
@@ -667,9 +678,9 @@ export function StreamConfigModal({
                         onChange={onInputChange}
                       />
                       <div>
-                        <span className="text-sm font-medium">Enable AI Detection-Based Recording</span>
+                        <span className="text-sm font-medium">{t('streamsConfig.enableDetectionRecording')}</span>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Only record when AI detects objects (person, car, etc.)
+                          {t('streamsConfig.enableDetectionRecordingHelp')}
                         </p>
                       </div>
                     </label>
@@ -679,21 +690,21 @@ export function StreamConfigModal({
                   {currentStream.record && currentStream.detectionEnabled && (
                     <div className="p-3 rounded-md bg-muted border border-border">
                       <p className="text-sm text-muted-foreground">
-                        <strong className="text-foreground">{'\u2139\uFE0F Both modes enabled:'}</strong> Continuous recording will run, and detection events will be logged and associated with the recordings.
+                        <strong className="text-foreground">{t('streamsConfig.bothModesEnabled')}</strong> {t('streamsConfig.bothModesEnabledHelp')}
                       </p>
                     </div>
                   )}
                   {!currentStream.record && currentStream.detectionEnabled && (
                     <div className="p-3 rounded-md bg-muted border border-border">
                       <p className="text-sm text-muted-foreground">
-                        <strong className="text-foreground">{'\u26A1 Detection-only mode:'}</strong> Video will only be saved when detections occur, with pre and post buffers.
+                        <strong className="text-foreground">{t('streamsConfig.detectionOnlyMode')}</strong> {t('streamsConfig.detectionOnlyModeHelp')}
                       </p>
                     </div>
                   )}
                   {!currentStream.record && !currentStream.detectionEnabled && (
                     <div className="p-3 bg-muted border border-border rounded-md">
                       <p className="text-sm text-muted-foreground">
-                        {'\u26A0\uFE0F No recording mode selected. Video will not be saved to disk.'}
+                        {t('streamsConfig.noRecordingModeSelected')}
                       </p>
                     </div>
                   )}
@@ -701,7 +712,7 @@ export function StreamConfigModal({
 
                 {/* Audio Settings */}
                 <div className="border-t border-border pt-4">
-                  <h5 className="text-sm font-semibold mb-3">Audio Settings</h5>
+                  <h5 className="text-sm font-semibold mb-3">{t('streamsConfig.audioSettings')}</h5>
                   <div className="flex items-center space-x-4">
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <input
@@ -713,7 +724,7 @@ export function StreamConfigModal({
                         checked={currentStream.recordAudio}
                         onChange={onInputChange}
                       />
-                      <span className="text-sm font-medium">Record Audio</span>
+                      <span className="text-sm font-medium">{t('streamsConfig.recordAudio')}</span>
                     </label>
                     <label className="flex items-center space-x-2 cursor-pointer">
                       <input
@@ -725,22 +736,22 @@ export function StreamConfigModal({
                         checked={currentStream.backchannelEnabled}
                         onChange={onInputChange}
                       />
-                      <span className="text-sm font-medium">Two-Way Audio</span>
+                      <span className="text-sm font-medium">{t('streamsConfig.twoWayAudio')}</span>
                     </label>
                   </div>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Audio recording applies to both continuous and detection-based recordings (requires audio track in stream).
+                    {t('streamsConfig.audioSettingsHelp')}
                   </p>
                 </div>
 
                 {/* AI Detection Settings - nested under recording */}
                 {currentStream.detectionEnabled && (
                   <div className="border-t border-border pt-4">
-                    <h5 className="text-sm font-semibold mb-3">AI Detection Settings</h5>
+                    <h5 className="text-sm font-semibold mb-3">{t('streamsConfig.aiDetectionSettings')}</h5>
                     <div className="space-y-4">
                       <div>
                         <label htmlFor="stream-detection-model" className="block text-sm font-medium mb-2">
-                          Detection Model
+                          {t('streamsConfig.detectionModel')}
                         </label>
                         <div className="flex space-x-2">
                           <select
@@ -750,7 +761,7 @@ export function StreamConfigModal({
                             value={currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) ? 'api-detection' : currentStream.detectionModel}
                             onChange={onInputChange}
                           >
-                            <option value="">Select a model</option>
+                            <option value="">{t('streamsConfig.selectModel')}</option>
                             {detectionModels.map(model => (
                               <option key={model.id} value={model.id}>{model.name}</option>
                             ))}
@@ -759,7 +770,7 @@ export function StreamConfigModal({
                             type="button"
                             onClick={onRefreshModels}
                             className="p-2 rounded-md bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
-                            title="Refresh Models"
+                            title={t('streamsConfig.refreshModels')}
                           >
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
@@ -775,16 +786,16 @@ export function StreamConfigModal({
                             {currentStream.detectionModel === 'api-detection' && (
                               <div className="p-3 rounded-md bg-muted border border-border">
                                 <p className="text-sm mb-2 text-muted-foreground">
-                                  <strong className="text-foreground">ℹ️ Using Default API Endpoint:</strong>
+                                  <strong className="text-foreground">ℹ️ {t('streamsConfig.usingDefaultApiEndpoint')}</strong>
                                 </p>
                                 <p className="text-xs font-mono px-2 py-1 rounded bg-background text-foreground">
                                   http://localhost:9001/detect
                                 </p>
                                 <p className="text-xs mt-2 text-muted-foreground">
-                                  Configured in <code className="px-1 rounded bg-background">lightnvr.ini</code> under <code className="px-1 rounded bg-background">[api_detection]</code>
+                                  {t('streamsConfig.configuredInLightnvrIni')} <code className="px-1 rounded bg-background">[api_detection]</code>
                                 </p>
                                 <p className="text-xs mt-2 text-muted-foreground">
-                                  ⚠️ Make sure light-object-detect is running on this endpoint
+                                  ⚠️ {t('streamsConfig.ensureLightObjectDetectRunning')}
                                 </p>
                               </div>
                             )}
@@ -794,7 +805,7 @@ export function StreamConfigModal({
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <label htmlFor="stream-custom-api-url" className="block text-sm font-medium">
-                                    Custom API Endpoint URL
+                                    {t('streamsConfig.customApiEndpointUrl')}
                                   </label>
                                   <button
                                     type="button"
@@ -810,7 +821,7 @@ export function StreamConfigModal({
                                     }}
                                     className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                                   >
-                                    Use Default Endpoint
+                                    {t('streamsConfig.useDefaultEndpoint')}
                                   </button>
                                 </div>
                                 <input
@@ -818,12 +829,12 @@ export function StreamConfigModal({
                                   id="stream-custom-api-url"
                                   name="detectionModel"
                                   className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
-                                  placeholder="http://192.168.1.100:9001/detect"
+                                  placeholder={t('streamsConfig.customApiEndpointPlaceholder')}
                                   value={currentStream.detectionModel}
                                   onChange={onInputChange}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                  Enter the full URL to your custom detection API endpoint
+                                  {t('streamsConfig.customApiEndpointHelp')}
                                 </p>
                               </div>
                             )}
@@ -844,7 +855,7 @@ export function StreamConfigModal({
                                 }}
                                 className="w-full px-3 py-2 bg-secondary hover:bg-secondary/80 text-secondary-foreground rounded-md text-sm font-medium transition-colors"
                               >
-                                Override with Custom Endpoint
+                                {t('streamsConfig.overrideWithCustomEndpoint')}
                               </button>
                             )}
                           </div>
@@ -853,7 +864,7 @@ export function StreamConfigModal({
 
                       <div>
                         <label htmlFor="stream-detection-threshold" className="block text-sm font-medium mb-2">
-                          Detection Threshold: <span className="text-primary font-semibold">{currentStream.detectionThreshold}%</span>
+                          {t('streamsConfig.detectionThreshold')}: <span className="text-primary font-semibold">{currentStream.detectionThreshold}%</span>
                         </label>
                         <input
                           type="range"
@@ -867,14 +878,14 @@ export function StreamConfigModal({
                           onInput={onThresholdChange}
                         />
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Minimum confidence level to trigger recording (0-100%)
+                          {t('streamsConfig.detectionThresholdHelp')}
                         </p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                           <label htmlFor="stream-detection-interval" className="block text-sm font-medium mb-2">
-                            Detection Interval (frames)
+                            {t('streamsConfig.detectionIntervalFrames')}
                           </label>
                           <input
                             type="number"
@@ -886,12 +897,12 @@ export function StreamConfigModal({
                             value={currentStream.detectionInterval}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">Run detection every N frames</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.detectionIntervalHelp')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="stream-pre-buffer" className="block text-sm font-medium mb-2">
-                            Pre-Detection Buffer (sec)
+                            {t('streamsConfig.preDetectionBufferSec')}
                           </label>
                           <input
                             type="number"
@@ -903,12 +914,12 @@ export function StreamConfigModal({
                             value={currentStream.preBuffer}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">Seconds before detection</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.preDetectionBufferHelp')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="stream-post-buffer" className="block text-sm font-medium mb-2">
-                            Post-Detection Buffer (sec)
+                            {t('streamsConfig.postDetectionBufferSec')}
                           </label>
                           <input
                             type="number"
@@ -920,14 +931,14 @@ export function StreamConfigModal({
                             value={currentStream.postBuffer}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">Seconds after detection</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.postDetectionBufferHelp')}</p>
                         </div>
                       </div>
 
                       {/* Detection Object Filter */}
                       <div>
                         <label htmlFor="stream-detection-object-filter" className="block text-sm font-medium mb-2">
-                          Object Filter Mode
+                          {t('streamsConfig.objectFilterMode')}
                         </label>
                         <select
                           id="stream-detection-object-filter"
@@ -936,33 +947,33 @@ export function StreamConfigModal({
                           value={currentStream.detectionObjectFilter || 'none'}
                           onChange={onInputChange}
                         >
-                          <option value="none">None (detect all objects)</option>
-                          <option value="include">Include only (whitelist)</option>
-                          <option value="exclude">Exclude (blacklist)</option>
+                          <option value="none">{t('streamsConfig.objectFilterNone')}</option>
+                          <option value="include">{t('streamsConfig.objectFilterInclude')}</option>
+                          <option value="exclude">{t('streamsConfig.objectFilterExclude')}</option>
                         </select>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Filter which object types trigger detections for this stream
+                          {t('streamsConfig.objectFilterModeHelp')}
                         </p>
                       </div>
 
                       {currentStream.detectionObjectFilter && currentStream.detectionObjectFilter !== 'none' && (
                         <div>
                           <label htmlFor="stream-detection-object-filter-list" className="block text-sm font-medium mb-2">
-                            {currentStream.detectionObjectFilter === 'include' ? 'Include Objects' : 'Exclude Objects'}
+                            {currentStream.detectionObjectFilter === 'include' ? t('streamsConfig.includeObjects') : t('streamsConfig.excludeObjects')}
                           </label>
                           <input
                             type="text"
                             id="stream-detection-object-filter-list"
                             name="detectionObjectFilterList"
                             className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                            placeholder="person, car, bicycle, dog"
+                            placeholder={t('streamsConfig.objectFilterListPlaceholder')}
                             value={currentStream.detectionObjectFilterList || ''}
                             onChange={onInputChange}
                           />
                           <p className="mt-1 text-xs text-muted-foreground">
                             {currentStream.detectionObjectFilter === 'include'
-                              ? 'Comma-separated list of object classes to detect (all others ignored)'
-                              : 'Comma-separated list of object classes to ignore (all others detected)'}
+                              ? t('streamsConfig.includeObjectsHelp')
+                              : t('streamsConfig.excludeObjectsHelp')}
                           </p>
                         </div>
                       )}
@@ -972,11 +983,11 @@ export function StreamConfigModal({
 
                 {/* Retention Policy Settings */}
                 <div className="border-t border-border pt-4">
-                  <h5 className="text-sm font-semibold mb-3">Retention Policy</h5>
+                  <h5 className="text-sm font-semibold mb-3">{t('streamsConfig.retentionPolicy')}</h5>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label htmlFor="retention-days" className="block text-sm font-medium mb-2">
-                        Retention Days
+                        {t('streamsConfig.retentionDays')}
                       </label>
                       <input
                         type="number"
@@ -988,11 +999,11 @@ export function StreamConfigModal({
                         value={currentStream.retentionDays || 0}
                         onChange={onInputChange}
                       />
-                      <p className="mt-1 text-xs text-muted-foreground">Days to keep regular recordings (0 = unlimited)</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.retentionDaysHelp')}</p>
                     </div>
                     <div>
                       <label htmlFor="detection-retention-days" className="block text-sm font-medium mb-2">
-                        Detection Retention Days
+                        {t('streamsConfig.detectionRetentionDays')}
                       </label>
                       <input
                         type="number"
@@ -1004,11 +1015,11 @@ export function StreamConfigModal({
                         value={currentStream.detectionRetentionDays || 0}
                         onChange={onInputChange}
                       />
-                      <p className="mt-1 text-xs text-muted-foreground">Days to keep detection recordings (0 = unlimited)</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.detectionRetentionDaysHelp')}</p>
                     </div>
                     <div>
                       <label htmlFor="max-storage-mb" className="block text-sm font-medium mb-2">
-                        Max Storage (MB)
+                        {t('streamsConfig.maxStorageMb')}
                       </label>
                       <input
                         type="number"
@@ -1020,7 +1031,7 @@ export function StreamConfigModal({
                         value={currentStream.maxStorageMb || 0}
                         onChange={onInputChange}
                       />
-                      <p className="mt-1 text-xs text-muted-foreground">Storage quota for this stream (0 = unlimited)</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.maxStorageMbHelp')}</p>
                     </div>
                   </div>
                 </div>
@@ -1030,24 +1041,24 @@ export function StreamConfigModal({
             {/* Detection Zones Section */}
             {currentStream.detectionEnabled && (
               <AccordionSection
-                title="Detection Zones"
+                title={t('streamsConfig.detectionZones')}
                 isExpanded={expandedSections.zones}
                 onToggle={() => onToggleSection('zones')}
-                badge="Optional"
+                badge={t('streamsConfig.optional')}
               >
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Define specific regions where object detection should be active. This helps reduce false positives and focus on areas of interest.
+                    {t('streamsConfig.detectionZonesHelp')}
                   </p>
 
                   <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                     <div>
                       <p className="font-medium">
-                        {detectionZones.length === 0 ? 'No zones configured' : `${detectionZones.length} zone(s) configured`}
+                        {detectionZones.length === 0 ? t('streamsConfig.noZonesConfigured') : t('streamsConfig.zonesConfigured', { count: detectionZones.length })}
                       </p>
                       {detectionZones.length > 0 && (
                         <p className="text-sm text-muted-foreground mt-1">
-                          {detectionZones.filter(z => z.enabled).length} enabled
+                          {t('streamsConfig.enabledZonesCount', { count: detectionZones.filter(z => z.enabled).length })}
                         </p>
                       )}
                     </div>
@@ -1056,14 +1067,14 @@ export function StreamConfigModal({
                       onClick={() => setShowZoneEditor(true)}
                       className="btn-primary"
                     >
-                      {detectionZones.length === 0 ? 'Configure Zones' : 'Edit Zones'}
+                      {detectionZones.length === 0 ? t('streamsConfig.configureZones') : t('streamsConfig.editZones')}
                     </button>
                   </div>
 
                   {detectionZones.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-sm font-medium">Configured Zones:</p>
-                      {detectionZones.map((zone, index) => (
+                      <p className="text-sm font-medium">{t('streamsConfig.configuredZones')}:</p>
+                      {detectionZones.map((zone) => (
                         <div
                           key={zone.id}
                           className="flex items-center justify-between p-3 bg-background border border-border rounded"
@@ -1079,7 +1090,7 @@ export function StreamConfigModal({
                             </span>
                           </div>
                           <span className={`text-sm px-2 py-1 rounded ${zone.enabled ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
-                            {zone.enabled ? 'Enabled' : 'Disabled'}
+                            {zone.enabled ? t('common.enabled') : t('common.disabled')}
                           </span>
                         </div>
                       ))}
@@ -1092,12 +1103,12 @@ export function StreamConfigModal({
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                       </svg>
                       <div className="text-sm" style={{color: 'hsl(var(--info-muted-foreground))'}}>
-                        <p className="font-medium mb-1">Zone Detection Tips:</p>
+                        <p className="font-medium mb-1">{t('streamsConfig.zoneDetectionTips')}:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
-                          <li>Click "Configure Zones" to draw detection regions on your camera view</li>
-                          <li>Draw polygons by clicking points on the image</li>
-                          <li>Use zones to ignore areas like trees, roads, or sky</li>
-                          <li>Multiple zones can be configured for different areas</li>
+                          <li>{t('streamsConfig.zoneTipConfigure')}</li>
+                          <li>{t('streamsConfig.zoneTipDrawPolygons')}</li>
+                          <li>{t('streamsConfig.zoneTipIgnoreAreas')}</li>
+                          <li>{t('streamsConfig.zoneTipMultipleZones')}</li>
                         </ul>
                       </div>
                     </div>
@@ -1109,10 +1120,10 @@ export function StreamConfigModal({
             {/* Motion Recording Section (ONVIF only) */}
             {currentStream.isOnvif && (
               <AccordionSection
-                title="Motion Recording (ONVIF)"
+                title={t('streamsConfig.motionRecordingOnvif')}
                 isExpanded={expandedSections.motion}
                 onToggle={() => onToggleSection('motion')}
-                badge="ONVIF Only"
+                badge={t('streamsConfig.onvifOnly')}
               >
                 <div className="space-y-4">
                   <div className="flex items-center">
@@ -1126,11 +1137,11 @@ export function StreamConfigModal({
                         checked={currentStream.motionRecordingEnabled}
                         onChange={onInputChange}
                       />
-                      <span className="text-sm font-medium">Enable ONVIF Motion Recording</span>
+                      <span className="text-sm font-medium">{t('streamsConfig.enableOnvifMotionRecording')}</span>
                     </label>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Record when the camera's built-in motion detection triggers. Uses ONVIF events from the camera.
+                    {t('streamsConfig.onvifMotionRecordingHelp')}
                   </p>
 
                   {currentStream.motionRecordingEnabled && (
@@ -1138,7 +1149,7 @@ export function StreamConfigModal({
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <label htmlFor="motion-pre-buffer" className="block text-sm font-medium mb-2">
-                            Pre-Event Buffer (seconds)
+                            {t('streamsConfig.preEventBufferSeconds')}
                           </label>
                           <input
                             type="number"
@@ -1150,12 +1161,12 @@ export function StreamConfigModal({
                             value={currentStream.motionPreBuffer}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">Video before motion event (0-30s)</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.preEventBufferHelp')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="motion-post-buffer" className="block text-sm font-medium mb-2">
-                            Post-Event Buffer (seconds)
+                            {t('streamsConfig.postEventBufferSeconds')}
                           </label>
                           <input
                             type="number"
@@ -1167,12 +1178,12 @@ export function StreamConfigModal({
                             value={currentStream.motionPostBuffer}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">Continue recording after motion (0-60s)</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.postEventBufferHelp')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="motion-max-duration" className="block text-sm font-medium mb-2">
-                            Max File Duration (seconds)
+                            {t('streamsConfig.maxFileDurationSeconds')}
                           </label>
                           <input
                             type="number"
@@ -1185,12 +1196,12 @@ export function StreamConfigModal({
                             value={currentStream.motionMaxDuration}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">Max duration per file (60-3600s)</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.maxFileDurationHelp')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="motion-retention-days" className="block text-sm font-medium mb-2">
-                            Retention Period (days)
+                            {t('streamsConfig.retentionPeriodDays')}
                           </label>
                           <input
                             type="number"
@@ -1202,12 +1213,12 @@ export function StreamConfigModal({
                             value={currentStream.motionRetentionDays}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">Auto-delete after N days (1-365)</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.retentionPeriodHelp')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="motion-codec" className="block text-sm font-medium mb-2">
-                            Video Codec
+                            {t('streams.codec')}
                           </label>
                           <select
                             id="motion-codec"
@@ -1223,7 +1234,7 @@ export function StreamConfigModal({
 
                         <div>
                           <label htmlFor="motion-quality" className="block text-sm font-medium mb-2">
-                            Recording Quality
+                            {t('streamsConfig.recordingQuality')}
                           </label>
                           <select
                             id="motion-quality"
@@ -1232,9 +1243,9 @@ export function StreamConfigModal({
                             value={currentStream.motionQuality}
                             onChange={onInputChange}
                           >
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
+                            <option value="low">{t('common.low')}</option>
+                            <option value="medium">{t('common.medium')}</option>
+                            <option value="high">{t('common.high')}</option>
                           </select>
                         </div>
 
@@ -1244,7 +1255,7 @@ export function StreamConfigModal({
                             onClick={onTestMotion}
                             className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors font-medium"
                           >
-                            Trigger Test Motion Event
+                            {t('streamsConfig.triggerTestMotionEvent')}
                           </button>
                         </div>
 
@@ -1258,10 +1269,10 @@ export function StreamConfigModal({
             {/* PTZ Settings Section (ONVIF only) */}
             {currentStream.isOnvif && (
               <AccordionSection
-                title="PTZ Control"
+                title={t('live.ptzControl')}
                 isExpanded={expandedSections.ptz}
                 onToggle={() => onToggleSection('ptz')}
-                badge="ONVIF Only"
+                badge={t('streamsConfig.onvifOnly')}
               >
                 <div className="space-y-4">
                   {/* Enable PTZ */}
@@ -1275,11 +1286,11 @@ export function StreamConfigModal({
                       onChange={onInputChange}
                     />
                     <label htmlFor="ptz-enabled" className="text-sm font-medium">
-                      Enable PTZ Control
+                      {t('streamsConfig.enablePtzControl')}
                     </label>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Enable pan-tilt-zoom controls for this camera via ONVIF PTZ protocol
+                    {t('streamsConfig.enablePtzControlHelp')}
                   </p>
 
                   {currentStream.ptzEnabled && (
@@ -1288,7 +1299,7 @@ export function StreamConfigModal({
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                         <div>
                           <label htmlFor="ptz-max-x" className="block text-sm font-medium mb-2">
-                            Max Pan (X)
+                            {t('streamsConfig.maxPanX')}
                           </label>
                           <input
                             type="number"
@@ -1299,12 +1310,12 @@ export function StreamConfigModal({
                             value={currentStream.ptzMaxX || 0}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">0 = no limit</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.zeroNoLimit')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="ptz-max-y" className="block text-sm font-medium mb-2">
-                            Max Tilt (Y)
+                            {t('streamsConfig.maxTiltY')}
                           </label>
                           <input
                             type="number"
@@ -1315,12 +1326,12 @@ export function StreamConfigModal({
                             value={currentStream.ptzMaxY || 0}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">0 = no limit</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.zeroNoLimit')}</p>
                         </div>
 
                         <div>
                           <label htmlFor="ptz-max-z" className="block text-sm font-medium mb-2">
-                            Max Zoom (Z)
+                            {t('streamsConfig.maxZoomZ')}
                           </label>
                           <input
                             type="number"
@@ -1331,7 +1342,7 @@ export function StreamConfigModal({
                             value={currentStream.ptzMaxZ || 0}
                             onChange={onInputChange}
                           />
-                          <p className="mt-1 text-xs text-muted-foreground">0 = no limit</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.zeroNoLimit')}</p>
                         </div>
                       </div>
 
@@ -1346,7 +1357,7 @@ export function StreamConfigModal({
                           onChange={onInputChange}
                         />
                         <label htmlFor="ptz-has-home" className="text-sm font-medium">
-                          Camera supports Home Position
+                          {t('streamsConfig.cameraSupportsHomePosition')}
                         </label>
                       </div>
                     </>
@@ -1357,14 +1368,14 @@ export function StreamConfigModal({
 
             {/* Advanced Settings Section */}
             <AccordionSection
-              title="Advanced Settings"
+              title={t('streamsConfig.advancedSettings')}
               isExpanded={expandedSections.advanced}
               onToggle={() => onToggleSection('advanced')}
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="stream-priority" className="block text-sm font-medium mb-2">
-                    Stream Priority
+                    {t('streamsConfig.streamPriority')}
                   </label>
                   <select
                     id="stream-priority"
@@ -1373,16 +1384,16 @@ export function StreamConfigModal({
                     value={currentStream.priority}
                     onChange={onInputChange}
                   >
-                    <option value="1">Low (1)</option>
-                    <option value="5">Medium (5)</option>
-                    <option value="10">High (10)</option>
+                    <option value="1">{t('streamsConfig.priorityLow')}</option>
+                    <option value="5">{t('streamsConfig.priorityMedium')}</option>
+                    <option value="10">{t('streamsConfig.priorityHigh')}</option>
                   </select>
-                  <p className="mt-1 text-xs text-muted-foreground">Processing priority for this stream</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.streamPriorityHelp')}</p>
                 </div>
 
                 <div>
                   <label htmlFor="stream-segment" className="block text-sm font-medium mb-2">
-                    Segment Duration (seconds)
+                    {t('streamsConfig.segmentDurationSeconds')}
                   </label>
                   <input
                     type="number"
@@ -1394,7 +1405,7 @@ export function StreamConfigModal({
                     value={currentStream.segment}
                     onChange={onInputChange}
                   />
-                  <p className="mt-1 text-xs text-muted-foreground">Duration of each recording segment</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.segmentDurationHelp')}</p>
                 </div>
               </div>
             </AccordionSection>
@@ -1409,7 +1420,7 @@ export function StreamConfigModal({
             onClick={onTestConnection}
             className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors font-medium"
           >
-            Test Connection
+            {t('streamsConfig.testConnection')}
           </button>
           <div className="flex space-x-3">
             <button
@@ -1417,14 +1428,14 @@ export function StreamConfigModal({
               onClick={onClose}
               className="px-6 py-2 border border-input rounded-md shadow-sm text-sm font-medium text-foreground bg-background hover:bg-muted transition-colors"
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="button"
               onClick={onSave}
               className="px-6 py-2 btn-primary font-medium"
             >
-              {isEditing ? 'Update Stream' : 'Add Stream'}
+              {isEditing ? t('streamsConfig.updateStream') : t('streams.addStream')}
             </button>
           </div>
         </div>
