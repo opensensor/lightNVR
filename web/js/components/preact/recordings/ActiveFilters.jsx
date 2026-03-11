@@ -1,3 +1,5 @@
+import { useI18n } from '../../../i18n.js';
+
 /**
  * ActiveFilters component for RecordingsView
  */
@@ -8,6 +10,8 @@
  * @returns {JSX.Element} ActiveFilters component
  */
 export function ActiveFilters({ activeFiltersDisplay, removeFilter, hasActiveFilters }) {
+  const { t } = useI18n();
+
   if (!hasActiveFilters) {
     return null;
   }
@@ -15,6 +19,7 @@ export function ActiveFilters({ activeFiltersDisplay, removeFilter, hasActiveFil
   return (
     <div id="active-filters"
          className="active-filters mb-4 p-3 rounded-lg flex flex-wrap gap-2 bg-muted">
+      <span className="text-xs font-medium text-muted-foreground self-center">{t('recordings.activeFilters')}:</span>
       {activeFiltersDisplay.map((filter, index) => (
         <div key={index} className="filter-tag">
           <span>{filter.label}</span>

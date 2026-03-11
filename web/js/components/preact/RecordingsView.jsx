@@ -10,6 +10,7 @@ import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx'
 import { BatchDownloadModal } from './BatchDownloadModal.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { clearThumbnailQueue } from '../../request-queue.js';
+import { useI18n } from '../../i18n.js';
 
 // Import components
 import { FiltersSidebar } from './recordings/FiltersSidebar.jsx';
@@ -71,6 +72,7 @@ function clearStoredSelectedRecordings() {
  * @returns {JSX.Element} RecordingsView component
  */
 export function RecordingsView() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [userRole, setUserRole] = useState(null);
   const [recordings, setRecordings] = useState([]);
@@ -250,7 +252,7 @@ export function RecordingsView() {
   useEffect(() => {
     if (streamsError) {
       console.error('Error loading streams for filter:', streamsError);
-      showStatusMessage('Error loading streams: ' + streamsError.message);
+      showStatusMessage(t('recordings.errorLoadingStreams', { message: streamsError.message }));
     }
   }, [streamsError]);
 
@@ -399,7 +401,7 @@ export function RecordingsView() {
   useEffect(() => {
     if (recordingsError) {
       console.error('Error loading recordings:', recordingsError);
-      showStatusMessage('Error loading recordings: ' + recordingsError.message);
+      showStatusMessage(t('recordings.errorLoadingRecordings', { message: recordingsError.message }));
       setHasData(false);
     }
   }, [recordingsError]);
@@ -768,7 +770,7 @@ export function RecordingsView() {
         })
         .catch(error => {
           console.error('Error loading recordings:', error);
-          showStatusMessage('Error loading recordings: ' + error.message);
+          showStatusMessage(t('recordings.errorLoadingRecordings', { message: error.message }));
         });
     }, 0);
   };
@@ -812,13 +814,13 @@ export function RecordingsView() {
 
       showStatusMessage(
         newProtectedState
-          ? 'Recording protected from automatic deletion'
-          : 'Recording protection removed',
+          ? t('recordings.recordingProtected')
+          : t('recordings.recordingProtectionRemoved'),
         'success'
       );
     } catch (error) {
       console.error('Error toggling protection:', error);
-      showStatusMessage(`Error: ${error.message}`, 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
     }
   };
 
@@ -851,7 +853,7 @@ export function RecordingsView() {
     <section id="recordings-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <div class="flex items-center">
-          <h2 class="text-xl font-bold">Recordings</h2>
+          <h2 class="text-xl font-bold">{t('nav.recordings')}</h2>
           <div class="ml-4 flex">
             <button
               onClick={() => handleViewModeChange('table')}
@@ -861,7 +863,7 @@ export function RecordingsView() {
                 color: viewMode === 'table' ? 'hsl(var(--primary-foreground))' : 'hsl(var(--secondary-foreground))'
               }}
             >
-              Table
+              {t('recordings.table')}
             </button>
             {thumbnailsEnabled && (
               <button
@@ -872,7 +874,7 @@ export function RecordingsView() {
                   color: viewMode === 'grid' ? 'hsl(var(--primary-foreground))' : 'hsl(var(--secondary-foreground))'
                 }}
               >
-                Grid
+                {t('recordings.grid')}
               </button>
             )}
             <a
@@ -885,7 +887,7 @@ export function RecordingsView() {
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
             >
-              Timeline
+              {t('nav.timeline')}
             </a>
             {getSelectedCount() > 0 && (
               <button
@@ -895,9 +897,9 @@ export function RecordingsView() {
                   backgroundColor: 'hsl(var(--primary))',
                   color: 'hsl(var(--primary-foreground))'
                 }}
-                title={`View ${getSelectedCount()} selected recording(s) in Timeline`}
+                title={t('recordings.viewSelectedCountInTimeline', { count: getSelectedCount() })}
               >
-                ▶ Timeline ({getSelectedCount()})
+                ▶ {t('nav.timeline')} ({getSelectedCount()})
               </button>
             )}
           </div>
@@ -927,8 +929,8 @@ export function RecordingsView() {
           <ContentLoader
             isLoading={isLoadingRecordings}
             hasData={hasData}
-            loadingMessage="Loading recordings..."
-            emptyMessage="No recordings found matching your criteria"
+            loadingMessage={t('recordings.loadingRecordings')}
+            emptyMessage={t('recordings.noRecordingsFoundMatchingCriteria')}
           >
             {viewMode === 'grid' && thumbnailsEnabled ? (
               <RecordingsGrid

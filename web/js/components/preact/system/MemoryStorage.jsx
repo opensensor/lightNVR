@@ -3,6 +3,8 @@
  * Displays memory and storage information with progress bars
  */
 
+import { useI18n } from '../../../i18n.js';
+
 /**
  * MemoryStorage component
  * @param {Object} props Component props
@@ -11,6 +13,7 @@
  * @returns {JSX.Element} MemoryStorage component
  */
 export function MemoryStorage({ systemInfo, formatBytes }) {
+  const { t } = useI18n();
   // Get memory usage values
   const lightNvrMemoryUsed = systemInfo.memory?.used || 0;
   const go2rtcMemoryUsed = systemInfo.go2rtcMemory?.used || 0;
@@ -39,11 +42,11 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4">
-      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Memory & Storage</h3>
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.memoryAndStorage')}</h3>
       <div className="space-y-4">
         <div>
           <div className="flex justify-between mb-1">
-            <span className="font-medium">Process Memory:</span>
+            <span className="font-medium">{t('system.processMemory')}:</span>
             <div className="flex flex-wrap justify-end gap-1">
               <span className="inline-block px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--primary-muted))', color: 'hsl(var(--primary))'}}>
                 LightNVR: {formatBytes(lightNvrMemoryUsed)}
@@ -57,8 +60,8 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
             </div>
           </div>
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Combined: {formatBytes(combinedMemoryUsed)} / {formatBytes(totalSystemMemory)}</span>
-            <span>{combinedMemoryPercent}% of total memory</span>
+            <span>{t('system.combinedMemory', { used: formatBytes(combinedMemoryUsed), total: formatBytes(totalSystemMemory) })}</span>
+            <span>{t('system.percentOfTotalMemory', { percent: combinedMemoryPercent })}</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden">
             <div className="flex h-full" style={{ width: `${combinedMemoryPercent}%` }}>
@@ -70,7 +73,7 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
         </div>
         <div>
           <div className="flex justify-between mb-1">
-            <span className="font-medium">System Memory:</span>
+            <span className="font-medium">{t('system.systemMemory')}:</span>
             <span>
               {systemInfo.systemMemory?.used ? formatBytes(systemInfo.systemMemory.used) : '0'} /
               {systemInfo.systemMemory?.total ? formatBytes(systemInfo.systemMemory.total) : '0'}
@@ -89,7 +92,7 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
         </div>
         <div>
           <div className="flex justify-between mb-1">
-            <span className="font-medium">LightNVR Storage:</span>
+            <span className="font-medium">{t('system.lightNvrStorage')}:</span>
             <span>
               {systemInfo.disk?.used ? formatBytes(systemInfo.disk.used) : '0'} /
               {systemInfo.disk?.total ? formatBytes(systemInfo.disk.total) : '0'}
@@ -108,7 +111,7 @@ export function MemoryStorage({ systemInfo, formatBytes }) {
         </div>
         <div>
           <div className="flex justify-between mb-1">
-            <span className="font-medium">System Storage:</span>
+            <span className="font-medium">{t('system.systemStorage')}:</span>
             <span>
               {systemInfo.systemDisk?.used ? formatBytes(systemInfo.systemDisk.used) : '0'} /
               {systemInfo.systemDisk?.total ? formatBytes(systemInfo.systemDisk.total) : '0'}

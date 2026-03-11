@@ -8,6 +8,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 import { validateSession } from '../../utils/auth-utils.js';
+import { useI18n } from '../../i18n.js';
 
 // Import system components
 import { SystemControls } from './system/SystemControls.jsx';
@@ -31,6 +32,8 @@ import { formatBytes, formatUptime, log_level_meets_minimum } from './system/Sys
  * @returns {JSX.Element} SystemView component
  */
 export function SystemView() {
+  const { t } = useI18n();
+
   // Define all state variables first
   const [systemInfo, setSystemInfo] = useState({
     version: '',
@@ -149,12 +152,12 @@ export function SystemView() {
       });
     },
     onSuccess: () => {
-      showStatusMessage('Logs cleared successfully');
+      showStatusMessage(t('system.logsCleared'));
       setLogs([]);
     },
     onError: (error) => {
       console.error('Error clearing logs:', error);
-      showStatusMessage(`Error clearing logs: ${error.message}`);
+      showStatusMessage(t('system.logsClearError', { message: error.message }));
     }
   });
 
@@ -198,10 +201,10 @@ export function SystemView() {
     },
     onMutate: () => {
       setIsRestarting(true);
-      showStatusMessage('Restarting system...');
+      showStatusMessage(t('system.restartingSystem'));
     },
     onSuccess: () => {
-      showStatusMessage('System is restarting. Please wait...');
+      showStatusMessage(t('system.systemRestartingWait'));
       // Don't auto-reload here - let the RestartModal handle reconnection detection
     },
     onError: (error) => {
@@ -209,7 +212,7 @@ export function SystemView() {
       // Only show error and reset state if it's not a network error
       // (network errors are expected during restart)
       if (error.message && !error.message.includes('fetch') && !error.message.includes('network')) {
-        showStatusMessage(`Error restarting system: ${error.message}`);
+        showStatusMessage(t('system.restartError', { message: error.message }));
         setIsRestarting(false);
       }
       // Otherwise, the restart was likely initiated successfully and the server is shutting down
@@ -260,10 +263,10 @@ export function SystemView() {
       <ContentLoader
         isLoading={isLoading}
         hasData={hasData}
-        loadingMessage="Loading system information..."
-        emptyMessage="System information not available. Please try again later."
+        loadingMessage={t('system.loadingSystemInformation')}
+        emptyMessage={t('system.systemInformationUnavailable')}
       >
-        <div className="mb-4 border-b border-border" role="tablist" aria-label="System sections">
+        <div className="mb-4 border-b border-border" role="tablist" aria-label={t('system.sections')}>
           <div className="flex gap-2">
             <button
               type="button"
@@ -279,7 +282,7 @@ export function SystemView() {
               }`}
               onClick={() => setActiveTab('system')}
             >
-              System
+              {t('system.system')}
             </button>
             <button
               type="button"
@@ -295,7 +298,7 @@ export function SystemView() {
               }`}
               onClick={() => setActiveTab('versions')}
             >
-              Versions
+              {t('system.versions')}
             </button>
           </div>
         </div>

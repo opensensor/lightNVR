@@ -5,6 +5,7 @@
 
 import { useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * ClearLogsModal component
@@ -16,6 +17,7 @@ import { createPortal } from 'preact/compat';
  */
 export function ClearLogsModal({ isOpen, onClose, onConfirm }) {
   const modalRef = useRef(null);
+  const { t } = useI18n();
 
   if (!isOpen) return null;
 
@@ -44,13 +46,13 @@ export function ClearLogsModal({ isOpen, onClose, onConfirm }) {
             </svg>
           </div>
           <div>
-            <h3 className="text-lg font-semibold">Clear Logs</h3>
-            <p className="text-sm text-muted-foreground">This action cannot be undone</p>
+            <h3 className="text-lg font-semibold">{t('system.clearLogs')}</h3>
+            <p className="text-sm text-muted-foreground">{t('system.actionCannotBeUndone')}</p>
           </div>
         </div>
 
         <p className="text-muted-foreground mb-6">
-          Are you sure you want to clear all logs? The log file will be permanently erased.
+          {t('system.clearLogsConfirmation')}
         </p>
 
         <div className="flex justify-end space-x-3">
@@ -58,13 +60,13 @@ export function ClearLogsModal({ isOpen, onClose, onConfirm }) {
             className="px-4 py-2 border border-border rounded-md text-sm font-medium hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-gray-800"
             onClick={onClose}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="btn-danger px-4 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
             onClick={handleConfirm}
           >
-            Clear Logs
+            {t('system.clearLogs')}
           </button>
         </div>
       </div>

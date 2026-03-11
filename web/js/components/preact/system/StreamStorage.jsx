@@ -3,6 +3,8 @@
  * Displays storage usage per stream with slivers in a progress bar
  */
 
+import { useI18n } from '../../../i18n.js';
+
 /**
  * StreamStorage component
  * @param {Object} props Component props
@@ -11,13 +13,14 @@
  * @returns {JSX.Element} StreamStorage component
  */
 export function StreamStorage({ systemInfo, formatBytes }) {
+  const { t } = useI18n();
   // Check if stream storage information is available
   if (!systemInfo.streamStorage || !Array.isArray(systemInfo.streamStorage) || systemInfo.streamStorage.length === 0) {
     return (
       <div className="bg-card text-card-foreground rounded-lg shadow p-4">
         <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Stream Storage</h3>
         <div className="text-muted-foreground text-center py-4">
-          No stream storage information available
+          {t('system.noStreamStorageInformationAvailable')}
         </div>
       </div>
     );
@@ -62,12 +65,12 @@ export function StreamStorage({ systemInfo, formatBytes }) {
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4">
-      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Stream Storage</h3>
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.streamStorage')}</h3>
 
       <div className="space-y-4">
         <div>
           <div className="flex justify-between mb-1">
-            <span className="font-medium">Storage per Stream:</span>
+            <span className="font-medium">{t('system.storagePerStream')}:</span>
             <div className="flex flex-wrap justify-end gap-1">
               {streamStorageData.map((stream, index) => {
                 const color = getStreamColor(index);
@@ -85,8 +88,8 @@ export function StreamStorage({ systemInfo, formatBytes }) {
           </div>
 
           <div className="flex justify-between text-xs text-muted-foreground mb-1">
-            <span>Combined: {formatBytes(totalStreamStorage)} / {formatBytes(totalDiskSpace)}</span>
-            <span>{totalStreamStoragePercent}% of total storage</span>
+            <span>{t('system.combinedStorage', { used: formatBytes(totalStreamStorage), total: formatBytes(totalDiskSpace) })}</span>
+            <span>{t('system.percentOfTotalStorage', { percent: totalStreamStoragePercent })}</span>
           </div>
 
           <div className="w-full bg-muted rounded-full h-2.5 overflow-hidden">
@@ -105,16 +108,16 @@ export function StreamStorage({ systemInfo, formatBytes }) {
           </div>
 
           <div className="mt-4">
-            <h4 className="font-medium mb-2">Stream Details:</h4>
+            <h4 className="font-medium mb-2">{t('system.streamDetails')}</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
               {streamStorageData.map((stream, index) => {
                 const color = getStreamColor(index);
                 const retentionLabel = stream.retentionDays > 0
                   ? `${stream.retentionDays}d`
-                  : `${globalRetentionDays}d (global)`;
+                  : t('system.retentionGlobalDays', { days: globalRetentionDays });
                 const quotaLabel = stream.maxStorageMb > 0
-                  ? `${stream.maxStorageMb} MB limit`
-                  : 'no quota';
+                  ? t('system.quotaMbLimit', { mb: stream.maxStorageMb })
+                  : t('system.noQuota');
                 return (
                   <a
                     key={stream.name}
@@ -125,10 +128,10 @@ export function StreamStorage({ systemInfo, formatBytes }) {
                     <div className="min-w-0">
                       <div className="font-medium">{stream.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {formatBytes(stream.size)} ({stream.slicePercent}%) • {stream.count} recordings
+                        {t('system.streamStorageRecordingsSummary', { size: formatBytes(stream.size), percent: stream.slicePercent, count: stream.count })}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Retention: {retentionLabel} • {quotaLabel}
+                        {t('system.retentionAndQuota', { retention: retentionLabel, quota: quotaLabel })}
                       </div>
                     </div>
                   </a>

@@ -4,14 +4,15 @@
  */
 
 import { useQuery } from '../../../query-client.js';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * Small status badge — green for healthy, red otherwise.
  */
-function StatusBadge({ healthy }) {
+function StatusBadge({ healthy, t }) {
   const bg   = healthy ? 'hsl(142 70% 45% / 0.15)' : 'hsl(0 84% 60% / 0.15)';
   const text = healthy ? 'hsl(142 70% 35%)'         : 'hsl(0 84% 40%)';
-  const label = healthy ? 'Healthy' : 'Unhealthy';
+  const label = healthy ? t('system.healthy') : t('system.unhealthy');
   return (
     <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full"
           style={{ backgroundColor: bg, color: text }}>
@@ -27,6 +28,7 @@ function StatusBadge({ healthy }) {
  * @returns {JSX.Element}
  */
 export function WebServiceInfo({ systemInfo }) {
+  const { t } = useI18n();
   const { data: health, isLoading, error } = useQuery(
     ['webHealth'],
     '/api/health',
@@ -45,30 +47,30 @@ export function WebServiceInfo({ systemInfo }) {
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4">
-      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Web Service</h3>
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.webService')}</h3>
 
       {isLoading ? (
-        <div className="text-muted-foreground text-sm">Loading…</div>
+        <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
       ) : (
         <div className="space-y-2">
           {/* Health status */}
           <div className="flex justify-between items-center">
-            <span className="font-medium">Status:</span>
-            <StatusBadge healthy={isHealthy} />
+            <span className="font-medium">{t('users.status')}:</span>
+            <StatusBadge healthy={isHealthy} t={t} />
           </div>
 
           {/* Request counters */}
           <div className="flex justify-between">
-            <span className="font-medium">Total Requests:</span>
+            <span className="font-medium">{t('system.totalRequests')}:</span>
             <span>{totalReqs.toLocaleString()}</span>
           </div>
           <div className="flex justify-between">
-            <span className="font-medium">Failed Requests:</span>
+            <span className="font-medium">{t('system.failedRequests')}:</span>
             <span>{failedReqs.toLocaleString()}</span>
           </div>
           {successRate !== null && (
             <div className="flex justify-between items-center">
-              <span className="font-medium">Success Rate:</span>
+              <span className="font-medium">{t('system.successRate')}:</span>
               <div className="flex items-center gap-2">
                 <div className="w-20 bg-gray-200 rounded-full h-2 dark:bg-gray-700">
                   <div className="h-2 rounded-full"
@@ -89,11 +91,11 @@ export function WebServiceInfo({ systemInfo }) {
           {/* Divider */}
           <div className="border-t border-border pt-2 mt-2 space-y-2">
             <div className="flex justify-between">
-              <span className="font-medium">Process Threads:</span>
+              <span className="font-medium">{t('system.processThreads')}:</span>
               <span>{threads}</span>
             </div>
             <div className="flex justify-between">
-              <span className="font-medium">HTTP Thread Pool:</span>
+              <span className="font-medium">{t('system.httpThreadPool')}:</span>
               <span>{poolSize}</span>
             </div>
           </div>

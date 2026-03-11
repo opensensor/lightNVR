@@ -7,28 +7,29 @@
 import { useState } from 'preact/hooks';
 import { useQuery, useMutation, fetchJSON } from '../../../query-client.js';
 import { nowMilliseconds } from '../../../utils/date-utils.js';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * Map pressure level to a badge color class
  */
-function pressureBadge(level) {
+function pressureBadge(level, t) {
   switch (level) {
-    case 'NORMAL':    return { bg: 'hsl(142 70% 45% / 0.15)', text: 'hsl(142 70% 35%)', label: 'Normal' };
-    case 'WARNING':   return { bg: 'hsl(38 92% 50% / 0.15)',  text: 'hsl(38 80% 40%)',  label: 'Warning' };
-    case 'CRITICAL':  return { bg: 'hsl(0 84% 60% / 0.15)',   text: 'hsl(0 84% 40%)',   label: 'Critical' };
-    case 'EMERGENCY': return { bg: 'hsl(0 84% 40% / 0.25)',   text: 'hsl(0 84% 30%)',   label: 'Emergency' };
-    default:          return { bg: 'hsl(var(--muted))',        text: 'hsl(var(--muted-foreground))', label: level || 'Unknown' };
+    case 'NORMAL':    return { bg: 'hsl(142 70% 45% / 0.15)', text: 'hsl(142 70% 35%)', label: t('system.pressure.normal') };
+    case 'WARNING':   return { bg: 'hsl(38 92% 50% / 0.15)',  text: 'hsl(38 80% 40%)',  label: t('system.pressure.warning') };
+    case 'CRITICAL':  return { bg: 'hsl(0 84% 60% / 0.15)',   text: 'hsl(0 84% 40%)',   label: t('system.pressure.critical') };
+    case 'EMERGENCY': return { bg: 'hsl(0 84% 40% / 0.25)',   text: 'hsl(0 84% 30%)',   label: t('system.pressure.emergency') };
+    default:          return { bg: 'hsl(var(--muted))',        text: 'hsl(var(--muted-foreground))', label: level || t('common.unknown') };
   }
 }
 
-function formatTimeAgo(epochSeconds) {
-  if (!epochSeconds) return 'Never';
+function formatTimeAgo(epochSeconds, t) {
+  if (!epochSeconds) return t('common.never');
   const diff = Math.floor(nowMilliseconds() / 1000) - epochSeconds;
-  if (diff < 0) return 'Just now';
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 0) return t('system.justNow');
+  if (diff < 60) return t('system.secondsAgo', { count: diff });
+  if (diff < 3600) return t('system.minutesAgo', { count: Math.floor(diff / 60) });
+  if (diff < 86400) return t('system.hoursAgo', { count: Math.floor(diff / 3600) });
+  return t('system.daysAgo', { count: Math.floor(diff / 86400) });
 }
 
 /**
@@ -38,6 +39,7 @@ function formatTimeAgo(epochSeconds) {
  * @returns {JSX.Element}
  */
 export function StorageHealth({ formatBytes }) {
+  const { t } = useI18n();
   const [cleanupPending, setCleanupPending] = useState(false);
   const [cleanupTriggeredAt, setCleanupTriggeredAt] = useState(null);
 
@@ -71,8 +73,8 @@ export function StorageHealth({ formatBytes }) {
   if (isLoading) {
     return (
       <div className="bg-card text-card-foreground rounded-lg shadow p-4 h-full">
-        <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Health</h3>
-        <div className="text-muted-foreground text-center py-4">Loading...</div>
+        <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.storageHealth')}</h3>
+        <div className="text-muted-foreground text-center py-4">{t('common.loading')}</div>
       </div>
     );
   }
@@ -80,15 +82,15 @@ export function StorageHealth({ formatBytes }) {
   if (error || !health) {
     return (
       <div className="bg-card text-card-foreground rounded-lg shadow p-4 h-full">
-        <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Health</h3>
+        <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.storageHealth')}</h3>
         <div className="text-muted-foreground text-center py-4">
-          Storage health data unavailable
+          {t('system.storageHealthUnavailable')}
         </div>
       </div>
     );
   }
 
-  const badge = pressureBadge(health.pressure_level);
+  const badge = pressureBadge(health.pressure_level, t);
   const freePct = health.free_space_pct != null ? health.free_space_pct.toFixed(1) : '?';
   const usedPct = health.free_space_pct != null ? (100 - health.free_space_pct).toFixed(1) : '?';
   const totalSpace = (health.used_space_bytes || 0) + (health.free_space_bytes || 0);
@@ -96,11 +98,11 @@ export function StorageHealth({ formatBytes }) {
 
   return (
     <div className="bg-card text-card-foreground rounded-lg shadow p-4 h-full">
-      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">Storage Health</h3>
+      <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('system.storageHealth')}</h3>
       <div className="space-y-3">
         {/* Pressure level badge */}
         <div className="flex justify-between items-center">
-          <span className="font-medium">Disk Pressure:</span>
+          <span className="font-medium">{t('system.diskPressure')}:</span>
           <span className="inline-block px-3 py-1 text-xs font-semibold rounded-full"
                 style={{ backgroundColor: badge.bg, color: badge.text }}>
             {badge.label}
@@ -110,8 +112,8 @@ export function StorageHealth({ formatBytes }) {
         {/* Free space bar */}
         <div>
           <div className="flex justify-between text-sm mb-1">
-            <span>{formatBytes(health.used_space_bytes || 0)} used</span>
-            <span>{formatBytes(health.free_space_bytes || 0)} free / {formatBytes(totalSpace)} ({freePct}% free)</span>
+            <span>{t('system.bytesUsed', { value: formatBytes(health.used_space_bytes || 0) })}</span>
+            <span>{t('system.bytesFreeSummary', { free: formatBytes(health.free_space_bytes || 0), total: formatBytes(totalSpace), percent: freePct })}</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
             <div className="h-2.5 rounded-full"
@@ -126,51 +128,51 @@ export function StorageHealth({ formatBytes }) {
 
         {/* Last cleanup stats */}
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Last Cleanup:</span>
-          <span>{formatTimeAgo(health.last_cleanup_time)}</span>
+          <span className="text-muted-foreground">{t('system.lastCleanup')}:</span>
+          <span>{formatTimeAgo(health.last_cleanup_time, t)}</span>
         </div>
         {health.last_cleanup_deleted > 0 && (
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Deleted / Freed:</span>
-            <span>{health.last_cleanup_deleted} files / {formatBytes(health.last_cleanup_freed || 0)}</span>
+            <span className="text-muted-foreground">{t('system.deletedFreed')}:</span>
+            <span>{t('system.deletedFreedSummary', { files: health.last_cleanup_deleted, bytes: formatBytes(health.last_cleanup_freed || 0) })}</span>
           </div>
         )}
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Last Heartbeat:</span>
-          <span>{formatTimeAgo(health.last_check_time)}</span>
+          <span className="text-muted-foreground">{t('system.lastHeartbeat')}:</span>
+          <span>{formatTimeAgo(health.last_check_time, t)}</span>
         </div>
 
         {/* Cleanup trigger buttons */}
         {isElevated && (
           <div className="text-xs p-2 rounded"
                style={{ backgroundColor: badge.bg, color: badge.text }}>
-            ⚠ Disk pressure is <strong>{badge.label}</strong>. Use cleanup buttons below to free space,
-            or <a href="settings.html" style={{ color: badge.text, textDecoration: 'underline' }}>adjust retention settings</a>.
+            {t('system.diskPressureWarningPrefix', { level: badge.label })}{' '}
+            <a href="settings.html" style={{ color: badge.text, textDecoration: 'underline' }}>{t('system.adjustRetentionSettings')}</a>.
           </div>
         )}
         <div className="pt-2 flex gap-2 flex-wrap">
           <button
             className="btn-primary text-xs px-3 py-1 rounded disabled:opacity-50"
-            title="Delete recordings that have exceeded their configured retention period"
+            title={t('system.runCleanupTitle')}
             onClick={() => cleanupMutation.mutate(false)}
             disabled={cleanupPending}>
-            {cleanupPending ? 'Running...' : 'Run Cleanup'}
+            {cleanupPending ? t('system.running') : t('system.runCleanup')}
           </button>
           <button
             className="btn-warning text-xs px-3 py-1 rounded disabled:opacity-50"
-            title="Delete oldest unprotected recordings regardless of retention settings — use when disk is full and normal cleanup won't free space"
+            title={t('system.forceFreeSpaceTitle')}
             onClick={() => cleanupMutation.mutate(true)}
             disabled={cleanupPending}>
-            Force Free Space
+            {t('system.forceFreeSpace')}
           </button>
         </div>
         <div className="text-xs text-muted-foreground">
-          <em>Run Cleanup</em> respects retention settings.&nbsp;
-          <em>Force Free Space</em> deletes oldest recordings immediately.
+          <em>{t('system.runCleanup')}</em> {t('system.runCleanupRespectsRetention')}&nbsp;
+          <em>{t('system.forceFreeSpace')}</em> {t('system.forceFreeSpaceDeletesOldest')}
         </div>
         {cleanupTriggeredAt && (
           <div className="text-xs text-muted-foreground">
-            Cleanup triggered {formatTimeAgo(Math.floor(cleanupTriggeredAt / 1000))} — stats refresh automatically.
+            {t('system.cleanupTriggered', { ago: formatTimeAgo(Math.floor(cleanupTriggeredAt / 1000), t) })}
           </div>
         )}
       </div>

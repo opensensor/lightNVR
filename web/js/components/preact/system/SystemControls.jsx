@@ -5,6 +5,7 @@
 
 import { useState } from 'preact/hooks';
 import { RestartModal } from './RestartModal.jsx';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * SystemControls component
@@ -16,6 +17,7 @@ import { RestartModal } from './RestartModal.jsx';
  */
 export function SystemControls({ onRestartConfirm, isRestarting, canControlSystem = true }) {
   const [showRestartModal, setShowRestartModal] = useState(false);
+  const { t } = useI18n();
 
   const handleRestartClick = () => {
     setShowRestartModal(true);
@@ -36,7 +38,7 @@ export function SystemControls({ onRestartConfirm, isRestarting, canControlSyste
   return (
     <>
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
-        <h2 className="text-xl font-bold">System</h2>
+        <h2 className="text-xl font-bold">{t('system.system')}</h2>
         <div className="controls space-x-2">
           {canControlSystem && (
             <button
@@ -46,7 +48,7 @@ export function SystemControls({ onRestartConfirm, isRestarting, canControlSyste
               onClick={handleRestartClick}
               disabled={isRestarting}
             >
-              Restart lightNVR
+              {t('system.restartLightNvr')}
             </button>
           )}
         </div>

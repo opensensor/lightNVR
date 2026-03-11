@@ -7,6 +7,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { recordingsAPI } from './recordingsAPI.jsx';
 import { formatUtils } from './formatUtils.js';
 import { urlUtils } from './urlUtils.js';
+import { useI18n } from '../../../i18n.js';
 
 /** Small reusable accordion section for filter groups */
 function FilterSection({ title, badge, isExpanded, onToggle, children }) {
@@ -41,7 +42,7 @@ function FilterSection({ title, badge, isExpanded, onToggle, children }) {
   );
 }
 
-function SelectedValues({ values, onRemove, formatValue = (value) => value, emptyText }) {
+function SelectedValues({ values, onRemove, formatValue = (value) => value, emptyText, t }) {
   if (!values.length) {
     return <p className="text-[11px] text-muted-foreground">{emptyText}</p>;
   }
@@ -54,7 +55,7 @@ function SelectedValues({ values, onRemove, formatValue = (value) => value, empt
           type="button"
           className="filter-tag hover:opacity-90"
           onClick={() => onRemove(value)}
-          title={`Remove ${formatValue(value)}`}
+          title={t('recordings.removeFilterValue', { value: formatValue(value) })}
         >
           <span>{formatValue(value)}</span>
           <span className="ml-2">×</span>
@@ -92,6 +93,7 @@ export function FiltersSidebar({
   resetFilters,
   handleDateRangeChange
 }) {
+  const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('recordings_filters_collapsed') === 'true'; }
     catch { return false; }
@@ -145,9 +147,9 @@ export function FiltersSidebar({
     ? filters.dateRange.replace('last', '').replace('days', 'd')
     : null;
   const typeBadge = filters.recordingType === 'detection'
-    ? 'with detections'
+    ? t('recordings.withDetections')
     : filters.recordingType === 'no_detection'
-      ? 'without detections'
+      ? t('recordings.withoutDetections')
       : null;
   const protectedBadge = filters.protectedStatus !== 'all' ? filters.protectedStatus : null;
 
@@ -160,13 +162,13 @@ export function FiltersSidebar({
     >
       <div className={`flex items-center ${collapsed ? 'justify-center p-2' : 'justify-between px-3 py-2.5'} border-b border-border`}>
         {!collapsed && (
-          <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">Filters</h3>
+          <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">{t('recordings.filters')}</h3>
         )}
         <button
           type="button"
           onClick={toggleCollapsed}
           className="p-1.5 rounded hover:bg-muted/70 transition-colors"
-          title={collapsed ? 'Show filters' : 'Hide filters'}
+          title={collapsed ? t('recordings.showFilters') : t('recordings.hideFilters')}
         >
           <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -177,24 +179,24 @@ export function FiltersSidebar({
 
       {!collapsed && (
         <div className="p-3 space-y-0">
-          <FilterSection title="Date Range" badge={dateRangeBadge} isExpanded={sections.dateRange} onToggle={() => toggleSection('dateRange')}>
+          <FilterSection title={t('recordings.dateRange')} badge={dateRangeBadge} isExpanded={sections.dateRange} onToggle={() => toggleSection('dateRange')}>
             <select
               id="date-range-select"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               value={filters.dateRange}
               onChange={handleDateRangeChange}
             >
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="last7days">Last 7 Days</option>
-              <option value="last30days">Last 30 Days</option>
-              <option value="custom">Custom Range</option>
+              <option value="today">{t('recordings.today')}</option>
+              <option value="yesterday">{t('recordings.yesterday')}</option>
+              <option value="last7days">{t('recordings.last7Days')}</option>
+              <option value="last30days">{t('recordings.last30Days')}</option>
+              <option value="custom">{t('recordings.customRange')}</option>
             </select>
 
             {filters.dateRange === 'custom' && (
               <div className="space-y-2 mt-2">
                 <div>
-                  <label htmlFor="start-date" className="block text-xs font-medium text-muted-foreground mb-1">Start</label>
+                  <label htmlFor="start-date" className="block text-xs font-medium text-muted-foreground mb-1">{t('recordings.start')}</label>
                   <div className="flex gap-1.5">
                     <input type="date" id="start-date"
                       className="flex-1 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
@@ -207,7 +209,7 @@ export function FiltersSidebar({
                   </div>
                 </div>
                 <div>
-                  <label htmlFor="end-date" className="block text-xs font-medium text-muted-foreground mb-1">End</label>
+                  <label htmlFor="end-date" className="block text-xs font-medium text-muted-foreground mb-1">{t('recordings.end')}</label>
                   <div className="flex gap-1.5">
                     <input type="date" id="end-date"
                       className="flex-1 p-1.5 text-sm border border-input rounded-md bg-background text-foreground"
@@ -223,7 +225,7 @@ export function FiltersSidebar({
             )}
           </FilterSection>
 
-          <FilterSection title="Streams" badge={getCountBadge(filters.streamIds)} isExpanded={sections.stream} onToggle={() => toggleSection('stream')}>
+          <FilterSection title={t('nav.streams')} badge={getCountBadge(filters.streamIds)} isExpanded={sections.stream} onToggle={() => toggleSection('stream')}>
             <select
               id="stream-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
@@ -233,7 +235,7 @@ export function FiltersSidebar({
                 e.target.value = '';
               }}
             >
-              <option value="">Add stream…</option>
+              <option value="">{t('recordings.addStream')}</option>
               {streams.map((stream) => (
                 <option key={stream.name} value={stream.name}>{stream.name}</option>
               ))}
@@ -241,24 +243,25 @@ export function FiltersSidebar({
             <SelectedValues
               values={filters.streamIds}
               onRemove={(value) => removeMultiFilterValue('streamIds', value)}
-              emptyText="No stream filters selected"
+              emptyText={t('recordings.noStreamFiltersSelected')}
+              t={t}
             />
           </FilterSection>
 
-          <FilterSection title="Detections" badge={typeBadge} isExpanded={sections.recordingType} onToggle={() => toggleSection('recordingType')}>
+          <FilterSection title={t('recordings.detections')} badge={typeBadge} isExpanded={sections.recordingType} onToggle={() => toggleSection('recordingType')}>
             <select
               id="detection-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               value={filters.recordingType}
               onChange={(e) => setFilters((prev) => ({ ...prev, recordingType: e.target.value }))}
             >
-              <option value="all">All Recordings</option>
-              <option value="detection">With Detections</option>
-              <option value="no_detection">Without Detections</option>
+              <option value="all">{t('recordings.allRecordings')}</option>
+              <option value="detection">{t('recordings.withDetections')}</option>
+              <option value="no_detection">{t('recordings.withoutDetections')}</option>
             </select>
           </FilterSection>
 
-          <FilterSection title="Detection Objects" badge={getCountBadge(filters.detectionLabels)} isExpanded={sections.detectionObject} onToggle={() => toggleSection('detectionObject')}>
+          <FilterSection title={t('recordings.detectionObjects')} badge={getCountBadge(filters.detectionLabels)} isExpanded={sections.detectionObject} onToggle={() => toggleSection('detectionObject')}>
             <select
               id="detection-label-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
@@ -268,7 +271,7 @@ export function FiltersSidebar({
                 e.target.value = '';
               }}
             >
-              <option value="">Add detection object…</option>
+              <option value="">{t('recordings.addDetectionObject')}</option>
               {availableDetectionLabels.map((label) => (
                 <option key={label} value={label}>{label}</option>
               ))}
@@ -276,11 +279,12 @@ export function FiltersSidebar({
             <SelectedValues
               values={filters.detectionLabels}
               onRemove={(value) => removeMultiFilterValue('detectionLabels', value)}
-              emptyText="No detection objects selected"
+              emptyText={t('recordings.noDetectionObjectsSelected')}
+              t={t}
             />
           </FilterSection>
 
-          <FilterSection title="Capture Method" badge={getCountBadge(filters.captureMethods)} isExpanded={sections.captureMethod} onToggle={() => toggleSection('captureMethod')}>
+          <FilterSection title={t('recordings.captureMethodLabel')} badge={getCountBadge(filters.captureMethods)} isExpanded={sections.captureMethod} onToggle={() => toggleSection('captureMethod')}>
             <select
               id="capture-method-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
@@ -290,20 +294,21 @@ export function FiltersSidebar({
                 e.target.value = '';
               }}
             >
-              <option value="">Add capture method…</option>
+              <option value="">{t('recordings.addCaptureMethod')}</option>
               {CAPTURE_METHOD_OPTIONS.map((value) => (
-                <option key={value} value={value}>{formatUtils.formatCaptureMethod(value)}</option>
+                <option key={value} value={value}>{formatUtils.formatCaptureMethod(value, t)}</option>
               ))}
             </select>
             <SelectedValues
               values={filters.captureMethods}
               onRemove={(value) => removeMultiFilterValue('captureMethods', value)}
-              formatValue={(value) => formatUtils.formatCaptureMethod(value)}
-              emptyText="No capture methods selected"
+              formatValue={(value) => formatUtils.formatCaptureMethod(value, t)}
+              emptyText={t('recordings.noCaptureMethodsSelected')}
+              t={t}
             />
           </FilterSection>
 
-          <FilterSection title="Recording Tags" badge={getCountBadge(filters.tags)} isExpanded={sections.tag} onToggle={() => toggleSection('tag')}>
+          <FilterSection title={t('recordings.recordingTags')} badge={getCountBadge(filters.tags)} isExpanded={sections.tag} onToggle={() => toggleSection('tag')}>
             <select
               id="tag-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
@@ -313,7 +318,7 @@ export function FiltersSidebar({
                 e.target.value = '';
               }}
             >
-              <option value="">Add tag…</option>
+              <option value="">{t('recordings.addTag')}</option>
               {availableTags.map((tag) => (
                 <option key={tag} value={tag}>{tag}</option>
               ))}
@@ -321,25 +326,26 @@ export function FiltersSidebar({
             <SelectedValues
               values={filters.tags}
               onRemove={(value) => removeMultiFilterValue('tags', value)}
-              emptyText="No tags selected"
+              emptyText={t('recordings.noTagsSelected')}
+              t={t}
             />
           </FilterSection>
 
-          <FilterSection title="Protected" badge={protectedBadge} isExpanded={sections.protectedStatus} onToggle={() => toggleSection('protectedStatus')}>
+          <FilterSection title={t('recordings.protected')} badge={protectedBadge} isExpanded={sections.protectedStatus} onToggle={() => toggleSection('protectedStatus')}>
             <select
               id="protected-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               value={filters.protectedStatus}
               onChange={(e) => setFilters((prev) => ({ ...prev, protectedStatus: e.target.value }))}
             >
-              <option value="all">All</option>
-              <option value="yes">Protected</option>
-              <option value="no">Not Protected</option>
+              <option value="all">{t('common.all')}</option>
+              <option value="yes">{t('recordings.protected')}</option>
+              <option value="no">{t('recordings.notProtected')}</option>
             </select>
           </FilterSection>
 
-          <FilterSection title="Display" isExpanded={sections.display} onToggle={() => toggleSection('display')}>
-            <label htmlFor="page-size" className="block text-xs font-medium text-muted-foreground mb-1">Items per page</label>
+          <FilterSection title={t('recordings.display')} isExpanded={sections.display} onToggle={() => toggleSection('display')}>
+            <label htmlFor="page-size" className="block text-xs font-medium text-muted-foreground mb-1">{t('recordings.itemsPerPage')}</label>
             <select
               id="page-size"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
@@ -358,7 +364,7 @@ export function FiltersSidebar({
               <option value="20">20</option>
               <option value="50">50</option>
               <option value="100">100</option>
-              <option value="all">All</option>
+              <option value="all">{t('common.all')}</option>
             </select>
           </FilterSection>
 
@@ -368,14 +374,14 @@ export function FiltersSidebar({
               className="btn-primary flex-1 text-sm py-2"
               onClick={applyFilters}
             >
-              Apply
+              {t('recordings.apply')}
             </button>
             <button
               id="reset-filters-btn"
               className="btn-secondary flex-1 text-sm py-2"
               onClick={resetFilters}
             >
-              Reset
+              {t('recordings.reset')}
             </button>
           </div>
         </div>

@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * RestartModal component
@@ -21,6 +22,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
   const [reconnectStatus, setReconnectStatus] = useState('');
   const [serverDown, setServerDown] = useState(false);
   const maxReconnectAttempts = 60; // Try for up to 2 minutes (2s intervals)
+  const { t } = useI18n();
 
   // Handle escape key (only when not restarting)
   useEffect(() => {
@@ -43,7 +45,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
       return;
     }
 
-    setReconnectStatus('Initiating restart...');
+    setReconnectStatus(t('system.initiatingRestart'));
 
     // First, detect when the server goes down
     const detectShutdown = setInterval(async () => {
@@ -57,13 +59,13 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
         if (!response.ok) {
           // Server is shutting down
           setServerDown(true);
-          setReconnectStatus('Server is shutting down...');
+          setReconnectStatus(t('system.serverShuttingDown'));
           clearInterval(detectShutdown);
         }
       } catch (error) {
         // Server is down or unreachable
         setServerDown(true);
-        setReconnectStatus('Server is shutting down...');
+        setReconnectStatus(t('system.serverShuttingDown'));
         clearInterval(detectShutdown);
       }
     }, 500); // Check every 500ms for shutdown
@@ -75,7 +77,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
         setReconnectAttempts(prev => {
           const newAttempts = prev + 1;
           if (newAttempts >= maxReconnectAttempts) {
-            setReconnectStatus('Server is taking longer than expected. Please refresh manually.');
+            setReconnectStatus(t('system.serverTakingLonger'));
             clearInterval(checkInterval);
             return newAttempts;
           }
@@ -91,7 +93,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
         });
 
         if (response.ok) {
-          setReconnectStatus('Server is back online! Reloading...');
+          setReconnectStatus(t('system.serverBackOnline'));
           clearInterval(detectShutdown);
           clearInterval(checkInterval);
           setTimeout(() => {
@@ -99,12 +101,12 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
           }, 1000);
         } else if (serverDown) {
           // Server is down, waiting for it to come back
-          setReconnectStatus(`Waiting for server to restart... (${reconnectAttempts}s)`);
+          setReconnectStatus(t('system.waitingForServerRestart', { seconds: reconnectAttempts }));
         }
       } catch (error) {
         if (serverDown) {
           // Server is down, waiting for it to come back
-          setReconnectStatus(`Waiting for server to restart... (${reconnectAttempts * 2}s)`);
+          setReconnectStatus(t('system.waitingForServerRestart', { seconds: reconnectAttempts * 2 }));
         }
       }
     }, 2000); // Check every 2 seconds
@@ -113,7 +115,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
       clearInterval(detectShutdown);
       clearInterval(checkInterval);
     };
-  }, [isRestarting, serverDown, reconnectAttempts]);
+  }, [isRestarting, reconnectAttempts, serverDown, t]);
 
   // Handle background click (only when not restarting)
   const handleBackgroundClick = (e) => {
@@ -141,13 +143,13 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-semibold">Restart LightNVR</h3>
-                <p className="text-sm text-muted-foreground">This will restart the NVR service</p>
+                <h3 className="text-lg font-semibold">{t('system.restartLightNvr')}</h3>
+                <p className="text-sm text-muted-foreground">{t('system.restartServiceDescription')}</p>
               </div>
             </div>
 
             <p className="text-muted-foreground mb-6">
-              Are you sure you want to restart LightNVR? All active streams will be temporarily interrupted and will resume automatically after restart.
+              {t('system.restartConfirmation')}
             </p>
 
             <div className="flex justify-end space-x-3">
@@ -155,13 +157,13 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
                 className="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted/80 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-muted"
                 onClick={onClose}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 className="btn-warning focus:outline-none focus:ring-2 focus:ring-offset-2"
                 onClick={onConfirm}
               >
-                Restart
+                {t('system.restart')}
               </button>
             </div>
           </>
@@ -175,14 +177,14 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
                 <div className="absolute inset-0 border-4 border-transparent border-t-primary rounded-full animate-spin"></div>
               </div>
 
-              <h3 className="text-lg font-semibold mb-2">Restarting LightNVR</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('system.restartingLightNvr')}</h3>
               <p className="text-sm text-muted-foreground text-center mb-2">
-                {reconnectStatus || 'Initiating restart...'}
+                {reconnectStatus || t('system.initiatingRestart')}
               </p>
 
               {!serverDown && (
                 <p className="text-xs text-muted-foreground/70 text-center mb-4">
-                  This may take 1-2 minutes
+                  {t('system.restartMayTakeOneToTwoMinutes')}
                 </p>
               )}
 
@@ -191,7 +193,7 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
                   className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                   onClick={() => window.location.reload()}
                 >
-                  Refresh Page
+                  {t('system.refreshPage')}
                 </button>
               )}
             </div>

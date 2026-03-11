@@ -13,18 +13,19 @@ export const formatUtils = {
    * @param {string} value Capture method value from the API
    * @returns {string} User-friendly capture method label
    */
-  formatCaptureMethod: (value) => {
+  formatCaptureMethod: (value, t = null) => {
+    const translate = t || ((key) => key);
     switch (value) {
       case 'scheduled':
-        return 'Continuous';
+        return translate('recordings.captureMethod.continuous');
       case 'detection':
-        return 'Detection-triggered';
+        return translate('recordings.captureMethod.detection');
       case 'motion':
-        return 'Motion-triggered';
+        return translate('recordings.captureMethod.motion');
       case 'manual':
-        return 'Manual';
+        return translate('recordings.captureMethod.manual');
       default:
-        return value ? value.replace(/_/g, ' ') : 'Unknown';
+        return value ? value.replace(/_/g, ' ') : translate('common.unknown');
     }
   },
 
