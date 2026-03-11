@@ -905,7 +905,99 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Check if detection models exist and start detection-based recording - MOVED TO END OF SETUP
+    // Initialize web server with direct handlers
+    http_server_config_t server_config = {
+        .port = config.web_port,
+        .web_root = config.web_root,
+        .auth_enabled = config.web_auth_enabled,
+        .cors_enabled = true,
+        .ssl_enabled = false,
+        .max_connections = 100,
+        .connection_timeout = 30,
+        .daemon_mode = daemon_mode,
+    };
+
+    // Set CORS allowed origins, methods, and headers
+    strncpy(server_config.allowed_origins, "*", sizeof(server_config.allowed_origins) - 1);
+    strncpy(server_config.allowed_methods, "GET, POST, PUT, DELETE, OPTIONS", sizeof(server_config.allowed_methods) - 1);
+    strncpy(server_config.allowed_headers, "Content-Type, Authorization", sizeof(server_config.allowed_headers) - 1);
+
+    if (config.web_auth_enabled) {
+        strncpy(server_config.username, config.web_username, sizeof(server_config.username) - 1);
+        strncpy(server_config.password, config.web_password, sizeof(server_config.password) - 1);
+    }
+
+    // Initialize HTTP server (libuv + llhttp)
+    log_info("Initializing web server on port %d (daemon_mode: %s)",
+             config.web_port, daemon_mode ? "true" : "false");
+
+    http_server = libuv_server_init(&server_config);
+    if (!http_server) {
+        log_error("Failed to initialize libuv web server");
+        goto cleanup;
+    }
+    log_info("libuv web server initialized successfully");
+
+    // Register all API handlers
+    if (register_all_libuv_handlers(http_server) != 0) {
+        log_error("Failed to register API handlers");
+        http_server_destroy(http_server);
+        http_server = NULL;
+        goto cleanup;
+    }
+    log_info("API handlers registered successfully");
+
+    // Register static file handler
+    if (register_static_file_handler(http_server) != 0) {
+        log_error("Failed to register static file handler");
+        http_server_destroy(http_server);
+        http_server = NULL;
+        goto cleanup;
+    }
+    log_info("Static file handler registered successfully");
+
+    log_info("Starting web server...");
+    if (http_server_start(http_server) != 0) {
+        log_error("Failed to start libuv web server on port %d", config.web_port);
+        http_server_destroy(http_server);
+        http_server = NULL;  // Prevent double-free in cleanup
+        goto cleanup;
+    }
+
+    log_info("libuv web server started successfully on port %d", config.web_port);
+
+    // Initialize and start health check system for web server self-healing
+    init_health_check_system();
+    start_health_check_thread();
+    log_info("Web server health check system started");
+
+    // In daemon mode, add extra verification that the port is actually open
+    if (daemon_mode) {
+        log_info("Daemon mode: Verifying port %d is accessible...", config.web_port);
+        sleep(1); // Give the server a moment to fully initialize
+
+        // Try to verify the port is open
+        int test_socket = socket(AF_INET, SOCK_STREAM, 0);
+        if (test_socket >= 0) {
+            struct sockaddr_in addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            addr.sin_port = htons(config.web_port);
+
+            if (connect(test_socket, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+                log_info("Port %d verification successful - server is accessible", config.web_port);
+            } else {
+                log_warn("Port %d verification failed - server may not be accessible: %s",
+                        config.web_port, strerror(errno));
+            }
+            close(test_socket);
+        }
+    }
+
+    // Start detection-based streams after the web server is listening so the UI
+    // can come up promptly and show stream-starting placeholders while cameras
+    // are still connecting.
     for (int i = 0; i < g_config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
             config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
@@ -1010,96 +1102,6 @@ int main(int argc, char *argv[]) {
             } else {
                 log_info("Successfully started unified detection thread for stream %s", config.streams[i].name);
             }
-        }
-    }
-
-    // Initialize web server with direct handlers
-    http_server_config_t server_config = {
-        .port = config.web_port,
-        .web_root = config.web_root,
-        .auth_enabled = config.web_auth_enabled,
-        .cors_enabled = true,
-        .ssl_enabled = false,
-        .max_connections = 100,
-        .connection_timeout = 30,
-        .daemon_mode = daemon_mode,
-    };
-
-    // Set CORS allowed origins, methods, and headers
-    strncpy(server_config.allowed_origins, "*", sizeof(server_config.allowed_origins) - 1);
-    strncpy(server_config.allowed_methods, "GET, POST, PUT, DELETE, OPTIONS", sizeof(server_config.allowed_methods) - 1);
-    strncpy(server_config.allowed_headers, "Content-Type, Authorization", sizeof(server_config.allowed_headers) - 1);
-
-    if (config.web_auth_enabled) {
-        strncpy(server_config.username, config.web_username, sizeof(server_config.username) - 1);
-        strncpy(server_config.password, config.web_password, sizeof(server_config.password) - 1);
-    }
-
-    // Initialize HTTP server (libuv + llhttp)
-    log_info("Initializing web server on port %d (daemon_mode: %s)",
-             config.web_port, daemon_mode ? "true" : "false");
-
-    http_server = libuv_server_init(&server_config);
-    if (!http_server) {
-        log_error("Failed to initialize libuv web server");
-        goto cleanup;
-    }
-    log_info("libuv web server initialized successfully");
-
-    // Register all API handlers
-    if (register_all_libuv_handlers(http_server) != 0) {
-        log_error("Failed to register API handlers");
-        http_server_destroy(http_server);
-        http_server = NULL;
-        goto cleanup;
-    }
-    log_info("API handlers registered successfully");
-
-    // Register static file handler
-    if (register_static_file_handler(http_server) != 0) {
-        log_error("Failed to register static file handler");
-        http_server_destroy(http_server);
-        http_server = NULL;
-        goto cleanup;
-    }
-    log_info("Static file handler registered successfully");
-
-    log_info("Starting web server...");
-    if (http_server_start(http_server) != 0) {
-        log_error("Failed to start libuv web server on port %d", config.web_port);
-        http_server_destroy(http_server);
-        http_server = NULL;  // Prevent double-free in cleanup
-        goto cleanup;
-    }
-
-    log_info("libuv web server started successfully on port %d", config.web_port);
-
-    // Initialize and start health check system for web server self-healing
-    init_health_check_system();
-    start_health_check_thread();
-    log_info("Web server health check system started");
-
-    // In daemon mode, add extra verification that the port is actually open
-    if (daemon_mode) {
-        log_info("Daemon mode: Verifying port %d is accessible...", config.web_port);
-        sleep(1); // Give the server a moment to fully initialize
-
-        // Try to verify the port is open
-        int test_socket = socket(AF_INET, SOCK_STREAM, 0);
-        if (test_socket >= 0) {
-            struct sockaddr_in addr;
-            memset(&addr, 0, sizeof(addr));
-            addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-            addr.sin_port = htons(config.web_port);
-
-            if (connect(test_socket, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
-                log_info("Port %d verification successful - server is accessible", config.web_port);
-            } else {
-                log_warn("Port %d verification failed - server may not be accessible: %s",
-                        config.web_port, strerror(errno));
-            }
-            close(test_socket);
         }
     }
 

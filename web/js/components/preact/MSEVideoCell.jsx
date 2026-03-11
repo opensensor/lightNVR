@@ -529,7 +529,12 @@ export function MSEVideoCell({
 
       {/* Loading indicator */}
       {isLoading && !error && (
-        <LoadingIndicator message={`Loading ${stream.name}...`} />
+        <div
+          data-testid="stream-starting-placeholder"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5, pointerEvents: 'none' }}
+        >
+          <LoadingIndicator message="Stream starting..." />
+        </div>
       )}
 
       {/* Error overlay */}

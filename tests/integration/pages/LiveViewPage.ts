@@ -35,7 +35,11 @@ export class LiveViewPage extends BasePage {
   }
 
   get loadingIndicator(): Locator {
-    return this.page.locator('.loading, .spinner, [data-testid="loading"]').first();
+    return this.page.locator('.loading, .spinner, [data-testid="loading"], [data-testid="stream-starting-placeholder"]').first();
+  }
+
+  get streamStartingPlaceholders(): Locator {
+    return this.page.locator('[data-testid="stream-starting-placeholder"]');
   }
 
   /**

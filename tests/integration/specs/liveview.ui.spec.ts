@@ -51,6 +51,25 @@ test.describe('Live View Page @ui @liveview', () => {
   });
 
   test.describe('Video Streaming', () => {
+    test('should show a stream-starting placeholder while tiles initialize', async ({ page }) => {
+      await page.route('**/api/webrtc?*', async route => {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await route.abort();
+      });
+      await page.route('**/hls/**', async route => {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await route.abort();
+      });
+
+      const liveView = new LiveViewPage(page);
+      await Promise.all([
+        page.waitForResponse(response => response.url().includes('/api/streams') && response.status() === 200),
+        liveView.goto(),
+      ]);
+
+      await expect(liveView.streamStartingPlaceholders.first()).toContainText('Stream starting...');
+    });
+
     test('should load video elements for test streams', async ({ page }) => {
       const liveView = new LiveViewPage(page);
       await liveView.goto();

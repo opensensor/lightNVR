@@ -248,15 +248,19 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         }
     }
 
-    // If registration was successful, preload the stream to keep it active
-    // This ensures snapshots are always available for detection-based recording
+    // Intentionally do NOT preload here.
+    //
+    // Registration happens during startup for every enabled stream.  Preloading
+    // an unreachable camera can block for up to ~20 seconds (video+audio then
+    // video-only fallback), which used to delay the entire application startup
+    // and postpone the web UI becoming available.
+    //
+    // Instead, preload on demand from the actual stream-start paths
+    // (go2rtc_integration_start_hls / detection keepalive) after the web server
+    // is already listening.
     if (result) {
-        if (go2rtc_api_preload_stream(encoded_stream_id)) {
-            log_info("Successfully preloaded stream %s for continuous availability", encoded_stream_id);
-        } else {
-            log_warn("Failed to preload stream %s - detection snapshots may be intermittent", encoded_stream_id);
-            // Don't fail the registration just because preload failed
-        }
+        log_debug("Registered stream %s with go2rtc without preloading; startup paths will preload on demand",
+                  encoded_stream_id);
     }
 
     return result;
