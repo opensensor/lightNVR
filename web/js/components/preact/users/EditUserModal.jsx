@@ -24,9 +24,10 @@ const FOCUSABLE_SELECTORS = [
  * @param {Function} props.onClose - Function to close the modal
  * @returns {JSX.Element} Edit user modal
  */
-export function EditUserModal({ currentUser, formData, handleInputChange, handleEditUser, onClose }) {
+export function EditUserModal({ currentUser, formData, handleInputChange, handleEditUser, handleClearLoginLockout, isClearingLoginLockout = false, onClose }) {
   const modalRef = useRef(null);
   const previousFocusedElementRef = useRef(null);
+  const backdropPointerDownRef = useRef(false);
 
   useEffect(() => {
     // Remember previously focused element
@@ -95,10 +96,22 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
     e.stopPropagation();
   };
 
+  const handleBackdropMouseDown = (e) => {
+    backdropPointerDownRef.current = e.target === e.currentTarget;
+  };
+
+  const handleBackdropClick = (e) => {
+    if (backdropPointerDownRef.current && e.target === e.currentTarget) {
+      onClose();
+    }
+    backdropPointerDownRef.current = false;
+  };
+
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={onClose}
+      onMouseDown={handleBackdropMouseDown}
+      onClick={handleBackdropClick}
     >
       <div
         ref={modalRef}
@@ -241,16 +254,26 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
               name="allowed_login_cidrs"
               value={formData.allowed_login_cidrs || ''}
               onChange={handleInputChange}
-              placeholder={"e.g.\n192.168.1.0/24\n2001:db8::/32\n(leave blank for unrestricted)"}
+              placeholder={"e.g.\n192.168.1.25\n192.168.1.0/24\n2001:db8::1\n(leave blank for unrestricted)"}
               rows={4}
               maxLength={1023}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted.
+              One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted. Bare IPs are treated as a single host.
             </p>
           </div>
 
-          <div className="flex justify-end mt-6">
+          <div className="mt-6 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleClearLoginLockout}
+              disabled={isClearingLoginLockout}
+            >
+              {isClearingLoginLockout ? 'Clearing Lockout...' : 'Clear Login Lockout'}
+            </button>
+
+            <div className="flex justify-end">
             <button
               type="button"
               className="btn-secondary mr-2"
@@ -264,6 +287,7 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
             >
               Update User
             </button>
+            </div>
           </div>
         </form>
       </div>

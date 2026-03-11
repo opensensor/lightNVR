@@ -17,8 +17,9 @@ const FOCUSABLE_SELECTORS = [
 
 const FOCUSABLE_SELECTOR_QUERY = FOCUSABLE_SELECTORS.join(',');
 const ALLOWED_LOGIN_CIDRS_PLACEHOLDER = `e.g.
+192.168.1.25
 192.168.1.0/24
-2001:db8::/32
+2001:db8::1
 (leave blank for unrestricted)`;
 
 /**
@@ -33,6 +34,7 @@ const ALLOWED_LOGIN_CIDRS_PLACEHOLDER = `e.g.
 export function AddUserModal({ formData, handleInputChange, handleAddUser, onClose }) {
   const dialogRef = useRef(null);
   const firstFieldRef = useRef(null);
+  const backdropPointerDownRef = useRef(false);
 
   // Direct submit handler
   const handleSubmit = (e) => {
@@ -88,10 +90,22 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
     }
   }, []);
 
+  const handleBackdropMouseDown = (e) => {
+    backdropPointerDownRef.current = e.target === e.currentTarget;
+  };
+
+  const handleBackdropClick = (e) => {
+    if (backdropPointerDownRef.current && e.target === e.currentTarget) {
+      onClose();
+    }
+    backdropPointerDownRef.current = false;
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 overflow-y-auto bg-black/50 p-4"
-      onClick={onClose}
+      onMouseDown={handleBackdropMouseDown}
+      onClick={handleBackdropClick}
     >
       <div className="flex min-h-full items-center justify-center">
         <div
@@ -267,7 +281,7 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
                 id="allowed-login-cidrs-description"
                 className="text-xs text-muted-foreground mt-1"
               >
-                One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted.
+                One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted. Bare IPs are treated as a single host.
               </p>
             </div>
 

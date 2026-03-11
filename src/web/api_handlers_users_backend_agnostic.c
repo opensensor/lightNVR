@@ -8,6 +8,7 @@
 #include <sqlite3.h>
 #include <cjson/cJSON.h>
 
+#include "web/api_handlers_auth.h"
 #include "web/api_handlers_users.h"
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
@@ -421,7 +422,7 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
 
         if (db_auth_validate_allowed_login_cidrs(cidr_create_is_null ? NULL : allowed_login_cidrs_buf) != 0) {
             cJSON_Delete(json_req);
-            http_response_set_json_error(res, 400, "allowed_login_cidrs must contain valid IPv4/IPv6 CIDR entries");
+            http_response_set_json_error(res, 400, "allowed_login_cidrs must contain valid IPv4/IPv6 CIDR entries or single IP addresses");
             return;
         }
     }
@@ -482,11 +483,16 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     }
 
     // Extract user ID from URL
-    char id_str[16] = {0};
+    char id_str[64] = {0};
     if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
         log_error("Failed to extract user ID from URL");
         http_response_set_json_error(res, 400, "Invalid request path");
         return;
+    }
+
+    char *suffix = strchr(id_str, '/');
+    if (suffix) {
+        *suffix = '\0';
     }
 
     int64_t user_id = strtoll(id_str, NULL, 10);
@@ -531,7 +537,7 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
 
         if (db_auth_validate_allowed_login_cidrs(allowed_login_cidrs) != 0) {
             cJSON_Delete(json_req);
-            http_response_set_json_error(res, 400, "allowed_login_cidrs must contain valid IPv4/IPv6 CIDR entries");
+            http_response_set_json_error(res, 400, "allowed_login_cidrs must contain valid IPv4/IPv6 CIDR entries or single IP addresses");
             return;
         }
     }
@@ -633,11 +639,16 @@ void handle_users_delete(const http_request_t *req, http_response_t *res) {
     log_info("Handling DELETE /api/auth/users/:id request");
 
     // Extract user ID from URL
-    char id_str[16] = {0};
+    char id_str[64] = {0};
     if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
         log_error("Failed to extract user ID from URL");
         http_response_set_json_error(res, 400, "Invalid request path");
         return;
+    }
+
+    char *suffix = strchr(id_str, '/');
+    if (suffix) {
+        *suffix = '\0';
     }
 
     int64_t user_id = strtoll(id_str, NULL, 10);
@@ -718,11 +729,16 @@ void handle_users_generate_api_key(const http_request_t *req, http_response_t *r
     log_info("Handling POST /api/auth/users/:id/api-key request");
 
     // Extract user ID from URL
-    char id_str[16] = {0};
+    char id_str[64] = {0};
     if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
         log_error("Failed to extract user ID from URL");
         http_response_set_json_error(res, 400, "Invalid request path");
         return;
+    }
+
+    char *suffix = strchr(id_str, '/');
+    if (suffix) {
+        *suffix = '\0';
     }
 
     int64_t user_id = strtoll(id_str, NULL, 10);
@@ -959,5 +975,53 @@ void handle_users_password_lock(const http_request_t *req, http_response_t *res)
 
     log_info("Successfully updated password lock status for user: %s (ID: %lld, locked: %d)",
              user.username, (long long)user_id, locked);
+}
+
+/**
+ * @brief Backend-agnostic handler for POST /api/auth/users/:id/login-lockout/clear
+ */
+void handle_users_clear_login_lockout(const http_request_t *req, http_response_t *res) {
+    log_info("Handling POST /api/auth/users/:id/login-lockout/clear request");
+
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;
+    }
+
+    char id_str[64] = {0};
+    if (http_request_extract_path_param(req, "/api/auth/users/", id_str, sizeof(id_str)) != 0) {
+        log_error("Failed to extract user ID from URL");
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    char *suffix = strchr(id_str, '/');
+    if (suffix) {
+        *suffix = '\0';
+    }
+
+    int64_t user_id = strtoll(id_str, NULL, 10);
+    user_t user;
+    int rc = db_auth_get_user_by_id(user_id, &user);
+    if (rc != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+
+    bool cleared = auth_clear_login_rate_limit_for_username(user.username);
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddBoolToObject(response, "cleared", cleared);
+    cJSON_AddStringToObject(response, "message",
+                            cleared ? "Login lockout cleared successfully" : "No active login lockout found");
+
+    char *json_str = cJSON_PrintUnformatted(response);
+    http_response_set_json(res, 200, json_str);
+
+    free(json_str);
+    cJSON_Delete(response);
+
+    log_info("Cleared login lockout for user: %s (ID: %lld, existed: %d)",
+             user.username, (long long)user_id, cleared ? 1 : 0);
 }
 

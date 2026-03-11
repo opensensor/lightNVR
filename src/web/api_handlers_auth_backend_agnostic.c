@@ -5,6 +5,7 @@
 
 #define _GNU_SOURCE
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -115,20 +116,20 @@ static void record_failed_attempt(const char *username) {
     }
 }
 
-/**
- * @brief Clear rate limit entry on successful login
- * @param username The username that successfully authenticated
- */
-static void clear_rate_limit(const char *username) {
-    if (!username) return;
+bool auth_clear_login_rate_limit_for_username(const char *username) {
+    if (!username || username[0] == '\0') {
+        return false;
+    }
 
     for (int i = 0; i < rate_limit_count; i++) {
         if (strcmp(rate_limit_table[i].username, username) == 0) {
             rate_limit_table[i].attempt_count = 0;
             rate_limit_table[i].window_start = 0;
-            return;
+            return true;
         }
     }
+
+    return false;
 }
 
 static bool request_has_valid_trusted_device(const http_request_t *req, int64_t user_id) {
@@ -429,7 +430,7 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
     }
 
     // Clear rate limit on successful login
-    clear_rate_limit(username);
+    (void)auth_clear_login_rate_limit_for_username(username);
 
     // Create a session token using the configured absolute session lifetime.
     char token[33];

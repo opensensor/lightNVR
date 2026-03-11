@@ -332,7 +332,8 @@ void test_allowed_login_cidrs_validation_and_storage(void) {
     TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs(NULL));
     TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs("  \n  "));
     TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs("192.0.2.0/24, 2001:db8::/32"));
-    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_allowed_login_cidrs("192.0.2.15"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs("192.0.2.15"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_validate_allowed_login_cidrs("2001:db8::10"));
     TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_allowed_login_cidrs("2001:db8::/129"));
 
     int64_t uid = 0;
@@ -347,6 +348,14 @@ void test_allowed_login_cidrs_validation_and_storage(void) {
     TEST_ASSERT_EQUAL_INT(0, rc);
     TEST_ASSERT_TRUE(user.has_login_cidr_restriction);
     TEST_ASSERT_EQUAL_STRING("192.0.2.0/24\n2001:db8::/32", user.allowed_login_cidrs);
+
+    rc = db_auth_set_allowed_login_cidrs(uid, "192.0.2.15, 2001:db8::10");
+    TEST_ASSERT_EQUAL_INT(0, rc);
+
+    rc = db_auth_get_user_by_id(uid, &user);
+    TEST_ASSERT_EQUAL_INT(0, rc);
+    TEST_ASSERT_TRUE(user.has_login_cidr_restriction);
+    TEST_ASSERT_EQUAL_STRING("192.0.2.15/32\n2001:db8::10/128", user.allowed_login_cidrs);
 
     rc = db_auth_set_allowed_login_cidrs(uid, NULL);
     TEST_ASSERT_EQUAL_INT(0, rc);
@@ -386,6 +395,19 @@ void test_ip_allowed_for_user_accepts_comma_separated_cidrs(void) {
     TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, "192.0.2.10"));
 }
 
+void test_ip_allowed_for_user_accepts_single_host_ip_entries(void) {
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    user.has_login_cidr_restriction = true;
+    strncpy(user.allowed_login_cidrs, "127.0.0.1\n2001:db8::1",
+            sizeof(user.allowed_login_cidrs) - 1);
+
+    TEST_ASSERT_TRUE(db_auth_ip_allowed_for_user(&user, "127.0.0.1"));
+    TEST_ASSERT_TRUE(db_auth_ip_allowed_for_user(&user, "2001:db8::1"));
+    TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, "127.0.0.2"));
+    TEST_ASSERT_FALSE(db_auth_ip_allowed_for_user(&user, "2001:db8::2"));
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -411,6 +433,7 @@ int main(void) {
     RUN_TEST(test_allowed_login_cidrs_validation_and_storage);
     RUN_TEST(test_ip_allowed_for_user_matches_cidrs);
     RUN_TEST(test_ip_allowed_for_user_accepts_comma_separated_cidrs);
+    RUN_TEST(test_ip_allowed_for_user_accepts_single_host_ip_entries);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

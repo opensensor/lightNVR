@@ -52,6 +52,18 @@ export class UsersPage extends BasePage {
     return this.page.locator('#password');
   }
 
+  get allowedLoginCidrsInput(): Locator {
+    return this.page.locator('#allowed_login_cidrs');
+  }
+
+  get editModalDialog(): Locator {
+    return this.page.locator('[role="dialog"]').filter({ hasText: /edit user:/i }).first();
+  }
+
+  get clearLoginLockoutButton(): Locator {
+    return this.page.getByRole('button', { name: /clear login lockout/i }).first();
+  }
+
   get roleSelect(): Locator {
     return this.page.locator('#role');
   }
@@ -178,6 +190,7 @@ export class UsersPage extends BasePage {
     const userRow = this.getUserByUsername(username);
     const editButton = userRow.locator('button[title="Edit User"]');
     await editButton.click();
+    await this.editModalDialog.waitFor({ state: 'visible', timeout: 5000 });
     await sleep(500);
   }
 

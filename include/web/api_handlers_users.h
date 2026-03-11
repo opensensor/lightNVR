@@ -80,4 +80,13 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
  */
 void handle_users_password_lock(const http_request_t *req, http_response_t *res);
 
+/**
+ * @brief Backend-agnostic handler for POST /api/auth/users/:id/login-lockout/clear
+ * Clear a user's in-memory login rate-limit/lockout entry (admin only)
+ *
+ * @param req HTTP request
+ * @param res HTTP response
+ */
+void handle_users_clear_login_lockout(const http_request_t *req, http_response_t *res);
+
 #endif /* API_HANDLERS_USERS_H */

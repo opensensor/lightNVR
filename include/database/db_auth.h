@@ -341,8 +341,9 @@ int db_auth_set_allowed_tags(int64_t user_id, const char *allowed_tags);
 /**
  * @brief Validate a per-user allowed_login_cidrs list.
  *
- * Accepts IPv4 and IPv6 CIDR entries separated by commas and/or newlines.
- * NULL or blank input is treated as unrestricted and therefore valid.
+ * Accepts IPv4/IPv6 CIDR entries or single IP literals separated by commas and/or
+ * newlines. Bare IPv4 addresses are normalized to /32, and bare IPv6 addresses to
+ * /128. NULL or blank input is treated as unrestricted and therefore valid.
  *
  * @param allowed_login_cidrs CIDR list to validate
  * @return 0 when valid, non-zero when invalid

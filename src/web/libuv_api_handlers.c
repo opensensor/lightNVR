@@ -157,6 +157,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/auth/users/#/api-key", "POST", handle_users_generate_api_key);
     http_server_register_handler(server, "/api/auth/users/#/password", "PUT", handle_users_change_password);
     http_server_register_handler(server, "/api/auth/users/#/password-lock", "PUT", handle_users_password_lock);
+    http_server_register_handler(server, "/api/auth/users/#/login-lockout/clear", "POST", handle_users_clear_login_lockout);
 
     // TOTP MFA API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/auth/users/#/totp/setup", "POST", handle_totp_setup);

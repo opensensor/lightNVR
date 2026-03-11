@@ -98,6 +98,26 @@ test.describe('Users Page @ui @users @admin', () => {
       
       await page.screenshot({ path: 'test-results/users-modal-cancel.png' });
     });
+
+    test('should keep add user modal open when text selection ends outside the dialog', async ({ page }) => {
+      const usersPage = new UsersPage(page);
+      await usersPage.goto({ waitForNetworkIdle: true });
+
+      await usersPage.clickAddUser();
+      await usersPage.allowedLoginCidrsInput.fill('192.168.1.25\n2001:db8::1');
+
+      const textareaBox = await usersPage.allowedLoginCidrsInput.boundingBox();
+      const modalBox = await usersPage.userModal.boundingBox();
+      expect(textareaBox).not.toBeNull();
+      expect(modalBox).not.toBeNull();
+
+      await page.mouse.move(textareaBox!.x + 20, textareaBox!.y + 16);
+      await page.mouse.down();
+      await page.mouse.move(modalBox!.x + modalBox!.width + 40, modalBox!.y + modalBox!.height + 40);
+      await page.mouse.up();
+
+      await expect(usersPage.userModal).toBeVisible();
+    });
   });
 
   test.describe('User Operations', () => {
@@ -158,6 +178,15 @@ test.describe('Users Page @ui @users @admin', () => {
       }
       
       await page.screenshot({ path: 'test-results/users-action-buttons.png' });
+    });
+
+    test('should show clear login lockout action in edit modal', async ({ page }) => {
+      const usersPage = new UsersPage(page);
+      await usersPage.goto({ waitForNetworkIdle: true });
+
+      await usersPage.editUser('admin');
+
+      await expect(usersPage.clearLoginLockoutButton).toBeVisible();
     });
   });
 });

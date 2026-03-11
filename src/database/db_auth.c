@@ -138,25 +138,37 @@ static int parse_cidr_entry(const char *cidr, int *family, unsigned char *networ
     }
 
     char *slash = strrchr(trimmed, '/');
-    if (!slash || slash == trimmed || slash[1] == '\0') {
-        return -1;
-    }
+    char *address = trimmed;
+    long prefix = -1;
 
-    *slash = '\0';
-    char *address = trim_ascii_whitespace(trimmed);
-    char *prefix_text = trim_ascii_whitespace(slash + 1);
-    if (!address || address[0] == '\0' || !prefix_text || prefix_text[0] == '\0') {
-        return -1;
-    }
+    if (slash) {
+        if (slash == trimmed || slash[1] == '\0') {
+            return -1;
+        }
 
-    char *endptr = NULL;
-    long prefix = strtol(prefix_text, &endptr, 10);
-    if (endptr == prefix_text || *endptr != '\0') {
-        return -1;
+        *slash = '\0';
+        address = trim_ascii_whitespace(trimmed);
+        char *prefix_text = trim_ascii_whitespace(slash + 1);
+        if (!address || address[0] == '\0' || !prefix_text || prefix_text[0] == '\0') {
+            return -1;
+        }
+
+        char *endptr = NULL;
+        prefix = strtol(prefix_text, &endptr, 10);
+        if (endptr == prefix_text || *endptr != '\0') {
+            return -1;
+        }
+    } else {
+        address = trim_ascii_whitespace(trimmed);
+        if (!address || address[0] == '\0') {
+            return -1;
+        }
     }
 
     if (inet_pton(AF_INET, address, network) == 1) {
-        if (prefix < 0 || prefix > 32) {
+        if (!slash) {
+            prefix = 32;
+        } else if (prefix < 0 || prefix > 32) {
             return -1;
         }
         *family = AF_INET;
@@ -165,7 +177,9 @@ static int parse_cidr_entry(const char *cidr, int *family, unsigned char *networ
     }
 
     if (inet_pton(AF_INET6, address, network) == 1) {
-        if (prefix < 0 || prefix > 128) {
+        if (!slash) {
+            prefix = 128;
+        } else if (prefix < 0 || prefix > 128) {
             return -1;
         }
         *family = AF_INET6;
@@ -216,8 +230,19 @@ static int normalize_allowed_login_cidrs(const char *allowed_login_cidrs,
             return -1;
         }
 
+        char address_text[INET6_ADDRSTRLEN] = {0};
+        if (!inet_ntop(family, network, address_text, sizeof(address_text))) {
+            return -1;
+        }
+
+        char normalized_entry[INET6_ADDRSTRLEN + 5] = {0};
+        int written = snprintf(normalized_entry, sizeof(normalized_entry), "%s/%d", address_text, prefix_len);
+        if (written < 0 || (size_t)written >= sizeof(normalized_entry)) {
+            return -1;
+        }
+
         size_t current_len = strlen(normalized);
-        size_t token_len = strlen(trimmed);
+        size_t token_len = (size_t)written;
         size_t separator_len = *has_entries ? 1 : 0;
         if (current_len + separator_len + token_len + 1 > normalized_size) {
             return -1;
@@ -228,7 +253,7 @@ static int normalize_allowed_login_cidrs(const char *allowed_login_cidrs,
             normalized[current_len] = '\0';
         }
 
-        memcpy(normalized + current_len, trimmed, token_len + 1);
+        memcpy(normalized + current_len, normalized_entry, token_len + 1);
         *has_entries = true;
     }
 

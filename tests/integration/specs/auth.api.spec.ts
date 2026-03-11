@@ -93,7 +93,11 @@ test.describe('Authentication API @api @auth', () => {
 test.describe('Users API @api @users', () => {
   let request: APIRequestContext;
   const testUsername = `api_user_${Date.now()}`;
+  const cidrUsername = `cidr_user_${Date.now()}`;
+  const lockoutUsername = `lockout_user_${Date.now()}`;
   let createdUserId: number | null = null;
+  let createdCidrUserId: number | null = null;
+  let createdLockoutUserId: number | null = null;
 
   test.beforeAll(async ({ playwright }) => {
     request = await playwright.request.newContext({
@@ -106,6 +110,12 @@ test.describe('Users API @api @users', () => {
     // Cleanup: delete test user if created
     if (createdUserId) {
       await request.delete(`/api/auth/users/${createdUserId}`);
+    }
+    if (createdCidrUserId) {
+      await request.delete(`/api/auth/users/${createdCidrUserId}`);
+    }
+    if (createdLockoutUserId) {
+      await request.delete(`/api/auth/users/${createdLockoutUserId}`);
     }
     await request.dispose();
   });
@@ -166,6 +176,75 @@ test.describe('Users API @api @users', () => {
 
     const response = await request.put(`/api/auth/users/${createdUserId}`, { data: updateData });
     console.log(`Update user response: ${response.status()}`);
+  });
+
+  test('POST /api/auth/users stores bare IP login restrictions as single-host CIDRs', async () => {
+    const response = await request.post('/api/auth/users', {
+      data: {
+        username: cidrUsername,
+        password: 'TestApiUser123!',
+        email: `${cidrUsername}@test.com`,
+        role: 2,
+        is_active: true,
+        allowed_login_cidrs: '192.0.2.15\n2001:db8::10',
+      },
+    });
+
+    expect(response.ok()).toBeTruthy();
+
+    const data = await response.json();
+    createdCidrUserId = data.id;
+    expect(data.allowed_login_cidrs).toBe('192.0.2.15/32\n2001:db8::10/128');
+  });
+
+  test('POST /api/auth/users/{id}/login-lockout/clear clears a user login lockout', async ({ playwright }) => {
+    const password = 'TestApiUser123!';
+    const createResponse = await request.post('/api/auth/users', {
+      data: {
+        username: lockoutUsername,
+        password,
+        email: `${lockoutUsername}@test.com`,
+        role: 2,
+        is_active: true,
+      },
+    });
+
+    expect(createResponse.ok()).toBeTruthy();
+    const createdUser = await createResponse.json();
+    createdLockoutUserId = createdUser.id;
+
+    const unauthRequest = await playwright.request.newContext({
+      baseURL: CONFIG.LIGHTNVR_URL,
+      extraHTTPHeaders: { 'Content-Type': 'application/json' },
+    });
+
+    try {
+      for (let i = 0; i < 5; i++) {
+        const failedResponse = await unauthRequest.post('/api/auth/login', {
+          data: { username: lockoutUsername, password: 'wrongpassword' },
+        });
+        expect(failedResponse.status()).toBe(401);
+      }
+
+      const lockedResponse = await unauthRequest.post('/api/auth/login', {
+        data: { username: lockoutUsername, password },
+      });
+      expect(lockedResponse.status()).toBe(429);
+
+      const clearResponse = await request.post(`/api/auth/users/${createdLockoutUserId}/login-lockout/clear`);
+      expect(clearResponse.ok()).toBeTruthy();
+
+      const clearData = await clearResponse.json();
+      expect(clearData.success).toBeTruthy();
+      expect(clearData.cleared).toBeTruthy();
+
+      const unlockedResponse = await unauthRequest.post('/api/auth/login', {
+        data: { username: lockoutUsername, password },
+      });
+      expect([200, 302].includes(unlockedResponse.status())).toBeTruthy();
+    } finally {
+      await unauthRequest.dispose();
+    }
   });
 
   test('POST /api/auth/users/{id}/api-key generates API key', async () => {

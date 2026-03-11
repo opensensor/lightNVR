@@ -215,6 +215,26 @@ export function UsersView() {
     }
   });
 
+  const clearLoginLockoutMutation = useMutation({
+    mutationFn: async (userId) => {
+      return await fetchJSON(`/api/auth/users/${userId}/login-lockout/clear`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        timeout: 15000,
+        retries: 1,
+        retryDelay: 1000
+      });
+    },
+    onSuccess: (data) => {
+      showStatusMessage(data?.message || 'Login lockout cleared successfully', 'success', 5000);
+      refetchUsers();
+    },
+    onError: (error) => {
+      console.error('Error clearing login lockout:', error);
+      showStatusMessage(`Error clearing login lockout: ${error.message}`, 'error', 8000);
+    }
+  });
+
   const { mutate: addUserMutate } = addUserMutation;
 
   /**
@@ -267,6 +287,13 @@ export function UsersView() {
     console.log('Generating API key for user:', selectedUser.id, selectedUser.username);
     generateApiKeyMutation.mutate(selectedUser.id);
   }, [selectedUser, generateApiKeyMutation]);
+
+  const handleClearLoginLockout = useCallback(() => {
+    if (!selectedUser?.id) return;
+
+    console.log('Clearing login lockout for user:', selectedUser.id, selectedUser.username);
+    clearLoginLockoutMutation.mutate(selectedUser.id);
+  }, [selectedUser, clearLoginLockoutMutation]);
 
   /**
    * Copy API key to clipboard
@@ -470,6 +497,8 @@ export function UsersView() {
           formData={formData}
           handleInputChange={handleInputChange}
           handleEditUser={handleEditUser}
+          handleClearLoginLockout={handleClearLoginLockout}
+          isClearingLoginLockout={clearLoginLockoutMutation.isPending}
           onClose={closeModal}
         />
       )}
