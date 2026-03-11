@@ -128,6 +128,7 @@ export function RecordingsTable({
   recordingsTableBodyRef,
   pagination,
   canDelete = true,
+  clearSelections,
   hiddenColumns = {},
   toggleColumn = () => {},
   onTagsChanged,
@@ -135,6 +136,7 @@ export function RecordingsTable({
 }) {
   const show = (col) => !hiddenColumns[col];
   const [showBulkTags, setShowBulkTags] = useState(false);
+  const selectedCount = getSelectedCount();
 
   // Count visible columns for colSpan on empty row
   const visibleCount = (canDelete ? 1 : 0) + 1 /* start_time always */ +
@@ -148,14 +150,24 @@ export function RecordingsTable({
       <div className="px-3 py-2.5 border-b border-border flex flex-wrap gap-2 items-center">
         {canDelete && (
           <>
-            <div className="selected-count text-sm text-muted-foreground mr-2">
-              {getSelectedCount() > 0 ?
-                `${getSelectedCount()} recording${getSelectedCount() !== 1 ? 's' : ''} selected` :
-                'No recordings selected'}
+            <div className="flex items-center gap-2 mr-2">
+              <div className="selected-count text-sm text-muted-foreground">
+                {selectedCount > 0 ?
+                  `${selectedCount} recording${selectedCount !== 1 ? 's' : ''} selected` :
+                  'No recordings selected'}
+              </div>
+              {selectedCount > 0 && clearSelections && (
+                <button
+                  className="btn-secondary text-xs px-2 py-1"
+                  onClick={clearSelections}
+                  title="Clear selected recordings">
+                  Clear
+                </button>
+              )}
             </div>
             <button
               className="btn-danger text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={getSelectedCount() === 0}
+              disabled={selectedCount === 0}
               onClick={() => openDeleteModal('selected')}>
               Delete Selected
             </button>
@@ -166,7 +178,7 @@ export function RecordingsTable({
             </button>
             <button
               className="btn-primary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={getSelectedCount() === 0}
+              disabled={selectedCount === 0}
               onClick={() => openDownloadModal && openDownloadModal()}
               title="Download selected recordings">
               Download Selected
@@ -174,7 +186,7 @@ export function RecordingsTable({
             <div className="relative inline-block">
               <button
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                disabled={getSelectedCount() === 0}
+                disabled={selectedCount === 0}
                 onClick={() => setShowBulkTags(!showBulkTags)}
                 title="Manage tags for selected recordings">
                 <TagIcon className="w-3.5 h-3.5" /> Manage Tags
@@ -191,7 +203,7 @@ export function RecordingsTable({
             {viewSelectedInTimeline && (
               <button
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={getSelectedCount() === 0}
+                disabled={selectedCount === 0}
                 onClick={viewSelectedInTimeline}
                 title="View selected recordings in Timeline">
                 ▶ View in Timeline
@@ -213,6 +225,7 @@ export function RecordingsTable({
                     type="checkbox"
                     checked={selectAll}
                     onChange={toggleSelectAll}
+                    aria-label="Select all recordings on this page"
                     className="w-4 h-4 rounded focus:ring-2"
                     style={{accentColor: 'hsl(var(--primary))'}}
                   />

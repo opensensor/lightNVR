@@ -343,13 +343,22 @@ export function FiltersSidebar({
             <select
               id="page-size"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
-              value={pagination.pageSize}
-              onChange={(e) => setPagination((prev) => ({ ...prev, pageSize: parseInt(e.target.value, 10) }))}
+              value={pagination.showAll ? 'all' : pagination.pageSize.toString()}
+              onChange={(e) => {
+                const paginationLimit = urlUtils.parsePaginationLimit(e.target.value);
+                setPagination((prev) => ({
+                  ...prev,
+                  currentPage: 1,
+                  pageSize: paginationLimit.pageSize,
+                  showAll: paginationLimit.showAll
+                }));
+              }}
             >
               <option value="10">10</option>
               <option value="20">20</option>
               <option value="50">50</option>
               <option value="100">100</option>
+              <option value="all">All</option>
             </select>
           </FilterSection>
 

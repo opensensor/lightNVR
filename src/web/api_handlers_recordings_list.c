@@ -152,7 +152,9 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
     // Parse numeric parameters
     int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
-    int limit = limit_str[0] ? (int)strtol(limit_str, NULL, 10) : 20;
+    int all_limit_requested = (limit_str[0] != '\0' && strcasecmp(limit_str, "all") == 0);
+    int limit = all_limit_requested ? 20 : (limit_str[0] ? (int)strtol(limit_str, NULL, 10) : 20);
+    recording_metadata_t *recordings = NULL;
     // has_detection: 0=all, 1=detection events only, -1=no detection events only
     int has_detection = has_detection_str[0] ? (int)strtol(has_detection_str, NULL, 10) : 0;
     if (has_detection < -1) has_detection = -1;
@@ -169,14 +171,6 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
     // Calculate offset from page and limit
     int offset = (page - 1) * limit;
-
-    // Allocate memory for recordings
-    recording_metadata_t *recordings = (recording_metadata_t *)malloc(limit * sizeof(recording_metadata_t));
-    if (!recordings) {
-        log_error("Failed to allocate memory for recordings");
-        http_response_set_json_error(res, 500, "Failed to allocate memory for recordings");
-        return;
-    }
 
     // Parse time strings to time_t
     time_t start_time = 0;
@@ -341,9 +335,23 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
-        free(recordings);
         if (all_stream_cfgs) free(all_stream_cfgs);
         http_response_set_json_error(res, 500, "Failed to get recording count from database");
+        return;
+    }
+
+    if (all_limit_requested) {
+        page = 1;
+        limit = total_count > 0 ? total_count : 1;
+        offset = 0;
+    }
+
+    // Allocate memory for recordings
+    recordings = (recording_metadata_t *)malloc(limit * sizeof(recording_metadata_t));
+    if (!recordings) {
+        log_error("Failed to allocate memory for recordings");
+        if (all_stream_cfgs) free(all_stream_cfgs);
+        http_response_set_json_error(res, 500, "Failed to allocate memory for recordings");
         return;
     }
 

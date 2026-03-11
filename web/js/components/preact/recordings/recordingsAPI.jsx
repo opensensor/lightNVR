@@ -101,8 +101,8 @@ const applyFilterParams = (params, filters) => {
 
 const buildRecordingsQueryParams = (filters, pagination, sortField, sortDirection) => {
   const params = new URLSearchParams();
-  params.append('page', pagination.currentPage);
-  params.append('limit', pagination.pageSize);
+  params.append('page', String(pagination.showAll ? 1 : pagination.currentPage));
+  params.append('limit', urlUtils.serializePaginationLimit(pagination));
   params.append('sort', sortField);
   params.append('order', sortDirection);
   applyDateRangeParams(params, filters);

@@ -95,9 +95,12 @@ export function RecordingsView() {
   // Initialize pagination state from URL params (lazy — no double render)
   const [pagination, setPagination] = useState(() => {
     const p = new URLSearchParams(window.location.search);
+    const paginationLimit = urlUtils.parsePaginationLimit(p.get('limit'));
+    const pageFromUrl = parseInt(p.get('page') || '1', 10);
     return {
-      currentPage: parseInt(p.get('page') || '1', 10),
-      pageSize: parseInt(p.get('limit') || '20', 10),
+      currentPage: paginationLimit.showAll ? 1 : (Number.isFinite(pageFromUrl) && pageFromUrl > 0 ? pageFromUrl : 1),
+      pageSize: paginationLimit.pageSize,
+      showAll: paginationLimit.showAll,
       totalItems: 0,
       totalPages: 1,
       startItem: 0,
@@ -317,7 +320,7 @@ export function RecordingsView() {
 
     // Pagination
     url.searchParams.set('page', pagination.currentPage.toString());
-    url.searchParams.set('limit', pagination.pageSize.toString());
+    url.searchParams.set('limit', urlUtils.serializePaginationLimit(pagination));
 
     // Sort
     url.searchParams.set('sort', sortField);
@@ -328,7 +331,7 @@ export function RecordingsView() {
     else url.searchParams.delete('view');
 
     window.history.replaceState({}, '', url);
-  }, [filters, pagination.currentPage, pagination.pageSize, sortField, sortDirection, viewMode]);
+  }, [filters, pagination.currentPage, pagination.pageSize, pagination.showAll, sortField, sortDirection, viewMode]);
 
   // When any filter changes, reset to page 1 so the user doesn't end up on
   // a page that doesn't exist for the new filter (fixes #179).
@@ -416,9 +419,11 @@ export function RecordingsView() {
     currentPage = currentPage || pagination.currentPage;
 
     if (data.pagination) {
-      const pageSize = data.pagination.limit || 20;
-      const totalItems = data.pagination.total || 0;
-      const totalPages = data.pagination.pages || 1;
+      const pageSize = Number.isFinite(data.pagination.limit)
+        ? data.pagination.limit
+        : (pagination.showAll ? Math.max(data.pagination.total || 0, 1) : pagination.pageSize);
+      const totalItems = Number.isFinite(data.pagination.total) ? data.pagination.total : 0;
+      const totalPages = Number.isFinite(data.pagination.pages) ? data.pagination.pages : 1;
 
       // Calculate start and end items based on current page
       let startItem = 0;
@@ -441,6 +446,7 @@ export function RecordingsView() {
 
       setPagination(prev => ({
         ...prev,
+        currentPage: prev.showAll ? 1 : currentPage,
         totalItems,
         totalPages,
         pageSize,
@@ -449,9 +455,9 @@ export function RecordingsView() {
       }));
     } else {
       // Fallback if pagination object is not provided
-      const pageSize = pagination.pageSize;
+      const pageSize = pagination.showAll ? Math.max(data.total || 0, 1) : pagination.pageSize;
       const totalItems = data.total || 0;
-      const totalPages = Math.ceil(totalItems / pageSize) || 1;
+      const totalPages = pagination.showAll ? (totalItems > 0 ? 1 : 0) : (Math.ceil(totalItems / pageSize) || 1);
 
       // Calculate start and end items based on current page
       let startItem = 0;
@@ -474,8 +480,10 @@ export function RecordingsView() {
 
       setPagination(prev => ({
         ...prev,
+        currentPage: prev.showAll ? 1 : currentPage,
         totalItems,
         totalPages,
+        pageSize,
         startItem,
         endItem
       }));
@@ -601,26 +609,37 @@ export function RecordingsView() {
 
   // Toggle selection of a recording
   const toggleRecordingSelection = (recordingId) => {
-    setSelectedRecordings(prev => ({
-      ...prev,
-      [recordingId]: !prev[recordingId]
-    }));
+    setSelectedRecordings(prev => {
+      const next = { ...prev };
+      if (next[recordingId]) {
+        delete next[recordingId];
+      } else {
+        next[recordingId] = true;
+      }
+      return next;
+    });
   };
 
   // Toggle select all recordings
   const toggleSelectAll = () => {
-    const newSelectAll = !selectAll;
-    setSelectAll(newSelectAll);
-
-    const newSelectedRecordings = {};
-    if (newSelectAll) {
-      // Select all recordings
-      recordings.forEach(recording => {
-        newSelectedRecordings[recording.id] = true;
-      });
+    if (recordings.length === 0) {
+      return;
     }
-    // Always update selectedRecordings, even when deselecting all
-    setSelectedRecordings(newSelectedRecordings);
+
+    const shouldSelectCurrentPage = !recordings.every(recording => !!selectedRecordings[recording.id]);
+    setSelectAll(shouldSelectCurrentPage);
+
+    setSelectedRecordings(prev => {
+      const next = { ...prev };
+      recordings.forEach(recording => {
+        if (shouldSelectCurrentPage) {
+          next[recording.id] = true;
+        } else {
+          delete next[recording.id];
+        }
+      });
+      return next;
+    });
   };
 
   // Get count of selected recordings
@@ -953,6 +972,7 @@ export function RecordingsView() {
                 recordingsTableBodyRef={recordingsTableBodyRef}
                 pagination={pagination}
                 canDelete={canDelete}
+                clearSelections={clearSelections}
                 hiddenColumns={hiddenColumns}
                 toggleColumn={toggleColumn}
                 onTagsChanged={handleTagsChanged}

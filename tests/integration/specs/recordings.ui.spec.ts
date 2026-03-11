@@ -15,6 +15,11 @@ type MockRecording = {
   capture_method: string;
   tags: string[];
   detection_labels: Array<{ label: string; count: number }>;
+  start_time_unix?: number;
+  duration?: number;
+  size?: string;
+  protected?: boolean;
+  has_detections?: boolean;
 };
 
 function includesCsvValue(rawValue: string | null, expected: string): boolean {
@@ -424,6 +429,95 @@ test.describe('Recordings Page @ui @recordings', () => {
   });
 
   test.describe('Batch Operations', () => {
+    test('keeps accumulated selections across pages and supports All items per page', async ({ page }) => {
+      const recordingsPage = new RecordingsPage(page);
+      const allRecordings: MockRecording[] = Array.from({ length: 105 }, (_, index) => ({
+        id: index + 1,
+        stream: `cam${String(index + 1).padStart(3, '0')}`,
+        capture_method: 'scheduled',
+        tags: [],
+        detection_labels: [],
+        start_time_unix: 1741420800 + index,
+        duration: 60,
+        size: '1 MB',
+        protected: false,
+        has_detections: false
+      }));
+      const seenRequests: string[] = [];
+
+      await page.addInitScript(() => {
+        localStorage.setItem('recordings_view_mode', 'table');
+      });
+
+      await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
+      await page.route('**/api/streams*', route => route.fulfill({ json: [] }));
+      await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: [] } }));
+      await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
+      await page.route('**/api/recordings?**', route => {
+        const url = new URL(route.request().url());
+        seenRequests.push(url.search);
+
+        const limitParam = url.searchParams.get('limit') || '20';
+        const currentPage = parseInt(url.searchParams.get('page') || '1', 10);
+        const allMode = limitParam === 'all';
+        const limit = allMode ? allRecordings.length : parseInt(limitParam, 10);
+        const startIndex = allMode ? 0 : (currentPage - 1) * limit;
+        const pageRecordings = allRecordings.slice(startIndex, startIndex + limit);
+        const totalPages = allMode ? 1 : Math.ceil(allRecordings.length / limit);
+
+        return route.fulfill({
+          json: {
+            recordings: pageRecordings,
+            pagination: {
+              total: allRecordings.length,
+              pages: totalPages,
+              limit
+            }
+          }
+        });
+      });
+
+      await recordingsPage.goto();
+
+      const selectPageCheckbox = page.getByLabel('Select all recordings on this page');
+      const selectedCount = page.locator('.selected-count');
+      const clearButton = page.getByRole('button', { name: 'Clear' });
+
+      await expect(page.locator('#recordings-table')).toBeVisible();
+      await expect(page.locator('#recordings-table tbody tr')).toHaveCount(20);
+
+      await selectPageCheckbox.check();
+      await expect(selectedCount).toHaveText('20 recordings selected');
+
+      await page.getByTitle('Next page').click();
+      await expect(page.locator('#recordings-table tbody')).toContainText('cam021');
+      await expect(selectedCount).toHaveText('20 recordings selected');
+
+      await selectPageCheckbox.check();
+      await expect(selectedCount).toHaveText('40 recordings selected');
+
+      await page.getByTitle('Previous page').click();
+      await expect(page.locator('#recordings-table tbody')).toContainText('cam001');
+      await selectPageCheckbox.uncheck();
+      await expect(selectedCount).toHaveText('20 recordings selected');
+
+      await clearButton.click();
+      await expect(selectedCount).toHaveText('No recordings selected');
+
+      await page.getByRole('button', { name: 'Display' }).click();
+      await page.locator('#page-size').selectOption('all');
+
+      await expect.poll(() => seenRequests.some(search => {
+        const params = new URL(`http://localhost/${search}`).searchParams;
+        return params.get('limit') === 'all' && params.get('page') === '1';
+      })).toBe(true);
+      await expect(page.locator('#recordings-table tbody tr')).toHaveCount(105);
+      await expect(page.getByTitle('Next page')).toHaveCount(0);
+
+      await selectPageCheckbox.check();
+      await expect(selectedCount).toHaveText('105 recordings selected');
+    });
+
     test('should display batch delete button if available', async ({ page }) => {
       const recordingsPage = new RecordingsPage(page);
       await recordingsPage.goto({ waitForNetworkIdle: true });

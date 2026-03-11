@@ -92,7 +92,12 @@ export function BatchDownloadModal({ isOpen, onClose, recordings = [], selectedI
     }
   }, [isOpen]);
 
-  const selected = recordings.filter(r => !!selectedIds[r.id]);
+  const selected = Object.entries(selectedIds)
+    .filter(([_, isSelected]) => !!isSelected)
+    .map(([id]) => recordings.find(r => String(r.id) === id) || {
+      id: parseInt(id, 10),
+      stream: 'recording'
+    });
 
   const handleDownload = useCallback(async () => {
     if (selected.length === 0) return;

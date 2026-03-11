@@ -26,16 +26,19 @@ const ACTIVE = `${BTN} bg-primary text-primary-foreground border-primary`;
 export function PaginationControls({ pagination, goToPage }) {
   const { currentPage, totalPages } = pagination;
   const middle = getMiddlePages(currentPage, totalPages);
+  const showPager = totalPages > 1 && !pagination.showAll;
 
   const cls = (p) => (p === currentPage ? ACTIVE : INACTIVE);
 
   return (
     <div className="pagination-controls flex flex-col sm:flex-row justify-between items-center p-4 border-t border-border">
       <div className="pagination-info text-sm text-muted-foreground mb-2 sm:mb-0">
-        Showing {pagination.startItem}–{pagination.endItem} of {pagination.totalItems} recordings
+        {pagination.showAll && pagination.totalItems > 0
+          ? `Showing all ${pagination.totalItems} recordings`
+          : `Showing ${pagination.startItem}–${pagination.endItem} of ${pagination.totalItems} recordings`}
       </div>
 
-      <div className="join">
+      {showPager && <div className="join">
         {/* First page */}
         <button className={cls(1)} onClick={() => goToPage(1)} title="First page"
                 disabled={currentPage === 1}>
@@ -67,7 +70,7 @@ export function PaginationControls({ pagination, goToPage }) {
                 title="Last page" disabled={currentPage === totalPages}>
           »
         </button>
-      </div>
+      </div>}
     </div>
   );
 }

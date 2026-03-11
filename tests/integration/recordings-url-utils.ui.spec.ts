@@ -68,3 +68,23 @@ test('serializes multi-select filters back into the URL', () => {
   expect(params.get('page')).toBe('2');
   expect(params.get('limit')).toBe('50');
 });
+
+test('supports the all-items pagination mode in URL state', () => {
+  setWindowLocation('http://localhost/recordings?limit=all&page=4');
+
+  const state = urlUtils.getFiltersFromUrl();
+  expect(state?.limit).toBe(20);
+  expect(state?.showAll).toBe(true);
+  expect(state?.page).toBe(1);
+
+  urlUtils.updateUrlWithFilters(
+    urlUtils.createDefaultFilters(),
+    { currentPage: 1, pageSize: 20, showAll: true },
+    'start_time',
+    'desc'
+  );
+
+  const params = ((globalThis as any).window.location as URL).searchParams;
+  expect(params.get('limit')).toBe('all');
+  expect(params.get('page')).toBe('1');
+});

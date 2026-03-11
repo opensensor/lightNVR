@@ -5,6 +5,9 @@
 import { formatUtils } from './formatUtils.js';
 import { getDefaultDateRange } from '../../../utils/date-utils.js';
 
+const DEFAULT_PAGE_SIZE = 20;
+const ALL_PAGE_SIZE = 'all';
+
 const parseMultiValueParam = (value) => {
   if (!value) return [];
 
@@ -41,6 +44,22 @@ const removeMultiValue = (values, value) => {
   return values.filter((item) => item !== value);
 };
 
+const parsePaginationLimit = (value) => {
+  if (value === ALL_PAGE_SIZE) {
+    return { pageSize: DEFAULT_PAGE_SIZE, showAll: true };
+  }
+
+  const parsedValue = parseInt(value || String(DEFAULT_PAGE_SIZE), 10);
+  return {
+    pageSize: Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : DEFAULT_PAGE_SIZE,
+    showAll: false
+  };
+};
+
+const serializePaginationLimit = (pagination = {}) => (
+  pagination.showAll ? ALL_PAGE_SIZE : String(pagination.pageSize || DEFAULT_PAGE_SIZE)
+);
+
 const createDefaultFilters = () => {
   const { startDate, endDate } = getDefaultDateRange();
 
@@ -68,6 +87,8 @@ export const urlUtils = {
   serializeMultiValueParam,
   addMultiValue,
   removeMultiValue,
+  parsePaginationLimit,
+  serializePaginationLimit,
 
   /**
    * Get filters from URL
@@ -94,7 +115,8 @@ export const urlUtils = {
     const result = {
       filters: createDefaultFilters(),
       page: 1,
-      limit: 20,
+      limit: DEFAULT_PAGE_SIZE,
+      showAll: false,
       sort: 'start_time',
       order: 'desc'
     };
@@ -155,7 +177,12 @@ export const urlUtils = {
       result.page = parseInt(urlParams.get('page'), 10);
     }
     if (urlParams.has('limit')) {
-      result.limit = parseInt(urlParams.get('limit'), 10);
+      const paginationLimit = parsePaginationLimit(urlParams.get('limit'));
+      result.limit = paginationLimit.pageSize;
+      result.showAll = paginationLimit.showAll;
+      if (paginationLimit.showAll) {
+        result.page = 1;
+      }
     }
     
     // Sorting
@@ -326,9 +353,12 @@ export const urlUtils = {
       }));
     }
     if (urlParams.has('limit')) {
+      const paginationLimit = parsePaginationLimit(urlParams.get('limit'));
       setPagination(prev => ({
         ...prev,
-        pageSize: parseInt(urlParams.get('limit'), 10)
+        currentPage: paginationLimit.showAll ? 1 : prev.currentPage,
+        pageSize: paginationLimit.pageSize,
+        showAll: paginationLimit.showAll
       }));
     }
     
@@ -398,7 +428,7 @@ export const urlUtils = {
 
     // Pagination
     url.searchParams.set('page', pagination.currentPage.toString());
-    url.searchParams.set('limit', pagination.pageSize.toString());
+    url.searchParams.set('limit', serializePaginationLimit(pagination));
 
     // Sorting
     url.searchParams.set('sort', sortField);
