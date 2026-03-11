@@ -12,6 +12,8 @@ import { PTZControls } from './PTZControls.jsx';
 import { ConfirmDialog } from './UI.jsx';
 import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled, isForceNativeHls } from '../../utils/settings-utils.js';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
+import { forceNavigation } from '../../utils/navigation-utils.js';
+import { formatUtils } from './recordings/formatUtils.js';
 import Hls from 'hls.js';
 
 /**
@@ -750,6 +752,28 @@ export function HLSVideoCell({
             </svg>
           </button>
         )}
+        <button
+          type="button"
+          className="timeline-btn"
+          title="View in Timeline"
+          aria-label="View in Timeline"
+          onClick={(event) => forceNavigation(formatUtils.getTimelineUrl(stream.name, new Date().toISOString()), event)}
+          style={{
+            backgroundColor: 'transparent',
+            border: 'none',
+            padding: '5px',
+            borderRadius: '4px',
+            color: 'white',
+            cursor: 'pointer',
+            transition: 'background-color 0.2s ease'
+          }}
+          onMouseOver={(event) => (event.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)')}
+          onMouseOut={(event) => (event.currentTarget.style.backgroundColor = 'transparent')}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 640 640" fill="white" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M320 128C426 128 512 214 512 320C512 426 426 512 320 512C254.8 512 197.1 479.5 162.4 429.7C152.3 415.2 132.3 411.7 117.8 421.8C103.3 431.9 99.8 451.9 109.9 466.4C156.1 532.6 233 576 320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64C234.3 64 158.5 106.1 112 170.7L112 144C112 126.3 97.7 112 80 112C62.3 112 48 126.3 48 144L48 256C48 273.7 62.3 288 80 288L104.6 288C105.1 288 105.6 288 106.1 288L192.1 288C209.8 288 224.1 273.7 224.1 256C224.1 238.3 209.8 224 192.1 224L153.8 224C186.9 166.6 249 128 320 128zM344 216C344 202.7 333.3 192 320 192C306.7 192 296 202.7 296 216L296 320C296 326.4 298.5 332.5 303 337L375 409C384.4 418.4 399.6 418.4 408.9 409C418.2 399.6 418.3 384.4 408.9 375.1L343.9 310.1L343.9 216z"/>
+          </svg>
+        </button>
         <button
           className="fullscreen-btn"
           title="Toggle Fullscreen"

@@ -10,6 +10,7 @@ import { getSettings } from '../../utils/settings-utils.js';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { EditUserModal } from './users/EditUserModal.jsx';
 import { getAuthHeaders, isDemoMode, validateSession } from '../../utils/auth-utils.js';
+import { forceNavigation } from '../../utils/navigation-utils.js';
 
 const buildProfileFormData = (user = {}) => ({
   username: user.username || '',
@@ -233,22 +234,6 @@ export function Header({ version = VERSION }) {
     ...(isAdmin ? [{ id: 'nav-users', href: 'users.html', label: 'Users' }] : []),
     ...(isAdmin ? [{ id: 'nav-system', href: 'system.html', label: 'System' }] : []),
   ];
-
-  // Force navigation function to bypass React cleanup issues
-  const forceNavigation = (href, e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    // Use setTimeout with 0 delay to move this to the end of the event queue
-    // This helps ensure the navigation happens after any other event handlers
-    setTimeout(() => {
-      window.location.href = href;
-    }, 0);
-
-    return false; // Prevent default behavior
-  };
 
   // Render navigation item
   const renderNavItem = (item) => {
