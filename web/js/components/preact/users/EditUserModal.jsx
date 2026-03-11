@@ -24,7 +24,24 @@ const FOCUSABLE_SELECTORS = [
  * @param {Function} props.onClose - Function to close the modal
  * @returns {JSX.Element} Edit user modal
  */
-export function EditUserModal({ currentUser, formData, handleInputChange, handleEditUser, handleClearLoginLockout, isClearingLoginLockout = false, onClose }) {
+export function EditUserModal({
+  currentUser,
+  formData,
+  handleInputChange,
+  handleEditUser,
+  handleClearLoginLockout,
+  isClearingLoginLockout = false,
+  onClose,
+  title,
+  submitLabel = 'Update User',
+  showPasswordField = true,
+  showRoleField = true,
+  showActiveField = true,
+  showPasswordLockField = true,
+  showAllowedTagsField = true,
+  showAllowedLoginCidrsField = true,
+  showClearLoginLockoutButton = true,
+}) {
   const modalRef = useRef(null);
   const previousFocusedElementRef = useRef(null);
   const backdropPointerDownRef = useRef(false);
@@ -123,7 +140,7 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
         onKeyDown={handleKeyDown}
       >
         <h2 id="edit-user-modal-title" className="text-xl font-bold mb-4">
-          Edit User: {currentUser.username}
+          {title || `Edit User: ${currentUser.username}`}
         </h2>
 
         <form onSubmit={handleSubmit}>
@@ -142,19 +159,21 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
             />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="password">
-              Password (leave blank to keep current)
-            </label>
-            <input
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="password"
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleInputChange}
-            />
-          </div>
+          {showPasswordField && (
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="password">
+                Password (leave blank to keep current)
+              </label>
+              <input
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="password"
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleInputChange}
+              />
+            </div>
+          )}
 
           <div className="mb-4">
             <label className="block text-sm font-bold mb-2" htmlFor="email">
@@ -170,108 +189,120 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
             />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="role">
-              Role
-            </label>
-            <select
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleInputChange}
-            >
-              {Object.entries(USER_ROLES).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mb-4">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                name="is_active"
-                checked={formData.is_active}
+          {showRoleField && (
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="role">
+                Role
+              </label>
+              <select
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="role"
+                name="role"
+                value={formData.role}
                 onChange={handleInputChange}
-                className="mr-2"
-              />
-              <span className="text-sm font-bold">Active</span>
-            </label>
-          </div>
-
-          <div className="mb-6">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                name="password_change_locked"
-                checked={formData.password_change_locked}
-                onChange={handleInputChange}
-                className="mr-2"
-              />
-              <span className="text-sm font-bold">Lock Password Changes</span>
-            </label>
-            <p className="text-xs text-muted-foreground mt-1 ml-6">
-              When locked, this user cannot change their own password
-            </p>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-              Allowed Stream Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
-            </label>
-            <input
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="allowed_tags"
-              type="text"
-              name="allowed_tags"
-              value={formData.allowed_tags || ''}
-              onChange={handleInputChange}
-              placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
-              maxLength={255}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
-            </p>
-            {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(tag => (
-                  <span key={tag.trim()} className="badge-info">
-                    #{tag.trim()}
-                  </span>
+              >
+                {Object.entries(USER_ROLES).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
                 ))}
-              </div>
+              </select>
+            </div>
+          )}
+
+          {showActiveField && (
+            <div className="mb-4">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  checked={formData.is_active}
+                  onChange={handleInputChange}
+                  className="mr-2"
+                />
+                <span className="text-sm font-bold">Active</span>
+              </label>
+            </div>
+          )}
+
+          {showPasswordLockField && (
+            <div className="mb-6">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="password_change_locked"
+                  checked={formData.password_change_locked}
+                  onChange={handleInputChange}
+                  className="mr-2"
+                />
+                <span className="text-sm font-bold">Lock Password Changes</span>
+              </label>
+              <p className="text-xs text-muted-foreground mt-1 ml-6">
+                When locked, this user cannot change their own password
+              </p>
+            </div>
+          )}
+
+          {showAllowedTagsField && (
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
+                Allowed Stream Tags <span className="font-normal text-muted-foreground">(RBAC)</span>
+              </label>
+              <input
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="allowed_tags"
+                type="text"
+                name="allowed_tags"
+                value={formData.allowed_tags || ''}
+                onChange={handleInputChange}
+                placeholder="e.g. outdoor,lobby (leave blank for unrestricted)"
+                maxLength={255}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Comma-separated stream tags. When set, this user can only see streams that share at least one matching stream tag. Leave blank to allow access to all streams.
+              </p>
+              {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(tag => (
+                    <span key={tag.trim()} className="badge-info">
+                      #{tag.trim()}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showAllowedLoginCidrsField && (
+            <div className="mb-4">
+              <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
+                Allowed Login IP Ranges <span className="font-normal text-muted-foreground">(CIDR)</span>
+              </label>
+              <textarea
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                id="allowed_login_cidrs"
+                name="allowed_login_cidrs"
+                value={formData.allowed_login_cidrs || ''}
+                onChange={handleInputChange}
+                placeholder={"e.g.\n192.168.1.25\n192.168.1.0/24\n2001:db8::1\n(leave blank for unrestricted)"}
+                rows={4}
+                maxLength={1023}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted. Bare IPs are treated as a single host.
+              </p>
+            </div>
+          )}
+
+          <div className={`mt-6 flex items-center gap-3 ${showClearLoginLockoutButton ? 'justify-between' : 'justify-end'}`}>
+            {showClearLoginLockoutButton && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleClearLoginLockout}
+                disabled={isClearingLoginLockout}
+              >
+                {isClearingLoginLockout ? 'Clearing Lockout...' : 'Clear Login Lockout'}
+              </button>
             )}
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
-              Allowed Login IP Ranges <span className="font-normal text-muted-foreground">(CIDR)</span>
-            </label>
-            <textarea
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              id="allowed_login_cidrs"
-              name="allowed_login_cidrs"
-              value={formData.allowed_login_cidrs || ''}
-              onChange={handleInputChange}
-              placeholder={"e.g.\n192.168.1.25\n192.168.1.0/24\n2001:db8::1\n(leave blank for unrestricted)"}
-              rows={4}
-              maxLength={1023}
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              One IPv4 or IPv6 CIDR per line. Comma-separated values are also accepted. Bare IPs are treated as a single host.
-            </p>
-          </div>
-
-          <div className="mt-6 flex items-center justify-between gap-3">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={handleClearLoginLockout}
-              disabled={isClearingLoginLockout}
-            >
-              {isClearingLoginLockout ? 'Clearing Lockout...' : 'Clear Login Lockout'}
-            </button>
 
             <div className="flex justify-end">
             <button
@@ -285,7 +316,7 @@ export function EditUserModal({ currentUser, formData, handleInputChange, handle
               type="submit"
               className="btn-primary"
             >
-              Update User
+              {submitLabel}
             </button>
             </div>
           </div>

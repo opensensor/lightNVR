@@ -95,9 +95,12 @@ test.describe('Users API @api @users', () => {
   const testUsername = `api_user_${Date.now()}`;
   const cidrUsername = `cidr_user_${Date.now()}`;
   const lockoutUsername = `lockout_user_${Date.now()}`;
+  const selfUpdateUsername = `self_user_${Date.now()}`;
+  const selfUpdatedUsername = `${selfUpdateUsername}_renamed`;
   let createdUserId: number | null = null;
   let createdCidrUserId: number | null = null;
   let createdLockoutUserId: number | null = null;
+  let selfUpdateUserId: number | null = null;
 
   test.beforeAll(async ({ playwright }) => {
     request = await playwright.request.newContext({
@@ -116,6 +119,9 @@ test.describe('Users API @api @users', () => {
     }
     if (createdLockoutUserId) {
       await request.delete(`/api/auth/users/${createdLockoutUserId}`);
+    }
+    if (selfUpdateUserId) {
+      await request.delete(`/api/auth/users/${selfUpdateUserId}`);
     }
     await request.dispose();
   });
@@ -176,6 +182,69 @@ test.describe('Users API @api @users', () => {
 
     const response = await request.put(`/api/auth/users/${createdUserId}`, { data: updateData });
     console.log(`Update user response: ${response.status()}`);
+  });
+
+  test('non-admin users can update their own username and email only', async ({ playwright }) => {
+    const createResponse = await request.post('/api/auth/users', {
+      data: {
+        username: selfUpdateUsername,
+        password: 'TestApiUser123!',
+        email: `${selfUpdateUsername}@test.com`,
+        role: 1,
+        is_active: true,
+      },
+    });
+
+    expect(createResponse.ok()).toBeTruthy();
+    const createdUser = await createResponse.json();
+    selfUpdateUserId = createdUser.id;
+
+    const selfRequest = await playwright.request.newContext({
+      baseURL: CONFIG.LIGHTNVR_URL,
+      extraHTTPHeaders: {
+        'Authorization': 'Basic ' + Buffer.from(`${selfUpdateUsername}:TestApiUser123!`).toString('base64'),
+        'Content-Type': 'application/json',
+      },
+    });
+
+    try {
+      const updateResponse = await selfRequest.put(`/api/auth/users/${selfUpdateUserId}`, {
+        data: {
+          username: selfUpdatedUsername,
+          email: `${selfUpdatedUsername}@test.com`,
+        },
+      });
+
+      expect(updateResponse.ok()).toBeTruthy();
+      const updateData = await updateResponse.json();
+      expect(updateData.username).toBe(selfUpdatedUsername);
+      expect(updateData.email).toBe(`${selfUpdatedUsername}@test.com`);
+
+      const verifyResponse = await request.get(`/api/auth/users/${selfUpdateUserId}`);
+      expect(verifyResponse.ok()).toBeTruthy();
+      const verifyData = await verifyResponse.json();
+      expect(verifyData.username).toBe(selfUpdatedUsername);
+      expect(verifyData.email).toBe(`${selfUpdatedUsername}@test.com`);
+
+      const renamedRequest = await playwright.request.newContext({
+        baseURL: CONFIG.LIGHTNVR_URL,
+        extraHTTPHeaders: {
+          'Authorization': 'Basic ' + Buffer.from(`${selfUpdatedUsername}:TestApiUser123!`).toString('base64'),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      try {
+        const forbiddenResponse = await renamedRequest.put(`/api/auth/users/${selfUpdateUserId}`, {
+          data: { role: 0 },
+        });
+        expect(forbiddenResponse.status()).toBe(403);
+      } finally {
+        await renamedRequest.dispose();
+      }
+    } finally {
+      await selfRequest.dispose();
+    }
   });
 
   test('POST /api/auth/users stores bare IP login restrictions as single-host CIDRs', async () => {

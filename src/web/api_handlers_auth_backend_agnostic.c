@@ -549,8 +549,13 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         // Send success response with user info
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "authenticated", true);
+        cJSON_AddNumberToObject(response, "id", user.id);
         cJSON_AddStringToObject(response, "username", user.username);
+        cJSON_AddStringToObject(response, "email", user.email);
         cJSON_AddStringToObject(response, "role", db_auth_get_role_name(user.role));
+        cJSON_AddNumberToObject(response, "role_id", user.role);
+        cJSON_AddBoolToObject(response, "is_active", user.is_active);
+        cJSON_AddBoolToObject(response, "password_change_locked", user.password_change_locked);
         cJSON_AddBoolToObject(response, "auth_enabled", true);
         cJSON_AddNumberToObject(response, "auth_timeout_hours", g_config.auth_timeout_hours);
         cJSON_AddNumberToObject(response, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);

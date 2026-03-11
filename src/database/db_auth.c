@@ -694,7 +694,7 @@ int db_auth_create_user(const char *username, const char *password, const char *
 /**
  * Update a user
  */
-int db_auth_update_user(int64_t user_id, const char *email, int role, int is_active) {
+int db_auth_update_user(int64_t user_id, const char *username, const char *email, int role, int is_active) {
     sqlite3 *db = get_db_handle();
     if (!db) {
         log_error("Database not initialized");
@@ -719,8 +719,31 @@ int db_auth_update_user(int64_t user_id, const char *email, int role, int is_act
 
     sqlite3_finalize(stmt);
 
+    if (username) {
+        rc = sqlite3_prepare_v2(db, "SELECT id FROM users WHERE username = ? AND id != ?;", -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare username uniqueness check: %s", sqlite3_errmsg(db));
+            return -1;
+        }
+
+        sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, user_id);
+
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            log_warn("Cannot update user %lld: username '%s' already exists", (long long)user_id, username);
+            sqlite3_finalize(stmt);
+            return -2;
+        }
+
+        sqlite3_finalize(stmt);
+    }
+
     // Build the update query
     char query[512] = "UPDATE users SET updated_at = ?";
+
+    if (username) {
+        strncat(query, ", username = ?", sizeof(query) - strlen(query) - 1);
+    }
 
     if (email) {
         strncat(query, ", email = ?", sizeof(query) - strlen(query) - 1);
@@ -748,6 +771,10 @@ int db_auth_update_user(int64_t user_id, const char *email, int role, int is_act
     sqlite3_bind_int64(stmt, 1, now);
 
     int param_index = 2;
+
+    if (username) {
+        sqlite3_bind_text(stmt, param_index++, username, -1, SQLITE_STATIC);
+    }
 
     if (email) {
         sqlite3_bind_text(stmt, param_index++, email, -1, SQLITE_STATIC);

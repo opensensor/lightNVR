@@ -101,12 +101,13 @@ int db_auth_create_user(const char *username, const char *password, const char *
  * @brief Update a user
  * 
  * @param user_id User ID
+ * @param username New username (optional, can be NULL to leave unchanged)
  * @param email New email address (optional, can be NULL to leave unchanged)
  * @param role New user role (optional, can be -1 to leave unchanged)
  * @param is_active New active status (optional, can be -1 to leave unchanged)
  * @return 0 on success, non-zero on failure
  */
-int db_auth_update_user(int64_t user_id, const char *email, int role, int is_active);
+int db_auth_update_user(int64_t user_id, const char *username, const char *email, int role, int is_active);
 
 /**
  * @brief Change a user's password

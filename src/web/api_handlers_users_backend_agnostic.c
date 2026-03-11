@@ -477,9 +477,10 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
 void handle_users_update(const http_request_t *req, http_response_t *res) {
     log_info("Handling PUT /api/auth/users/:id request");
 
-    // Check if user has admin role
-    if (!httpd_check_admin_privileges(req, res)) {
-        return;  // Error response already set by httpd_check_admin_privileges
+    user_t current_user;
+    if (!httpd_get_authenticated_user(req, &current_user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
     }
 
     // Extract user ID from URL
@@ -496,6 +497,13 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     }
 
     int64_t user_id = strtoll(id_str, NULL, 10);
+    bool is_admin = (current_user.role == USER_ROLE_ADMIN);
+    bool is_self_update = (current_user.id == user_id);
+
+    if (!is_admin && !is_self_update) {
+        http_response_set_json_error(res, 403, "You can only update your own account");
+        return;
+    }
 
     // Check if the user exists
     user_t user;
@@ -514,12 +522,35 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     }
 
     // Extract fields
+    cJSON *username_json = cJSON_GetObjectItem(json_req, "username");
     cJSON *password_json = cJSON_GetObjectItem(json_req, "password");
     cJSON *email_json = cJSON_GetObjectItem(json_req, "email");
     cJSON *role_json = cJSON_GetObjectItem(json_req, "role");
     cJSON *is_active_json = cJSON_GetObjectItem(json_req, "is_active");
     cJSON *allowed_tags_json = cJSON_GetObjectItem(json_req, "allowed_tags");
     cJSON *allowed_login_cidrs_json = cJSON_GetObjectItem(json_req, "allowed_login_cidrs");
+
+    if (!is_admin && (password_json || role_json || is_active_json || allowed_tags_json || allowed_login_cidrs_json)) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 403, "You can only update your own username and email");
+        return;
+    }
+
+    const char *username = NULL;
+    if (username_json) {
+        if (!cJSON_IsString(username_json)) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "username must be a string");
+            return;
+        }
+
+        username = username_json->valuestring;
+        if (strlen(username) < 3 || strlen(username) > 32) {
+            cJSON_Delete(json_req);
+            http_response_set_json_error(res, 400, "Username must be between 3 and 32 characters");
+            return;
+        }
+    }
 
     const char *allowed_login_cidrs = NULL;
     bool set_allowed_login_cidrs = false;
@@ -581,7 +612,13 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    rc = db_auth_update_user(user_id, email, role, is_active);
+    rc = db_auth_update_user(user_id, username, email, role, is_active);
+
+    if (rc == -2) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 409, "Username already exists");
+        return;
+    }
 
     if (rc == 0 && allowed_tags_json) {
         // allowed_tags: JSON null removes restriction; string sets it

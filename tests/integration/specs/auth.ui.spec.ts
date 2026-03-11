@@ -140,6 +140,23 @@ test.describe('Authentication @ui @auth', () => {
       await page.screenshot({ path: 'test-results/auth-session-maintained.png' });
     });
 
+    test('should show the current username in the header and open the edit profile modal', async ({ page }) => {
+      await login(page, USERS.admin);
+
+      const profileButton = page.locator('button[title="Edit profile"]').filter({ hasText: USERS.admin.username }).first();
+      await expect(profileButton).toBeVisible();
+
+      await profileButton.click();
+
+      const profileModal = page.getByRole('dialog');
+      await expect(profileModal).toBeVisible();
+      await expect(profileModal).toContainText('Edit Profile');
+      await expect(profileModal.locator('input[name="username"]')).toHaveValue(USERS.admin.username);
+
+      await page.locator('button').filter({ hasText: /^Cancel$/ }).last().click();
+      await expect(profileModal).not.toBeVisible();
+    });
+
     test('should redirect unauthenticated access to login', async ({ page }) => {
       // Try to access protected pages without login
       // The redirect happens via JavaScript after the page loads and makes an API call

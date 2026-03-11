@@ -38,7 +38,7 @@ export function clearAuthState() {
 
 /**
  * Validate current session by making a lightweight API call
- * @returns {Promise<{valid: boolean, username?: string, role?: string, role_id?: number, demo_mode?: boolean, authenticated?: boolean}>} - Session info
+ * @returns {Promise<{valid: boolean, id?: number, username?: string, email?: string, role?: string, role_id?: number, is_active?: boolean, password_change_locked?: boolean, demo_mode?: boolean, authenticated?: boolean}>} - Session info
  */
 export async function validateSession() {
   try {
@@ -63,9 +63,13 @@ export async function validateSession() {
         valid: true,
         authenticated: isAuthenticated,
         demo_mode: isDemoMode,
+        id: data.id,
         username: data.username,
+        email: data.email,
         role: data.role,
         role_id: data.role_id,
+        is_active: data.is_active,
+        password_change_locked: data.password_change_locked,
         auth_enabled: data.auth_enabled
       };
     }
@@ -93,9 +97,13 @@ export async function getUserInfo() {
   const session = await validateSession();
   if (session.valid) {
     return {
+      id: session.id,
       username: session.username,
+      email: session.email,
       role: session.role,
-      role_id: session.role_id
+      role_id: session.role_id,
+      is_active: session.is_active,
+      password_change_locked: session.password_change_locked
     };
   }
   return null;

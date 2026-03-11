@@ -70,6 +70,13 @@ export function UsersView() {
   // Extract users array from response
   const users = usersData?.users || [];
 
+  const renderPageHeader = (actionButton = null) => (
+    <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
+      <h2 className="text-xl font-semibold">User Management</h2>
+      {actionButton}
+    </div>
+  );
+
   // Handler for the add user button
   const handleAddUserClick = useCallback(() => {
     // Reset form data for new user
@@ -383,9 +390,7 @@ export function UsersView() {
   if (isAuthError && users.length === 0) {
     return (
       <div>
-        <div className="mb-4 flex justify-between items-center">
-          <h2 className="text-xl font-semibold">User Management</h2>
-        </div>
+        {renderPageHeader()}
 
         <div className={`border px-4 py-3 rounded relative mb-4 ${isForbiddenError ? 'bg-yellow-100 border-yellow-400 text-yellow-700 dark:bg-yellow-900 dark:border-yellow-600 dark:text-yellow-200' : 'bg-red-100 border-red-400 text-red-700 dark:bg-red-900 dark:border-red-600 dark:text-red-200'}`}>
           <h4 className="font-bold mb-2">
@@ -413,15 +418,14 @@ export function UsersView() {
   if (error && users.length === 0) {
     return (
       <div>
-        <div className="mb-4 flex justify-between items-center">
-          <h2 className="text-xl font-semibold">User Management</h2>
+        {renderPageHeader(
           <button
             className="btn-primary"
             onClick={() => refetchUsers()}
           >
             Retry
           </button>
-        </div>
+        )}
 
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4 dark:bg-red-900 dark:border-red-600 dark:text-red-200">
           <h4 className="font-bold mb-2">Error Loading Users</h4>
@@ -435,15 +439,14 @@ export function UsersView() {
   if (users.length === 0 && !loading) {
     return (
       <div>
-        <div className="mb-4 flex justify-between items-center">
-          <h2 className="text-xl font-semibold">User Management</h2>
+        {renderPageHeader(
           <button
             className="btn-primary"
             onClick={handleAddUserClick}
           >
             Add User
           </button>
-        </div>
+        )}
 
         <div className="badge-info border px-4 py-3 rounded relative mb-4">
           <h4 className="font-bold mb-2">No Users Found</h4>
@@ -464,15 +467,14 @@ export function UsersView() {
   // Render users table with modals
   return (
     <div>
-      <div className="mb-4 flex justify-between items-center">
-        <h2 className="text-xl font-semibold">User Management</h2>
+      {renderPageHeader(
         <button
           className="btn-primary"
           onClick={handleAddUserClick}
         >
           Add User
         </button>
-      </div>
+      )}
 
       <UsersTable
         users={users}

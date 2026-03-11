@@ -3,10 +3,24 @@
  * Preact component for the site header
  */
 
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useCallback } from 'preact/hooks';
 import {VERSION} from '../../version.js';
+import { fetchJSON } from '../../query-client.js';
 import { getSettings } from '../../utils/settings-utils.js';
-import { isDemoMode, validateSession } from '../../utils/auth-utils.js';
+import { showStatusMessage } from './ToastContainer.jsx';
+import { EditUserModal } from './users/EditUserModal.jsx';
+import { getAuthHeaders, isDemoMode, validateSession } from '../../utils/auth-utils.js';
+
+const buildProfileFormData = (user = {}) => ({
+  username: user.username || '',
+  password: '',
+  email: user.email || '',
+  role: user.role_id ?? 1,
+  is_active: user.is_active ?? true,
+  password_change_locked: user.password_change_locked ?? false,
+  allowed_tags: '',
+  allowed_login_cidrs: '',
+});
 
 /**
  * Header component
@@ -19,44 +33,64 @@ export function Header({ version = VERSION }) {
   const headerContainer = document.getElementById('header-container');
   const activeNav = headerContainer?.dataset?.activeNav || '';
   const [username, setUsername] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [profileFormData, setProfileFormData] = useState(() => buildProfileFormData());
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(true); // Default to true while loading
   const [demoMode, setDemoMode] = useState(false); // Demo mode state
   const [userRole, setUserRole] = useState(null); // null = still loading
 
+  const syncSessionState = useCallback((session) => {
+    if (session.valid && session.role) {
+      setUserRole(session.role);
+    } else {
+      setUserRole(session.auth_enabled === false ? 'admin' : 'viewer');
+    }
+
+    const isSessionDemoMode = session.demo_mode === true;
+    setDemoMode(isSessionDemoMode);
+
+    if (session.username) {
+      setUsername(session.username);
+    } else if (isSessionDemoMode) {
+      setUsername('Demo Viewer');
+    } else {
+      setUsername('User');
+    }
+
+    if (session.id) {
+      const nextUser = {
+        id: session.id,
+        username: session.username || '',
+        email: session.email || '',
+        role: session.role,
+        role_id: session.role_id,
+        is_active: session.is_active,
+        password_change_locked: session.password_change_locked,
+      };
+      setCurrentUser(nextUser);
+      setProfileFormData(buildProfileFormData(nextUser));
+    } else {
+      setCurrentUser(null);
+      setProfileFormData(buildProfileFormData());
+    }
+  }, []);
+
   // Get the current username, role, and check if auth is enabled
   useEffect(() => {
-    // Fetch user role for role-based nav filtering
-    validateSession().then(session => {
-      if (session.valid && session.role) {
-        setUserRole(session.role);
-      } else {
-        // Auth disabled or unauthenticated — treat as admin for nav visibility
-        setUserRole(session.auth_enabled === false ? 'admin' : 'viewer');
-      }
-    }).catch(() => setUserRole('viewer'));
-
-    const auth = localStorage.getItem('auth');
-    if (auth) {
-      try {
-        // Decode the base64 auth string (username:password)
-        const decoded = atob(auth);
-        // Extract the username (everything before the colon)
-        const extractedUsername = decoded.split(':')[0];
-        setUsername(extractedUsername);
-      } catch (error) {
-        console.error('Error decoding auth token:', error);
-        setUsername('User');
-      }
-    } else {
-      // Check if we're in demo mode
-      if (isDemoMode()) {
-        setUsername('Demo Viewer');
-        setDemoMode(true);
-      } else {
-        setUsername('User');
-      }
-    }
+    validateSession()
+      .then(syncSessionState)
+      .catch(() => {
+        setUserRole('viewer');
+        if (isDemoMode()) {
+          setUsername('Demo Viewer');
+          setDemoMode(true);
+        } else {
+          setUsername('User');
+        }
+      });
 
     // Fetch settings to check if auth is enabled
     async function checkAuthEnabled() {
@@ -79,7 +113,7 @@ export function Header({ version = VERSION }) {
     const checkDemoMode = () => {
       if (window._demoMode === true) {
         setDemoMode(true);
-        if (!localStorage.getItem('auth')) {
+        if (!currentUser?.id) {
           setUsername('Demo Viewer');
         }
       }
@@ -91,9 +125,78 @@ export function Header({ version = VERSION }) {
     // Clean up after first successful detection
     setTimeout(() => clearInterval(intervalId), 5000);
     return () => clearInterval(intervalId);
+  }, [currentUser?.id, syncSessionState]);
+
+  const handleProfileInputChange = useCallback((e) => {
+    const { name, value, type, checked } = e.target;
+    setProfileFormData(prevData => ({
+      ...prevData,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
   }, []);
 
+  const openProfileModal = useCallback(() => {
+    if (!currentUser?.id) {
+      return;
+    }
 
+    setProfileFormData(buildProfileFormData(currentUser));
+    setIsProfileModalOpen(true);
+    setMobileMenuOpen(false);
+  }, [currentUser]);
+
+  const closeProfileModal = useCallback(() => {
+    setIsProfileModalOpen(false);
+  }, []);
+
+  const handleProfileSave = useCallback(async (e) => {
+    if (e) {
+      e.preventDefault();
+    }
+
+    if (!currentUser?.id || isSavingProfile) {
+      return;
+    }
+
+    setIsSavingProfile(true);
+    try {
+      const updatedUser = await fetchJSON(`/api/auth/users/${currentUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          username: profileFormData.username.trim(),
+          email: profileFormData.email.trim(),
+        }),
+        timeout: 15000,
+        retries: 1,
+        retryDelay: 1000,
+      });
+
+      const nextUser = {
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email || '',
+        role: currentUser.role,
+        role_id: updatedUser.role,
+        is_active: updatedUser.is_active,
+        password_change_locked: updatedUser.password_change_locked,
+      };
+
+      setCurrentUser(nextUser);
+      setProfileFormData(buildProfileFormData(nextUser));
+      setUsername(updatedUser.username);
+      setIsProfileModalOpen(false);
+      showStatusMessage('Profile updated successfully', 'success', 5000);
+    } catch (error) {
+      console.error('Error updating current user:', error);
+      showStatusMessage(`Error updating profile: ${error.message}`, 'error', 8000);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }, [currentUser, isSavingProfile, profileFormData.email, profileFormData.username]);
 
   // Toggle mobile menu
   const toggleMobileMenu = () => {
@@ -118,6 +221,7 @@ export function Header({ version = VERSION }) {
   // While the role is still loading (null) we conservatively show all items
   // so the nav doesn't flash/reorder after load.
   const isAdmin = userRole === null || userRole === 'admin';
+  const canEditCurrentUser = authEnabled && !demoMode && Boolean(currentUser?.id);
 
   // Navigation items - don't preserve query parameters when navigating via header
   // Admin-only tabs (System, Users) are hidden from non-admin roles.
@@ -176,8 +280,27 @@ export function Header({ version = VERSION }) {
     );
   };
 
+  const renderUsername = (mobile = false) => {
+    if (!canEditCurrentUser) {
+      return <span>{username}</span>;
+    }
+
+    return (
+      <button
+        type="button"
+        className={`bg-transparent border-0 p-0 font-medium transition-colors ${mobile ? 'text-left' : ''}`}
+        style={{ color: 'hsl(var(--card-foreground))' }}
+        onClick={openProfileModal}
+        title="Edit profile"
+      >
+        {username}
+      </button>
+    );
+  };
+
   return (
-      <header className="py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20, backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))' }}>
+      <>
+      <header className="app-header py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20, backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))' }}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="logo flex items-center">
             <h1 className="text-xl font-bold m-0">LightNVR</h1>
@@ -196,7 +319,7 @@ export function Header({ version = VERSION }) {
             {demoMode && !localStorage.getItem('auth') && (
               <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>Demo Mode</span>
             )}
-            <span className="mr-2">{username}</span>
+            <div className="mr-2">{renderUsername()}</div>
             {authEnabled && (
               demoMode && !localStorage.getItem('auth') ? (
                 <a
@@ -253,7 +376,7 @@ export function Header({ version = VERSION }) {
                         {demoMode && !localStorage.getItem('auth') && (
                           <span className="mr-2 px-2 py-0.5 text-xs rounded" style={{backgroundColor: 'hsl(var(--accent))', color: 'hsl(var(--accent-foreground))'}}>Demo</span>
                         )}
-                        <span>{username}</span>
+                        {renderUsername(true)}
                       </div>
                       {demoMode && !localStorage.getItem('auth') ? (
                         <a
@@ -289,5 +412,24 @@ export function Header({ version = VERSION }) {
             </div>
         )}
       </header>
+      {isProfileModalOpen && currentUser && (
+        <EditUserModal
+          currentUser={currentUser}
+          formData={profileFormData}
+          handleInputChange={handleProfileInputChange}
+          handleEditUser={handleProfileSave}
+          onClose={closeProfileModal}
+          title="Edit Profile"
+          submitLabel={isSavingProfile ? 'Saving...' : 'Save Changes'}
+          showPasswordField={false}
+          showRoleField={false}
+          showActiveField={false}
+          showPasswordLockField={false}
+          showAllowedTagsField={false}
+          showAllowedLoginCidrsField={false}
+          showClearLoginLockoutButton={false}
+        />
+      )}
+      </>
   );
 }
