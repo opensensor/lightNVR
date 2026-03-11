@@ -229,6 +229,11 @@ export function RecordingsTable({
                   </div>
                 </th>
               )}
+              {show('capture_method') && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Capture Method
+                </th>
+              )}
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => sortBy('start_time')}>
                 <div className="flex items-center">

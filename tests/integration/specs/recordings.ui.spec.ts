@@ -209,6 +209,7 @@ test.describe('Recordings Page @ui @recordings', () => {
 
       await expect(page.locator('#recordings-table')).toBeVisible();
       await expect.poll(() => seenRequests.length).toBeGreaterThan(0);
+      await expect(page.locator('#recordings-table thead th').filter({ hasText: 'Capture Method' })).toHaveCount(1);
 
       await recordingsPage.expandDetectionObjectsSection();
       await recordingsPage.expandCaptureMethodSection();
