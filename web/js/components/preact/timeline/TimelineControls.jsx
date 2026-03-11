@@ -8,11 +8,10 @@ import { timelineState } from './TimelinePage.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { TagIcon, TagsOverlay } from '../recordings/TagsOverlay.jsx';
 import {
-  findContainingSegmentIndex,
-  findNearestSegmentIndex,
   formatPlaybackTimeLabel,
   getTimelineDayLengthHours,
   MIN_TIMELINE_VIEW_HOURS,
+  resolveActiveSegmentIndex,
   resolvePlaybackStreamName,
   timestampToTimelineOffset,
   zoomTimelineRange
@@ -35,35 +34,15 @@ export function TimelineControls() {
   const [recordingTags, setRecordingTags] = useState([]);
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
 
-  const resolveActiveSegmentIndex = (state) => {
-    const segments = state.timelineSegments;
-    if (!Array.isArray(segments) || segments.length === 0) {
-      return -1;
-    }
-
-    if (state.currentTime !== null && state.currentTime !== undefined) {
-      const containingIndex = findContainingSegmentIndex(segments, state.currentTime);
-      if (containingIndex !== -1) {
-        return containingIndex;
-      }
-
-      return findNearestSegmentIndex(segments, state.currentTime);
-    }
-
-    if (Number.isInteger(state.currentSegmentIndex) &&
-        state.currentSegmentIndex >= 0 &&
-        state.currentSegmentIndex < segments.length) {
-      return state.currentSegmentIndex;
-    }
-
-    return -1;
-  };
-
   useEffect(() => {
     const syncControlsState = (state) => {
       setIsPlaying(state.isPlaying);
       setSegmentCount(state.timelineSegments?.length || 0);
-      setActiveSegmentIndex(resolveActiveSegmentIndex(state));
+      setActiveSegmentIndex(resolveActiveSegmentIndex(
+        state.timelineSegments,
+        state.currentSegmentIndex,
+        state.currentTime
+      ));
       setCurrentRecordingId(state.currentRecordingId ?? null);
       setIsProtected(!!state.currentRecordingProtected);
       setRecordingTags(Array.isArray(state.currentRecordingTags) ? state.currentRecordingTags : []);
@@ -452,7 +431,11 @@ export function TimelineControls() {
       return;
     }
 
-    const currentIndex = resolveActiveSegmentIndex(timelineState);
+    const currentIndex = resolveActiveSegmentIndex(
+      timelineState.timelineSegments,
+      timelineState.currentSegmentIndex,
+      timelineState.currentTime
+    );
     if (currentIndex === -1) {
       showStatusMessage('No active recording selected', 'warning');
       return;

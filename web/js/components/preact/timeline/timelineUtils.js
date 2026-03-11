@@ -324,6 +324,42 @@ export function findNearestSegmentIndex(segments, timestamp) {
   return bestIndex;
 }
 
+export function resolveActiveSegmentIndex(segments, currentSegmentIndex, timestamp = null) {
+  if (!Array.isArray(segments) || segments.length === 0) {
+    return -1;
+  }
+
+  if (timestamp !== null && timestamp !== undefined) {
+    const containingIndex = findContainingSegmentIndex(segments, timestamp);
+    if (containingIndex !== -1) {
+      return containingIndex;
+    }
+
+    return findNearestSegmentIndex(segments, timestamp);
+  }
+
+  if (Number.isInteger(currentSegmentIndex) &&
+      currentSegmentIndex >= 0 &&
+      currentSegmentIndex < segments.length) {
+    return currentSegmentIndex;
+  }
+
+  return -1;
+}
+
+export function getSteppedVideoTime(currentTimeSeconds, directionSeconds, durationSeconds = Infinity) {
+  const safeCurrentTime = Number.isFinite(currentTimeSeconds) ? currentTimeSeconds : 0;
+  const safeDirection = Number.isFinite(directionSeconds) ? directionSeconds : 0;
+  const nextTime = safeCurrentTime + safeDirection;
+
+  if (!Number.isFinite(durationSeconds)) {
+    return Math.max(nextTime, 0);
+  }
+
+  const safeDuration = Math.max(durationSeconds, 0);
+  return clamp(nextTime, 0, safeDuration);
+}
+
 export function getClippedSegmentHourRange(segment, selectedDate) {
   const bounds = getLocalDayBounds(selectedDate);
   if (!segment || !bounds) return null;

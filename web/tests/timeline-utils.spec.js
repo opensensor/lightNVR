@@ -9,7 +9,9 @@ import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
   formatPlaybackTimeLabel,
+  getSteppedVideoTime,
   resolvePlaybackStreamName,
+  resolveActiveSegmentIndex,
   formatTimestampAsClock,
   formatTimelineOffsetLabel,
   getAvailableDatesForSegments,
@@ -135,6 +137,26 @@ describe('timelineUtils', () => {
 
     expect(distanceToFirst).toBe(distanceToSecond);
     expect(findNearestSegmentIndex(segments, timestamp)).toBe(0);
+  });
+
+  test('resolves the active segment from timestamp before falling back to the current index', () => {
+    const segments = [
+      { id: 1, start_timestamp: 100, end_timestamp: 160 },
+      { id: 2, start_timestamp: 220, end_timestamp: 280 }
+    ];
+
+    expect(resolveActiveSegmentIndex(segments, 0, 230)).toBe(1);
+    expect(resolveActiveSegmentIndex(segments, 1, 170)).toBe(0);
+    expect(resolveActiveSegmentIndex(segments, 1, null)).toBe(1);
+    expect(resolveActiveSegmentIndex([], 0, 100)).toBe(-1);
+  });
+
+  test('clamps stepped video times within the active recording', () => {
+    expect(getSteppedVideoTime(10, -1, 30)).toBe(9);
+    expect(getSteppedVideoTime(0, -1, 30)).toBe(0);
+    expect(getSteppedVideoTime(29.5, 1, 30)).toBe(30);
+    expect(getSteppedVideoTime(NaN, 1, 30)).toBe(1);
+    expect(getSteppedVideoTime(4, 1, Infinity)).toBe(5);
   });
 
   test('clips a boundary-spanning segment to the selected local day', () => {

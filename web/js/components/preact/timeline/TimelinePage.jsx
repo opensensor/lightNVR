@@ -26,12 +26,14 @@ import {
   findFirstVisibleSegmentIndex,
   findContainingSegmentIndex,
   formatTimestampAsLocalDate,
+  getSteppedVideoTime,
   getAvailableDatesForSegments,
   getClippedSegmentHourRange,
   getLocalDayBounds,
   getTimelineDayLengthHours,
   localClockTimeToTimestamp,
   panTimelineRange,
+  resolveActiveSegmentIndex,
   timelineOffsetToTimestamp,
   timestampToTimelineOffset,
   zoomTimelineRange
@@ -47,6 +49,18 @@ function timelineHourToTimestamp(hour, selectedDate) {
 // Convert a Unix timestamp to an elapsed timeline offset for the selected local day.
 function timestampToTimelineHour(timestamp, selectedDate = null) {
   return timestampToTimelineOffset(timestamp, selectedDate);
+}
+
+function isEditableKeyboardTarget(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  const tagName = target.tagName;
+  return target.isContentEditable ||
+    tagName === 'INPUT' ||
+    tagName === 'TEXTAREA' ||
+    tagName === 'SELECT';
 }
 
 // Global timeline state for child components
@@ -190,6 +204,7 @@ function TimelineHelp({ idsMode }) {
           <li>Click on the timeline to position the cursor at a specific time</li>
           <li>Drag the playhead to navigate precisely</li>
           <li>Click a segment (coloured bar) to play that recording</li>
+          <li>Use <strong>Left</strong> and <strong>Right</strong> arrow keys to jump between recordings; click the video to switch arrow keys to 1-second seeking</li>
           <li>Use the green play button to start playback from the current cursor position</li>
           <li>Use the <strong>Fit</strong>, <strong>+</strong> and <strong>−</strong> buttons or <strong>Ctrl/Cmd + mouse wheel</strong> to zoom the timeline</li>
           <li>Pan left/right at the current zoom level with <strong>Shift + mouse wheel</strong> or a horizontal trackpad scroll gesture</li>
@@ -220,6 +235,7 @@ export function TimelinePage() {
   const [idsSegmentInfo, setIdsSegmentInfo] = useState(null);  // metadata from IDs endpoint
   const [idsTimelineSegments, setIdsTimelineSegments] = useState([]);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [keyboardNavigationMode, setKeyboardNavigationMode] = useState('broad');
 
   // Refs
   const timelineContainerRef = useRef(null);
@@ -233,6 +249,114 @@ export function TimelinePage() {
   useEffect(() => {
     selectedDateRef.current = selectedDate;
   }, [selectedDate]);
+
+  const jumpToAdjacentSegment = useCallback((direction) => {
+    const activeIndex = resolveActiveSegmentIndex(
+      timelineState.timelineSegments,
+      timelineState.currentSegmentIndex,
+      timelineState.currentTime
+    );
+
+    if (activeIndex === -1) {
+      return false;
+    }
+
+    const targetIndex = activeIndex + direction;
+    const targetSegment = timelineState.timelineSegments?.[targetIndex];
+    if (!targetSegment) {
+      return true;
+    }
+
+    timelineState.setState({
+      currentSegmentIndex: targetIndex,
+      currentTime: targetSegment.start_timestamp,
+      prevCurrentTime: timelineState.currentTime,
+      isPlaying: timelineState.isPlaying,
+      forceReload: true
+    });
+    return true;
+  }, []);
+
+  const seekCurrentVideo = useCallback((directionSeconds) => {
+    const videoPlayer = videoElementRef.current;
+    if (!(videoPlayer instanceof HTMLVideoElement)) {
+      return false;
+    }
+
+    const activeIndex = resolveActiveSegmentIndex(
+      timelineState.timelineSegments,
+      timelineState.currentSegmentIndex,
+      timelineState.currentTime
+    );
+    const activeSegment = timelineState.timelineSegments?.[activeIndex];
+    if (!activeSegment) {
+      return false;
+    }
+
+    const fallbackDuration = Math.max(activeSegment.end_timestamp - activeSegment.start_timestamp, 0);
+    const effectiveDuration = Number.isFinite(videoPlayer.duration) && videoPlayer.duration > 0
+      ? videoPlayer.duration
+      : fallbackDuration;
+    const nextTime = getSteppedVideoTime(videoPlayer.currentTime, directionSeconds, effectiveDuration);
+
+    try {
+      videoPlayer.currentTime = nextTime;
+    } catch (error) {
+      console.warn('TimelinePage: unable to seek current video from keyboard navigation', error);
+      return false;
+    }
+
+    timelineState.setState({
+      currentSegmentIndex: activeIndex,
+      currentTime: activeSegment.start_timestamp + nextTime,
+      prevCurrentTime: timelineState.currentTime,
+      isPlaying: timelineState.isPlaying
+    });
+    return true;
+  }, []);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const nextMode = target?.closest('#video-player') ? 'fine' : 'broad';
+      setKeyboardNavigationMode((prevMode) => prevMode === nextMode ? prevMode : nextMode);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+        return;
+      }
+
+      if (isEditableKeyboardTarget(event.target)) {
+        return;
+      }
+
+      const direction = event.key === 'ArrowLeft' ? -1 : 1;
+      const handled = keyboardNavigationMode === 'fine'
+        ? seekCurrentVideo(direction)
+        : jumpToAdjacentSegment(direction);
+
+      if (handled) {
+        event.preventDefault();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [jumpToAdjacentSegment, keyboardNavigationMode, seekCurrentVideo]);
 
   useEffect(() => {
     const container = timelineContainerRef.current;
@@ -810,6 +934,16 @@ export function TimelinePage() {
         {/* Playback controls (includes time display) */}
         <TimelineControls />
 
+        <div className="mb-2 flex justify-end">
+          <span
+            data-testid="timeline-keyboard-nav-mode"
+            className="rounded border border-border bg-secondary px-2 py-1 text-[11px] text-muted-foreground"
+            title="Click the video to switch arrow keys to 1-second seeking. Click elsewhere to jump between recordings again."
+          >
+            Arrow keys: {keyboardNavigationMode === 'fine' ? 'seek ±1s' : 'jump recordings'}
+          </span>
+        </div>
+
         {/* Timeline */}
         <div
           id="timeline-container"
@@ -822,7 +956,7 @@ export function TimelinePage() {
 
           {/* Inline hint */}
           <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
-            Click segment to play · Drag playhead to seek · Shift+wheel pan · Ctrl/Cmd+wheel zoom
+            Click video for 1s arrow-key seeking · Click timeline for recording-to-recording arrows · Shift+wheel pan · Ctrl/Cmd+wheel zoom
           </div>
         </div>
       </>
