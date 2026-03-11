@@ -26,7 +26,7 @@ cd lightNVR
 # Initialize submodules (required for go2rtc build)
 git submodule update --init --recursive
 
-# Start the container (first run will build the image)
+# Start the container (first run will build the image and pull the latest base layers)
 docker compose up -d
 
 # View logs
@@ -524,7 +524,7 @@ cd lightNVR
 git submodule update --init --recursive
 
 # Build image
-docker build -t lightnvr:local .
+docker build --pull -t lightnvr:local .
 
 # Run locally built image
 docker run -d \

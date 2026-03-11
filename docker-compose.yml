@@ -1,8 +1,8 @@
-version: '3.8'
-
 services:
   lightnvr:
-    build: .
+    build:
+      context: .
+      pull: true
     container_name: lightnvr
     restart: unless-stopped
     ports:

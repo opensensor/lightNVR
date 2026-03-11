@@ -1,5 +1,11 @@
 # Stage 1: Build image
+ARG SQLITE_YEAR=2026
+ARG SQLITE_AUTOCONF_VERSION=3520000
+
 FROM debian:sid-slim AS builder
+
+ARG SQLITE_YEAR
+ARG SQLITE_AUTOCONF_VERSION
 
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
@@ -9,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libcurl4-openssl-dev sqlite3 libsqlite3-dev \
+    libcurl4-openssl-dev \
     libmbedtls-dev curl wget ca-certificates gpg libcjson-dev \
     libmosquitto-dev libuv1-dev libllhttp-dev \
     nodejs npm libsimdjson30 \
@@ -19,6 +25,16 @@ RUN apt-get update && apt-get install -y \
     npm --version && \
     go version && \
     rm -rf /var/lib/apt/lists/*
+
+# Build upstream SQLite because Debian sid can lag the latest SQLite security fixes
+RUN cd /tmp && \
+    wget -q "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
+    tar -xzf "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
+    cd "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}" && \
+    ./configure --prefix=/usr --disable-static && \
+    make -j"$(nproc)" && \
+    make install && \
+    sqlite3 --version
 
 # Fetch external dependencies
 RUN mkdir -p /opt/external && \
@@ -36,15 +52,16 @@ COPY . .
 # Create pkg-config files for MbedTLS with architecture-specific paths
 RUN mkdir -p /usr/lib/pkgconfig && \
     ARCH=$(uname -m) && \
+    MBEDTLS_VERSION=$(dpkg-query -W -f='${Version}' libmbedtls-dev | cut -d- -f1) && \
     case $ARCH in \
         x86_64) LIB_DIR="/usr/lib/x86_64-linux-gnu" ;; \
         aarch64) LIB_DIR="/usr/lib/aarch64-linux-gnu" ;; \
         armv7l) LIB_DIR="/usr/lib/arm-linux-gnueabihf" ;; \
         *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
     esac && \
-    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
-    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
-    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: 2.28.0\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
+    echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
 # Build go2rtc from local submodule (AlexxIT/go2rtc v1.9.14)
@@ -115,6 +132,9 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
 # Stage 2: Minimal runtime image
 FROM debian:sid-slim AS runtime
 
+ARG SQLITE_YEAR
+ARG SQLITE_AUTOCONF_VERSION
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install only necessary runtime dependencies
@@ -123,7 +143,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libavcodec62 libavformat62 libavutil60 libswscale9 \
-    libcurl4t64 libmbedtls21 libmbedcrypto16 sqlite3 procps curl ca-certificates \
+    libcurl4t64 libmbedtls21 libmbedcrypto16 procps curl ca-certificates \
     libmosquitto1 libuv1t64 libllhttp9.3 && \
     rm -rf /var/lib/apt/lists/*
 
@@ -141,6 +161,10 @@ RUN mkdir -p \
 # Copy binaries from builder
 COPY --from=builder /bin/lightnvr /bin/lightnvr
 COPY --from=builder /bin/go2rtc /bin/go2rtc
+COPY --from=builder /usr/bin/sqlite3 /usr/bin/sqlite3
+
+# Copy latest upstream SQLite shared library built in the builder stage
+COPY --from=builder /usr/lib/libsqlite3.so* /usr/lib/
 
 # Copy SOD libraries
 COPY --from=builder /lib/libsod.so.1.1.9 /lib/libsod.so.1.1.9

@@ -1,15 +1,32 @@
 # Stage 1: Build image
+ARG SQLITE_YEAR=2026
+ARG SQLITE_AUTOCONF_VERSION=3520000
+
 FROM alpine:latest AS builder
+
+ARG SQLITE_YEAR
+ARG SQLITE_AUTOCONF_VERSION
 
 RUN apk update && apk add --no-cache \
     git cmake build-base pkgconfig \
-    ffmpeg-dev sqlite-dev \
+    ffmpeg-dev \
     curl-dev \
-    mbedtls2-dev \
+    mbedtls-dev \
     cjson-dev \
     mosquitto-dev \
     libuv-dev llhttp-dev \
+    wget ca-certificates \
     bash
+
+# Build upstream SQLite because Alpine stable can lag the latest SQLite security fixes
+RUN cd /tmp && \
+    wget -q "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
+    tar -xzf "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
+    cd "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}" && \
+    ./configure --prefix=/usr --disable-static && \
+    make -j"$(nproc)" && \
+    make install && \
+    sqlite3 --version
 
 # Fetch external dependencies
 RUN mkdir -p /opt/external && \
@@ -40,11 +57,10 @@ FROM alpine:latest AS final
 # Install runtime dependencies
 RUN apk update && apk add --no-cache \
     ffmpeg-libavformat \
-    sqlite-libs \
     ffmpeg-libavcodec \
     ffmpeg-libswscale \
     libcurl \
-    mbedtls2 \
+    mbedtls \
     cjson \
     mosquitto-libs \
     libuv llhttp
@@ -55,6 +71,8 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
 
 # Copy compiled binary and config files from builder stage
 COPY --from=builder /bin/lightnvr /bin/lightnvr
+COPY --from=builder /usr/bin/sqlite3 /usr/bin/sqlite3
+COPY --from=builder /usr/lib/libsqlite3.so* /usr/lib/
 COPY --from=builder /etc/lightnvr /etc/lightnvr
 COPY --from=builder /var/lib/lightnvr /var/lib/lightnvr
 COPY --from=builder /var/log/lightnvr /var/log/lightnvr
