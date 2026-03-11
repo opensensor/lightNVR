@@ -7,6 +7,12 @@ const LOCALE_STORAGE_KEY = 'lightnvr-locale-preference';
 const FALLBACK_MANIFEST = {
   locales: [
     { code: 'en', name: 'English', nativeName: 'English' },
+    { code: 'es', name: 'Spanish', nativeName: 'Español' },
+    { code: 'de', name: 'German', nativeName: 'Deutsch' },
+    { code: 'fr', name: 'French', nativeName: 'Français' },
+    { code: 'it', name: 'Italian', nativeName: 'Italiano' },
+    { code: 'ja', name: 'Japanese', nativeName: '日本語' },
+    { code: 'zh', name: 'Chinese', nativeName: '中文' },
     { code: 'pt-BR', name: 'Portuguese (Brazil)', nativeName: 'Português (Brasil)' },
   ],
 };
@@ -18,6 +24,7 @@ let currentLocale = DEFAULT_LOCALE;
 let localePreference = null;
 let translations = {};
 let languageChangeListenerRegistered = false;
+let translationsCache = new Map();
 
 const listeners = new Set();
 
@@ -104,17 +111,32 @@ async function loadManifest() {
   return manifestPromise;
 }
 
+async function fetchTranslations(locale) {
+  if (translationsCache.has(locale)) {
+    return translationsCache.get(locale);
+  }
+
+  const request = fetch(getLocalesUrl(`${locale}.json`), { cache: 'no-cache' })
+    .then((response) => response.ok ? response.json() : null)
+    .catch(() => null);
+
+  translationsCache.set(locale, request);
+  return request;
+}
+
 async function loadTranslations(locale) {
-  const response = await fetch(getLocalesUrl(`${locale}.json`), { cache: 'no-cache' });
-  if (response.ok) {
-    return response.json();
+  const fallbackTranslations = await fetchTranslations(DEFAULT_LOCALE) || {};
+
+  if (locale === DEFAULT_LOCALE) {
+    return fallbackTranslations;
   }
 
-  if (locale !== DEFAULT_LOCALE) {
-    return loadTranslations(DEFAULT_LOCALE);
+  const localizedTranslations = await fetchTranslations(locale);
+  if (localizedTranslations) {
+    return { ...fallbackTranslations, ...localizedTranslations };
   }
 
-  return {};
+  return fallbackTranslations;
 }
 
 function notifyListeners() {
@@ -236,5 +258,6 @@ export function __resetI18nStateForTests() {
   localePreference = null;
   translations = {};
   languageChangeListenerRegistered = false;
+  translationsCache = new Map();
   listeners.clear();
 }

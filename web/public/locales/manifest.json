@@ -6,6 +6,36 @@
       "nativeName": "English"
     },
     {
+      "code": "es",
+      "name": "Spanish",
+      "nativeName": "Español"
+    },
+    {
+      "code": "de",
+      "name": "German",
+      "nativeName": "Deutsch"
+    },
+    {
+      "code": "fr",
+      "name": "French",
+      "nativeName": "Français"
+    },
+    {
+      "code": "it",
+      "name": "Italian",
+      "nativeName": "Italiano"
+    },
+    {
+      "code": "ja",
+      "name": "Japanese",
+      "nativeName": "日本語"
+    },
+    {
+      "code": "zh",
+      "name": "Chinese",
+      "nativeName": "中文"
+    },
+    {
       "code": "pt-BR",
       "name": "Portuguese (Brazil)",
       "nativeName": "Português (Brasil)"

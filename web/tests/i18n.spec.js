@@ -54,6 +54,8 @@ describe('i18n locale selection', () => {
         return Promise.resolve(createJsonResponse({
           locales: [
             { code: 'en', nativeName: 'English' },
+            { code: 'es', nativeName: 'Español' },
+            { code: 'de', nativeName: 'Deutsch' },
             { code: 'pt-BR', nativeName: 'Português (Brasil)' },
           ],
         }));
@@ -73,6 +75,12 @@ describe('i18n locale selection', () => {
         }));
       }
 
+      if (url.endsWith('/locales/es.json')) {
+        return Promise.resolve(createJsonResponse({
+          'nav.settings': 'Configuración',
+        }));
+      }
+
       return Promise.resolve({ ok: false, json: async () => ({}) });
     });
   });
@@ -89,7 +97,7 @@ describe('i18n locale selection', () => {
   test('matches supported locales exactly and by base language', () => {
     expect(resolveSupportedLocale('pt-BR')).toBe('pt-BR');
     expect(resolveSupportedLocale('pt-PT')).toBe('pt-BR');
-    expect(resolveSupportedLocale('de-DE')).toBe('en');
+    expect(resolveSupportedLocale('de-DE')).toBe('de');
   });
 
   test('defaults to browser preference on initialization', async () => {
@@ -117,5 +125,15 @@ describe('i18n locale selection', () => {
     expect(getLocale()).toBe('pt-BR');
     expect(getLocalePreference()).toBeNull();
     expect(localStorage.removeItem).toHaveBeenCalledWith('lightnvr-locale-preference');
+  });
+
+  test('merges partial locale catalogs with English fallback strings', async () => {
+    await initI18n();
+    await setLocalePreference('es-MX');
+
+    expect(getLocale()).toBe('es');
+    expect(getLocalePreference()).toBe('es');
+    expect(t('nav.settings')).toBe('Configuración');
+    expect(t('login.rememberDevice', { days: 30 })).toBe('Remember this device for 30 days');
   });
 });
