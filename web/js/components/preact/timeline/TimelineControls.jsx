@@ -17,12 +17,14 @@ import {
   zoomTimelineRange
 } from './timelineUtils.js';
 import { nowMilliseconds } from '../../../utils/date-utils.js';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * TimelineControls component
  * @returns {JSX.Element} TimelineControls component
  */
 export function TimelineControls() {
+  const { t } = useI18n();
   const [isPlaying, setIsPlaying] = useState(false);
   const [canZoomIn, setCanZoomIn] = useState(true);
   const [canZoomOut, setCanZoomOut] = useState(true);
@@ -102,7 +104,7 @@ export function TimelineControls() {
   const resumePlayback = () => {
     // If no segments, show message and return
     if (!timelineState.timelineSegments || timelineState.timelineSegments.length === 0) {
-      showStatusMessage('No recordings to play', 'warning');
+      showStatusMessage(t('timeline.noRecordingsToPlay'), 'warning');
       return;
     }
 
@@ -349,7 +351,7 @@ export function TimelineControls() {
                   return;
                 }
                 console.error('Error playing video:', e);
-                showStatusMessage('Error playing video: ' + e.message, 'error');
+                showStatusMessage(t('timeline.errorPlayingVideo', { message: e.message }), 'error');
               });
             }
           }, 100);
@@ -370,7 +372,7 @@ export function TimelineControls() {
       videoElement.load();
     } else {
       console.error('TimelineControls: No video element found');
-      showStatusMessage('Error: Video player not found', 'error');
+      showStatusMessage(t('timeline.videoPlayerNotFound'), 'error');
     }
   };
 
@@ -427,7 +429,7 @@ export function TimelineControls() {
   const jumpToAdjacentSegment = (direction) => {
     const segments = timelineState.timelineSegments;
     if (!Array.isArray(segments) || segments.length === 0) {
-      showStatusMessage('No recordings to navigate', 'warning');
+      showStatusMessage(t('timeline.noRecordingsToNavigate'), 'warning');
       return;
     }
 
@@ -437,7 +439,7 @@ export function TimelineControls() {
       timelineState.currentTime
     );
     if (currentIndex === -1) {
-      showStatusMessage('No active recording selected', 'warning');
+      showStatusMessage(t('timeline.noActiveRecordingSelected'), 'warning');
       return;
     }
 
@@ -476,12 +478,12 @@ export function TimelineControls() {
 
       timelineState.setState({ currentRecordingProtected: newState });
       showStatusMessage(
-        newState ? 'Recording protected from automatic deletion' : 'Recording protection removed',
+        newState ? t('recordings.recordingProtected') : t('recordings.recordingProtectionRemoved'),
         'success'
       );
     } catch (error) {
       console.error('Error toggling protection:', error);
-      showStatusMessage(`Error: ${error.message}`, 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
     }
   };
 
@@ -496,7 +498,7 @@ export function TimelineControls() {
           id="play-button"
           className="w-7 h-7 rounded-full btn-success flex items-center justify-center focus:outline-none transition-colors shadow-sm"
           onClick={togglePlayback}
-          title={isPlaying ? 'Pause' : 'Play from current position'}
+          title={isPlaying ? t('timeline.pause') : t('timeline.playFromCurrentPosition')}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             {isPlaying ? (
@@ -509,7 +511,7 @@ export function TimelineControls() {
             )}
           </svg>
         </button>
-        <span className="text-[11px] text-muted-foreground">Play from cursor</span>
+        <span className="text-[11px] text-muted-foreground">{t('timeline.playFromCursor')}</span>
       </div>
 
       {/* Current time display */}
@@ -518,8 +520,8 @@ export function TimelineControls() {
           type="button"
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={() => jumpToAdjacentSegment(-1)}
-          title="Previous recording"
-          aria-label="Previous recording"
+          title={t('timeline.previousRecording')}
+          aria-label={t('timeline.previousRecording')}
           disabled={!canJumpBackward}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -539,8 +541,8 @@ export function TimelineControls() {
                 : 'border-border bg-secondary text-secondary-foreground hover:bg-secondary/80'
             }`}
             onClick={handleToggleProtection}
-            title={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
-            aria-label={isProtected ? 'Unprotect Recording' : 'Protect Recording'}
+            title={isProtected ? t('recordings.unprotect') : t('recordings.protect')}
+            aria-label={isProtected ? t('recordings.unprotect') : t('recordings.protect')}
             aria-pressed={isProtected}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -554,8 +556,8 @@ export function TimelineControls() {
               type="button"
               className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
               onClick={() => setShowTagsOverlay(!showTagsOverlay)}
-              title="Manage Recording Tags"
-              aria-label={recordingTags.length > 0 ? `Manage Recording Tags (${recordingTags.length})` : 'Manage Recording Tags'}
+              title={t('recordings.manageTags')}
+              aria-label={recordingTags.length > 0 ? t('timeline.manageRecordingTagsCount', { count: recordingTags.length }) : t('recordings.manageTags')}
             >
               <TagIcon className="w-3.5 h-3.5" />
               {recordingTags.length > 0 && (
@@ -577,8 +579,8 @@ export function TimelineControls() {
           type="button"
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={() => jumpToAdjacentSegment(1)}
-          title="Next recording"
-          aria-label="Next recording"
+          title={t('timeline.nextRecording')}
+          aria-label={t('timeline.nextRecording')}
           disabled={!canJumpForward}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -591,15 +593,15 @@ export function TimelineControls() {
         <button
           className="px-2 h-6 rounded text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={fitToSegments}
-          title="Fit to recordings"
+          title={t('timeline.fitToRecordings')}
         >
-          Fit
+          {t('timeline.fit')}
         </button>
         <button
           id="zoom-out-button"
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomOut}
-          title="Zoom Out (Show more time)"
+          title={t('timeline.zoomOut')}
           disabled={!canZoomOut}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -610,7 +612,7 @@ export function TimelineControls() {
           id="zoom-in-button"
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomIn}
-          title="Zoom In (Show less time)"
+          title={t('timeline.zoomIn')}
           disabled={!canZoomIn}
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

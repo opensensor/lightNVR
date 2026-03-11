@@ -13,6 +13,7 @@ import { MSEVideoCell } from './MSEVideoCell.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
+import { useI18n } from '../../i18n.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -34,6 +35,7 @@ function legacyLayoutToColsRowsHLS(layout) {
  * @returns {JSX.Element} LiveView component
  */
 export function LiveView({isWebRTCDisabled}) {
+  const { t } = useI18n();
   // Use the snapshot manager hook
   useSnapshotManager();
 
@@ -285,7 +287,7 @@ export function LiveView({isWebRTCDisabled}) {
           }
         } catch (error) {
           console.error('Error processing streams:', error);
-          showStatusMessage('Error processing streams: ' + error.message);
+          showStatusMessage(t('live.errorProcessingStreams', { message: error.message }));
         }
       };
 
@@ -424,7 +426,7 @@ export function LiveView({isWebRTCDisabled}) {
       console.log('Entering fullscreen mode for video cell');
       cellElement.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
-        showStatusMessage(`Could not enable fullscreen mode: ${err.message}`);
+        showStatusMessage(t('live.couldNotEnableFullscreen', { message: err.message }));
       });
     } else {
       console.log('Exiting fullscreen mode');
@@ -516,14 +518,14 @@ export function LiveView({isWebRTCDisabled}) {
         <div className="controls flex items-center space-x-2">
           {availableTags.length > 0 && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="tag-filter" className="text-sm whitespace-nowrap">Tag:</label>
+              <label htmlFor="tag-filter" className="text-sm whitespace-nowrap">{t('recordings.tags')}:</label>
               <select
                 id="tag-filter"
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
                 value={tagFilter}
                 onChange={(e) => { setTagFilter(e.target.value); setCurrentPage(0); }}
               >
-                <option value="">All Tags</option>
+                <option value="">{t('live.allTags')}</option>
                 {availableTags.map(t => <option key={t} value={t}>#{t}</option>)}
               </select>
             </div>
@@ -531,7 +533,7 @@ export function LiveView({isWebRTCDisabled}) {
 
           {/* Grid layout picker */}
           <div className="flex items-center gap-1.5">
-            <label className="text-sm whitespace-nowrap">Layout:</label>
+            <label className="text-sm whitespace-nowrap">{t('live.layout')}:</label>
             <GridPicker
               cols={cols}
               rows={rows}
@@ -542,7 +544,7 @@ export function LiveView({isWebRTCDisabled}) {
 
           {isSingleStream && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="stream-selector" className="text-sm whitespace-nowrap">Stream:</label>
+              <label htmlFor="stream-selector" className="text-sm whitespace-nowrap">{t('nav.streams')}:</label>
               <select
                 id="stream-selector"
                 className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
@@ -623,7 +625,7 @@ export function LiveView({isWebRTCDisabled}) {
             <button
               className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               onClick={resetOrder}
-              title="Reset camera order to default"
+              title={t('live.resetCameraOrder')}
             >
               {/* Reset / circular-arrow icon */}
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -638,7 +640,7 @@ export function LiveView({isWebRTCDisabled}) {
             id="fullscreen-btn"
             className="p-2 rounded-full bg-secondary hover:bg-secondary/80 text-secondary-foreground focus:outline-none"
             onClick={() => toggleFullscreen()}
-            title="Toggle Fullscreen"
+            title={t('timeline.fullscreen')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -660,7 +662,7 @@ export function LiveView({isWebRTCDisabled}) {
                 <div className="flex flex-col items-center justify-center py-8">
                 <div
                   className="inline-block animate-spin rounded-full border-4 border-secondary border-t-primary w-16 h-16"></div>
-                <p className="mt-4 text-muted-foreground">Loading streams...</p>
+                <p className="mt-4 text-muted-foreground">{t('live.loadingStreams')}</p>
               </div>
             </div>
           ) : isLoading ? (
@@ -675,7 +677,7 @@ export function LiveView({isWebRTCDisabled}) {
               <div className="flex flex-col items-center justify-center py-8">
                 <div
                   className="inline-block animate-spin rounded-full border-4 border-secondary border-t-primary w-16 h-16"></div>
-                <p className="mt-4 text-muted-foreground">Loading streams...</p>
+                <p className="mt-4 text-muted-foreground">{t('live.loadingStreams')}</p>
               </div>
             </div>
           ) : (streamsError) ? (
@@ -690,8 +692,8 @@ export function LiveView({isWebRTCDisabled}) {
             </div>
           ) : streams.length === 0 ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-6 text-muted-foreground text-lg">No streams configured</p>
-              <a href="streams.html" className="btn-primary">Configure Streams</a>
+              <p className="mb-6 text-muted-foreground text-lg">{t('live.noStreamsConfigured')}</p>
+              <a href="streams.html" className="btn-primary">{t('live.configureStreams')}</a>
             </div>
           ) : (
             // Render video cells using MSEVideoCell (when go2rtc enabled) or HLSVideoCell (fallback)

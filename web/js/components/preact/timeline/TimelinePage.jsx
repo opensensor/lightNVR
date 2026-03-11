@@ -14,6 +14,7 @@ import { BatchDownloadModal } from '../BatchDownloadModal.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { useQuery } from '../../../query-client.js';
+import { useI18n } from '../../../i18n.js';
 import {
   currentDateInputValue,
   formatDateForInput,
@@ -183,7 +184,7 @@ function updateUrlParams(stream, date) {
 /**
  * Collapsible help panel — replaces the old large static instructions block.
  */
-function TimelineHelp({ idsMode }) {
+function TimelineHelp({ idsMode, t }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-3">
@@ -195,20 +196,20 @@ function TimelineHelp({ idsMode }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
         </svg>
-        {open ? 'Hide help' : 'How to use the timeline'}
+        {open ? t('timeline.hideHelp') : t('timeline.howToUseTimeline')}
       </button>
       {open && (
         <ul className="mt-1.5 ml-5 text-xs text-muted-foreground list-disc space-y-0.5">
-          {!idsMode && <li>Select a stream and date — recordings load automatically</li>}
-          {idsMode && <li>Use <strong>Refine Selections</strong> to go back and adjust your selection</li>}
-          <li>Click on the timeline to position the cursor at a specific time</li>
-          <li>Drag the playhead to navigate precisely</li>
-          <li>Click a segment (coloured bar) to play that recording</li>
-          <li>Use <strong>Left</strong> and <strong>Right</strong> arrow keys to jump between recordings; click the video to switch arrow keys to 1-second seeking</li>
-          <li>Use the green play button to start playback from the current cursor position</li>
-          <li>Use the <strong>Fit</strong>, <strong>+</strong> and <strong>−</strong> buttons or <strong>Ctrl/Cmd + mouse wheel</strong> to zoom the timeline</li>
-          <li>Pan left/right at the current zoom level with <strong>Shift + mouse wheel</strong> or a horizontal trackpad scroll gesture</li>
-          <li>Use <strong>Snapshot</strong>, <strong>Download</strong>, <strong>Protect</strong> or <strong>Delete</strong> on the currently playing recording</li>
+          {!idsMode && <li>{t('timeline.help.selectStreamAndDate')}</li>}
+          {idsMode && <li>{t('timeline.help.refineSelections')}</li>}
+          <li>{t('timeline.help.positionCursor')}</li>
+          <li>{t('timeline.help.dragPlayhead')}</li>
+          <li>{t('timeline.help.clickSegment')}</li>
+          <li>{t('timeline.help.arrowKeys')}</li>
+          <li>{t('timeline.help.playFromCursor')}</li>
+          <li>{t('timeline.help.zoomControls')}</li>
+          <li>{t('timeline.help.panControls')}</li>
+          <li>{t('timeline.help.actions')}</li>
         </ul>
       )}
     </div>
@@ -219,6 +220,7 @@ function TimelineHelp({ idsMode }) {
  * TimelinePage component
  */
 export function TimelinePage() {
+  const { t } = useI18n();
   // Get initial values from URL parameters
   const urlParams = parseUrlParams();
 
@@ -938,9 +940,9 @@ export function TimelinePage() {
           <span
             data-testid="timeline-keyboard-nav-mode"
             className="rounded border border-border bg-secondary px-2 py-1 text-[11px] text-muted-foreground"
-            title="Click the video to switch arrow keys to 1-second seeking. Click elsewhere to jump between recordings again."
+            title={t('timeline.arrowKeysHelpTitle')}
           >
-            Arrow keys: {keyboardNavigationMode === 'fine' ? 'seek ±1s' : 'jump recordings'}
+            {t('timeline.arrowKeys')}: {keyboardNavigationMode === 'fine' ? t('timeline.seekOneSecond') : t('timeline.jumpRecordings')}
           </span>
         </div>
 
@@ -956,7 +958,7 @@ export function TimelinePage() {
 
           {/* Inline hint */}
           <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
-            Click video for 1s arrow-key seeking · Click timeline for recording-to-recording arrows · Shift+wheel pan · Ctrl/Cmd+wheel zoom
+            {t('timeline.inlineHint')}
           </div>
         </div>
       </>
@@ -970,7 +972,7 @@ export function TimelinePage() {
     <div className="timeline-page">
       <div className="flex items-center mb-4">
         <h1 className="text-2xl font-bold">
-          {idsMode ? 'Selected Recordings Timeline' : 'Timeline Playback'}
+          {idsMode ? t('timeline.selectedRecordingsTimeline') : t('timeline.timelinePlayback')}
         </h1>
         <div className="ml-4 flex">
           <a
@@ -984,7 +986,7 @@ export function TimelinePage() {
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
             onClick={() => { try { localStorage.setItem('recordings_view_mode', 'table'); } catch(e) {} }}
           >
-            Table
+            {t('recordings.table')}
           </a>
           <a
             href="recordings.html"
@@ -997,7 +999,7 @@ export function TimelinePage() {
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
             onClick={() => { try { localStorage.setItem('recordings_view_mode', 'grid'); } catch(e) {} }}
           >
-            Grid
+            {t('recordings.grid')}
           </a>
           <a
             href="timeline.html"
@@ -1009,7 +1011,7 @@ export function TimelinePage() {
             onMouseOver={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'; }}
             onMouseOut={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'; }}
           >
-            Timeline
+            {t('nav.timeline')}
           </a>
         </div>
       </div>
@@ -1018,8 +1020,8 @@ export function TimelinePage() {
         /* IDs mode: compact info bar */
         <div className="flex flex-wrap items-center gap-3 mb-3 px-3 py-2 bg-secondary rounded-lg text-sm">
           <span className="font-medium">
-            {segments.length} recording{segments.length !== 1 ? 's' : ''}
-            {idsSegmentInfo?.multi_stream && ` · ${[...new Set(segments.map(s => s.stream))].length} stream(s)`}
+            {t('timeline.recordingsCount', { count: segments.length })}
+            {idsSegmentInfo?.multi_stream && ` · ${t('timeline.streamsCount', { count: [...new Set(segments.map(s => s.stream))].length })}`}
           </span>
           {idsSegmentInfo && (
             <span className="text-xs text-muted-foreground">
@@ -1028,13 +1030,13 @@ export function TimelinePage() {
           )}
           {idsAvailableDates.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-background/70 px-2 py-1">
-              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Active day</span>
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('timeline.activeDay')}</span>
               <button
                 type="button"
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50"
                 disabled={idsSelectedDayIndex <= 0}
                 onClick={() => jumpIdsDay(-1)}
-                title="Previous selected day"
+                title={t('timeline.previousSelectedDay')}
               >
                 ←
               </button>
@@ -1045,7 +1047,7 @@ export function TimelinePage() {
               >
                 {idsAvailableDates.map((date, index) => (
                   <option key={date} value={date}>
-                    {`Day ${index + 1} · ${formatDisplayDate(date)}`}
+                    {t('timeline.dayNumberWithDate', { number: index + 1, date: formatDisplayDate(date) })}
                   </option>
                 ))}
               </select>
@@ -1054,26 +1056,26 @@ export function TimelinePage() {
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50"
                 disabled={idsSelectedDayIndex === -1 || idsSelectedDayIndex >= idsAvailableDates.length - 1}
                 onClick={() => jumpIdsDay(1)}
-                title="Next selected day"
+                title={t('timeline.nextSelectedDay')}
               >
                 →
               </button>
               <span className="text-xs text-muted-foreground">
-                {idsSelectedDayIndex === -1 ? '' : `${idsSelectedDayIndex + 1} of ${idsAvailableDates.length}`}
-                {idsVisibleSegmentCount > 0 && ` · ${idsVisibleSegmentCount} visible`}
+                {idsSelectedDayIndex === -1 ? '' : t('timeline.dayIndexOfTotal', { index: idsSelectedDayIndex + 1, total: idsAvailableDates.length })}
+                {idsVisibleSegmentCount > 0 && ` · ${t('timeline.visibleCount', { count: idsVisibleSegmentCount })}`}
               </span>
             </div>
           )}
           <div className="ml-auto flex gap-2">
             <a href={returnUrl || 'recordings.html'} className="btn-secondary text-xs px-2 py-1">
-              ← Refine Selections
+              ← {t('timeline.refineSelections')}
             </a>
             <button
               className="btn-primary text-xs px-2 py-1"
               onClick={() => setIsDownloadModalOpen(true)}
               disabled={selectedRecordingsForDownload.length === 0}
             >
-              ↓ Download All ({selectedRecordingsForDownload.length})
+              ↓ {t('timeline.downloadAll', { count: selectedRecordingsForDownload.length })}
             </button>
           </div>
         </div>
@@ -1081,32 +1083,32 @@ export function TimelinePage() {
         /* Normal mode: compact single-row stream + date selectors */
         <div className="flex flex-wrap items-end gap-3 mb-3">
           <div className="flex-grow min-w-[180px]">
-            <label htmlFor="stream-selector" className="block text-xs text-muted-foreground mb-1">Stream</label>
+            <label htmlFor="stream-selector" className="block text-xs text-muted-foreground mb-1">{t('nav.streams')}</label>
             <select
               id="stream-selector"
               className="w-full p-1.5 text-sm border border-border rounded bg-background text-foreground"
               value={selectedStream || ''}
               onChange={handleStreamChange}
             >
-              <option value="" disabled>Select a stream ({streamsList.length})</option>
+              <option value="" disabled>{t('timeline.selectStreamCount', { count: streamsList.length })}</option>
               {streamsList.map(stream => (
                 <option key={stream.name} value={stream.name}>{stream.name}</option>
               ))}
             </select>
           </div>
           <div className="min-w-[160px]">
-            <label className="block text-xs text-muted-foreground mb-1">Date</label>
+            <label className="block text-xs text-muted-foreground mb-1">{t('timeline.date')}</label>
             <CalendarPicker value={selectedDate} onChange={handleDateChange} />
           </div>
           <button
             className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1.5 rounded"
             onClick={() => refetchTimeline()}
-            title="Reload timeline data"
+            title={t('timeline.reloadTimelineData')}
           >
-            ↻ Reload
+            ↻ {t('common.refresh')}
           </button>
           {isLoadingTimeline && (
-            <span className="text-xs text-muted-foreground italic">Loading...</span>
+            <span className="text-xs text-muted-foreground italic">{t('common.loading')}</span>
           )}
         </div>
       )}
@@ -1122,7 +1124,7 @@ export function TimelinePage() {
       />
 
       {/* Compact help — collapsible, replaces the old large instructions block */}
-      <TimelineHelp idsMode={idsMode} />
+      <TimelineHelp idsMode={idsMode} t={t} />
     </div>
   );
 }

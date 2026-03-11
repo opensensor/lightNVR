@@ -6,12 +6,14 @@
 import { useState, useEffect } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * SpeedControls component
  * @returns {JSX.Element} SpeedControls component
  */
 export function SpeedControls() {
+  const { t } = useI18n();
   // Local state
   const [currentSpeed, setCurrentSpeed] = useState(1.0);
 
@@ -40,12 +42,12 @@ export function SpeedControls() {
     timelineState.setState({ playbackSpeed: speed });
 
     // Show status message
-    showStatusMessage(`Playback speed: ${speed}x`, 'info');
+    showStatusMessage(t('timeline.playbackSpeed', { speed }), 'info');
   };
 
   return (
     <div className="flex items-center gap-0.5">
-      <span className="text-[10px] text-muted-foreground mr-0.5">Speed</span>
+      <span className="text-[10px] text-muted-foreground mr-0.5">{t('timeline.speed')}</span>
       {speeds.map(speed => (
         <button
           key={`speed-${speed}`}

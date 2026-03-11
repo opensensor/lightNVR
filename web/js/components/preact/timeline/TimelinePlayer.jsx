@@ -10,6 +10,7 @@ import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
 import { formatFilenameTimestamp, formatLocalDateTime, toUnixSeconds } from '../../../utils/date-utils.js';
+import { useI18n } from '../../../i18n.js';
 
 // Timeout for cleaning up preloaded temporary video elements (in milliseconds).
 const PRELOAD_CLEANUP_TIMEOUT_MS = 15000;
@@ -21,6 +22,7 @@ const DETECTION_SCALE_BASE = 400; // Baseline display dimension (px) for detecti
  * @returns {JSX.Element} TimelinePlayer component
  */
 export function TimelinePlayer({ videoElementRef = null }) {
+  const { t } = useI18n();
   // Local state
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(-1);
   const [segments, setSegments] = useState([]);
@@ -270,7 +272,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
             return;
           }
           console.error('Error playing video:', error);
-          showStatusMessage('Error playing video: ' + error.message, 'error');
+          showStatusMessage(t('timeline.errorPlayingVideo', { message: error.message }), 'error');
         });
       }
 
@@ -826,11 +828,11 @@ export function TimelinePlayer({ videoElementRef = null }) {
       } else if (container.msRequestFullscreen) {
         container.msRequestFullscreen();
       } else {
-        showStatusMessage('Fullscreen mode is not supported in this browser.', 'warning');
+        showStatusMessage(t('timeline.fullscreenNotSupported'), 'warning');
       }
     } catch (error) {
       console.error('Error toggling fullscreen:', error);
-      showStatusMessage(`Could not toggle fullscreen mode: ${error.message}`, 'error');
+      showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: error.message }), 'error');
     }
   }, []);
 
@@ -843,8 +845,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
     if (!currentSegmentId) return;
     try {
       const response = await fetch(`/api/recordings/${currentSegmentId}`, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Failed to delete recording');
-      showStatusMessage('Recording deleted successfully', 'success');
+      if (!response.ok) throw new Error(t('timeline.failedToDeleteRecording'));
+      showStatusMessage(t('timeline.recordingDeletedSuccessfully'), 'success');
       setShowDeleteConfirm(false);
       setSegmentRecordingData(null);
       lastDetectionSegmentIdRef.current = null;
@@ -855,7 +857,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       }));
     } catch (error) {
       console.error('Error deleting recording:', error);
-      showStatusMessage(`Error: ${error.message}`, 'error');
+      showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
       setShowDeleteConfirm(false);
     }
   }, [currentSegmentId]);
@@ -865,7 +867,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
     if (!videoRef.current) return;
     const video = videoRef.current;
     if (!video.videoWidth || !video.videoHeight) {
-      showStatusMessage('Cannot take snapshot: Video not loaded', 'error');
+      showStatusMessage(t('timeline.cannotTakeSnapshotVideoNotLoaded'), 'error');
       return;
     }
     const canvas = document.createElement('canvas');
@@ -880,7 +882,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
     canvas.toBlob((blob) => {
       if (!blob) {
-        showStatusMessage('Failed to create snapshot', 'error');
+        showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
         return;
       }
       const blobUrl = URL.createObjectURL(blob);
@@ -946,8 +948,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
             className={`absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 text-white text-center p-4 ${currentSegmentIndex >= 0 && segments.length > 0 ? 'hidden' : ''}`}
           >
             <div>
-              <p className="mb-2">No valid segment selected.</p>
-              <p className="text-sm">Click on a segment in the timeline or use the play button to start playback.</p>
+              <p className="mb-2">{t('timeline.noValidSegmentSelected')}</p>
+              <p className="text-sm">{t('timeline.selectSegmentOrPlay')}</p>
             </div>
           </div>
         </div>
@@ -965,7 +967,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
             onChange={(e) => setDetectionOverlayEnabled(e.target.checked)}
           />
           <span className="text-[11px] text-foreground">
-            Detections{detections.length > 0 ? ` (${detections.length})` : ''}
+            {t('recordings.detections')}{detections.length > 0 ? ` (${detections.length})` : ''}
           </span>
         </label>
 
@@ -973,9 +975,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
           type="button"
           className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-[11px]"
           onClick={handleToggleFullscreen}
-          title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+          title={isFullscreen ? t('timeline.exitFullscreen') : t('timeline.enterFullscreen')}
         >
-          {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          {isFullscreen ? t('timeline.exitFullscreen') : t('timeline.fullscreen')}
         </button>
 
         {/* Action buttons — only when a segment is selected */}
@@ -984,23 +986,23 @@ export function TimelinePlayer({ videoElementRef = null }) {
             <button
               className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-[11px]"
               onClick={handleSnapshot}
-              title="Take Snapshot"
+              title={t('timeline.takeSnapshot')}
             >
-              📷 Snapshot
+              📷 {t('timeline.snapshot')}
             </button>
             <a
               className="px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-[11px]"
               href={`/api/recordings/download/${currentSegmentId}`}
               download
             >
-              ↓ Download
+              ↓ {t('recordings.download')}
             </a>
             <button
               className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-[11px]"
               onClick={() => setShowDeleteConfirm(true)}
-              title="Delete Recording"
+              title={t('timeline.deleteRecording')}
             >
-              🗑 Delete
+              🗑 {t('common.delete')}
             </button>
           </div>
         )}
@@ -1016,9 +1018,9 @@ export function TimelinePlayer({ videoElementRef = null }) {
         isOpen={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDeleteRecording}
-        title="Delete Recording"
-        message="Are you sure you want to delete this recording? This action cannot be undone."
-        confirmLabel="Delete"
+        title={t('timeline.deleteRecording')}
+        message={t('timeline.deleteRecordingConfirmation')}
+        confirmLabel={t('common.delete')}
       />
     </>
   );

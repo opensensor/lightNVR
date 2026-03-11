@@ -18,12 +18,14 @@ import {
   usePostMutation,
   fetchJSON
 } from '../../query-client.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * StreamsView component
  * @returns {JSX.Element} StreamsView component
  */
 export function StreamsView() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
 
   // User role state for permission-based UI
@@ -246,7 +248,7 @@ export function StreamsView() {
     },
     {
       onSuccess: () => {
-        showStatusMessage('Stream added successfully');
+        showStatusMessage(t('streams.streamAddedSuccessfully'));
         closeModal();
         // Invalidate and refetch streams data
         queryClient.invalidateQueries({ queryKey: ['streams'] });
@@ -257,7 +259,7 @@ export function StreamsView() {
           error.message.includes('Max streams limit reached');
 
         showStatusMessage(
-          isStreamLimitError ? error.message : `Error adding stream: ${error.message}`,
+          isStreamLimitError ? error.message : t('streams.errorAddingStream', { message: error.message }),
           'error',
           isStreamLimitError ? 9000 : 5000
         );
@@ -281,7 +283,7 @@ export function StreamsView() {
       });
     },
     onSuccess: (_data, variables) => {
-      showStatusMessage('Stream updated successfully');
+      showStatusMessage(t('streams.streamUpdatedSuccessfully'));
       // Evict per-stream cache so next open fetches fresh data
       if (variables?.streamName) {
         queryClient.invalidateQueries({ queryKey: ['stream-full', variables.streamName] });
@@ -295,7 +297,7 @@ export function StreamsView() {
       queryClient.invalidateQueries({ queryKey: ['streams'] });
     },
     onError: (error) => {
-      showStatusMessage(`Error updating stream: ${error.message}`, 'error', 5000);
+      showStatusMessage(t('streams.errorUpdatingStream', { message: error.message }), 'error', 5000);
     }
   });
 
@@ -324,17 +326,17 @@ export function StreamsView() {
     },
     {
       onMutate: () => {
-        showStatusMessage('Testing stream connection...');
+        showStatusMessage(t('streams.testingStreamConnection'));
       },
       onSuccess: (data) => {
         if (data.success) {
-          showStatusMessage('Stream connection successful!', 'success', 3000);
+          showStatusMessage(t('streams.streamConnectionSuccessful'), 'success', 3000);
         } else {
-          showStatusMessage(`Stream connection failed: ${data.message}`, 'error', 5000);
+          showStatusMessage(t('streams.streamConnectionFailed', { message: data.message }), 'error', 5000);
         }
       },
       onError: (error) => {
-        showStatusMessage(`Error testing stream: ${error.message}`, 'error', 5000);
+        showStatusMessage(t('streams.errorTestingStream', { message: error.message }), 'error', 5000);
       }
     }
   );
@@ -352,7 +354,7 @@ export function StreamsView() {
       });
     },
     onSuccess: () => {
-      showStatusMessage('Stream successfully deleted.');
+      showStatusMessage(t('streams.streamSuccessfullyDeleted'));
       // Invalidate and refetch streams data
       queryClient.invalidateQueries({ queryKey: ['streams'] })
         .then(() => {
@@ -361,7 +363,7 @@ export function StreamsView() {
         });
     },
     onError: (error) => {
-      showStatusMessage(`Error deleting stream: ${error.message}`, 'error', 5000);
+      showStatusMessage(t('streams.errorDeletingStream', { message: error.message }), 'error', 5000);
       closeDeleteModal();
     }
   });
@@ -378,7 +380,7 @@ export function StreamsView() {
       });
     },
     onSuccess: () => {
-      showStatusMessage('Stream successfully disabled.');
+      showStatusMessage(t('streams.streamSuccessfullyDisabled'));
       // Invalidate and refetch streams data
       queryClient.invalidateQueries({ queryKey: ['streams'] })
         .then(() => {
@@ -387,7 +389,7 @@ export function StreamsView() {
         });
     },
     onError: (error) => {
-      showStatusMessage(`Error disabling stream: ${error.message}`, 'error', 5000);
+      showStatusMessage(t('streams.errorDisablingStream', { message: error.message }), 'error', 5000);
       closeDeleteModal();
     }
   });
@@ -431,9 +433,9 @@ export function StreamsView() {
     queryClient.invalidateQueries({ queryKey: ['streams'] });
     const failed = results.filter(r => r.status === 'rejected').length;
     if (failed > 0) {
-      showStatusMessage(`Enabled ${names.length - failed} streams; ${failed} failed.`, 'warning', 5000);
+      showStatusMessage(t('streams.enabledSomeStreams', { success: names.length - failed, failed }), 'warning', 5000);
     } else {
-      showStatusMessage(`Enabled ${names.length} stream${names.length !== 1 ? 's' : ''}.`, 'success');
+      showStatusMessage(t('streams.enabledStreams', { count: names.length }), 'success');
     }
   };
 
@@ -452,9 +454,9 @@ export function StreamsView() {
     queryClient.invalidateQueries({ queryKey: ['streams'] });
     const failed = results.filter(r => r.status === 'rejected').length;
     if (failed > 0) {
-      showStatusMessage(`Disabled ${names.length - failed} streams; ${failed} failed.`, 'warning', 5000);
+      showStatusMessage(t('streams.disabledSomeStreams', { success: names.length - failed, failed }), 'warning', 5000);
     } else {
-      showStatusMessage(`Disabled ${names.length} stream${names.length !== 1 ? 's' : ''}.`, 'success');
+      showStatusMessage(t('streams.disabledStreams', { count: names.length }), 'success');
     }
   };
 
@@ -473,9 +475,9 @@ export function StreamsView() {
     queryClient.invalidateQueries({ queryKey: ['streams'] });
     const failed = results.filter(r => r.status === 'rejected').length;
     if (failed > 0) {
-      showStatusMessage(`Deleted ${names.length - failed} streams; ${failed} failed.`, 'warning', 5000);
+      showStatusMessage(t('streams.deletedSomeStreams', { success: names.length - failed, failed }), 'warning', 5000);
     } else {
-      showStatusMessage(`Deleted ${names.length} stream${names.length !== 1 ? 's' : ''}.`, 'success');
+      showStatusMessage(t('streams.deletedStreams', { count: names.length }), 'success');
     }
   };
 
@@ -1079,7 +1081,7 @@ export function StreamsView() {
   return (
     <section id="streams-page" className="page">
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
-        <h2 className="text-xl font-bold">Streams</h2>
+        <h2 className="text-xl font-bold">{t('nav.streams')}</h2>
         <div className="controls flex items-center space-x-2">
           {!canModifyStreams && userRole && (
             <span className="text-sm text-muted-foreground italic mr-2">
@@ -1092,7 +1094,7 @@ export function StreamsView() {
                 <button
                   className="flex items-center gap-1.5 text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground focus:outline-none"
                   onClick={() => setSelectionMode(true)}
-                  title="Enter selection mode"
+                  title={t('streams.enterSelectionMode')}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
