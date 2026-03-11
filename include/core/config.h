@@ -134,6 +134,9 @@ typedef struct {
 
     // Database settings
     char db_path[MAX_PATH_LENGTH];
+    int db_backup_interval_minutes;        // Periodic backup cadence in minutes (0 = disabled)
+    int db_backup_retention_count;         // Number of timestamped backups to retain (0 = latest .bak only)
+    char db_post_backup_script[MAX_PATH_LENGTH]; // Optional executable path run after a verified backup
     
     // Web server settings
     int web_thread_pool_size; // libuv UV_THREADPOOL_SIZE (default: 2x CPU cores, requires restart)

@@ -70,6 +70,13 @@ void test_default_config_db_path_nonempty(void) {
     TEST_ASSERT_GREATER_THAN(0, (int)strlen(cfg.db_path));
 }
 
+void test_default_config_db_backup_settings(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_INT(60, cfg.db_backup_interval_minutes);
+    TEST_ASSERT_EQUAL_INT(24, cfg.db_backup_retention_count);
+    TEST_ASSERT_EQUAL_STRING("", cfg.db_post_backup_script);
+}
+
 void test_default_config_models_path_nonempty(void) {
     load_default_config(&cfg);
     TEST_ASSERT_GREATER_THAN(0, (int)strlen(cfg.models_path));
@@ -155,6 +162,16 @@ void test_validate_config_clamps_absolute_timeout_to_idle_timeout(void) {
 
     TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
     TEST_ASSERT_EQUAL_INT(48, cfg.auth_absolute_timeout_hours);
+}
+
+void test_validate_config_clamps_negative_db_backup_values(void) {
+    load_default_config(&cfg);
+    cfg.db_backup_interval_minutes = -5;
+    cfg.db_backup_retention_count = -3;
+
+    TEST_ASSERT_EQUAL_INT(0, validate_config(&cfg));
+    TEST_ASSERT_EQUAL_INT(0, cfg.db_backup_interval_minutes);
+    TEST_ASSERT_EQUAL_INT(0, cfg.db_backup_retention_count);
 }
 
 /* ================================================================
@@ -304,14 +321,22 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
     snprintf(config_path, sizeof(config_path), "%s/.ini", dir);
 
     load_default_config(&cfg);
+    cfg.db_backup_interval_minutes = 15;
+    cfg.db_backup_retention_count = 8;
+    snprintf(cfg.db_post_backup_script, sizeof(cfg.db_post_backup_script), "/usr/local/bin/post-backup");
     TEST_ASSERT_EQUAL_INT(0, save_config(&cfg, config_path));
 
     FILE *saved = fopen(config_path, "r");
     TEST_ASSERT_NOT_NULL(saved);
     if (saved) {
-        char first_line[128] = {0};
-        TEST_ASSERT_NOT_NULL(fgets(first_line, sizeof(first_line), saved));
-        TEST_ASSERT_NOT_NULL(strstr(first_line, "; LightNVR Configuration File"));
+        char file_buffer[4096] = {0};
+        size_t bytes_read = fread(file_buffer, 1, sizeof(file_buffer) - 1, saved);
+        TEST_ASSERT_GREATER_THAN(0, (int)bytes_read);
+        file_buffer[bytes_read] = '\0';
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "; LightNVR Configuration File"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_interval_minutes = 15"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_retention_count = 8"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "post_backup_script = /usr/local/bin/post-backup"));
         fclose(saved);
     }
 
@@ -354,7 +379,10 @@ void test_env_integer_whitespace_handling(void) {
             "[models]\n"
             "path = %s\n\n"
             "[database]\n"
-            "path = %s\n\n"
+            "path = %s\n"
+            "backup_interval_minutes = 45\n"
+            "backup_retention_count = 12\n"
+            "post_backup_script = /usr/local/bin/backup-hook\n\n"
             "[web]\n"
             "root = %s\n",
             pid_path, log_path, storage_path, storage_hls_path,
@@ -374,6 +402,9 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "9099   ", 1));
     TEST_ASSERT_EQUAL_INT(0, load_config(&cfg));
     TEST_ASSERT_EQUAL_INT(9099, cfg.web_port);
+    TEST_ASSERT_EQUAL_INT(45, cfg.db_backup_interval_minutes);
+    TEST_ASSERT_EQUAL_INT(12, cfg.db_backup_retention_count);
+    TEST_ASSERT_EQUAL_STRING("/usr/local/bin/backup-hook", cfg.db_post_backup_script);
 
     /* Leading whitespace should be ignored. */
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "   9099", 1));
@@ -417,6 +448,7 @@ int main(void) {
     RUN_TEST(test_default_config_buffer_size);
     RUN_TEST(test_default_config_storage_path_nonempty);
     RUN_TEST(test_default_config_db_path_nonempty);
+    RUN_TEST(test_default_config_db_backup_settings);
     RUN_TEST(test_default_config_models_path_nonempty);
     RUN_TEST(test_default_config_null_safe);
 
@@ -432,6 +464,7 @@ int main(void) {
     RUN_TEST(test_validate_config_port_min_valid);
     RUN_TEST(test_validate_config_buffer_size_zero);
     RUN_TEST(test_validate_config_clamps_absolute_timeout_to_idle_timeout);
+    RUN_TEST(test_validate_config_clamps_negative_db_backup_values);
 
     RUN_TEST(test_default_config_web_auth_enabled);
     RUN_TEST(test_default_config_username);

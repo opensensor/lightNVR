@@ -30,6 +30,9 @@ export function SettingsView() {
     autoDelete: true,
     generateThumbnails: true,
     dbPath: '/var/lib/lightnvr/lightnvr.db',
+    dbBackupIntervalMinutes: '60',
+    dbBackupRetentionCount: '24',
+    dbPostBackupScript: '',
     webPort: '8080',
     webThreadPoolSize: '',   // populated from API; blank = use server default (2x cores)
     maxStreams: '32',
@@ -250,6 +253,9 @@ export function SettingsView() {
         autoDelete: settingsData.auto_delete_oldest || false,
         generateThumbnails: settingsData.generate_thumbnails !== false,
         dbPath: settingsData.db_path || '',
+        dbBackupIntervalMinutes: settingsData.db_backup_interval_minutes?.toString() || '60',
+        dbBackupRetentionCount: settingsData.db_backup_retention_count?.toString() || '24',
+        dbPostBackupScript: settingsData.db_post_backup_script || '',
         webPort: settingsData.web_port?.toString() || '',
         webThreadPoolSize: settingsData.web_thread_pool_size?.toString() || '',
         maxStreams: settingsData.max_streams?.toString() || '32',
@@ -328,6 +334,8 @@ export function SettingsView() {
     // Map frontend property names to backend property names
     const webThreadPoolSize = parseInt(settings.webThreadPoolSize, 10);
     const parsedMaxStreams = parseInt(settings.maxStreams, 10);
+    const parsedDbBackupIntervalMinutes = parseInt(settings.dbBackupIntervalMinutes, 10);
+    const parsedDbBackupRetentionCount = parseInt(settings.dbBackupRetentionCount, 10);
     const mappedSettings = {
       log_level: parseInt(settings.logLevel, 10),
       syslog_enabled: settings.syslogEnabled,
@@ -340,6 +348,9 @@ export function SettingsView() {
       auto_delete_oldest: settings.autoDelete,
       generate_thumbnails: settings.generateThumbnails,
       db_path: settings.dbPath,
+      db_backup_interval_minutes: Number.isNaN(parsedDbBackupIntervalMinutes) ? 0 : parsedDbBackupIntervalMinutes,
+      db_backup_retention_count: Number.isNaN(parsedDbBackupRetentionCount) ? 0 : parsedDbBackupRetentionCount,
+      db_post_backup_script: settings.dbPostBackupScript,
       web_port: parseInt(settings.webPort, 10),
       web_thread_pool_size: Number.isNaN(webThreadPoolSize) ? undefined : webThreadPoolSize,
       max_streams: Number.isNaN(parsedMaxStreams) ? 32 : parsedMaxStreams,
@@ -704,6 +715,54 @@ export function SettingsView() {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-db-backup-interval" class="font-medium">Database Backup Interval (minutes)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-db-backup-interval"
+                name="dbBackupIntervalMinutes"
+                min="0"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.dbBackupIntervalMinutes}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">How often to flush, verify, and back up the SQLite database while the system is running. Set to 0 to keep startup/shutdown backups only.</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+            <label for="setting-db-backup-retention" class="font-medium">Database Backup Retention (copies)</label>
+            <div class="col-span-2">
+              <input
+                type="number"
+                id="setting-db-backup-retention"
+                name="dbBackupRetentionCount"
+                min="0"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.dbBackupRetentionCount}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">How many timestamped backups to keep. Set to 0 to retain only the latest <code>.bak</code> recovery copy.</span>
+            </div>
+          </div>
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
+            <label for="setting-db-post-backup-script" class="font-medium">Post-backup Script</label>
+            <div class="col-span-2">
+              <input
+                type="text"
+                id="setting-db-post-backup-script"
+                name="dbPostBackupScript"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-2xl disabled:opacity-60 disabled:cursor-not-allowed"
+                value={settings.dbPostBackupScript}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder="/usr/local/bin/lightnvr-post-backup"
+              />
+              <span class="hint text-sm text-muted-foreground block mt-1">Optional absolute path to an executable that runs after a verified backup. It receives: backup path, database path, and backup directory.</span>
+            </div>
           </div>
           </div>
           

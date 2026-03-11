@@ -44,4 +44,11 @@ pthread_mutex_t *get_db_mutex(void);
  */
 int checkpoint_database(void);
 
+/**
+ * Run periodic database backup work when the configured interval is due.
+ *
+ * @return 0 on success or no-op, non-zero on failure
+ */
+int maybe_run_scheduled_database_backup(void);
+
 #endif // LIGHTNVR_DB_CORE_H

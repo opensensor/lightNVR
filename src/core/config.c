@@ -122,6 +122,9 @@ static const env_config_mapping_t env_config_mappings[] = {
 
     // Database settings
     {"DB_PATH",            CONFIG_TYPE_STRING, CONFIG_OFFSET(db_path),            MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db", 0, false},
+    {"DB_BACKUP_INTERVAL_MINUTES", CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_interval_minutes), 0, NULL, 60, false},
+    {"DB_BACKUP_RETENTION_COUNT",  CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_retention_count),  0, NULL, 24, false},
+    {"DB_POST_BACKUP_SCRIPT",      CONFIG_TYPE_STRING, CONFIG_OFFSET(db_post_backup_script),    MAX_PATH_LENGTH, "", 0, false},
 
     // Sentinel to mark end of array
     {NULL, CONFIG_TYPE_BOOL, 0, 0, NULL, 0, false}
@@ -343,6 +346,9 @@ void load_default_config(config_t *config) {
 
     // Database settings
     snprintf(config->db_path, MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db");
+    config->db_backup_interval_minutes = 60;
+    config->db_backup_retention_count = 24;
+    config->db_post_backup_script[0] = '\0';
     
     // Web server settings
     config->web_port = 8080;
@@ -594,6 +600,18 @@ int validate_config(config_t *config) {
         log_error("Database path is required");
         return -1;
     }
+
+    if (config->db_backup_interval_minutes < 0) {
+        log_warn("db_backup_interval_minutes (%d) is negative; clamping to 0",
+                 config->db_backup_interval_minutes);
+        config->db_backup_interval_minutes = 0;
+    }
+
+    if (config->db_backup_retention_count < 0) {
+        log_warn("db_backup_retention_count (%d) is negative; clamping to 0",
+                 config->db_backup_retention_count);
+        config->db_backup_retention_count = 0;
+    }
     
     if (strlen(config->web_root) == 0) {
         log_error("Web root path is required");
@@ -718,6 +736,13 @@ static int config_ini_handler(void* user, const char* section, const char* name,
     else if (strcmp(section, "database") == 0) {
         if (strcmp(name, "path") == 0) {
             strncpy(config->db_path, value, MAX_PATH_LENGTH - 1);
+        } else if (strcmp(name, "backup_interval_minutes") == 0) {
+            config->db_backup_interval_minutes = safe_atoi(value, 0);
+        } else if (strcmp(name, "backup_retention_count") == 0) {
+            config->db_backup_retention_count = safe_atoi(value, 0);
+        } else if (strcmp(name, "post_backup_script") == 0) {
+            strncpy(config->db_post_backup_script, value, MAX_PATH_LENGTH - 1);
+            config->db_post_backup_script[MAX_PATH_LENGTH - 1] = '\0';
         }
     }
     // Web server settings
@@ -1629,7 +1654,13 @@ int save_config(const config_t *config, const char *path) {
 
     // Write database settings
     fprintf(file, "[database]\n");
-    fprintf(file, "path = %s\n\n", config->db_path);
+    fprintf(file, "path = %s\n", config->db_path);
+    fprintf(file, "backup_interval_minutes = %d  ; 0 disables periodic runtime backups\n",
+            config->db_backup_interval_minutes);
+    fprintf(file, "backup_retention_count = %d  ; Number of timestamped backups to keep\n",
+            config->db_backup_retention_count);
+    fprintf(file, "post_backup_script = %s  ; Optional absolute path to executable hook\n\n",
+            config->db_post_backup_script);
     
     // Write web server settings
     fprintf(file, "[web]\n");
@@ -1768,6 +1799,10 @@ void print_config(const config_t *config) {
     
     printf("  Database Settings:\n");
     printf("    Database Path: %s\n", config->db_path);
+    printf("    Backup Interval: %d minutes\n", config->db_backup_interval_minutes);
+    printf("    Backup Retention Count: %d\n", config->db_backup_retention_count);
+    printf("    Post-backup Script: %s\n",
+           config->db_post_backup_script[0] ? config->db_post_backup_script : "(disabled)");
     
     printf("  Web Server Settings:\n");
     printf("    Web Port: %d\n", config->web_port);

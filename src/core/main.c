@@ -1128,6 +1128,7 @@ int main(int argc, char *argv[]) {
         static time_t last_status_time = 0;
         static time_t last_ffmpeg_leak_check_time = 0;
         static time_t last_service_check_time = 0;
+        static time_t last_db_backup_check_time = 0;
         time_t now = time(NULL);
 
         // Initialize last_service_check_time on first iteration to avoid immediate re-check
@@ -1167,6 +1168,14 @@ int main(int argc, char *argv[]) {
         if (now - last_service_check_time > 30) {
             check_and_ensure_services();
             last_service_check_time = now;
+        }
+
+        // Check whether a scheduled database backup is due once per minute.
+        if (now - last_db_backup_check_time > 60) {
+            if (maybe_run_scheduled_database_backup() != 0) {
+                log_warn("Scheduled database backup attempt failed");
+            }
+            last_db_backup_check_time = now;
         }
 
         // Check if restart was requested and log it

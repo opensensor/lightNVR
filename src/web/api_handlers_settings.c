@@ -290,6 +290,9 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "log_level", g_config.log_level);
     cJSON_AddStringToObject(settings, "pid_file", g_config.pid_file);
     cJSON_AddStringToObject(settings, "db_path", g_config.db_path);
+    cJSON_AddNumberToObject(settings, "db_backup_interval_minutes", g_config.db_backup_interval_minutes);
+    cJSON_AddNumberToObject(settings, "db_backup_retention_count", g_config.db_backup_retention_count);
+    cJSON_AddStringToObject(settings, "db_post_backup_script", g_config.db_post_backup_script);
     cJSON_AddStringToObject(settings, "models_path", g_config.models_path);
     cJSON_AddNumberToObject(settings, "buffer_size", g_config.buffer_size);
     cJSON_AddBoolToObject(settings, "use_swap", g_config.use_swap);
@@ -1170,6 +1173,42 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated onvif_discovery_network: %s", g_config.onvif_discovery_network);
     }
 
+    cJSON *db_backup_interval_minutes = cJSON_GetObjectItem(settings, "db_backup_interval_minutes");
+    if (db_backup_interval_minutes && cJSON_IsNumber(db_backup_interval_minutes)) {
+        int value = db_backup_interval_minutes->valueint;
+        if (value < 0) value = 0;
+        g_config.db_backup_interval_minutes = value;
+        settings_changed = true;
+        log_info("Updated db_backup_interval_minutes: %d", g_config.db_backup_interval_minutes);
+    }
+
+    cJSON *db_backup_retention_count = cJSON_GetObjectItem(settings, "db_backup_retention_count");
+    if (db_backup_retention_count && cJSON_IsNumber(db_backup_retention_count)) {
+        int value = db_backup_retention_count->valueint;
+        if (value < 0) value = 0;
+        g_config.db_backup_retention_count = value;
+        settings_changed = true;
+        log_info("Updated db_backup_retention_count: %d", g_config.db_backup_retention_count);
+    }
+
+    cJSON *db_post_backup_script = cJSON_GetObjectItem(settings, "db_post_backup_script");
+    if (db_post_backup_script && cJSON_IsString(db_post_backup_script)) {
+        const char *script_path = db_post_backup_script->valuestring;
+        if (script_path[0] != '\0' && !is_safe_storage_path(script_path)) {
+            log_warn("Rejected unsafe db_post_backup_script: %s", script_path);
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "Invalid db_post_backup_script: must be an absolute path without shell metacharacters");
+            return;
+        }
+
+        strncpy(g_config.db_post_backup_script, script_path, sizeof(g_config.db_post_backup_script) - 1);
+        g_config.db_post_backup_script[sizeof(g_config.db_post_backup_script) - 1] = '\0';
+        settings_changed = true;
+        log_info("Updated db_post_backup_script: %s",
+                 g_config.db_post_backup_script[0] ? g_config.db_post_backup_script : "(disabled)");
+    }
+
     // Database path
     cJSON *db_path = cJSON_GetObjectItem(settings, "db_path");
     if (db_path && cJSON_IsString(db_path) && 
@@ -1552,7 +1591,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
 
         log_info("Database path changed successfully");
     }
-    
+
         // Save settings if changed
         if (settings_changed) {
             // Use the loaded config path - save_config will handle this automatically

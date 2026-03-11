@@ -7,11 +7,13 @@
 #include <string.h>
 #include <time.h>
 #include <sys/time.h>
+#include <dirent.h>
 #include <sqlite3.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <errno.h>
 #include <libgen.h>
 #include <stdbool.h>
@@ -22,6 +24,7 @@
 #include "database/db_schema.h"
 #include "database/db_migrations.h"
 #include "database/db_backup.h"
+#include "core/config.h"
 #include "core/logger.h"
 
 // Database handle
@@ -36,19 +39,407 @@ static char db_file_path[1024] = {0};
 // Backup file path
 static char db_backup_path[1024] = {0};
 
-// Backup interval in seconds (default: 1 hour)
-static int backup_interval = 3600;
-
 // Last backup time
 static time_t last_backup_time = 0;
 
 // Flag to indicate if WAL mode is enabled
 static bool wal_mode_enabled = false;
 
-// Flag to indicate if a backup is in progress
-static bool backup_in_progress = false;
-
 // No longer tracking prepared statements - each function is responsible for finalizing its own statements
+
+static int create_directory(const char *path);
+
+static int sync_path_if_exists(const char *path) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        if (errno == ENOENT) {
+            return 0;
+        }
+        log_error("Failed to open path for sync: %s (%s)", path, strerror(errno));
+        return -1;
+    }
+
+    if (fsync(fd) != 0) {
+        log_error("Failed to fsync path: %s (%s)", path, strerror(errno));
+        close(fd);
+        return -1;
+    }
+
+    close(fd);
+    return 0;
+}
+
+static int sync_parent_directory(const char *path) {
+    char path_copy[PATH_MAX];
+    if (snprintf(path_copy, sizeof(path_copy), "%s", path) >= (int)sizeof(path_copy)) {
+        log_error("Path too long while syncing parent directory: %s", path);
+        return -1;
+    }
+
+    char *dir_name = dirname(path_copy);
+    int dir_fd = open(dir_name, O_RDONLY | O_DIRECTORY);
+    if (dir_fd < 0) {
+        log_error("Failed to open parent directory for sync: %s (%s)", dir_name, strerror(errno));
+        return -1;
+    }
+
+    if (fsync(dir_fd) != 0) {
+        log_error("Failed to fsync parent directory: %s (%s)", dir_name, strerror(errno));
+        close(dir_fd);
+        return -1;
+    }
+
+    close(dir_fd);
+    return 0;
+}
+
+static int flush_database_to_disk(void) {
+    int sync_failed = 0;
+
+    if (!db || db_file_path[0] == '\0') {
+        log_error("Database not initialized, cannot flush to disk");
+        return -1;
+    }
+
+    pthread_mutex_lock(&db_mutex);
+
+#if SQLITE_VERSION_NUMBER >= 3007017
+    int cacheflush_rc = sqlite3_db_cacheflush(db);
+    if (cacheflush_rc != SQLITE_OK) {
+        log_warn("sqlite3_db_cacheflush failed: %s", sqlite3_errmsg(db));
+    }
+#endif
+
+    if (wal_mode_enabled) {
+        int checkpoint_rc = sqlite3_exec(db, "PRAGMA wal_checkpoint(FULL);", NULL, NULL, NULL);
+        if (checkpoint_rc != SQLITE_OK) {
+            log_error("Failed to checkpoint WAL before backup: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(&db_mutex);
+            return -1;
+        }
+    }
+
+    pthread_mutex_unlock(&db_mutex);
+
+    sync_failed |= sync_path_if_exists(db_file_path);
+
+    char wal_path[PATH_MAX];
+    if (snprintf(wal_path, sizeof(wal_path), "%s-wal", db_file_path) < (int)sizeof(wal_path)) {
+        sync_failed |= sync_path_if_exists(wal_path);
+    }
+
+    char shm_path[PATH_MAX];
+    if (snprintf(shm_path, sizeof(shm_path), "%s-shm", db_file_path) < (int)sizeof(shm_path)) {
+        sync_failed |= sync_path_if_exists(shm_path);
+    }
+
+    sync_failed |= sync_parent_directory(db_file_path);
+
+    return sync_failed ? -1 : 0;
+}
+
+static int get_backup_directory(char *backup_dir, size_t backup_dir_size) {
+    if (snprintf(backup_dir, backup_dir_size, "%s.backups", db_file_path) >= (int)backup_dir_size) {
+        log_error("Backup directory path is too long for database %s", db_file_path);
+        return -1;
+    }
+
+    if (create_directory(backup_dir) != 0) {
+        log_error("Failed to create backup directory: %s", backup_dir);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int build_timestamped_backup_path(const char *backup_dir, char *backup_path, size_t backup_path_size) {
+    time_t now = time(NULL);
+    struct tm utc_tm;
+    char timestamp[32];
+
+    if (!gmtime_r(&now, &utc_tm)) {
+        log_error("Failed to format backup timestamp");
+        return -1;
+    }
+
+    if (strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%SZ", &utc_tm) == 0) {
+        log_error("Failed to build backup timestamp string");
+        return -1;
+    }
+
+    for (int suffix = 0; suffix < 100; suffix++) {
+        int written = (suffix == 0)
+            ? snprintf(backup_path, backup_path_size, "%s/%s.sqlite3", backup_dir, timestamp)
+            : snprintf(backup_path, backup_path_size, "%s/%s-%d.sqlite3", backup_dir, timestamp, suffix);
+        if (written < 0 || written >= (int)backup_path_size) {
+            log_error("Backup file path is too long for directory %s", backup_dir);
+            return -1;
+        }
+        if (access(backup_path, F_OK) != 0) {
+            return 0;
+        }
+    }
+
+    log_error("Failed to generate a unique backup filename in %s", backup_dir);
+    return -1;
+}
+
+static int copy_file_contents(const char *source_path, const char *dest_path) {
+    int src_fd = -1;
+    int dst_fd = -1;
+    char buffer[8192];
+
+    src_fd = open(source_path, O_RDONLY);
+    if (src_fd < 0) {
+        log_error("Failed to open source file for copy: %s (%s)", source_path, strerror(errno));
+        return -1;
+    }
+
+    dst_fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (dst_fd < 0) {
+        log_error("Failed to open destination file for copy: %s (%s)", dest_path, strerror(errno));
+        close(src_fd);
+        return -1;
+    }
+
+    while (1) {
+        ssize_t bytes_read = read(src_fd, buffer, sizeof(buffer));
+        if (bytes_read == 0) {
+            break;
+        }
+        if (bytes_read < 0) {
+            log_error("Failed to read source file during copy: %s (%s)", source_path, strerror(errno));
+            close(src_fd);
+            close(dst_fd);
+            return -1;
+        }
+
+        ssize_t total_written = 0;
+        while (total_written < bytes_read) {
+            ssize_t bytes_written = write(dst_fd, buffer + total_written, (size_t)(bytes_read - total_written));
+            if (bytes_written < 0) {
+                log_error("Failed to write destination file during copy: %s (%s)", dest_path, strerror(errno));
+                close(src_fd);
+                close(dst_fd);
+                return -1;
+            }
+            total_written += bytes_written;
+        }
+    }
+
+    close(src_fd);
+    close(dst_fd);
+    return 0;
+}
+
+static int refresh_latest_backup(const char *timestamped_backup_path) {
+    char temp_latest_path[PATH_MAX];
+
+    if (snprintf(temp_latest_path, sizeof(temp_latest_path), "%s.tmp", db_backup_path) >= (int)sizeof(temp_latest_path)) {
+        log_error("Latest backup temp path is too long: %s", db_backup_path);
+        return -1;
+    }
+
+    unlink(temp_latest_path);
+
+    if (link(timestamped_backup_path, temp_latest_path) != 0) {
+        log_warn("Failed to hard-link latest backup, falling back to copy: %s", strerror(errno));
+        if (copy_file_contents(timestamped_backup_path, temp_latest_path) != 0) {
+            unlink(temp_latest_path);
+            return -1;
+        }
+    }
+
+    if (rename(temp_latest_path, db_backup_path) != 0) {
+        log_error("Failed to publish latest backup %s -> %s: %s",
+                  temp_latest_path, db_backup_path, strerror(errno));
+        unlink(temp_latest_path);
+        return -1;
+    }
+
+    if (sync_path_if_exists(db_backup_path) != 0 || sync_parent_directory(db_backup_path) != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+static int compare_backup_paths(const void *lhs, const void *rhs) {
+    const char *const *left = (const char *const *)lhs;
+    const char *const *right = (const char *const *)rhs;
+    return strcmp(*left, *right);
+}
+
+static int prune_timestamped_backups(const char *backup_dir, int retention_count) {
+    DIR *dir = opendir(backup_dir);
+    if (!dir) {
+        log_error("Failed to open backup directory for pruning: %s (%s)", backup_dir, strerror(errno));
+        return -1;
+    }
+
+    char **backup_paths = NULL;
+    size_t backup_count = 0;
+    size_t backup_capacity = 0;
+    int result = 0;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        char full_path[PATH_MAX];
+        if (snprintf(full_path, sizeof(full_path), "%s/%s", backup_dir, entry->d_name) >= (int)sizeof(full_path)) {
+            log_warn("Skipping overlong backup path in %s", backup_dir);
+            continue;
+        }
+
+        struct stat st;
+        if (stat(full_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+            continue;
+        }
+
+        if (backup_count == backup_capacity) {
+            size_t new_capacity = backup_capacity == 0 ? 8 : backup_capacity * 2;
+            char **new_paths = realloc(backup_paths, new_capacity * sizeof(*backup_paths));
+            if (!new_paths) {
+                log_error("Out of memory while pruning backups");
+                result = -1;
+                break;
+            }
+            backup_paths = new_paths;
+            backup_capacity = new_capacity;
+        }
+
+        backup_paths[backup_count] = strdup(full_path);
+        if (!backup_paths[backup_count]) {
+            log_error("Out of memory while recording backup path");
+            result = -1;
+            break;
+        }
+        backup_count++;
+    }
+
+    closedir(dir);
+
+    if (result == 0 && backup_count > (size_t)retention_count) {
+        qsort(backup_paths, backup_count, sizeof(*backup_paths), compare_backup_paths);
+        size_t remove_count = backup_count - (size_t)retention_count;
+        for (size_t i = 0; i < remove_count; i++) {
+            if (unlink(backup_paths[i]) != 0) {
+                log_warn("Failed to prune old backup %s: %s", backup_paths[i], strerror(errno));
+                result = -1;
+            } else {
+                log_info("Pruned old database backup: %s", backup_paths[i]);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < backup_count; i++) {
+        free(backup_paths[i]);
+    }
+    free(backup_paths);
+
+    return result;
+}
+
+static int run_post_backup_script(const char *backup_path, const char *backup_dir) {
+    if (g_config.db_post_backup_script[0] == '\0') {
+        return 0;
+    }
+
+    log_info("Running post-backup script: %s", g_config.db_post_backup_script);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        log_error("Failed to fork post-backup script process: %s", strerror(errno));
+        return -1;
+    }
+
+    if (pid == 0) {
+        const char *argv[] = {
+            g_config.db_post_backup_script,
+            backup_path,
+            db_file_path,
+            backup_dir,
+            NULL
+        };
+        execv(g_config.db_post_backup_script, (char *const *)argv);
+        fprintf(stderr, "Failed to execute post-backup script %s: %s\n",
+                g_config.db_post_backup_script, strerror(errno));
+        _exit(127);
+    }
+
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            log_error("waitpid failed for post-backup script: %s", strerror(errno));
+            return -1;
+        }
+    }
+
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        log_info("Post-backup script completed successfully");
+        return 0;
+    }
+
+    if (WIFEXITED(status)) {
+        log_error("Post-backup script failed with exit code %d", WEXITSTATUS(status));
+    } else if (WIFSIGNALED(status)) {
+        log_error("Post-backup script terminated by signal %d", WTERMSIG(status));
+    } else {
+        log_error("Post-backup script did not complete successfully");
+    }
+
+    return -1;
+}
+
+static int perform_database_backup_cycle(const char *reason, bool run_post_backup_hook) {
+    char backup_dir[PATH_MAX];
+    char timestamped_backup_path[PATH_MAX];
+
+    if (!db || db_file_path[0] == '\0') {
+        log_error("Database not initialized, cannot create %s backup", reason);
+        return -1;
+    }
+
+    log_info("Starting %s database backup cycle", reason);
+
+    if (flush_database_to_disk() != 0) {
+        log_error("Failed to flush database to disk before %s backup", reason);
+        return -1;
+    }
+
+    if (get_backup_directory(backup_dir, sizeof(backup_dir)) != 0) {
+        return -1;
+    }
+
+    if (build_timestamped_backup_path(backup_dir, timestamped_backup_path, sizeof(timestamped_backup_path)) != 0) {
+        return -1;
+    }
+
+    if (backup_database(db_file_path, timestamped_backup_path) != 0) {
+        log_error("Failed to create %s database backup", reason);
+        return -1;
+    }
+
+    if (refresh_latest_backup(timestamped_backup_path) != 0) {
+        log_error("Failed to refresh latest backup link for %s backup", reason);
+        return -1;
+    }
+
+    if (run_post_backup_hook && g_config.db_post_backup_script[0] != '\0' &&
+        run_post_backup_script(timestamped_backup_path, backup_dir) != 0) {
+        log_warn("Post-backup script failed after %s backup", reason);
+    }
+
+    if (prune_timestamped_backups(backup_dir, g_config.db_backup_retention_count) != 0) {
+        log_warn("Failed to fully enforce backup retention after %s backup", reason);
+    }
+
+    log_info("Completed %s database backup cycle: %s", reason, timestamped_backup_path);
+    return 0;
+}
 
 // Create directory if it doesn't exist
 static int create_directory(const char *path) {
@@ -121,6 +512,29 @@ int checkpoint_database(void) {
     return 0;
 }
 
+int maybe_run_scheduled_database_backup(void) {
+    if (!db || db_file_path[0] == '\0') {
+        return 0;
+    }
+
+    if (g_config.db_backup_interval_minutes <= 0) {
+        return 0;
+    }
+
+    time_t now = time(NULL);
+    time_t interval_seconds = (time_t)g_config.db_backup_interval_minutes * 60;
+    if (last_backup_time != 0 && now - last_backup_time < interval_seconds) {
+        return 0;
+    }
+
+    if (perform_database_backup_cycle("scheduled", true) != 0) {
+        return -1;
+    }
+
+    last_backup_time = now;
+    return 0;
+}
+
 // Initialize the database
 int init_database(const char *db_path) {
     int rc;
@@ -164,6 +578,13 @@ int init_database(const char *db_path) {
     // Create backup path by appending .bak to the database path
     snprintf(db_backup_path, sizeof(db_backup_path), "%s.bak", db_path);
     log_info("Backup path set to: %s", db_backup_path);
+
+    struct stat backup_stat;
+    if (stat(db_backup_path, &backup_stat) == 0) {
+        last_backup_time = backup_stat.st_mtime;
+    } else {
+        last_backup_time = 0;
+    }
 
     // Check if database already exists
     FILE *test_file = fopen(db_path, "r");
@@ -436,7 +857,7 @@ int init_database(const char *db_path) {
     // Create an initial backup if this is a new database
     if (is_new_database) {
         log_info("Creating initial backup of new database");
-        if (backup_database(db_file_path, db_backup_path) == 0) {
+        if (perform_database_backup_cycle("initial", true) == 0) {
             log_info("Initial backup created successfully");
             last_backup_time = time(NULL);
         } else {
@@ -471,7 +892,7 @@ void shutdown_database(void) {
     // Create a final backup before shutting down
     if (db != NULL && db_file_path[0] != '\0') {
         log_info("Creating final backup before shutdown");
-        if (backup_database(db_file_path, db_backup_path) == 0) {
+        if (perform_database_backup_cycle("shutdown", true) == 0) {
             log_info("Final backup created successfully");
         } else {
             log_warn("Failed to create final backup");

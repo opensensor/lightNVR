@@ -13,6 +13,7 @@
 
 #include "database/db_core.h"
 #include "database/db_backup.h"
+#include "core/config.h"
 #include "core/logger.h"
 
 // Test database path
@@ -132,6 +133,13 @@ static int verify_database(void) {
 // Corrupt the database file
 static int corrupt_database(void) {
     FILE *file;
+    const unsigned char corrupt_header[] = {
+        0x00, 0x00, 0x00, 0x00, 'B', 'A', 'D', '-',
+        'H', 'E', 'A', 'D', 'E', 'R', 0x00, 0x00
+    };
+
+    // Close the live database handle first so corruption hits the on-disk file deterministically.
+    shutdown_database();
     
     // Open the database file
     file = fopen(TEST_DB_PATH, "r+b");
@@ -140,12 +148,11 @@ static int corrupt_database(void) {
         return -1;
     }
     
-    // Seek to a position in the file
-    fseek(file, 100, SEEK_SET);
-    
-    // Write some random data to corrupt the file
-    const char *corrupt_data = "CORRUPTED_DATA";
-    fwrite(corrupt_data, 1, strlen(corrupt_data), file);
+    // Overwrite the SQLite header so subsequent opens fail reliably.
+    fseek(file, 0, SEEK_SET);
+    fwrite(corrupt_header, 1, sizeof(corrupt_header), file);
+    fflush(file);
+    fsync(fileno(file));
     
     fclose(file);
     
@@ -183,6 +190,7 @@ static int test_restore(void) {
 int main(void) {
     // Initialize logger
     init_logger();
+    load_default_config(&g_config);
     
     printf("=== Database Backup and Recovery Test ===\n");
     
