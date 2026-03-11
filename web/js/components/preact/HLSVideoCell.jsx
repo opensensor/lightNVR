@@ -14,6 +14,7 @@ import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled, isForceNativeHls 
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import { forceNavigation } from '../../utils/navigation-utils.js';
 import { formatUtils } from './recordings/formatUtils.js';
+import { useI18n } from '../../i18n.js';
 import Hls from 'hls.js';
 
 /**
@@ -34,6 +35,7 @@ export function HLSVideoCell({
   showControls = true,
   globalShowDetections = true
 }) {
+  const { t } = useI18n();
   // Component state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -177,7 +179,7 @@ export function HLSVideoCell({
         } else if (go2rtcEnabled) {
           // go2rtc is enabled but not responding - do NOT fall back to ffmpeg HLS
           console.error(`[HLS ${stream.name}] go2rtc is enabled but not responding - no fallback to ffmpeg HLS`);
-          setError('go2rtc is enabled but not responding. Check go2rtc service status. Click Retry to try again.');
+          setError(t('live.go2rtcNotRespondingRetry'));
           setIsLoading(false);
           return;
         } else {
@@ -308,8 +310,8 @@ export function HLSVideoCell({
                 setHlsMode('native');
               } else {
                 setError(usingGo2rtc
-                  ? 'go2rtc HLS stream failed. Click Retry to try again.'
-                  : (data.details || 'HLS stream unavailable'));
+                  ? t('live.go2rtcHlsFailedRetry')
+                  : (data.details || t('live.hlsStreamUnavailable')));
                 setIsLoading(false);
                 setIsPlaying(false);
               }
@@ -384,7 +386,7 @@ export function HLSVideoCell({
           if (usingGo2rtc) {
             if (go2rtcEnabled) {
               console.error(`[HLS ${stream.name}] go2rtc HLS failed (native player) - no fallback (go2rtc enabled)`);
-              setError('go2rtc HLS stream failed. Click Retry to try again.');
+              setError(t('live.go2rtcHlsFailedRetry'));
               setIsLoading(false);
               setIsPlaying(false);
             } else {
@@ -479,7 +481,7 @@ export function HLSVideoCell({
         videoRef.current.load();
       }
     };
-  }, [stream, retryCount, initDelay, hlsMode]);
+  }, [stream, retryCount, initDelay, hlsMode, t]);
 
   // Handle retry button click
   const handleRetry = async () => {
@@ -664,7 +666,7 @@ export function HLSVideoCell({
                   URL.revokeObjectURL(blobUrl);
                 }, 1000);
 
-                showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+                showStatusMessage(t('live.snapshotSaved', { fileName }), 'success', 2000);
               }, 'image/jpeg', 0.95);
             }}
           />
@@ -673,7 +675,7 @@ export function HLSVideoCell({
         {stream.detection_based_recording && stream.detection_model && isPlaying && (
           <button
             className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
-            title={showDetections ? 'Hide Detections' : 'Show Detections'}
+            title={showDetections ? t('live.hideDetections') : t('live.showDetections')}
             onClick={() => setLocalShowDetections(!localShowDetections)}
             style={{
               backgroundColor: 'transparent',
@@ -704,7 +706,7 @@ export function HLSVideoCell({
         {stream.ptz_enabled && isPlaying && (
           <button
             className={`ptz-toggle-btn ${showPTZControls ? 'active' : ''}`}
-            title={showPTZControls ? 'Hide PTZ Controls' : 'Show PTZ Controls'}
+            title={showPTZControls ? t('live.hidePtzControls') : t('live.showPtzControls')}
             onClick={() => setShowPTZControls(!showPTZControls)}
             style={{
               backgroundColor: showPTZControls ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
@@ -730,7 +732,7 @@ export function HLSVideoCell({
         {isPlaying && (
           <button
             className="force-refresh-btn"
-            title="Force Refresh Stream"
+            title={t('live.forceRefreshStream')}
             onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleRetry()}
             style={{
               backgroundColor: 'transparent',
@@ -755,8 +757,8 @@ export function HLSVideoCell({
         <button
           type="button"
           className="timeline-btn"
-          title="View in Timeline"
-          aria-label="View in Timeline"
+          title={t('live.viewInTimeline')}
+          aria-label={t('live.viewInTimeline')}
           onClick={(event) => forceNavigation(formatUtils.getTimelineUrl(stream.name, new Date().toISOString()), event)}
           style={{
             backgroundColor: 'transparent',
@@ -776,7 +778,7 @@ export function HLSVideoCell({
         </button>
         <button
           className="fullscreen-btn"
-          title="Toggle Fullscreen"
+          title={t('live.toggleFullscreen')}
           data-id={streamId}
           data-name={stream.name}
           onClick={(e) => onToggleFullscreen(stream.name, e, cellRef.current)}
@@ -893,7 +895,7 @@ export function HLSVideoCell({
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
             >
-              Retry
+              {t('common.retry')}
             </button>
           </div>
         </div>
@@ -939,9 +941,9 @@ export function HLSVideoCell({
         isOpen={showRefreshConfirm}
         onClose={() => setShowRefreshConfirm(false)}
         onConfirm={handleRetry}
-        title="Force Refresh Stream"
-        message="This will briefly interrupt the go2rtc connection, breaking the active recording. The recording will resume automatically."
-        confirmLabel="Refresh"
+        title={t('live.forceRefreshStream')}
+        message={t('live.forceRefreshWarning')}
+        confirmLabel={t('common.refresh')}
       />
     </div>
   );

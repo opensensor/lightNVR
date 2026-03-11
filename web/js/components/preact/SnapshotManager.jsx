@@ -6,12 +6,14 @@ import { useState, useCallback, useEffect } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showSnapshotPreview } from './UI.jsx';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
+import { useI18n } from '../../i18n.js';
 
 /**
  * Custom hook for snapshot functionality
  * @returns {Object} Snapshot functions and state
  */
 export function useSnapshotManager() {
+  const { t } = useI18n();
   const [snapshotData, setSnapshotData] = useState({
     canvas: null,
     fileName: null
@@ -44,7 +46,7 @@ export function useSnapshotManager() {
 
     if (!streamName) {
       console.error('Stream name not found for ID:', streamId);
-      showStatusMessage('Cannot take snapshot: Stream not identified', 'error');
+      showStatusMessage(t('live.cannotTakeSnapshotStreamNotIdentified'), 'error');
       return;
     }
 
@@ -64,7 +66,7 @@ export function useSnapshotManager() {
     // Check if we have valid dimensions
     if (canvas.width === 0 || canvas.height === 0) {
       console.error('Invalid video dimensions:', canvas.width, canvas.height);
-      showStatusMessage('Cannot take snapshot: Video not loaded or has invalid dimensions');
+      showStatusMessage(t('live.cannotTakeSnapshotVideoInvalidDimensions'));
       return;
     }
 
@@ -84,15 +86,15 @@ export function useSnapshotManager() {
       });
 
       // Show the standard preview
-      showSnapshotPreview(canvas.toDataURL('image/jpeg', 0.95), `Snapshot: ${streamName}`);
+      showSnapshotPreview(canvas.toDataURL('image/jpeg', 0.95), t('live.snapshotPreview', { streamName }));
 
       // Show success message
-      showStatusMessage('Snapshot taken successfully');
+      showStatusMessage(t('live.snapshotTakenSuccessfully'));
     } catch (error) {
       console.error('Error creating snapshot:', error);
-      showStatusMessage('Failed to create snapshot: ' + error.message);
+      showStatusMessage(t('live.failedToCreateSnapshotWithMessage', { message: error.message }));
     }
-  }, []);
+  }, [t]);
 
   /**
    * Download the snapshot as JPEG
@@ -102,7 +104,7 @@ export function useSnapshotManager() {
 
     if (!canvas) {
       console.error('No snapshot canvas available');
-      showStatusMessage('Download failed: No snapshot data available');
+      showStatusMessage(t('live.downloadFailedNoData'));
       return;
     }
 
@@ -110,7 +112,7 @@ export function useSnapshotManager() {
     canvas.toBlob(function(blob) {
       if (!blob) {
         console.error('Failed to create blob from canvas');
-        showStatusMessage('Download failed: Unable to create image data');
+        showStatusMessage(t('live.downloadFailedCreateImageData'));
         return;
       }
 
@@ -141,9 +143,9 @@ export function useSnapshotManager() {
         console.log('Cleaned up download resources');
       }, 1000);
 
-      showStatusMessage('Download started');
+      showStatusMessage(t('live.downloadStarted'));
     }, 'image/jpeg', 0.95); // High quality JPEG
-  }, [snapshotData]);
+  }, [snapshotData, t]);
 
   return {
     takeSnapshot,
@@ -182,6 +184,7 @@ export function SnapshotManager() {
  * @returns {JSX.Element} SnapshotButton component
  */
 export function SnapshotButton({ streamId, streamName, onSnapshot }) {
+  const { t } = useI18n();
   const { takeSnapshot } = useSnapshotManager();
 
   const handleClick = (event) => {
@@ -199,7 +202,7 @@ export function SnapshotButton({ streamId, streamName, onSnapshot }) {
   return (
     <button
       className="snapshot-btn"
-      title="Take Snapshot"
+      title={t('timeline.takeSnapshot')}
       data-id={streamId}
       data-name={streamName}
       onClick={handleClick}
@@ -228,6 +231,7 @@ export function SnapshotButton({ streamId, streamName, onSnapshot }) {
  * @returns {JSX.Element} DownloadButton component
  */
 export function DownloadButton() {
+  const { t } = useI18n();
   const { downloadSnapshot, hasSnapshot } = useSnapshotManager();
 
   if (!hasSnapshot) return null;
@@ -237,7 +241,7 @@ export function DownloadButton() {
       className="download-btn px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
       onClick={downloadSnapshot}
     >
-      Download
+      {t('common.download')}
     </button>
   );
 }

@@ -3,6 +3,8 @@
  * Confirmation modal for bulk disable / bulk delete of streams.
  */
 
+import { useI18n } from '../../i18n.js';
+
 /**
  * StreamBulkActionModal component
  * @param {Object}   props
@@ -13,6 +15,7 @@
  * @param {boolean}  props.isWorking                  Whether the operation is in progress
  */
 export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm, isWorking }) {
+  const { t } = useI18n();
   const count = streamNames.length;
   const isDelete = action === 'delete';
   const isEnable = action === 'enable';
@@ -23,8 +26,8 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
   const hiddenCount  = count - listedNames.length;
 
   const title = isWorking
-    ? (isDelete ? 'Deleting Streams…' : isEnable ? 'Enabling Streams…' : 'Disabling Streams…')
-    : (isDelete ? 'Confirm Permanent Deletion' : isEnable ? 'Confirm Enable' : 'Confirm Disable');
+    ? (isDelete ? t('streams.deletingStreams') : isEnable ? t('streams.enablingStreams') : t('streams.disablingStreams'))
+    : (isDelete ? t('streams.confirmPermanentDeletion') : isEnable ? t('streams.confirmEnable') : t('streams.confirmDisable'));
 
   return (
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
@@ -44,9 +47,9 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
             <div class="flex flex-col items-center justify-center py-8">
               <div class="inline-block animate-spin rounded-full border-4 border-input border-t-primary w-10 h-10 mb-4"></div>
               <p class="text-muted-foreground">
-                {isDelete ? 'Permanently deleting streams…' : isEnable ? 'Enabling streams…' : 'Disabling streams…'}
+                {isDelete ? t('streams.permanentlyDeletingStreams') : isEnable ? t('streams.enablingStreamsProgress') : t('streams.disablingStreamsProgress')}
               </p>
-              <p class="text-sm text-muted-foreground mt-2">This may take a few seconds.</p>
+              <p class="text-sm text-muted-foreground mt-2">{t('streams.thisMayTakeAFewSeconds')}</p>
             </div>
           ) : (
             <>
@@ -69,16 +72,18 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
 
               {/* Message */}
               <p class="text-center font-medium mb-2">
-                {isDelete  ? `Permanently delete ${count} stream${count !== 1 ? 's' : ''}?`
-                 : isEnable ? `Enable ${count} stream${count !== 1 ? 's' : ''}?`
-                 :             `Disable ${count} stream${count !== 1 ? 's' : ''}?`}
+                {isDelete
+                  ? t('streams.confirmDeleteCount', { count })
+                  : isEnable
+                    ? t('streams.confirmEnableCount', { count })
+                    : t('streams.confirmDisableCount', { count })}
               </p>
               <p class="text-sm text-muted-foreground text-center mb-4">
                 {isDelete
-                  ? 'This will permanently remove the stream configurations. This action cannot be undone.'
+                  ? t('streams.bulkDeleteExplanation')
                   : isEnable
-                    ? 'The selected streams will resume processing with their existing configurations.'
-                    : 'The selected streams will stop processing. Their configurations are preserved and can be re-enabled later.'}
+                    ? t('streams.bulkEnableExplanation')
+                    : t('streams.bulkDisableExplanation')}
               </p>
 
               {/* Stream name list */}
@@ -87,7 +92,7 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
                   <li key={name} class="truncate">• {name}</li>
                 ))}
                 {hiddenCount > 0 && (
-                  <li class="text-muted-foreground/70 italic">+ {hiddenCount} more</li>
+                  <li class="text-muted-foreground/70 italic">{t('streams.plusMoreCount', { count: hiddenCount })}</li>
                 )}
               </ul>
 
@@ -98,7 +103,7 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
                   class="px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                   onClick={onClose}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -109,7 +114,7 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
                   }`}
                   onClick={onConfirm}
                 >
-                  {isDelete ? 'Delete Permanently' : isEnable ? 'Enable Selected' : 'Disable Selected'}
+                  {isDelete ? t('streams.deletePermanently') : isEnable ? t('streams.enableSelected') : t('streams.disableSelected')}
                 </button>
               </div>
             </>

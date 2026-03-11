@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'preact/hooks';
+import { useI18n } from '../../i18n.js';
 
 /**
  * StreamDeleteModal component
@@ -18,6 +19,7 @@ import { useState } from 'preact/hooks';
  * @returns {JSX.Element} StreamDeleteModal component
  */
 export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, onDelete, isDeleting = false, isDisabling = false }) {
+  const { t } = useI18n();
   const [isConfirmDelete, setIsConfirmDelete] = useState(false);
   const isLoading = isDeleting || isDisabling;
 
@@ -40,7 +42,9 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity duration-300">
       <div class="bg-card text-card-foreground rounded-lg shadow-xl max-w-md w-full">
         <div class="flex justify-between items-center p-4 border-b border-border">
-          <h3 class="text-lg font-medium">{isLoading ? (isDeleting ? 'Deleting Stream...' : 'Disabling Stream...') : isConfirmDelete ? 'Confirm Permanent Deletion' : 'Stream Actions'}</h3>
+          <h3 class="text-lg font-medium">{isLoading
+            ? (isDeleting ? t('streams.deletingStream') : t('streams.disablingStream'))
+            : isConfirmDelete ? t('streams.confirmPermanentDeletion') : t('streams.streamActions')}</h3>
           {!isLoading && <button type="button" class="text-2xl cursor-pointer border-none bg-transparent" onClick={onClose}>×</button>}
         </div>
 
@@ -49,59 +53,59 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
             <div class="flex flex-col items-center justify-center py-8">
               <div class="inline-block animate-spin rounded-full border-4 border-input border-t-primary w-10 h-10 mb-4"></div>
               <p class="text-muted-foreground">
-                {isDeleting ? 'Permanently deleting stream...' : 'Disabling stream...'}
+                {isDeleting ? t('streams.permanentlyDeletingStream') : t('streams.disablingStreamProgress')}
               </p>
-              <p class="text-sm text-muted-foreground mt-2">This may take a few seconds.</p>
+              <p class="text-sm text-muted-foreground mt-2">{t('streams.thisMayTakeAFewSeconds')}</p>
             </div>
           ) : !isConfirmDelete ? (
             <div class="mb-6">
-              <h4 class="text-lg font-medium mb-2">What would you like to do with "{streamName}"?</h4>
+              <h4 class="text-lg font-medium mb-2">{t('streams.whatWouldYouLikeToDoWith', { streamName })}</h4>
               <p class="text-muted-foreground mb-4">
-                Please choose one of the following options:
+                {t('streams.chooseFollowingOptions')}
               </p>
 
               <div class="space-y-4">
                 <div class="p-4 border rounded-lg" style={{borderColor: 'hsl(var(--warning-muted))', backgroundColor: 'hsl(var(--warning-muted) / 0.3)'}}>
-                  <h5 class="font-medium mb-2" style={{color: 'hsl(var(--warning))'}}>Disable Stream (Soft Delete)</h5>
+                  <h5 class="font-medium mb-2" style={{color: 'hsl(var(--warning))'}}>{t('streams.disableStreamSoftDelete')}</h5>
                   <p class="text-muted-foreground mb-2">
-                    This option will disable the stream but keep its configuration in the database. You can re-enable it later.
+                    {t('streams.disableStreamExplanation')}
                   </p>
                   <ul class="list-disc list-inside text-sm text-muted-foreground mb-3">
-                    <li>Stream will stop processing</li>
-                    <li>Live streaming will be disabled</li>
-                    <li>Recording will be disabled</li>
-                    <li>Audio recording will be disabled</li>
-                    <li>Detection-based recording will be disabled</li>
-                    <li>Configuration is preserved</li>
-                    <li>Existing recordings are kept</li>
-                    <li>Can be re-enabled later</li>
+                    <li>{t('streams.disableStreamBulletStopProcessing')}</li>
+                    <li>{t('streams.disableStreamBulletLiveDisabled')}</li>
+                    <li>{t('streams.disableStreamBulletRecordingDisabled')}</li>
+                    <li>{t('streams.disableStreamBulletAudioDisabled')}</li>
+                    <li>{t('streams.disableStreamBulletDetectionDisabled')}</li>
+                    <li>{t('streams.disableStreamBulletConfigurationPreserved')}</li>
+                    <li>{t('streams.disableStreamBulletRecordingsKept')}</li>
+                    <li>{t('streams.disableStreamBulletCanReenable')}</li>
                   </ul>
                   <button
                     class="w-full px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handleDisable}
                     disabled={isLoading}
                   >
-                    Disable Stream
+                    {t('common.disable')}
                   </button>
                 </div>
 
                 <div class="p-4 border rounded-lg" style={{borderColor: 'hsl(var(--danger-muted))', backgroundColor: 'hsl(var(--danger-muted) / 0.3)'}}>
-                  <h5 class="font-medium mb-2" style={{color: 'hsl(var(--danger))'}}>Delete Stream (Permanent)</h5>
+                  <h5 class="font-medium mb-2" style={{color: 'hsl(var(--danger))'}}>{t('streams.deleteStreamPermanent')}</h5>
                   <p class="text-muted-foreground mb-2">
-                    This option will permanently delete the stream configuration from the database. This action cannot be undone.
+                    {t('streams.deleteStreamExplanation')}
                   </p>
                   <ul class="list-disc list-inside text-sm text-muted-foreground mb-3">
-                    <li>Stream will be completely removed</li>
-                    <li>Configuration is deleted</li>
-                    <li>Recordings remain accessible</li>
-                    <li>Cannot be recovered</li>
+                    <li>{t('streams.deleteStreamBulletRemoved')}</li>
+                    <li>{t('streams.deleteStreamBulletConfigurationDeleted')}</li>
+                    <li>{t('streams.deleteStreamBulletRecordingsAccessible')}</li>
+                    <li>{t('streams.deleteStreamBulletCannotRecover')}</li>
                   </ul>
                   <button
                     class="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={showDeleteConfirmation}
                     disabled={isLoading}
                   >
-                    Delete Stream
+                    {t('common.delete')}
                   </button>
                 </div>
               </div>
@@ -113,9 +117,9 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
                   <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
                 </svg>
               </div>
-              <h4 class="text-lg font-medium mb-2 text-center">Are you sure you want to permanently delete "{streamName}"?</h4>
+              <h4 class="text-lg font-medium mb-2 text-center">{t('streams.areYouSureDeletePermanent', { streamName })}</h4>
               <p class="text-muted-foreground mb-4 text-center">
-                This action cannot be undone. The stream configuration will be permanently removed from the database.
+                {t('streams.streamDeleteCannotBeUndone')}
               </p>
             </div>
 
@@ -125,14 +129,14 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
                 onClick={() => setIsConfirmDelete(false)}
                 disabled={isLoading}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleDelete}
                 disabled={isLoading}
               >
-                Yes, Delete Permanently
+                {t('streams.yesDeletePermanently')}
               </button>
             </div></>
           )}

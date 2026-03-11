@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { useI18n } from '../../i18n.js';
 
 // Hard cap: more than 36 simultaneous HLS/MSE streams will exhaust tab memory.
 // Streams beyond this limit are handled via pagination.
@@ -46,6 +47,7 @@ export function computeOptimalGrid(n) {
  *                                    greyed out and unclickable.
  */
 export function GridPicker({ cols, rows, onSelect, maxCells }) {
+  const { t } = useI18n();
   const [hover, setHover] = useState({ c: cols, r: rows });
   const [open, setOpen]   = useState(false);
   const containerRef      = useRef(null);
@@ -78,8 +80,8 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
         type="button"
         className="px-3 py-2 border border-border rounded-md bg-background text-foreground text-sm flex items-center gap-1.5 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
         onClick={() => setOpen(o => !o)}
-        title="Select grid layout"
-        aria-label={`Grid layout: ${cols} columns × ${rows} rows`}
+        title={t('live.selectGridLayout')}
+        aria-label={t('live.gridLayoutAria', { cols, rows })}
       >
         {/* 2×2 grid icon */}
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
@@ -122,7 +124,9 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
                   <div
                     key={`${r}-${c}`}
                     style={{ width: '20px', height: '20px' }}
-                    title={overLimit ? `${c + 1}×${r + 1} — exceeds ${MAX_GRID_CELLS}-stream limit` : `${c + 1}×${r + 1}`}
+                    title={overLimit
+                      ? t('live.gridCellExceedsLimit', { cols: c + 1, rows: r + 1, max: MAX_GRID_CELLS })
+                      : `${c + 1}×${r + 1}`}
                     className={`rounded-sm border transition-colors ${
                       overLimit
                         ? 'bg-muted/30 border-border/30 opacity-30 cursor-not-allowed'
@@ -140,7 +144,7 @@ export function GridPicker({ cols, rows, onSelect, maxCells }) {
             )}
           </div>
           <p className="text-xs text-center text-muted-foreground mt-2">
-            {`max ${MAX_GRID_CELLS} streams per page`}
+            {t('live.maxStreamsPerPage', { max: MAX_GRID_CELLS })}
           </p>
         </div>
       )}

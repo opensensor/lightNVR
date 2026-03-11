@@ -1085,7 +1085,7 @@ export function StreamsView() {
         <div className="controls flex items-center space-x-2">
           {!canModifyStreams && userRole && (
             <span className="text-sm text-muted-foreground italic mr-2">
-              Read-only (insufficient permissions to modify)
+              {t('streams.readOnlyInsufficientPermissions')}
             </span>
           )}
           {canModifyStreams && (
@@ -1100,7 +1100,7 @@ export function StreamsView() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                   </svg>
-                  Select
+                  {t('streams.select')}
                 </button>
               )}
               <button
@@ -1108,14 +1108,14 @@ export function StreamsView() {
                   className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                   onClick={openOnvifModal}
               >
-                Discover ONVIF Cameras
+                {t('streams.discoverOnvifCameras')}
               </button>
               <button
                   id="add-stream-btn"
                   className="btn-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                   onClick={openAddStreamModal}
               >
-                Add Stream
+                {t('streams.addStream')}
               </button>
             </>
           )}
@@ -1125,8 +1125,8 @@ export function StreamsView() {
       <ContentLoader
           isLoading={isLoading}
           hasData={hasData}
-          loadingMessage="Loading streams..."
-          emptyMessage={canModifyStreams ? "No streams configured yet. Click 'Add Stream' to create one." : "No streams configured yet."}
+          loadingMessage={t('streams.loadingStreams')}
+          emptyMessage={canModifyStreams ? t('streams.noStreamsConfiguredYetAdd') : t('streams.noStreamsConfiguredYet')}
       >
         <div className="streams-container bg-card text-card-foreground rounded-lg shadow overflow-hidden">
           {/* Bulk action toolbar — visible in selection mode */}
@@ -1134,8 +1134,8 @@ export function StreamsView() {
             <div className="flex items-center gap-3 px-4 py-2 border-b border-border">
               <span className="text-sm text-muted-foreground">
                 {selectedStreams.size > 0
-                  ? `${selectedStreams.size} stream${selectedStreams.size !== 1 ? 's' : ''} selected`
-                  : 'Select streams'}
+                  ? t('streams.selectedCount', { count: selectedStreams.size })
+                  : t('streams.selectStreams')}
               </span>
               <button
                 className="px-3 py-1 text-sm rounded border transition-colors disabled:opacity-50"
@@ -1145,14 +1145,14 @@ export function StreamsView() {
                 disabled={isBulkWorking || selectedStreams.size === 0}
                 onClick={handleBulkEnable}
               >
-                {isBulkWorking ? 'Working…' : 'Enable selected'}
+                {isBulkWorking ? t('streams.working') : t('streams.enableSelected')}
               </button>
               <button
                 className="px-3 py-1 text-sm rounded border border-input bg-background hover:bg-accent transition-colors disabled:opacity-50"
                 disabled={isBulkWorking || selectedStreams.size === 0}
                 onClick={handleBulkDisable}
               >
-                {isBulkWorking ? 'Working…' : 'Disable selected'}
+                {isBulkWorking ? t('streams.working') : t('streams.disableSelected')}
               </button>
               <button
                 className="px-3 py-1 text-sm rounded border transition-colors disabled:opacity-50"
@@ -1162,13 +1162,13 @@ export function StreamsView() {
                 disabled={isBulkWorking || selectedStreams.size === 0}
                 onClick={handleBulkDelete}
               >
-                {isBulkWorking ? 'Working…' : 'Delete selected'}
+                {isBulkWorking ? t('streams.working') : t('streams.deleteSelected')}
               </button>
               <button
                 className="ml-auto text-sm text-muted-foreground hover:text-foreground transition-colors"
                 onClick={exitSelectionMode}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
             </div>
           )}
@@ -1184,18 +1184,18 @@ export function StreamsView() {
                       checked={selectedStreams.size > 0 && selectedStreams.size === (streams || []).length}
                       ref={el => { if (el) el.indeterminate = selectedStreams.size > 0 && selectedStreams.size < (streams || []).length; }}
                       onChange={toggleSelectAll}
-                      title="Select all"
+                      title={t('streams.selectAll')}
                     />
                   </th>
                 )}
                 <th className="w-8 px-2 py-3"></th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">URL</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Resolution</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">FPS</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Recording</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.name')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.status')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.url')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.resolution')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.fps')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.recording')}</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
               </tr>
               </thead>
               <tbody className="bg-card divide-y divide-border">
@@ -1207,7 +1207,12 @@ export function StreamsView() {
                   stream.status === 'Error' ? 'hsl(var(--danger))' :
                   stream.status === 'Stopping' ? 'hsl(var(--warning, 45 93% 47%))' :
                   'hsl(var(--muted-foreground))';
-                const statusLabel = stream.status || 'Unknown';
+                const statusLabel =
+                  stream.status === 'Running' ? t('streams.running') :
+                  stream.status === 'Starting' ? t('streams.starting') :
+                  stream.status === 'Error' ? t('streams.error') :
+                  stream.status === 'Stopping' ? t('streams.stopping') :
+                  (stream.status || t('common.unknown'));
                 const hasAdminLauncher = !shouldHideCredentials && /^https?:\/\//i.test(stream.admin_url || '');
 
                 return (
@@ -1256,9 +1261,9 @@ export function StreamsView() {
                       <td className="px-6 py-4 whitespace-nowrap">{stream.width}x{stream.height}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{stream.fps}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {stream.record ? 'Enabled' : 'Disabled'}
-                        {stream.record && stream.record_on_schedule ? ' (Schedule)' : ''}
-                        {stream.detection_based_recording ? ' (Detection)' : ''}
+                        {stream.record ? t('common.enabled') : t('common.disabled')}
+                        {stream.record && stream.record_on_schedule ? ` (${t('streams.schedule')})` : ''}
+                        {stream.detection_based_recording ? ` (${t('streams.detection')})` : ''}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         <div className="flex space-x-2">
@@ -1271,8 +1276,8 @@ export function StreamsView() {
                               href={stream.admin_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              title="Open Camera Admin Page"
-                              aria-label={`Open admin page for ${stream.name}`}
+                              title={t('streams.openCameraAdminPage')}
+                              aria-label={t('streams.openAdminPageFor', { name: stream.name })}
                             >
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 3h7m0 0v7m0-7L10 14"></path>
@@ -1288,7 +1293,7 @@ export function StreamsView() {
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 onClick={() => openEditStreamModal(stream.name)}
-                                title="Edit"
+                                title={t('common.edit')}
                             >
                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
@@ -1303,7 +1308,7 @@ export function StreamsView() {
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 onClick={() => openDeleteModal(stream)}
-                                title="Delete"
+                                title={t('common.delete')}
                             >
                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                                 <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"></path>
@@ -1324,55 +1329,55 @@ export function StreamsView() {
                           <div className="flex flex-wrap gap-4 text-sm">
                             {/* Enabled */}
                             <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">Enabled:</span>
+                              <span className="font-medium text-muted-foreground">{t('common.enabled')}:</span>
                               <span style={{color: stream.enabled ? 'hsl(var(--success))' : 'hsl(var(--danger))'}}>
-                                {stream.enabled ? 'Yes' : 'No'}
+                                {stream.enabled ? t('common.yes') : t('common.no')}
                               </span>
                             </div>
                             {/* Streaming */}
                             <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">Streaming:</span>
+                              <span className="font-medium text-muted-foreground">{t('streams.streaming')}:</span>
                               <span style={{color: stream.streaming_enabled ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))'}}>
-                                {stream.streaming_enabled ? 'Active' : 'Off'}
+                                {stream.streaming_enabled ? t('common.active') : t('streams.off')}
                               </span>
                             </div>
                             {/* Recording */}
                             <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">Recording:</span>
+                              <span className="font-medium text-muted-foreground">{t('streams.recording')}:</span>
                               <span style={{color: stream.record ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))'}}>
                                 {stream.record
-                                  ? (stream.record_on_schedule ? 'Scheduled' : 'Continuous')
-                                  : 'Off'}
+                                  ? (stream.record_on_schedule ? t('streams.scheduled') : t('streams.continuous'))
+                                  : t('streams.off')}
                               </span>
                             </div>
                             {/* Detection */}
                             <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">Detection:</span>
+                              <span className="font-medium text-muted-foreground">{t('streams.detection')}:</span>
                               <span style={{color: stream.detection_based_recording ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))'}}>
                                 {stream.detection_based_recording
-                                  ? (stream.detection_model ? stream.detection_model.split('/').pop() : 'Enabled')
-                                  : 'Off'}
+                                  ? (stream.detection_model ? stream.detection_model.split('/').pop() : t('common.enabled'))
+                                  : t('streams.off')}
                               </span>
                             </div>
                             {/* Codec */}
                             <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">Codec:</span>
-                              <span>{stream.codec || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">{t('streams.codec')}:</span>
+                              <span>{stream.codec || t('streams.notAvailable')}</span>
                             </div>
                             {/* Priority */}
                             <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">Priority:</span>
-                              <span>{stream.priority || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">{t('streams.priority')}:</span>
+                              <span>{stream.priority || t('streams.notAvailable')}</span>
                             </div>
                             {/* Segment duration */}
                             {stream.record && (
                               <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-muted-foreground">Segment:</span>
+                                <span className="font-medium text-muted-foreground">{t('streams.segment')}:</span>
                                 <span>{stream.segment_duration
                                   ? (stream.segment_duration >= 60
                                     ? `${Math.round(stream.segment_duration / 60)}min`
                                     : `${stream.segment_duration}s`)
-                                  : 'N/A'}</span>
+                                  : t('streams.notAvailable')}</span>
                               </div>
                             )}
                           </div>

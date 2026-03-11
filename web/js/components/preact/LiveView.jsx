@@ -482,7 +482,7 @@ export function LiveView({isWebRTCDisabled}) {
 
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center space-x-2">
-          <h2 className="text-xl font-bold mr-4">Live View ({useMSE ? 'MSE' : 'HLS'})</h2>
+          <h2 className="text-xl font-bold mr-4">{t('live.liveViewMode', { mode: useMSE ? t('live.mseShort') : t('live.hlsShort') })}</h2>
           <div className="flex space-x-2">
             {!isWebRTCDisabled && (
             <a
@@ -490,7 +490,7 @@ export function LiveView({isWebRTCDisabled}) {
               className="btn-secondary focus:outline-none focus:ring-2 focus:ring-primary inline-block text-center"
               style={{ position: 'relative', zIndex: 50 }}
             >
-              WebRTC View
+              {t('live.webrtcView')}
             </a>
                 )}
             {go2rtcAvailable && (
@@ -509,7 +509,7 @@ export function LiveView({isWebRTCDisabled}) {
                 window.history.replaceState({}, '', url);
               }}
             >
-              {useMSE ? 'HLS View' : 'MSE View'}
+              {useMSE ? t('live.hlsView') : t('live.mseView')}
             </button>
                 )}
 
@@ -561,7 +561,7 @@ export function LiveView({isWebRTCDisabled}) {
           <button
             className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showLabels ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowLabels(v => !v)}
-            title={showLabels ? 'Hide Stream Labels' : 'Show Stream Labels'}
+            title={showLabels ? t('live.hideStreamLabels') : t('live.showStreamLabels')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -574,7 +574,7 @@ export function LiveView({isWebRTCDisabled}) {
           <button
             className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showControls ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowControls(v => !v)}
-            title={showControls ? 'Hide Stream Controls' : 'Show Stream Controls'}
+            title={showControls ? t('live.hideStreamControls') : t('live.showStreamControls')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -594,7 +594,7 @@ export function LiveView({isWebRTCDisabled}) {
           <button
             className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${showDetections ? 'bg-secondary hover:bg-secondary/80 text-secondary-foreground' : 'bg-primary/20 hover:bg-primary/30 text-primary'}`}
             onClick={() => setShowDetections(v => !v)}
-            title={showDetections ? 'Hide All Detection Overlays' : 'Show All Detection Overlays'}
+            title={showDetections ? t('live.hideAllDetectionOverlays') : t('live.showAllDetectionOverlays')}
           >
             {/* Eye icon for detection overlay toggle */}
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -609,7 +609,7 @@ export function LiveView({isWebRTCDisabled}) {
             <button
               className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
               onClick={toggleReorderMode}
-              title={reorderMode ? 'Exit reorder mode' : 'Drag to reorder cameras'}
+              title={reorderMode ? t('live.exitReorderMode') : t('live.dragToReorderCameras')}
             >
               {/* Drag-handle dots icon */}
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
@@ -682,12 +682,12 @@ export function LiveView({isWebRTCDisabled}) {
             </div>
           ) : (streamsError) ? (
             <div className="placeholder flex flex-col justify-center items-center col-span-full row-span-full bg-card text-card-foreground rounded-lg shadow-md text-center p-8">
-              <p className="mb-6 text-muted-foreground text-lg">Error loading streams: {streamsError.message}</p>
+              <p className="mb-6 text-muted-foreground text-lg">{t('live.errorLoadingStreams', { message: streamsError.message })}</p>
               <button
                 onClick={() => window.location.reload()}
                 className="btn-primary"
               >
-                Retry
+                {t('common.retry')}
               </button>
             </div>
           ) : streams.length === 0 ? (
@@ -741,7 +741,7 @@ export function LiveView({isWebRTCDisabled}) {
                            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/>
                       </svg>
-                      Drag to reorder
+                      {t('live.dragToReorder')}
                     </div>
                   )}
                   <VideoCell
@@ -769,11 +769,11 @@ export function LiveView({isWebRTCDisabled}) {
               }}
               disabled={currentPage === 0}
             >
-              Previous
+              {t('common.previous')}
             </button>
 
             <span className="text-foreground">
-              Page {currentPage + 1} of {Math.ceil(orderedStreams.length / maxStreams)}
+              {t('live.pageOf', { current: currentPage + 1, total: Math.ceil(orderedStreams.length / maxStreams) })}
             </span>
 
             <button
@@ -785,7 +785,7 @@ export function LiveView({isWebRTCDisabled}) {
               }}
               disabled={currentPage >= Math.ceil(orderedStreams.length / maxStreams) - 1}
             >
-              Next
+              {t('common.next')}
             </button>
           </div>
         ) : null}

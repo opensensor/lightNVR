@@ -5,6 +5,7 @@
 
 
 import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useI18n } from '../../i18n.js';
 
 /**
  * PTZ API functions
@@ -100,6 +101,7 @@ function DirectionButton({ direction, onMouseDown, onMouseUp, onMouseLeave, disa
  * PTZ Controls component
  */
 export function PTZControls({ stream, isVisible = true, onClose }) {
+  const { t } = useI18n();
   const [speed, setSpeed] = useState(0.5);
   const [presets, setPresets] = useState([]);
   const [isMoving, setIsMoving] = useState(false);
@@ -123,10 +125,10 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     ptzApi.move(stream.name, pan * speed, tilt * speed, zoom * speed)
       .catch(err => {
         setIsMoving(false);
-        setError('Move failed');
+        setError(t('live.ptzMoveFailed'));
         console.error('PTZ move error:', err);
       });
-  }, [stream?.name, speed]);
+  }, [stream?.name, speed, t]);
 
   const handleMoveStop = useCallback(() => {
     if (!stream?.name || !isMoving) return;
@@ -142,10 +144,10 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     
     ptzApi.home(stream.name)
       .catch(err => {
-        setError('Home failed');
+        setError(t('live.ptzHomeFailed'));
         console.error('PTZ home error:', err);
       });
-  }, [stream?.name]);
+  }, [stream?.name, t]);
 
   const handlePreset = useCallback((token) => {
     if (!stream?.name) return;
@@ -153,10 +155,10 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     
     ptzApi.gotoPreset(stream.name, token)
       .catch(err => {
-        setError('Preset failed');
+        setError(t('live.ptzPresetFailed'));
         console.error('PTZ preset error:', err);
       });
-  }, [stream?.name]);
+  }, [stream?.name, t]);
 
   if (!isVisible || !stream?.ptz_enabled) return null;
 
@@ -179,7 +181,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
     >
       {/* Header with close button */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>PTZ Control</span>
+        <span style={{ color: 'white', fontSize: '12px', fontWeight: 'bold' }}>{t('live.ptzControl')}</span>
         {onClose && (
           <button
             onClick={onClose}
@@ -225,7 +227,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
             fontSize: '10px',
             cursor: 'pointer'
           }}
-          title="Go to Home Position"
+          title={t('live.goToHomePosition')}
         >
           ⌂
         </button>
@@ -253,7 +255,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
           onMouseUp={handleMoveStop}
           onMouseLeave={handleMoveStop}
         />
-        <span style={{ color: 'white', fontSize: '11px', alignSelf: 'center' }}>Zoom</span>
+        <span style={{ color: 'white', fontSize: '11px', alignSelf: 'center' }}>{t('live.zoom')}</span>
         <DirectionButton
           direction="zoom-in"
           onMouseDown={() => handleMoveStart(0, 0, 1)}
@@ -264,7 +266,7 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
 
       {/* Speed slider */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-        <span style={{ color: 'white', fontSize: '11px' }}>Speed:</span>
+        <span style={{ color: 'white', fontSize: '11px' }}>{t('live.speedLabel')}</span>
         <input
           type="range"
           min="0.1"
@@ -293,10 +295,10 @@ export function PTZControls({ stream, isVisible = true, onClose }) {
               cursor: 'pointer'
             }}
           >
-            <option value="">Go to Preset...</option>
+            <option value="">{t('live.goToPreset')}</option>
             {presets.map(preset => (
               <option key={preset.token} value={preset.token}>
-                {preset.name || `Preset ${preset.token}`}
+                {preset.name || t('live.presetNumber', { token: preset.token })}
               </option>
             ))}
           </select>

@@ -15,6 +15,7 @@ import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import { forceNavigation } from '../../utils/navigation-utils.js';
 import { formatUtils } from './recordings/formatUtils.js';
+import { useI18n } from '../../i18n.js';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -58,6 +59,7 @@ export function WebRTCVideoCell({
   showControls = true,
   globalShowDetections = true
 }) {
+  const { t } = useI18n();
   // Component state
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -231,7 +233,7 @@ export function WebRTCVideoCell({
                 }
               } else if (err.name === 'NotAllowedError') {
                 console.warn(`Autoplay blocked for stream ${stream.name}, user interaction required`);
-                setError('Click to play video (autoplay blocked)');
+                setError(t('live.webrtcAutoplayBlocked'));
               } else {
                 console.error(`Video play() failed for stream ${stream.name}:`, err);
               }
@@ -272,7 +274,7 @@ export function WebRTCVideoCell({
 
             // ICE itself failed or closed — show error immediately
             if (iceState === 'failed' || iceState === 'closed') {
-              setError('WebRTC connection lost. Click Retry to reconnect.');
+              setError(t('live.webrtcConnectionLostRetry'));
               setIsLoading(false);
               return;
             }
@@ -323,7 +325,7 @@ export function WebRTCVideoCell({
             } else {
               // Exceeded 90 seconds — give up and show error
               console.error(`Stream ${stream.name} connected but no video data after ${maxVideoDataChecks * videoDataCheckInterval / 1000}s`);
-              setError('Stream connected but no video data. Click Retry to reconnect.');
+              setError(t('live.streamConnectedNoVideoDataRetry'));
               setIsLoading(false);
             }
           }, videoDataCheckInterval);
@@ -395,7 +397,7 @@ export function WebRTCVideoCell({
           if (videoElement.error) {
             console.error(`Video error code: ${videoElement.error.code}, message: ${videoElement.error.message}`);
           }
-          setError('Failed to load video');
+          setError(t('live.failedToLoadVideo'));
           setIsLoading(false);
           // Clear retry timeout on error
           if (playRetryTimeout) {
@@ -444,11 +446,11 @@ export function WebRTCVideoCell({
               console.error(`Error refreshing stream ${stream.name}:`, err);
             }
             // If refresh failed, show the error
-            setError('WebRTC ICE connection failed');
+            setError(t('live.webrtcIceConnectionFailed'));
             setIsLoading(false);
           })();
         } else {
-          setError('WebRTC ICE connection failed');
+          setError(t('live.webrtcIceConnectionFailed'));
           setIsLoading(false);
         }
       } else if (pc.iceConnectionState === 'disconnected') {
@@ -461,7 +463,7 @@ export function WebRTCVideoCell({
               (peerConnectionRef.current.iceConnectionState === 'disconnected' ||
                peerConnectionRef.current.iceConnectionState === 'failed')) {
             console.error(`WebRTC ICE connection could not recover for stream ${stream.name}`);
-            setError('WebRTC connection lost. Please retry.');
+            setError(t('live.webrtcConnectionLostPleaseRetry'));
             setIsLoading(false);
           } else if (peerConnectionRef.current) {
             console.log(`WebRTC ICE connection recovered for stream ${stream.name}, current state: ${peerConnectionRef.current.iceConnectionState}`);
@@ -534,7 +536,7 @@ export function WebRTCVideoCell({
           peerConnectionRef.current.iceConnectionState !== 'connected' &&
           peerConnectionRef.current.iceConnectionState !== 'completed') {
         console.error(`WebRTC connection timeout for stream ${stream.name}, ICE state: ${peerConnectionRef.current.iceConnectionState}`);
-        setError('Connection timeout. Check network/firewall settings.');
+        setError(t('live.connectionTimeoutCheckNetwork'));
         setIsLoading(false);
       }
     }, 30000); // 30 second timeout
@@ -614,7 +616,7 @@ export function WebRTCVideoCell({
       })
       .catch(error => {
         console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
-        setError(error.message || 'Failed to establish WebRTC connection');
+        setError(error.message || t('live.failedToEstablishWebrtcConnection'));
         clearTimeout(connectionTimeout);
       });
 
@@ -795,7 +797,7 @@ export function WebRTCVideoCell({
     };
 
     return cleanupWebRTCResources;
-  }, [stream, retryCount]);
+  }, [stream, retryCount, t]);
 
   /**
    * Refresh the stream's go2rtc registration
@@ -951,14 +953,14 @@ export function WebRTCVideoCell({
       setHasMicrophonePermission(false);
 
       if (err.name === 'NotAllowedError') {
-        setMicrophoneError('Microphone access denied. Please allow microphone access in your browser settings.');
+        setMicrophoneError(t('live.microphoneAccessDenied'));
       } else if (err.name === 'NotFoundError') {
-        setMicrophoneError('No microphone found. Please connect a microphone.');
+        setMicrophoneError(t('live.noMicrophoneFound'));
       } else {
-        setMicrophoneError(`Microphone error: ${err.message}`);
+        setMicrophoneError(t('live.microphoneErrorWithMessage', { message: err.message }));
       }
     }
-  }, [stream, startAudioLevelMonitoring]);
+  }, [stream, startAudioLevelMonitoring, t]);
 
   // Stop push-to-talk (stop sending audio)
   const stopTalking = useCallback(async () => {
@@ -1057,7 +1059,7 @@ export function WebRTCVideoCell({
           {isPlaying && connectionQuality !== 'unknown' && (
             <div
               className={`connection-quality-indicator quality-${connectionQuality}`}
-              title={`Connection Quality: ${connectionQuality.charAt(0).toUpperCase() + connectionQuality.slice(1)}`}
+              title={t('live.connectionQuality', { quality: t(`live.connectionQuality.${connectionQuality}`) })}
               style={{
                 width: '10px',
                 height: '10px',
@@ -1137,7 +1139,7 @@ export function WebRTCVideoCell({
 
               canvas.toBlob((blob) => {
                 if (!blob) {
-                  showStatusMessage('Failed to create snapshot', 'error');
+                  showStatusMessage(t('timeline.failedToCreateSnapshot'), 'error');
                   return;
                 }
 
@@ -1155,7 +1157,7 @@ export function WebRTCVideoCell({
                   URL.revokeObjectURL(blobUrl);
                 }, 1000);
 
-                showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
+                showStatusMessage(t('live.snapshotSaved', { fileName }), 'success', 2000);
               }, 'image/jpeg', 0.95);
             }}
           />
@@ -1164,7 +1166,7 @@ export function WebRTCVideoCell({
         {isPlaying && (
           <button
             className={`audio-toggle-btn ${audioEnabled ? 'active' : ''}`}
-            title={audioEnabled ? 'Mute camera audio' : 'Unmute camera audio'}
+            title={audioEnabled ? t('live.muteCameraAudio') : t('live.unmuteCameraAudio')}
             onClick={() => setAudioEnabled(!audioEnabled)}
             style={{
               backgroundColor: audioEnabled ? 'rgba(34, 197, 94, 0.8)' : 'transparent',
@@ -1200,7 +1202,7 @@ export function WebRTCVideoCell({
             {/* Mode toggle button */}
             <button
               className="talk-mode-btn"
-              title={talkMode === 'ptt' ? 'Switch to Toggle Mode' : 'Switch to Push-to-Talk'}
+              title={talkMode === 'ptt' ? t('live.switchToToggleMode') : t('live.switchToPushToTalkMode')}
               onClick={() => setTalkMode(talkMode === 'ptt' ? 'toggle' : 'ptt')}
               style={{
                 backgroundColor: 'transparent',
@@ -1219,8 +1221,8 @@ export function WebRTCVideoCell({
             <button
               className={`ptt-btn ${isTalking ? 'talking' : ''}`}
               title={talkMode === 'ptt'
-                ? (isTalking ? 'Release to stop talking' : 'Hold to talk')
-                : (isTalking ? 'Click to stop talking' : 'Click to start talking')}
+                ? (isTalking ? t('live.releaseToStopTalking') : t('live.holdToTalk'))
+                : (isTalking ? t('live.clickToStopTalking') : t('live.clickToStartTalking'))}
               onMouseDown={talkMode === 'ptt' ? startTalking : undefined}
               onMouseUp={talkMode === 'ptt' ? stopTalking : undefined}
               onMouseLeave={talkMode === 'ptt' ? stopTalking : undefined}
@@ -1278,7 +1280,7 @@ export function WebRTCVideoCell({
         {stream.detection_based_recording && stream.detection_model && isPlaying && (
           <button
             className={`detection-toggle-btn ${showDetections ? 'active' : ''}`}
-            title={showDetections ? 'Hide Detections' : 'Show Detections'}
+            title={showDetections ? t('live.hideDetections') : t('live.showDetections')}
             onClick={() => setLocalShowDetections(!localShowDetections)}
             style={{
               backgroundColor: 'transparent',
@@ -1309,7 +1311,7 @@ export function WebRTCVideoCell({
         {stream.ptz_enabled && isPlaying && (
           <button
             className={`ptz-toggle-btn ${showPTZControls ? 'active' : ''}`}
-            title={showPTZControls ? 'Hide PTZ Controls' : 'Show PTZ Controls'}
+            title={showPTZControls ? t('live.hidePtzControls') : t('live.showPtzControls')}
             onClick={() => setShowPTZControls(!showPTZControls)}
             style={{
               backgroundColor: showPTZControls ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
@@ -1335,7 +1337,7 @@ export function WebRTCVideoCell({
         {(isPlaying || isLoading) && (
           <button
             className="force-refresh-btn"
-            title="Force Refresh Stream"
+            title={t('live.forceRefreshStream')}
             onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleRetry()}
             style={{
               backgroundColor: 'transparent',
@@ -1360,8 +1362,8 @@ export function WebRTCVideoCell({
         <button
           type="button"
           className="timeline-btn"
-          title="View in Timeline"
-          aria-label="View in Timeline"
+          title={t('live.viewInTimeline')}
+          aria-label={t('live.viewInTimeline')}
           onClick={(event) => forceNavigation(formatUtils.getTimelineUrl(stream.name, new Date().toISOString()), event)}
           style={{
             backgroundColor: 'transparent',
@@ -1381,7 +1383,7 @@ export function WebRTCVideoCell({
         </button>
         <button
           className="fullscreen-btn"
-          title="Toggle Fullscreen"
+          title={t('live.toggleFullscreen')}
           data-id={streamId}
           data-name={stream.name}
           onClick={(e) => onToggleFullscreen(stream.name, e, cellRef.current)}
@@ -1434,7 +1436,7 @@ export function WebRTCVideoCell({
           data-testid="stream-starting-placeholder"
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 5, pointerEvents: 'none' }}
         >
-          <LoadingIndicator message="Stream starting..." />
+          <LoadingIndicator message={t('live.streamStarting')} />
         </div>
       )}
 
@@ -1525,7 +1527,7 @@ export function WebRTCVideoCell({
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
             >
-              Retry
+              {t('common.retry')}
             </button>
           </div>
         </div>
@@ -1534,9 +1536,9 @@ export function WebRTCVideoCell({
         isOpen={showRefreshConfirm}
         onClose={() => setShowRefreshConfirm(false)}
         onConfirm={handleRetry}
-        title="Force Refresh Stream"
-        message="This will briefly interrupt the go2rtc connection, breaking the active recording. The recording will resume automatically."
-        confirmLabel="Refresh"
+        title={t('live.forceRefreshStream')}
+        message={t('live.forceRefreshWarning')}
+        confirmLabel={t('common.refresh')}
       />
     </div>
   );
