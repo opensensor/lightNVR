@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -86,7 +86,7 @@ jobs:
           echo "Saved digest for $platform: $digest"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ghcr-digests-${{ env.PLATFORM_PAIR }}
           path: ${{ runner.temp }}/digests/*.digest
@@ -99,7 +99,7 @@ jobs:
 
     steps:
       - name: Download all digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: ${{ runner.temp }}/digests
           pattern: ghcr-digests-*

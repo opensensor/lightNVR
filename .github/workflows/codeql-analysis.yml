@@ -40,7 +40,7 @@ jobs:
             libcjson-dev libmbedtls-dev libmosquitto-dev
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 

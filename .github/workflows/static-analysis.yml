@@ -26,7 +26,7 @@ jobs:
             libcjson-dev libmbedtls-dev libmosquitto-dev
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
@@ -69,7 +69,7 @@ jobs:
           echo "- **Errors**: ${ERRORS}" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload clang-tidy report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: clang-tidy-report
@@ -83,7 +83,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: false
 
@@ -135,7 +135,7 @@ jobs:
           echo "- **Performance**: ${PERF}" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload cppcheck reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: cppcheck-reports
