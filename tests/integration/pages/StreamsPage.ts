@@ -34,8 +34,8 @@ export class StreamsPage extends BasePage {
 
   // Modal locators - StreamConfigModal is a fixed overlay with unique ID
   get addStreamModal(): Locator {
-    // The modal has a unique ID 'stream-config-modal'
-    return this.page.locator('#stream-config-modal');
+    // Support both the legacy and current modal IDs.
+    return this.page.locator('#stream-modal, #stream-config-modal').first();
   }
 
   get streamNameInput(): Locator {
@@ -108,6 +108,7 @@ export class StreamsPage extends BasePage {
     await this.addStreamButton.waitFor({ state: 'visible', timeout: 5000 });
     await sleep(500);
     await this.addStreamButton.click();
+    await this.addStreamModal.waitFor({ state: 'visible', timeout: 5000 });
     // Wait for the stream form to appear by waiting for name input
     await this.streamNameInput.waitFor({ state: 'visible', timeout: 5000 });
     await sleep(300);

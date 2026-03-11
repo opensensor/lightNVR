@@ -7,6 +7,34 @@ import utc from 'dayjs/plugin/utc';
 
 dayjs.extend(utc);
 
+const CAPTURE_METHOD_TRANSLATIONS = {
+  scheduled: {
+    key: 'recordings.captureMethod.continuous',
+    fallback: 'Continuous'
+  },
+  detection: {
+    key: 'recordings.captureMethod.detection',
+    fallback: 'Detection-triggered'
+  },
+  motion: {
+    key: 'recordings.captureMethod.motion',
+    fallback: 'Motion-triggered'
+  },
+  manual: {
+    key: 'recordings.captureMethod.manual',
+    fallback: 'Manual'
+  }
+};
+
+const translateWithFallback = (t, key, fallback) => {
+  if (typeof t !== 'function') {
+    return fallback;
+  }
+
+  const translated = t(key);
+  return translated && translated !== key ? translated : fallback;
+};
+
 export const formatUtils = {
   /**
    * Format a capture method for display
@@ -14,19 +42,16 @@ export const formatUtils = {
    * @returns {string} User-friendly capture method label
    */
   formatCaptureMethod: (value, t = null) => {
-    const translate = t || ((key) => key);
-    switch (value) {
-      case 'scheduled':
-        return translate('recordings.captureMethod.continuous');
-      case 'detection':
-        return translate('recordings.captureMethod.detection');
-      case 'motion':
-        return translate('recordings.captureMethod.motion');
-      case 'manual':
-        return translate('recordings.captureMethod.manual');
-      default:
-        return value ? value.replace(/_/g, ' ') : translate('common.unknown');
+    const normalizedValue = typeof value === 'string' ? value.trim() : '';
+    const translation = CAPTURE_METHOD_TRANSLATIONS[normalizedValue];
+
+    if (translation) {
+      return translateWithFallback(t, translation.key, translation.fallback);
     }
+
+    return normalizedValue
+      ? normalizedValue.replace(/_/g, ' ')
+      : translateWithFallback(t, 'common.unknown', 'Unknown');
   },
 
   /**
