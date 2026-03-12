@@ -295,6 +295,28 @@ export function TimelinePage() {
       return false;
     }
 
+    // Backward auto-advance: if seeking before the start of this segment, jump to the
+    // end of the previous segment (mirrors how forward auto-advance works via handleEnded).
+    if (directionSeconds < 0 && videoPlayer.currentTime + directionSeconds < 0) {
+      const prevIndex = activeIndex - 1;
+      const prevSegment = timelineState.timelineSegments?.[prevIndex];
+      if (prevSegment) {
+        const prevDuration = prevSegment.end_timestamp - prevSegment.start_timestamp;
+        // Land 1 second before the end (magnitude of directionSeconds), clamped to [0, duration].
+        const seekOffset = Math.max(prevDuration + directionSeconds, 0);
+        timelineState.setState({
+          currentSegmentIndex: prevIndex,
+          currentTime: prevSegment.start_timestamp + seekOffset,
+          prevCurrentTime: timelineState.currentTime,
+          isPlaying: timelineState.isPlaying,
+          forceReload: true
+        });
+      }
+      // Return true whether or not there is a previous segment, so the browser
+      // does not scroll the page on the key press.
+      return true;
+    }
+
     const fallbackDuration = Math.max(activeSegment.end_timestamp - activeSegment.start_timestamp, 0);
     const effectiveDuration = Number.isFinite(videoPlayer.duration) && videoPlayer.duration > 0
       ? videoPlayer.duration

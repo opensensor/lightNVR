@@ -34,26 +34,6 @@ export function TimelineCursor() {
   startHourRef.current = startHour;
   endHourRef.current = endHour;
 
-  // Debounce function to limit how often a function can be called
-  const debounce = (func, delay) => {
-    let timeoutId;
-    return function(...args) {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      timeoutId = setTimeout(() => {
-        func.apply(this, args);
-      }, delay);
-    };
-  };
-
-  // Create debounced version of updateCursorPosition
-  const debouncedUpdateCursorPosition = useRef(
-    debounce((time, startHr, endHr) => {
-      updateCursorPosition(time, startHr, endHr);
-    }, 100)
-  ).current;
-
   // Subscribe to timeline state changes
   useEffect(() => {
     const unsubscribe = timelineState.subscribe(state => {
@@ -63,7 +43,7 @@ export function TimelineCursor() {
       // Only update current time if not dragging
       if (!isDraggingRef.current && !state.userControllingCursor) {
         updateTimeDisplay(state.currentTime);
-        debouncedUpdateCursorPosition(
+        updateCursorPosition(
           state.currentTime,
           state.timelineStartHour || 0,
           state.timelineEndHour || getTimelineDayLengthHours(state.selectedDate)
@@ -72,7 +52,7 @@ export function TimelineCursor() {
     });
 
     return () => unsubscribe();
-  }, [debouncedUpdateCursorPosition]);
+  }, []);
 
   // Set up drag handling
   useEffect(() => {
