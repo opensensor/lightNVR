@@ -471,8 +471,6 @@ export function WebRTCVideoCell({
         }, 5000); // Wait 5 seconds to see if connection recovers
       } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         // Connection is established or completed, clear any previous error
-        // Reset refresh flag for next potential failure
-        refreshRequestedRef.current = false;
         if (error) {
           console.log(`WebRTC connection restored for stream ${stream.name}`);
           setError(null);
