@@ -246,7 +246,14 @@ int restore_database_from_backup(const char *backup_path, const char *db_path) {
             return -1;
         }
     }
-    
+
+    if (ferror(src)) {
+        log_error("Error reading backup file: %s", strerror(errno));
+        fclose(src);
+        fclose(dst);
+        return -1;
+    }
+
     fclose(src);
     fclose(dst);
     

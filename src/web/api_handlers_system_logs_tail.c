@@ -78,6 +78,7 @@ int get_system_logs_tail(char ***logs, int *count, int max_lines) {
     // Read lines and store them
     int log_index = 0;
     char line_buffer[4096];
+    // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
     while (fgets(line_buffer, sizeof(line_buffer), fp) != NULL && log_index < capacity) {
         // Remove trailing newline
         size_t len = strlen(line_buffer);
@@ -176,7 +177,8 @@ int get_json_logs_tail(const char *min_level, const char *last_timestamp, char *
     // Read lines and store them
     int log_index = 0;
     char line_buffer[4096]; // Increased buffer size for long log lines
-    
+
+    // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
     while (fgets(line_buffer, sizeof(line_buffer), fp) != NULL && log_index < max_lines) {
         // Remove trailing newline
         size_t len = strlen(line_buffer);

@@ -2357,7 +2357,10 @@ int start_hls_unified_stream(const char *stream_name) {
 
                 if (rtsp_retries > 0) {
                     log_info("Waiting before retrying to get RTSP URL for stream %s...", stream_name);
+                    // Release mutex while sleeping to avoid blocking other threads
+                    pthread_mutex_unlock(&unified_contexts_mutex);
                     sleep(3); // Wait 3 seconds before retrying
+                    pthread_mutex_lock(&unified_contexts_mutex);
                 }
             }
         }

@@ -227,6 +227,8 @@ int init_stream_manager(int max_streams) {
     int count = get_all_stream_configs(db_streams, streams_capacity);
 
     if (count > 0) {
+        // count is bounded by streams_capacity (passed to get_all_stream_configs)
+        if (count > streams_capacity) count = streams_capacity;
         for (int i = 0; i < count && i < streams_capacity; i++) {
             if (db_streams[i].name[0] != '\0') {
                 memcpy(&streams[i].config, &db_streams[i], sizeof(stream_config_t));

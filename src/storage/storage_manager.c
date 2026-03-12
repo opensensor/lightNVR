@@ -515,6 +515,7 @@ static int apply_legacy_retention_policy(void) {
                     // Use fstatat+unlinkat with the directory fd to eliminate the TOCTOU
                     // race between lstat() and unlink() on the same path (#27).
                     int dir_fd = dirfd(stream_dir);
+                    if (dir_fd == -1) continue;
                     struct stat rec_st;
                     if (fstatat(dir_fd, rec_entry->d_name, &rec_st, AT_SYMLINK_NOFOLLOW) == 0
                             && S_ISREG(rec_st.st_mode)) {

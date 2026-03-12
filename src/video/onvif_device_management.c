@@ -88,7 +88,7 @@ static char* create_security_header(const char *username, const char *password, 
     // Raw byte copies for SHA-1 input: intermediate parts are not C strings
     memcpy((void *)(concatenated + nonce_len), created, created_len); // NOLINT(bugprone-not-null-terminated-result)
     // Exclude the null terminator: WS-Security spec requires raw bytes only
-    memcpy((void *)(concatenated + nonce_len + created_len), password, password_len);
+    memcpy((void *)(concatenated + nonce_len + created_len), password, password_len); // NOLINT(bugprone-not-null-terminated-result)
 
     // Calculate SHA1 digest
     mbedtls_sha1((unsigned char*)concatenated, nonce_len + created_len + password_len, digest);

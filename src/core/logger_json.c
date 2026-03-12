@@ -250,19 +250,29 @@ int get_json_logs(const char *min_level, const char *last_timestamp, char ***log
     // Get file size
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
-    
+    if (file_size < 0) {
+        // ftell failed (e.g., on a non-seekable stream)
+        fclose(file);
+        return -1;
+    }
+
     // Limit to last 100KB if file is larger
     const long max_size = 100L * 1024;
     long read_size = file_size;
     long offset = 0;
-    
+
     if (file_size > max_size) {
         read_size = max_size;
         offset = file_size - max_size;
     }
-    
+
+    if (read_size == 0) {
+        fclose(file);
+        return 0;
+    }
+
     // Allocate buffer
-    char *buffer = malloc(read_size + 1);
+    char *buffer = malloc((size_t)read_size + 1);
     if (!buffer) {
         fclose(file);
         return -1;
@@ -270,7 +280,9 @@ int get_json_logs(const char *min_level, const char *last_timestamp, char ***log
     
     // Read log file
     fseek(file, offset, SEEK_SET);
-    size_t bytes_read = fread(buffer, 1, read_size, file);
+    size_t bytes_read = fread(buffer, 1, (size_t)read_size, file);
+    // Clamp to allocated size in case of unexpected fread result
+    if (bytes_read > (size_t)read_size) bytes_read = (size_t)read_size;
     buffer[bytes_read] = '\0';
     
     // Close file

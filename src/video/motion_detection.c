@@ -642,7 +642,7 @@ static void apply_box_blur(const unsigned char *src, unsigned char *dst, int wid
         for (int x = 1; x < width; x++) {
             // Add new pixel to the right
             if (x + radius < width) {
-                sum += src[row_offset + x + radius];
+                sum += src[row_offset + x + radius]; // NOLINT(clang-analyzer-security.ArrayBound)
                 count++;
             }
             
@@ -683,7 +683,7 @@ static void apply_box_blur(const unsigned char *src, unsigned char *dst, int wid
         for (int y = 1; y < height; y++) {
             // Add new pixel below
             if (y + radius < height) {
-                sum += temp[(y + radius) * width + x];
+                sum += temp[(y + radius) * width + x]; // NOLINT(clang-analyzer-security.ArrayBound)
                 count++;
             }
             

@@ -138,7 +138,7 @@ static int parse_cidr_entry(const char *cidr, int *family, unsigned char *networ
     }
 
     char *slash = strrchr(trimmed, '/');
-    char *address = trimmed;
+    char *address = NULL; /* assigned in if/else below */
     long prefix = -1;
 
     if (slash) {

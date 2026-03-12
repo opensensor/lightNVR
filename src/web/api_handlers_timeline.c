@@ -102,7 +102,7 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
     sqlite3_bind_int(stmt, 4, max_segments);
 
     int count = 0;
-    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_segments) {
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_segments) {
         segments[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
         const char *sname = (const char *)sqlite3_column_text(stmt, 1);

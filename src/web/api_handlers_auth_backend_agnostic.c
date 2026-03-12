@@ -549,7 +549,7 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         // Send success response with user info
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "authenticated", true);
-        cJSON_AddNumberToObject(response, "id", user.id);
+        cJSON_AddNumberToObject(response, "id", (double)user.id);
         cJSON_AddStringToObject(response, "username", user.username);
         cJSON_AddStringToObject(response, "email", user.email);
         cJSON_AddStringToObject(response, "role", db_auth_get_role_name(user.role));
@@ -632,11 +632,11 @@ void handle_auth_sessions_list(const http_request_t *req, http_response_t *res) 
     cJSON *items = cJSON_AddArrayToObject(response, "sessions");
     for (int i = 0; i < count; i++) {
         cJSON *item = cJSON_CreateObject();
-        cJSON_AddNumberToObject(item, "id", sessions[i].id);
-        cJSON_AddNumberToObject(item, "created_at", sessions[i].created_at);
-        cJSON_AddNumberToObject(item, "last_activity_at", sessions[i].last_activity_at);
-        cJSON_AddNumberToObject(item, "idle_expires_at", sessions[i].idle_expires_at);
-        cJSON_AddNumberToObject(item, "expires_at", sessions[i].expires_at);
+        cJSON_AddNumberToObject(item, "id", (double)sessions[i].id);
+        cJSON_AddNumberToObject(item, "created_at", (double)sessions[i].created_at);
+        cJSON_AddNumberToObject(item, "last_activity_at", (double)sessions[i].last_activity_at);
+        cJSON_AddNumberToObject(item, "idle_expires_at", (double)sessions[i].idle_expires_at);
+        cJSON_AddNumberToObject(item, "expires_at", (double)sessions[i].expires_at);
         cJSON_AddStringToObject(item, "ip_address", sessions[i].ip_address);
         cJSON_AddStringToObject(item, "user_agent", sessions[i].user_agent);
         cJSON_AddBoolToObject(item, "current", current_token[0] != '\0' && strcmp(current_token, sessions[i].token) == 0);
@@ -711,10 +711,10 @@ void handle_auth_trusted_devices_list(const http_request_t *req, http_response_t
     cJSON *items = cJSON_AddArrayToObject(response, "trusted_devices");
     for (int i = 0; i < count; i++) {
         cJSON *item = cJSON_CreateObject();
-        cJSON_AddNumberToObject(item, "id", devices[i].id);
-        cJSON_AddNumberToObject(item, "created_at", devices[i].created_at);
-        cJSON_AddNumberToObject(item, "last_used_at", devices[i].last_used_at);
-        cJSON_AddNumberToObject(item, "expires_at", devices[i].expires_at);
+        cJSON_AddNumberToObject(item, "id", (double)devices[i].id);
+        cJSON_AddNumberToObject(item, "created_at", (double)devices[i].created_at);
+        cJSON_AddNumberToObject(item, "last_used_at", (double)devices[i].last_used_at);
+        cJSON_AddNumberToObject(item, "expires_at", (double)devices[i].expires_at);
         cJSON_AddStringToObject(item, "ip_address", devices[i].ip_address);
         cJSON_AddStringToObject(item, "user_agent", devices[i].user_agent);
         cJSON_AddBoolToObject(item, "current", current_device_id > 0 && current_device_id == devices[i].id);

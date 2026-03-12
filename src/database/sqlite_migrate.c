@@ -341,6 +341,8 @@ static char *read_sql_file(const char *filepath) {
     size_t read = fread(content, 1, size, fp);
     fclose(fp);
 
+    // Clamp to allocated buffer size in case of unexpected fread result
+    if (read > size) read = size;
     content[read] = '\0';
     return content;
 }

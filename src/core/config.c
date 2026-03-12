@@ -225,7 +225,7 @@ static void apply_env_overrides(config_t *config) {
                 errno = 0;
                 long parsed = strtol(env_value, &endptr, 10);
 
-                while (*endptr != '\0' && isspace((unsigned char)*endptr)) {
+                while (*endptr != '\0' && isspace((unsigned char)*endptr)) { // NOLINT(clang-analyzer-security.ArrayBound)
                     endptr++;
                 }
 
@@ -1152,6 +1152,8 @@ int save_stream_configs(const config_t *config) {
     }
 
     // Delete existing stream configurations
+    // 'loaded' is bounded by config->max_streams (the calloc capacity)
+    if (loaded > config->max_streams) loaded = config->max_streams;
     for (int i = 0; i < loaded; i++) {
         if (delete_stream_config(db_streams[i].name) != 0) {
             log_error("Failed to delete stream configuration: %s", db_streams[i].name);

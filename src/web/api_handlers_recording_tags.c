@@ -184,7 +184,7 @@ void handle_put_recording_tags(const http_request_t *req, http_response_t *res) 
     int tag_count = cJSON_GetArraySize(tags_json);
     const char **tag_strs = NULL;
     if (tag_count > 0) {
-        tag_strs = malloc(tag_count * sizeof(char *));
+        tag_strs = (const char **)malloc((size_t)tag_count * sizeof(char *));
         if (!tag_strs) {
             cJSON_Delete(json);
             http_response_set_json_error(res, 500, "Memory allocation failed");
@@ -201,7 +201,7 @@ void handle_put_recording_tags(const http_request_t *req, http_response_t *res) 
     }
 
     int rc = db_recording_tag_set(id, tag_strs, tag_count);
-    free(tag_strs);
+    free((void *)tag_strs);
     cJSON_Delete(json);
 
     if (rc != 0) {

@@ -51,6 +51,7 @@ static uint32_t crc32_of_file(const char *path, uint64_t *size_out) {
     uint64_t total = 0;
     uint8_t buf[65536];
     size_t n;
+    // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
         for (size_t i = 0; i < n; i++)
             crc = (crc >> 8) ^ s_crc_table[(crc ^ buf[i]) & 0xFF];
@@ -123,6 +124,7 @@ static uint64_t zip_copy_file(FILE *zip, const char *path) {
     if (!src) return 0;
     uint8_t buf[65536];
     size_t n; uint64_t total = 0;
+    // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
     while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
         fwrite(buf, 1, n, zip); total += n;
     }

@@ -440,7 +440,7 @@ void cleanup_hls_directories(void) {
                     time_t five_minutes_ago = current_time - ((time_t)5 * 60); // 5 minutes in seconds
 
                     int dir_fd = dirfd(stream_dir);
-                    while ((file_entry = readdir(stream_dir)) != NULL) {
+                    while (dir_fd != -1 && (file_entry = readdir(stream_dir)) != NULL) {
                         // Check if this is a .ts file
                         if (strstr(file_entry->d_name, ".ts") != NULL) {
                             // Use fstatat+unlinkat with the directory fd to eliminate
@@ -477,7 +477,7 @@ void cleanup_hls_directories(void) {
                     time_t five_minutes_ago = current_time - ((time_t)5 * 60); // 5 minutes in seconds
 
                     int dir_fd = dirfd(stream_dir);
-                    while ((file_entry = readdir(stream_dir)) != NULL) {
+                    while (dir_fd != -1 && (file_entry = readdir(stream_dir)) != NULL) {
                         // Check if this is a .m4s file
                         if (strstr(file_entry->d_name, ".m4s") != NULL) {
                             // Use fstatat+unlinkat with the directory fd to eliminate

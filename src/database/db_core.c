@@ -301,7 +301,7 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
 
         if (backup_count == backup_capacity) {
             size_t new_capacity = backup_capacity == 0 ? 8 : backup_capacity * 2;
-            char **new_paths = realloc(backup_paths, new_capacity * sizeof(*backup_paths));
+            char **new_paths = (char **)realloc((void *)backup_paths, new_capacity * sizeof(*backup_paths));
             if (!new_paths) {
                 log_error("Out of memory while pruning backups");
                 result = -1;
@@ -322,8 +322,8 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
 
     closedir(dir);
 
-    if (result == 0 && backup_count > (size_t)retention_count) {
-        qsort(backup_paths, backup_count, sizeof(*backup_paths), compare_backup_paths);
+    if (result == 0 && backup_paths != NULL && backup_count > (size_t)retention_count) {
+        qsort((void *)backup_paths, backup_count, sizeof(*backup_paths), compare_backup_paths);
         size_t remove_count = backup_count - (size_t)retention_count;
         for (size_t i = 0; i < remove_count; i++) {
             if (unlink(backup_paths[i]) != 0) {
@@ -338,7 +338,7 @@ static int prune_timestamped_backups(const char *backup_dir, int retention_count
     for (size_t i = 0; i < backup_count; i++) {
         free(backup_paths[i]);
     }
-    free(backup_paths);
+    free((void *)backup_paths);
 
     return result;
 }

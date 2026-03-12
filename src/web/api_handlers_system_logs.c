@@ -161,7 +161,9 @@ int get_system_logs(char ***logs, int *count) {
         fclose(log_file);
         return -1;
     }
-    size_t bytes_read = fread(buffer, 1, read_size, log_file);
+    size_t bytes_read = fread(buffer, 1, (size_t)read_size, log_file);
+    // Clamp to allocated size in case of unexpected fread result
+    if (bytes_read > (size_t)read_size) bytes_read = (size_t)read_size;
     buffer[bytes_read] = '\0';
 
     // Close file

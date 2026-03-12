@@ -163,10 +163,12 @@ static void add_versions_to_json(cJSON *info) {
     }
 
     char details[256];
-    snprintf(details, sizeof(details), "Build date %s%s%s",
-             LIGHTNVR_BUILD_DATE,
-             (LIGHTNVR_GIT_COMMIT[0] != '\0') ? " • commit " : "",
-             (LIGHTNVR_GIT_COMMIT[0] != '\0') ? LIGHTNVR_GIT_COMMIT : "");
+    if (LIGHTNVR_GIT_COMMIT[0] != '\0') {
+        snprintf(details, sizeof(details), "Build date %s • commit %s",
+                 LIGHTNVR_BUILD_DATE, LIGHTNVR_GIT_COMMIT);
+    } else {
+        snprintf(details, sizeof(details), "Build date %s", LIGHTNVR_BUILD_DATE);
+    }
     add_version_entry(items, "LightNVR", "Application", LIGHTNVR_VERSION_STRING, details);
 
     struct utsname system_info;
@@ -431,7 +433,8 @@ static int get_effective_cpu_cores(int *out_millicores) {
             log_debug("cgroup v2 cpu.max: unlimited");
             return host_cores;
         }
-        if (!cpu_max_parsed) fclose(fp);
+        /* Close fp if not already closed inside the cpu_max_parsed+period>0 branch */
+        if (!(cpu_max_parsed && period > 0)) fclose(fp);
     }
 
     // ── cgroup v1: cpu.cfs_quota_us / cpu.cfs_period_us
@@ -1068,8 +1071,8 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                     FILE *mac_file = fopen(mac_path, "r");
                                     if (mac_file) {
                                         if (fgets(mac, sizeof(mac), mac_file)) {
-                                            // Remove newline
-                                            mac[strcspn(mac, "\n")] = 0;
+                                            // Remove newline (strcspn result is bounded by strlen, safe)
+                                            mac[strcspn(mac, "\n")] = 0; // NOLINT(clang-analyzer-security.ArrayBound)
                                         }
                                         fclose(mac_file);
                                     }
@@ -1090,12 +1093,12 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                 FILE *fp = fopen("/proc/net/dev", "r");
                 if (fp) {
                     char line[256];
-                    // Skip header lines
-                    fgets(line, sizeof(line), fp);
-                    fgets(line, sizeof(line), fp);
+                    // Skip two header lines; abort if either fails (empty/truncated file)
+                    bool headers_read = fgets(line, sizeof(line), fp) != NULL &&
+                                        fgets(line, sizeof(line), fp) != NULL;
 
                     // Read interfaces
-                    while (fgets(line, sizeof(line), fp)) {
+                    while (headers_read && fgets(line, sizeof(line), fp)) {
                         char *name = strtok(line, ":");
                         if (name) {
                             // Trim whitespace
@@ -1164,8 +1167,8 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
                                     }
                                     if (mac_file) {
                                         if (fgets(mac, sizeof(mac), mac_file)) {
-                                            // Remove newline
-                                            mac[strcspn(mac, "\n")] = 0;
+                                            // Remove newline (strcspn result is bounded by strlen, safe)
+                                            mac[strcspn(mac, "\n")] = 0; // NOLINT(clang-analyzer-security.ArrayBound)
                                         }
                                         fclose(mac_file);
                                     }

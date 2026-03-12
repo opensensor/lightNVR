@@ -196,6 +196,7 @@ static bool check_tcp_port_open(int port) {
         if (!fp) continue;
         char line[512];
         fgets(line, sizeof(line), fp); /* skip header */
+        // NOLINTNEXTLINE(clang-analyzer-unix.Stream)
         while (fgets(line, sizeof(line), fp)) {
             /* /proc/net/tcp format (space-separated fields):
              *   sl  local_address  rem_address  st  ...
@@ -289,7 +290,7 @@ static bool proc_comm_equals(pid_t pid, const char *name) {
         return false;
     }
 
-    comm[strcspn(comm, "\n")] = '\0';
+    comm[strcspn(comm, "\n")] = '\0'; // NOLINT(clang-analyzer-security.ArrayBound)
     return strcmp(comm, name) == 0;
 }
 
@@ -304,6 +305,7 @@ static bool proc_comm_equals(pid_t pid, const char *name) {
  * @param name        Name of the entry inside parent_dfd to remove.
  */
 static void recursive_remove_at(int parent_dfd, const char *name) {
+    if (parent_dfd < 0) return;
     struct stat st;
     if (fstatat(parent_dfd, name, &st, AT_SYMLINK_NOFOLLOW) != 0) return;
 
