@@ -471,8 +471,6 @@ export function WebRTCVideoCell({
         }, 5000); // Wait 5 seconds to see if connection recovers
       } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         // Connection is established or completed, clear any previous error
-        // Reset refresh flag for next potential failure
-        refreshRequestedRef.current = false;
         if (error) {
           console.log(`WebRTC connection restored for stream ${stream.name}`);
           setError(null);
@@ -700,16 +698,16 @@ export function WebRTCVideoCell({
     // Listen for connection state changes to start/stop monitoring
     const originalOnIceConnectionStateChange = pc.oniceconnectionstatechange;
     pc.oniceconnectionstatechange = () => {
-      // Call the original handler
-      if (originalOnIceConnectionStateChange) {
-        originalOnIceConnectionStateChange();
-      }
-      
       // Start monitoring when connected
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         startConnectionMonitoring();
         // Reset reconnect attempts counter when we get a good connection
         reconnectAttemptsRef.current = 0;
+      }
+
+      // Call the original handler
+      if (originalOnIceConnectionStateChange) {
+        originalOnIceConnectionStateChange();
       }
       
       // Stop monitoring when disconnected or failed
