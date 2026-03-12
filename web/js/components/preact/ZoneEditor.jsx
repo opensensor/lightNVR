@@ -3,7 +3,7 @@
  * Interactive canvas-based zone configuration for detection regions
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'preact/hooks';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import { nowMilliseconds } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
@@ -84,7 +84,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
       return () => clearTimeout(timeout);
     }
-  }, [streamName, imageLoaded]);
+  }, [streamName]);
 
   // Draw zones on canvas
   const drawCanvas = () => {
@@ -434,7 +434,11 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: t('zoneEditor.unknownError') }));
+        const errorData = await response.json().catch(() => ({
+          error: t('zoneEditor.failedToSaveZones', {
+            message: t('zoneEditor.httpError', { status: response.status }),
+          }),
+        }));
         throw new Error(errorData.error || t('zoneEditor.httpError', { status: response.status }));
       }
 
