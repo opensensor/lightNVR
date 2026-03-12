@@ -82,7 +82,7 @@ export const formatUtils = {
    * @returns {string} Formatted duration
    */
   formatDuration: (seconds) => {
-    if (!seconds) return '00:00:00';
+    if (seconds == null || seconds < 0) return '00:00:00';
     
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
@@ -128,17 +128,27 @@ export const formatUtils = {
    * @returns {string} Formatted file size
    */
   formatFileSize: (bytes) => {
-    if (!bytes) return '0 B';
-    
+    // Treat null/undefined/non-number/NaN as 0 B
+    if (bytes == null || typeof bytes !== 'number' || !Number.isFinite(bytes)) {
+      return '0 B';
+    }
+
+    // Guard against negative values by clamping to zero
+    if (bytes < 0) {
+      bytes = 0;
+    }
+
+    if (bytes === 0) return '0 B';
+
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let i = 0;
     let size = bytes;
-    
+
     while (size >= 1024 && i < units.length - 1) {
       size /= 1024;
       i++;
     }
-    
+
     return `${size.toFixed(1)} ${units[i]}`;
   }
 };
