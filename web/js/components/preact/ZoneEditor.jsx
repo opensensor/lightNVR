@@ -84,7 +84,7 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
 
       return () => clearTimeout(timeout);
     }
-  }, [streamName, imageLoaded]);
+  }, [streamName]);
 
   // Draw zones on canvas
   const drawCanvas = () => {
