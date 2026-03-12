@@ -432,8 +432,13 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Copy name and URL
-    strncpy(config.name, name->valuestring, sizeof(config.name) - 1);
+    // Copy trimmed name (skip leading whitespace, then strip trailing whitespace)
+    strncpy(config.name, name_str, sizeof(config.name) - 1);
+    config.name[sizeof(config.name) - 1] = '\0';
+    size_t name_len = strlen(config.name);
+    while (name_len > 0 && (config.name[name_len - 1] == ' ' || config.name[name_len - 1] == '\t')) {
+        config.name[--name_len] = '\0';
+    }
     strncpy(config.url, url->valuestring, sizeof(config.url) - 1);
 
     // Optional fields with defaults

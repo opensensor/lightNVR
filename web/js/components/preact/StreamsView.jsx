@@ -487,7 +487,7 @@ export function StreamsView() {
 
     // Prepare stream data for API
     const streamData = {
-      name: currentStream.name,
+      name: currentStream.name.trim(),
       url: currentStream.url,
       admin_url: currentStream.adminUrl || '',
       enabled: currentStream.enabled,
