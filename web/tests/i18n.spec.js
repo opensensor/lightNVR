@@ -136,4 +136,39 @@ describe('i18n locale selection', () => {
     expect(t('nav.settings')).toBe('Configuración');
     expect(t('login.rememberDevice', { days: 30 })).toBe('Remember this device for 30 days');
   });
+
+  test('handles complete locale loading failure gracefully', async () => {
+    // Override fetch for this test to simulate failures for both requested and fallback locales.
+    global.fetch = jest.fn((url) => {
+      if (url.endsWith('/locales/manifest.json')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            locales: [
+              { code: 'en', nativeName: 'English' },
+              { code: 'es', nativeName: 'Español' },
+            ],
+          }),
+        });
+      }
+
+      // Simulate failure to load both the requested locale and the English fallback.
+      if (url.endsWith('/locales/es.json') || url.endsWith('/locales/en.json')) {
+        return Promise.resolve({
+          ok: false,
+          json: async () => ({}),
+        });
+      }
+
+      return Promise.resolve({
+        ok: false,
+        json: async () => ({}),
+      });
+    });
+
+    await expect(initI18n()).resolves.toBeUndefined();
+
+    // Even if translations fail to load, t should still be callable without throwing.
+    expect(() => t('nav.settings')).not.toThrow();
+  });
 });
