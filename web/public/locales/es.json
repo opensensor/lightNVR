@@ -352,6 +352,7 @@
   "recordings.start": "Inicio",
   "recordings.end": "Fin",
   "recordings.addStream": "Agregar stream…",
+  "recordings.allStreams": "Todos los streams",
   "recordings.noStreamFiltersSelected": "No hay filtros de stream seleccionados",
   "recordings.detections": "Detecciones",
   "recordings.withDetections": "Con detecciones",

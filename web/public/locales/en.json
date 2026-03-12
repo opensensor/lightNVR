@@ -209,6 +209,7 @@
   "recordings.start": "Start",
   "recordings.end": "End",
   "recordings.addStream": "Add stream…",
+  "recordings.allStreams": "All Streams",
   "recordings.noStreamFiltersSelected": "No stream filters selected",
   "recordings.detections": "Detections",
   "recordings.allRecordings": "All Recordings",

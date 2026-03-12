@@ -55,6 +55,34 @@ export class StreamsPage extends BasePage {
     return this.addStreamModal.locator('button.btn-primary').filter({ hasText: /add stream|update stream/i }).first();
   }
 
+  get streamModalTitle(): Locator {
+    return this.addStreamModal.locator('h3').first();
+  }
+
+  /**
+   * Get the Clone button for a specific stream row by stream name
+   */
+  cloneButtonForStream(streamName: string): Locator {
+    return this.getStreamByName(streamName).locator('button[title="Clone Stream"]');
+  }
+
+  /**
+   * Click the clone button on a named stream and wait for the modal to open
+   */
+  async clickCloneStream(streamName: string): Promise<void> {
+    const row = this.getStreamByName(streamName);
+    // Expand the row if it is collapsed (rows are collapsible in the streams table)
+    const isExpanded = await row.locator('td button[title="Clone Stream"]').isVisible();
+    if (!isExpanded) {
+      await row.click();
+      await sleep(400);
+    }
+    await this.cloneButtonForStream(streamName).click();
+    await this.addStreamModal.waitFor({ state: 'visible', timeout: 5000 });
+    await this.streamNameInput.waitFor({ state: 'visible', timeout: 5000 });
+    await sleep(300);
+  }
+
   get cancelButton(): Locator {
     // The cancel button is in the modal with text "Cancel" - scope to the modal
     return this.addStreamModal.locator('button').filter({ hasText: /^cancel$/i }).first();

@@ -235,7 +235,7 @@ export function FiltersSidebar({
                 e.target.value = '';
               }}
             >
-              <option value="">{t('recordings.addStream')}</option>
+              <option value="">{t('recordings.allStreams')}</option>
               {streams.map((stream) => (
                 <option key={stream.name} value={stream.name}>{stream.name}</option>
               ))}

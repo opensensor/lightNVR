@@ -428,6 +428,85 @@ test.describe('Recordings Page @ui @recordings', () => {
     });
   });
 
+  test.describe('i18n — table column headers and toolbar labels', () => {
+    /** Shared route setup for recordings table i18n tests */
+    async function setupRecordingsMocks(page: any) {
+      await page.addInitScript(() => {
+        localStorage.setItem('recordings_view_mode', 'table');
+      });
+      await page.route('**/api/settings*', route => route.fulfill({ json: { generate_thumbnails: false } }));
+      await page.route('**/api/streams*', route => route.fulfill({ json: [{ name: 'cam1' }] }));
+      await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: [] } }));
+      await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
+      await page.route('**/api/recordings?**', route => route.fulfill({
+        json: {
+          recordings: [{
+            id: 1,
+            stream: 'cam1',
+            capture_method: 'scheduled',
+            tags: [],
+            detection_labels: [],
+            start_time_unix: 1741420800,
+            duration: 60,
+            size: '1 MB',
+            protected: false,
+            has_detections: false,
+          }],
+          pagination: { total: 1, pages: 1, limit: 20 },
+        }
+      }));
+    }
+
+    test('table column headers are rendered via i18n (English)', async ({ page }) => {
+      const recordingsPage = new RecordingsPage(page);
+      await setupRecordingsMocks(page);
+      await recordingsPage.goto();
+
+      const thead = page.locator('#recordings-table thead');
+      await expect(thead).toBeVisible();
+
+      // All column headers the user reported as missing from translations
+      await expect(thead.locator('th').filter({ hasText: 'Stream' })).toHaveCount(1);
+      await expect(thead.locator('th').filter({ hasText: 'Capture Method' })).toHaveCount(1);
+      await expect(thead.locator('th').filter({ hasText: 'Start Time' })).toHaveCount(1);
+      await expect(thead.locator('th').filter({ hasText: 'Duration' })).toHaveCount(1);
+      await expect(thead.locator('th').filter({ hasText: 'Size' })).toHaveCount(1);
+      await expect(thead.locator('th').filter({ hasText: 'Detections' })).toHaveCount(1);
+      await expect(thead.locator('th').filter({ hasText: 'Tags' })).toHaveCount(1);
+      await expect(thead.locator('th').filter({ hasText: 'Actions' })).toHaveCount(1);
+
+      await page.screenshot({ path: 'test-results/recordings-i18n-headers.png' });
+    });
+
+    test('toolbar batch-action buttons carry correct i18n labels (English)', async ({ page }) => {
+      const recordingsPage = new RecordingsPage(page);
+      await setupRecordingsMocks(page);
+      await recordingsPage.goto();
+
+      await expect(page.locator('#recordings-table')).toBeVisible();
+
+      // The toolbar renders labels via t() — verify the English strings are present
+      await expect(page.getByRole('button', { name: 'Delete Selected' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Delete All Filtered' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Download Selected' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Manage Tags' })).toBeVisible();
+
+      await page.screenshot({ path: 'test-results/recordings-i18n-toolbar.png' });
+    });
+
+    test('empty toolbar shows "No recordings selected" via i18n', async ({ page }) => {
+      const recordingsPage = new RecordingsPage(page);
+      await setupRecordingsMocks(page);
+      await recordingsPage.goto();
+
+      await expect(page.locator('#recordings-table')).toBeVisible();
+
+      // With no checkboxes ticked the selected-count div should show the i18n string
+      const selectedCount = page.locator('.selected-count');
+      await expect(selectedCount).toHaveText('No recordings selected');
+    });
+  });
+
   test.describe('Batch Operations', () => {
     test('keeps accumulated selections across pages and supports All items per page', async ({ page }) => {
       const recordingsPage = new RecordingsPage(page);

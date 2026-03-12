@@ -189,6 +189,153 @@ test.describe('Streams Page @ui @streams', () => {
     });
   });
 
+  test.describe('Clone Stream', () => {
+    const MOCK_STREAM_NAME = 'test_pattern';
+
+    // Minimal stream list + full-detail stubs for route-based clone tests
+    async function setupCloneMocks(page: any) {
+      await page.route('**/api/streams', route => route.fulfill({
+        json: [{
+          name: MOCK_STREAM_NAME,
+          url: 'rtsp://192.168.1.100/stream1',
+          enabled: true,
+          streaming_enabled: true,
+          status: 'Running',
+          width: 1280,
+          height: 720,
+          fps: 15,
+          codec: 'h264',
+          protocol: 0,
+          priority: 5,
+          segment_duration: 30,
+          record: true,
+          record_audio: true,
+        }]
+      }));
+
+      await page.route(`**/api/streams/${MOCK_STREAM_NAME}/full`, route => route.fulfill({
+        json: {
+          stream: {
+            name: MOCK_STREAM_NAME,
+            url: 'rtsp://192.168.1.100/stream1',
+            enabled: true,
+            streaming_enabled: true,
+            width: 1280,
+            height: 720,
+            fps: 15,
+            codec: 'h264',
+            protocol: 0,
+            priority: 5,
+            segment_duration: 30,
+            record: true,
+            record_audio: true,
+            detection_based_recording: false,
+            detection_model: '',
+            detection_threshold: 50,
+            detection_interval: 10,
+            pre_detection_buffer: 10,
+            post_detection_buffer: 30,
+            detection_zones: [],
+            detection_object_filter: 'none',
+            detection_object_filter_list: '',
+            retention_days: 0,
+            detection_retention_days: 0,
+            max_storage_mb: 0,
+            tags: '',
+          },
+          motion_config: null,
+        }
+      }));
+
+      // Stub detection models
+      await page.route('**/api/detection/models', route => route.fulfill({ json: { models: [] } }));
+    }
+
+    test('should display a Clone button for each stream row', async ({ page }) => {
+      const streamsPage = new StreamsPage(page);
+      await setupCloneMocks(page);
+      await streamsPage.goto({ waitForNetworkIdle: true });
+      await sleep(1500);
+
+      const streamCount = await streamsPage.getStreamCount();
+      if (streamCount === 0) {
+        console.log('No streams found – skipping clone button visibility check');
+        return;
+      }
+
+      // The Clone button should be present in the first stream row
+      const firstRow = streamsPage.streamCards.filter({ has: page.locator('td') }).first();
+      const cloneBtn = firstRow.locator('button[title="Clone Stream"]');
+      await expect(cloneBtn).toBeVisible();
+
+      await page.screenshot({ path: 'test-results/streams-clone-button.png' });
+    });
+
+    test('should open the modal titled "Clone Stream" with pre-filled name', async ({ page }) => {
+      const streamsPage = new StreamsPage(page);
+      await setupCloneMocks(page);
+      await streamsPage.goto({ waitForNetworkIdle: true });
+      await sleep(1500);
+
+      const streamCount = await streamsPage.getStreamCount();
+      if (streamCount === 0) {
+        console.log('No streams found – skipping clone modal test');
+        return;
+      }
+
+      // Click clone on the first stream row
+      const firstRow = streamsPage.streamCards.filter({ has: page.locator('td') }).first();
+      const cloneBtn = firstRow.locator('button[title="Clone Stream"]');
+      await cloneBtn.click();
+
+      // Modal must open
+      await expect(streamsPage.addStreamModal).toBeVisible();
+
+      // Title should say "Clone Stream", not "Add Stream" or "Edit Stream"
+      await expect(streamsPage.streamModalTitle).toHaveText('Clone Stream');
+
+      // Name field should be pre-filled with "Copy of <original name>"
+      const nameValue = await streamsPage.streamNameInput.inputValue();
+      expect(nameValue).toContain(MOCK_STREAM_NAME);
+      expect(nameValue.toLowerCase()).toContain('copy');
+
+      // Name field must be editable (not disabled)
+      await expect(streamsPage.streamNameInput).toBeEnabled();
+
+      await page.screenshot({ path: 'test-results/streams-clone-modal.png' });
+    });
+
+    test('should allow user to rename the cloned stream before saving', async ({ page }) => {
+      const streamsPage = new StreamsPage(page);
+      await setupCloneMocks(page);
+      await streamsPage.goto({ waitForNetworkIdle: true });
+      await sleep(1500);
+
+      const streamCount = await streamsPage.getStreamCount();
+      if (streamCount === 0) {
+        console.log('No streams found – skipping clone rename test');
+        return;
+      }
+
+      const firstRow = streamsPage.streamCards.filter({ has: page.locator('td') }).first();
+      await firstRow.locator('button[title="Clone Stream"]').click();
+      await expect(streamsPage.addStreamModal).toBeVisible();
+
+      // Clear the pre-filled name and type a new one
+      await streamsPage.streamNameInput.clear();
+      await streamsPage.streamNameInput.fill('my_cloned_stream');
+
+      const nameValue = await streamsPage.streamNameInput.inputValue();
+      expect(nameValue).toBe('my_cloned_stream');
+
+      // Close modal without saving
+      await streamsPage.cancelButton.click();
+      await expect(streamsPage.addStreamModal).not.toBeVisible();
+
+      await page.screenshot({ path: 'test-results/streams-clone-rename.png' });
+    });
+  });
+
   test.describe('Stream Details', () => {
     test('should show stream card with name and URL', async ({ page }) => {
       const streamsPage = new StreamsPage(page);
