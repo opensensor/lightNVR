@@ -434,7 +434,11 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: t('zoneEditor.unknownError') }));
+        const errorData = await response.json().catch(() => ({
+          error: t('zoneEditor.failedToSaveZones', {
+            message: t('zoneEditor.httpError', { status: response.status }),
+          }),
+        }));
         throw new Error(errorData.error || t('zoneEditor.httpError', { status: response.status }));
       }
 
