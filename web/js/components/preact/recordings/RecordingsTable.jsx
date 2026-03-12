@@ -5,16 +5,17 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
 import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.jsx';
+import { useI18n } from '../../../i18n.js';
 
-/** Columns that can be hidden by the user */
+/** Columns that can be hidden by the user — labels resolved via i18n in ColumnConfigDropdown */
 const HIDEABLE_COLUMNS = [
-  { key: 'stream', label: 'Stream' },
-  { key: 'capture_method', label: 'Capture Method' },
-  { key: 'duration', label: 'Duration' },
-  { key: 'size', label: 'Size' },
-  { key: 'detections', label: 'Detections' },
-  { key: 'tags', label: 'Tags' },
-  { key: 'actions', label: 'Actions' },
+  { key: 'stream', labelKey: 'live.stream' },
+  { key: 'capture_method', labelKey: 'recordings.columnCaptureMethod' },
+  { key: 'duration', labelKey: 'recordings.columnDuration' },
+  { key: 'size', labelKey: 'recordings.columnSize' },
+  { key: 'detections', labelKey: 'recordings.detections' },
+  { key: 'tags', labelKey: 'live.tags' },
+  { key: 'actions', labelKey: 'common.actions' },
 ];
 
 /**
@@ -55,6 +56,7 @@ function TagCell({ recording, onTagsChanged }) {
  * Column config dropdown – gear icon that opens a checklist of hideable columns
  */
 function ColumnConfigDropdown({ hiddenColumns, toggleColumn }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -72,7 +74,7 @@ function ColumnConfigDropdown({ hiddenColumns, toggleColumn }) {
         type="button"
         className="p-1.5 rounded hover:bg-muted/70 transition-colors"
         onClick={() => setOpen(o => !o)}
-        title="Configure visible columns"
+        title={t('recordings.configureColumns')}
       >
         {/* Gear / cog icon */}
         <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -84,7 +86,7 @@ function ColumnConfigDropdown({ hiddenColumns, toggleColumn }) {
       {open && (
         <div className="absolute right-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
           <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
-            Visible Columns
+            {t('recordings.visibleColumns')}
           </div>
           {HIDEABLE_COLUMNS.map(col => (
             <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-sm">
@@ -95,7 +97,7 @@ function ColumnConfigDropdown({ hiddenColumns, toggleColumn }) {
                 className="w-3.5 h-3.5 rounded"
                 style={{ accentColor: 'hsl(var(--primary))' }}
               />
-              {col.label}
+              {t(col.labelKey)}
             </label>
           ))}
         </div>
@@ -134,6 +136,7 @@ export function RecordingsTable({
   onTagsChanged,
   viewSelectedInTimeline
 }) {
+  const { t } = useI18n();
   const show = (col) => !hiddenColumns[col];
   const [showBulkTags, setShowBulkTags] = useState(false);
   const selectedCount = getSelectedCount();
@@ -153,15 +156,15 @@ export function RecordingsTable({
             <div className="flex items-center gap-2 mr-2">
               <div className="selected-count text-sm text-muted-foreground">
                 {selectedCount > 0 ?
-                  `${selectedCount} recording${selectedCount !== 1 ? 's' : ''} selected` :
-                  'No recordings selected'}
+                  t('recordings.recordingsSelectedCount', { count: selectedCount }) :
+                  t('recordings.noRecordingsSelected')}
               </div>
               {selectedCount > 0 && clearSelections && (
                 <button
                   className="btn-secondary text-xs px-2 py-1"
                   onClick={clearSelections}
-                  title="Clear selected recordings">
-                  Clear
+                  title={t('recordings.clearSelectedTitle')}>
+                  {t('recordings.clearSelected')}
                 </button>
               )}
             </div>
@@ -169,27 +172,27 @@ export function RecordingsTable({
               className="btn-danger text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={selectedCount === 0}
               onClick={() => openDeleteModal('selected')}>
-              Delete Selected
+              {t('recordings.deleteSelected')}
             </button>
             <button
               className="btn-danger text-xs px-2 py-1"
               onClick={() => openDeleteModal('all')}>
-              Delete All Filtered
+              {t('recordings.deleteAllFiltered')}
             </button>
             <button
               className="btn-primary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={selectedCount === 0}
               onClick={() => openDownloadModal && openDownloadModal()}
-              title="Download selected recordings">
-              Download Selected
+              title={t('recordings.downloadSelectedTitle')}>
+              {t('recordings.downloadSelected')}
             </button>
             <div className="relative inline-block">
               <button
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                 disabled={selectedCount === 0}
                 onClick={() => setShowBulkTags(!showBulkTags)}
-                title="Manage tags for selected recordings">
-                <TagIcon className="w-3.5 h-3.5" /> Manage Tags
+                title={t('recordings.manageTagsTitle')}>
+                <TagIcon className="w-3.5 h-3.5" /> {t('recordings.manageTagsButton')}
               </button>
               {showBulkTags && (
                 <BulkTagsOverlay
@@ -205,8 +208,8 @@ export function RecordingsTable({
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={selectedCount === 0}
                 onClick={viewSelectedInTimeline}
-                title="View selected recordings in Timeline">
-                ▶ View in Timeline
+                title={t('live.viewInTimeline')}>
+                ▶ {t('live.viewInTimeline')}
               </button>
             )}
           </>
@@ -225,7 +228,7 @@ export function RecordingsTable({
                     type="checkbox"
                     checked={selectAll}
                     onChange={toggleSelectAll}
-                    aria-label="Select all recordings on this page"
+                    aria-label={t('recordings.selectAll')}
                     className="w-4 h-4 rounded focus:ring-2"
                     style={{accentColor: 'hsl(var(--primary))'}}
                   />
@@ -235,7 +238,7 @@ export function RecordingsTable({
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                     onClick={() => sortBy('stream_name')}>
                   <div className="flex items-center">
-                    Stream
+                    {t('live.stream')}
                     {sortField === 'stream_name' && (
                       <span className="sort-icon ml-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
                     )}
@@ -244,13 +247,13 @@ export function RecordingsTable({
               )}
               {show('capture_method') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Capture Method
+                  {t('recordings.columnCaptureMethod')}
                 </th>
               )}
               <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                   onClick={() => sortBy('start_time')}>
                 <div className="flex items-center">
-                  Start Time
+                  {t('recordings.columnStartTime')}
                   {sortField === 'start_time' && (
                     <span className="sort-icon ml-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
                   )}
@@ -258,14 +261,14 @@ export function RecordingsTable({
               </th>
               {show('duration') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Duration
+                  {t('recordings.columnDuration')}
                 </th>
               )}
               {show('size') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                     onClick={() => sortBy('size_bytes')}>
                   <div className="flex items-center">
-                    Size
+                    {t('recordings.columnSize')}
                     {sortField === 'size_bytes' && (
                       <span className="sort-icon ml-1">{sortDirection === 'asc' ? '▲' : '▼'}</span>
                     )}
@@ -274,17 +277,17 @@ export function RecordingsTable({
               )}
               {show('detections') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Detections
+                  {t('recordings.detections')}
                 </th>
               )}
               {show('tags') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Tags
+                  {t('live.tags')}
                 </th>
               )}
               {show('actions') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Actions
+                  {t('common.actions')}
                 </th>
               )}
             </tr>
@@ -293,7 +296,7 @@ export function RecordingsTable({
             {recordings.length === 0 ? (
               <tr>
                 <td colSpan={visibleCount} className="px-6 py-4 text-center text-muted-foreground">
-                  {pagination.totalItems === 0 ? 'No recordings found' : 'Loading recordings...'}
+                  {pagination.totalItems === 0 ? t('recordings.noRecordingsFound') : t('recordings.loadingRecordings')}
                 </td>
               </tr>
             ) : recordings.map(recording => (
@@ -362,7 +365,7 @@ export function RecordingsTable({
                               onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onClick={() => playRecording(recording)}
-                              title="Play">
+                              title={t('recordings.play')}>
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"></path>
                         </svg>
@@ -372,7 +375,7 @@ export function RecordingsTable({
                               onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'}
                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onClick={() => downloadRecording(recording)}
-                              title="Download">
+                              title={t('common.download')}>
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd"></path>
                         </svg>
@@ -382,7 +385,7 @@ export function RecordingsTable({
                               onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--info) / 0.1)'}
                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               href={formatUtils.getTimelineUrl(recording.stream, recording.start_time_unix ?? recording.start_time)}
-                              title="View in Timeline">
+                              title={t('live.viewInTimeline')}>
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"></path>
                         </svg>
@@ -392,7 +395,7 @@ export function RecordingsTable({
                               onMouseOver={(e) => e.currentTarget.style.backgroundColor = recording.protected ? 'hsl(var(--warning) / 0.1)' : 'hsl(var(--muted-foreground) / 0.1)'}
                               onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                               onClick={() => toggleProtection && toggleProtection(recording)}
-                              title={recording.protected ? 'Unprotect' : 'Protect'}>
+                              title={recording.protected ? t('recordings.unprotect') : t('recordings.protect')}>
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                           {recording.protected ? (
                             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path>
@@ -407,7 +410,7 @@ export function RecordingsTable({
                                 onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
                                 onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                                 onClick={() => deleteRecording(recording)}
-                                title="Delete">
+                                title={t('common.delete')}>
                           <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"></path>
                           </svg>

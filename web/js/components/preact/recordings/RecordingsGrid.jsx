@@ -8,21 +8,23 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
 import { queueThumbnailLoad, Priority } from '../../../request-queue.js';
 import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.jsx';
+import { useI18n } from '../../../i18n.js';
 
-/** Card elements that can be hidden via the settings cog */
+/** Card elements that can be hidden via the settings cog — labels resolved via i18n in CardConfigDropdown */
 const HIDEABLE_ELEMENTS = [
-  { key: 'stream', label: 'Stream Name' },
-  { key: 'duration', label: 'Duration' },
-  { key: 'detections', label: 'Detections' },
-  { key: 'tags', label: 'Tags' },
-  { key: 'protected', label: 'Protected Badge' },
-  { key: 'actions', label: 'Actions' },
+  { key: 'stream', labelKey: 'recordings.columnStreamName' },
+  { key: 'duration', labelKey: 'recordings.columnDuration' },
+  { key: 'detections', labelKey: 'recordings.detections' },
+  { key: 'tags', labelKey: 'live.tags' },
+  { key: 'protected', labelKey: 'recordings.protectedBadge' },
+  { key: 'actions', labelKey: 'common.actions' },
 ];
 
 /**
  * Settings cog dropdown for grid cards – mirrors ColumnConfigDropdown from RecordingsTable
  */
 function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -39,7 +41,7 @@ function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
         type="button"
         class="p-1.5 rounded hover:bg-muted/70 transition-colors"
         onClick={() => setOpen(o => !o)}
-        title="Configure visible card elements"
+        title={t('recordings.configureElements')}
       >
         <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -50,7 +52,7 @@ function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
       {open && (
         <div class="absolute right-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50 py-1">
           <div class="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
-            Visible Elements
+            {t('recordings.visibleElements')}
           </div>
           {HIDEABLE_ELEMENTS.map(el => (
             <label key={el.key} class="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-sm">
@@ -61,7 +63,7 @@ function CardConfigDropdown({ hiddenColumns, toggleColumn }) {
                 class="w-3.5 h-3.5 rounded"
                 style={{ accentColor: 'hsl(var(--primary))' }}
               />
-              {el.label}
+              {t(el.labelKey)}
             </label>
           ))}
         </div>
@@ -86,6 +88,7 @@ function RecordingCard({
   hiddenColumns,
   onTagsChanged
 }) {
+  const { t } = useI18n();
   const [currentFrame, setCurrentFrame] = useState(1); // Start with middle frame
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
   const tagBtnRef = useRef(null);
@@ -390,7 +393,7 @@ function RecordingCard({
                   class="p-1 rounded-full focus:outline-none ml-auto"
                   style={{ color: 'hsl(var(--danger))' }}
                   onClick={() => deleteRecording(recording)}
-                  title="Delete"
+                  title={t('common.delete')}
                 >
                   <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -431,6 +434,7 @@ export function RecordingsGrid({
   onTagsChanged,
   viewSelectedInTimeline
 }) {
+  const { t } = useI18n();
   const [selectionMode, setSelectionMode] = useState(false);
   const [showBulkTags, setShowBulkTags] = useState(false);
 
@@ -458,8 +462,8 @@ export function RecordingsGrid({
                   />
                   <span class="text-sm text-muted-foreground">
                     {getSelectedCount() > 0
-                      ? `${getSelectedCount()} recording${getSelectedCount() !== 1 ? 's' : ''} selected`
-                      : 'Select all'}
+                      ? t('recordings.recordingsSelectedCount', { count: getSelectedCount() })
+                      : t('recordings.selectAll')}
                   </span>
                 </div>
                 <button
@@ -467,27 +471,27 @@ export function RecordingsGrid({
                   disabled={getSelectedCount() === 0}
                   onClick={() => openDeleteModal('selected')}
                 >
-                  Delete Selected
+                  {t('recordings.deleteSelected')}
                 </button>
                 <button class="btn-danger text-xs px-2 py-1" onClick={() => openDeleteModal('all')}>
-                  Delete All Filtered
+                  {t('recordings.deleteAllFiltered')}
                 </button>
                 <button
                   class="btn-primary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={getSelectedCount() === 0}
                   onClick={() => openDownloadModal && openDownloadModal()}
-                  title="Download selected recordings"
+                  title={t('recordings.downloadSelectedTitle')}
                 >
-                  Download Selected
+                  {t('recordings.downloadSelected')}
                 </button>
                 <div class="relative inline-block">
                   <button
                     class="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     disabled={getSelectedCount() === 0}
                     onClick={() => setShowBulkTags(!showBulkTags)}
-                    title="Manage tags for selected recordings"
+                    title={t('recordings.manageTagsTitle')}
                   >
-                    <TagIcon className="w-3.5 h-3.5" /> Manage Tags
+                    <TagIcon className="w-3.5 h-3.5" /> {t('recordings.manageTagsButton')}
                   </button>
                   {showBulkTags && (
                     <BulkTagsOverlay
@@ -503,30 +507,30 @@ export function RecordingsGrid({
                     class="btn-secondary text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled={getSelectedCount() === 0}
                     onClick={viewSelectedInTimeline}
-                    title="View selected recordings in Timeline"
+                    title={t('live.viewInTimeline')}
                   >
-                    ▶ View in Timeline
+                    ▶ {t('live.viewInTimeline')}
                   </button>
                 )}
                 <button
                   class="text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
                   onClick={exitSelectionMode}
-                  title="Exit selection mode"
+                  title={t('recordings.exitSelectionMode')}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
               </>
             ) : (
               <button
                 class="flex items-center gap-1.5 text-sm px-2 py-1 rounded hover:bg-muted/70 transition-colors text-muted-foreground"
                 onClick={() => setSelectionMode(true)}
-                title="Enter selection mode"
+                title={t('recordings.enterSelectionMode')}
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
-                Select
+                {t('streams.select')}
               </button>
             )}
           </>
@@ -540,7 +544,7 @@ export function RecordingsGrid({
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
         {recordings.length === 0 ? (
           <div class="col-span-full text-center text-muted-foreground py-8">
-            {pagination.totalItems === 0 ? 'No recordings found' : 'Loading recordings...'}
+            {pagination.totalItems === 0 ? t('recordings.noRecordingsFound') : t('recordings.loadingRecordings')}
           </div>
         ) : (
           recordings.map(recording => (

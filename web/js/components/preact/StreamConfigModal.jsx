@@ -261,6 +261,7 @@ function AccordionSection({ title, isExpanded, onToggle, children, badge }) {
  */
 export function StreamConfigModal({
   isEditing,
+  isCloning = false,
   currentStream,
   detectionModels,
   expandedSections,
@@ -335,7 +336,7 @@ export function StreamConfigModal({
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b border-border flex-shrink-0">
           <div>
-            <h3 className="text-2xl font-bold">{isEditing ? t('streams.editStream') : t('streams.addStream')}</h3>
+            <h3 className="text-2xl font-bold">{isEditing ? t('streams.editStream') : isCloning ? t('streams.cloneStream') : t('streams.addStream')}</h3>
             <p className="text-sm text-muted-foreground mt-1">
               {t('streamsConfig.subtitle')}
             </p>

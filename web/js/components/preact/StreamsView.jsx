@@ -224,6 +224,7 @@ export function StreamsView() {
     tags: ''
   });
   const [isEditing, setIsEditing] = useState(false);
+  const [isCloning, setIsCloning] = useState(false);
 
   // State for delete modal
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -705,6 +706,7 @@ export function StreamsView() {
       tags: ''
     });
     setIsEditing(false);
+    setIsCloning(false);
     setModalVisible(true);
   };
 
@@ -793,9 +795,87 @@ export function StreamsView() {
     }
   };
 
+  // Open clone stream modal — pre-fills from an existing stream but treats as a new one
+  const openCloneStreamModal = async (streamId) => {
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['stream-full', streamId] });
+      const data = await queryClient.fetchQuery({
+        queryKey: ['stream-full', streamId],
+        queryFn: async () => {
+          const response = await fetch(`/api/streams/${encodeURIComponent(streamId)}/full`);
+          if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+          }
+          return response.json();
+        },
+        staleTime: 0
+      });
+      const stream = data.stream || {};
+      const motion = data.motion_config || null;
+
+      setCurrentStream({
+        ...stream,
+        // Clear the name so the user must provide a unique one
+        name: `${t('streams.copyOf')} ${stream.name || streamId}`,
+        width: stream.width || 0,
+        height: stream.height || 0,
+        fps: stream.fps || 0,
+        codec: stream.codec || '',
+        protocol: (stream.protocol != null ? stream.protocol : 0).toString(),
+        priority: (stream.priority != null ? stream.priority : 5).toString(),
+        segment: stream.segment_duration || 30,
+        detectionThreshold: stream.detection_threshold || 50,
+        detectionInterval: stream.detection_interval || 10,
+        preBuffer: stream.pre_detection_buffer || 10,
+        detectionZones: stream.detection_zones || [],
+        postBuffer: stream.post_detection_buffer || 30,
+        adminUrl: stream.admin_url || '',
+        streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
+        isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
+        onvifUsername: stream.onvif_username || '',
+        onvifPassword: stream.onvif_password || '',
+        onvifProfile: stream.onvif_profile || '',
+        onvifPort: stream.onvif_port || 0,
+        detectionEnabled: stream.detection_based_recording || false,
+        detectionModel: stream.detection_model || '',
+        recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,
+        backchannelEnabled: stream.backchannel_enabled !== undefined ? stream.backchannel_enabled : false,
+        motionRecordingEnabled: motion ? !!motion.enabled : false,
+        motionPreBuffer: motion ? (motion.pre_buffer_seconds || 5) : 5,
+        motionPostBuffer: motion ? (motion.post_buffer_seconds || 10) : 10,
+        motionMaxDuration: motion ? (motion.max_file_duration || 300) : 300,
+        motionRetentionDays: motion ? (motion.retention_days || 7) : 7,
+        motionCodec: motion ? (motion.codec || 'h264') : 'h264',
+        motionQuality: motion ? (motion.quality || 'medium') : 'medium',
+        ptzEnabled: stream.ptz_enabled !== undefined ? stream.ptz_enabled : false,
+        ptzMaxX: stream.ptz_max_x || 0,
+        ptzMaxY: stream.ptz_max_y || 0,
+        ptzMaxZ: stream.ptz_max_z || 0,
+        ptzHasHome: stream.ptz_has_home !== undefined ? stream.ptz_has_home : false,
+        detectionObjectFilter: stream.detection_object_filter || 'none',
+        detectionObjectFilterList: stream.detection_object_filter_list || '',
+        retentionDays: stream.retention_days || 0,
+        detectionRetentionDays: stream.detection_retention_days || 0,
+        maxStorageMb: stream.max_storage_mb || 0,
+        recordOnSchedule: stream.record_on_schedule || false,
+        recordingSchedule: (Array.isArray(stream.recording_schedule) && stream.recording_schedule.length === 168)
+          ? stream.recording_schedule
+          : Array(168).fill(true),
+        tags: stream.tags || ''
+      });
+      setIsEditing(false);
+      setIsCloning(true);
+      setModalVisible(true);
+    } catch (error) {
+      console.error('Error loading stream details for clone:', error);
+      showStatusMessage(t('streams.errorLoadingStreamDetails', { message: error.message }));
+    }
+  };
+
   // Close modal
   const closeModal = () => {
     setModalVisible(false);
+    setIsCloning(false);
   };
 
   // Open ONVIF discovery modal
@@ -1293,6 +1373,21 @@ export function StreamsView() {
                               </svg>
                             </button>
                           )}
+                          {/* Clone button - only show if user can modify streams */}
+                          {canModifyStreams && (
+                            <button
+                                className="p-1 rounded-full focus:outline-none"
+                                style={{color: 'hsl(var(--success))'}}
+                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'}
+                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                onClick={(e) => { e.stopPropagation(); openCloneStreamModal(stream.name); }}
+                                title={t('streams.cloneStream')}
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          )}
                           {/* Delete button - only show if user can modify streams */}
                           {canModifyStreams && (
                             <button
@@ -1415,6 +1510,7 @@ export function StreamsView() {
       {modalVisible && (
         <StreamConfigModal
           isEditing={isEditing}
+          isCloning={isCloning}
           currentStream={currentStream}
           detectionModels={detectionModels}
           expandedSections={expandedSections}
