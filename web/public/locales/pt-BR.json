@@ -604,6 +604,7 @@
   "streams.recording": "Gravação",
   "streams.running": "Em execução",
   "streams.starting": "Iniciando",
+  "streams.reconnecting": "Reconectando",
   "streams.error": "Erro",
   "streams.stopping": "Parando",
   "streams.schedule": "Agenda",

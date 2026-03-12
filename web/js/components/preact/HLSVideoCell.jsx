@@ -570,6 +570,18 @@ export function HLSVideoCell({
             gap: '6px'
           }}
         >
+          <span style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            flexShrink: 0,
+            backgroundColor:
+              stream.status === 'Running'      ? 'rgba(34, 197, 94, 0.9)'  :
+              stream.status === 'Starting'     ? 'rgba(234, 179, 8, 0.9)'  :
+              stream.status === 'Reconnecting' ? 'rgba(234, 179, 8, 0.9)'  :
+              stream.status === 'Error'        ? 'rgba(239, 68, 68, 0.9)'  :
+              'rgba(148, 163, 184, 0.9)'
+          }} />
           {stream.name}
           <span style={{
             fontSize: '10px',

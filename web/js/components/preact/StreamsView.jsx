@@ -1277,12 +1277,14 @@ export function StreamsView() {
                 const statusColor =
                   stream.status === 'Running' ? 'hsl(var(--success))' :
                   stream.status === 'Starting' ? 'hsl(var(--warning, 45 93% 47%))' :
+                  stream.status === 'Reconnecting' ? 'hsl(var(--warning, 45 93% 47%))' :
                   stream.status === 'Error' ? 'hsl(var(--danger))' :
                   stream.status === 'Stopping' ? 'hsl(var(--warning, 45 93% 47%))' :
                   'hsl(var(--muted-foreground))';
                 const statusLabel =
                   stream.status === 'Running' ? t('streams.running') :
                   stream.status === 'Starting' ? t('streams.starting') :
+                  stream.status === 'Reconnecting' ? t('streams.reconnecting') :
                   stream.status === 'Error' ? t('streams.error') :
                   stream.status === 'Stopping' ? t('streams.stopping') :
                   (stream.status || t('common.unknown'));

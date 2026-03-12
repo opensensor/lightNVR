@@ -245,6 +245,9 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
                 case STREAM_STATUS_ERROR:
                     status = "Error";
                     break;
+                case STREAM_STATUS_RECONNECTING:
+                    status = "Reconnecting";
+                    break;
                 default:
                     status = "Unknown";
                     break;
@@ -406,6 +409,9 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         case STREAM_STATUS_ERROR:
             status = "Error";
             break;
+        case STREAM_STATUS_RECONNECTING:
+            status = "Reconnecting";
+            break;
         default:
             status = "Unknown";
             break;
@@ -562,12 +568,13 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
 
     const char *status;
     switch (stream_status) {
-        case STREAM_STATUS_STOPPED:  status = "Stopped";  break;
-        case STREAM_STATUS_STARTING: status = "Starting"; break;
-        case STREAM_STATUS_RUNNING:  status = "Running";  break;
-        case STREAM_STATUS_STOPPING: status = "Stopping"; break;
-        case STREAM_STATUS_ERROR:    status = "Error";    break;
-        default:                     status = "Unknown";  break;
+        case STREAM_STATUS_STOPPED:       status = "Stopped";      break;
+        case STREAM_STATUS_STARTING:      status = "Starting";     break;
+        case STREAM_STATUS_RUNNING:       status = "Running";      break;
+        case STREAM_STATUS_STOPPING:      status = "Stopping";     break;
+        case STREAM_STATUS_ERROR:         status = "Error";        break;
+        case STREAM_STATUS_RECONNECTING:  status = "Reconnecting"; break;
+        default:                          status = "Unknown";      break;
     }
     cJSON_AddStringToObject(stream_obj, "status", status);
 
