@@ -3,7 +3,7 @@
  * Interactive canvas-based zone configuration for detection regions
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'preact/hooks';
 import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
 import { nowMilliseconds } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
