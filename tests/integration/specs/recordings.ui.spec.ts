@@ -489,7 +489,7 @@ test.describe('Recordings Page @ui @recordings', () => {
       await expect(page.getByRole('button', { name: 'Delete Selected' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Delete All Filtered' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Download Selected' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Manage Tags' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Manage Tags', exact: true })).toBeVisible();
 
       await page.screenshot({ path: 'test-results/recordings-i18n-toolbar.png' });
     });
