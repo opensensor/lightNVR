@@ -99,6 +99,12 @@ static bool delete_recording_file_and_metadata(const recording_metadata_t *recor
         return false;
     }
 
+    /* Keep the stream storage cache consistent so the System page stats
+     * reflect the deletion immediately without waiting for the next full
+     * cache refresh. */
+    update_stream_storage_cache_remove_recording(recording->stream_name,
+                                                 recording->size_bytes);
+
     if (file_deleted && freed_bytes) {
         *freed_bytes = recording->size_bytes;
     }

@@ -57,4 +57,28 @@ int invalidate_stream_storage_cache(void);
  */
 int force_refresh_cache(void);
 
+/**
+ * Incrementally update the cache when a new recording is completed.
+ * Increases the size_bytes and recording_count for the named stream.
+ * If the stream is not yet in the cache this is a no-op (the next
+ * full refresh will pick it up).
+ *
+ * @param stream_name Name of the stream that gained a completed recording
+ * @param size_bytes  Size of the completed recording in bytes
+ * @return 0 on success, -1 on invalid parameter
+ */
+int update_stream_storage_cache_add_recording(const char *stream_name, uint64_t size_bytes);
+
+/**
+ * Incrementally update the cache when a recording is deleted.
+ * Decreases the size_bytes and recording_count for the named stream,
+ * guarding against underflow.
+ * If the stream is not in the cache this is a no-op.
+ *
+ * @param stream_name Name of the stream that lost a recording
+ * @param size_bytes  Size of the deleted recording in bytes
+ * @return 0 on success, -1 on invalid parameter
+ */
+int update_stream_storage_cache_remove_recording(const char *stream_name, uint64_t size_bytes);
+
 #endif // LIGHTNVR_STORAGE_MANAGER_STREAMS_CACHE_H

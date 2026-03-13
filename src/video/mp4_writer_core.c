@@ -30,6 +30,7 @@
 #include "video/streams.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
+#include "storage/storage_manager_streams_cache.h"
 
 extern active_recording_t active_recordings[MAX_STREAMS];
 
@@ -175,6 +176,8 @@ void mp4_writer_close(mp4_writer_t *writer) {
             update_recording_metadata(writer->current_recording_id, end_time, size_bytes, true);
             log_info("Marked recording (ID: %llu) as complete during writer close",
                     (unsigned long long)writer->current_recording_id);
+            // Keep stream storage cache current so System page stats are up-to-date.
+            update_stream_storage_cache_add_recording(writer->stream_name, size_bytes);
         } else if (writer->output_path) {
             log_warn("Failed to get file size for %s during close", writer->output_path);
 
@@ -183,6 +186,7 @@ void mp4_writer_close(mp4_writer_t *writer) {
             update_recording_metadata(writer->current_recording_id, time(NULL), 0, true);
             log_info("Marked recording (ID: %llu) as complete during writer close (size unknown)",
                     (unsigned long long)writer->current_recording_id);
+            update_stream_storage_cache_add_recording(writer->stream_name, 0);
         }
     }
 

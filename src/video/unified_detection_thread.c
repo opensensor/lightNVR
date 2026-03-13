@@ -55,6 +55,7 @@
 #include "database/db_detections.h"
 #include "database/db_streams.h"
 #include "core/url_utils.h"
+#include "storage/storage_manager_streams_cache.h"
 
 // Reconnection settings
 #define BASE_RECONNECT_DELAY_MS 500
@@ -1352,6 +1353,8 @@ static int udt_stop_recording(unified_detection_ctx_t *ctx) {
         if (update_recording_metadata(ctx->current_recording_id, end_time, file_size, true) == 0) {
             log_info("[%s] Recording updated in database (ID: %lu, duration: %ds, size: %ld bytes)",
                      ctx->stream_name, (unsigned long)ctx->current_recording_id, duration, (long)file_size);
+            // Keep stream storage cache current so System page stats are up-to-date.
+            update_stream_storage_cache_add_recording(ctx->stream_name, (uint64_t)file_size);
         } else {
             log_warn("[%s] Failed to update recording in database (ID: %lu)",
                      ctx->stream_name, (unsigned long)ctx->current_recording_id);

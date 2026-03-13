@@ -26,6 +26,7 @@
 #include "database/db_detections.h"
 #include "database/db_auth.h"
 #include "web/api_handlers_recordings_thumbnail.h"
+#include "storage/storage_manager_streams_cache.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/:id
@@ -267,6 +268,9 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
     // Delete associated thumbnails
     delete_recording_thumbnails(id);
 
+    // Update stream storage cache so System page stats reflect the deletion immediately.
+    update_stream_storage_cache_remove_recording(recording.stream_name, recording.size_bytes);
+
     // Send success response
     http_response_set_json(res, 200, "{\"success\":true,\"message\":\"Recording deleted successfully\"}");
 
@@ -353,6 +357,10 @@ static void *batch_delete_worker_thread(void *arg) {
 
                     // Delete associated thumbnails
                     delete_recording_thumbnails(id);
+
+                    // Update stream storage cache so System page stats stay current.
+                    update_stream_storage_cache_remove_recording(recording.stream_name,
+                                                                 recording.size_bytes);
 
                     success_count++;
                     log_info("Successfully deleted recording: %llu", (unsigned long long)id);
@@ -534,6 +542,10 @@ static void *batch_delete_worker_thread(void *arg) {
 
                 // Delete associated thumbnails
                 delete_recording_thumbnails(id);
+
+                // Update stream storage cache so System page stats stay current.
+                update_stream_storage_cache_remove_recording(recordings[i].stream_name,
+                                                             recordings[i].size_bytes);
 
                 success_count++;
                 log_info("Successfully deleted recording: %llu", (unsigned long long)id);

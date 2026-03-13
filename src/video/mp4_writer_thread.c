@@ -36,6 +36,7 @@
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
+#include "storage/storage_manager_streams_cache.h"
 
 
 // Callback invoked by record_segment when the first keyframe is detected
@@ -265,6 +266,8 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                         update_recording_metadata(thread_ctx->writer->current_recording_id, end_time, size_bytes, true);
                         log_info("Marked previous recording (ID: %llu) as complete for stream %s (size: %llu bytes)",
                                 (unsigned long long)thread_ctx->writer->current_recording_id, stream_name, (unsigned long long)size_bytes);
+                        // Keep stream storage cache current so System page stats are up-to-date.
+                        update_stream_storage_cache_add_recording(stream_name, size_bytes);
                     } else {
                         log_warn("Failed to get file size for %s: %s",
                                 current_path, strerror(errno));
@@ -273,6 +276,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                         update_recording_metadata(thread_ctx->writer->current_recording_id, current_time, 0, true);
                         log_info("Marked previous recording (ID: %llu) as complete for stream %s (size unknown)",
                                 (unsigned long long)thread_ctx->writer->current_recording_id, stream_name);
+                        update_stream_storage_cache_add_recording(stream_name, 0);
                     }
                 }
 

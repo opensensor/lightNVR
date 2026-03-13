@@ -334,3 +334,77 @@ int force_refresh_cache(void) {
     return refresh_cache();
 }
 
+/**
+ * Incrementally update the cache when a new recording is completed.
+ */
+int update_stream_storage_cache_add_recording(const char *stream_name, uint64_t size_bytes) {
+    if (!stream_name) {
+        log_error("Invalid parameter for update_stream_storage_cache_add_recording");
+        return -1;
+    }
+
+    if (!cache.initialized || !cache.stream_info || cache.stream_count <= 0) {
+        /* Cache not yet populated — the next full refresh will pick this up. */
+        return 0;
+    }
+
+    pthread_mutex_lock(&cache.mutex);
+
+    for (int i = 0; i < cache.stream_count; i++) {
+        if (strcmp(cache.stream_info[i].name, stream_name) == 0) {
+            cache.stream_info[i].size_bytes += (unsigned long)size_bytes;
+            cache.stream_info[i].recording_count++;
+            log_debug("Cache incremented for stream '%s': +%llu bytes, count now %d",
+                      stream_name, (unsigned long long)size_bytes,
+                      cache.stream_info[i].recording_count);
+            pthread_mutex_unlock(&cache.mutex);
+            return 0;
+        }
+    }
+
+    pthread_mutex_unlock(&cache.mutex);
+    log_debug("Stream '%s' not found in cache for add_recording (will sync on next refresh)",
+              stream_name);
+    return 0;
+}
+
+/**
+ * Incrementally update the cache when a recording is deleted.
+ */
+int update_stream_storage_cache_remove_recording(const char *stream_name, uint64_t size_bytes) {
+    if (!stream_name) {
+        log_error("Invalid parameter for update_stream_storage_cache_remove_recording");
+        return -1;
+    }
+
+    if (!cache.initialized || !cache.stream_info || cache.stream_count <= 0) {
+        /* Cache not yet populated — nothing to adjust. */
+        return 0;
+    }
+
+    pthread_mutex_lock(&cache.mutex);
+
+    for (int i = 0; i < cache.stream_count; i++) {
+        if (strcmp(cache.stream_info[i].name, stream_name) == 0) {
+            if (cache.stream_info[i].size_bytes >= (unsigned long)size_bytes) {
+                cache.stream_info[i].size_bytes -= (unsigned long)size_bytes;
+            } else {
+                cache.stream_info[i].size_bytes = 0;
+            }
+            if (cache.stream_info[i].recording_count > 0) {
+                cache.stream_info[i].recording_count--;
+            }
+            log_debug("Cache decremented for stream '%s': -%llu bytes, count now %d",
+                      stream_name, (unsigned long long)size_bytes,
+                      cache.stream_info[i].recording_count);
+            pthread_mutex_unlock(&cache.mutex);
+            return 0;
+        }
+    }
+
+    pthread_mutex_unlock(&cache.mutex);
+    log_debug("Stream '%s' not found in cache for remove_recording (will sync on next refresh)",
+              stream_name);
+    return 0;
+}
+
