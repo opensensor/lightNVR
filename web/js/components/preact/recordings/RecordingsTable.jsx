@@ -139,16 +139,21 @@ export function RecordingsTable({
   viewSelectedInTimeline
 }) {
   const { t } = useI18n();
-  const isColumnVisible = (col) => !hiddenColumns[col];
+  const isColumnVisible = (colKey) => !hiddenColumns[colKey];
   const [showBulkTags, setShowBulkTags] = useState(false);
   const selectedCount = getSelectedCount();
 
   // Count visible columns for colSpan on empty row
-  const visibleCount = (canDelete ? 1 : 0) + 1 /* start_time always */ +
-    (isColumnVisible('stream') ? 1 : 0) +
-    (isColumnVisible('capture_method') ? 1 : 0) +
-    (isColumnVisible('duration') ? 1 : 0) + (isColumnVisible('size') ? 1 : 0) +
-    (isColumnVisible('detections') ? 1 : 0) + (isColumnVisible('tags') ? 1 : 0) + (isColumnVisible('actions') ? 1 : 0);
+  const visibleCount =
+    // Optional selection / delete checkbox column
+    (canDelete ? 1 : 0) +
+    // Non-hideable "start_time" column
+    1 +
+    // All currently visible hideable columns
+    HIDEABLE_COLUMNS.reduce(
+      (count, col) => count + (isColumnVisible(col.key) ? 1 : 0),
+      0
+    );
 
   return (
     <div className="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
@@ -330,7 +335,7 @@ export function RecordingsTable({
                 {isColumnVisible('stream') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
-                      <span>{recording.stream || ''}</span>
+                      <span>{recording.stream || t('common.unknown')}</span>
                     </div>
                   </td>
                 )}
@@ -346,7 +351,7 @@ export function RecordingsTable({
                   <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDuration(recording.duration)}</td>
                 )}
                 {isColumnVisible('size') && (
-                  <td className="px-6 py-4 whitespace-nowrap">{recording.size || ''}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{recording.size || t('common.unknown')}</td>
                 )}
                 {isColumnVisible('detections') && (
                   <td className="px-6 py-4">
