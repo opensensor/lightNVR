@@ -330,7 +330,7 @@ export function RecordingsTable({
                 {show('stream') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
-                      <span>{recording.stream || ''}</span>
+                      <span>{recording.stream || t('common.unknown')}</span>
                     </div>
                   </td>
                 )}
@@ -346,7 +346,7 @@ export function RecordingsTable({
                   <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDuration(recording.duration)}</td>
                 )}
                 {show('size') && (
-                  <td className="px-6 py-4 whitespace-nowrap">{recording.size || ''}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{recording.size || t('common.unknown')}</td>
                 )}
                 {show('detections') && (
                   <td className="px-6 py-4">
