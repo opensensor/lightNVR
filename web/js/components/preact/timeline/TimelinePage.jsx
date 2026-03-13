@@ -368,7 +368,7 @@ export function TimelinePage() {
 
       const direction = event.key === 'ArrowLeft' ? -1 : 1;
       const handled = keyboardNavigationMode === 'fine'
-        ? seekCurrentVideo(direction)
+        ? seekCurrentVideo(direction * (timelineState.playbackSpeed || 1))
         : jumpToAdjacentSegment(direction);
 
       if (handled) {
