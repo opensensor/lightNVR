@@ -84,6 +84,7 @@ const getCountBadge = (values) => (values.length > 0 ? `${values.length} selecte
  * FiltersSidebar component
  */
 export function FiltersSidebar({
+  toggleCollapsed,
   filters,
   setFilters,
   pagination,
@@ -94,10 +95,6 @@ export function FiltersSidebar({
   handleDateRangeChange
 }) {
   const { t } = useI18n();
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem('recordings_filters_collapsed') === 'true'; }
-    catch { return false; }
-  });
 
   const [sections, setSections] = useState(() => {
     try {
@@ -113,13 +110,6 @@ export function FiltersSidebar({
     recordingsAPI.getAllRecordingTags().then(setAvailableTags);
     recordingsAPI.getAllDetectionLabels().then(setAvailableDetectionLabels);
   }, []);
-
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      localStorage.setItem('recordings_filters_collapsed', String(!prev));
-      return !prev;
-    });
-  };
 
   const toggleSection = (key) => {
     setSections((prev) => {
@@ -156,19 +146,15 @@ export function FiltersSidebar({
   return (
     <aside
       id="filters-sidebar"
-      className={`filters-sidebar bg-card text-card-foreground rounded-lg shadow md:sticky md:top-4 md:self-start transition-all duration-300 ${
-        collapsed ? 'w-full md:w-12' : 'w-full md:w-64'
-      }`}
+      className="filters-sidebar bg-card text-card-foreground rounded-lg shadow md:sticky md:top-4 md:self-start transition-all duration-300 w-full md:w-64"
     >
-      <div className={`flex items-center ${collapsed ? 'justify-center p-2' : 'justify-between px-3 py-2.5'} border-b border-border`}>
-        {!collapsed && (
-          <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">{t('recordings.filters')}</h3>
-        )}
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
+        <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">{t('recordings.filters')}</h3>
         <button
           type="button"
           onClick={toggleCollapsed}
           className="p-1.5 rounded hover:bg-muted/70 transition-colors"
-          title={collapsed ? t('recordings.showFilters') : t('recordings.hideFilters')}
+          title={t('recordings.hideFilters')}
         >
           <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -177,8 +163,7 @@ export function FiltersSidebar({
         </button>
       </div>
 
-      {!collapsed && (
-        <div className="p-3 space-y-0">
+      <div className="p-3 space-y-0">
           <FilterSection title={t('recordings.dateRange')} badge={dateRangeBadge} isExpanded={sections.dateRange} onToggle={() => toggleSection('dateRange')}>
             <select
               id="date-range-select"
@@ -368,24 +353,23 @@ export function FiltersSidebar({
             </select>
           </FilterSection>
 
-          <div className="flex gap-2 pt-2">
-            <button
-              id="apply-filters-btn"
-              className="btn-primary flex-1 text-sm py-2"
-              onClick={applyFilters}
-            >
-              {t('recordings.apply')}
-            </button>
-            <button
-              id="reset-filters-btn"
-              className="btn-secondary flex-1 text-sm py-2"
-              onClick={resetFilters}
-            >
-              {t('recordings.reset')}
-            </button>
-          </div>
+        <div className="flex gap-2 pt-2">
+          <button
+            id="apply-filters-btn"
+            className="btn-primary flex-1 text-sm py-2"
+            onClick={applyFilters}
+          >
+            {t('recordings.apply')}
+          </button>
+          <button
+            id="reset-filters-btn"
+            className="btn-secondary flex-1 text-sm py-2"
+            onClick={resetFilters}
+          >
+            {t('recordings.reset')}
+          </button>
         </div>
-      )}
+      </div>
     </aside>
   );
 }

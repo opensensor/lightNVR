@@ -94,6 +94,18 @@ export function RecordingsView() {
     return urlState?.filters || urlUtils.createDefaultFilters();
   });
 
+  // Initialize filters sidebar collapsed state
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('recordings_filters_collapsed') === 'true'; }
+    catch { return false; }
+  });
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      localStorage.setItem('recordings_filters_collapsed', String(!prev));
+      return !prev;
+    });
+  };
+
   // Initialize pagination state from URL params (lazy — no double render)
   const [pagination, setPagination] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -907,17 +919,20 @@ export function RecordingsView() {
       </div>
 
       <div class="recordings-layout flex flex-col md:flex-row gap-4 w-full">
-        <FiltersSidebar
-          filters={filters}
-          setFilters={setFilters}
-          pagination={pagination}
-          setPagination={setPagination}
-          streams={streams}
-          applyFilters={applyFilters}
-          resetFilters={resetFilters}
-          handleDateRangeChange={handleDateRangeChange}
-          setDefaultDateRange={setDefaultDateRange}
-        />
+        {!collapsed && (
+          <FiltersSidebar
+            toggleCollapsed={toggleCollapsed}
+            filters={filters}
+            setFilters={setFilters}
+            pagination={pagination}
+            setPagination={setPagination}
+            streams={streams}
+            applyFilters={applyFilters}
+            resetFilters={resetFilters}
+            handleDateRangeChange={handleDateRangeChange}
+            setDefaultDateRange={setDefaultDateRange}
+          />
+        )}
 
         <div class="recordings-content flex-1">
           <ActiveFilters
@@ -934,6 +949,8 @@ export function RecordingsView() {
           >
             {viewMode === 'grid' && thumbnailsEnabled ? (
               <RecordingsGrid
+                collapsed={collapsed}
+                toggleCollapsed={toggleCollapsed}
                 recordings={recordings}
                 selectedRecordings={selectedRecordings}
                 toggleRecordingSelection={toggleRecordingSelection}
@@ -956,6 +973,8 @@ export function RecordingsView() {
               />
             ) : (
               <RecordingsTable
+                collapsed={collapsed}
+                toggleCollapsed={toggleCollapsed}
                 recordings={recordings}
                 sortField={sortField}
                 sortDirection={sortDirection}
