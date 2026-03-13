@@ -139,16 +139,21 @@ export function RecordingsTable({
   viewSelectedInTimeline
 }) {
   const { t } = useI18n();
-  const show = (col) => !hiddenColumns[col];
+  const isColumnVisible = (colKey) => !hiddenColumns[colKey];
   const [showBulkTags, setShowBulkTags] = useState(false);
   const selectedCount = getSelectedCount();
 
   // Count visible columns for colSpan on empty row
-  const visibleCount = (canDelete ? 1 : 0) + 1 /* start_time always */ +
-    (show('stream') ? 1 : 0) +
-    (show('capture_method') ? 1 : 0) +
-    (show('duration') ? 1 : 0) + (show('size') ? 1 : 0) +
-    (show('detections') ? 1 : 0) + (show('tags') ? 1 : 0) + (show('actions') ? 1 : 0);
+  const visibleCount =
+    // Optional selection / delete checkbox column
+    (canDelete ? 1 : 0) +
+    // Non-hideable "start_time" column
+    1 +
+    // All currently visible hideable columns
+    HIDEABLE_COLUMNS.reduce(
+      (count, col) => count + (isColumnVisible(col.key) ? 1 : 0),
+      0
+    );
 
   return (
     <div className="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
@@ -330,7 +335,7 @@ export function RecordingsTable({
                 {show('stream') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
-                      <span>{recording.stream || ''}</span>
+                      <span>{recording.stream || t('common.unknown')}</span>
                     </div>
                   </td>
                 )}
@@ -346,7 +351,7 @@ export function RecordingsTable({
                   <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDuration(recording.duration)}</td>
                 )}
                 {show('size') && (
-                  <td className="px-6 py-4 whitespace-nowrap">{recording.size || ''}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">{recording.size || t('common.unknown')}</td>
                 )}
                 {show('detections') && (
                   <td className="px-6 py-4">
