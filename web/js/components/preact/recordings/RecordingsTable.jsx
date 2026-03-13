@@ -139,16 +139,16 @@ export function RecordingsTable({
   viewSelectedInTimeline
 }) {
   const { t } = useI18n();
-  const show = (col) => !hiddenColumns[col];
+  const isColumnVisible = (col) => !hiddenColumns[col];
   const [showBulkTags, setShowBulkTags] = useState(false);
   const selectedCount = getSelectedCount();
 
   // Count visible columns for colSpan on empty row
   const visibleCount = (canDelete ? 1 : 0) + 1 /* start_time always */ +
-    (show('stream') ? 1 : 0) +
-    (show('capture_method') ? 1 : 0) +
-    (show('duration') ? 1 : 0) + (show('size') ? 1 : 0) +
-    (show('detections') ? 1 : 0) + (show('tags') ? 1 : 0) + (show('actions') ? 1 : 0);
+    (isColumnVisible('stream') ? 1 : 0) +
+    (isColumnVisible('capture_method') ? 1 : 0) +
+    (isColumnVisible('duration') ? 1 : 0) + (isColumnVisible('size') ? 1 : 0) +
+    (isColumnVisible('detections') ? 1 : 0) + (isColumnVisible('tags') ? 1 : 0) + (isColumnVisible('actions') ? 1 : 0);
 
   return (
     <div className="recordings-container bg-card text-card-foreground rounded-lg shadow overflow-hidden w-full">
@@ -250,7 +250,7 @@ export function RecordingsTable({
                   />
                 </th>
               )}
-              {show('stream') && (
+              {isColumnVisible('stream') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                     onClick={() => sortBy('stream_name')}>
                   <div className="flex items-center">
@@ -261,7 +261,7 @@ export function RecordingsTable({
                   </div>
                 </th>
               )}
-              {show('capture_method') && (
+              {isColumnVisible('capture_method') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('recordings.columnCaptureMethod')}
                 </th>
@@ -275,12 +275,12 @@ export function RecordingsTable({
                   )}
                 </div>
               </th>
-              {show('duration') && (
+              {isColumnVisible('duration') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('recordings.columnDuration')}
                 </th>
               )}
-              {show('size') && (
+              {isColumnVisible('size') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer"
                     onClick={() => sortBy('size_bytes')}>
                   <div className="flex items-center">
@@ -291,17 +291,17 @@ export function RecordingsTable({
                   </div>
                 </th>
               )}
-              {show('detections') && (
+              {isColumnVisible('detections') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('recordings.detections')}
                 </th>
               )}
-              {show('tags') && (
+              {isColumnVisible('tags') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('live.tags')}
                 </th>
               )}
-              {show('actions') && (
+              {isColumnVisible('actions') && (
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   {t('common.actions')}
                 </th>
@@ -327,14 +327,14 @@ export function RecordingsTable({
                     />
                   </td>
                 )}
-                {show('stream') && (
+                {isColumnVisible('stream') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
                       <span>{recording.stream || ''}</span>
                     </div>
                   </td>
                 )}
-                {show('capture_method') && (
+                {isColumnVisible('capture_method') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="inline-flex w-fit items-center px-2 py-0.5 rounded-full text-[10px] bg-muted text-muted-foreground border border-border">
                       {formatUtils.formatCaptureMethod(recording.capture_method)}
@@ -342,13 +342,13 @@ export function RecordingsTable({
                   </td>
                 )}
                 <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDateTime(recording.start_time_unix ?? recording.start_time)}</td>
-                {show('duration') && (
+                {isColumnVisible('duration') && (
                   <td className="px-6 py-4 whitespace-nowrap">{formatUtils.formatDuration(recording.duration)}</td>
                 )}
-                {show('size') && (
+                {isColumnVisible('size') && (
                   <td className="px-6 py-4 whitespace-nowrap">{recording.size || ''}</td>
                 )}
-                {show('detections') && (
+                {isColumnVisible('detections') && (
                   <td className="px-6 py-4">
                     {recording.detection_labels && recording.detection_labels.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
@@ -370,10 +370,10 @@ export function RecordingsTable({
                     ) : ''}
                   </td>
                 )}
-                {show('tags') && (
+                {isColumnVisible('tags') && (
                   <TagCell recording={recording} onTagsChanged={onTagsChanged} />
                 )}
-                {show('actions') && (
+                {isColumnVisible('actions') && (
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex space-x-2">
                       <button className="p-1 rounded-full focus:outline-none"
