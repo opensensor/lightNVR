@@ -1039,8 +1039,8 @@ export function StreamConfigModal({
               </div>
             </AccordionSection>
 
-            {/* Detection Zones Section */}
-            {currentStream.detectionEnabled && (
+            {/* Detection Zones Section — hidden when cloning (stream doesn't exist yet, so zones can't be saved) */}
+            {currentStream.detectionEnabled && !isCloning && (
               <AccordionSection
                 title={t('streamsConfig.detectionZones')}
                 isExpanded={expandedSections.zones}
