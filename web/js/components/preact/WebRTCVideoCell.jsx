@@ -935,7 +935,10 @@ export function WebRTCVideoCell({
       audioLevelIntervalRef.current = null;
     }
     if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current.close().catch((err) => {
+        // Log close errors to aid diagnosis of audio cleanup issues
+        console.error('Failed to close AudioContext:', err);
+      });
       audioContextRef.current = null;
     }
     analyserRef.current = null;
