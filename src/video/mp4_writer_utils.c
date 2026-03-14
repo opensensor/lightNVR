@@ -1285,7 +1285,6 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
 skip_audio_stream:
     // Initialize audio state if not already done
     if (writer->audio.stream_idx == -1) {
-        writer->audio.stream_idx = -1; // Initialize to -1 (no audio yet)
         writer->audio.first_dts = AV_NOPTS_VALUE;
         writer->audio.last_pts = 0;
         writer->audio.last_dts = 0;
