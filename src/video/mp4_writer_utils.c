@@ -740,8 +740,6 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
 cleanup:
     if (decoder_ctx) avcodec_free_context(&decoder_ctx);
     if (encoder_ctx) avcodec_free_context(&encoder_ctx);
-    if (frame) av_frame_free(&frame);
-    if (pkt) av_packet_free(&pkt);
 
     if (ret < 0 && *transcoded_params) {
         avcodec_parameters_free(transcoded_params);
