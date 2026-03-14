@@ -38,8 +38,7 @@ export function TimelineSegments({ segments: propSegments }) {
     const unsubscribe = timelineState.subscribe(state => {
       // Update segments when they change
       if (state.timelineSegments) {
-        const changed = state.timelineSegments.length !== lastSegmentsRef.current.length
-          || state.forceReload
+        const changed = state.forceReload
           || state.timelineSegments !== lastSegmentsRef.current;
         if (changed) {
           setSegments(state.timelineSegments);
