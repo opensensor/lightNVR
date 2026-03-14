@@ -505,6 +505,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     atomic_store(&ctx->consecutive_failures, 0);
 
     // Store context in slot
+    ctx->slot_idx = slot;
     detection_contexts[slot] = ctx;
 
     // Create thread (detached)

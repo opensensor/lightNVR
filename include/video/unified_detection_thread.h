@@ -60,6 +60,7 @@ typedef struct {
     atomic_int running;
     atomic_int state;  // Uses unified_detection_state_t values
     int shutdown_component_id;
+    int slot_idx;  // Index in the global detection_contexts array
     
     // Detection configuration
     char model_path[MAX_PATH_LENGTH];

@@ -157,6 +157,50 @@ export function StreamsView() {
   // Process the response to handle both array and object formats
   const streams = Array.isArray(streamsResponse) ? streamsResponse : (streamsResponse.streams || []);
 
+  // Sorting state for the streams table
+  const [sortColumn, setSortColumn] = useState(null);
+  const [sortDirection, setSortDirection] = useState('asc');
+
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedStreams = (() => {
+    if (!sortColumn) return streams;
+    return [...streams].sort((a, b) => {
+      let aVal, bVal;
+      if (sortColumn === 'name') {
+        aVal = (a.name || '').toLowerCase();
+        bVal = (b.name || '').toLowerCase();
+      } else if (sortColumn === 'status') {
+        aVal = (a.status || '').toLowerCase();
+        bVal = (b.status || '').toLowerCase();
+      } else if (sortColumn === 'url') {
+        aVal = (a.url || '').toLowerCase();
+        bVal = (b.url || '').toLowerCase();
+      } else if (sortColumn === 'resolution') {
+        aVal = (a.width || 0) * (a.height || 0);
+        bVal = (b.width || 0) * (b.height || 0);
+      } else if (sortColumn === 'fps') {
+        aVal = a.fps || 0;
+        bVal = b.fps || 0;
+      } else if (sortColumn === 'recording') {
+        aVal = a.record ? 1 : 0;
+        bVal = b.record ? 1 : 0;
+      } else {
+        return 0;
+      }
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  })();
+
   // Log streams data for debugging
   console.log('API Response:', streamsResponse);
 
@@ -1263,17 +1307,33 @@ export function StreamsView() {
                   </th>
                 )}
                 <th className="w-8 px-2 py-3"></th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.name')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.status')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.url')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.resolution')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.fps')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.recording')}</th>
+                {[
+                  { key: 'name',       label: t('common.name') },
+                  { key: 'status',     label: t('common.status') },
+                  { key: 'url',        label: t('common.url') },
+                  { key: 'resolution', label: t('streams.resolution') },
+                  { key: 'fps',        label: t('streams.fps') },
+                  { key: 'recording',  label: t('streams.recording') },
+                ].map(({ key, label }) => (
+                  <th
+                    key={key}
+                    className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground"
+                    onClick={() => handleSort(key)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {label}
+                      <span className="inline-flex flex-col leading-none" style={{fontSize: '0.6rem', lineHeight: 1}}>
+                        <span style={{opacity: sortColumn === key && sortDirection === 'asc' ? 1 : 0.3}}>▲</span>
+                        <span style={{opacity: sortColumn === key && sortDirection === 'desc' ? 1 : 0.3}}>▼</span>
+                      </span>
+                    </span>
+                  </th>
+                ))}
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
               </tr>
               </thead>
               <tbody className="bg-card divide-y divide-border">
-              {streams.map(stream => {
+              {sortedStreams.map(stream => {
                 const isExpanded = expandedStreams[stream.name];
                 const statusColor =
                   stream.status === 'Running'      ? 'hsl(var(--success))' :
