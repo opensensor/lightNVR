@@ -1083,9 +1083,6 @@ export function StreamsView() {
       isOnvif: true
     };
 
-    // Log the stream data for debugging
-    console.log('Adding ONVIF stream with data:', streamData);
-
     // Use mutation to save stream
     saveStreamMutation.mutate(streamData, {
       onSuccess: () => {
