@@ -912,6 +912,9 @@ export function WebRTCVideoCell({
     setAudioLevel(0);
   }, []);
 
+  // Track whether microphone permission has been granted for backchannel
+  const [hasMicrophonePermission, setHasMicrophonePermission] = useState(null);
+
   // Start push-to-talk (acquire microphone and send audio)
   const startTalking = useCallback(async () => {
     if (!stream.backchannel_enabled || !audioSenderRef.current) {
