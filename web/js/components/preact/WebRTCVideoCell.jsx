@@ -194,7 +194,7 @@ export function WebRTCVideoCell({
       bundlePolicy: 'balanced',
       rtcpMuxPolicy: 'require',
       iceCandidatePoolSize: 0,
-      iceServers: iceServers
+      iceServers
     });
 
     peerConnectionRef.current = pc;
@@ -307,9 +307,12 @@ export function WebRTCVideoCell({
             // we've exceeded the maximum wait time.
             if (videoDataCheckCount < maxVideoDataChecks) {
               console.log(`ICE still ${iceState} for stream ${stream.name}, waiting for camera stream...`);
-              // Re-attempt play() in case the element got stuck
+              // Re-attempt play() in case the element got stuck. Failures here are non-fatal;
+              // the surrounding retry logic will handle recovery.
               if (videoElement && videoElement.paused) {
-                videoElement.play().catch(() => {});
+                videoElement.play().catch(err => {
+                  console.debug(`Non-fatal error calling play() for stream ${stream.name}:`, err);
+                });
               }
 
               // After 30 s with ICE connected but no video data, auto-retry
@@ -320,13 +323,12 @@ export function WebRTCVideoCell({
               // Uses a dedicated counter (noDataReconnectAttemptsRef) so that
               // the ICE-connected reset of reconnectAttemptsRef doesn't
               // inadvertently allow infinite no-data retries.
-              const shouldAttemptNoDataReconnect = () => (
+              if (
                 videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
                 (iceState === 'connected' || iceState === 'completed') &&
                 !connectionRefreshRequestedRef.current &&
                 noDataReconnectAttemptsRef.current < MAX_NO_DATA_RECONNECT_ATTEMPTS
-              );
-              if (shouldAttemptNoDataReconnect()) {
+              ) {
                 connectionRefreshRequestedRef.current = true;
                 noDataReconnectAttemptsRef.current++;
                 console.log(
@@ -555,7 +557,6 @@ export function WebRTCVideoCell({
       }
     };
 
-    // Add transceivers for video and audio
     // Add video transceiver
     pc.addTransceiver('video', {direction: 'recvonly'});
 
@@ -797,7 +798,10 @@ export function WebRTCVideoCell({
         audioLevelIntervalRef.current = null;
       }
       if (audioContextRef.current) {
-        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current.close().catch((err) => {
+          // Log close errors to aid diagnosis of audio cleanup issues
+          console.error('Failed to close AudioContext:', err);
+        });
         audioContextRef.current = null;
       }
       analyserRef.current = null;
