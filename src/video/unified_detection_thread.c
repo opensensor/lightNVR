@@ -62,9 +62,14 @@
 #define MAX_RECONNECT_DELAY_MS 30000
 #define MAX_PACKET_TIMEOUT_SEC 10
 
+// Detection error codes
+// Returned by detect_objects_api_snapshot when go2rtc snapshot is unavailable
+#define DETECT_SNAPSHOT_UNAVAILABLE -2
+
 // Detection settings
-// Seconds between detection checks; used as a fallback if no interval is
-// configured via the application's stream/detection settings.
+// Seconds between detection checks; used as a fallback when no valid interval
+// is configured via the application's stream/detection settings (i.e. when
+// the configured detection interval is missing or <= 0).
 #define DEFAULT_DETECTION_INTERVAL 5
 #define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
 
@@ -80,6 +85,8 @@
 
 // Motion detection settings
 static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Fallback sensitivity if threshold is unset or out of range
+static const float DEFAULT_MOTION_MIN_AREA_RATIO = 0.005f;  // Minimum fraction of frame area that must change to qualify as motion
+static const int   DEFAULT_MOTION_MIN_CONSECUTIVE_FRAMES = 3;  // Minimum consecutive frames of motion before triggering
 
 // Global array of unified detection contexts
 static unified_detection_ctx_t *detection_contexts[MAX_UNIFIED_DETECTION_THREADS] = {0};

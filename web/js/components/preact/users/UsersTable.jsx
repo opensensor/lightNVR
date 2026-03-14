@@ -2,6 +2,7 @@
  * Users Table Component
  */
 
+import { useState } from 'preact/hooks';
 import { getUserRoleLabel } from './UserRoles.js';
 import { formatLocalDateTime } from '../../../utils/date-utils.js';
 import { useI18n } from '../../../i18n.js';
@@ -18,6 +19,56 @@ import { useI18n } from '../../../i18n.js';
  */
 export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   const { t } = useI18n();
+
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState(null);
+  const [sortDirection, setSortDirection] = useState('asc');
+
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedUsers = (() => {
+    if (!sortColumn) return users;
+    return [...users].sort((a, b) => {
+      let aVal, bVal;
+      if (sortColumn === 'id') {
+        aVal = a.id || 0;
+        bVal = b.id || 0;
+      } else if (sortColumn === 'username') {
+        aVal = (a.username || '').toLowerCase();
+        bVal = (b.username || '').toLowerCase();
+      } else if (sortColumn === 'email') {
+        aVal = (a.email || '').toLowerCase();
+        bVal = (b.email || '').toLowerCase();
+      } else if (sortColumn === 'role') {
+        aVal = a.role ?? 0;
+        bVal = b.role ?? 0;
+      } else if (sortColumn === 'status') {
+        aVal = a.is_active ? 1 : 0;
+        bVal = b.is_active ? 1 : 0;
+      } else if (sortColumn === 'password') {
+        aVal = a.password_change_locked ? 1 : 0;
+        bVal = b.password_change_locked ? 1 : 0;
+      } else if (sortColumn === 'mfa') {
+        aVal = a.totp_enabled ? 1 : 0;
+        bVal = b.totp_enabled ? 1 : 0;
+      } else if (sortColumn === 'lastLogin') {
+        aVal = a.last_login ? new Date(a.last_login).getTime() : 0;
+        bVal = b.last_login ? new Date(b.last_login).getTime() : 0;
+      } else {
+        return 0;
+      }
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  })();
 
   // Create direct handlers for each button
   const handleEdit = (user, e) => {
@@ -49,19 +100,35 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
       <table className="w-full border-collapse">
         <thead className="bg-gray-50 dark:bg-gray-700">
           <tr>
-            <th className="py-3 px-6 text-left font-semibold">ID</th>
-            <th className="py-3 px-6 text-left font-semibold">{t('fields.username')}</th>
-            <th className="py-3 px-6 text-left font-semibold">{t('fields.email')}</th>
-            <th className="py-3 px-6 text-left font-semibold">{t('fields.role')}</th>
-            <th className="py-3 px-6 text-left font-semibold">{t('users.status')}</th>
-            <th className="py-3 px-6 text-left font-semibold">{t('fields.password')}</th>
-            <th className="py-3 px-6 text-left font-semibold">MFA</th>
-            <th className="py-3 px-6 text-left font-semibold">{t('users.lastLogin')}</th>
+            {[
+              { key: 'id',        label: 'ID' },
+              { key: 'username',  label: t('fields.username') },
+              { key: 'email',     label: t('fields.email') },
+              { key: 'role',      label: t('fields.role') },
+              { key: 'status',    label: t('users.status') },
+              { key: 'password',  label: t('fields.password') },
+              { key: 'mfa',       label: 'MFA' },
+              { key: 'lastLogin', label: t('users.lastLogin') },
+            ].map(({ key, label }) => (
+              <th
+                key={key}
+                className="py-3 px-6 text-left font-semibold cursor-pointer select-none hover:text-foreground"
+                onClick={() => handleSort(key)}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {label}
+                  <span className="inline-flex flex-col leading-none" style={{fontSize: '0.6rem', lineHeight: 1}}>
+                    <span style={{opacity: sortColumn === key && sortDirection === 'asc' ? 1 : 0.3}}>▲</span>
+                    <span style={{opacity: sortColumn === key && sortDirection === 'desc' ? 1 : 0.3}}>▼</span>
+                  </span>
+                </span>
+              </th>
+            ))}
             <th className="py-3 px-6 text-left font-semibold">{t('common.actions')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {users.map(user => (
+          {sortedUsers.map(user => (
             <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-gray-600">
               <td className="py-3 px-6 border-b border-border">{user.id}</td>
               <td className="py-3 px-6 border-b border-border">{user.username}</td>
