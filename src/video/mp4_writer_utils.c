@@ -18,7 +18,9 @@
 #endif
 // Minimum allowed number of audio channels
 #define MIN_AUDIO_CHANNELS 1
-// Default AAC frame size used as a fallback when encoder frame_size is not set
+// Default AAC frame size (in samples per channel).
+// AAC-LC typically uses 1024 samples per frame at common sample rates, so we
+// use 1024 as a safe fallback when the encoder's frame_size is not set.
 #define DEFAULT_AAC_FRAME_SIZE 1024
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
