@@ -298,7 +298,6 @@ export function StreamConfigModal({
         if (response.ok) {
           const data = await response.json();
           if (data.zones && Array.isArray(data.zones)) {
-            console.log('Loaded zones for stream config modal:', data.zones);
             setDetectionZones(data.zones);
             // Use ref so we always call the latest callback without making it
             // a dependency of this effect.

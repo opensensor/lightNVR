@@ -64,6 +64,10 @@
 
 // Detection settings
 #define DEFAULT_DETECTION_INTERVAL 5  // Seconds between detection checks (fallback if not configured)
+#define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
+
+// Motion detection settings
+static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Fallback sensitivity if threshold is unset or out of range
 
 // Global array of unified detection contexts
 static unified_detection_ctx_t *detection_contexts[MAX_UNIFIED_DETECTION_THREADS] = {0};
@@ -474,7 +478,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // configure_motion_detection() uses threshold as sensitivity and clamps it
     // to a valid range internally.
     if (is_motion_detection_model(model_path)) {
-        float sens = (threshold > 0.0f && threshold <= 1.0f) ? threshold : 0.15f;
+        float sens = (threshold > 0.0f && threshold <= 1.0f) ? threshold : DEFAULT_MOTION_SENSITIVITY;
         configure_motion_detection(stream_name, sens, 0.005f, 3);
         set_motion_detection_enabled(stream_name, true);
         log_info("[%s] Built-in motion detection enabled (sensitivity=%.2f)", stream_name, sens);
@@ -1221,7 +1225,7 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
         time_t time_since_last_check = now - ctx->last_detection_check_time;
 
         // Log periodically to show detection is running
-        if (time_since_last_check > 0 && (ctx->log_counter++ % 10) == 0) {
+        if (time_since_last_check > 0 && (atomic_fetch_add(&ctx->log_counter, 1) % 10) == 0) {
             log_debug("[%s] Time since last detection check: %ld/%d seconds, model=%s, state=%d",
                      ctx->stream_name, (long)time_since_last_check, ctx->detection_interval,
                      ctx->model_path, current_state);
@@ -1279,7 +1283,7 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
             // No detection - check if we should enter post-buffer (only in detection-recording mode)
             else if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
                 // Check if enough time has passed since last detection
-                if (now - ctx->last_detection_time > 2) {  // 2 second grace period
+                if (now - ctx->last_detection_time > DETECTION_GRACE_PERIOD_SEC) {  // grace period before post-buffer
                     log_info("[%s] No detection, entering post-buffer (%d seconds)",
                              ctx->stream_name, ctx->post_buffer_seconds);
                     ctx->post_buffer_end_time = now + ctx->post_buffer_seconds;

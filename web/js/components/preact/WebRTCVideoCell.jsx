@@ -412,11 +412,25 @@ export function WebRTCVideoCell({
       }
     };
 
-    pc.oniceconnectionstatechange = () => {
+    const handleIceConnectionStateChange = () => {
       console.log(`ICE connection state for stream ${stream.name}: ${pc.iceConnectionState}`);
 
-      if (pc.iceConnectionState === 'failed') {
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        // Connection is established or completed — start monitoring and reset counters
+        startConnectionMonitoring();
+        reconnectAttemptsRef.current = 0;
+        if (error) {
+          console.log(`WebRTC connection restored for stream ${stream.name}`);
+          setError(null);
+        }
+      } else if (pc.iceConnectionState === 'failed') {
         console.error(`WebRTC ICE connection failed for stream ${stream.name}`);
+
+        // Stop connection monitoring
+        if (connectionMonitorRef.current) {
+          clearInterval(connectionMonitorRef.current);
+          connectionMonitorRef.current = null;
+        }
 
         // Auto-refresh and retry if we haven't already for this connection attempt
         if (!refreshRequestedRef.current && reconnectAttemptsRef.current < 3) {
@@ -456,6 +470,12 @@ export function WebRTCVideoCell({
         // Connection is temporarily disconnected, log but don't show error yet
         console.warn(`WebRTC ICE connection disconnected for stream ${stream.name}, attempting to recover...`);
 
+        // Stop connection monitoring while disconnected
+        if (connectionMonitorRef.current) {
+          clearInterval(connectionMonitorRef.current);
+          connectionMonitorRef.current = null;
+        }
+
         // Set a timeout to check if the connection recovers on its own
         setTimeout(() => {
           if (peerConnectionRef.current &&
@@ -468,14 +488,16 @@ export function WebRTCVideoCell({
             console.log(`WebRTC ICE connection recovered for stream ${stream.name}, current state: ${peerConnectionRef.current.iceConnectionState}`);
           }
         }, 5000); // Wait 5 seconds to see if connection recovers
-      } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        // Connection is established or completed, clear any previous error
-        if (error) {
-          console.log(`WebRTC connection restored for stream ${stream.name}`);
-          setError(null);
+      } else if (pc.iceConnectionState === 'closed') {
+        // Stop monitoring when closed
+        if (connectionMonitorRef.current) {
+          clearInterval(connectionMonitorRef.current);
+          connectionMonitorRef.current = null;
         }
       }
     };
+
+    pc.oniceconnectionstatechange = handleIceConnectionStateChange;
 
     // Handle ICE gathering state changes
     pc.onicegatheringstatechange = () => {
@@ -694,29 +716,6 @@ export function WebRTCVideoCell({
       startConnectionMonitoring();
     }
     
-    // Listen for connection state changes to start/stop monitoring
-    const baseIceConnectionStateChangeHandler = pc.oniceconnectionstatechange;
-    pc.oniceconnectionstatechange = () => {
-      // Start monitoring when connected
-      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        startConnectionMonitoring();
-        // Reset reconnect attempts counter when we get a good connection
-        reconnectAttemptsRef.current = 0;
-      }
-
-      // Call the existing handler, if any
-      if (baseIceConnectionStateChangeHandler) {
-        baseIceConnectionStateChangeHandler();
-      }
-      
-      // Stop monitoring when disconnected or failed
-      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
-        if (connectionMonitorRef.current) {
-          clearInterval(connectionMonitorRef.current);
-          connectionMonitorRef.current = null;
-        }
-      }
-    };
     }; // End of initWebRTC async function
 
     // Stagger initialization to avoid overwhelming go2rtc with concurrent offers
@@ -1422,7 +1421,7 @@ export function WebRTCVideoCell({
           onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
           onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
         </button>
       </div>
       )}

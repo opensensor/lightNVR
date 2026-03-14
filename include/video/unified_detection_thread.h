@@ -85,7 +85,7 @@ typedef struct {
     time_t last_detection_time;      // When last detection occurred
     time_t last_detection_check_time; // When last detection check was attempted (for time-based interval)
     time_t post_buffer_end_time;     // When post-buffer recording should end
-    int log_counter;                 // Counter for periodic logging
+    atomic_int log_counter;          // Counter for periodic logging (accessed without ctx->mutex)
     
     // Connection state
     atomic_int_fast64_t last_packet_time;

@@ -16,6 +16,10 @@
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
+// Minimum allowed number of audio channels
+#define MIN_AUDIO_CHANNELS 1
+// Default AAC frame size used as a fallback when encoder frame_size is not set
+#define DEFAULT_AAC_FRAME_SIZE 1024
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -84,14 +88,14 @@ static int init_audio_transcoder(const char *stream_name,
         } else if (audio_transcoder_stream_names[i][0] != '\0' &&
                   strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
             // Stream already has a transcoder, return its index
-            pthread_mutex_unlock(&audio_transcoder_mutex);
+            unlock_audio_transcoders();
             return i;
         }
     }
 
     if (slot == -1) {
         log_error("No available slots for audio transcoder registration");
-        pthread_mutex_unlock(&audio_transcoder_mutex);
+        unlock_audio_transcoders();
         return -1;
     }
 
@@ -100,7 +104,7 @@ static int init_audio_transcoder(const char *stream_name,
     if (!decoder) {
         log_error("Failed to find decoder for PCM audio (codec_id=%d) in %s",
                  codec_params->codec_id, stream_name);
-        pthread_mutex_unlock(&audio_transcoder_mutex);
+        unlock_audio_transcoders();
         return -1;
     }
 
@@ -172,7 +176,7 @@ static int init_audio_transcoder(const char *stream_name,
 #else
         int ch = audio_transcoders[slot].encoder_ctx->channels;
 #endif
-        if (ch < 1) ch = 1;
+        if (ch < MIN_AUDIO_CHANNELS) ch = MIN_AUDIO_CHANNELS;
         // 64 kbps per channel for ≥32 kHz, 32 kbps per channel for lower rates
         int64_t br = (sr >= 32000) ? 64000LL * ch : 32000LL * ch;
         audio_transcoders[slot].encoder_ctx->bit_rate = br;
@@ -227,7 +231,7 @@ static int init_audio_transcoder(const char *stream_name,
     // packets are typically much smaller (e.g. 160 samples at 8 kHz/20 ms).
     {
         int enc_frame_size = audio_transcoders[slot].encoder_ctx->frame_size;
-        if (enc_frame_size <= 0) enc_frame_size = 1024;
+        if (enc_frame_size <= 0) enc_frame_size = DEFAULT_AAC_FRAME_SIZE;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
         int nb_ch = audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels;
 #else
@@ -463,9 +467,13 @@ int transcode_audio_packet(const char *stream_name,
     ret = avcodec_receive_frame(audio_transcoders[transcoder_idx].decoder_ctx,
                                audio_transcoders[transcoder_idx].frame);
     if (ret < 0) {
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            // Need more input or end of file, not an error
+        if (ret == AVERROR(EAGAIN)) {
+            // Need more input; not an error
             return 0;
+        }
+        if (ret == AVERROR_EOF) {
+            // End of stream; propagate EOF so caller can distinguish it
+            return ret;
         }
         log_ffmpeg_error(ret, "Failed to receive frame from decoder");
         return ret;
@@ -521,7 +529,7 @@ int transcode_audio_packet(const char *stream_name,
 
             // The AAC encoder needs exactly frame_size samples per frame.
             int enc_frame_size = audio_transcoders[transcoder_idx].encoder_ctx->frame_size;
-            if (enc_frame_size <= 0) enc_frame_size = 1024;
+            if (enc_frame_size <= 0) enc_frame_size = DEFAULT_AAC_FRAME_SIZE;
 
             if (av_audio_fifo_size(audio_transcoders[transcoder_idx].fifo) < enc_frame_size) {
                 // Not enough samples yet — return without producing an output packet.
@@ -713,7 +721,7 @@ int transcode_pcm_to_aac(const AVCodecParameters *codec_params,
 #else
         int ch = encoder_ctx->channels;
 #endif
-        if (ch < 1) ch = 1;
+        if (ch < MIN_AUDIO_CHANNELS) ch = MIN_AUDIO_CHANNELS;
         encoder_ctx->bit_rate = (sr >= 32000) ? 64000LL * ch : 32000LL * ch;
     }
     encoder_ctx->time_base = (AVRational){1, encoder_ctx->sample_rate};
@@ -1586,12 +1594,12 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
         log_debug("Setting Opus frame size to 960 samples for stream %s",
                  writer->stream_name ? writer->stream_name : "unknown");
     } else if (codec_params->codec_id == AV_CODEC_ID_AAC) {
-        writer->audio.frame_size = 1024;  // AAC typically uses 1024 samples per frame
+        writer->audio.frame_size = DEFAULT_AAC_FRAME_SIZE;  // AAC typically uses 1024 samples per frame
         log_debug("Setting AAC frame size to 1024 samples for stream %s",
                  writer->stream_name ? writer->stream_name : "unknown");
     } else {
-        // Default to 1024 for other codecs
-        writer->audio.frame_size = 1024;
+        // Default to DEFAULT_AAC_FRAME_SIZE for other codecs
+        writer->audio.frame_size = DEFAULT_AAC_FRAME_SIZE;
         log_debug("Setting default frame size to 1024 samples for codec %d in stream %s",
                  codec_params->codec_id, writer->stream_name ? writer->stream_name : "unknown");
     }
