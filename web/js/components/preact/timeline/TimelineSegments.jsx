@@ -140,6 +140,79 @@ export function TimelineSegments({ segments: propSegments }) {
     }
   };
 
+  // Handle keyboard navigation on the timeline for seeking
+  const handleTimelineKeyDown = (event) => {
+    const { key } = event;
+
+    // Only handle navigation keys
+    if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Home' && key !== 'End') {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const visibleSpanHours = endHour - startHour || 24;
+
+    // Step size: small fraction of the visible window (e.g. 1/40)
+    const stepHours = visibleSpanHours / 40;
+
+    // Derive current hour position from currentTime; when outside visible range, clamp it.
+    const currentDate = timelineState.selectedDate;
+    const currentTime = timelineState.currentTime;
+    let currentHour = timelineState.timestampToTimelineHour
+      ? timelineState.timestampToTimelineHour(currentTime, currentDate)
+      : startHour;
+
+    if (Number.isNaN(currentHour)) {
+      currentHour = startHour;
+    }
+
+    // Clamp to visible range
+    currentHour = Math.min(Math.max(currentHour, startHour), endHour);
+
+    let targetHour = currentHour;
+
+    switch (key) {
+      case 'ArrowLeft':
+        targetHour = currentHour - stepHours;
+        break;
+      case 'ArrowRight':
+        targetHour = currentHour + stepHours;
+        break;
+      case 'Home':
+        targetHour = startHour;
+        break;
+      case 'End':
+        targetHour = endHour;
+        break;
+      default:
+        break;
+    }
+
+    // Clamp the target hour to the visible range
+    targetHour = Math.min(Math.max(targetHour, startHour), endHour);
+
+    const targetTimestamp = timelineState.timelineHourToTimestamp(targetHour, currentDate);
+
+    // Seek to the new position without auto-playing
+    timelineState.setState({
+      currentTime: targetTimestamp,
+      prevCurrentTime: timelineState.currentTime,
+      isPlaying: false
+    });
+
+    // Update currentSegmentIndex based on the new timestamp
+    const foundIndex = findContainingSegmentIndex(segments, targetTimestamp);
+    const foundSegment = foundIndex !== -1;
+
+    if (foundSegment) {
+      timelineState.setState({ currentSegmentIndex: foundIndex });
+    } else {
+      timelineState.setState({ currentSegmentIndex: -1 });
+    }
+  };
+
   // ── Merge adjacent segments (gap ≤ 1 s) and render ──
   const renderSegments = () => {
     if (!segments || segments.length === 0) {
@@ -218,6 +291,9 @@ export function TimelineSegments({ segments: propSegments }) {
     <div
       className="timeline-segments relative w-full h-16"
       ref={containerRef}
+      tabIndex={0}
+      onKeyDown={handleTimelineKeyDown}
+      aria-label="Recording timeline"
     >
       {renderSegments()}
     </div>
