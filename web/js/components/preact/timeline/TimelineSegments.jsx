@@ -6,7 +6,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
 import { findContainingSegmentIndex, getClippedSegmentHourRange } from './timelineUtils.js';
-import { formatLocalTime, nowMilliseconds } from '../../../utils/date-utils.js';
+import { formatLocalTime } from '../../../utils/date-utils.js';
 
 /**
  * TimelineSegments component
@@ -125,72 +125,15 @@ export function TimelineSegments({ segments: propSegments }) {
     const foundSegment = foundIndex !== -1;
 
     if (foundSegment) {
-      const segment = segments[foundIndex];
+      // Clicking anywhere on the timeline (including segment bars) only seeks;
+      // the user must press Play to start playback.  This prevents unexpected
+      // auto-play when the user is just positioning the cursor.
       timelineState.setState({ currentSegmentIndex: foundIndex });
-
-      // Direct click on a segment bar → start playback at that point
-      if (event.target.classList.contains('timeline-segment')) {
-        playSegment(foundIndex, clickTimestamp - segment.start_timestamp);
-      }
     }
 
     if (!foundSegment) {
       timelineState.setState({ currentSegmentIndex: -1 });
     }
-  };
-
-  // Play a specific segment
-  const playSegment = (index, relativeTime = null) => {
-    if (index < 0 || index >= segments.length) return;
-
-    const segment = segments[index];
-    const startTimestamp = segment.start_timestamp;
-    const absoluteTime = relativeTime !== null ? startTimestamp + relativeTime : startTimestamp;
-
-    // First, pause any current playback and reset the segment index
-    timelineState.setState({
-      isPlaying: false,
-      currentSegmentIndex: -1
-    });
-
-    // Force a synchronous DOM update
-    document.body.offsetHeight;
-
-    // Now set the new segment index and start playing
-    setTimeout(() => {
-      timelineState.setState({
-        currentSegmentIndex: index,
-        currentTime: absoluteTime,
-        isPlaying: true,
-        forceReload: true
-      });
-
-      // Force the video player to reload
-      setTimeout(() => {
-        const videoElement = document.querySelector('#video-player video');
-        if (videoElement) {
-          // Pause any current playback
-          videoElement.pause();
-
-          // Clear the source and reload
-          videoElement.removeAttribute('src');
-          videoElement.load();
-
-          // Set the new source
-          videoElement.src = `/api/recordings/play/${segment.id}?t=${nowMilliseconds()}`;
-
-          // Set the current time and play
-          videoElement.onloadedmetadata = () => {
-            const seekTime = relativeTime !== null ? relativeTime : 0;
-            videoElement.currentTime = seekTime;
-            videoElement.play().catch(e => {
-              if (e.name === 'AbortError') return;
-              console.error('Error playing video:', e);
-            });
-          };
-        }
-      }, 50);
-    }, 50);
   };
 
   // ── Merge adjacent segments (gap ≤ 1 s) and render ──

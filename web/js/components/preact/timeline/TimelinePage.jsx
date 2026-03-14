@@ -342,6 +342,12 @@ export function TimelinePage() {
   useEffect(() => {
     const handlePointerDown = (event) => {
       const target = event.target instanceof Element ? event.target : null;
+      // Controls marked with this attribute (speed buttons, action bar, etc.) should
+      // not exit 'fine' mode — the user is adjusting playback settings, not leaving
+      // the video player context.
+      if (target?.closest('[data-keyboard-nav-preserve]')) {
+        return;
+      }
       const nextMode = target?.closest('#video-player') ? 'fine' : 'broad';
       setKeyboardNavigationMode((prevMode) => prevMode === nextMode ? prevMode : nextMode);
     };
@@ -358,11 +364,29 @@ export function TimelinePage() {
         return;
       }
 
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      if (isEditableKeyboardTarget(event.target)) {
         return;
       }
 
-      if (isEditableKeyboardTarget(event.target)) {
+      // Space: toggle play/pause on the active video regardless of which element
+      // has focus. The native video controls also handle space, but only when the
+      // video element itself is focused; this handler makes it global.
+      if (event.key === ' ') {
+        const videoPlayer = videoElementRef.current;
+        if (videoPlayer) {
+          event.preventDefault();
+          if (videoPlayer.paused) {
+            videoPlayer.play().catch(e => {
+              if (e.name !== 'AbortError') console.warn('Space play error:', e);
+            });
+          } else {
+            videoPlayer.pause();
+          }
+        }
+        return;
+      }
+
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
         return;
       }
 
@@ -380,7 +404,7 @@ export function TimelinePage() {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [jumpToAdjacentSegment, keyboardNavigationMode, seekCurrentVideo]);
+  }, [jumpToAdjacentSegment, keyboardNavigationMode, seekCurrentVideo, videoElementRef]);
 
   useEffect(() => {
     const container = timelineContainerRef.current;

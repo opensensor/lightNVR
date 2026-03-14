@@ -290,142 +290,53 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
   // Handle video ended event
   const handleEnded = () => {
-    console.log('Video ended');
-
-    // Check if we have a next segment
     if (currentSegmentIndex < segments.length - 1) {
-      // Play next segment
       const nextIndex = currentSegmentIndex + 1;
-      console.log(`Playing next segment ${nextIndex}`);
-
-      // Store the current cursor position
-      const wasUserControllingCursor = timelineState.userControllingCursor;
-
-      // Set a flag to indicate we're handling the segment transition
-      // This prevents other components from interfering
-      timelineState.directVideoControl = true;
-
-      // Preload the next segment's video immediately
       const nextSegment = segments[nextIndex];
-      const nextVideoUrl = `/api/recordings/play/${nextSegment.id}`;
 
+      // Warm the browser cache for the next segment in the background using a
+      // temporary video element.  The actual loading and seeking is handled by
+      // handleVideoPlayback → loadSegment once we update the state below.
       cleanupPreloadedVideo();
-      
-      // Create a temporary video element to preload the next segment
+      const nextVideoUrl = `/api/recordings/play/${nextSegment.id}`;
       const tempVideo = document.createElement('video');
       tempVideo.preload = 'auto';
       tempVideo.src = nextVideoUrl;
 
-      let tempVideoCleanupTimeoutId = null;
+      let tempCleanupTimeoutId = null;
       const cleanupTempVideo = () => {
-        tempVideo.removeEventListener('loadeddata', onTempVideoLoadedData);
-        tempVideo.removeEventListener('error', onTempVideoError);
-
-        try {
-          tempVideo.pause();
-        } catch (e) {
-          // Ignore cleanup errors.
-        }
-
+        tempVideo.removeEventListener('loadeddata', cleanupTempVideo);
+        tempVideo.removeEventListener('error', cleanupTempVideo);
+        try { tempVideo.pause(); } catch (e) { /* ignore */ }
         tempVideo.removeAttribute('src');
-
-        try {
-          tempVideo.load();
-        } catch (e) {
-          // Ignore cleanup errors.
+        try { tempVideo.load(); } catch (e) { /* ignore */ }
+        if (tempCleanupTimeoutId !== null) {
+          clearTimeout(tempCleanupTimeoutId);
+          tempCleanupTimeoutId = null;
         }
-
-        if (tempVideoCleanupTimeoutId !== null) {
-          clearTimeout(tempVideoCleanupTimeoutId);
-          tempVideoCleanupTimeoutId = null;
-        }
-
         if (preloadedVideoCleanupRef.current === cleanupTempVideo) {
           preloadedVideoCleanupRef.current = null;
         }
       };
-      const onTempVideoLoadedData = () => {
-        cleanupTempVideo();
-      };
-      const onTempVideoError = () => {
-        cleanupTempVideo();
-      };
-
       preloadedVideoCleanupRef.current = cleanupTempVideo;
-      tempVideo.addEventListener('loadeddata', onTempVideoLoadedData);
-      tempVideo.addEventListener('error', onTempVideoError);
-      tempVideoCleanupTimeoutId = setTimeout(() => {
-        cleanupTempVideo();
-      }, PRELOAD_CLEANUP_TIMEOUT_MS);
+      tempVideo.addEventListener('loadeddata', cleanupTempVideo);
+      tempVideo.addEventListener('error', cleanupTempVideo);
+      tempCleanupTimeoutId = setTimeout(cleanupTempVideo, PRELOAD_CLEANUP_TIMEOUT_MS);
       tempVideo.load();
-      
-      console.log(`Preloading next segment ${nextIndex} (ID: ${nextSegment.id})`);
 
-      // Update timeline state
+      // Update state — handleVideoPlayback detects the new segment ID and calls
+      // loadSegment(nextSegment, 0, true), which handles the actual video work.
+      // Always start the next segment from the beginning so the seek position is
+      // unambiguous (avoids the race where the old cursor position was used).
       timelineState.setState({
         currentSegmentIndex: nextIndex,
-        // Only set the current time to the start of the next segment if the user wasn't controlling the cursor
-        // This preserves the cursor position if the user had manually positioned it
-        currentTime: wasUserControllingCursor ? timelineState.currentTime : segments[nextIndex].start_timestamp,
+        currentTime: nextSegment.start_timestamp,
+        prevCurrentTime: timelineState.currentTime,
         isPlaying: true,
-        forceReload: true
       });
-
-      // Get the current video element
-      const video = videoRef.current;
-      if (video) {
-        // Set up the new source immediately to minimize delay
-        video.pause();
-        video.src = nextVideoUrl;
-        video.load();
-
-        const cleanupTransitionListeners = () => {
-          video.removeEventListener('loadedmetadata', onLoadedMetadata);
-          video.removeEventListener('error', onTransitionError);
-        };
-
-        // Set up event listener for when metadata is loaded
-        const onLoadedMetadata = () => {
-          console.log('Next segment metadata loaded, starting playback immediately');
-          video.currentTime = 0; // Start from the beginning of the next segment
-          const playPromise = video.play();
-
-          if (playPromise && typeof playPromise.finally === 'function') {
-            playPromise
-              .catch(e => {
-                if (e.name === 'AbortError') return;
-                console.error('Error playing next segment:', e);
-              })
-              .finally(() => {
-                cleanupTransitionListeners();
-                releaseDirectVideoControl();
-              });
-            return;
-          }
-
-          cleanupTransitionListeners();
-          releaseDirectVideoControl();
-        };
-
-        const onTransitionError = () => {
-          cleanupTransitionListeners();
-          releaseDirectVideoControl();
-        };
-
-        video.addEventListener('loadedmetadata', onLoadedMetadata);
-        video.addEventListener('error', onTransitionError);
-      } else {
-        // If we don't have a video element, clear the direct control flag immediately.
-        releaseDirectVideoControl();
-      }
     } else {
       // End of all segments
-      console.log('End of all segments');
-
-      // Update timeline state
-      timelineState.setState({
-        isPlaying: false
-      });
+      timelineState.setState({ isPlaying: false });
     }
   };
 
@@ -956,7 +867,8 @@ export function TimelinePlayer({ videoElementRef = null }) {
       </div>
 
       {/* Compact toolbar: detections toggle | action buttons | speed */}
-      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1">
+      {/* data-keyboard-nav-preserve: clicking here must not exit 'fine' keyboard mode */}
+      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1" data-keyboard-nav-preserve>
         {/* Detection toggle */}
         <label className="flex items-center gap-1.5 cursor-pointer">
           <input
