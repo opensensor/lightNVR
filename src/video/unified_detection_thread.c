@@ -63,7 +63,9 @@
 #define MAX_PACKET_TIMEOUT_SEC 10
 
 // Detection settings
-#define DEFAULT_DETECTION_INTERVAL 5  // Seconds between detection checks; used as a fallback if no interval is configured via the application's stream/detection settings.
+// Seconds between detection checks; used as a fallback if no interval is
+// configured via the application's stream/detection settings.
+#define DEFAULT_DETECTION_INTERVAL 5
 #define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
 
 // Video/default FPS settings
@@ -820,7 +822,7 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         if (vs->avg_frame_rate.den > 0 && vs->avg_frame_rate.num > 0) {
             det_fps = (int)(vs->avg_frame_rate.num / vs->avg_frame_rate.den);
         }
-        // avg_frame_rate is 0 for many older cameras (e.g. Axis M1011) — fall back
+        // avg_frame_rate is 0 for many older cameras (e.g. Axis M1011); fall back
         // to the container's r_frame_rate, then to a safe default so the stored
         // value is always meaningful.
         if (det_fps <= 0 && vs->r_frame_rate.den > 0 && vs->r_frame_rate.num > 0) {
@@ -1948,7 +1950,9 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
         if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
             log_warn("[%s] Failed to store detections in database", ctx->stream_name);
         }
+        pthread_mutex_lock(&ctx->mutex);
         ctx->total_detections += result.count;
+        pthread_mutex_unlock(&ctx->mutex);
     }
 
     return detection_triggered;

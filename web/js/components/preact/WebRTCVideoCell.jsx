@@ -913,9 +913,6 @@ export function WebRTCVideoCell({
     setAudioLevel(0);
   }, []);
 
-  // Track whether microphone permission has been granted for backchannel
-  const [hasMicrophonePermission, setHasMicrophonePermission] = useState(null);
-
   // Start push-to-talk (acquire microphone and send audio)
   const startTalking = useCallback(async () => {
     if (!stream.backchannel_enabled || !audioSenderRef.current) {
@@ -937,7 +934,6 @@ export function WebRTCVideoCell({
       });
 
       localStreamRef.current = localStream;
-      setHasMicrophonePermission(true);
 
       // Start audio level monitoring
       startAudioLevelMonitoring(localStream);
@@ -951,7 +947,6 @@ export function WebRTCVideoCell({
       }
     } catch (err) {
       console.error(`Failed to start backchannel audio for stream ${stream.name}:`, err);
-      setHasMicrophonePermission(false);
 
       if (err.name === 'NotAllowedError') {
         setMicrophoneError(t('live.microphoneAccessDenied'));
