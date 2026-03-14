@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { ZoneEditor } from './ZoneEditor.jsx';
 import { obfuscateUrlCredentials } from '../../utils/url-utils.js';
 import { useI18n } from '../../i18n.js';
+import { showStatusMessage } from './ToastContainer.jsx';
 
 const primaryAccentStyle = { accentColor: 'hsl(var(--primary))' };
 const HOURS_PER_DAY = 24;
@@ -332,9 +333,17 @@ export function StreamConfigModal({
           }
         } else {
           console.warn('Failed to load zones:', response.status);
+          showStatusMessage(
+            t('streamConfig.zonesLoadFailed', 'Failed to load detection zones. Please try again.'),
+            'error'
+          );
         }
       } catch (error) {
         console.error('Error loading zones:', error);
+        showStatusMessage(
+          t('streamConfig.zonesLoadError', 'An error occurred while loading detection zones. Please try again.'),
+          'error'
+        );
       }
     };
 

@@ -1037,11 +1037,20 @@ export function StreamsView() {
       // malformed inputs such as consecutive dots or invalid IPv6 sequences.
       const hostnamePattern =
         /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$/;
+      // IPv4 addresses (e.g. 192.168.1.100) — hostnamePattern allows alphanumeric labels but
+      // the look-ahead length check can reject short dotted-decimal addresses, so validate them
+      // explicitly with a dedicated pattern.
+      const ipv4Pattern =
+        /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
+      // IPv6 literal in brackets. This pattern supports full and compressed IPv6 forms,
+      // e.g. "[2001:db8::1]", "[::1]", and "[::]".
       const ipv6BracketPattern =
-        /^\[([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}\]$/;
+        /^\[((?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,7}:)|(?:::(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4})|(?:::[0-9A-Fa-f]{1,4})|(?:[0-9A-Fa-f]{1,4}::))\]$/;
       const isValidHost =
         typeof ipAddress === 'string' &&
-        (hostnamePattern.test(ipAddress) || ipv6BracketPattern.test(ipAddress));
+        (hostnamePattern.test(ipAddress) ||
+          ipv4Pattern.test(ipAddress) ||
+          ipv6BracketPattern.test(ipAddress));
       if (!isValidHost) {
         throw new Error('Invalid device IP address');
       }
@@ -1201,27 +1210,48 @@ export function StreamsView() {
     });
   };
 
+  /**
+   * Build the ONVIF device_service URL for a discovered device.
+   * Returns a string URL on success, or null if the address is invalid
+   * (and shows an appropriate status message).
+   */
+  const buildOnvifDeviceUrl = (device) => {
+    let deviceUrl = device && device.device_service;
+    if (!deviceUrl) {
+      if (!device || !device.ip_address) {
+        showStatusMessage(
+          t('streams.onvifInvalidAddress') || 'ONVIF device IP address is missing or invalid.',
+          'error'
+        );
+        return null;
+      }
+      try {
+        // Construct a well-formed URL using the browser URL parser
+        const urlObj = new URL(
+          '/onvif/device_service',
+          'http://' + String(device.ip_address).trim()
+        );
+        deviceUrl = urlObj.toString();
+      } catch (e) {
+        showStatusMessage(
+          t('streams.onvifInvalidAddress') || 'ONVIF device IP address is missing or invalid.',
+          'error'
+        );
+        return null;
+      }
+    }
+    return deviceUrl;
+  };
+
   // Test ONVIF connection
   const testOnvifConnection = (device) => {
     // Store the selected device first
     setSelectedDevice(device);
 
-    // Use device_service URL which includes the correct port from discovery
-    // Fall back to constructing URL from ip_address if device_service is not available
-    let deviceUrl = device.device_service;
+    // Build the device_service URL (using discovery data or ip_address fallback)
+    const deviceUrl = buildOnvifDeviceUrl(device);
     if (!deviceUrl) {
-      if (!device.ip_address) {
-        showStatusMessage(t('streams.onvifInvalidAddress') || 'ONVIF device IP address is missing or invalid.', 'error');
-        return;
-      }
-      try {
-        // Construct a well-formed URL using the browser URL parser
-        const urlObj = new URL('/onvif/device_service', 'http://' + String(device.ip_address).trim());
-        deviceUrl = urlObj.toString();
-      } catch (e) {
-        showStatusMessage(t('streams.onvifInvalidAddress') || 'ONVIF device IP address is missing or invalid.', 'error');
-        return;
-      }
+      return;
     }
     const isInsecure = typeof deviceUrl === 'string' && deviceUrl.startsWith('http://');
 
