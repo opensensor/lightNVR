@@ -23,7 +23,7 @@ import 'webrtc-adapter';
 // Configuration for detecting lack of incoming video data.
 // MAX_VIDEO_DATA_CHECKS × VIDEO_DATA_CHECK_INTERVAL_MS defines the total
 // time we will wait for video frames before surfacing an error.
-const MAX_VIDEO_DATA_CHECKS = 6; // 6 checks × 15s = 90s total
+const MAX_VIDEO_DATA_CHECKS = 6; // 6 checks × 15,000 ms (15s) interval = 90s total
 const VIDEO_DATA_CHECK_INTERVAL_MS = 15000; // 15 seconds between checks
 const MIN_NO_DATA_CHECKS_BEFORE_RETRY = 2;
 const MAX_NO_DATA_RECONNECT_ATTEMPTS = 3;
@@ -68,7 +68,24 @@ export function WebRTCVideoCell({
 }) {
   const { t } = useI18n();
   // Component state
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    // Derive initial loading state from the incoming stream, so that we
+    // avoid flashing a loading indicator for streams that are already
+    // playing/connected or known to be in an error state.
+    if (!stream) {
+      return true;
+    }
+
+    const status = stream.status || stream.state;
+    if (status === 'error' || status === 'failed') {
+      return false;
+    }
+    if (status === 'playing' || status === 'connected' || status === 'ready') {
+      return false;
+    }
+
+    return true;
+  });
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'fair', 'poor', 'bad'
