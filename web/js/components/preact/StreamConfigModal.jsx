@@ -299,7 +299,9 @@ export function StreamConfigModal({
   // safely use onInputChangeRef.current without depending on onInputChange
   // itself. This gives us "latest callback" semantics without re-running the
   // effect whenever the parent recreates onInputChange.
-  onInputChangeRef.current = onInputChange;
+  useEffect(() => {
+    onInputChangeRef.current = onInputChange;
+  }, [onInputChange]);
 
   // Load zones from API when the modal opens for an existing stream.
   //
@@ -332,16 +334,30 @@ export function StreamConfigModal({
             onInputChangeRef.current({ target: { name: 'detectionZones', value: data.zones } });
           }
         } else {
-          console.warn('Failed to load zones:', response.status);
+          console.warn('Failed to load zones:', response.status, response.statusText);
+          const statusCode = response.status;
+          const statusText = response.statusText || '';
           showStatusMessage(
-            t('streamConfig.zonesLoadFailed', 'Failed to load detection zones. Please try again.'),
+            t(
+              'streamConfig.zonesLoadFailed',
+              'Failed to load detection zones (HTTP {statusCode}{statusText}). Please try again or contact an administrator.',
+              {
+                statusCode,
+                statusText: statusText ? `: ${statusText}` : '',
+              }
+            ),
             'error'
           );
         }
       } catch (error) {
         console.error('Error loading zones:', error);
+        const errorMessage = (error && error.message) ? error.message : String(error || '');
         showStatusMessage(
-          t('streamConfig.zonesLoadError', 'An error occurred while loading detection zones. Please try again.'),
+          t(
+            'streamConfig.zonesLoadError',
+            'An error occurred while loading detection zones. Details: {errorMessage}',
+            { errorMessage }
+          ),
           'error'
         );
       }

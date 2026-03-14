@@ -158,7 +158,8 @@ export function StreamsView() {
   const streams = Array.isArray(streamsResponse) ? streamsResponse : (streamsResponse.streams || []);
 
   // Sorting state for the streams table
-  const [sortColumn, setSortColumn] = useState(null);
+  const DEFAULT_SORT_COLUMN = null;
+  const [sortColumn, setSortColumn] = useState(DEFAULT_SORT_COLUMN);
   const [sortDirection, setSortDirection] = useState('asc');
 
   const handleSort = (column) => {
@@ -171,7 +172,7 @@ export function StreamsView() {
   };
 
   const sortedStreams = (() => {
-    if (!sortColumn) return streams;
+    if (sortColumn === DEFAULT_SORT_COLUMN) return streams;
     return [...streams].sort((a, b) => {
       let aVal, bVal;
       if (sortColumn === 'name') {
@@ -1021,6 +1022,35 @@ export function StreamsView() {
     }
   );
 
+  /**
+   * Validate that an ONVIF device host address is a well-formed hostname, IPv4
+   * address, or bracketed IPv6 address. Returns true when valid, false otherwise.
+   */
+  const isValidDeviceHost = (ipAddress) => {
+    if (typeof ipAddress !== 'string') {
+      return false;
+    }
+    // Validate the discovered IP/host before constructing fallback URLs to avoid malformed URLs.
+    // Allow typical hostnames / IPv4-like hosts and optional IPv6 literal in brackets, but reject
+    // malformed inputs such as consecutive dots or invalid IPv6 sequences.
+    const hostnamePattern =
+      /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$/;
+    // IPv4 addresses (e.g. 192.168.1.100) — hostnamePattern allows alphanumeric labels but
+    // the look-ahead length check can reject short dotted-decimal addresses, so validate them
+    // explicitly with a dedicated pattern.
+    const ipv4Pattern =
+      /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
+    // IPv6 literal in brackets. This pattern supports full and compressed IPv6 forms,
+    // e.g. "[2001:db8::1]", "[::1]", and "[::]".
+    const ipv6BracketPattern =
+      /^\[((?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,7}:)|(?:::(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4})|(?:::[0-9A-Fa-f]{1,4})|(?:[0-9A-Fa-f]{1,4}::))\]$/;
+    return (
+      hostnamePattern.test(ipAddress) ||
+      ipv4Pattern.test(ipAddress) ||
+      ipv6BracketPattern.test(ipAddress)
+    );
+  };
+
   // Get device profiles mutation
   const getDeviceProfilesMutation = useMutation({
     mutationFn: ({ device, credentials }) => {
@@ -1032,25 +1062,7 @@ export function StreamsView() {
       const discoveredUrl = device.device_service;
       const ipAddress = device.ip_address;
 
-      // Validate the discovered IP/host before constructing fallback URLs to avoid malformed URLs.
-      // Allow typical hostnames / IPv4-like hosts and optional IPv6 literal in brackets, but reject
-      // malformed inputs such as consecutive dots or invalid IPv6 sequences.
-      const hostnamePattern =
-        /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$/;
-      // IPv4 addresses (e.g. 192.168.1.100) — hostnamePattern allows alphanumeric labels but
-      // the look-ahead length check can reject short dotted-decimal addresses, so validate them
-      // explicitly with a dedicated pattern.
-      const ipv4Pattern =
-        /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
-      // IPv6 literal in brackets. This pattern supports full and compressed IPv6 forms,
-      // e.g. "[2001:db8::1]", "[::1]", and "[::]".
-      const ipv6BracketPattern =
-        /^\[((?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,7}:)|(?:::(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4})|(?:::[0-9A-Fa-f]{1,4})|(?:[0-9A-Fa-f]{1,4}::))\]$/;
-      const isValidHost =
-        typeof ipAddress === 'string' &&
-        (hostnamePattern.test(ipAddress) ||
-          ipv4Pattern.test(ipAddress) ||
-          ipv6BracketPattern.test(ipAddress));
+      const isValidHost = isValidDeviceHost(ipAddress);
       if (!isValidHost) {
         throw new Error('Invalid device IP address');
       }
@@ -1087,8 +1099,22 @@ export function StreamsView() {
         // If discovery provided a full URL (including scheme), use it as-is.
         return attemptFetch(discoveredUrl);
       }
-      // Try HTTPS first; if that fails, fall back to HTTP.
-      return attemptFetch(httpsFallbackUrl).catch(() => attemptFetch(httpFallbackUrl));
+      // In security-sensitive environments, set this to true (or wire it to configuration)
+      // to disable falling back from HTTPS to HTTP for device profile discovery.
+      const DISABLE_HTTP_FALLBACK = false;
+      // Try HTTPS first; if that fails, optionally fall back to HTTP.
+      return attemptFetch(httpsFallbackUrl).catch((error) => {
+        if (DISABLE_HTTP_FALLBACK) {
+          // In strict mode, propagate the original error without attempting insecure HTTP.
+          throw error;
+        }
+        showStatusMessage(
+          t('streams.warningFallingBackToHttp', 'HTTPS connection failed; retrying over HTTP. Credentials may be sent in plain text.'),
+          'warning',
+          5000
+        );
+        return attemptFetch(httpFallbackUrl);
+      });
     },
     onSuccess: (data) => {
       setDeviceProfiles(data.profiles || []);
