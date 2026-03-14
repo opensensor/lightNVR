@@ -71,7 +71,14 @@ export function TimelineSegments({ segments: propSegments }) {
 
     const handleMouseDown = (e) => {
       // Handle clicks on the container, clickable area, or directly on segments
-      if (e.target === container || e.target.classList.contains('timeline-clickable-area') || e.target.classList.contains('timeline-segment')) {
+      const target = e.target;
+      const isElementTarget = target instanceof Element;
+      if (
+        target === container ||
+        (isElementTarget &&
+          (target.classList.contains('timeline-clickable-area') ||
+            target.classList.contains('timeline-segment')))
+      ) {
         isDragging.current = true;
         handleTimelineClick(e);
 
