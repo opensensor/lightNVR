@@ -1001,7 +1001,7 @@ export function StreamsView() {
 
   // ONVIF discovery mutation
   const onvifDiscoveryMutation = usePostMutation(
-    '/api/onvif/discovery/discover',
+    '/api/onvif/discover',
     {
       timeout: 120000,
       retries: 0
@@ -1032,10 +1032,17 @@ export function StreamsView() {
       const discoveredUrl = device.device_service;
       const ipAddress = device.ip_address;
 
-      // Validate the discovered IP/host before constructing fallback URLs to avoid malformed URLs
-      // Allow typical hostname / IPv4 characters and optional IPv6 literal in brackets.
-      const ipHostPattern = /^(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])$/;
-      if (!ipAddress || !ipHostPattern.test(ipAddress)) {
+      // Validate the discovered IP/host before constructing fallback URLs to avoid malformed URLs.
+      // Allow typical hostnames / IPv4-like hosts and optional IPv6 literal in brackets, but reject
+      // malformed inputs such as consecutive dots or invalid IPv6 sequences.
+      const hostnamePattern =
+        /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*$/;
+      const ipv6BracketPattern =
+        /^\[([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}\]$/;
+      const isValidHost =
+        typeof ipAddress === 'string' &&
+        (hostnamePattern.test(ipAddress) || ipv6BracketPattern.test(ipAddress));
+      if (!isValidHost) {
         throw new Error('Invalid device IP address');
       }
 
@@ -1127,7 +1134,11 @@ export function StreamsView() {
     // Prepare stream data
     const streamData = {
       name: customStreamName.trim(),
-      url: selectedProfile.stream_uri, // Use stream_uri instead of url
+      // ONVIF profiles expose the media endpoint as `stream_uri`, while our
+      // backend `Stream` model expects this value under the generic `url` field.
+      // This mapping intentionally translates the ONVIF profile shape to the
+      // stream configuration shape expected by the API.
+      url: selectedProfile.stream_uri,
       enabled: true,
       streaming_enabled: true,
       // Note: width, height, fps, and codec are auto-detected from the stream

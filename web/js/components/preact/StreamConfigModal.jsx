@@ -792,6 +792,9 @@ export function StreamConfigModal({
                             onChange={onInputChange}
                           >
                             <option value="">{t('streamsConfig.selectModel')}</option>
+                            <option value="api-detection">
+                              {t('streamsConfig.customApiModel')}
+                            </option>
                             {detectionModels.map(model => (
                               <option key={model.id} value={model.id}>{model.name}</option>
                             ))}
