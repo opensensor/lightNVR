@@ -929,7 +929,7 @@ int apply_h264_annexb_filter(AVPacket *packet, enum AVCodecID codec_id) {
 int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
     int ret;
 
-    //  Ensure we only initialize on keyframes for video packets
+    // Ensure we only initialize on keyframes for video packets
     if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         // Check if this is a keyframe
         bool is_keyframe = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
