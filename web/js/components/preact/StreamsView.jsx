@@ -607,11 +607,11 @@ export function StreamsView() {
         } catch (err) {
           showStatusMessage(t('streams.motionConfigSaveFailed', { message: err.message }), 'error', 5000);
         }
-        // Close the modal after successful save
-        closeModal();
         // Ensure both list and details are refreshed after save
         await queryClient.invalidateQueries({ queryKey: ['stream-full', savedStreamName] });
         queryClient.invalidateQueries({ queryKey: ['streams'] });
+        // Close the modal after successful save
+        closeModal();
       }
     });
   };
@@ -1034,13 +1034,22 @@ export function StreamsView() {
 
       // Validate the discovered IP/host before constructing fallback URLs to avoid malformed URLs
       // Allow typical hostname / IPv4 characters and optional IPv6 literal in brackets.
-      const ipHostPattern = /^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/;
+      const ipHostPattern = /^(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])$/;
       if (!ipAddress || !ipHostPattern.test(ipAddress)) {
         throw new Error('Invalid device IP address');
       }
 
-      const httpsFallbackUrl = `https://${ipAddress}/onvif/device_service`;
-      const httpFallbackUrl = `http://${ipAddress}/onvif/device_service`;
+      const buildDeviceServiceUrl = (scheme, host) => {
+        try {
+          const url = new URL(`${scheme}://${host}/onvif/device_service`);
+          return url.toString();
+        } catch (e) {
+          throw new Error('Invalid device URL');
+        }
+      };
+
+      const httpsFallbackUrl = buildDeviceServiceUrl('https', ipAddress);
+      const httpFallbackUrl = buildDeviceServiceUrl('http', ipAddress);
 
       const attemptFetch = (deviceUrl) => {
         return fetch('/api/onvif/device/profiles', {
@@ -1188,7 +1197,21 @@ export function StreamsView() {
 
     // Use device_service URL which includes the correct port from discovery
     // Fall back to constructing URL from ip_address if device_service is not available
-    const deviceUrl = device.device_service || `http://${device.ip_address}/onvif/device_service`;
+    let deviceUrl = device.device_service;
+    if (!deviceUrl) {
+      if (!device.ip_address) {
+        showStatusMessage(t('streams.onvifInvalidAddress') || 'ONVIF device IP address is missing or invalid.', 'error');
+        return;
+      }
+      try {
+        // Construct a well-formed URL using the browser URL parser
+        const urlObj = new URL('/onvif/device_service', 'http://' + String(device.ip_address).trim());
+        deviceUrl = urlObj.toString();
+      } catch (e) {
+        showStatusMessage(t('streams.onvifInvalidAddress') || 'ONVIF device IP address is missing or invalid.', 'error');
+        return;
+      }
+    }
     const isInsecure = typeof deviceUrl === 'string' && deviceUrl.startsWith('http://');
 
     // Then make the API call
