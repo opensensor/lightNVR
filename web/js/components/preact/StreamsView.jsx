@@ -3,7 +3,8 @@
  * React component for the streams page
  */
 
-import { useState, useEffect, Fragment } from 'react';
+import { Fragment } from 'preact';
+import { useState, useEffect } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { StreamDeleteModal } from './StreamDeleteModal.jsx';
@@ -112,7 +113,7 @@ export function StreamsView() {
     if (selectedStreams.size > 0) {
       setSelectedStreams(new Set());
     } else {
-      setSelectedStreams(new Set((sortedStreams || []).map(s => s.name)));
+      setSelectedStreams(new Set((streams || []).map(s => s.name)));
     }
   };
 
@@ -278,6 +279,7 @@ export function StreamsView() {
       if (isEditing) {
         // Update existing stream via PUT
         const url = `/api/streams/${encodeURIComponent(streamData.name)}`;
+        // `name` is used as the stream identifier in the URL path and must not be included in the request body
         const { name, ...rest } = streamData;
         return await fetchJSON(url, {
           method: 'PUT',
@@ -502,20 +504,21 @@ export function StreamsView() {
     }
   };
 
+  const normalizeRecordingSchedule = (recordingSchedule, recordOnSchedule) => {
+    if (!recordOnSchedule) {
+      return Array(168).fill(true);
+    }
+    if (Array.isArray(recordingSchedule) && recordingSchedule.length === 168) {
+      return recordingSchedule;
+    }
+    return Array(168).fill(true);
+  };
+
   // Handle form submission
   const handleSubmit = (e) => {
     e.preventDefault();
 
     // Prepare stream data for API
-    const normalizeRecordingSchedule = (recordingSchedule, recordOnSchedule) => {
-      if (!recordOnSchedule) {
-        return Array(168).fill(true);
-      }
-      if (Array.isArray(recordingSchedule) && recordingSchedule.length === 168) {
-        return recordingSchedule;
-      }
-      return Array(168).fill(true);
-    };
     const streamData = {
       name: currentStream.name.trim(),
       url: currentStream.url,
@@ -742,8 +745,6 @@ export function StreamsView() {
   // Open edit stream modal
   const openEditStreamModal = async (streamId) => {
     try {
-      // Ensure any cached details are marked stale before fetching
-      await queryClient.invalidateQueries({ queryKey: ['stream-full', streamId] });
       // Use queryClient to fetch stream details (force fresh)
       const data = await queryClient.fetchQuery({
         queryKey: ['stream-full', streamId],
