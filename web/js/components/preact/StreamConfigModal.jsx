@@ -280,13 +280,31 @@ export function StreamConfigModal({
   const [detectionZones, setDetectionZones] = useState(currentStream.detectionZones || []);
 
   // Keep a ref to onInputChange so the zones-load effect never needs it as a
-  // dependency (avoids an infinite fetch loop: calling onInputChange triggers a
-  // parent re-render which produces a new function reference → effect re-fires).
+  // dependency. If we put onInputChange in the dependency array, calling it
+  // would trigger a parent re-render, which would create a new onInputChange
+  // function, which would cause the effect to re-run and re-fetch zones again,
+  // leading to an infinite (or at least very noisy) loop of fetches.
   const onInputChangeRef = useRef(onInputChange);
+  // Always point the ref to the latest onInputChange so the effect below can
+  // safely use onInputChangeRef.current without depending on onInputChange
+  // itself. This gives us "latest callback" semantics without re-running the
+  // effect whenever the parent recreates onInputChange.
   onInputChangeRef.current = onInputChange;
 
-  // Load zones from API when modal opens for existing stream.
-  // Depends only on isEditing / currentStream.name – NOT on onInputChange.
+  // Load zones from API when the modal opens for an existing stream.
+  //
+  // IMPORTANT: This effect intentionally only depends on isEditing and
+  // currentStream.name. It does NOT depend on onInputChange by design:
+  // - We only want to fetch zones when the target stream changes or when we
+  //   switch into/out of editing mode, not whenever the parent re-renders.
+  // - onInputChange is typically recreated on each parent render; including it
+  //   would cause this effect to re-run and re-fetch zones far more often than
+  //   needed, potentially creating an infinite loop (fetch → onInputChange →
+  //   parent re-render → new onInputChange → effect re-run → fetch ...).
+  //
+  // Using onInputChangeRef.current inside the effect lets us always call the
+  // latest onInputChange implementation without adding it to the dependency
+  // array, which is why the ref pattern is used here.
   useEffect(() => {
     const loadZones = async () => {
       if (!isEditing || !currentStream.name) {
