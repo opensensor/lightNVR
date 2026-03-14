@@ -82,10 +82,11 @@ typedef struct {
     uint64_t current_recording_id;
     
     // Detection state
-    time_t last_detection_time;      // When last detection occurred
-    time_t last_detection_check_time; // When last detection check was attempted (for time-based interval)
-    time_t post_buffer_end_time;     // When post-buffer recording should end
-    atomic_int log_counter;          // Counter for periodic logging (accessed without ctx->mutex)
+    atomic_llong last_detection_time;      // When last detection occurred (stored as atomic epoch seconds)
+    atomic_llong last_detection_check_time; // When last detection check was attempted (for time-based interval)
+    atomic_llong post_buffer_end_time;     // When post-buffer recording should end
+    atomic_int log_counter;          // Counter for periodic logging; intentionally accessed without ctx->mutex,
+                                     // but all accesses must use atomic operations, and exact accuracy is not critical.
     
     // Connection state
     atomic_int_fast64_t last_packet_time;
@@ -99,7 +100,16 @@ typedef struct {
     // Detections are stored in the database and linked to the continuous recording
     bool annotation_only;
 
-    // FFmpeg contexts (managed by thread)
+    // FFmpeg contexts (managed exclusively by the unified detection thread).
+    // Concurrency / lifetime:
+    // - These pointers and stream indices are created, updated, and freed only
+    //   by the unified detection thread during connect/reconnect/shutdown.
+    // - Other threads MUST NOT read or modify these fields directly unless they
+    //   first acquire the appropriate synchronization primitive (for example,
+    //   the context mutex defined alongside this struct in the implementation).
+    // - Accessing these fields without synchronization while the detection
+    //   thread may be reconnecting or shutting down can lead to data races or
+    //   use-after-free of the FFmpeg contexts.
     AVFormatContext *input_ctx;
     AVCodecContext *decoder_ctx;
     int video_stream_idx;
@@ -114,9 +124,9 @@ typedef struct {
     // have been observed in the measurement window, the measured FPS is finalized,
     // fps_is_provisional is set to false, and the resulting FPS value is persisted
     // to the database for future use.
-    bool fps_is_provisional;          // true when stored FPS is a fallback guess
-    int fps_measurement_frame_count;  // video frames counted during measurement window
-    struct timespec fps_measurement_start; // start of measurement window
+    atomic_bool fps_is_provisional;           // true when stored FPS is a fallback guess
+    atomic_int fps_measurement_frame_count;   // video frames counted during measurement window
+    atomic_llong fps_measurement_start_ns;    // start of measurement window, in nanoseconds since an epoch
 
     // Thread safety
     pthread_mutex_t mutex;

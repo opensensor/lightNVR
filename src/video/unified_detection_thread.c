@@ -69,8 +69,14 @@
 #define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
 
 // Video/default FPS settings
-#define DEFAULT_FPS_FALLBACK 15  // Conservative low-end fallback for cameras that omit FPS in SDP; intentionally underestimates typical 25/30 FPS to avoid overestimating duration/bitrate when actual FPS is unknown
+// Conservative low-end fallback for cameras that omit FPS in SDP.
+// Intentionally underestimates typical 25/30 FPS to avoid overestimating
+// duration/bitrate when the actual FPS is unknown.
+#define DEFAULT_FPS_FALLBACK 15
 #define FPS_MEASUREMENT_WINDOW_SEC 5  // Seconds of frame arrivals to measure before refining provisional FPS
+
+// Detection recording settings
+#define DEFAULT_MIN_DETECTION_RECORDING_DURATION 10  // Default minimum total duration (seconds) for detection recordings (pre_buffer + post_buffer)
 
 // Motion detection settings
 static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Fallback sensitivity if threshold is unset or out of range
@@ -89,6 +95,30 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt);
 static int udt_start_recording(unified_detection_ctx_t *ctx);
 static int udt_stop_recording(unified_detection_ctx_t *ctx);
 static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx);
+/**
+ * Determine the actual API URL to use for detection based on the configured
+ * model path and global configuration.
+ *
+ * For a model_path of "api-detection", this resolves to g_config.api_detection_url
+ * and validates that it is configured. For all other model paths, the model_path
+ * itself is returned.
+ *
+ * @param stream_name  Name of the stream for logging purposes.
+ * @param model_path   The configured model path.
+ * @return             The resolved API URL, or NULL if configuration is invalid.
+ */
+static const char *get_actual_api_url(const char *stream_name, const char *model_path)
+{
+    const char *actual_api_url = model_path;
+    if (model_path != NULL && strcmp(model_path, "api-detection") == 0) {
+        if (g_config.api_detection_url == NULL || g_config.api_detection_url[0] == '\0') {
+            log_error("[%s] api_detection_url is not configured for api-detection model_path", stream_name);
+            return NULL;
+        }
+        actual_api_url = g_config.api_detection_url;
+    }
+    return actual_api_url;
+}
 /**
  * Helper to update stored video parameters, distinguishing between
  * container-derived FPS values and provisional fallbacks that should
@@ -470,7 +500,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->annotation_only = annotation_only;
 
     // Initialize to current time to avoid large elapsed time on first detection check
-    ctx->last_detection_check_time = time(NULL);
+    atomic_store(&ctx->last_detection_check_time, (long long)time(NULL));
 
     if (annotation_only) {
         log_info("[%s] Detection running in annotation-only mode (no separate MP4 files)", stream_name);
@@ -886,11 +916,14 @@ static void udt_update_stream_video_params(unified_detection_ctx_t *ctx,
     if (!ctx) return;
 
     pthread_mutex_lock(&ctx->mutex);
-    ctx->fps_is_provisional = fps_is_provisional;
+    atomic_store(&ctx->fps_is_provisional, fps_is_provisional);
     if (fps_is_provisional) {
         // Reset measurement counters so process_packet() can start measuring
-        ctx->fps_measurement_frame_count = 0;
-        clock_gettime(CLOCK_MONOTONIC, &ctx->fps_measurement_start);
+        atomic_store(&ctx->fps_measurement_frame_count, 0);
+        struct timespec ts_tmp;
+        clock_gettime(CLOCK_MONOTONIC, &ts_tmp);
+        atomic_store(&ctx->fps_measurement_start_ns,
+                     (long long)ts_tmp.tv_sec * 1000000000LL + ts_tmp.tv_nsec);
     }
     pthread_mutex_unlock(&ctx->mutex);
 
@@ -1005,7 +1038,7 @@ static void *unified_detection_thread_func(void *arg) {
                                  stream_name, state_to_string(state),
                                  (unsigned long)ctx->total_packets_processed,
                                  (unsigned long)ctx->total_detections,
-                                 (long)(now - ctx->last_detection_check_time));
+                                 (long)(now - atomic_load(&ctx->last_detection_check_time)));
                     }
                 }
 
@@ -1199,23 +1232,24 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
 
     // Runtime FPS refinement: count video frames over a measurement window
     // and update the stored FPS once we have enough data.
-    if (is_video && ctx->fps_is_provisional) {
-        ctx->fps_measurement_frame_count++;
+    if (is_video && atomic_load(&ctx->fps_is_provisional)) {
+        int frame_count = atomic_fetch_add(&ctx->fps_measurement_frame_count, 1) + 1;
 
         struct timespec ts_now;
         clock_gettime(CLOCK_MONOTONIC, &ts_now);
-        double elapsed = (ts_now.tv_sec - ctx->fps_measurement_start.tv_sec)
-                       + (ts_now.tv_nsec - ctx->fps_measurement_start.tv_nsec) / 1e9;
+        long long now_ns = (long long)ts_now.tv_sec * 1000000000LL + ts_now.tv_nsec;
+        long long start_ns = atomic_load(&ctx->fps_measurement_start_ns);
+        double elapsed = (now_ns - start_ns) / 1e9;
 
-        if (elapsed >= FPS_MEASUREMENT_WINDOW_SEC && ctx->fps_measurement_frame_count > 1) {
-            int measured_fps = (int)(ctx->fps_measurement_frame_count / elapsed + 0.5);
+        if (elapsed >= FPS_MEASUREMENT_WINDOW_SEC && frame_count > 1) {
+            int measured_fps = (int)(frame_count / elapsed + 0.5);
             if (measured_fps > 0) {
                 log_info("[%s] Runtime FPS measurement: %d fps (measured %d frames over %.1fs); "
                          "updating stored value from provisional %d fps",
                          ctx->stream_name, measured_fps,
-                         ctx->fps_measurement_frame_count, elapsed,
+                         frame_count, elapsed,
                          DEFAULT_FPS_FALLBACK);
-                ctx->fps_is_provisional = false;
+                atomic_store(&ctx->fps_is_provisional, false);
 
                 // Retrieve current width/height/codec from the stream so we
                 // don't clobber them when updating only FPS.
@@ -1275,7 +1309,7 @@ stats_done:
 
         // Check if post-buffer time has expired
         if (current_state == UDT_STATE_POST_BUFFER) {
-            if (now >= ctx->post_buffer_end_time) {
+            if (now >= (time_t)atomic_load(&ctx->post_buffer_end_time)) {
                 log_info("[%s] Post-buffer complete, stopping recording", ctx->stream_name);
                 udt_stop_recording(ctx);
                 atomic_store(&ctx->state, UDT_STATE_BUFFERING);
@@ -1291,8 +1325,10 @@ stats_done:
             // For detection recordings, max duration is pre_buffer + post_buffer
             // This limits each detection clip to a reasonable length
             int max_duration = ctx->pre_buffer_seconds + ctx->post_buffer_seconds;
-            // Ensure a reasonable minimum (at least 10 seconds)
-            if (max_duration < 10) max_duration = 10;
+            // Enforce a minimum total duration for detection recordings to avoid extremely short clips
+            if (max_duration < DEFAULT_MIN_DETECTION_RECORDING_DURATION) {
+                max_duration = DEFAULT_MIN_DETECTION_RECORDING_DURATION;
+            }
 
             // Log every 10 seconds to track progress
             if (recording_duration > 0 && (recording_duration % 10) == 0 && is_keyframe) {
@@ -1309,7 +1345,7 @@ stats_done:
                 // This ensures each detection recording is a short clip, not one long file
                 atomic_store(&ctx->state, UDT_STATE_BUFFERING);
                 // Reset detection time so next detection can trigger immediately
-                ctx->last_detection_time = 0;
+                atomic_store(&ctx->last_detection_time, 0LL);
             }
         }
     }
@@ -1318,7 +1354,7 @@ stats_done:
     // We check on keyframes as a convenient trigger point, but the decision is time-based
     // This ensures detection_interval is interpreted as seconds, not keyframe count
     if (is_keyframe && current_state != UDT_STATE_POST_BUFFER) {
-        time_t time_since_last_check = now - ctx->last_detection_check_time;
+        time_t time_since_last_check = now - (time_t)atomic_load(&ctx->last_detection_check_time);
 
         // Log periodically to show detection is running
         if (time_since_last_check > 0 && (atomic_fetch_add(&ctx->log_counter, 1) % 10) == 0) {
@@ -1329,7 +1365,7 @@ stats_done:
 
         // Run detection if enough time has passed (detection_interval is in seconds)
         if (time_since_last_check >= ctx->detection_interval) {
-            ctx->last_detection_check_time = now;
+            atomic_store(&ctx->last_detection_check_time, (long long)now);
 
             log_info("[%s] Running detection (interval=%ds, elapsed=%lds, model=%s)",
                     ctx->stream_name, ctx->detection_interval, (long)time_since_last_check, ctx->model_path);
@@ -1339,7 +1375,7 @@ stats_done:
 
             // If detection triggered
             if (detection_triggered) {
-                ctx->last_detection_time = now;
+                atomic_store(&ctx->last_detection_time, (long long)now);
 
                 pthread_mutex_lock(&ctx->mutex);
                 ctx->total_detections++;
@@ -1379,10 +1415,10 @@ stats_done:
             // No detection - check if we should enter post-buffer (only in detection-recording mode)
             else if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
                 // Check if enough time has passed since last detection
-                if (now - ctx->last_detection_time > DETECTION_GRACE_PERIOD_SEC) {  // grace period before post-buffer
+                if (now - (time_t)atomic_load(&ctx->last_detection_time) > DETECTION_GRACE_PERIOD_SEC) {  // grace period before post-buffer
                     log_info("[%s] No detection, entering post-buffer (%d seconds)",
                              ctx->stream_name, ctx->post_buffer_seconds);
-                    ctx->post_buffer_end_time = now + ctx->post_buffer_seconds;
+                    atomic_store(&ctx->post_buffer_end_time, (long long)(now + ctx->post_buffer_seconds));
                     atomic_store(&ctx->state, UDT_STATE_POST_BUFFER);
                 }
             }
@@ -1692,14 +1728,10 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             av_frame_free(&frame);
 
             // Get the actual API URL
-            const char *actual_api_url = ctx->model_path;
-            if (strcmp(ctx->model_path, "api-detection") == 0) {
-                if (g_config.api_detection_url == NULL || g_config.api_detection_url[0] == '\0') {
-                    log_error("[%s] Fallback: api_detection_url is not configured for api-detection model_path", ctx->stream_name);
-                    free(rgb_buffer);
-                    return false;
-                }
-                actual_api_url = g_config.api_detection_url;
+            const char *actual_api_url = get_actual_api_url(ctx->stream_name, ctx->model_path);
+            if (actual_api_url == NULL) {
+                free(rgb_buffer);
+                return false;
             }
 
             log_info("[%s] Fallback: sending %dx%d frame to API detection", ctx->stream_name, width, height);
