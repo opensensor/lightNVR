@@ -64,14 +64,16 @@ function RecordingScheduleGrid({ schedule, onChange }) {
   }, [schedule, onChange]);
 
   const toggleDay = useCallback((dayIdx) => {
-    const allOn = HOURS.every((_, h) => schedule[dayIdx * HOURS_PER_DAY + h]);
+    const allOn = Array.from({ length: HOURS_PER_DAY }).every(
+      (_, h) => schedule[dayIdx * HOURS_PER_DAY + h]
+    );
     const s = schedule.slice();
     for (let h = 0; h < HOURS_PER_DAY; h++) s[dayIdx * HOURS_PER_DAY + h] = !allOn;
     onChange(s);
   }, [schedule, onChange]);
 
   const toggleHour = useCallback((hourIdx) => {
-    const allOn = DAYS.every((_, d) => schedule[d * HOURS_PER_DAY + hourIdx]);
+    const allOn = Array.from({ length: 7 }).every((_, d) => schedule[d * HOURS_PER_DAY + hourIdx]);
     const s = schedule.slice();
     for (let d = 0; d < 7; d++) s[d * HOURS_PER_DAY + hourIdx] = !allOn;
     onChange(s);
