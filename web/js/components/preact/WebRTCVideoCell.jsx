@@ -20,6 +20,8 @@ import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
 // Adjust these values to tune reliability vs. latency.
+const MIN_NO_DATA_CHECKS_BEFORE_RETRY = 2;
+const MAX_NO_DATA_RECONNECT_ATTEMPTS = 3;
 const MAX_OFFER_RETRIES = 4;
 const BASE_RETRY_DELAY_MS = 1500; // 1.5s, 3s, 6s, 12s
 
@@ -296,10 +298,10 @@ export function WebRTCVideoCell({
               // Uses a dedicated counter (noDataReconnectAttemptsRef) so that
               // the ICE-connected reset of reconnectAttemptsRef doesn't
               // inadvertently allow infinite no-data retries.
-              if (videoDataCheckCount >= 2 &&
+              if (videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
                   (iceState === 'connected' || iceState === 'completed') &&
                   !refreshRequestedRef.current &&
-                  noDataReconnectAttemptsRef.current < 3) {
+                  noDataReconnectAttemptsRef.current < MAX_NO_DATA_RECONNECT_ATTEMPTS) {
                 refreshRequestedRef.current = true;
                 noDataReconnectAttemptsRef.current++;
                 console.log(
