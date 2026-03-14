@@ -56,7 +56,7 @@ export function TimelineSegments({ segments: propSegments }) {
     if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
       setSegments(timelineState.timelineSegments);
       lastSegmentsRef.current = timelineState.timelineSegments;
-      currentSegmentIndexRef.current = timelineState.currentSegmentIndex ?? 0;
+      currentSegmentIndexRef.current = timelineState.currentSegmentIndex ?? -1;
       if (timelineState.timelineStartHour !== undefined) setStartHour(timelineState.timelineStartHour);
       if (timelineState.timelineEndHour !== undefined)   setEndHour(timelineState.timelineEndHour);
     }
