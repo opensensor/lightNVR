@@ -129,7 +129,7 @@ static int init_audio_transcoder(const char *stream_name,
     encoder = avcodec_find_encoder(AV_CODEC_ID_AAC);
     if (!encoder) {
         log_error("Failed to find AAC encoder for %s", stream_name);
-        pthread_mutex_unlock(&audio_transcoder_mutex);
+        unlock_audio_transcoders();
         return -1;
     }
 
@@ -544,8 +544,7 @@ int transcode_audio_packet(const char *stream_name,
             }
 
             // The AAC encoder needs exactly frame_size samples per frame.
-            int enc_frame_size = audio_transcoders[transcoder_idx].encoder_ctx->frame_size;
-            if (enc_frame_size <= 0) enc_frame_size = DEFAULT_AAC_FRAME_SIZE;
+            int enc_frame_size = get_encoder_frame_size(audio_transcoders[transcoder_idx].encoder_ctx);
 
             if (av_audio_fifo_size(audio_transcoders[transcoder_idx].fifo) < enc_frame_size) {
                 // Not enough samples yet — return without producing an output packet.

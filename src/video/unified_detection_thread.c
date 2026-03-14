@@ -152,9 +152,14 @@ static bool is_onvif_detection_model(const char *model_path) {
  *   onvif://192.168.1.100/onvif/device_service  (port=0)   →  http://192.168.1.100
  */
 static void extract_onvif_base_url(const char *stream_url, int onvif_port, char *onvif_url, size_t onvif_url_size) {
-    if (!stream_url || !onvif_url || onvif_url_size == 0) {
+    if (!stream_url) {
         return;
     }
+    /* If no output buffer is provided or buffer size is zero, nothing to do. */
+    if (!onvif_url || onvif_url_size == 0) {
+        return;
+    }
+    /* Ensure the output buffer is always at least null-terminated. */
     onvif_url[0] = '\0';
 
     /* Skip scheme (rtsp://, onvif://, http://, etc.) */
@@ -944,13 +949,11 @@ static void *unified_detection_thread_func(void *arg) {
             case UDT_STATE_POST_BUFFER:
                 // Periodic heartbeat log (every 30 seconds) to show thread is alive
                 {
-                    static time_t last_heartbeat[MAX_UNIFIED_DETECTION_THREADS] = {0};
+                    static __thread time_t last_heartbeat = 0;
                     time_t now = time(NULL);
-                    int slot_idx = ctx->slot_idx;
 
-                    if (slot_idx >= 0 && slot_idx < MAX_UNIFIED_DETECTION_THREADS &&
-                        now - last_heartbeat[slot_idx] >= 30) {
-                        last_heartbeat[slot_idx] = now;
+                    if (now - last_heartbeat >= 30) {
+                        last_heartbeat = now;
                         log_info("[%s] Heartbeat: state=%s, packets=%lu, detections=%lu, last_check=%lds ago",
                                  stream_name, state_to_string(state),
                                  (unsigned long)ctx->total_packets_processed,
@@ -1768,7 +1771,9 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
                 log_warn("[%s] Failed to store motion detections in database", ctx->stream_name);
             }
+            pthread_mutex_lock(&ctx->mutex);
             ctx->total_detections += result.count;
+            pthread_mutex_unlock(&ctx->mutex);
         }
 
         return mot_triggered;
@@ -1811,7 +1816,9 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
 
         bool onvif_triggered = (result.count > 0);
         if (onvif_triggered) {
+            pthread_mutex_lock(&ctx->mutex);
             ctx->total_detections += result.count;
+            pthread_mutex_unlock(&ctx->mutex);
             log_info("[%s] ONVIF motion detected (%d event(s))", ctx->stream_name, result.count);
         }
         return onvif_triggered;
