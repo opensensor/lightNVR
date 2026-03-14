@@ -939,11 +939,10 @@ static void *unified_detection_thread_func(void *arg) {
                 {
                     static time_t last_heartbeat[MAX_UNIFIED_DETECTION_THREADS] = {0};
                     time_t now = time(NULL);
-                    int slot_idx = -1;
-                    for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
-                        if (detection_contexts[i] == ctx) { slot_idx = i; break; }
-                    }
-                    if (slot_idx >= 0 && now - last_heartbeat[slot_idx] >= 30) {
+                    int slot_idx = ctx->slot_idx;
+
+                    if (slot_idx >= 0 && slot_idx < MAX_UNIFIED_DETECTION_THREADS &&
+                        now - last_heartbeat[slot_idx] >= 30) {
                         last_heartbeat[slot_idx] = now;
                         log_info("[%s] Heartbeat: state=%s, packets=%lu, detections=%lu, last_check=%lds ago",
                                  stream_name, state_to_string(state),
