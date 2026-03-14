@@ -144,6 +144,7 @@ export function WebRTCVideoCell({
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const audioLevelIntervalRef = useRef(null);
+  const disconnectRecoveryTimeoutRef = useRef(null);
 
   // Initialize WebRTC connection when component mounts
   useEffect(() => {
@@ -190,17 +191,17 @@ export function WebRTCVideoCell({
 
       // Create a new RTCPeerConnection
       const pc = new RTCPeerConnection({
-      iceTransportPolicy: 'all',
-      bundlePolicy: 'balanced',
-      rtcpMuxPolicy: 'require',
-      iceCandidatePoolSize: 0,
-      iceServers
-    });
+        iceTransportPolicy: 'all',
+        bundlePolicy: 'balanced',
+        rtcpMuxPolicy: 'require',
+        iceCandidatePoolSize: 0,
+        iceServers,
+      });
 
-    peerConnectionRef.current = pc;
+      peerConnectionRef.current = pc;
 
-    // Set up event handlers
-    pc.ontrack = (event) => {
+      // Set up event handlers
+      pc.ontrack = (event) => {
       console.log(`Track received for stream ${stream.name}: ${event.track.kind}`, event);
       console.log(`Track muted: ${event.track.muted}, enabled: ${event.track.enabled}, readyState: ${event.track.readyState}`);
 
@@ -243,6 +244,10 @@ export function WebRTCVideoCell({
             .then(() => {
               console.log(`Video play() succeeded for stream ${stream.name}`);
               playRetryCount = 0; // Reset on success
+              if (playRetryTimeout !== null) {
+                clearTimeout(playRetryTimeout);
+                playRetryTimeout = null;
+              }
             })
             .catch(err => {
               // AbortError is expected when srcObject changes or another play() is called
@@ -252,6 +257,9 @@ export function WebRTCVideoCell({
                 playRetryCount++;
                 if (playRetryCount < maxPlayRetries) {
                   // Retry after a short delay
+                  if (playRetryTimeout !== null) {
+                    clearTimeout(playRetryTimeout);
+                  }
                   playRetryTimeout = setTimeout(attemptPlay, 500);
                 }
               } else if (err.name === 'NotAllowedError') {
@@ -446,6 +454,11 @@ export function WebRTCVideoCell({
 
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
         // Connection is established or completed — start monitoring and reset counters
+        // Clear any pending disconnect-recovery timeout since we've recovered
+        if (disconnectRecoveryTimeoutRef.current) {
+          clearTimeout(disconnectRecoveryTimeoutRef.current);
+          disconnectRecoveryTimeoutRef.current = null;
+        }
         startConnectionMonitoring();
         reconnectAttemptsRef.current = 0;
         if (error) {
@@ -505,8 +518,16 @@ export function WebRTCVideoCell({
           connectionMonitorRef.current = null;
         }
 
+        // Clear any existing disconnect-recovery timeout before scheduling a new one
+        if (disconnectRecoveryTimeoutRef.current) {
+          clearTimeout(disconnectRecoveryTimeoutRef.current);
+          disconnectRecoveryTimeoutRef.current = null;
+        }
+
         // Set a timeout to check if the connection recovers on its own
-        setTimeout(() => {
+        disconnectRecoveryTimeoutRef.current = setTimeout(() => {
+          // Clear the ref since this timeout is now firing
+          disconnectRecoveryTimeoutRef.current = null;
           if (peerConnectionRef.current &&
               (peerConnectionRef.current.iceConnectionState === 'disconnected' ||
                peerConnectionRef.current.iceConnectionState === 'failed')) {
@@ -772,6 +793,10 @@ export function WebRTCVideoCell({
       if (videoDataTimeout) {
         clearTimeout(videoDataTimeout);
         videoDataTimeout = null;
+      }
+      if (disconnectRecoveryTimeoutRef.current) {
+        clearTimeout(disconnectRecoveryTimeoutRef.current);
+        disconnectRecoveryTimeoutRef.current = null;
       }
 
       // Stop connection monitoring
