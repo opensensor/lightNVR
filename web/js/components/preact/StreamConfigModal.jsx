@@ -8,6 +8,8 @@ import { ZoneEditor } from './ZoneEditor.jsx';
 import { obfuscateUrlCredentials } from '../../utils/url-utils.js';
 import { useI18n } from '../../i18n.js';
 
+const primaryAccentStyle = { accentColor: 'hsl(var(--primary))' };
+
 /**
  * Recording Schedule Grid Component
  * Interactive 7-day × 24-hour weekly grid for scheduling continuous recording
@@ -475,7 +477,7 @@ export function StreamConfigModal({
                       id="stream-enabled"
                       name="enabled"
                       className="h-4 w-4 rounded border-gray-300"
-                      style={{accentColor: 'hsl(var(--primary))'}}
+                      style={primaryAccentStyle}
                       checked={currentStream.enabled}
                       onChange={onInputChange}
                     />
@@ -487,7 +489,7 @@ export function StreamConfigModal({
                       id="stream-streaming-enabled"
                       name="streamingEnabled"
                       className="h-4 w-4 rounded border-gray-300"
-                      style={{accentColor: 'hsl(var(--primary))'}}
+                      style={primaryAccentStyle}
                       checked={currentStream.streamingEnabled}
                       onChange={onInputChange}
                     />
@@ -502,7 +504,7 @@ export function StreamConfigModal({
                       id="stream-is-onvif"
                       name="isOnvif"
                       className="h-4 w-4 rounded border-gray-300"
-                      style={{accentColor: 'hsl(var(--primary))'}}
+                      style={primaryAccentStyle}
                       checked={currentStream.isOnvif}
                       onChange={onInputChange}
                     />
@@ -635,7 +637,7 @@ export function StreamConfigModal({
                           id="stream-record"
                           name="record"
                           className="h-4 w-4 mt-0.5 rounded border-gray-300"
-                          style={{accentColor: 'hsl(var(--primary))'}}
+                          style={primaryAccentStyle}
                           checked={currentStream.record}
                           onChange={onInputChange}
                         />
@@ -658,7 +660,7 @@ export function StreamConfigModal({
                               id="stream-record-on-schedule"
                               name="recordOnSchedule"
                               className="h-3.5 w-3.5 rounded border-gray-300"
-                              style={{accentColor: 'hsl(var(--primary))'}}
+                              style={primaryAccentStyle}
                               checked={currentStream.recordOnSchedule || false}
                               onChange={onInputChange}
                             />
@@ -691,7 +693,7 @@ export function StreamConfigModal({
                         id="stream-detection-enabled"
                         name="detectionEnabled"
                         className="h-4 w-4 mt-0.5 rounded border-gray-300"
-                        style={{accentColor: 'hsl(var(--primary))'}}
+                        style={primaryAccentStyle}
                         checked={currentStream.detectionEnabled}
                         onChange={onInputChange}
                       />

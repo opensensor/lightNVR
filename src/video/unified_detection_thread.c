@@ -538,7 +538,10 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // to a valid range internally.
     if (is_motion_detection_model(model_path)) {
         float sens = (threshold > 0.0f && threshold <= 1.0f) ? threshold : DEFAULT_MOTION_SENSITIVITY;
-        configure_motion_detection(stream_name, sens, 0.005f, 3);
+        configure_motion_detection(stream_name,
+                                   sens,
+                                   DEFAULT_MOTION_MIN_AREA_RATIO,
+                                   DEFAULT_MOTION_MIN_CONSECUTIVE_FRAMES);
         set_motion_detection_enabled(stream_name, true);
         log_info("[%s] Built-in motion detection enabled (sensitivity=%.2f)", stream_name, sens);
     }
@@ -1334,6 +1337,14 @@ stats_done:
             int max_duration = ctx->pre_buffer_seconds + ctx->post_buffer_seconds;
             // Enforce a minimum total duration for detection recordings to avoid extremely short clips
             if (max_duration < DEFAULT_MIN_DETECTION_RECORDING_DURATION) {
+                log_info(
+                    "[%s] Detection recording duration (%d seconds: pre=%d + post=%d) "
+                    "is below the enforced minimum (%d seconds); using minimum instead",
+                    ctx->stream_name,
+                    max_duration,
+                    ctx->pre_buffer_seconds,
+                    ctx->post_buffer_seconds,
+                    DEFAULT_MIN_DETECTION_RECORDING_DURATION);
                 max_duration = DEFAULT_MIN_DETECTION_RECORDING_DURATION;
             }
 
@@ -1670,7 +1681,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
         int detect_ret = detect_objects_api_snapshot(ctx->model_path, ctx->stream_name,
                                                      &result, ctx->detection_threshold, rec_id);
 
-        if (detect_ret == -2) {
+        if (detect_ret == DETECT_SNAPSHOT_UNAVAILABLE) {
             // go2rtc snapshot failed - fall back to local frame decoding
             log_info("[%s] go2rtc snapshot unavailable, falling back to local frame decode", ctx->stream_name);
 
