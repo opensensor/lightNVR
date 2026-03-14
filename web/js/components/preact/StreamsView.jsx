@@ -1742,7 +1742,7 @@ export function StreamsView() {
             </div>
             <div className="p-4">
               <div className="mb-4">
-                <label for="custom-stream-name" className="block text-sm font-medium mb-1">{t('streams.enterNameForStream')}</label>
+                <label htmlFor="custom-stream-name" className="block text-sm font-medium mb-1">{t('streams.enterNameForStream')}</label>
                 <input
                     type="text"
                     id="custom-stream-name"
