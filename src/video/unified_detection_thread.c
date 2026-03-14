@@ -63,7 +63,7 @@
 #define MAX_PACKET_TIMEOUT_SEC 10
 
 // Detection settings
-#define DEFAULT_DETECTION_INTERVAL 5  // Seconds between detection checks (fallback if not configured)
+#define DEFAULT_DETECTION_INTERVAL 5  // Seconds between detection checks; used as a fallback if no interval is configured via the application's stream/detection settings.
 #define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
 
 // Video/default FPS settings
