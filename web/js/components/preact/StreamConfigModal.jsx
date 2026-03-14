@@ -16,6 +16,13 @@ const HOURS_PER_WEEK = 7 * HOURS_PER_DAY;
 const isCustomApiUrl = (url) =>
   typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
 
+const getDetectionModelSelectValue = (modelValue) => {
+  if (!modelValue) {
+    return '';
+  }
+  return isCustomApiUrl(modelValue) ? 'api-detection' : modelValue;
+};
+
 /**
  * Recording Schedule Grid Component
  * Interactive 7-day × 24-hour weekly grid for scheduling continuous recording
@@ -334,7 +341,7 @@ export function StreamConfigModal({
             onInputChangeRef.current({ target: { name: 'detectionZones', value: data.zones } });
           }
         } else {
-          console.warn('Failed to load zones:', response.status, response.statusText);
+          console.error('Failed to load zones:', response.status, response.statusText);
           const statusCode = response.status;
           const statusText = response.statusText || '';
           showStatusMessage(
@@ -813,7 +820,7 @@ export function StreamConfigModal({
                             id="stream-detection-model"
                             name="detectionModel"
                             className="flex-1 px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                            value={isCustomApiUrl(currentStream.detectionModel) ? 'api-detection' : currentStream.detectionModel}
+                            value={getDetectionModelSelectValue(currentStream.detectionModel)}
                             onChange={onInputChange}
                           >
                             <option value="">{t('streamsConfig.selectModel')}</option>

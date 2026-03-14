@@ -1039,8 +1039,8 @@ export function StreamsView() {
    * Validate that an ONVIF device host address is a well-formed hostname, IPv4
    * address, or bracketed IPv6 address. Returns true when valid, false otherwise.
    */
-  const isValidDeviceHost = (ipAddress) => {
-    if (typeof ipAddress !== 'string') {
+  const isValidDeviceHost = (deviceHost) => {
+    if (typeof deviceHost !== 'string') {
       return false;
     }
     // Validate the discovered IP/host before constructing fallback URLs to avoid malformed URLs.
@@ -1058,9 +1058,9 @@ export function StreamsView() {
     const ipv6BracketPattern =
       /^\[((?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,7}:)|(?:::(?:[0-9A-Fa-f]{1,4}:){0,6}[0-9A-Fa-f]{1,4})|(?:(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4})|(?:::[0-9A-Fa-f]{1,4})|(?:[0-9A-Fa-f]{1,4}::))\]$/;
     return (
-      hostnamePattern.test(ipAddress) ||
-      ipv4Pattern.test(ipAddress) ||
-      ipv6BracketPattern.test(ipAddress)
+      hostnamePattern.test(deviceHost) ||
+      ipv4Pattern.test(deviceHost) ||
+      ipv6BracketPattern.test(deviceHost)
     );
   };
 
@@ -1114,7 +1114,12 @@ export function StreamsView() {
       }
       // In security-sensitive environments, set this to true (or wire it to configuration)
       // to disable falling back from HTTPS to HTTP for device profile discovery.
-      const DISABLE_HTTP_FALLBACK = false;
+      const DISABLE_HTTP_FALLBACK =
+        typeof window !== 'undefined' &&
+        window.LIGHTNVR_CONFIG &&
+        typeof window.LIGHTNVR_CONFIG.disableOnvifHttpFallback === 'boolean'
+          ? window.LIGHTNVR_CONFIG.disableOnvifHttpFallback
+          : false;
       // Try HTTPS first; if that fails, optionally fall back to HTTP.
       return attemptFetch(httpsFallbackUrl).catch((error) => {
         if (DISABLE_HTTP_FALLBACK) {

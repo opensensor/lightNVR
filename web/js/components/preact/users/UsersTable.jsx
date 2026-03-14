@@ -21,10 +21,10 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   const { t } = useI18n();
 
   const normalizedUsers = Array.isArray(users) ? users : [];
-  const NO_SORT_COLUMN = '';
+  const UNSORTED_COLUMN = '';
 
   // Sorting state
-  const [sortColumn, setSortColumn] = useState(NO_SORT_COLUMN);
+  const [sortColumn, setSortColumn] = useState(UNSORTED_COLUMN);
   const [sortDirection, setSortDirection] = useState('asc');
 
   const handleSort = (column) => {
@@ -37,7 +37,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   };
 
   const sortedUsers = useMemo(() => {
-    if (sortColumn === NO_SORT_COLUMN) return normalizedUsers;
+    if (sortColumn === UNSORTED_COLUMN) return normalizedUsers;
     return [...normalizedUsers].sort((a, b) => {
       let aVal, bVal;
       if (sortColumn === 'id') {
