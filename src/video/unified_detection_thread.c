@@ -193,7 +193,7 @@ int init_unified_detection_system(void) {
     pthread_mutex_lock(&contexts_mutex);
 
     // Clear all context slots
-    memset((void *)detection_contexts, 0, sizeof(detection_contexts));
+    memset(detection_contexts, 0, sizeof(detection_contexts));
 
     // Initialize packet buffer pool sized to actual detection-stream requirements
     size_t memory_limit = calculate_packet_buffer_pool_size();
@@ -443,8 +443,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->record_audio = config.record_audio;
     ctx->annotation_only = annotation_only;
 
-    // BUGFIX: Initialize last_detection_check_time to current time to prevent huge elapsed time on first detection
-    // Without this, the first detection would show elapsed time = now - 0 = huge number (e.g., 1770658294 seconds)
+    // Initialize to current time to avoid large elapsed time on first detection check
     ctx->last_detection_check_time = time(NULL);
 
     if (annotation_only) {
@@ -939,11 +938,10 @@ static void *unified_detection_thread_func(void *arg) {
                 {
                     static time_t last_heartbeat[MAX_UNIFIED_DETECTION_THREADS] = {0};
                     time_t now = time(NULL);
-                    int slot_idx = -1;
-                    for (int i = 0; i < MAX_UNIFIED_DETECTION_THREADS; i++) {
-                        if (detection_contexts[i] == ctx) { slot_idx = i; break; }
-                    }
-                    if (slot_idx >= 0 && now - last_heartbeat[slot_idx] >= 30) {
+                    int slot_idx = ctx->slot_idx;
+
+                    if (slot_idx >= 0 && slot_idx < MAX_UNIFIED_DETECTION_THREADS &&
+                        now - last_heartbeat[slot_idx] >= 30) {
                         last_heartbeat[slot_idx] = now;
                         log_info("[%s] Heartbeat: state=%s, packets=%lu, detections=%lu, last_check=%lds ago",
                                  stream_name, state_to_string(state),
@@ -1595,6 +1593,11 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             // Get the actual API URL
             const char *actual_api_url = ctx->model_path;
             if (strcmp(ctx->model_path, "api-detection") == 0) {
+                if (g_config.api_detection_url == NULL || g_config.api_detection_url[0] == '\0') {
+                    log_error("[%s] Fallback: api_detection_url is not configured for api-detection model_path", ctx->stream_name);
+                    free(rgb_buffer);
+                    return false;
+                }
                 actual_api_url = g_config.api_detection_url;
             }
 
@@ -1638,7 +1641,9 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             }
         }
 
+        pthread_mutex_lock(&ctx->mutex);
         ctx->total_detections += result.count;
+        pthread_mutex_unlock(&ctx->mutex);
         return detection_triggered;
     }
 
