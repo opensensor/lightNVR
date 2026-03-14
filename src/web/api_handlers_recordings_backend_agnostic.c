@@ -342,7 +342,7 @@ static void *batch_delete_worker_thread(void *arg) {
                     error_count++;
                 } else {
                     // Then delete the file from disk.
-                    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#35).
+                    // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#38).
                     if (unlink(file_path_copy) != 0) {
                         if (errno == ENOENT) {
                             log_warn("Recording file does not exist: %s (already deleted or never created)",
@@ -527,7 +527,7 @@ static void *batch_delete_worker_thread(void *arg) {
                 error_count++;
             } else {
                 // Then delete the file from disk.
-                // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#37).
+                // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#38).
                 if (unlink(file_path_copy) != 0) {
                     if (errno == ENOENT) {
                         log_warn("Recording file does not exist: %s (already deleted or never created)",
