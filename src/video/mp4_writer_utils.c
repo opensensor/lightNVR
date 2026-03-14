@@ -1389,7 +1389,7 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
 
     //  Initialize audio.first_dts to AV_NOPTS_VALUE if not already set
     if (writer->audio.first_dts != AV_NOPTS_VALUE) {
-        log_debug("Audio first_dts already set to %lld for %s",
+        log_debug("Audio first_dts is not at default AV_NOPTS_VALUE; current value: %lld for %s",
                  (long long)writer->audio.first_dts,
                  writer->stream_name ? writer->stream_name : "unknown");
     }
