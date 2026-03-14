@@ -50,6 +50,14 @@ static audio_transcoder_t audio_transcoders[MAX_STREAMS] = {0};
 static char audio_transcoder_stream_names[MAX_STREAMS][MAX_STREAM_NAME] = {{0}};
 static pthread_mutex_t audio_transcoder_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static inline void lock_audio_transcoders(void) {
+    pthread_mutex_lock(&audio_transcoder_mutex);
+}
+
+static inline void unlock_audio_transcoders(void) {
+    pthread_mutex_unlock(&audio_transcoder_mutex);
+}
+
 /**
  * Initialize audio transcoder for a stream
  *
@@ -66,7 +74,7 @@ static int init_audio_transcoder(const char *stream_name,
     const AVCodec *decoder = NULL;
     const AVCodec *encoder = NULL;
 
-    pthread_mutex_lock(&audio_transcoder_mutex);
+    lock_audio_transcoders();
 
     // Find an empty slot or existing entry for this stream
     for (int i = 0; i < g_config.max_streams; i++) {
