@@ -112,7 +112,7 @@ export function StreamsView() {
     if (selectedStreams.size > 0) {
       setSelectedStreams(new Set());
     } else {
-      setSelectedStreams(new Set((streams || []).map(s => s.name)));
+      setSelectedStreams(new Set((sortedStreams || []).map(s => s.name)));
     }
   };
 
@@ -272,84 +272,69 @@ export function StreamsView() {
   // Extract detection models from query result
   const detectionModels = detectionModelsData?.models || [];
 
-  // Mutations for saving stream (create or update)
-  const createStreamMutation = usePostMutation(
-    '/api/streams',
-
-    {
-      // 45s gives the server enough time to complete go2rtc registration
-      // (multiple synchronous curl calls) before the client aborts the request.
-      timeout: 45000,
-      retries: 1,
-      retryDelay: 1000
+  // Unified mutation that internally decides between create and update
+  const saveStreamMutation = useMutation({
+    mutationFn: async (streamData) => {
+      if (isEditing) {
+        // Update existing stream via PUT
+        const url = `/api/streams/${encodeURIComponent(streamData.name)}`;
+        const { name, ...rest } = streamData;
+        return await fetchJSON(url, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(rest),
+          timeout: 15000,
+          retries: 1,
+          retryDelay: 1000
+        });
+      }
+      // Create new stream via POST
+      return await fetchJSON('/api/streams', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(streamData),
+        timeout: 45000,
+        retries: 1,
+        retryDelay: 1000
+      });
     },
-    {
-      onSuccess: () => {
+    onSuccess: (data, variables) => {
+      if (isEditing) {
+        showStatusMessage(
+          t('streams.streamUpdatedSuccessfully', { name: variables?.name }),
+          'success',
+          3000
+        );
+      } else {
         showStatusMessage(t('streams.streamAddedSuccessfully'));
-        closeModal();
-        // Invalidate and refetch streams data
-        queryClient.invalidateQueries({ queryKey: ['streams'] });
-      },
-      onError: (error) => {
+      }
+      closeModal();
+      // Invalidate and refetch streams data
+      queryClient.invalidateQueries({ queryKey: ['streams'] });
+    },
+    onError: (error, variables) => {
+      if (!isEditing) {
         const isStreamLimitError = error?.status === 409 &&
           typeof error?.message === 'string' &&
           error.message.includes('Max streams limit reached');
-
         showStatusMessage(
           isStreamLimitError ? error.message : t('streams.errorAddingStream', { message: error.message }),
           'error',
           isStreamLimitError ? 9000 : 5000
         );
+      } else {
+        showStatusMessage(
+          t('streams.errorUpdatingStream', { message: error.message }),
+          'error',
+          5000
+        );
       }
-    }
-  );
-
-  const updateStreamMutation = useMutation({
-    mutationFn: async (data) => {
-      const { streamName, ...streamData } = data;
-      const url = `/api/streams/${encodeURIComponent(streamName)}`;
-      return await fetchJSON(url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(streamData),
-        timeout: 15000,
-        retries: 1,
-        retryDelay: 1000
-      });
-    },
-    onSuccess: (_data, variables) => {
-      showStatusMessage(t('streams.streamUpdatedSuccessfully'));
-      // Evict per-stream cache so next open fetches fresh data
-      if (variables?.streamName) {
-        queryClient.invalidateQueries({ queryKey: ['stream-full', variables.streamName] });
-        // Also remove to avoid returning cached data before refetch completes
-        queryClient.removeQueries({ queryKey: ['stream-full', variables.streamName], exact: true });
-      }
-      closeModal();
-      // Invalidate and refetch streams list
-      queryClient.invalidateQueries({ queryKey: ['streams'] });
-    },
-    onError: (error) => {
-      showStatusMessage(t('streams.errorUpdatingStream', { message: error.message }), 'error', 5000);
     }
   });
-
-  // Helper function to use the appropriate mutation based on editing state
-  const saveStreamMutation = {
-    mutate: (streamData, options) => {
-      if (isEditing) {
-        // For PUT requests, we need to include the streamName parameter
-        updateStreamMutation.mutate({
-          ...streamData,
-          streamName: streamData.name
-        }, options);
-      } else {
-        createStreamMutation.mutate(streamData, options);
-      }
-    }
-  };
 
   // Mutation for testing stream connection
   const testStreamMutation = usePostMutation(
@@ -454,9 +439,10 @@ export function StreamsView() {
         fetchJSON(`/api/streams/${encodeURIComponent(name)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          // enabled:true must accompany enable_disabled:true so the worker thread
-          // writes enabled=1 to the DB; without it the worker overwrites the
-          // direct SQL enable with the stale enabled=0 from the config struct.
+          // Both enable_disabled:true and enabled:true are required so the worker
+          // thread writes enabled=1 to the DB; without enabled:true the worker
+          // overwrites the direct SQL enable with the stale enabled=0 from the
+          // config struct.
           body: JSON.stringify({ enable_disabled: true, enabled: true }),
           timeout: 15000,
         })
@@ -521,6 +507,15 @@ export function StreamsView() {
     e.preventDefault();
 
     // Prepare stream data for API
+    const normalizeRecordingSchedule = (recordingSchedule, recordOnSchedule) => {
+      if (!recordOnSchedule) {
+        return Array(168).fill(true);
+      }
+      if (Array.isArray(recordingSchedule) && recordingSchedule.length === 168) {
+        return recordingSchedule;
+      }
+      return Array(168).fill(true);
+    };
     const streamData = {
       name: currentStream.name.trim(),
       url: currentStream.url,
@@ -562,11 +557,10 @@ export function StreamsView() {
       max_storage_mb: parseInt(currentStream.maxStorageMb, 10) || 0,
       // Recording schedule
       record_on_schedule: !!currentStream.recordOnSchedule,
-      recording_schedule: currentStream.recordOnSchedule
-        ? (Array.isArray(currentStream.recordingSchedule) && currentStream.recordingSchedule.length === 168
-            ? currentStream.recordingSchedule
-            : Array(168).fill(true))
-        : Array(168).fill(true),
+      recording_schedule: normalizeRecordingSchedule(
+        currentStream.recordingSchedule,
+        currentStream.recordOnSchedule
+      ),
       // Tags
       tags: currentStream.tags || ''
     };
