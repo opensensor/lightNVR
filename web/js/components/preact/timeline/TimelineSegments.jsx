@@ -19,7 +19,7 @@ export function TimelineSegments({ segments: propSegments }) {
   const [segments, setSegments] = useState(propSegments || []);
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
-  const [, setCurrentSegmentIndex] = useState(-1);
+  const currentSegmentIndexRef = useRef(-1);
 
   // Update segments when props change
   useEffect(() => {
@@ -49,14 +49,14 @@ export function TimelineSegments({ segments: propSegments }) {
 
       setStartHour(state.timelineStartHour ?? 0);
       setEndHour(state.timelineEndHour ?? 24);
-      setCurrentSegmentIndex(state.currentSegmentIndex ?? -1);
+      currentSegmentIndexRef.current = state.currentSegmentIndex ?? -1;
     });
 
     // Hydrate from global state on mount
     if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
       setSegments(timelineState.timelineSegments);
       lastSegmentsRef.current = timelineState.timelineSegments;
-      setCurrentSegmentIndex(timelineState.currentSegmentIndex ?? 0);
+      currentSegmentIndexRef.current = timelineState.currentSegmentIndex ?? 0;
       if (timelineState.timelineStartHour !== undefined) setStartHour(timelineState.timelineStartHour);
       if (timelineState.timelineEndHour !== undefined)   setEndHour(timelineState.timelineEndHour);
     }
@@ -71,7 +71,14 @@ export function TimelineSegments({ segments: propSegments }) {
 
     const handleMouseDown = (e) => {
       // Handle clicks on the container, clickable area, or directly on segments
-      if (e.target === container || e.target.classList.contains('timeline-clickable-area') || e.target.classList.contains('timeline-segment')) {
+      const target = e.target;
+      const isElementTarget = target instanceof Element;
+      if (
+        target === container ||
+        (isElementTarget &&
+          (target.classList.contains('timeline-clickable-area') ||
+            target.classList.contains('timeline-segment')))
+      ) {
         isDragging.current = true;
         handleTimelineClick(e);
 
