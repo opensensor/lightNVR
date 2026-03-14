@@ -360,15 +360,22 @@ export function TimelinePlayer({ videoElementRef = null }) {
     const video = videoRef.current;
     if (!video) return;
 
-    // Check if we have a valid segment
-    if (currentSegmentIndex < 0 ||
-        !segments ||
-        segments.length === 0 ||
-        currentSegmentIndex >= segments.length) {
+    // Use global timeline state instead of local component state to avoid stale closure
+    // issues during segment transitions. When the video fires an early timeupdate (e.g.
+    // with video.currentTime === 0 immediately after src/load), the Preact re-render with
+    // the new currentSegmentIndex may not have happened yet, so the local closure value
+    // would still point to the previous segment and produce a wrong currentTime.
+    const globalSegmentIndex = timelineState.currentSegmentIndex;
+    const globalSegments = timelineState.timelineSegments;
+
+    if (globalSegmentIndex < 0 ||
+        !globalSegments ||
+        globalSegments.length === 0 ||
+        globalSegmentIndex >= globalSegments.length) {
       return;
     }
 
-    const segment = segments[currentSegmentIndex];
+    const segment = globalSegments[globalSegmentIndex];
     if (!segment) return;
 
     const desiredTime = timelineState.currentTime;
