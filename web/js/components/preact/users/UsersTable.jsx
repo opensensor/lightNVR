@@ -130,7 +130,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {(sortedUsers || []).map(user => (
+          {sortedUsers.map(user => (
             <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-gray-600">
               <td className="py-3 px-6 border-b border-border">{user.id}</td>
               <td className="py-3 px-6 border-b border-border">{user.username}</td>
