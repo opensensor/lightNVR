@@ -113,7 +113,7 @@ export function StreamsView() {
     if (selectedStreams.size > 0) {
       setSelectedStreams(new Set());
     } else {
-      setSelectedStreams(new Set((streams || []).map(s => s.name)));
+      setSelectedStreams(new Set((sortedStreams || []).map(s => s.name)));
     }
   };
 
@@ -587,6 +587,7 @@ export function StreamsView() {
     }
 
     // Use mutation to save stream and then handle motion config if applicable
+    const savedStreamName = streamData.name;
     saveStreamMutation.mutate(streamData, {
       onSuccess: async () => {
         try {
@@ -622,7 +623,7 @@ export function StreamsView() {
         // Close the modal after successful save
         closeModal();
         // Ensure both list and details are refreshed after save
-        await queryClient.invalidateQueries({ queryKey: ['stream-full', currentStream.name] });
+        await queryClient.invalidateQueries({ queryKey: ['stream-full', savedStreamName] });
         queryClient.invalidateQueries({ queryKey: ['streams'] });
       }
     });
@@ -1040,24 +1041,35 @@ export function StreamsView() {
     mutationFn: ({ device, credentials }) => {
       setIsLoadingProfiles(true);
 
-      // Use device_service URL which includes the correct port from discovery
-      // Fall back to constructing URL from ip_address if device_service is not available
-      const deviceUrl = device.device_service || `http://${device.ip_address}/onvif/device_service`;
+      // Use device_service URL which includes the correct port and scheme from discovery
+      // Fall back to constructing URL from ip_address if device_service is not available.
+      // When constructing the URL, prefer HTTPS and only fall back to HTTP if necessary.
+      const discoveredUrl = device.device_service;
+      const httpsFallbackUrl = `https://${device.ip_address}/onvif/device_service`;
+      const httpFallbackUrl = `http://${device.ip_address}/onvif/device_service`;
 
-      // Make a simple GET request
-      return fetch('/api/onvif/device/profiles', {
-        method: 'GET',
-        headers: {
-          'X-Device-URL': deviceUrl,
-          'X-Username': credentials.username,
-          'X-Password': credentials.password
-        }
-      }).then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error ${response.status}`);
-        }
-        return response.json();
-      });
+      const attemptFetch = (deviceUrl) => {
+        return fetch('/api/onvif/device/profiles', {
+          method: 'GET',
+          headers: {
+            'X-Device-URL': deviceUrl,
+            'X-Username': credentials.username,
+            'X-Password': credentials.password
+          }
+        }).then(response => {
+          if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+          }
+          return response.json();
+        });
+      };
+
+      if (discoveredUrl) {
+        // If discovery provided a full URL (including scheme), use it as-is.
+        return attemptFetch(discoveredUrl);
+      }
+      // Try HTTPS first; if that fails, fall back to HTTP.
+      return attemptFetch(httpsFallbackUrl).catch(() => attemptFetch(httpFallbackUrl));
     },
     onSuccess: (data) => {
       setDeviceProfiles(data.profiles || []);
@@ -1183,12 +1195,14 @@ export function StreamsView() {
     // Use device_service URL which includes the correct port from discovery
     // Fall back to constructing URL from ip_address if device_service is not available
     const deviceUrl = device.device_service || `http://${device.ip_address}/onvif/device_service`;
+    const isInsecure = typeof deviceUrl === 'string' && deviceUrl.startsWith('http://');
 
     // Then make the API call
     testOnvifConnectionMutation.mutate({
       url: deviceUrl,
       username: onvifCredentials.username,
-      password: onvifCredentials.password
+      password: onvifCredentials.password,
+      insecure: isInsecure
     });
   };
 
@@ -1665,8 +1679,10 @@ export function StreamsView() {
                   ) : discoveredDevices.map(device => {
                     const alreadyAdded = isDeviceAlreadyAdded(device);
                     const isConnecting = isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address;
+                    const baseRowClass = 'hover:bg-muted/50 transition-opacity';
+                    const rowClassName = alreadyAdded ? `${baseRowClass} opacity-60` : baseRowClass;
                     return (
-                      <tr key={device.ip_address} className={`hover:bg-muted/50 transition-opacity${alreadyAdded ? ' opacity-60' : ''}`}>
+                      <tr key={device.ip_address} className={rowClassName}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span>{device.ip_address}</span>
                           {alreadyAdded && (
