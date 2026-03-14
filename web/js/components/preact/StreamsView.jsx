@@ -1083,9 +1083,6 @@ export function StreamsView() {
       isOnvif: true
     };
 
-    // Log the stream data for debugging
-    console.log('Adding ONVIF stream with data:', streamData);
-
     // Use mutation to save stream
     saveStreamMutation.mutate(streamData, {
       onSuccess: () => {
@@ -1655,7 +1652,7 @@ export function StreamsView() {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="form-group">
-                    <label for="onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
+                    <label htmlFor="onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
                     <input
                         type="text"
                         id="onvif-username"
@@ -1667,7 +1664,7 @@ export function StreamsView() {
                     />
                   </div>
                   <div className="form-group">
-                    <label for="onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
+                    <label htmlFor="onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
                     <input
                         type="password"
                         id="onvif-password"
@@ -1742,7 +1739,7 @@ export function StreamsView() {
             </div>
             <div className="p-4">
               <div className="mb-4">
-                <label for="custom-stream-name" className="block text-sm font-medium mb-1">{t('streams.enterNameForStream')}</label>
+                <label htmlFor="custom-stream-name" className="block text-sm font-medium mb-1">{t('streams.enterNameForStream')}</label>
                 <input
                     type="text"
                     id="custom-stream-name"
