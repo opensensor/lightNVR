@@ -64,14 +64,13 @@ export function WebRTCVideoCell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'poor', 'bad'
+  const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'fair', 'poor', 'bad'
   const [retryCount, setRetryCount] = useState(0); // Used to trigger WebRTC re-initialization
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
 
   // Backchannel (two-way audio) state
   const [isTalking, setIsTalking] = useState(false);
   const [microphoneError, setMicrophoneError] = useState(null);
-  const [, setHasMicrophonePermission] = useState(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [talkMode, setTalkMode] = useState('ptt'); // 'ptt' (push-to-talk) or 'toggle'
 
@@ -696,7 +695,7 @@ export function WebRTCVideoCell({
     }
     
     // Listen for connection state changes to start/stop monitoring
-    const originalOnIceConnectionStateChange = pc.oniceconnectionstatechange;
+    const baseIceConnectionStateChangeHandler = pc.oniceconnectionstatechange;
     pc.oniceconnectionstatechange = () => {
       // Start monitoring when connected
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
@@ -705,9 +704,9 @@ export function WebRTCVideoCell({
         reconnectAttemptsRef.current = 0;
       }
 
-      // Call the original handler
-      if (originalOnIceConnectionStateChange) {
-        originalOnIceConnectionStateChange();
+      // Call the existing handler, if any
+      if (baseIceConnectionStateChangeHandler) {
+        baseIceConnectionStateChangeHandler();
       }
       
       // Stop monitoring when disconnected or failed
