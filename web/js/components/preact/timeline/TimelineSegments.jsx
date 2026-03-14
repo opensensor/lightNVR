@@ -136,9 +136,7 @@ export function TimelineSegments({ segments: propSegments }) {
       // the user must press Play to start playback.  This prevents unexpected
       // auto-play when the user is just positioning the cursor.
       timelineState.setState({ currentSegmentIndex: foundIndex });
-    }
-
-    if (!foundSegment) {
+    } else {
       timelineState.setState({ currentSegmentIndex: -1 });
     }
   };
