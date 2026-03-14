@@ -44,7 +44,6 @@ export function StreamsView() {
         } else {
           // Session invalid - set to empty string to indicate fetch completed
           setUserRole('');
-          console.log('Session validation failed, no role');
         }
       } catch (error) {
         console.error('Error fetching user role:', error);
@@ -113,7 +112,7 @@ export function StreamsView() {
     if (selectedStreams.size > 0) {
       setSelectedStreams(new Set());
     } else {
-      setSelectedStreams(new Set((sortedStreams || []).map(s => s.name)));
+      setSelectedStreams(new Set((streams || []).map(s => s.name)));
     }
   };
 
@@ -200,13 +199,6 @@ export function StreamsView() {
       return 0;
     });
   })();
-
-  // Log streams data for debugging
-  console.log('API Response:', streamsResponse);
-
-  // Log streams data for debugging
-  console.log('Streams data:', streams);
-  console.log('hasData:', streams && streams.length > 0);
 
   // Default stream state
   const [currentStream, setCurrentStream] = useState({
@@ -333,9 +325,7 @@ export function StreamsView() {
       if (variables?.streamName) {
         queryClient.invalidateQueries({ queryKey: ['stream-full', variables.streamName] });
         // Also remove to avoid returning cached data before refetch completes
-        if (typeof queryClient.removeQueries === 'function') {
-          queryClient.removeQueries({ queryKey: ['stream-full', variables.streamName], exact: true });
-        }
+        queryClient.removeQueries({ queryKey: ['stream-full', variables.streamName], exact: true });
       }
       closeModal();
       // Invalidate and refetch streams list
@@ -1309,8 +1299,8 @@ export function StreamsView() {
                     <input
                       type="checkbox"
                       className="w-4 h-4 rounded cursor-pointer"
-                      checked={selectedStreams.size > 0 && selectedStreams.size === (streams || []).length}
-                      ref={el => { if (el) el.indeterminate = selectedStreams.size > 0 && selectedStreams.size < (streams || []).length; }}
+                      checked={selectedStreams.size > 0 && selectedStreams.size === (sortedStreams || []).length}
+                      ref={el => { if (el) el.indeterminate = selectedStreams.size > 0 && selectedStreams.size < (sortedStreams || []).length; }}
                       onChange={toggleSelectAll}
                       title={t('streams.selectAll')}
                     />
