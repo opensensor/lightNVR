@@ -64,7 +64,7 @@ export function WebRTCVideoCell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'poor', 'bad'
+  const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'fair', 'poor', 'bad'
   const [retryCount, setRetryCount] = useState(0); // Used to trigger WebRTC re-initialization
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
 
