@@ -193,7 +193,7 @@ int init_unified_detection_system(void) {
     pthread_mutex_lock(&contexts_mutex);
 
     // Clear all context slots
-    memset((void *)detection_contexts, 0, sizeof(detection_contexts));
+    memset(detection_contexts, 0, sizeof(detection_contexts));
 
     // Initialize packet buffer pool sized to actual detection-stream requirements
     size_t memory_limit = calculate_packet_buffer_pool_size();
