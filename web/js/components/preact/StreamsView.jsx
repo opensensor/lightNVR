@@ -11,7 +11,7 @@ import { StreamDeleteModal } from './StreamDeleteModal.jsx';
 import { StreamBulkActionModal } from './StreamBulkActionModal.jsx';
 import { StreamConfigModal } from './StreamConfigModal.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
-import { conditionallyObfuscateUrl } from '../../utils/url-utils.js';
+import { obfuscateUrlCredentials, urlHasCredentials } from '../../utils/url-utils.js';
 import {
   useQuery,
   useMutation,
@@ -85,6 +85,19 @@ export function StreamsView() {
       ...prev,
       [streamName]: !prev[streamName]
     }));
+  };
+
+  // Track which stream URL credentials are currently revealed (by stream name).
+  // By default every URL with credentials is masked, even for admins.
+  const [revealedUrls, setRevealedUrls] = useState(new Set());
+
+  const toggleUrlReveal = (streamName, e) => {
+    e.stopPropagation();
+    setRevealedUrls(prev => {
+      const next = new Set(prev);
+      next.has(streamName) ? next.delete(streamName) : next.add(streamName);
+      return next;
+    });
   };
 
   // Bulk selection state
@@ -1489,7 +1502,34 @@ export function StreamsView() {
                           {statusLabel}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">{conditionallyObfuscateUrl(stream.url, userRole, isDemoMode)}</td>
+                      <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs truncate max-w-xs" title={revealedUrls.has(stream.name) ? stream.url : obfuscateUrlCredentials(stream.url)}>
+                            {revealedUrls.has(stream.name) ? stream.url : obfuscateUrlCredentials(stream.url)}
+                          </span>
+                          {urlHasCredentials(stream.url) && !shouldHideCredentials && (
+                            <button
+                              type="button"
+                              className="flex-shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+                              onClick={(e) => toggleUrlReveal(stream.name, e)}
+                              title={revealedUrls.has(stream.name) ? t('streams.hideCredentials') : t('streams.showCredentials')}
+                            >
+                              {revealedUrls.has(stream.name) ? (
+                                /* eye-off */
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 4.411m0 0L21 21" />
+                                </svg>
+                              ) : (
+                                /* eye */
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">{stream.width}x{stream.height}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{stream.fps}</td>
                       <td className="px-6 py-4 whitespace-nowrap">
