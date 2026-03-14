@@ -971,22 +971,25 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
 
         // Log the directory we're working with
         log_info("Ensuring MP4 output directory exists: %s", dir_path);
-
-        // Create directory if it doesn't exist
-        if (mkdir_recursive(dir_path) != 0) {
-            log_warn("Failed to create directory: %s", dir_path);
-        }
-
-        // Set permissions to ensure it's writable
-        if (chmod_recursive(dir_path, 0777) != 0) {
-            log_warn("Failed to set permissions: %s", dir_path);
-        }
     } else {
         // No directory separator found, use current directory
         log_warn("No directory separator found in output path: %s, using current directory",
                 writer->output_path);
         dir_path[0] = '.';
         dir_path[1] = '\0';
+
+        // Log the directory we're working with (current directory)
+        log_info("Ensuring MP4 output directory exists: %s", dir_path);
+    }
+
+    // Create directory if it doesn't exist
+    if (mkdir_recursive(dir_path) != 0) {
+        log_warn("Failed to create directory: %s", dir_path);
+    }
+
+    // Set permissions to ensure it's writable
+    if (chmod_recursive(dir_path, 0777) != 0) {
+        log_warn("Failed to set permissions: %s", dir_path);
     }
 
     // Log the full output path
@@ -1285,7 +1288,6 @@ int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStr
 skip_audio_stream:
     // Initialize audio state if not already done
     if (writer->audio.stream_idx == -1) {
-        writer->audio.stream_idx = -1; // Initialize to -1 (no audio yet)
         writer->audio.first_dts = AV_NOPTS_VALUE;
         writer->audio.last_pts = 0;
         writer->audio.last_dts = 0;
