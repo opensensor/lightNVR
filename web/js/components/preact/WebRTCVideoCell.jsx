@@ -68,7 +68,24 @@ export function WebRTCVideoCell({
 }) {
   const { t } = useI18n();
   // Component state
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    // Derive initial loading state from the incoming stream, so that we
+    // avoid flashing a loading indicator for streams that are already
+    // playing/connected or known to be in an error state.
+    if (!stream) {
+      return true;
+    }
+
+    const status = stream.status || stream.state;
+    if (status === 'error' || status === 'failed') {
+      return false;
+    }
+    if (status === 'playing' || status === 'connected' || status === 'ready') {
+      return false;
+    }
+
+    return true;
+  });
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'fair', 'poor', 'bad'
