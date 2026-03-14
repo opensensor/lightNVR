@@ -117,7 +117,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
               >
                 <span className="inline-flex items-center gap-1">
                   {label}
-                  <span className="inline-flex flex-col leading-none" style={{fontSize: '0.6rem', lineHeight: 1}}>
+                  <span className="inline-flex flex-col leading-none text-[0.6rem]">
                     <span style={{opacity: sortColumn === key && sortDirection === 'asc' ? 1 : 0.3}}>▲</span>
                     <span style={{opacity: sortColumn === key && sortDirection === 'desc' ? 1 : 0.3}}>▼</span>
                   </span>
@@ -153,7 +153,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
               <td className="py-3 px-6 border-b border-border">
                 <div className="flex space-x-2">
                   <button
-                    className="p-1 rounded transition-colors" style={{color: 'hsl(var(--primary))'}} onMouseOver={(e) => {e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'; e.currentTarget.style.color = 'hsl(var(--primary) / 0.7)'}} onMouseOut={(e) => {e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'hsl(var(--primary))'}}
+                    className="p-1 rounded transition-colors text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)_/_0.1)] hover:text-[hsl(var(--primary)_/_0.7)]"
                     onClick={(e) => handleEdit(user, e)}
                     title={t('users.editUser')}
                   >
@@ -162,7 +162,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
                     </svg>
                   </button>
                   <button
-                    className="p-1 rounded transition-colors" style={{color: 'hsl(var(--danger))'}} onMouseOver={(e) => {e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'; e.currentTarget.style.color = 'hsl(var(--danger) / 0.7)'}} onMouseOut={(e) => {e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'hsl(var(--danger))'}}
+                    className="p-1 rounded transition-colors text-[hsl(var(--danger))] hover:bg-[hsl(var(--danger)_/_0.1)] hover:text-[hsl(var(--danger)_/_0.7)]"
                     onClick={(e) => handleDelete(user, e)}
                     title={t('users.deleteUser')}
                   >
