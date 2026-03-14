@@ -1595,6 +1595,11 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             // Get the actual API URL
             const char *actual_api_url = ctx->model_path;
             if (strcmp(ctx->model_path, "api-detection") == 0) {
+                if (g_config.api_detection_url == NULL || g_config.api_detection_url[0] == '\0') {
+                    log_error("[%s] Fallback: api_detection_url is not configured for api-detection model_path", ctx->stream_name);
+                    free(rgb_buffer);
+                    return false;
+                }
                 actual_api_url = g_config.api_detection_url;
             }
 
