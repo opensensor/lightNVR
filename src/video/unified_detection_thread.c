@@ -66,6 +66,9 @@
 #define DEFAULT_DETECTION_INTERVAL 5  // Seconds between detection checks (fallback if not configured)
 #define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
 
+// Video/default FPS settings
+#define DEFAULT_FPS_FALLBACK 15  // Conservative default for cameras that omit FPS in SDP
+
 // Motion detection settings
 static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Fallback sensitivity if threshold is unset or out of range
 
@@ -823,7 +826,7 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
             }
         }
         if (det_fps <= 0) {
-            det_fps = 15; // conservative default for cameras that omit FPS in SDP
+            det_fps = DEFAULT_FPS_FALLBACK; // conservative default for cameras that omit FPS in SDP
             log_debug("[%s] FPS unknown from SDP; defaulting to %d fps", ctx->stream_name, det_fps);
         }
 
