@@ -9,6 +9,11 @@ import { obfuscateUrlCredentials } from '../../utils/url-utils.js';
 import { useI18n } from '../../i18n.js';
 
 const primaryAccentStyle = { accentColor: 'hsl(var(--primary))' };
+const HOURS_PER_DAY = 24;
+const HOURS_PER_WEEK = 7 * HOURS_PER_DAY;
+
+const isCustomApiUrl = (url) =>
+  typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'));
 
 /**
  * Recording Schedule Grid Component
@@ -28,7 +33,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
     t('streamsConfig.friShort'),
     t('streamsConfig.satShort')
   ];
-  const HOURS = Array.from({ length: 24 }, (_, i) => {
+  const HOURS = Array.from({ length: HOURS_PER_DAY }, (_, i) => {
     if (i === 0) return '12am';
     if (i < 12) return `${i}am`;
     if (i === 12) return '12pm';
@@ -43,49 +48,49 @@ function RecordingScheduleGrid({ schedule, onChange }) {
 
   const handleCellMouseDown = useCallback((e, dayIdx, hourIdx) => {
     e.preventDefault();
-    const newVal = !schedule[dayIdx * 24 + hourIdx];
+    const newVal = !schedule[dayIdx * HOURS_PER_DAY + hourIdx];
     dragValue.current = newVal;
     isDragging.current = true;
     const s = schedule.slice();
-    s[dayIdx * 24 + hourIdx] = newVal;
+    s[dayIdx * HOURS_PER_DAY + hourIdx] = newVal;
     onChange(s);
   }, [schedule, onChange]);
 
   const handleCellMouseEnter = useCallback((dayIdx, hourIdx) => {
     if (!isDragging.current) return;
     const s = schedule.slice();
-    s[dayIdx * 24 + hourIdx] = dragValue.current;
+    s[dayIdx * HOURS_PER_DAY + hourIdx] = dragValue.current;
     onChange(s);
   }, [schedule, onChange]);
 
   const toggleDay = useCallback((dayIdx) => {
-    const allOn = HOURS.every((_, h) => schedule[dayIdx * 24 + h]);
+    const allOn = HOURS.every((_, h) => schedule[dayIdx * HOURS_PER_DAY + h]);
     const s = schedule.slice();
-    for (let h = 0; h < 24; h++) s[dayIdx * 24 + h] = !allOn;
+    for (let h = 0; h < HOURS_PER_DAY; h++) s[dayIdx * HOURS_PER_DAY + h] = !allOn;
     onChange(s);
   }, [schedule, onChange]);
 
   const toggleHour = useCallback((hourIdx) => {
-    const allOn = DAYS.every((_, d) => schedule[d * 24 + hourIdx]);
+    const allOn = DAYS.every((_, d) => schedule[d * HOURS_PER_DAY + hourIdx]);
     const s = schedule.slice();
-    for (let d = 0; d < 7; d++) s[d * 24 + hourIdx] = !allOn;
+    for (let d = 0; d < 7; d++) s[d * HOURS_PER_DAY + hourIdx] = !allOn;
     onChange(s);
   }, [schedule, onChange]);
 
   /** Build the boolean pattern array for a given preset key */
   const getPresetPattern = useCallback((preset) => {
-    const p = Array(168).fill(false);
+    const p = Array(HOURS_PER_WEEK).fill(false);
     if (preset === 'weekdays') {
-      for (let d = 1; d <= 5; d++) for (let h = 0; h < 24; h++) p[d * 24 + h] = true;
+      for (let d = 1; d <= 5; d++) for (let h = 0; h < HOURS_PER_DAY; h++) p[d * HOURS_PER_DAY + h] = true;
     } else if (preset === 'business') {
-      for (let d = 1; d <= 5; d++) for (let h = 8; h < 18; h++) p[d * 24 + h] = true;
+      for (let d = 1; d <= 5; d++) for (let h = 8; h < 18; h++) p[d * HOURS_PER_DAY + h] = true;
     } else if (preset === 'nights') {
       for (let d = 0; d < 7; d++) {
-        for (let h = 0; h < 6; h++) p[d * 24 + h] = true;
-        for (let h = 20; h < 24; h++) p[d * 24 + h] = true;
+        for (let h = 0; h < 6; h++) p[d * HOURS_PER_DAY + h] = true;
+        for (let h = 20; h < HOURS_PER_DAY; h++) p[d * HOURS_PER_DAY + h] = true;
       }
     } else if (preset === 'weekends') {
-      for (const d of [0, 6]) for (let h = 0; h < 24; h++) p[d * 24 + h] = true;
+      for (const d of [0, 6]) for (let h = 0; h < HOURS_PER_DAY; h++) p[d * HOURS_PER_DAY + h] = true;
     }
     return p;
   }, []);
@@ -98,14 +103,14 @@ function RecordingScheduleGrid({ schedule, onChange }) {
 
   const applyPreset = useCallback((preset) => {
     // Absolute presets — always replace the entire schedule
-    if (preset === 'all') { onChange(Array(168).fill(true)); return; }
-    if (preset === 'none') { onChange(Array(168).fill(false)); return; }
+    if (preset === 'all') { onChange(Array(HOURS_PER_WEEK).fill(true)); return; }
+    if (preset === 'none') { onChange(Array(HOURS_PER_WEEK).fill(false)); return; }
 
     // Toggleable presets — OR on / remove off
     const pattern = getPresetPattern(preset);
     const active = isPresetActive(preset);
     const s = schedule.slice();
-    for (let i = 0; i < 168; i++) {
+    for (let i = 0; i < HOURS_PER_WEEK; i++) {
       if (pattern[i]) s[i] = !active;
     }
     onChange(s);
@@ -185,7 +190,7 @@ function RecordingScheduleGrid({ schedule, onChange }) {
               </button>
               {/* Day cells */}
               {DAYS.map((_, dayIdx) => {
-                const isActive = !!schedule[dayIdx * 24 + hourIdx];
+                const isActive = !!schedule[dayIdx * HOURS_PER_DAY + hourIdx];
                 return (
                   <div
                     key={dayIdx}
@@ -332,7 +337,7 @@ export function StreamConfigModal({
     };
 
     loadZones();
-  }, [isEditing, currentStream.name, onInputChangeRef]);
+  }, [isEditing, currentStream.name]);
 
   const handleZonesChange = (zones) => {
     setDetectionZones(zones);
@@ -680,9 +685,9 @@ export function StreamConfigModal({
                                 {t('streamsConfig.scheduleGridHelp')}
                               </p>
                               <RecordingScheduleGrid
-                                schedule={currentStream.recordingSchedule && currentStream.recordingSchedule.length === 168
+                                schedule={currentStream.recordingSchedule && currentStream.recordingSchedule.length === HOURS_PER_WEEK
                                   ? currentStream.recordingSchedule
-                                  : Array(168).fill(true)}
+                                  : Array(HOURS_PER_WEEK).fill(true)}
                                 onChange={(s) => onInputChange({ target: { name: 'recordingSchedule', value: s } })}
                               />
                             </div>
@@ -781,7 +786,7 @@ export function StreamConfigModal({
                             id="stream-detection-model"
                             name="detectionModel"
                             className="flex-1 px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                            value={currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) ? 'api-detection' : currentStream.detectionModel}
+                            value={isCustomApiUrl(currentStream.detectionModel) ? 'api-detection' : currentStream.detectionModel}
                             onChange={onInputChange}
                           >
                             <option value="">{t('streamsConfig.selectModel')}</option>
@@ -803,7 +808,7 @@ export function StreamConfigModal({
 
                         {/* Show info box and custom endpoint option for API detection */}
                         {(currentStream.detectionModel === 'api-detection' ||
-                          (currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')))) && (
+                          isCustomApiUrl(currentStream.detectionModel)) && (
                           <div className="mt-3 space-y-3">
                             {/* Show info box only when using default endpoint */}
                             {currentStream.detectionModel === 'api-detection' && (
@@ -824,7 +829,7 @@ export function StreamConfigModal({
                             )}
 
                             {/* Show custom endpoint input when using custom URL */}
-                            {currentStream.detectionModel && (currentStream.detectionModel.startsWith('http://') || currentStream.detectionModel.startsWith('https://')) && (
+                            {isCustomApiUrl(currentStream.detectionModel) && (
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <label htmlFor="stream-custom-api-url" className="block text-sm font-medium">
@@ -1120,12 +1125,12 @@ export function StreamConfigModal({
                     </div>
                   )}
 
-                  <div className="rounded-lg p-4" style={{backgroundColor: 'hsl(var(--info-muted))', borderWidth: '1px', borderStyle: 'solid', borderColor: 'hsl(var(--info) / 0.3)'}}>
+                  <div className="rounded-lg p-4 bg-[hsl(var(--info-muted))] border border-[hsl(var(--info)_/_0.3)]">
                     <div className="flex">
-                      <svg className="w-5 h-5 mr-2 flex-shrink-0" style={{color: 'hsl(var(--info))'}} fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-5 h-5 mr-2 flex-shrink-0 text-[hsl(var(--info))]" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                       </svg>
-                      <div className="text-sm" style={{color: 'hsl(var(--info-muted-foreground))'}}>
+                      <div className="text-sm text-[hsl(var(--info-muted-foreground))]">
                         <p className="font-medium mb-1">{t('streamsConfig.zoneDetectionTips')}:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
                           <li>{t('streamsConfig.zoneTipConfigure')}</li>

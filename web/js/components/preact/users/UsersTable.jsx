@@ -20,6 +20,8 @@ import { useI18n } from '../../../i18n.js';
 export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   const { t } = useI18n();
 
+  const safeUsers = Array.isArray(users) ? users : [];
+
   // Sorting state
   const [sortColumn, setSortColumn] = useState(null);
   const [sortDirection, setSortDirection] = useState('asc');
@@ -34,8 +36,8 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   };
 
   const sortedUsers = (() => {
-    if (!sortColumn) return users;
-    return [...users].sort((a, b) => {
+    if (!sortColumn) return safeUsers;
+    return [...safeUsers].sort((a, b) => {
       let aVal, bVal;
       if (sortColumn === 'id') {
         aVal = a.id || 0;
@@ -118,8 +120,8 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
                 <span className="inline-flex items-center gap-1">
                   {label}
                   <span className="inline-flex flex-col leading-none text-[0.6rem]">
-                    <span style={{opacity: sortColumn === key && sortDirection === 'asc' ? 1 : 0.3}}>▲</span>
-                    <span style={{opacity: sortColumn === key && sortDirection === 'desc' ? 1 : 0.3}}>▼</span>
+                    <span className={sortColumn === key && sortDirection === 'asc' ? 'opacity-100' : 'opacity-30'}>▲</span>
+                    <span className={sortColumn === key && sortDirection === 'desc' ? 'opacity-100' : 'opacity-30'}>▼</span>
                   </span>
                 </span>
               </th>
@@ -128,7 +130,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {sortedUsers.map(user => (
+          {(sortedUsers || []).map(user => (
             <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-gray-600">
               <td className="py-3 px-6 border-b border-border">{user.id}</td>
               <td className="py-3 px-6 border-b border-border">{user.username}</td>
