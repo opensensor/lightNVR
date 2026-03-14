@@ -1655,7 +1655,7 @@ export function StreamsView() {
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="form-group">
-                    <label for="onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
+                    <label htmlFor="onvif-username" className="block text-sm font-medium mb-1">{t('auth.username')}</label>
                     <input
                         type="text"
                         id="onvif-username"
@@ -1667,7 +1667,7 @@ export function StreamsView() {
                     />
                   </div>
                   <div className="form-group">
-                    <label for="onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
+                    <label htmlFor="onvif-password" className="block text-sm font-medium mb-1">{t('auth.password')}</label>
                     <input
                         type="password"
                         id="onvif-password"
