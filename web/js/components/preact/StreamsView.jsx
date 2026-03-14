@@ -1137,7 +1137,6 @@ export function StreamsView() {
       onError: () => {
         setIsAddingStream(false);
       },
-      isEditing: false,
     });
   };
 
