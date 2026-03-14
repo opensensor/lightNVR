@@ -1030,8 +1030,17 @@ export function StreamsView() {
       // Fall back to constructing URL from ip_address if device_service is not available.
       // When constructing the URL, prefer HTTPS and only fall back to HTTP if necessary.
       const discoveredUrl = device.device_service;
-      const httpsFallbackUrl = `https://${device.ip_address}/onvif/device_service`;
-      const httpFallbackUrl = `http://${device.ip_address}/onvif/device_service`;
+      const ipAddress = device.ip_address;
+
+      // Validate the discovered IP/host before constructing fallback URLs to avoid malformed URLs
+      // Allow typical hostname / IPv4 characters and optional IPv6 literal in brackets.
+      const ipHostPattern = /^[A-Za-z0-9.\-]+$|^\[[0-9A-Fa-f:.]+\]$/;
+      if (!ipAddress || !ipHostPattern.test(ipAddress)) {
+        throw new Error('Invalid device IP address');
+      }
+
+      const httpsFallbackUrl = `https://${ipAddress}/onvif/device_service`;
+      const httpFallbackUrl = `http://${ipAddress}/onvif/device_service`;
 
       const attemptFetch = (deviceUrl) => {
         return fetch('/api/onvif/device/profiles', {
