@@ -929,7 +929,7 @@ int apply_h264_annexb_filter(AVPacket *packet, enum AVCodecID codec_id) {
 int mp4_writer_initialize(mp4_writer_t *writer, const AVPacket *pkt, const AVStream *input_stream) {
     int ret;
 
-    //  Ensure we only initialize on keyframes for video packets
+    // Ensure we only initialize on keyframes for video packets
     if (input_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         // Check if this is a keyframe
         bool is_keyframe = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
@@ -1385,7 +1385,7 @@ int mp4_writer_add_audio_stream(mp4_writer_t *writer, const AVCodecParameters *c
         return -1;
     }
 
-    //  Initialize audio.first_dts to AV_NOPTS_VALUE if not already set
+    // Initialize audio.first_dts to AV_NOPTS_VALUE if not already set
     if (writer->audio.first_dts != AV_NOPTS_VALUE) {
         log_debug("Audio first_dts is not at default AV_NOPTS_VALUE; current value: %lld for %s",
                  (long long)writer->audio.first_dts,
