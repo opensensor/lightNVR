@@ -601,6 +601,52 @@ unified_detection_state_t get_unified_detection_state(const char *stream_name) {
 }
 
 /**
+ * Get the effective stream status based on UDT state for API reporting.
+ */
+stream_status_t get_unified_detection_effective_status(const char *stream_name) {
+    if (!stream_name) {
+        return STREAM_STATUS_STOPPED;
+    }
+
+    pthread_mutex_lock(&contexts_mutex);
+
+    unified_detection_ctx_t *ctx = find_context_by_name(stream_name);
+    if (!ctx) {
+        pthread_mutex_unlock(&contexts_mutex);
+        return STREAM_STATUS_STOPPED;
+    }
+
+    unified_detection_state_t udt_state = atomic_load(&ctx->state);
+    int reconnect_attempt = ctx->reconnect_attempt;
+
+    pthread_mutex_unlock(&contexts_mutex);
+
+    switch (udt_state) {
+        case UDT_STATE_INITIALIZING:
+            return STREAM_STATUS_STARTING;
+
+        case UDT_STATE_CONNECTING:
+            /* First connection attempt → Starting; subsequent attempts → Reconnecting */
+            return (reconnect_attempt > 0) ? STREAM_STATUS_RECONNECTING : STREAM_STATUS_STARTING;
+
+        case UDT_STATE_BUFFERING:
+        case UDT_STATE_RECORDING:
+        case UDT_STATE_POST_BUFFER:
+            return STREAM_STATUS_RUNNING;
+
+        case UDT_STATE_RECONNECTING:
+            return STREAM_STATUS_RECONNECTING;
+
+        case UDT_STATE_STOPPING:
+            return STREAM_STATUS_STOPPING;
+
+        case UDT_STATE_STOPPED:
+        default:
+            return STREAM_STATUS_STOPPED;
+    }
+}
+
+/**
  * Get statistics for a unified detection thread
  */
 int get_unified_detection_stats(const char *stream_name,

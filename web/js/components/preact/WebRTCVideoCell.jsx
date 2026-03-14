@@ -1051,18 +1051,30 @@ export function WebRTCVideoCell({
             gap: '8px'
           }}
         >
-          <span style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            flexShrink: 0,
-            backgroundColor:
-              stream.status === 'Running'      ? 'rgba(34, 197, 94, 0.9)'  :
-              stream.status === 'Starting'     ? 'rgba(234, 179, 8, 0.9)'  :
-              stream.status === 'Reconnecting' ? 'rgba(234, 179, 8, 0.9)'  :
-              stream.status === 'Error'        ? 'rgba(239, 68, 68, 0.9)'  :
-              'rgba(148, 163, 184, 0.9)'
-          }} />
+          <span
+            style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              flexShrink: 0,
+              backgroundColor:
+                stream.status === 'Running'      ? 'rgba(34, 197, 94, 0.9)'  :
+                stream.status === 'Starting'     ? 'rgba(234, 179, 8, 0.9)'  :
+                stream.status === 'Reconnecting' ? 'rgba(234, 179, 8, 0.9)'  :
+                stream.status === 'Error'        ? 'rgba(239, 68, 68, 0.9)'  :
+                stream.status === 'Stopping'     ? 'rgba(234, 179, 8, 0.9)'  :
+                'rgba(148, 163, 184, 0.9)'
+            }}
+            title={`${t('streams.streamStatus')}: ${
+              stream.status === 'Running'      ? t('streams.running')      :
+              stream.status === 'Starting'     ? t('streams.starting')     :
+              stream.status === 'Reconnecting' ? t('streams.reconnecting') :
+              stream.status === 'Error'        ? t('streams.error')        :
+              stream.status === 'Stopping'     ? t('streams.stopping')     :
+              stream.status === 'Stopped'      ? t('streams.stopped')      :
+              (stream.status || t('common.unknown'))
+            }`}
+          />
           {stream.name}
 
           {/* Connection quality indicator - only show when we have quality data and stream is playing */}

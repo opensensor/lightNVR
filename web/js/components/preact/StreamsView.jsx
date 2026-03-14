@@ -1275,18 +1275,20 @@ export function StreamsView() {
               {streams.map(stream => {
                 const isExpanded = expandedStreams[stream.name];
                 const statusColor =
-                  stream.status === 'Running' ? 'hsl(var(--success))' :
-                  stream.status === 'Starting' ? 'hsl(var(--warning, 45 93% 47%))' :
+                  stream.status === 'Running'      ? 'hsl(var(--success))' :
+                  stream.status === 'Starting'     ? 'hsl(var(--warning, 45 93% 47%))' :
                   stream.status === 'Reconnecting' ? 'hsl(var(--warning, 45 93% 47%))' :
-                  stream.status === 'Error' ? 'hsl(var(--danger))' :
-                  stream.status === 'Stopping' ? 'hsl(var(--warning, 45 93% 47%))' :
+                  stream.status === 'Error'        ? 'hsl(var(--danger))' :
+                  stream.status === 'Stopping'     ? 'hsl(var(--warning, 45 93% 47%))' :
+                  stream.status === 'Stopped'      ? 'hsl(var(--danger))' :
                   'hsl(var(--muted-foreground))';
                 const statusLabel =
-                  stream.status === 'Running' ? t('streams.running') :
-                  stream.status === 'Starting' ? t('streams.starting') :
+                  stream.status === 'Running'      ? t('streams.running')      :
+                  stream.status === 'Starting'     ? t('streams.starting')     :
                   stream.status === 'Reconnecting' ? t('streams.reconnecting') :
-                  stream.status === 'Error' ? t('streams.error') :
-                  stream.status === 'Stopping' ? t('streams.stopping') :
+                  stream.status === 'Error'        ? t('streams.error')        :
+                  stream.status === 'Stopping'     ? t('streams.stopping')     :
+                  stream.status === 'Stopped'      ? t('streams.stopped')      :
                   (stream.status || t('common.unknown'));
                 const hasAdminLauncher = !shouldHideCredentials && /^https?:\/\//i.test(stream.admin_url || '');
 

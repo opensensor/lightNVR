@@ -25,6 +25,7 @@
 #include "video/packet_buffer.h"
 #include "video/detection_model.h"
 #include "video/mp4_writer.h"
+#include "video/stream_manager.h"
 
 // Maximum number of unified detection threads
 #define MAX_UNIFIED_DETECTION_THREADS MAX_STREAMS
@@ -160,11 +161,32 @@ bool is_unified_detection_running(const char *stream_name);
 
 /**
  * Get the current state of a unified detection thread
- * 
+ *
  * @param stream_name Name of the stream
  * @return Current state, or UDT_STATE_STOPPED if not found
  */
 unified_detection_state_t get_unified_detection_state(const char *stream_name);
+
+/**
+ * Get the effective stream status based on the UDT state for API reporting.
+ *
+ * Maps the internal UDT state (and reconnect attempt count) to a
+ * stream_status_t value so callers can report an accurate status without
+ * needing access to the raw UDT context.
+ *
+ * Mapping:
+ *  UDT_STATE_INITIALIZING               -> STREAM_STATUS_STARTING
+ *  UDT_STATE_CONNECTING (attempt == 0)  -> STREAM_STATUS_STARTING
+ *  UDT_STATE_CONNECTING (attempt  > 0)  -> STREAM_STATUS_RECONNECTING
+ *  UDT_STATE_BUFFERING / RECORDING / POST_BUFFER -> STREAM_STATUS_RUNNING
+ *  UDT_STATE_RECONNECTING               -> STREAM_STATUS_RECONNECTING
+ *  UDT_STATE_STOPPING                   -> STREAM_STATUS_STOPPING
+ *  UDT_STATE_STOPPED (or not found)     -> STREAM_STATUS_STOPPED
+ *
+ * @param stream_name Name of the stream
+ * @return Appropriate stream_status_t value
+ */
+stream_status_t get_unified_detection_effective_status(const char *stream_name);
 
 /**
  * Get statistics for a unified detection thread

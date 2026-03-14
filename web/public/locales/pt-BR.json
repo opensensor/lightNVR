@@ -607,6 +607,8 @@
   "streams.reconnecting": "Reconectando",
   "streams.error": "Erro",
   "streams.stopping": "Parando",
+  "streams.stopped": "Parado",
+  "streams.streamStatus": "Status do stream",
   "streams.schedule": "Agenda",
   "streams.detection": "Detecção",
   "streams.openCameraAdminPage": "Abrir página administrativa da câmera",

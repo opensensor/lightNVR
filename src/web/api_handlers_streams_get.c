@@ -21,6 +21,33 @@
 #include "database/db_motion_config.h"
 #include "database/db_auth.h"
 #include "video/go2rtc/go2rtc_integration.h"
+#include "video/unified_detection_thread.h"
+
+/**
+ * Resolve the effective stream status for API reporting.
+ *
+ * When go2rtc manages streams the stream-state manager stays at INACTIVE
+ * (STOPPED) because start_stream_with_state() is not called on startup.
+ * This helper consults the Unified Detection Thread (UDT) to obtain a more
+ * accurate status, then falls back to RUNNING when the UDT is not active
+ * but go2rtc is initialized and the stream is enabled.
+ */
+static stream_status_t resolve_effective_stream_status(stream_status_t raw_status,
+                                                       const char *stream_name,
+                                                       bool stream_enabled) {
+    if (raw_status == STREAM_STATUS_STOPPED && stream_enabled
+            && go2rtc_integration_is_initialized()) {
+        /* Ask the UDT for a more accurate status */
+        stream_status_t udt_status = get_unified_detection_effective_status(stream_name);
+        if (udt_status != STREAM_STATUS_STOPPED) {
+            return udt_status;
+        }
+        /* UDT not running / already stopped — default to RUNNING since go2rtc
+         * is initialized and the stream is enabled. */
+        return STREAM_STATUS_RUNNING;
+    }
+    return raw_status;
+}
 
 static void get_stream_api_credentials(const stream_config_t *config,
                                        char *safe_url, size_t safe_url_size,
@@ -218,39 +245,19 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         if (stream) {
             stream_status_t stream_status = get_stream_status(stream);
 
-            // When go2rtc manages streams, the state manager is never updated
-            // from INACTIVE (start_stream_with_state is not called during startup).
-            // Override STOPPED → RUNNING for enabled streams when go2rtc is initialized.
-            // NOTE: We use go2rtc_integration_is_initialized() (non-blocking boolean check)
-            // instead of go2rtc_integration_check_health() (blocking curl call, up to 7s)
-            // to avoid saturating the libuv thread pool and deadlocking the server.
-            if (stream_status == STREAM_STATUS_STOPPED && db_streams[i].enabled
-                && go2rtc_integration_is_initialized()) {
-                stream_status = STREAM_STATUS_RUNNING;
-            }
+            // Resolve the effective status using UDT state when go2rtc manages
+            // streams (state manager stays INACTIVE/STOPPED at startup).
+            stream_status = resolve_effective_stream_status(
+                stream_status, db_streams[i].name, db_streams[i].enabled);
 
             switch (stream_status) {
-                case STREAM_STATUS_STOPPED:
-                    status = "Stopped";
-                    break;
-                case STREAM_STATUS_STARTING:
-                    status = "Starting";
-                    break;
-                case STREAM_STATUS_RUNNING:
-                    status = "Running";
-                    break;
-                case STREAM_STATUS_STOPPING:
-                    status = "Stopping";
-                    break;
-                case STREAM_STATUS_ERROR:
-                    status = "Error";
-                    break;
-                case STREAM_STATUS_RECONNECTING:
-                    status = "Reconnecting";
-                    break;
-                default:
-                    status = "Unknown";
-                    break;
+                case STREAM_STATUS_STOPPED:       status = "Stopped";      break;
+                case STREAM_STATUS_STARTING:      status = "Starting";     break;
+                case STREAM_STATUS_RUNNING:       status = "Running";      break;
+                case STREAM_STATUS_STOPPING:      status = "Stopping";     break;
+                case STREAM_STATUS_ERROR:         status = "Error";        break;
+                case STREAM_STATUS_RECONNECTING:  status = "Reconnecting"; break;
+                default:                          status = "Unknown";      break;
             }
         }
         cJSON_AddStringToObject(stream_obj, "status", status);
@@ -390,31 +397,21 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "tags", config.tags);
     cJSON_AddStringToObject(stream_obj, "admin_url", config.admin_url);
 
-    // Get stream status
+    // Get stream status — resolve using UDT state so that go2rtc-managed
+    // streams (which stay INACTIVE in the state manager) report accurately.
     stream_status_t stream_status = get_stream_status(stream);
+    stream_status = resolve_effective_stream_status(
+        stream_status, config.name, config.enabled);
+
     const char *status;
     switch (stream_status) {
-        case STREAM_STATUS_STOPPED:
-            status = "Stopped";
-            break;
-        case STREAM_STATUS_STARTING:
-            status = "Starting";
-            break;
-        case STREAM_STATUS_RUNNING:
-            status = "Running";
-            break;
-        case STREAM_STATUS_STOPPING:
-            status = "Stopping";
-            break;
-        case STREAM_STATUS_ERROR:
-            status = "Error";
-            break;
-        case STREAM_STATUS_RECONNECTING:
-            status = "Reconnecting";
-            break;
-        default:
-            status = "Unknown";
-            break;
+        case STREAM_STATUS_STOPPED:       status = "Stopped";      break;
+        case STREAM_STATUS_STARTING:      status = "Starting";     break;
+        case STREAM_STATUS_RUNNING:       status = "Running";      break;
+        case STREAM_STATUS_STOPPING:      status = "Stopping";     break;
+        case STREAM_STATUS_ERROR:         status = "Error";        break;
+        case STREAM_STATUS_RECONNECTING:  status = "Reconnecting"; break;
+        default:                          status = "Unknown";      break;
     }
     cJSON_AddStringToObject(stream_obj, "status", status);
 
@@ -552,19 +549,11 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "tags", config.tags);
     cJSON_AddStringToObject(stream_obj, "admin_url", config.admin_url);
 
-    // Status
+    // Status — resolve using UDT state for accurate reporting when go2rtc
+    // manages the stream (state manager stays INACTIVE/STOPPED at startup).
     stream_status_t stream_status = get_stream_status(stream);
-
-    // When go2rtc manages streams, the state manager is never updated
-    // from INACTIVE (start_stream_with_state is not called during startup).
-    // Override STOPPED → RUNNING for enabled streams when go2rtc is initialized.
-    // NOTE: We use go2rtc_integration_is_initialized() (non-blocking boolean check)
-    // instead of go2rtc_integration_check_health() (blocking curl call, up to 7s)
-    // to avoid saturating the libuv thread pool and deadlocking the server.
-    if (stream_status == STREAM_STATUS_STOPPED && config.enabled
-        && go2rtc_integration_is_initialized()) {
-        stream_status = STREAM_STATUS_RUNNING;
-    }
+    stream_status = resolve_effective_stream_status(
+        stream_status, config.name, config.enabled);
 
     const char *status;
     switch (stream_status) {
