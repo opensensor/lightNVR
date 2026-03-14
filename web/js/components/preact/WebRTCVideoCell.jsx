@@ -696,7 +696,7 @@ export function WebRTCVideoCell({
     }
     
     // Listen for connection state changes to start/stop monitoring
-    const originalOnIceConnectionStateChange = pc.oniceconnectionstatechange;
+    const baseIceConnectionStateChangeHandler = pc.oniceconnectionstatechange;
     pc.oniceconnectionstatechange = () => {
       // Start monitoring when connected
       if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
@@ -705,9 +705,9 @@ export function WebRTCVideoCell({
         reconnectAttemptsRef.current = 0;
       }
 
-      // Call the original handler
-      if (originalOnIceConnectionStateChange) {
-        originalOnIceConnectionStateChange();
+      // Call the existing handler, if any
+      if (baseIceConnectionStateChangeHandler) {
+        baseIceConnectionStateChangeHandler();
       }
       
       // Stop monitoring when disconnected or failed
