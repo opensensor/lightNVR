@@ -1638,7 +1638,9 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             }
         }
 
+        pthread_mutex_lock(&ctx->mutex);
         ctx->total_detections += result.count;
+        pthread_mutex_unlock(&ctx->mutex);
         return detection_triggered;
     }
 
