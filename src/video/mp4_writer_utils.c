@@ -19,6 +19,7 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/audio_fifo.h>
 #include <libavutil/opt.h>
 #include <libavutil/time.h>
 #include <libswresample/swresample.h>
@@ -35,6 +36,8 @@ typedef struct {
     AVCodecContext *decoder_ctx;
     AVCodecContext *encoder_ctx;
     SwrContext *swr_ctx;
+    AVAudioFifo *fifo;          // Buffer to accumulate samples for the encoder
+    int64_t fifo_pts;           // Running PTS for frames read from the FIFO
     AVFrame *frame;
     AVFrame *resampled_frame;
     AVPacket *in_pkt;
@@ -211,6 +214,29 @@ static int init_audio_transcoder(const char *stream_name,
         goto cleanup;
     }
 
+    // Allocate an audio FIFO to buffer samples for the AAC encoder.
+    // AAC requires exactly frame_size (1024) samples per frame, but PCM
+    // packets are typically much smaller (e.g. 160 samples at 8 kHz/20 ms).
+    {
+        int enc_frame_size = audio_transcoders[slot].encoder_ctx->frame_size;
+        if (enc_frame_size <= 0) enc_frame_size = 1024;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+        int nb_ch = audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels;
+#else
+        int nb_ch = audio_transcoders[slot].encoder_ctx->channels;
+#endif
+        if (nb_ch < 1) nb_ch = 1;
+        audio_transcoders[slot].fifo = av_audio_fifo_alloc(
+            audio_transcoders[slot].encoder_ctx->sample_fmt,
+            nb_ch,
+            enc_frame_size * 4);
+        if (!audio_transcoders[slot].fifo) {
+            log_error("Failed to allocate audio FIFO for %s", stream_name);
+            goto cleanup;
+        }
+    }
+    audio_transcoders[slot].fifo_pts = 0;
+
     // Allocate frame and packets
     audio_transcoders[slot].frame = av_frame_alloc();
     if (!audio_transcoders[slot].frame) {
@@ -277,6 +303,11 @@ cleanup:
         audio_transcoders[slot].swr_ctx = NULL;
     }
 
+    if (audio_transcoders[slot].fifo) {
+        av_audio_fifo_free(audio_transcoders[slot].fifo);
+        audio_transcoders[slot].fifo = NULL;
+    }
+
     if (audio_transcoders[slot].frame) {
         av_frame_free(&audio_transcoders[slot].frame);
         audio_transcoders[slot].frame = NULL;
@@ -329,6 +360,11 @@ void cleanup_audio_transcoder(const char *stream_name) {
             if (audio_transcoders[i].swr_ctx) {
                 swr_free(&audio_transcoders[i].swr_ctx);
                 audio_transcoders[i].swr_ctx = NULL;
+            }
+
+            if (audio_transcoders[i].fifo) {
+                av_audio_fifo_free(audio_transcoders[i].fifo);
+                audio_transcoders[i].fifo = NULL;
             }
 
             if (audio_transcoders[i].frame) {
@@ -427,8 +463,10 @@ int transcode_audio_packet(const char *stream_name,
         return ret;
     }
 
-    // Convert sample format from decoder output (e.g. S16) to encoder input (FLTP)
-    AVFrame *enc_frame = audio_transcoders[transcoder_idx].frame;
+    // Convert sample format from decoder output (e.g. S16) to encoder input (FLTP),
+    // then buffer through the FIFO so the AAC encoder always receives exactly
+    // frame_size (1024) samples — regardless of how small the incoming PCM packets are.
+    AVFrame *enc_frame = NULL;
     if (audio_transcoders[transcoder_idx].swr_ctx) {
         AVFrame *resampled = audio_transcoders[transcoder_idx].resampled_frame;
         av_frame_unref(resampled);
@@ -463,8 +501,60 @@ int transcode_audio_packet(const char *stream_name,
             return ret;
         }
         resampled->nb_samples = ret;
-        resampled->pts = audio_transcoders[transcoder_idx].frame->pts;
-        enc_frame = resampled;
+
+        // Push converted samples into the FIFO
+        if (audio_transcoders[transcoder_idx].fifo) {
+            ret = av_audio_fifo_write(audio_transcoders[transcoder_idx].fifo,
+                                      (void **)resampled->data, resampled->nb_samples);
+            if (ret < resampled->nb_samples) {
+                log_error("Failed to write samples to audio FIFO for %s", stream_name);
+                return AVERROR(ENOMEM);
+            }
+
+            // The AAC encoder needs exactly frame_size samples per frame.
+            int enc_frame_size = audio_transcoders[transcoder_idx].encoder_ctx->frame_size;
+            if (enc_frame_size <= 0) enc_frame_size = 1024;
+
+            if (av_audio_fifo_size(audio_transcoders[transcoder_idx].fifo) < enc_frame_size) {
+                // Not enough samples yet — return without producing an output packet.
+                return 0;
+            }
+
+            // Prepare a frame with exactly enc_frame_size samples from the FIFO.
+            av_frame_unref(resampled);
+            resampled->format      = audio_transcoders[transcoder_idx].encoder_ctx->sample_fmt;
+            resampled->nb_samples  = enc_frame_size;
+            resampled->sample_rate = audio_transcoders[transcoder_idx].encoder_ctx->sample_rate;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
+            av_channel_layout_copy(&resampled->ch_layout,
+                                   &audio_transcoders[transcoder_idx].encoder_ctx->ch_layout);
+#else
+            resampled->channel_layout = audio_transcoders[transcoder_idx].encoder_ctx->channel_layout;
+            resampled->channels       = audio_transcoders[transcoder_idx].encoder_ctx->channels;
+#endif
+            ret = av_frame_get_buffer(resampled, 0);
+            if (ret < 0) {
+                log_ffmpeg_error(ret, "Failed to allocate encoder frame buffer");
+                return ret;
+            }
+
+            ret = av_audio_fifo_read(audio_transcoders[transcoder_idx].fifo,
+                                      (void **)resampled->data, enc_frame_size);
+            if (ret < enc_frame_size) {
+                log_error("Failed to read enough samples from audio FIFO for %s", stream_name);
+                return AVERROR(EINVAL);
+            }
+            resampled->nb_samples = ret;
+            resampled->pts        = audio_transcoders[transcoder_idx].fifo_pts;
+            audio_transcoders[transcoder_idx].fifo_pts += ret;
+            enc_frame = resampled;
+        } else {
+            // No FIFO (shouldn't happen for AAC encoding) — fall through directly.
+            resampled->pts = audio_transcoders[transcoder_idx].frame->pts;
+            enc_frame = resampled;
+        }
+    } else {
+        enc_frame = audio_transcoders[transcoder_idx].frame;
     }
 
     // Send frame to encoder
