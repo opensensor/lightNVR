@@ -20,7 +20,7 @@ import { useI18n } from '../../../i18n.js';
 export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   const { t } = useI18n();
 
-  const safeUsers = Array.isArray(users) ? users : [];
+  const normalizedUsers = Array.isArray(users) ? users : [];
 
   // Sorting state
   const [sortColumn, setSortColumn] = useState(null);
@@ -36,8 +36,8 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
   };
 
   const sortedUsers = useMemo(() => {
-    if (!sortColumn) return safeUsers;
-    return [...safeUsers].sort((a, b) => {
+    if (!sortColumn) return normalizedUsers;
+    return [...normalizedUsers].sort((a, b) => {
       let aVal, bVal;
       if (sortColumn === 'id') {
         aVal = a.id || 0;
@@ -70,7 +70,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [safeUsers, sortColumn, sortDirection]);
+  }, [normalizedUsers, sortColumn, sortDirection]);
 
   // Create memoized handlers for each button to maintain stable references
   const handleEdit = useCallback((user, e) => {
@@ -130,10 +130,10 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-          {sortedUsers.map(user => (
-            <tr key={user.id} className="hover:bg-gray-100 dark:hover:bg-gray-600">
-              <td className="py-3 px-6 border-b border-border">{user.id}</td>
-              <td className="py-3 px-6 border-b border-border">{user.username}</td>
+          {sortedUsers.map((user, index) => (
+            <tr key={user.id != null ? `user-${user.id}` : `user-index-${index}`} className="hover:bg-gray-100 dark:hover:bg-gray-600">
+              <td className="py-3 px-6 border-b border-border">{user.id ?? '-'}</td>
+              <td className="py-3 px-6 border-b border-border">{user.username ?? '-'}</td>
               <td className="py-3 px-6 border-b border-border">{user.email || '-'}</td>
               <td className="py-3 px-6 border-b border-border">{getUserRoleLabel(t, user.role)}</td>
               <td className="py-3 px-6 border-b border-border">
