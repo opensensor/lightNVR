@@ -2,7 +2,7 @@
  * Users Table Component
  */
 
-import { useState } from 'preact/hooks';
+import { useState, useMemo, useCallback } from 'preact/hooks';
 import { getUserRoleLabel } from './UserRoles.js';
 import { formatLocalDateTime } from '../../../utils/date-utils.js';
 import { useI18n } from '../../../i18n.js';
@@ -35,7 +35,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
     }
   };
 
-  const sortedUsers = (() => {
+  const sortedUsers = useMemo(() => {
     if (!sortColumn) return safeUsers;
     return [...safeUsers].sort((a, b) => {
       let aVal, bVal;
@@ -70,32 +70,32 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
       if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  })();
+  }, [safeUsers, sortColumn, sortDirection]);
 
-  // Create direct handlers for each button
-  const handleEdit = (user, e) => {
+  // Create memoized handlers for each button to maintain stable references
+  const handleEdit = useCallback((user, e) => {
     e.preventDefault();
     e.stopPropagation();
     onEdit(user);
-  };
+  }, [onEdit]);
 
-  const handleDelete = (user, e) => {
+  const handleDelete = useCallback((user, e) => {
     e.preventDefault();
     e.stopPropagation();
     onDelete(user);
-  };
+  }, [onDelete]);
 
-  const handleApiKey = (user, e) => {
+  const handleApiKey = useCallback((user, e) => {
     e.preventDefault();
     e.stopPropagation();
     onApiKey(user);
-  };
+  }, [onApiKey]);
 
-  const handleMfa = (user, e) => {
+  const handleMfa = useCallback((user, e) => {
     e.preventDefault();
     e.stopPropagation();
     onMfa(user);
-  };
+  }, [onMfa]);
 
   return (
     <div className="overflow-x-auto">
@@ -173,7 +173,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
                     </svg>
                   </button>
                   <button
-                    className="p-1 text-gray-600 hover:text-gray-800 rounded hover:bg-gray-100 transition-colors"
+                    className="p-1 rounded transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--muted-foreground)_/_0.8)] hover:bg-[hsl(var(--muted)_/_0.5)]"
                     onClick={(e) => handleApiKey(user, e)}
                     title={t('users.manageApiKey')}
                   >
@@ -182,7 +182,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
                     </svg>
                   </button>
                   <button
-                    className="p-1 text-gray-600 hover:text-gray-800 rounded hover:bg-gray-100 transition-colors"
+                    className="p-1 rounded transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--muted-foreground)_/_0.8)] hover:bg-[hsl(var(--muted)_/_0.5)]"
                     onClick={(e) => handleMfa(user, e)}
                     title={t('users.manageMfa')}
                   >
