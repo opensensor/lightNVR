@@ -49,6 +49,21 @@ typedef struct {
     int initialized;
 } audio_transcoder_t;
 
+/**
+ * Get the effective encoder frame size, applying a fallback when the
+ * encoder does not set frame_size.
+ */
+static int get_encoder_frame_size(const AVCodecContext *encoder_ctx)
+{
+    if (!encoder_ctx) {
+        return DEFAULT_AAC_FRAME_SIZE;
+    }
+    if (encoder_ctx->frame_size > 0) {
+        return encoder_ctx->frame_size;
+    }
+    return DEFAULT_AAC_FRAME_SIZE;
+}
+
 // Global transcoder context for each stream
 static audio_transcoder_t audio_transcoders[MAX_STREAMS] = {0};
 static char audio_transcoder_stream_names[MAX_STREAMS][MAX_STREAM_NAME] = {{0}};
@@ -230,8 +245,7 @@ static int init_audio_transcoder(const char *stream_name,
     // AAC requires exactly frame_size (1024) samples per frame, but PCM
     // packets are typically much smaller (e.g. 160 samples at 8 kHz/20 ms).
     {
-        int enc_frame_size = audio_transcoders[slot].encoder_ctx->frame_size;
-        if (enc_frame_size <= 0) enc_frame_size = DEFAULT_AAC_FRAME_SIZE;
+        int enc_frame_size = get_encoder_frame_size(audio_transcoders[slot].encoder_ctx);
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(59, 37, 100)
         int nb_ch = audio_transcoders[slot].encoder_ctx->ch_layout.nb_channels;
 #else
