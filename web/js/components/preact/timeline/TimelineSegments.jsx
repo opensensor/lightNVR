@@ -119,25 +119,20 @@ export function TimelineSegments({ segments: propSegments }) {
     // Convert fractional hour → timestamp using the shared utility
     const clickTimestamp = timelineState.timelineHourToTimestamp(clickHour, timelineState.selectedDate);
 
-    // Move cursor to click position (don't auto-play)
+    // Find segment that contains this timestamp
+    const foundIndex = findContainingSegmentIndex(segments, clickTimestamp);
+
+    // Move cursor to click position and update segment index in a single atomic setState so
+    // that currentTime is never skipped by the "time-only update" batching logic.  When the
+    // two updates were separate, the first one (currentTime only) was sometimes throttled
+    // away within 250 ms of the previous notification, leaving the time display stale while
+    // the segment index had already advanced to the newly-clicked segment.
     timelineState.setState({
       currentTime: clickTimestamp,
       prevCurrentTime: timelineState.currentTime,
-      isPlaying: false
+      isPlaying: false,
+      currentSegmentIndex: foundIndex
     });
-
-    // Find segment that contains this timestamp
-    const foundIndex = findContainingSegmentIndex(segments, clickTimestamp);
-    const foundSegment = foundIndex !== -1;
-
-    if (foundSegment) {
-      // Clicking anywhere on the timeline (including segment bars) only seeks;
-      // the user must press Play to start playback.  This prevents unexpected
-      // auto-play when the user is just positioning the cursor.
-      timelineState.setState({ currentSegmentIndex: foundIndex });
-    } else {
-      timelineState.setState({ currentSegmentIndex: -1 });
-    }
   };
 
   // Handle keyboard navigation on the timeline for seeking
