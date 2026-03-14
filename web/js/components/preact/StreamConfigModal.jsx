@@ -332,7 +332,7 @@ export function StreamConfigModal({
     };
 
     loadZones();
-  }, [isEditing, currentStream.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isEditing, currentStream.name, onInputChangeRef]);
 
   const handleZonesChange = (zones) => {
     setDetectionZones(zones);
@@ -459,15 +459,18 @@ export function StreamConfigModal({
                   <p className="mt-1 text-xs text-muted-foreground">
                     {t('streamsConfig.streamTagsHelpBefore')} <span className="font-mono">outdoor,critical</span>. {t('streamsConfig.streamTagsHelpAfter')}
                   </p>
-                  {(currentStream.tags || '').split(',').filter(t => t.trim()).length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {(currentStream.tags || '').split(',').filter(t => t.trim()).map(tag => (
-                        <span key={tag.trim()} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">
-                          #{tag.trim()}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    const tagsArray = (currentStream.tags || '').split(',').map(tag => tag.trim()).filter(Boolean);
+                    return tagsArray.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {tagsArray.map(tag => (
+                          <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex items-center space-x-6">
@@ -740,7 +743,7 @@ export function StreamConfigModal({
                         id="stream-record-audio"
                         name="recordAudio"
                         className="h-4 w-4 rounded border-gray-300"
-                        style={{accentColor: 'hsl(var(--primary))'}}
+                        style={primaryAccentStyle}
                         checked={currentStream.recordAudio}
                         onChange={onInputChange}
                       />
@@ -752,7 +755,7 @@ export function StreamConfigModal({
                         id="stream-backchannel-enabled"
                         name="backchannelEnabled"
                         className="h-4 w-4 rounded border-gray-300"
-                        style={{accentColor: 'hsl(var(--primary))'}}
+                        style={primaryAccentStyle}
                         checked={currentStream.backchannelEnabled}
                         onChange={onInputChange}
                       />
@@ -1153,7 +1156,7 @@ export function StreamConfigModal({
                         id="motion-recording-enabled"
                         name="motionRecordingEnabled"
                         className="h-4 w-4 rounded border-gray-300"
-                        style={{accentColor: 'hsl(var(--primary))'}}
+                        style={primaryAccentStyle}
                         checked={currentStream.motionRecordingEnabled}
                         onChange={onInputChange}
                       />
