@@ -110,7 +110,10 @@ typedef struct {
     uint64_t total_detections;
     uint64_t total_recordings;
 
-    // Runtime FPS measurement (used when SDP omits frame rate)
+    // Runtime FPS measurement (used when SDP omits frame rate). After enough frames
+    // have been observed in the measurement window, the measured FPS is finalized,
+    // fps_is_provisional is set to false, and the resulting FPS value is persisted
+    // to the database for future use.
     bool fps_is_provisional;          // true when stored FPS is a fallback guess
     int fps_measurement_frame_count;  // video frames counted during measurement window
     struct timespec fps_measurement_start; // start of measurement window
