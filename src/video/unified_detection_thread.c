@@ -69,7 +69,8 @@
 #define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
 
 // Video/default FPS settings
-#define DEFAULT_FPS_FALLBACK 15  // Conservative default for cameras that omit FPS in SDP
+#define DEFAULT_FPS_FALLBACK 15  // Conservative low-end fallback for cameras that omit FPS in SDP; intentionally underestimates typical 25/30 FPS to avoid overestimating duration/bitrate when actual FPS is unknown
+#define FPS_MEASUREMENT_WINDOW_SEC 5  // Seconds of frame arrivals to measure before refining provisional FPS
 
 // Motion detection settings
 static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Fallback sensitivity if threshold is unset or out of range
@@ -88,6 +89,17 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt);
 static int udt_start_recording(unified_detection_ctx_t *ctx);
 static int udt_stop_recording(unified_detection_ctx_t *ctx);
 static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx);
+/**
+ * Helper to update stored video parameters, distinguishing between
+ * container-derived FPS values and provisional fallbacks that should
+ * later be refined using runtime measurement of frame arrival times.
+ */
+static void udt_update_stream_video_params(unified_detection_ctx_t *ctx,
+                                           int det_width,
+                                           int det_height,
+                                           int det_fps,
+                                           const char *det_codec,
+                                           bool fps_is_provisional);
 static const char* state_to_string(unified_detection_state_t state);
 
 /**
@@ -818,6 +830,7 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         int det_height = cp->height;
         int det_fps = 0;
         const char *det_codec = NULL;
+        bool fps_is_provisional = false;
 
         if (vs->avg_frame_rate.den > 0 && vs->avg_frame_rate.num > 0) {
             det_fps = (int)(vs->avg_frame_rate.num / vs->avg_frame_rate.den);
@@ -834,7 +847,10 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         }
         if (det_fps <= 0) {
             det_fps = DEFAULT_FPS_FALLBACK; // conservative default for cameras that omit FPS in SDP
-            log_debug("[%s] FPS unknown from SDP; defaulting to %d fps", ctx->stream_name, det_fps);
+            fps_is_provisional = true;
+            log_debug("[%s] FPS unknown from SDP; defaulting provisionally to %d fps; "
+                      "runtime frame arrival will be used to refine this value",
+                      ctx->stream_name, det_fps);
         }
 
         const AVCodecDescriptor *desc = avcodec_descriptor_get(cp->codec_id);
@@ -843,15 +859,44 @@ static int connect_to_stream(unified_detection_ctx_t *ctx) {
         }
 
         if (det_width > 0 && det_height > 0) {
-            log_info("[%s] Detected video params: %dx%d @ %d fps, codec=%s",
+            log_info("[%s] Detected video params: %dx%d @ %d fps%s, codec=%s",
                      ctx->stream_name, det_width, det_height, det_fps,
+                     fps_is_provisional ? " (provisional)" : "",
                      det_codec ? det_codec : "unknown");
-            update_stream_video_params(ctx->stream_name, det_width, det_height,
-                                       det_fps, det_codec);
+            udt_update_stream_video_params(ctx, det_width, det_height,
+                                           det_fps, det_codec, fps_is_provisional);
         }
     }
 
     return 0;
+}
+
+/**
+ * Update stored video parameters, tracking whether the FPS value is provisional.
+ * When fps_is_provisional is true, the runtime frame-arrival measurement in
+ * process_packet() will later refine the stored FPS once enough frames have
+ * been observed.
+ */
+static void udt_update_stream_video_params(unified_detection_ctx_t *ctx,
+                                           int det_width,
+                                           int det_height,
+                                           int det_fps,
+                                           const char *det_codec,
+                                           bool fps_is_provisional) {
+    if (!ctx) return;
+
+    pthread_mutex_lock(&ctx->mutex);
+    ctx->fps_is_provisional = fps_is_provisional;
+    if (fps_is_provisional) {
+        // Reset measurement counters so process_packet() can start measuring
+        ctx->fps_measurement_frame_count = 0;
+        clock_gettime(CLOCK_MONOTONIC, &ctx->fps_measurement_start);
+    }
+    pthread_mutex_unlock(&ctx->mutex);
+
+    // Persist the (possibly provisional) values to the database
+    update_stream_video_params(ctx->stream_name, det_width, det_height,
+                               det_fps, det_codec);
 }
 
 /**
@@ -1148,10 +1193,53 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt) {
     bool is_video = (pkt->stream_index == ctx->video_stream_idx);
     bool is_keyframe = is_video && (pkt->flags & AV_PKT_FLAG_KEY);
 
-    // Update statistics
+    // Update statistics and runtime FPS measurement
     pthread_mutex_lock(&ctx->mutex);
     ctx->total_packets_processed++;
+
+    // Runtime FPS refinement: count video frames over a measurement window
+    // and update the stored FPS once we have enough data.
+    if (is_video && ctx->fps_is_provisional) {
+        ctx->fps_measurement_frame_count++;
+
+        struct timespec ts_now;
+        clock_gettime(CLOCK_MONOTONIC, &ts_now);
+        double elapsed = (ts_now.tv_sec - ctx->fps_measurement_start.tv_sec)
+                       + (ts_now.tv_nsec - ctx->fps_measurement_start.tv_nsec) / 1e9;
+
+        if (elapsed >= FPS_MEASUREMENT_WINDOW_SEC && ctx->fps_measurement_frame_count > 1) {
+            int measured_fps = (int)(ctx->fps_measurement_frame_count / elapsed + 0.5);
+            if (measured_fps > 0) {
+                log_info("[%s] Runtime FPS measurement: %d fps (measured %d frames over %.1fs); "
+                         "updating stored value from provisional %d fps",
+                         ctx->stream_name, measured_fps,
+                         ctx->fps_measurement_frame_count, elapsed,
+                         DEFAULT_FPS_FALLBACK);
+                ctx->fps_is_provisional = false;
+
+                // Retrieve current width/height/codec from the stream so we
+                // don't clobber them when updating only FPS.
+                int cur_w = 0, cur_h = 0;
+                const char *cur_codec = NULL;
+                if (ctx->input_ctx && ctx->video_stream_idx >= 0) {
+                    const AVCodecParameters *cp2 =
+                        ctx->input_ctx->streams[ctx->video_stream_idx]->codecpar;
+                    cur_w = cp2->width;
+                    cur_h = cp2->height;
+                    const AVCodecDescriptor *d = avcodec_descriptor_get(cp2->codec_id);
+                    if (d) cur_codec = d->name;
+                }
+
+                // Release mutex before DB call to avoid holding it during I/O
+                pthread_mutex_unlock(&ctx->mutex);
+                update_stream_video_params(ctx->stream_name, cur_w, cur_h,
+                                           measured_fps, cur_codec);
+                goto stats_done;
+            }
+        }
+    }
     pthread_mutex_unlock(&ctx->mutex);
+stats_done:
 
     // Always add packets to circular buffer (for pre-detection content)
     // The buffer automatically evicts old packets when full

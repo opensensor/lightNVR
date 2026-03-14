@@ -20,10 +20,15 @@ import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
 // Adjust these values to tune reliability vs. latency.
+// Configuration for detecting lack of incoming video data.
+// MAX_VIDEO_DATA_CHECKS × VIDEO_DATA_CHECK_INTERVAL_MS defines the total
+// time we will wait for video frames before surfacing an error.
+const MAX_VIDEO_DATA_CHECKS = 6; // 6 checks × 15s = 90s total
+const VIDEO_DATA_CHECK_INTERVAL_MS = 15000; // 15 seconds between checks
 const MIN_NO_DATA_CHECKS_BEFORE_RETRY = 2;
 const MAX_NO_DATA_RECONNECT_ATTEMPTS = 3;
 const MAX_OFFER_RETRIES = 4;
-const BASE_RETRY_DELAY_MS = 1500; // 1.5s, 3s, 6s, 12s
+const BASE_RETRY_DELAY_MS = 1500; // base delay for exponential backoff: 1.5s, 3s, 6s, 12s, 24s, ...
 
 // Connection quality classification thresholds
 // Packet loss values are percentages (0-100), RTT and jitter are in seconds.
@@ -115,7 +120,7 @@ export function WebRTCVideoCell({
   const abortControllerRef = useRef(null);
   const connectionMonitorRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
-  const refreshRequestedRef = useRef(false);  // Track if we've already requested a refresh for this connection attempt
+  const connectionRefreshRequestedRef = useRef(false);  // Track if we've already requested a refresh for this connection attempt
   const noDataReconnectAttemptsRef = useRef(0); // Separate counter for ICE-connected-but-no-data retries
   const localStreamRef = useRef(null);
   const audioSenderRef = useRef(null);
@@ -132,7 +137,7 @@ export function WebRTCVideoCell({
     setError(null);
 
     // Reset the refresh flag for this new connection attempt
-    refreshRequestedRef.current = false;
+    connectionRefreshRequestedRef.current = false;
 
     // Store cleanup functions
     let connectionTimeout = null;
@@ -250,8 +255,8 @@ export function WebRTCVideoCell({
           clearTimeout(videoDataTimeout);
         }
         let videoDataCheckCount = 0;
-        const maxVideoDataChecks = 6; // 6 checks × 15s = 90s total
-        const videoDataCheckInterval = 15000; // 15 seconds between checks
+        const maxVideoDataChecks = MAX_VIDEO_DATA_CHECKS;
+        const videoDataCheckInterval = VIDEO_DATA_CHECK_INTERVAL_MS;
 
         const scheduleVideoDataCheck = () => {
           videoDataTimeout = setTimeout(() => {
@@ -298,16 +303,19 @@ export function WebRTCVideoCell({
               // Uses a dedicated counter (noDataReconnectAttemptsRef) so that
               // the ICE-connected reset of reconnectAttemptsRef doesn't
               // inadvertently allow infinite no-data retries.
-              if (videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
-                  (iceState === 'connected' || iceState === 'completed') &&
-                  !refreshRequestedRef.current &&
-                  noDataReconnectAttemptsRef.current < MAX_NO_DATA_RECONNECT_ATTEMPTS) {
-                refreshRequestedRef.current = true;
+              const shouldAttemptNoDataReconnect = () => (
+                videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
+                (iceState === 'connected' || iceState === 'completed') &&
+                !connectionRefreshRequestedRef.current &&
+                noDataReconnectAttemptsRef.current < MAX_NO_DATA_RECONNECT_ATTEMPTS
+              );
+              if (shouldAttemptNoDataReconnect()) {
+                connectionRefreshRequestedRef.current = true;
                 noDataReconnectAttemptsRef.current++;
                 console.log(
                   `Auto-reconnecting stream ${stream.name}: ICE connected but no video data ` +
                   `after ${videoDataCheckCount * videoDataCheckInterval / 1000}s ` +
-                  `(attempt ${noDataReconnectAttemptsRef.current}/3)`
+                  `(attempt ${noDataReconnectAttemptsRef.current}/${MAX_NO_DATA_RECONNECT_ATTEMPTS})`
                 );
                 (async () => {
                   try {
@@ -435,8 +443,8 @@ export function WebRTCVideoCell({
         }
 
         // Auto-refresh and retry if we haven't already for this connection attempt
-        if (!refreshRequestedRef.current && reconnectAttemptsRef.current < 3) {
-          refreshRequestedRef.current = true;
+        if (!connectionRefreshRequestedRef.current && reconnectAttemptsRef.current < 3) {
+          connectionRefreshRequestedRef.current = true;
           reconnectAttemptsRef.current++;
           console.log(`Auto-refreshing go2rtc registration for stream ${stream.name} (attempt ${reconnectAttemptsRef.current}/3)`);
 
@@ -855,7 +863,7 @@ export function WebRTCVideoCell({
 
     // Reset auto-retry counters on manual retry (user gets fresh attempts)
     reconnectAttemptsRef.current = 0;
-    refreshRequestedRef.current = false;
+    connectionRefreshRequestedRef.current = false;
     noDataReconnectAttemptsRef.current = 0;
 
     // Refresh the stream's go2rtc registration before retrying
