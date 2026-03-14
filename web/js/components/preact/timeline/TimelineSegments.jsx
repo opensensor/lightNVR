@@ -38,8 +38,7 @@ export function TimelineSegments({ segments: propSegments }) {
     const unsubscribe = timelineState.subscribe(state => {
       // Update segments when they change
       if (state.timelineSegments) {
-        const changed = state.timelineSegments.length !== lastSegmentsRef.current.length
-          || state.forceReload
+        const changed = state.forceReload
           || state.timelineSegments !== lastSegmentsRef.current;
         if (changed) {
           setSegments(state.timelineSegments);
@@ -56,7 +55,7 @@ export function TimelineSegments({ segments: propSegments }) {
     if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
       setSegments(timelineState.timelineSegments);
       lastSegmentsRef.current = timelineState.timelineSegments;
-      currentSegmentIndexRef.current = timelineState.currentSegmentIndex ?? 0;
+      currentSegmentIndexRef.current = timelineState.currentSegmentIndex ?? -1;
       if (timelineState.timelineStartHour !== undefined) setStartHour(timelineState.timelineStartHour);
       if (timelineState.timelineEndHour !== undefined)   setEndHour(timelineState.timelineEndHour);
     }
@@ -136,9 +135,7 @@ export function TimelineSegments({ segments: propSegments }) {
       // the user must press Play to start playback.  This prevents unexpected
       // auto-play when the user is just positioning the cursor.
       timelineState.setState({ currentSegmentIndex: foundIndex });
-    }
-
-    if (!foundSegment) {
+    } else {
       timelineState.setState({ currentSegmentIndex: -1 });
     }
   };
