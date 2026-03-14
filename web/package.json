@@ -26,6 +26,9 @@
     "tailwindcss": "^4.1.18",
     "webrtc-adapter": "^9.0.3"
   },
+  "overrides": {
+    "yauzl": ">=3.2.1"
+  },
   "devDependencies": {
     "@babel/preset-env": "^7.29.0",
     "@preact/preset-vite": "^2.10.3",

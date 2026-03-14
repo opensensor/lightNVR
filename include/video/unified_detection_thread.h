@@ -189,8 +189,22 @@ unified_detection_state_t get_unified_detection_state(const char *stream_name);
 stream_status_t get_unified_detection_effective_status(const char *stream_name);
 
 /**
+ * Get the number of reconnect attempts made by a unified detection thread.
+ *
+ * This counter increments each time the UDT fails to open the RTSP stream
+ * and transitions through UDT_STATE_RECONNECTING back to UDT_STATE_CONNECTING.
+ * A value > 0 means the initial connection was never established (or was lost),
+ * making it a reliable proxy for "how many times has this stream failed" for
+ * go2rtc-managed streams where the state manager stays at STREAM_STATE_INACTIVE.
+ *
+ * @param stream_name Name of the stream
+ * @return Reconnect attempt count, or 0 if not found
+ */
+int get_unified_detection_reconnect_attempts(const char *stream_name);
+
+/**
  * Get statistics for a unified detection thread
- * 
+ *
  * @param stream_name Name of the stream
  * @param packets_processed Output: total packets processed
  * @param detections Output: total detections

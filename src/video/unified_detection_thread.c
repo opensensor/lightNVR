@@ -647,6 +647,24 @@ stream_status_t get_unified_detection_effective_status(const char *stream_name) 
 }
 
 /**
+ * Get the number of reconnect attempts made by a unified detection thread.
+ */
+int get_unified_detection_reconnect_attempts(const char *stream_name) {
+    if (!stream_name) {
+        return 0;
+    }
+
+    pthread_mutex_lock(&contexts_mutex);
+
+    unified_detection_ctx_t *ctx = find_context_by_name(stream_name);
+    int attempts = ctx ? ctx->reconnect_attempt : 0;
+
+    pthread_mutex_unlock(&contexts_mutex);
+
+    return attempts;
+}
+
+/**
  * Get statistics for a unified detection thread
  */
 int get_unified_detection_stats(const char *stream_name,

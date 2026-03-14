@@ -21,6 +21,7 @@
 #include "video/streams.h"
 #include "database/db_streams.h"
 #include "video/stream_state.h"
+#include "video/unified_detection_thread.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -517,6 +518,18 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
 
 /**
  * @brief Check if a stream needs re-registration with go2rtc
+ *
+ * Two signal sources are consulted in order:
+ *
+ * 1. Stream state manager (ERROR / RECONNECTING states).  Used by non-go2rtc
+ *    streams or any stream whose state transitions are tracked explicitly.
+ *
+ * 2. Unified Detection Thread reconnect_attempt counter (UDT fallback).
+ *    When go2rtc manages a stream, start_stream_with_state() is never called
+ *    at startup, so the state manager stays permanently at STREAM_STATE_INACTIVE.
+ *    In that case we use the UDT's reconnect_attempt count as the failure
+ *    signal — it increments each time the UDT fails to open the RTSP stream
+ *    that go2rtc is supposed to be relaying.
  */
 static bool stream_needs_reregistration(const char *stream_name) {
     if (!stream_name) {
@@ -532,16 +545,32 @@ static bool stream_needs_reregistration(const char *stream_name) {
         return false;
     }
 
+    time_t now = time(NULL);
+    time_t last_reregister = atomic_load(&state->protocol_state.last_reconnect_time);
+    bool cooldown_elapsed = (now - last_reregister >= STREAM_REREGISTRATION_COOLDOWN_SEC);
+
+    /* --- Path 1: state-manager driven (non-go2rtc / explicitly tracked streams) --- */
     if (state->state == STREAM_STATE_ERROR || state->state == STREAM_STATE_RECONNECTING) {
         int failures = atomic_load(&state->protocol_state.reconnect_attempts);
 
-        if (failures >= STREAM_MAX_CONSECUTIVE_FAILURES) {
-            time_t now = time(NULL);
-            time_t last_reregister = atomic_load(&state->protocol_state.last_reconnect_time);
+        if (failures >= STREAM_MAX_CONSECUTIVE_FAILURES && cooldown_elapsed) {
+            log_info("Stream %s has %d consecutive failures (state-manager), needs re-registration",
+                    stream_name, failures);
+            return true;
+        }
+        return false;  /* waiting on threshold or cooldown */
+    }
 
-            if (now - last_reregister >= STREAM_REREGISTRATION_COOLDOWN_SEC) {
-                log_info("Stream %s has %d consecutive failures, needs re-registration",
-                        stream_name, failures);
+    /* --- Path 2: UDT fallback for go2rtc-managed streams (state == INACTIVE) --- */
+    if (state->state == STREAM_STATE_INACTIVE) {
+        stream_status_t udt_status = get_unified_detection_effective_status(stream_name);
+
+        if (udt_status == STREAM_STATUS_RECONNECTING) {
+            int udt_attempts = get_unified_detection_reconnect_attempts(stream_name);
+
+            if (udt_attempts >= STREAM_MAX_CONSECUTIVE_FAILURES && cooldown_elapsed) {
+                log_info("Stream %s has %d UDT reconnect attempts, needs go2rtc re-registration",
+                        stream_name, udt_attempts);
                 return true;
             }
         }
@@ -552,6 +581,17 @@ static bool stream_needs_reregistration(const char *stream_name) {
 
 /**
  * @brief Check stream consensus - if all/most streams are down, it's likely go2rtc
+ *
+ * Two signal sources are used per stream so that go2rtc-managed streams
+ * (whose state manager stays permanently at STREAM_STATE_INACTIVE) are still
+ * counted correctly:
+ *
+ *  • State manager ERROR / RECONNECTING  — explicit failure (non-go2rtc path)
+ *  • UDT STREAM_STATUS_RECONNECTING      — UDT fallback for INACTIVE streams
+ *
+ * Streams in INACTIVE state with no running UDT have no reliable failure signal
+ * and are counted in the total but not in the failed set, which keeps the check
+ * conservatively correct (requires a higher real failure rate to trigger).
  */
 static bool check_stream_consensus(void) {
     int total_streams = 0;
@@ -575,20 +615,29 @@ static bool check_stream_consensus(void) {
         total_streams++;
 
         stream_state_manager_t *state = get_stream_state_by_name(config.name);
-        if (state) {
-            pthread_mutex_lock(&state->mutex);
-            stream_state_t current_state = state->state;
-            pthread_mutex_unlock(&state->mutex);
+        if (!state) continue;
 
-            if (current_state == STREAM_STATE_ERROR ||
-                current_state == STREAM_STATE_RECONNECTING) {
+        pthread_mutex_lock(&state->mutex);
+        stream_state_t current_state = state->state;
+        pthread_mutex_unlock(&state->mutex);
+
+        if (current_state == STREAM_STATE_ERROR ||
+            current_state == STREAM_STATE_RECONNECTING) {
+            /* State-manager path: explicit failure tracked by the stream manager */
+            failed_streams++;
+        } else if (current_state == STREAM_STATE_INACTIVE) {
+            /* UDT fallback: go2rtc-managed streams never leave INACTIVE.
+             * Count the stream as failed if the UDT is actively reconnecting,
+             * which means the RTSP relay that go2rtc should be providing is
+             * not reachable. */
+            if (get_unified_detection_effective_status(config.name) == STREAM_STATUS_RECONNECTING) {
                 failed_streams++;
             }
         }
     }
 
-    // Majority (>50%) of streams failing indicates a go2rtc-level issue,
-    // not just an individual camera being offline.
+    /* Majority (>50%) of streams failing indicates a go2rtc-level issue,
+     * not just an individual camera being offline. */
     if (total_streams >= PROCESS_MIN_STREAMS_FOR_CONSENSUS &&
         failed_streams * 2 > total_streams) {
         log_warn("Stream consensus: %d/%d streams failed (majority) - indicates go2rtc issue",
