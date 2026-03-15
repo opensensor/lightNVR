@@ -163,8 +163,6 @@ export function TimelinePlayer({ videoElementRef = null }) {
   }, [
     cleanupPreloadedVideo,
     releaseDirectVideoControl,
-    playbackSpeed,
-    detectionOverlayEnabled,
   ]);
 
   // Subscribe to timeline state changes
