@@ -827,7 +827,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
       showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
     }, 'image/jpeg', 0.95);
-  }, [segmentRecordingData]);
+  }, [segmentRecordingData, t]);
 
   return (
     <>
