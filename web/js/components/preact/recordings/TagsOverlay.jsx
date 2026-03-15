@@ -114,6 +114,7 @@ export function TagsOverlay({ recording, onClose, onTagsChanged }) {
 
   return (
     <div ref={overlayRef}
+      data-keyboard-nav-preserve
       class="absolute z-50 bg-card border border-border rounded-lg shadow-lg p-3 w-64"
       style={{ minWidth: '240px' }}
     >

@@ -148,6 +148,7 @@ export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, conf
   return createPortal(
     <div
       ref={backdropRef}
+      data-keyboard-nav-preserve
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
       onClick={handleBackdropClick}
     >

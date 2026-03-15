@@ -855,7 +855,6 @@ export function TimelinePage() {
     data: timelineData,
     isLoading: isLoadingTimeline,
     error: timelineError,
-    refetch: refetchTimeline
   } = useQuery(
     ['timeline-segments', selectedStream, selectedDate],
     timelineUrl,
@@ -893,6 +892,43 @@ export function TimelinePage() {
       successMessage: `Loaded ${timelineSegments.length} recording segments`
     });
   }, [timelineData, timelineError, selectedDate, loadSegmentsIntoTimeline]);
+
+  // Transparent polling: silently fetch for new recordings every 30 s (normal mode only)
+  useEffect(() => {
+    if (idsMode || !selectedStream || !timelineUrl) return;
+
+    const POLL_INTERVAL_MS = 30000;
+
+    const pollForNewRecordings = async () => {
+      try {
+        const response = await fetch(timelineUrl);
+        if (!response.ok) return;
+        const data = await response.json();
+        const polledSegments = data.segments || [];
+        if (polledSegments.length === 0) return;
+
+        const currentSegs = timelineState.timelineSegments || [];
+        const currentIds = new Set(currentSegs.map(s => String(s.id)));
+        const addedSegs = polledSegments.filter(s => !currentIds.has(String(s.id)));
+
+        if (addedSegs.length > 0) {
+          const merged = [...currentSegs, ...addedSegs].sort((a, b) => a.start_timestamp - b.start_timestamp);
+          setSegments(merged);
+          timelineState.setState({ timelineSegments: merged });
+          showStatusMessage(
+            `${addedSegs.length} new recording${addedSegs.length !== 1 ? 's' : ''} added to timeline`,
+            'info',
+            3000
+          );
+        }
+      } catch (err) {
+        console.debug('Timeline poll error (suppressed):', err);
+      }
+    };
+
+    const intervalId = setInterval(pollForNewRecordings, POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [idsMode, selectedStream, timelineUrl]);
 
   useEffect(() => {
     if (!idsMode || idsAvailableDates.length === 0) return undefined;
@@ -1185,14 +1221,6 @@ export function TimelinePage() {
             <label className="block text-xs text-muted-foreground mb-1">{t('timeline.date')}</label>
             <CalendarPicker value={selectedDate} onChange={handleDateChange} />
           </div>
-          <button
-            data-keyboard-nav-preserve
-            className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1.5 rounded"
-            onClick={() => refetchTimeline()}
-            title={t('timeline.reloadTimelineData')}
-          >
-            ↻ {t('common.refresh')}
-          </button>
           {isLoadingTimeline && (
             <span className="text-xs text-muted-foreground italic">{t('common.loading')}</span>
           )}
