@@ -286,7 +286,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
     // Set new source
     video.src = recordingUrl;
     video.load();
-  }, [videoRef, playbackSpeed]);
+  }, [playbackSpeed]);
 
   // Handle video ended event
   const handleEnded = () => {
