@@ -163,8 +163,6 @@ export function TimelinePlayer({ videoElementRef = null }) {
   }, [
     cleanupPreloadedVideo,
     releaseDirectVideoControl,
-    playbackSpeed,
-    detectionOverlayEnabled,
   ]);
 
   // Subscribe to timeline state changes
@@ -286,7 +284,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
     // Set new source
     video.src = recordingUrl;
     video.load();
-  }, [videoRef, playbackSpeed]);
+  }, [playbackSpeed]);
 
   // Handle video ended event
   const handleEnded = () => {
@@ -752,7 +750,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       console.error('Error toggling fullscreen:', error);
       showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: error.message }), 'error');
     }
-  }, []);
+  }, [t]);
 
   // Get current segment ID
   const currentSegmentId = (currentSegmentIndex >= 0 && segments.length > 0 && currentSegmentIndex < segments.length)
@@ -778,7 +776,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
       setShowDeleteConfirm(false);
     }
-  }, [currentSegmentId]);
+  }, [currentSegmentId, t]);
 
   // Take a snapshot of the current video frame
   const handleSnapshot = useCallback(() => {
@@ -827,7 +825,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
       showStatusMessage(`Snapshot saved: ${fileName}`, 'success', 2000);
     }, 'image/jpeg', 0.95);
-  }, [segmentRecordingData]);
+  }, [segmentRecordingData, t]);
 
   return (
     <>
