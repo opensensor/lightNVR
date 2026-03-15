@@ -778,7 +778,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       showStatusMessage(t('recordings.errorMessage', { message: error.message }), 'error');
       setShowDeleteConfirm(false);
     }
-  }, [currentSegmentId]);
+  }, [currentSegmentId, t]);
 
   // Take a snapshot of the current video frame
   const handleSnapshot = useCallback(() => {
