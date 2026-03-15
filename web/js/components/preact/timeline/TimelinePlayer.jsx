@@ -752,7 +752,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
       console.error('Error toggling fullscreen:', error);
       showStatusMessage(t('timeline.couldNotToggleFullscreen', { message: error.message }), 'error');
     }
-  }, []);
+  }, [t]);
 
   // Get current segment ID
   const currentSegmentId = (currentSegmentIndex >= 0 && segments.length > 0 && currentSegmentIndex < segments.length)
