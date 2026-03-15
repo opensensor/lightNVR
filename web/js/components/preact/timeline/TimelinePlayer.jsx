@@ -288,9 +288,16 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
   // Handle video ended event
   const handleEnded = () => {
-    if (currentSegmentIndex < segments.length - 1) {
-      const nextIndex = currentSegmentIndex + 1;
-      const nextSegment = segments[nextIndex];
+    // Use global state rather than local component state to avoid stale-closure
+    // bugs where currentSegmentIndex / segments lag behind the true state.
+    const currentIdx = timelineState.currentSegmentIndex;
+    const allSegments = timelineState.timelineSegments;
+
+    if (!allSegments || currentIdx < 0) return;
+
+    if (currentIdx < allSegments.length - 1) {
+      const nextIndex = currentIdx + 1;
+      const nextSegment = allSegments[nextIndex];
 
       // Warm the browser cache for the next segment in the background using a
       // temporary video element.  The actual loading and seeking is handled by
@@ -872,10 +879,13 @@ export function TimelinePlayer({ videoElementRef = null }) {
       </div>
 
       {/* Compact toolbar: detections toggle | action buttons | speed */}
-      {/* data-keyboard-nav-preserve: clicking here must not exit 'fine' keyboard mode */}
-      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1" data-keyboard-nav-preserve>
+      {/* Each individual control carries data-keyboard-nav-preserve so that clicking
+          a control does not exit 'fine' keyboard mode, while clicks on the empty
+          background area between controls (which land on the wrapper div itself)
+          are treated as page-background clicks and restore 'broad' mode. */}
+      <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mb-1">
         {/* Detection toggle */}
-        <label className="flex items-center gap-1.5 cursor-pointer">
+        <label className="flex items-center gap-1.5 cursor-pointer" data-keyboard-nav-preserve>
           <input
             type="checkbox"
             id="timeline-detection-overlay"
@@ -890,6 +900,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
 
         <button
           type="button"
+          data-keyboard-nav-preserve
           className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-[11px]"
           onClick={handleToggleFullscreen}
           title={isFullscreen ? t('timeline.exitFullscreen') : t('timeline.enterFullscreen')}
@@ -901,6 +912,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
         {currentSegmentId && (
           <div className="flex items-center gap-1">
             <button
+              data-keyboard-nav-preserve
               className="px-2 py-1 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 transition-colors flex items-center text-[11px]"
               onClick={handleSnapshot}
               title={t('timeline.takeSnapshot')}
@@ -908,6 +920,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
               📷 {t('timeline.snapshot')}
             </button>
             <a
+              data-keyboard-nav-preserve
               className="px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors flex items-center text-[11px]"
               href={`/api/recordings/download/${currentSegmentId}`}
               download
@@ -915,6 +928,7 @@ export function TimelinePlayer({ videoElementRef = null }) {
               ↓ {t('recordings.download')}
             </a>
             <button
+              data-keyboard-nav-preserve
               className="px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center text-[11px]"
               onClick={() => setShowDeleteConfirm(true)}
               title={t('timeline.deleteRecording')}

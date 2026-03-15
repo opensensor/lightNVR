@@ -321,6 +321,26 @@ export function TimelinePage() {
     const effectiveDuration = Number.isFinite(videoPlayer.duration) && videoPlayer.duration > 0
       ? videoPlayer.duration
       : fallbackDuration;
+
+    // Forward auto-advance: if seeking past the end of this segment, jump to
+    // the beginning of the next segment (mirrors backward auto-advance above).
+    if (directionSeconds > 0 && videoPlayer.currentTime + directionSeconds >= effectiveDuration) {
+      const nextIndex = activeIndex + 1;
+      const nextSegment = timelineState.timelineSegments?.[nextIndex];
+      if (nextSegment) {
+        timelineState.setState({
+          currentSegmentIndex: nextIndex,
+          currentTime: nextSegment.start_timestamp,
+          prevCurrentTime: timelineState.currentTime,
+          isPlaying: timelineState.isPlaying,
+          forceReload: true
+        });
+      }
+      // Return true whether or not there is a next segment, so the browser
+      // does not scroll the page on the key press.
+      return true;
+    }
+
     const nextTime = getSteppedVideoTime(videoPlayer.currentTime, directionSeconds, effectiveDuration);
 
     try {
@@ -374,6 +394,14 @@ export function TimelinePage() {
       if (event.key === ' ') {
         const videoPlayer = videoElementRef.current;
         if (videoPlayer) {
+          // When the video element itself has focus the browser's native controls
+          // already handle the space key — if we also toggle here the two actions
+          // cancel each other out.  Prevent the default scroll but let the native
+          // control do the toggling.
+          if (event.target === videoPlayer) {
+            event.preventDefault();
+            return;
+          }
           event.preventDefault();
           if (videoPlayer.paused) {
             videoPlayer.play().catch(e => {
@@ -930,7 +958,12 @@ export function TimelinePage() {
     return () => window.removeEventListener('timeline-recording-deleted', handleTimelineDeleted);
   }, []);
 
-  const handleStreamChange = (e) => setSelectedStream(e.target.value);
+  const handleStreamChange = (e) => {
+    setSelectedStream(e.target.value);
+    // Blur the select so it no longer intercepts keyboard events after the
+    // selection is made, preserving the current keyboard-nav mode.
+    e.target.blur();
+  };
 
   const handleDateChange = (newDate) => {
     if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
@@ -992,9 +1025,10 @@ export function TimelinePage() {
           </span>
         </div>
 
-        {/* Timeline */}
+        {/* Timeline — clicking anywhere on it should not change the keyboard-nav mode */}
         <div
           id="timeline-container"
+          data-keyboard-nav-preserve
           className="relative w-full h-24 bg-secondary border border-input rounded-lg mb-2 overflow-hidden"
           ref={timelineContainerRef}
         >
@@ -1079,6 +1113,7 @@ export function TimelinePage() {
               <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{t('timeline.activeDay')}</span>
               <button
                 type="button"
+                data-keyboard-nav-preserve
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50"
                 disabled={idsSelectedDayIndex <= 0}
                 onClick={() => jumpIdsDay(-1)}
@@ -1087,6 +1122,7 @@ export function TimelinePage() {
                 ←
               </button>
               <select
+                data-keyboard-nav-preserve
                 className="min-w-[180px] rounded border border-border bg-background px-2 py-1 text-xs"
                 value={selectedDate}
                 onChange={(e) => handleIdsDayChange(e.target.value)}
@@ -1099,6 +1135,7 @@ export function TimelinePage() {
               </select>
               <button
                 type="button"
+                data-keyboard-nav-preserve
                 className="btn-secondary text-xs px-2 py-1 disabled:opacity-50"
                 disabled={idsSelectedDayIndex === -1 || idsSelectedDayIndex >= idsAvailableDates.length - 1}
                 onClick={() => jumpIdsDay(1)}
@@ -1113,10 +1150,11 @@ export function TimelinePage() {
             </div>
           )}
           <div className="ml-auto flex gap-2">
-            <a href={returnUrl || 'recordings.html'} className="btn-secondary text-xs px-2 py-1">
+            <a href={returnUrl || 'recordings.html'} data-keyboard-nav-preserve className="btn-secondary text-xs px-2 py-1">
               ← {t('timeline.refineSelections')}
             </a>
             <button
+              data-keyboard-nav-preserve
               className="btn-primary text-xs px-2 py-1"
               onClick={() => setIsDownloadModalOpen(true)}
               disabled={selectedRecordingsForDownload.length === 0}
@@ -1132,6 +1170,7 @@ export function TimelinePage() {
             <label htmlFor="stream-selector" className="block text-xs text-muted-foreground mb-1">{t('nav.streams')}</label>
             <select
               id="stream-selector"
+              data-keyboard-nav-preserve
               className="w-full p-1.5 text-sm border border-border rounded bg-background text-foreground"
               value={selectedStream || ''}
               onChange={handleStreamChange}
@@ -1142,11 +1181,12 @@ export function TimelinePage() {
               ))}
             </select>
           </div>
-          <div className="min-w-[160px]">
+          <div className="min-w-[160px]" data-keyboard-nav-preserve>
             <label className="block text-xs text-muted-foreground mb-1">{t('timeline.date')}</label>
             <CalendarPicker value={selectedDate} onChange={handleDateChange} />
           </div>
           <button
+            data-keyboard-nav-preserve
             className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-2 py-1.5 rounded"
             onClick={() => refetchTimeline()}
             title={t('timeline.reloadTimelineData')}

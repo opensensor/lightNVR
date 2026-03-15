@@ -272,6 +272,7 @@ export function TimelineControls() {
       <div className="flex items-center gap-1.5">
         <button
           id="play-button"
+          data-keyboard-nav-preserve
           className={`w-7 h-7 rounded-full flex items-center justify-center focus:outline-none transition-colors shadow-sm ${
             isPlaying
               ? 'bg-red-600 hover:bg-red-700'
@@ -298,6 +299,7 @@ export function TimelineControls() {
       <div className="flex items-center gap-1">
         <button
           type="button"
+          data-keyboard-nav-preserve
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={() => jumpToAdjacentSegment(-1)}
           title={t('timeline.previousRecording')}
@@ -309,12 +311,14 @@ export function TimelineControls() {
           </svg>
         </button>
         <div id="time-display"
+          data-keyboard-nav-preserve
           className="timeline-time-display bg-secondary text-foreground px-2 py-0.5 rounded font-mono text-xs tabular-nums border border-border min-w-[140px] text-center">
           {timeDisplayText}
         </div>
         {currentRecordingId && (
           <button
             type="button"
+            data-keyboard-nav-preserve
             className={`w-6 h-6 rounded border flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors ${
               isProtected
                 ? 'border-yellow-500 bg-yellow-500 text-white hover:bg-yellow-600'
@@ -334,6 +338,7 @@ export function TimelineControls() {
           <div className="relative inline-block">
             <button
               type="button"
+              data-keyboard-nav-preserve
               className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
               onClick={() => setShowTagsOverlay(!showTagsOverlay)}
               title={t('recordings.manageTags')}
@@ -357,6 +362,7 @@ export function TimelineControls() {
         )}
         <button
           type="button"
+          data-keyboard-nav-preserve
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={() => jumpToAdjacentSegment(1)}
           title={t('timeline.nextRecording')}
@@ -371,6 +377,7 @@ export function TimelineControls() {
 
       <div className="flex items-center gap-1">
         <button
+          data-keyboard-nav-preserve
           className="px-2 h-6 rounded text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={fitToSegments}
           title={t('timeline.fitToRecordings')}
@@ -379,6 +386,7 @@ export function TimelineControls() {
         </button>
         <button
           id="zoom-out-button"
+          data-keyboard-nav-preserve
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomOut}
           title={t('timeline.zoomOut')}
@@ -390,6 +398,7 @@ export function TimelineControls() {
         </button>
         <button
           id="zoom-in-button"
+          data-keyboard-nav-preserve
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomIn}
           title={t('timeline.zoomIn')}
