@@ -132,7 +132,14 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {sortedUsers.map((user, index) => (
-            <tr key={user.id != null ? `user-${user.id}` : `user-index-${index}`} className="hover:bg-gray-100 dark:hover:bg-gray-600">
+            <tr
+              key={
+                user.id != null
+                  ? `user-${user.id}`
+                  : `user-fallback-${user.username ?? 'unknown'}-${user.email ?? 'unknown'}-${user.role ?? 'unknown'}`
+              }
+              className="hover:bg-gray-100 dark:hover:bg-gray-600"
+            >
               <td className="py-3 px-6 border-b border-border">{user.id ?? '-'}</td>
               <td className="py-3 px-6 border-b border-border">{user.username ?? '-'}</td>
               <td className="py-3 px-6 border-b border-border">{user.email || '-'}</td>
