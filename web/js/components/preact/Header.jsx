@@ -160,16 +160,20 @@ export function Header({ version = VERSION }) {
 
     setIsSavingProfile(true);
     try {
+      const payload = {
+        username: profileFormData.username.trim(),
+        email: profileFormData.email.trim(),
+      };
+      if (profileFormData.password) {
+        payload.password = profileFormData.password;
+      }
       const updatedUser = await fetchJSON(`/api/auth/users/${currentUser.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders(),
         },
-        body: JSON.stringify({
-          username: profileFormData.username.trim(),
-          email: profileFormData.email.trim(),
-        }),
+        body: JSON.stringify(payload),
         timeout: 15000,
         retries: 1,
         retryDelay: 1000,
@@ -196,7 +200,7 @@ export function Header({ version = VERSION }) {
     } finally {
       setIsSavingProfile(false);
     }
-  }, [currentUser, isSavingProfile, profileFormData.email, profileFormData.username, t]);
+  }, [currentUser, isSavingProfile, profileFormData.email, profileFormData.password, profileFormData.username, t]);
 
   // Toggle mobile menu
   const toggleMobileMenu = () => {
@@ -280,14 +284,16 @@ export function Header({ version = VERSION }) {
 
   const renderUsername = (mobile = false) => {
     if (!canEditCurrentUser) {
-      return <span>{displayUsername}</span>;
+      return <span className="px-3 py-1">{displayUsername}</span>;
     }
 
     return (
       <button
         type="button"
-        className={`bg-transparent border-0 p-0 font-medium transition-colors ${mobile ? 'text-left' : ''}`}
-        style={{ color: 'hsl(var(--card-foreground))' }}
+        className={`no-underline px-3 py-1 rounded transition-colors cursor-pointer border-0 font-medium ${mobile ? 'text-left w-full' : ''}`}
+        style={{ color: 'hsl(var(--card-foreground))', backgroundColor: 'transparent' }}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.8)'}
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
         onClick={openProfileModal}
         title={t('auth.editProfile')}
       >
@@ -444,7 +450,7 @@ export function Header({ version = VERSION }) {
           onClose={closeProfileModal}
           title={t('auth.editProfileTitle')}
           submitLabel={isSavingProfile ? t('common.saving') : t('common.saveChanges')}
-          showPasswordField={false}
+          showPasswordField={true}
           showRoleField={false}
           showActiveField={false}
           showPasswordLockField={false}
