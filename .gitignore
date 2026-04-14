@@ -111,3 +111,4 @@ lightnvr-buildroot/
 *.ico
 *.png
 lightnvr-provisioning-prd.docx.md
+.mcp.json
