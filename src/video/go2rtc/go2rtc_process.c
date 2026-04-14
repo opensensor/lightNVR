@@ -716,18 +716,13 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
             // Quote stream name for YAML safety (handles spaces, colons, etc.)
             fprintf(config_file, "  \"%s\":\n", streams[i].name);
 
-            // Write each line of the override with proper indentation
+            // Write each line of the override with base indentation while
+            // preserving any user-provided indentation within the YAML.
             const char *p = streams[i].go2rtc_source_override;
             while (*p) {
-                // Skip leading whitespace on each line
-                while (*p == ' ' || *p == '\t') p++;
-                if (*p == '\0') break;
-
                 const char *eol = strchr(p, '\n');
                 if (eol) {
-                    if (eol > p) { // skip empty lines
-                        fprintf(config_file, "    %.*s\n", (int)(eol - p), p);
-                    }
+                    fprintf(config_file, "    %.*s\n", (int)(eol - p), p);
                     p = eol + 1;
                 } else {
                     fprintf(config_file, "    %s\n", p);
