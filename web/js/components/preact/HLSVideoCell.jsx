@@ -31,6 +31,7 @@ import Hls from 'hls.js';
 export function HLSVideoCell({
   stream,
   streamId,
+  useSubStream = false,
   onToggleFullscreen,
   initDelay = 0,
   showLabels = true,
@@ -123,6 +124,9 @@ export function HLSVideoCell({
 
     console.log(`[HLS ${stream.name}] useEffect triggered, videoRef:`, !!videoRef.current, 'retryCount:', retryCount, 'initDelay:', initDelay);
 
+    // Effective stream name for go2rtc source — use sub-stream in grid view
+    const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
+
     // Track if component is still mounted - using ref for stable access in callbacks
     let isMounted = true;
     let initTimeout = null;
@@ -183,7 +187,7 @@ export function HLSVideoCell({
 
           // Build the HLS stream URL using go2rtc's dynamic HLS endpoint
           // Using &mp4=flac for best codec compatibility (H264/H265 + AAC/PCMA/PCMU/PCM)
-          hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(stream.name)}&mp4=flac`;
+          hlsStreamUrl = `${go2rtcBaseUrl}/api/stream.m3u8?src=${encodeURIComponent(effectiveName)}&mp4=flac`;
           usingGo2rtc = true;
           console.log(`[HLS ${stream.name}] Using go2rtc HLS: ${hlsStreamUrl}`);
           console.log(`[HLS ${stream.name}] go2rtc base URL: ${go2rtcBaseUrl}`);

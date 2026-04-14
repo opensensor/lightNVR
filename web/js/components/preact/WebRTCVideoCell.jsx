@@ -62,6 +62,7 @@ const CONNECTION_QUALITY_THRESHOLDS = {
 export function WebRTCVideoCell({
   stream,
   streamId,
+  useSubStream = false,
   onToggleFullscreen,
   initDelay = 0,
   showLabels = true,
@@ -646,8 +647,9 @@ export function WebRTCVideoCell({
         const maxOfferRetries = MAX_OFFER_RETRIES;
         const baseRetryDelayMs = BASE_RETRY_DELAY_MS;
 
+        const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
         const sendOfferWithRetry = async (attempt) => {
-          const response = await fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(stream.name)}`, {
+          const response = await fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(effectiveName)}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/sdp',

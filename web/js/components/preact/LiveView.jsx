@@ -773,6 +773,7 @@ export function LiveView({isWebRTCDisabled}) {
                   )}
                   <VideoCell
                     stream={stream}
+                    useSubStream={!isSingleStream && !!stream.sub_stream_url}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
                     initDelay={initDelay}

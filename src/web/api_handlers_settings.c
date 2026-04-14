@@ -1647,58 +1647,63 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                 log_info("Database path after reload: %s", g_config.db_path);
             }
 
-            // If go2rtc-related settings changed, spawn background thread
-            // to handle start/stop (avoids blocking the API response for 5-15+ seconds)
-            if (go2rtc_config_changed) {
-                go2rtc_settings_task_t *task = calloc(1, sizeof(go2rtc_settings_task_t));
-                if (task) {
-                    task->becoming_enabled = go2rtc_becoming_enabled;
-
-                    pthread_t thread_id;
-                    pthread_attr_t attr;
-                    pthread_attr_init(&attr);
-                    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-                    if (pthread_create(&thread_id, &attr,
-                                       (void *(*)(void *))go2rtc_settings_worker, task) != 0) {
-                        log_error("Failed to create go2rtc settings worker thread");
-                        free(task);
-                    } else {
-                        log_info("go2rtc settings change dispatched to background thread (becoming_%s)",
-                                 go2rtc_becoming_enabled ? "enabled" : "disabled");
-                    }
-                    pthread_attr_destroy(&attr);
-                } else {
-                    log_error("Failed to allocate go2rtc settings task");
-                }
-            }
-
-            // If MQTT-related settings changed, spawn background thread
-            // to handle cleanup + reinit (avoids blocking the API response)
-            if (mqtt_config_changed) {
-                mqtt_settings_task_t *task = calloc(1, sizeof(mqtt_settings_task_t));
-                if (task) {
-                    task->mqtt_now_enabled = g_config.mqtt_enabled;
-
-                    pthread_t thread_id;
-                    pthread_attr_t attr;
-                    pthread_attr_init(&attr);
-                    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-
-                    if (pthread_create(&thread_id, &attr,
-                                       (void *(*)(void *))mqtt_settings_worker, task) != 0) {
-                        log_error("Failed to create MQTT settings worker thread");
-                        free(task);
-                    } else {
-                        log_info("MQTT settings change dispatched to background thread");
-                    }
-                    pthread_attr_destroy(&attr);
-                } else {
-                    log_error("Failed to allocate MQTT settings task");
-                }
-            }
         } else {
             log_info("No settings changed");
+        }
+
+        // Dispatch go2rtc and MQTT background workers outside settings_changed
+        // so that DB-backed overrides (go2rtc_config_override in system_settings)
+        // trigger a restart even when no g_config field changed.
+
+        // If go2rtc-related settings changed, spawn background thread
+        // to handle start/stop (avoids blocking the API response for 5-15+ seconds)
+        if (go2rtc_config_changed) {
+            go2rtc_settings_task_t *task = calloc(1, sizeof(go2rtc_settings_task_t));
+            if (task) {
+                task->becoming_enabled = go2rtc_becoming_enabled;
+
+                pthread_t thread_id;
+                pthread_attr_t attr;
+                pthread_attr_init(&attr);
+                pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+                if (pthread_create(&thread_id, &attr,
+                                   (void *(*)(void *))go2rtc_settings_worker, task) != 0) {
+                    log_error("Failed to create go2rtc settings worker thread");
+                    free(task);
+                } else {
+                    log_info("go2rtc settings change dispatched to background thread (becoming_%s)",
+                             go2rtc_becoming_enabled ? "enabled" : "disabled");
+                }
+                pthread_attr_destroy(&attr);
+            } else {
+                log_error("Failed to allocate go2rtc settings task");
+            }
+        }
+
+        // If MQTT-related settings changed, spawn background thread
+        // to handle cleanup + reinit (avoids blocking the API response)
+        if (mqtt_config_changed) {
+            mqtt_settings_task_t *task = calloc(1, sizeof(mqtt_settings_task_t));
+            if (task) {
+                task->mqtt_now_enabled = g_config.mqtt_enabled;
+
+                pthread_t thread_id;
+                pthread_attr_t attr;
+                pthread_attr_init(&attr);
+                pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+                if (pthread_create(&thread_id, &attr,
+                                   (void *(*)(void *))mqtt_settings_worker, task) != 0) {
+                    log_error("Failed to create MQTT settings worker thread");
+                    free(task);
+                } else {
+                    log_info("MQTT settings change dispatched to background thread");
+                }
+                pthread_attr_destroy(&attr);
+            } else {
+                log_error("Failed to allocate MQTT settings task");
+            }
         }
     
     // Clean up

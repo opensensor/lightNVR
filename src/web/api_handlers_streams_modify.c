@@ -667,6 +667,15 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.go2rtc_source_override[0] = '\0';
     }
 
+    // Parse sub-stream URL
+    cJSON *sub_stream_url_post = cJSON_GetObjectItem(stream_json, "sub_stream_url");
+    if (sub_stream_url_post && cJSON_IsString(sub_stream_url_post)) {
+        safe_strcpy(config.sub_stream_url, sub_stream_url_post->valuestring,
+                sizeof(config.sub_stream_url), 0);
+    } else {
+        config.sub_stream_url[0] = '\0';
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -1291,6 +1300,26 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config_changed = true;
             requires_restart = true;
             log_info("go2rtc source override cleared for stream %s", config.name);
+        }
+    }
+
+    // Parse sub-stream URL
+    cJSON *sub_stream_url_put = cJSON_GetObjectItem(stream_json, "sub_stream_url");
+    if (sub_stream_url_put && cJSON_IsString(sub_stream_url_put)) {
+        if (strncmp(config.sub_stream_url, sub_stream_url_put->valuestring,
+                    sizeof(config.sub_stream_url) - 1) != 0) {
+            safe_strcpy(config.sub_stream_url, sub_stream_url_put->valuestring,
+                    sizeof(config.sub_stream_url), 0);
+            config_changed = true;
+            requires_restart = true;
+            log_info("Sub-stream URL changed for stream %s", config.name);
+        }
+    } else if (sub_stream_url_put && cJSON_IsNull(sub_stream_url_put)) {
+        if (config.sub_stream_url[0] != '\0') {
+            config.sub_stream_url[0] = '\0';
+            config_changed = true;
+            requires_restart = true;
+            log_info("Sub-stream URL cleared for stream %s", config.name);
         }
     }
 

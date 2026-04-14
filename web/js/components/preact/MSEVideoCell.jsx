@@ -30,6 +30,7 @@ import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 export function MSEVideoCell({
   stream,
   streamId,
+  useSubStream = false,
   onToggleFullscreen,
   initDelay = 0,
   showLabels = true,
@@ -118,7 +119,8 @@ export function MSEVideoCell({
     try {
       // Use direct WebSocket URL to go2rtc (bypasses lightNVR's HTTP-only proxy)
       const go2rtcWsUrl = await getGo2rtcWebSocketUrl();
-      const wsUrl = `${go2rtcWsUrl}/api/ws?src=${encodeURIComponent(stream.name)}`;
+      const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
+      const wsUrl = `${go2rtcWsUrl}/api/ws?src=${encodeURIComponent(effectiveName)}`;
 
       // Create WebSocket connection
       const ws = new WebSocket(wsUrl);

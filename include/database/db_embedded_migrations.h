@@ -624,7 +624,8 @@ static const char migration_0039_down[] =
     "SELECT 1;";
 
 static const char migration_0040_up[] =
-    "ALTER TABLE streams ADD COLUMN go2rtc_source_override TEXT DEFAULT '';";
+    "ALTER TABLE streams ADD COLUMN go2rtc_source_override TEXT DEFAULT '';\n"
+    "ALTER TABLE streams ADD COLUMN sub_stream_url TEXT DEFAULT '';";
 
 static const char migration_0040_down[] =
     "SELECT 1;";
@@ -905,7 +906,7 @@ static const migration_t embedded_migrations_data[] = {
     },
     {
         .version = "0040",
-        .description = "add_go2rtc_source_override",
+        .description = "add_go2rtc_source_override_and_sub_stream_url",
         .sql_up = migration_0040_up,
         .sql_down = migration_0040_down,
         .is_embedded = true

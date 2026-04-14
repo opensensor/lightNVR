@@ -741,6 +741,7 @@ export function WebRTCView() {
                   )}
                   <WebRTCVideoCell
                     stream={stream}
+                    useSubStream={!isSingleStream && !!stream.sub_stream_url}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
                     initDelay={initDelay}

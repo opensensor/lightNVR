@@ -23,8 +23,25 @@
 #include "core/config.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
+#include "database/db_core.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
+
+/**
+ * Escape a string for use inside a YAML double-quoted scalar.
+ * Handles " → \" and \ → \\.  Returns dst.
+ */
+static char *yaml_escape_string(const char *src, char *dst, size_t dst_size) {
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j + 2 < dst_size; i++) {
+        if (src[i] == '"' || src[i] == '\\') {
+            dst[j++] = '\\';
+        }
+        dst[j++] = src[i];
+    }
+    dst[j] = '\0';
+    return dst;
+}
 
 
 // Define PATH_MAX if not defined
@@ -703,44 +720,60 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     // other streams will be registered dynamically via the go2rtc API.
     fprintf(config_file, "\nstreams:\n");
     {
-        int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
-        stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
-        int count = streams ? get_all_stream_configs(streams, ms) : 0;
         bool has_overridden = false;
+        if (get_db_handle() != NULL) {
+            int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+            stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
+            int count = streams ? get_all_stream_configs(streams, ms) : 0;
 
-        for (int i = 0; i < count; i++) {
-            if (!streams[i].enabled) continue;
-            if (streams[i].go2rtc_source_override[0] == '\0') continue;
+            for (int i = 0; i < count; i++) {
+                if (!streams[i].enabled) continue;
+                if (streams[i].go2rtc_source_override[0] == '\0') continue;
 
-            has_overridden = true;
-            // Quote stream name for YAML safety (handles spaces, colons, etc.)
-            fprintf(config_file, "  \"%s\":\n", streams[i].name);
+                has_overridden = true;
 
-            // Write each line of the override with base indentation while
-            // preserving any user-provided indentation within the YAML.
-            const char *p = streams[i].go2rtc_source_override;
-            while (*p) {
-                const char *eol = strchr(p, '\n');
-                if (eol) {
-                    fprintf(config_file, "    %.*s\n", (int)(eol - p), p);
-                    p = eol + 1;
+                // Escape stream name for YAML double-quoted key safety
+                char escaped_name[MAX_STREAM_NAME * 2];
+                yaml_escape_string(streams[i].name, escaped_name, sizeof(escaped_name));
+
+                const char *override = streams[i].go2rtc_source_override;
+                bool is_single_line = (strchr(override, '\n') == NULL);
+
+                if (is_single_line) {
+                    // Single URL: write as inline YAML scalar
+                    //   "cam": rtsp://camera/stream
+                    fprintf(config_file, "  \"%s\": %s\n", escaped_name, override);
                 } else {
-                    fprintf(config_file, "    %s\n", p);
-                    break;
+                    // Multi-line: write as indented block under the key
+                    //   "cam":
+                    //     - rtsp://camera/main
+                    //     - ffmpeg:cam#video=h264
+                    fprintf(config_file, "  \"%s\":\n", escaped_name);
+                    const char *p = override;
+                    while (*p) {
+                        const char *eol = strchr(p, '\n');
+                        if (eol) {
+                            fprintf(config_file, "    %.*s\n", (int)(eol - p), p);
+                            p = eol + 1;
+                        } else {
+                            fprintf(config_file, "    %s\n", p);
+                            break;
+                        }
+                    }
                 }
             }
+            free(streams);
         }
-
         if (!has_overridden) {
             fprintf(config_file, "  # Streams will be added dynamically via API\n");
         }
-        free(streams);
     }
 
     // Global go2rtc config override from system settings
     {
         char global_override[4096] = {0};
-        if (db_get_system_setting("go2rtc_config_override", global_override, sizeof(global_override)) == 0
+        if (get_db_handle() != NULL
+            && db_get_system_setting("go2rtc_config_override", global_override, sizeof(global_override)) == 0
             && global_override[0] != '\0') {
             fprintf(config_file, "\n# User config override\n");
             fprintf(config_file, "%s\n", global_override);

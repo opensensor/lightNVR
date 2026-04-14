@@ -279,7 +279,8 @@ export function StreamsView() {
     // Cross-stream motion trigger: name of another stream whose ONVIF motion
     // events trigger recording on this stream (e.g., PTZ slaved to fixed wide lens)
     motionTriggerSource: '',
-    go2rtcSourceOverride: ''
+    go2rtcSourceOverride: '',
+    subStreamUrl: ''
   });
   const [isEditing, setIsEditing] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
@@ -620,7 +621,9 @@ export function StreamsView() {
       // Cross-stream motion trigger source
       motion_trigger_source: currentStream.motionTriggerSource || '',
       // go2rtc source override
-      go2rtc_source_override: currentStream.go2rtcSourceOverride || ''
+      go2rtc_source_override: currentStream.go2rtcSourceOverride || '',
+      // Sub-stream URL
+      sub_stream_url: currentStream.subStreamUrl || ''
     };
 
     // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -873,7 +876,8 @@ export function StreamsView() {
         tags: stream.tags || '',
         // Cross-stream motion trigger source
         motionTriggerSource: stream.motion_trigger_source || '',
-        go2rtcSourceOverride: stream.go2rtc_source_override || ''
+        go2rtcSourceOverride: stream.go2rtc_source_override || '',
+        subStreamUrl: stream.sub_stream_url || ''
       });
       setIsEditing(true);
       setModalVisible(true);
@@ -953,7 +957,8 @@ export function StreamsView() {
         tags: stream.tags || '',
         // Cross-stream motion trigger source
         motionTriggerSource: stream.motion_trigger_source || '',
-        go2rtcSourceOverride: stream.go2rtc_source_override || ''
+        go2rtcSourceOverride: stream.go2rtc_source_override || '',
+        subStreamUrl: stream.sub_stream_url || ''
       });
       setIsEditing(false);
       setIsCloning(true);

@@ -103,6 +103,11 @@ typedef struct {
     // streams section instead of auto-constructing the source URL.
     // Supports single URLs or multi-source YAML lists (e.g. "- rtsp://cam/main\n- ffmpeg:cam#video=h264")
     char go2rtc_source_override[2048];
+
+    // Sub-stream URL: optional low-resolution stream for dashboard grid view.
+    // When non-empty, registered with go2rtc as "{name}_sub" and used by the
+    // frontend in grid view while the main URL is used for fullscreen/recording.
+    char sub_stream_url[MAX_URL_LENGTH];
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator
