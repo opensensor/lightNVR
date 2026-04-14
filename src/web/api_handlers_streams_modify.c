@@ -658,6 +658,15 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.motion_trigger_source[0] = '\0';
     }
 
+    // Parse go2rtc source override
+    cJSON *go2rtc_source_override_post = cJSON_GetObjectItem(stream_json, "go2rtc_source_override");
+    if (go2rtc_source_override_post && cJSON_IsString(go2rtc_source_override_post)) {
+        safe_strcpy(config.go2rtc_source_override, go2rtc_source_override_post->valuestring,
+                sizeof(config.go2rtc_source_override), 0);
+    } else {
+        config.go2rtc_source_override[0] = '\0';
+    }
+
     // Check if isOnvif flag is set in the request
     cJSON *is_onvif = cJSON_GetObjectItem(stream_json, "isOnvif");
     if (is_onvif && cJSON_IsBool(is_onvif)) {
@@ -1262,6 +1271,26 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         if (config.motion_trigger_source[0] != '\0') {
             config.motion_trigger_source[0] = '\0';
             config_changed = true;
+        }
+    }
+
+    // Parse go2rtc source override
+    cJSON *go2rtc_source_override_put = cJSON_GetObjectItem(stream_json, "go2rtc_source_override");
+    if (go2rtc_source_override_put && cJSON_IsString(go2rtc_source_override_put)) {
+        if (strncmp(config.go2rtc_source_override, go2rtc_source_override_put->valuestring,
+                    sizeof(config.go2rtc_source_override) - 1) != 0) {
+            safe_strcpy(config.go2rtc_source_override, go2rtc_source_override_put->valuestring,
+                    sizeof(config.go2rtc_source_override), 0);
+            config_changed = true;
+            requires_restart = true;
+            log_info("go2rtc source override changed for stream %s", config.name);
+        }
+    } else if (go2rtc_source_override_put && cJSON_IsNull(go2rtc_source_override_put)) {
+        if (config.go2rtc_source_override[0] != '\0') {
+            config.go2rtc_source_override[0] = '\0';
+            config_changed = true;
+            requires_restart = true;
+            log_info("go2rtc source override cleared for stream %s", config.name);
         }
     }
 

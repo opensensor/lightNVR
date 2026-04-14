@@ -98,6 +98,11 @@ typedef struct {
     // Useful for dual-lens cameras where one lens provides ONVIF events and
     // the other (e.g. PTZ) does not expose its own motion events.
     char motion_trigger_source[MAX_STREAM_NAME];
+
+    // go2rtc source override: when non-empty, written directly into go2rtc.yaml
+    // streams section instead of auto-constructing the source URL.
+    // Supports single URLs or multi-source YAML lists (e.g. "- rtsp://cam/main\n- ffmpeg:cam#video=h264")
+    char go2rtc_source_override[2048];
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator

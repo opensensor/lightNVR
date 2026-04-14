@@ -1491,6 +1491,31 @@ export function StreamConfigModal({
               </div>
             </AccordionSection>
 
+            {/* go2rtc Source Override Section */}
+            <AccordionSection
+              title={t('streamsConfig.go2rtcSourceOverride')}
+              isExpanded={expandedSections.go2rtcOverride}
+              onToggle={() => onToggleSection('go2rtcOverride')}
+            >
+              <div>
+                <label htmlFor="go2rtc-source-override" className="block text-sm font-medium mb-2">
+                  {t('streamsConfig.go2rtcSourceOverrideLabel')}
+                </label>
+                <textarea
+                  id="go2rtc-source-override"
+                  name="go2rtcSourceOverride"
+                  className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
+                  rows="4"
+                  placeholder={"rtsp://admin:pass@camera/stream#transport=tcp\n\nOr multi-source:\n- rtsp://admin:pass@camera/main#transport=tcp\n- ffmpeg:camera1#video=h264#hardware"}
+                  value={currentStream.go2rtcSourceOverride || ''}
+                  onChange={onInputChange}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('streamsConfig.go2rtcSourceOverrideHelp')}
+                </p>
+              </div>
+            </AccordionSection>
+
           </form>
         </div>
 

@@ -1355,6 +1355,13 @@ bool go2rtc_integration_register_all_streams(void) {
     bool all_success = true;
     for (int i = 0; i < count; i++) {
         if (streams[i].enabled) {
+            // Skip streams with go2rtc source override — they are already
+            // defined in the go2rtc.yaml config file and don't need API registration.
+            if (streams[i].go2rtc_source_override[0] != '\0') {
+                log_info("Skipping API registration for stream %s (has go2rtc source override)", streams[i].name);
+                continue;
+            }
+
             log_info("Registering stream %s with go2rtc", streams[i].name);
 
             // Register the stream with go2rtc
@@ -1431,6 +1438,11 @@ bool go2rtc_sync_streams_from_database(void) {
         }
         if (db_streams[i].privacy_mode) {
             log_debug("Skipping privacy-mode stream %s", db_streams[i].name);
+            skipped++;
+            continue;
+        }
+        if (db_streams[i].go2rtc_source_override[0] != '\0') {
+            log_debug("Skipping API sync for stream %s (has go2rtc source override)", db_streams[i].name);
             skipped++;
             continue;
         }
@@ -1771,6 +1783,16 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
     if (!stream) {
         log_error("Stream %s not found in stream manager", stream_name);
         return false;
+    }
+
+    // Check for go2rtc source override — these streams are defined in go2rtc.yaml
+    // and don't need API registration
+    {
+        stream_config_t check_config;
+        if (get_stream_config(stream, &check_config) == 0 && check_config.go2rtc_source_override[0] != '\0') {
+            log_info("Stream %s has go2rtc source override, skipping API registration", stream_name);
+            return true;
+        }
     }
 
     stream_config_t config;

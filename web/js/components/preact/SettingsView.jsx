@@ -74,6 +74,7 @@ export function SettingsView() {
     go2rtcExternalIp: '',
     go2rtcIceServers: '',
     go2rtcForceNativeHls: false,
+    go2rtcConfigOverride: '',
     // MQTT settings
     mqttEnabled: false,
     mqttBrokerHost: 'localhost',
@@ -297,6 +298,7 @@ export function SettingsView() {
         go2rtcExternalIp: settingsData.go2rtc_external_ip || '',
         go2rtcIceServers: settingsData.go2rtc_ice_servers || '',
         go2rtcForceNativeHls: settingsData.go2rtc_force_native_hls || false,
+        go2rtcConfigOverride: settingsData.go2rtc_config_override || '',
         // MQTT settings
         mqttEnabled: settingsData.mqtt_enabled || false,
         mqttBrokerHost: settingsData.mqtt_broker_host || 'localhost',
@@ -393,6 +395,7 @@ export function SettingsView() {
       go2rtc_external_ip: settings.go2rtcExternalIp,
       go2rtc_ice_servers: settings.go2rtcIceServers,
       go2rtc_force_native_hls: settings.go2rtcForceNativeHls,
+      go2rtc_config_override: settings.go2rtcConfigOverride,
       // MQTT settings
       mqtt_enabled: settings.mqttEnabled,
       mqtt_broker_host: settings.mqttBrokerHost,
@@ -1510,6 +1513,25 @@ export function SettingsView() {
                 placeholder={t('settings.iceServersPlaceholder')}
               />
               <span class="hint text-sm text-muted-foreground">{t('settings.iceServersHelp')}</span>
+            </div>
+          </div>
+
+          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
+            <label for="setting-go2rtc-config-override" class="font-medium pt-2">
+              {t('settings.go2rtcConfigOverride')}
+            </label>
+            <div class="col-span-2">
+              <textarea
+                id="setting-go2rtc-config-override"
+                name="go2rtcConfigOverride"
+                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                rows="6"
+                value={settings.go2rtcConfigOverride}
+                onChange={handleInputChange}
+                disabled={!canModifySettings}
+                placeholder={"ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace"}
+              />
+              <span class="hint text-sm text-muted-foreground">{t('settings.go2rtcConfigOverrideHelp')}</span>
             </div>
           </div>
           </>

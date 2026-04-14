@@ -23,6 +23,8 @@
 #include "core/config.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
+#include "database/db_streams.h"
+#include "database/db_system_settings.h"
 
 
 // Define PATH_MAX if not defined
@@ -697,9 +699,58 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     fprintf(config_file, "  h264: \"-codec:v libx264 -g:v 30 -preset:v superfast\"\n");
     fprintf(config_file, "  h265: \"-codec:v libx265 -g:v 30 -preset:v superfast\"\n");
 
-    // Streams section (will be populated dynamically)
-    fprintf(config_file, "streams:\n");
-    fprintf(config_file, "  # Streams will be added dynamically\n");
+    // Streams section — write overridden streams directly into config,
+    // other streams will be registered dynamically via the go2rtc API.
+    fprintf(config_file, "\nstreams:\n");
+    {
+        int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+        stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
+        int count = streams ? get_all_stream_configs(streams, ms) : 0;
+        bool has_overridden = false;
+
+        for (int i = 0; i < count; i++) {
+            if (!streams[i].enabled) continue;
+            if (streams[i].go2rtc_source_override[0] == '\0') continue;
+
+            has_overridden = true;
+            // Quote stream name for YAML safety (handles spaces, colons, etc.)
+            fprintf(config_file, "  \"%s\":\n", streams[i].name);
+
+            // Write each line of the override with proper indentation
+            const char *p = streams[i].go2rtc_source_override;
+            while (*p) {
+                // Skip leading whitespace on each line
+                while (*p == ' ' || *p == '\t') p++;
+                if (*p == '\0') break;
+
+                const char *eol = strchr(p, '\n');
+                if (eol) {
+                    if (eol > p) { // skip empty lines
+                        fprintf(config_file, "    %.*s\n", (int)(eol - p), p);
+                    }
+                    p = eol + 1;
+                } else {
+                    fprintf(config_file, "    %s\n", p);
+                    break;
+                }
+            }
+        }
+
+        if (!has_overridden) {
+            fprintf(config_file, "  # Streams will be added dynamically via API\n");
+        }
+        free(streams);
+    }
+
+    // Global go2rtc config override from system settings
+    {
+        char global_override[4096] = {0};
+        if (db_get_system_setting("go2rtc_config_override", global_override, sizeof(global_override)) == 0
+            && global_override[0] != '\0') {
+            fprintf(config_file, "\n# User config override\n");
+            fprintf(config_file, "%s\n", global_override);
+        }
+    }
 
     fclose(config_file);
     log_info("Generated go2rtc configuration file: %s", config_path);

@@ -22,6 +22,7 @@
 #include "database/db_core.h"
 #include "database/db_streams.h"
 #include "database/db_auth.h"
+#include "database/db_system_settings.h"
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/mp4_recording.h"
@@ -360,6 +361,16 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "go2rtc_external_ip", g_config.go2rtc_external_ip);
     cJSON_AddStringToObject(settings, "go2rtc_ice_servers", g_config.go2rtc_ice_servers);
     cJSON_AddBoolToObject(settings, "go2rtc_force_native_hls", g_config.go2rtc_force_native_hls);
+
+    // go2rtc global config override (stored in system_settings table)
+    {
+        char go2rtc_config_override_buf[4096] = {0};
+        if (db_get_system_setting("go2rtc_config_override", go2rtc_config_override_buf, sizeof(go2rtc_config_override_buf)) == 0) {
+            cJSON_AddStringToObject(settings, "go2rtc_config_override", go2rtc_config_override_buf);
+        } else {
+            cJSON_AddStringToObject(settings, "go2rtc_config_override", "");
+        }
+    }
 
     // MQTT settings
     cJSON_AddBoolToObject(settings, "mqtt_enabled", g_config.mqtt_enabled);
@@ -947,6 +958,18 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.go2rtc_force_native_hls = cJSON_IsTrue(go2rtc_force_native_hls);
         settings_changed = true;
         log_info("Updated go2rtc_force_native_hls: %s", g_config.go2rtc_force_native_hls ? "true" : "false");
+    }
+
+    // go2rtc global config override (stored in system_settings)
+    cJSON *go2rtc_config_override = cJSON_GetObjectItem(settings, "go2rtc_config_override");
+    if (go2rtc_config_override && cJSON_IsString(go2rtc_config_override)) {
+        if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
+            log_error("Failed to save go2rtc_config_override to system_settings");
+        } else {
+            log_info("Updated go2rtc_config_override");
+            go2rtc_config_changed = true;
+            go2rtc_becoming_enabled = g_config.go2rtc_enabled;
+        }
     }
 
     // MQTT enabled
