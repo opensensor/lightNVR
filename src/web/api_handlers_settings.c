@@ -963,7 +963,10 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     // go2rtc global config override (stored in system_settings)
     cJSON *go2rtc_config_override = cJSON_GetObjectItem(settings, "go2rtc_config_override");
     if (go2rtc_config_override && cJSON_IsString(go2rtc_config_override)) {
-        if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
+        size_t override_len = strlen(go2rtc_config_override->valuestring);
+        if (override_len >= 4096) {
+            log_error("go2rtc_config_override too long (%zu bytes, max 4095)", override_len);
+        } else if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
             log_error("Failed to save go2rtc_config_override to system_settings");
         } else {
             log_info("Updated go2rtc_config_override");

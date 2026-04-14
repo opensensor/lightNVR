@@ -783,18 +783,19 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     fclose(config_file);
     log_info("Generated go2rtc configuration file: %s", config_path);
 
-    // Print the content of the config file for debugging
+    // Print the content of the config file at DEBUG level to avoid
+    // leaking credentials from overrides into production logs.
     FILE *read_file = fopen(config_path, "r");
     if (read_file) {
         char line[256];
-        log_info("Contents of go2rtc config file:");
+        log_debug("Contents of go2rtc config file:");
         while (fgets(line, sizeof(line), read_file)) {
             // Remove newline character
             size_t len = strlen(line);
             if (len > 0 && line[len-1] == '\n') {
                 line[len-1] = '\0';
             }
-            log_info("  %s", line);
+            log_debug("  %s", line);
         }
         fclose(read_file);
     }
