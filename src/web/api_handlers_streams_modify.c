@@ -56,6 +56,8 @@ typedef struct {
     bool has_streaming_enabled;                // Whether streaming_enabled flag was provided
     bool non_dynamic_config_changed;           // Whether non-dynamic fields changed
     bool credentials_changed;                  // Whether ONVIF credentials changed
+    bool go2rtc_override_changed;              // Whether go2rtc_source_override changed
+    bool sub_stream_changed;                   // Whether sub_stream_url changed
 } put_stream_task_t;
 
 static void format_stream_capacity_error(char *buf, size_t buf_size,
@@ -357,6 +359,34 @@ static void put_stream_worker(put_stream_task_t *task) {
 
             // Wait a moment for go2rtc to be ready
             usleep(500000); // 500ms
+        }
+
+        // If go2rtc_source_override changed, regenerate config and fully re-register.
+        // The override is baked into go2rtc.yaml so a config regen + re-registration is needed.
+        if (task->go2rtc_override_changed) {
+            log_info("go2rtc source override changed for stream %s, re-registering with go2rtc", task->config.name);
+            go2rtc_api_remove_stream(task->config.name);
+            go2rtc_integration_register_stream(task->config.name);
+            usleep(500000);
+        }
+
+        // If sub-stream URL changed, register or unregister the {name}_sub stream
+        if (task->sub_stream_changed) {
+            char sub_name[MAX_STREAM_NAME + 8];
+            snprintf(sub_name, sizeof(sub_name), "%s_sub", task->config.name);
+            // Always remove old sub-stream first
+            go2rtc_api_remove_stream(sub_name);
+            // Re-register if new sub-stream URL is set
+            if (task->config.sub_stream_url[0] != '\0') {
+                log_info("Registering updated sub-stream %s with go2rtc", sub_name);
+                go2rtc_stream_register(sub_name, task->config.sub_stream_url,
+                                       task->config.onvif_username[0] != '\0' ? task->config.onvif_username : NULL,
+                                       task->config.onvif_password[0] != '\0' ? task->config.onvif_password : NULL,
+                                       false, task->config.protocol, false);
+            } else {
+                log_info("Sub-stream %s removed from go2rtc", sub_name);
+            }
+            usleep(500000);
         }
 
         // Start stream if enabled (AFTER go2rtc has been updated)
@@ -898,6 +928,8 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     // Update configuration with provided values
     bool config_changed = false;
     bool requires_restart = false;  // Flag for changes that require stream restart
+    bool go2rtc_override_changed = false;  // Track go2rtc source override changes
+    bool sub_stream_changed = false;  // Track sub-stream URL changes
     bool has_record = false;  // Track if record flag was provided
     bool has_streaming_enabled = false;  // Track if streaming_enabled flag was provided
     bool non_dynamic_config_changed = false;  // Track if non-dynamic fields changed
@@ -1292,6 +1324,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
                     sizeof(config.go2rtc_source_override), 0);
             config_changed = true;
             requires_restart = true;
+            go2rtc_override_changed = true;
             log_info("go2rtc source override changed for stream %s", config.name);
         }
     } else if (go2rtc_source_override_put && cJSON_IsNull(go2rtc_source_override_put)) {
@@ -1299,6 +1332,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config.go2rtc_source_override[0] = '\0';
             config_changed = true;
             requires_restart = true;
+            go2rtc_override_changed = true;
             log_info("go2rtc source override cleared for stream %s", config.name);
         }
     }
@@ -1312,6 +1346,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
                     sizeof(config.sub_stream_url), 0);
             config_changed = true;
             requires_restart = true;
+            sub_stream_changed = true;
             log_info("Sub-stream URL changed for stream %s", config.name);
         }
     } else if (sub_stream_url_put && cJSON_IsNull(sub_stream_url_put)) {
@@ -1319,6 +1354,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             config.sub_stream_url[0] = '\0';
             config_changed = true;
             requires_restart = true;
+            sub_stream_changed = true;
             log_info("Sub-stream URL cleared for stream %s", config.name);
         }
     }
@@ -1573,6 +1609,8 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     task->has_streaming_enabled = has_streaming_enabled;
     task->non_dynamic_config_changed = non_dynamic_config_changed;
     task->credentials_changed = credentials_changed;
+    task->go2rtc_override_changed = go2rtc_override_changed;
+    task->sub_stream_changed = sub_stream_changed;
 
     log_info("Detection settings before update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
              config.detection_model, config.detection_threshold, config.detection_interval,
