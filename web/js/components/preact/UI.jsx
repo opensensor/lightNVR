@@ -861,11 +861,11 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
               <div
                 ref={videoContainerRef}
                 data-testid="recording-video-container"
-                className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full w-full max-h-[50vh] bg-black'}
+                className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full w-full max-h-[50vh] bg-black overflow-hidden'}
               >
                 <video
                   ref={videoRef}
-                  className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-auto max-w-full object-contain'}
+                  className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-auto max-w-full max-h-[50vh] object-contain'}
                   controls
                   controlsList="nofullscreen"
                   key={videoUrl} /* Add key to force re-render when URL changes */
