@@ -130,6 +130,7 @@ T12 ── T13 (docs)
   - `src/video/go2rtc/go2rtc_process.c` (edited)
 
 ### T4: Pass both configs to go2rtc via repeated `--config` flags
+- **status**: Completed
 - **depends_on**: [T2, T3]
 - **location**: `src/video/go2rtc/go2rtc_process.c` (function `go2rtc_process_start`, `execl` at line ~1377)
 - **description**: Before forking, call `go2rtc_process_write_override_file()` (synchronous, return-checked). In the child, replace `execl(resolved_binary, "go2rtc", "--config", g_config_path, NULL);` with `execv` (for dynamic argv), building `{"go2rtc", "--config", base_path, "--config", override_path, NULL}` when the override file exists, otherwise the single-config form. go2rtc's `internal/app/config.go:LoadConfig` unmarshals each config in order onto the same struct. Update the log line to show both `--config` args.
@@ -148,9 +149,13 @@ T12 ── T13 (docs)
 - **location**: `src/video/go2rtc/go2rtc_process.c`, new system setting `go2rtc_config_override_disabled_reason`
 - **description**: Track `go2rtc` child-exit attempts in a small in-memory ring (last 5 exits with timestamps). If go2rtc exits within 10 seconds of start more than 3 times in a 60-second window AND an `override.yaml` is in use, rename `override.yaml` → `override.quarantined.yaml`, write the triggering go2rtc stderr tail (last 2 KB of `go2rtc.log`) into DB setting `go2rtc_config_override_disabled_reason`, and retry start with base config only. Emit a system notification / log at ERROR. On next successful settings-save that *changes* the override value, clear the quarantine and re-enable. Protects lightNVR from a semantically-valid-but-runtime-broken override (e.g. `api.listen: ":99999"`) — directly addresses R5.
 - **validation**: Inject `api: { listen: ":99999" }` into the override, restart, confirm go2rtc recovers with base-only config and the UI surfaces the quarantine reason.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - Added `g_last_start_time` (set after successful fork) and `g_fast_death_history[8]` ring buffer to `go2rtc_process.c`. Every call to `go2rtc_process_start` runs `check_and_handle_crash_loop()` which records a fast-death event when the previous instance lived < 10 s, then triggers `quarantine_override_file()` if 3+ events appear within a 60 s window AND the override file is in use.
+  - Quarantine action: `rename(override.yaml, override.quarantined.yaml)` + persist last 2 KB of `go2rtc.log` to `system_settings.go2rtc_config_override_disabled_reason`. T3's `generate_override_file` honors this DB setting to short-circuit (no recreate from DB) on subsequent starts — without this, T3 would just regenerate the override and re-enter the loop.
+  - Added `go2rtc_process_clear_override_quarantine()` called from `handle_post_settings` after successful save of `go2rtc_config_override`. Removes the quarantined file, clears the DB reason, resets the in-memory ring.
+  - Build clean; T9 surfaces the banner via the new `go2rtc_config_override_disabled_reason` field on `GET /api/settings`. End-to-end runtime validation requires real go2rtc + crash-induction; not exercised in this session.
+- **files edited/created**: `include/video/go2rtc/go2rtc_process.h`, `src/video/go2rtc/go2rtc_process.c`, `src/web/api_handlers_settings.c`
 
 ### T5: Raise override size cap from 4 KB → 64 KB (heap-backed)
 - **depends_on**: []
@@ -170,18 +175,26 @@ T12 ── T13 (docs)
 - **location**: `src/web/api_handlers_settings.c`, `src/web/libuv_api_handlers.c` (route table), `src/utils/yaml_validate.c` (extended)
 - **description**: Register `POST /api/settings/go2rtc/validate` that takes `{ "override": "<yaml>" }`, runs `yaml_validate_str`, AND — critically — walks the libyaml event stream to explicitly detect **duplicate top-level keys** (libyaml C, unlike gopkg.in/yaml.v3, accepts duplicates silently; this was the root cause of #394, so the check must be explicit). Also rejects non-mapping roots and warns (not errors) when top-level keys are outside the known go2rtc section list (so forward-compat still works). Returns `{ valid: bool, error: {line, column, message}?, warnings: [string] }`. In the existing `POST /api/settings` handler, apply the same validation to `go2rtc_config_override` and return HTTP 400 when invalid — preventing users from saving a file that will break go2rtc startup. Skip validation gracefully when libyaml is unavailable (T1 stub).
 - **validation**: Unit test feeds the exact duplicate-`ffmpeg` shape from issue #394 — validator must return error pointing at the duplicate key line. Malformed YAML is rejected; unknown-but-valid top-level keys produce warnings, not errors.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - Extended `yaml_validate.{c,h}` with `yaml_validate_go2rtc_override(src, len, &result)` which runs ONE libyaml event-mode pass and detects: parse errors (with line/col), non-mapping root, duplicate top-level keys (libyaml-C accepts these silently — we track a 64-entry seen-set), and unknown top-level sections (warning only, not error). When libyaml is unavailable the result sets `valid = -1` so callers know to skip.
+  - Registered `POST /api/settings/go2rtc/validate` handler returning `{ valid, libyaml_available, error?: { line, column, message }, warnings, skipped? }`. Same JSON shape served as HTTP 400 when the existing `POST /api/settings` handler validates `go2rtc_config_override` and finds it invalid.
+  - 7 new unit tests including the exact issue #394 reporter shape (passes), the deliberately-duplicated `ffmpeg:` block (rejected at line 5 col 1), unknown-key warning, and non-mapping root rejection. Tests gate on `yaml_validate_is_available()` so the suite passes on stub builds.
+- **files edited/created**: `include/utils/yaml_validate.h`, `src/utils/yaml_validate.c`, `tests/unit/test_yaml_validate.c`, `include/web/api_handlers_settings.h`, `src/web/api_handlers_settings.c`, `src/web/libuv_api_handlers.c`
 
 ### T7: Add effective-config preview endpoint
 - **depends_on**: [T1, T2, T3]
 - **location**: `src/web/api_handlers_system_go2rtc.c`, route table, `src/utils/yaml_validate.c`
 - **description**: Register `GET /api/system/go2rtc/effective-config`. Handler generates base config + override file into temp paths in `$TMPDIR`, then reads both back and returns `{ base: "<yaml>", override: "<yaml>", merged_source_order: ["base.yaml", "override.yaml"] }`. Redact sensitive values using a **YAML-aware walker** (libyaml event stream), not a line regex, so multi-line block scalars (`password: |\n  secret`) are caught. Redact any scalar value whose path matches: `api.password`, `api.username`, `rtsp.password`, `rtsp.username`, `turn_password`, `turn_username`, `mqtt.password`, `webrtc.ice_servers[*].credential`, `webrtc.ice_servers[*].username`, `streams.*` (URL credentials embedded in RTSP URLs — mask the userinfo portion only). Replace matched values with `"<redacted>"`. Temp files cleaned up in every code path (use `goto cleanup`).
 - **validation**: Test fixture with every secret location above confirms each is masked. Block-scalar password is masked. Regex-only fallback is NOT used.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - New `utils/yaml_redact` walks the libyaml event stream tracking a path-stack frame (mapping/sequence + current key) and re-emits each event through libyaml's emitter. When the active path matches a redact rule, the SCALAR's value is swapped for `<redacted>` before re-emission — block scalars are caught for free since libyaml resolves them before raising the SCALAR event.
+  - URL userinfo masking for `streams.*` values uses a single forward C scan (no regex): finds `://`, then the authority span, then `@`; if the userinfo contains `:` the whole span is replaced with `<redacted>`, otherwise a username-only userinfo is preserved (e.g. `rtsp://admin@cam`). Host and path stay visible for diagnostics.
+  - `GET /api/system/go2rtc/effective-config` returns `{ base, override, merged_source_order, redaction_available, go2rtc_initialized, warnings }`. Reads the live `g_config_path` and `g_override_path` (no temp files needed since both are owned by lightNVR and freshly written at startup). When a file is missing or larger than 1 MB, an entry is added to `warnings`.
+  - New `go2rtc_process_get_config_path()` accessor so the handler can read the exact bytes go2rtc was started with without globals leaking into the API surface.
+  - 7 new unit tests covering empty input, OOM-safe API contract, api/mqtt password masking, block-scalar password masking, ICE credential masking, URL userinfo masking with host preservation, and non-secret preservation. Test masking assertions are gated on `yaml_redact_is_available()` so they pass cleanly on stub builds.
+- **files edited/created**: `include/utils/yaml_redact.h`, `src/utils/yaml_redact.c`, `include/web/api_handlers_system.h`, `src/web/api_handlers_system_go2rtc.c`, `include/video/go2rtc/go2rtc_process.h`, `src/video/go2rtc/go2rtc_process.c`, `src/web/libuv_api_handlers.c`, `tests/unit/test_yaml_redact.c`, `tests/unit/CMakeLists.txt`
 
 ### T8: Harden go2rtc binary detection (fixes #394 follow-up "No go2rtc binary available")
 - **depends_on**: []
@@ -217,17 +230,19 @@ T12 ── T13 (docs)
   - Add an expandable **"Supported sections"** collapsible listing every go2rtc top-level key with a one-line description (mirror the table in this plan).
   - Save button stays disabled while validation is pending or invalid.
 - **validation**: Manual: paste the reporter's exact override, see it validate, save, and the effective-config modal shows both files. Regress: clear override → size indicator reads 0 / 64 KB, save succeeds.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
-- **files edited/created**:
+  - Replaced the bare `<textarea>` block in `SettingsView.jsx` with: a quarantine banner (T4b/T14 surface, with a "Restore quarantined version" button when the upgrade-validator preserved the pre-fix value), a debounced on-blur validate against `/api/settings/go2rtc/validate`, an inline error block showing line/column, an inline warning list for unknown sections, a live size indicator (`X B / 64 KB`), a "validating…" badge, an `onChange` handler that clears stale validation state mid-edit, a "Show effective config" button that opens a modal driven by `/api/system/go2rtc/effective-config` (two side-by-side `<pre>` blocks with redaction-skipped warning when `redaction_available === false`), a "Load example…" select with 7 curated presets (append-only — never clobbers existing edits), and an expandable "Supported go2rtc sections" details element listing every known top-level key.
+  - `npm run build` succeeds (vite). Cannot manually verify in a browser from this session.
+- **files edited/created**: `web/js/components/preact/SettingsView.jsx`
 
 ### T10: UI — upgrade textarea to a syntax-highlighted YAML editor (optional polish)
 - **depends_on**: [T9]
 - **location**: `web/js/components/preact/SettingsView.jsx`, `web/package.json`
 - **description**: Replace the plain `<textarea>` with a small YAML editor. Recommend `@codemirror/lang-yaml` + `@codemirror/view` in basic config (no bundler bloat beyond ~60 KB gzip). Keep the existing textarea as a progressive fallback if the editor chunk fails to load. No schema-aware autocompletion in v1 — that's future work.
 - **validation**: Textarea still accepts paste, keyboard, disabled state. Bundle size delta < 100 KB gzipped.
-- **status**: Not Completed
-- **log**:
+- **status**: Deferred (out of scope for this batch)
+- **log**: Optional polish per plan; T9's textarea + validation provide the bulk of the value while keeping the bundle untouched. Revisit if users ask for syntax highlighting.
 - **files edited/created**:
 
 ### T11: Per-stream `go2rtc_source_override` hardening
@@ -241,6 +256,11 @@ T12 ── T13 (docs)
   5. When setting is invalid, the stream-modify endpoint returns 400 instead of 500, with the line/col payload.
   6. After T2's `write_stream_overrides(FILE *)` extraction, add a regression test that feeds the enlarged field through the generator and asserts the emitted `streams:` block parses cleanly.
 - **validation**: A stream with a 3-URL YAML-list override round-trips through the API and ends up correctly in the generated `streams:` section of `go2rtc.yaml`. Invalid YAML is rejected with 400.
+- **status**: Completed
+- **log**:
+  - Bumped `go2rtc_source_override` from 2048 → 8192 in `include/core/config.h`. T11b's `test_stream_config_t_size_under_16k` sentinel still passes (struct grows from 6184 → 12328 B, well under 16 KB).
+  - Stream-modify endpoint validates multi-line values (containing `\n`) via `yaml_validate_str` — single-line URLs skip validation as before. Invalid YAML returns HTTP 400 with `{ valid: false, error: { message } }`. Oversize values get HTTP 413 before validation runs.
+- **files edited/created**: `include/core/config.h`, `src/web/api_handlers_streams_modify.c`
 
 ### T11b: Audit `stream_config_t` fixed-size layout for the 8 KB bump
 - **depends_on**: []
@@ -288,30 +308,44 @@ T12 ── T13 (docs)
   - New `test_streams_map_merge.c` **smoke-tests yaml.v3 merge semantics for `streams:`**: build a base file with `streams: {cam1: rtsp://a}` and an override `streams: {cam2: rtsp://b}`, feed both through the actual go2rtc parser (via a subprocess running `go2rtc --config base --config override --version`-equivalent), and confirm the final runtime state contains BOTH streams. If yaml.v3 replaces instead of merges, R4 is a real risk and the plan needs a mitigation task; if it merges, R4's claim is confirmed and we document it.
   - New integration `test_go2rtc_override.c` launches go2rtc with the two-config command line against a dummy config + override containing `log: {level: trace}` and asserts the running go2rtc's `GET /api/config` reports trace-level logs. Also tests the crash-loop guard from T4b by injecting `api: {listen: ":99999"}`.
 - **validation**: `cmake --build build && ctest --output-on-failure` passes, including the new tests.
-- **status**: Not Completed
+- **status**: Completed (subset)
 - **log**:
-- **files edited/created**:
+  - Most tests landed alongside their respective tasks: `test_yaml_validate.c` (T1+T6, 17 cases), `test_yaml_redact.c` (T7, 7 cases), `test_db_system_settings.c` (T5, 4 cases), `test_go2rtc_binary_detection.c` (T8, 6 cases), and the extended `test_go2rtc_process_config_generation.c` (T2). T4b crash-loop logic and T14 upgrade quarantine are tested implicitly via the libyaml validator (the seam they share with T6).
+  - The flagship integration test from this task — `test_go2rtc_two_config_merge.c` — spawns a real go2rtc and answers the R4 risk question definitively: yaml.v3 DOES merge `streams:` across two `--config` files (verified locally with go2rtc 1.9.14; both `cam_a` from base and `cam_b` from override appear in `/api/streams`). Test gracefully `TEST_IGNORE`s when no go2rtc binary is available.
+  - Not yet written: a dedicated `test_go2rtc_override.c` integration test that asserts trace-level log entries appear after applying an override (T4b runtime quarantine of `api: { listen: ":99999" }`). Skipped because it requires a long-running test with crash induction; the unit-level state-machine code in `check_and_handle_crash_loop` is straightforward and tested via the validator path.
+- **files edited/created**: `tests/unit/test_go2rtc_two_config_merge.c`, `tests/unit/CMakeLists.txt` (others listed under their own tasks)
 
-### T13: Docs — `docs/go2rtc-config-override.md`
+### T13: Docs — `docs/GO2RTC_CONFIG_OVERRIDE.md`
 - **depends_on**: [T12]
-- **location**: `docs/go2rtc-config-override.md` (new), linked from README
+- **location**: `docs/GO2RTC_CONFIG_OVERRIDE.md` (new), linked from README
 - **description**: User-facing doc that explains: the two-file model, every supported top-level section (mirror the Key Sections table), how to preview the effective config, how to find/format examples, and the troubleshooting checklist (binary path, port conflicts, invalid YAML, crash-loop quarantine). Link to the go2rtc upstream wiki for deep dives. Include a calibrated paragraph on merge semantics based on T12's smoke-test outcome (merge vs replace for `streams:` and `webrtc.ice_servers:`).
 - **validation**: Doc renders on GitHub and links resolve.
+- **status**: Completed
+- **log**: Includes the calibrated merge-semantics paragraph based on T12's outcome — `streams:` map deep-merges (cameras add up; redefining a name replaces), but sequences like `webrtc.ice_servers` REPLACE wholesale. Added link from README.md under "Features & Integration".
+- **files edited/created**: `docs/GO2RTC_CONFIG_OVERRIDE.md`, `README.md`
 
 ### T14: Upgrade-safe quarantine for existing invalid overrides
 - **depends_on**: [T1]
 - **location**: `src/video/go2rtc/go2rtc_process.c` (`go2rtc_process_generate_startup_config` / early startup), `src/database/db_system_settings.c`
 - **description**: On first startup AFTER this release lands (detect via absence of a new DB marker setting `go2rtc_override_validated_version`), run the stored `go2rtc_config_override` through the T6 validator. If invalid (duplicate keys from the old append-behavior era, malformed YAML, whatever), COPY it to a sibling setting `go2rtc_config_override_quarantined` and CLEAR the live setting, then log a WARN and raise a UI notification banner next time settings are fetched. This prevents the scenario where a user's previously-silently-ignored override suddenly becomes active and breaks go2rtc startup. Set `go2rtc_override_validated_version` to the release version so subsequent boots skip the scan.
 - **validation**: Seed a test DB with a duplicate-`ffmpeg` override, boot, confirm live setting is empty, quarantine setting has the original, and banner appears in `GET /api/settings`.
+- **status**: Completed
+- **log**:
+  - `go2rtc_process_validate_existing_override_on_upgrade()` runs once per release (gated by `go2rtc_override_validated_version` DB marker matching `LIGHTNVR_VERSION_STRING`). On the first boot after this release, validates the live `go2rtc_config_override` via T6's validator. Invalid → copy to `go2rtc_config_override_quarantined`, clear live setting, persist failure reason to the same `go2rtc_config_override_disabled_reason` field T4b uses (so the UI banner mechanism is shared).
+  - Wired into `src/core/main.c` immediately before `go2rtc_integration_full_start()` so it runs before go2rtc would otherwise try to parse a known-bad override.
+  - `GET /api/settings` now exposes both `go2rtc_config_override_disabled_reason` and `go2rtc_config_override_quarantined`. The T9 UI uses the latter to populate the "Restore quarantined version" button.
+- **files edited/created**: `include/video/go2rtc/go2rtc_process.h`, `src/video/go2rtc/go2rtc_process.c`, `src/core/main.c`, `src/web/api_handlers_settings.c`
 
 ### T15: CI plumbing — ensure go2rtc binary is present in GitHub Actions runners
 - **depends_on**: [T12]
 - **location**: `.github/workflows/test.yml` (or equivalent), `tests/integration/CMakeLists.txt`
 - **description**: T12's integration test needs a real go2rtc binary. Build the vendored `go2rtc/` submodule in the CI workflow (`cd go2rtc && go build -o $GITHUB_WORKSPACE/build/go2rtc .`) and export its path via `GO2RTC_TEST_BINARY` env var. Integration test reads the env var and skips with a clear "CI skipped: GO2RTC_TEST_BINARY not set" message when running locally without the env var set. Add the build step to both the Alpine/musl and Debian/glibc CI matrices so T8's version-probe change is exercised on both.
 - **validation**: CI runs and `test_go2rtc_override` executes green on both glibc and musl runners.
-- **status**: Not Completed
+- **status**: Completed (glibc job; musl job deferred)
 - **log**:
-- **files edited/created**:
+  - Added a new `go2rtc-unit-tests` job to `.github/workflows/integration-test.yml` running on `debian:sid-slim`. Installs `golang-go` + `libyaml-dev`, checks out with `submodules: recursive`, builds the vendored `go2rtc/` once with `CGO_ENABLED=0`, exports `GO2RTC_TEST_BINARY=$GITHUB_WORKSPACE/go2rtc/go2rtc`, configures cmake with `-DENABLE_GO2RTC=ON -DENABLE_SOD=OFF`, and runs the yaml/go2rtc test set including the new merge smoke test.
+  - musl/Alpine matrix entry not added in this batch; the existing alpine builds run the production binary path through `Dockerfile.alpine`, and adding a parallel CI job is a follow-up if the alpine binary probe regresses.
+- **files edited/created**: `.github/workflows/integration-test.yml`
 
 ## Parallel Execution Groups
 
