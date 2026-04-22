@@ -532,6 +532,18 @@ export function SettingsView() {
     return `${(n / 1024).toFixed(1)} KB`;
   };
 
+  // Count UTF-8 bytes (NOT JS string length, which is UTF-16 code units).
+  // The server enforces a byte cap, so non-ASCII in the override would
+  // otherwise let the UI report "within limit" while the save is rejected
+  // with HTTP 413.  TextEncoder is universally available in modern browsers.
+  const TEXT_ENCODER = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
+  const utf8ByteLength = (s) => {
+    if (!s) return 0;
+    if (TEXT_ENCODER) return TEXT_ENCODER.encode(s).length;
+    // Fallback for ancient runtimes — slightly slower but correct.
+    return unescape(encodeURIComponent(s)).length;
+  };
+
   // Curated example presets (T9 scope: 5–8).  Inserts at cursor / end —
   // never overwrites existing content.
   const OVERRIDE_PRESETS = [
@@ -1717,10 +1729,10 @@ export function SettingsView() {
                 placeholder={"ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace"}
               />
 
-              {/* Size indicator */}
+              {/* Size indicator — UTF-8 bytes, matching the server cap */}
               <div class="flex items-center justify-between text-xs text-muted-foreground max-w-md">
                 <span>
-                  {formatBytes((settings.go2rtcConfigOverride || '').length)} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
+                  {formatBytes(utf8ByteLength(settings.go2rtcConfigOverride))} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
                   {overrideValidating ? ' • validating…' : null}
                 </span>
                 {overrideValidation && overrideValidation.libyaml_available === false ? (

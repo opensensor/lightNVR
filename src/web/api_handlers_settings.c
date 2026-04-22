@@ -291,13 +291,19 @@ static cJSON *go2rtc_validation_result_to_json(const yaml_validation_result_t *r
     }
 
     cJSON *warnings = cJSON_CreateArray();
-    if (warnings) {
-        for (int i = 0; i < r->warning_count; i++) {
-            cJSON_AddItemToArray(warnings,
-                cJSON_CreateString(r->warnings[i]));
-        }
-        cJSON_AddItemToObject(root, "warnings", warnings);
+    if (!warnings) {
+        /* Stable contract: every successful response carries warnings: [].
+         * Treat a CreateArray failure as OOM so the caller can return 500
+         * rather than silently shipping a result that's missing a field
+         * the API documents as always-present. */
+        cJSON_Delete(root);
+        return NULL;
     }
+    for (int i = 0; i < r->warning_count; i++) {
+        cJSON_AddItemToArray(warnings,
+            cJSON_CreateString(r->warnings[i]));
+    }
+    cJSON_AddItemToObject(root, "warnings", warnings);
 
     return root;
 }
@@ -310,20 +316,24 @@ void handle_post_settings_go2rtc_validate(const http_request_t *req,
         return;
     }
 
-    cJSON *body = httpd_parse_json_body(req);
-    if (!body) {
-        http_response_set_json_error(res, 400, "Invalid JSON in request body");
-        return;
-    }
-
-    /* Empty body or empty string both mean "validate the empty document",
-     * which is by definition valid. */
-    cJSON *override = cJSON_GetObjectItem(body, "override");
+    /* Empty body or {"override":""} both mean "validate the empty document",
+     * which is by definition valid. We only require valid JSON when a body
+     * was actually sent — httpd_parse_json_body returns NULL for body_len==0,
+     * which we want to treat as "validate empty" rather than 400. */
+    cJSON *body = NULL;
     const char *src = "";
     size_t src_len = 0;
-    if (override && cJSON_IsString(override) && override->valuestring) {
-        src = override->valuestring;
-        src_len = strlen(src);
+    if (req->body_len > 0) {
+        body = httpd_parse_json_body(req);
+        if (!body) {
+            http_response_set_json_error(res, 400, "Invalid JSON in request body");
+            return;
+        }
+        cJSON *override = cJSON_GetObjectItem(body, "override");
+        if (override && cJSON_IsString(override) && override->valuestring) {
+            src = override->valuestring;
+            src_len = strlen(src);
+        }
     }
 
     /* Same hard cap as the save path so the validator can't be used as a

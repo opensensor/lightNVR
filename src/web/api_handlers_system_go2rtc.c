@@ -132,10 +132,21 @@ static int read_file_alloc(const char *path, char **out, size_t *out_len)
             close(fd);
             return -1;
         }
-        if (n == 0) break;  /* short read; treat as truncation */
+        if (n == 0) break;  /* EOF before expected size — handle below */
         total += (size_t)n;
     }
     close(fd);
+
+    /* Detect truncation (file shrank or was rotated mid-read).  Returning
+     * a partial buffer would silently render an incomplete YAML preview
+     * that the operator might mistake for the real effective config. */
+    if (total != (size_t)st.st_size) {
+        log_warn("effective-config: %s shrank during read (got %zu of %lld) — "
+                 "refusing to return truncated content",
+                 path, total, (long long)st.st_size);
+        free(buf);
+        return -1;
+    }
 
     buf[total] = '\0';
     *out = buf;
@@ -180,23 +191,21 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
     cJSON_AddBoolToObject(root, "redaction_available",
                           yaml_redact_is_available());
 
-    cJSON *order = cJSON_CreateArray();
-    if (!order) {
-        cJSON_Delete(root);
-        cJSON_Delete(warnings);
-        http_response_set_json_error(res, 500, "Out of memory");
-        return;
-    }
-    cJSON_AddItemToArray(order, cJSON_CreateString("go2rtc.yaml"));
-    cJSON_AddItemToArray(order, cJSON_CreateString("override.yaml"));
-    cJSON_AddItemToObject(root, "merged_source_order", order);
+    /* Track whether each file was actually read so merged_source_order
+     * reflects what go2rtc would have loaded — not just what files we tried.
+     * The previous always-["go2rtc.yaml","override.yaml"] shape misled the
+     * UI into "override applied" even when the override didn't exist. */
+    bool base_loaded = false;
+    bool override_loaded = false;
 
     /* Base */
     char *base_yaml = NULL;
     size_t base_len = 0;
     if (base_path) {
         int rc = read_file_alloc(base_path, &base_yaml, &base_len);
-        if (rc == 0) {
+        if (rc == 1) {
+            base_loaded = true;
+        } else if (rc == 0) {
             add_warning(warnings,
                         "go2rtc.yaml not present at %s (go2rtc not started yet?)",
                         base_path);
@@ -233,7 +242,9 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
     size_t override_len = 0;
     if (override_path) {
         int rc = read_file_alloc(override_path, &override_yaml, &override_len);
-        if (rc < 0) {
+        if (rc == 1) {
+            override_loaded = true;
+        } else if (rc < 0) {
             add_warning(warnings,
                         "failed to read override.yaml at %s — see server log",
                         override_path);
@@ -259,6 +270,22 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
     } else {
         cJSON_AddStringToObject(root, "override", "");
     }
+
+    /* merged_source_order reflects what was actually loaded — empty array
+     * if nothing was readable, just ["go2rtc.yaml"] when no override exists,
+     * etc.  Plus an explicit override_in_use boolean for callers that want
+     * a one-shot signal without parsing the array. */
+    cJSON *order = cJSON_CreateArray();
+    if (order) {
+        if (base_loaded) {
+            cJSON_AddItemToArray(order, cJSON_CreateString("go2rtc.yaml"));
+        }
+        if (override_loaded) {
+            cJSON_AddItemToArray(order, cJSON_CreateString("override.yaml"));
+        }
+        cJSON_AddItemToObject(root, "merged_source_order", order);
+    }
+    cJSON_AddBoolToObject(root, "override_in_use", override_loaded);
 
     cJSON_AddItemToObject(root, "warnings", warnings);
 
