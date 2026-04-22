@@ -516,11 +516,14 @@ export function SettingsView() {
     setEffectiveConfigLoading(true);
     try {
       const res = await fetchJSON('/api/system/go2rtc/effective-config');
-      setEffectiveConfig(res);
+      if (isMountedRef.current) setEffectiveConfig(res);
     } catch (err) {
-      setEffectiveConfig({ error: String(err) });
+      if (isMountedRef.current) setEffectiveConfig({ error: String(err) });
     } finally {
-      setEffectiveConfigLoading(false);
+      // Same mounted-flag guard as validateOverride — avoids setState
+      // on an unmounted component if the user closes the modal or
+      // navigates away while the request is in flight.
+      if (isMountedRef.current) setEffectiveConfigLoading(false);
     }
   };
 
