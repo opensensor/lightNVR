@@ -3,16 +3,15 @@
  * React component for the streams page
  */
 
-import { Fragment } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { StreamDeleteModal } from './StreamDeleteModal.jsx';
 import { StreamBulkActionModal } from './StreamBulkActionModal.jsx';
 import { StreamConfigModal } from './StreamConfigModal.jsx';
+import { StreamCard } from './StreamCard.jsx';
 import { HealthView } from './HealthView.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
-import { obfuscateUrlCredentials, urlHasCredentials } from '../../utils/url-utils.js';
 import {
   useQuery,
   useMutation,
@@ -79,28 +78,9 @@ export function StreamsView() {
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [onvifNetworkOverride, setOnvifNetworkOverride] = useState('auto');
 
-  // Track which stream rows are expanded to show health/status details
-  const [expandedStreams, setExpandedStreams] = useState({});
-
-  const toggleStreamExpand = (streamName) => {
-    setExpandedStreams(prev => ({
-      ...prev,
-      [streamName]: !prev[streamName]
-    }));
-  };
-
-  // Track which stream URL credentials are currently revealed (by stream name).
-  // By default every URL with credentials is masked, even for admins.
-  const [revealedUrls, setRevealedUrls] = useState(new Set());
-
-  const toggleUrlReveal = (streamName, e) => {
-    e.stopPropagation();
-    setRevealedUrls(prev => {
-      const next = new Set(prev);
-      next.has(streamName) ? next.delete(streamName) : next.add(streamName);
-      return next;
-    });
-  };
+  // Credential-reveal toggle is now owned by StreamCard (per-card state).
+  // StreamsView used to track a Set of revealed streams when the page was a
+  // single flat table; after the T5 card refactor each card manages its own.
 
   // Bulk selection state
   const [selectionMode, setSelectionMode] = useState(false);
@@ -459,6 +439,14 @@ export function StreamsView() {
       enableStreamMutation.mutate(stream.name);
     }
   };
+
+  // Promise-returning variants used by <StreamCard> → <AsyncButton>.
+  // AsyncButton handles the destructive-confirm UX itself (via its
+  // `confirmText` prop), so these do NOT call `window.confirm`.
+  const disableStreamFromCard = (streamName) =>
+    disableStreamMutation.mutateAsync({ streamId: streamName });
+  const enableStreamFromCard = (streamName) =>
+    enableStreamMutation.mutateAsync(streamName);
 
   // Bulk action handlers — open the confirmation modal instead of using alert()
   const handleBulkEnable = () => {
@@ -948,16 +936,19 @@ export function StreamsView() {
     }));
   };
 
-  // Disable stream (soft delete)
+  // Disable stream (soft delete). Returns a promise so <AsyncButton>
+  // inside the delete modal can show a pending spinner and guard
+  // rapid-tap double-submits (PRD UXD_01 §5.1 / #399).
   const disableStream = (streamId) => {
-    disableStreamMutation.mutate({
+    return disableStreamMutation.mutateAsync({
       streamId,
     });
   };
 
-  // Delete stream (permanent)
+  // Delete stream (permanent). Returns a promise for the same reasons
+  // as disableStream above.
   const deleteStream = (streamId) => {
-    deleteStreamMutation.mutate({
+    return deleteStreamMutation.mutateAsync({
       streamId,
     });
   };
@@ -1371,15 +1362,27 @@ export function StreamsView() {
               loadingMessage={t('streams.loadingStreams')}
               emptyMessage={canModifyStreams ? t('streams.noStreamsConfiguredYetAdd') : t('streams.noStreamsConfiguredYet')}
           >
-        <div className="streams-container bg-card text-card-foreground rounded-lg shadow overflow-hidden">
-          {/* Bulk action toolbar — visible in selection mode */}
+        <div className="streams-container">
+          {/* Bulk action toolbar — visible in selection mode. Retained
+              from the pre-T5 table layout so bulk enable/disable/delete
+              still work the same way over the new card grid. */}
           {canModifyStreams && selectionMode && (
-            <div className="flex items-center gap-3 px-4 py-2 border-b border-border">
-              <span className="text-sm text-muted-foreground">
-                {selectedStreams.size > 0
-                  ? t('streams.selectedCount', { count: selectedStreams.size })
-                  : t('streams.selectStreams')}
-              </span>
+            <div className="flex flex-wrap items-center gap-3 px-3 py-2 mb-3 rounded-md bg-card border border-border">
+              <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded cursor-pointer"
+                  checked={selectedStreams.size > 0 && selectedStreams.size === (sortedStreams || []).length}
+                  ref={el => { if (el) el.indeterminate = selectedStreams.size > 0 && selectedStreams.size < (sortedStreams || []).length; }}
+                  onChange={toggleSelectAll}
+                  title={t('streams.selectAll')}
+                />
+                <span>
+                  {selectedStreams.size > 0
+                    ? t('streams.selectedCount', { count: selectedStreams.size })
+                    : t('streams.selectStreams')}
+                </span>
+              </label>
               <button
                 className="px-3 py-1 text-sm rounded border transition-colors disabled:opacity-50"
                 style={{borderColor: 'hsl(var(--success))', color: 'hsl(var(--success))', background: 'transparent'}}
@@ -1415,301 +1418,69 @@ export function StreamsView() {
               </button>
             </div>
           )}
-          <div className="overflow-x-auto">
-            <table id="streams-table" className="min-w-full divide-y divide-border">
-              <thead className="bg-muted">
-              <tr>
-                {canModifyStreams && selectionMode && (
-                  <th className="w-8 px-3 py-3">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 rounded cursor-pointer"
-                      checked={selectedStreams.size > 0 && selectedStreams.size === (sortedStreams || []).length}
-                      ref={el => { if (el) el.indeterminate = selectedStreams.size > 0 && selectedStreams.size < (sortedStreams || []).length; }}
-                      onChange={toggleSelectAll}
-                      title={t('streams.selectAll')}
-                    />
-                  </th>
-                )}
-                <th className="w-8 px-2 py-3"></th>
-                {[
-                  { key: 'name',       label: t('common.name') },
-                  { key: 'status',     label: t('common.status') },
-                  { key: 'url',        label: t('common.url') },
-                  { key: 'resolution', label: t('streams.resolution') },
-                  { key: 'fps',        label: t('streams.fps') },
-                  { key: 'recording',  label: t('streams.recording') },
-                ].map(({ key, label }) => (
-                  <th
-                    key={key}
-                    className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider cursor-pointer select-none hover:text-foreground"
-                    onClick={() => handleSort(key)}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {label}
-                      <span className="inline-flex flex-col leading-none" style={{fontSize: '0.6rem', lineHeight: 1}}>
-                        <span style={{opacity: sortColumn === key && sortDirection === 'asc' ? 1 : 0.3}}>▲</span>
-                        <span style={{opacity: sortColumn === key && sortDirection === 'desc' ? 1 : 0.3}}>▼</span>
-                      </span>
-                    </span>
-                  </th>
-                ))}
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
-              </tr>
-              </thead>
-              <tbody className="bg-card divide-y divide-border">
-              {sortedStreams.map(stream => {
-                const isExpanded = expandedStreams[stream.name];
-                const statusColor =
-                  stream.status === 'Running'      ? 'hsl(var(--success))' :
-                  stream.status === 'Starting'     ? 'hsl(var(--warning, 45 93% 47%))' :
-                  stream.status === 'Reconnecting' ? 'hsl(var(--warning, 45 93% 47%))' :
-                  stream.status === 'Error'        ? 'hsl(var(--danger))' :
-                  stream.status === 'Stopping'     ? 'hsl(var(--warning, 45 93% 47%))' :
-                  stream.status === 'Stopped'      ? 'hsl(var(--danger))' :
-                  'hsl(var(--muted-foreground))';
-                const statusLabel =
-                  stream.status === 'Running'      ? t('streams.running')      :
-                  stream.status === 'Starting'     ? t('streams.starting')     :
-                  stream.status === 'Reconnecting' ? t('streams.reconnecting') :
-                  stream.status === 'Error'        ? t('streams.error')        :
-                  stream.status === 'Stopping'     ? t('streams.stopping')     :
-                  stream.status === 'Stopped'      ? t('streams.stopped')      :
-                  (stream.status || t('common.unknown'));
-                const hasAdminLauncher = !shouldHideCredentials && /^https?:\/\//i.test(stream.admin_url || '');
 
-                return (
-                  <Fragment key={stream.name}>
-                    <tr className="hover:bg-muted/50 cursor-pointer" onClick={() => toggleStreamExpand(stream.name)}>
-                      {/* Bulk-select checkbox — only in selection mode */}
-                      {canModifyStreams && selectionMode && (
-                        <td className="w-8 px-3 py-4" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 rounded cursor-pointer"
-                            checked={selectedStreams.has(stream.name)}
-                            onChange={e => toggleSelect(e, stream.name)}
-                          />
-                        </td>
-                      )}
-                      {/* Expand/collapse chevron */}
-                      <td className="w-8 px-2 py-4 text-center text-muted-foreground">
-                        <svg
-                          className={`w-4 h-4 inline-block transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
-                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                        </svg>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <span className="w-2 h-2 rounded-full mr-2 flex-shrink-0" style={{backgroundColor: stream.enabled ? 'hsl(var(--success))' : 'hsl(var(--danger))'}} title={stream.enabled ? t('common.enabled') : t('common.disabled')}></span>
-                          {stream.name}
-                        </div>
-                      </td>
-                      {/* Status badge */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                          style={{
-                            backgroundColor: statusColor,
-                            color: 'white',
-                            opacity: stream.enabled ? 1 : 0.6
-                          }}
-                        >
-                          {statusLabel}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs truncate max-w-xs" title={revealedUrls.has(stream.name) ? stream.url : obfuscateUrlCredentials(stream.url)}>
-                            {revealedUrls.has(stream.name) ? stream.url : obfuscateUrlCredentials(stream.url)}
-                          </span>
-                          {urlHasCredentials(stream.url) && !shouldHideCredentials && (
-                            <button
-                              type="button"
-                              className="flex-shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
-                              onClick={(e) => toggleUrlReveal(stream.name, e)}
-                              title={revealedUrls.has(stream.name) ? t('streams.hideCredentials') : t('streams.showCredentials')}
-                            >
-                              {revealedUrls.has(stream.name) ? (
-                                /* eye-off */
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 4.411m0 0L21 21" />
-                                </svg>
-                              ) : (
-                                /* eye */
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">{stream.width}x{stream.height}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{stream.fps}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {stream.record ? t('common.enabled') : t('common.disabled')}
-                        {stream.record && stream.record_on_schedule ? ` (${t('streams.schedule')})` : ''}
-                        {stream.detection_based_recording ? ` (${t('streams.detection')})` : ''}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex space-x-2">
-                          {hasAdminLauncher && (
-                            <a
-                              className="p-1 rounded-full focus:outline-none"
-                              style={{color: 'hsl(var(--primary))'}}
-                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
-                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                              href={stream.admin_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={t('streams.openCameraAdminPage')}
-                              aria-label={t('streams.openAdminPageFor', { name: stream.name })}
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 3h7m0 0v7m0-7L10 14"></path>
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 5h5M5 5v14h14v-5"></path>
-                              </svg>
-                            </a>
-                          )}
-                          {/* Edit button - only show if user can modify streams */}
-                          {canModifyStreams && (
-                            <button
-                                className="p-1 rounded-full focus:outline-none"
-                                style={{color: 'hsl(var(--primary))'}}
-                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.1)'}
-                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                onClick={() => openEditStreamModal(stream.name)}
-                                title={t('common.edit')}
-                            >
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
-                              </svg>
-                            </button>
-                          )}
-                          {/* Clone button - only show if user can modify streams */}
-                          {canModifyStreams && (
-                            <button
-                                className="p-1 rounded-full focus:outline-none"
-                                style={{color: 'hsl(var(--success))'}}
-                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--success) / 0.1)'}
-                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                onClick={(e) => { e.stopPropagation(); openCloneStreamModal(stream.name); }}
-                                title={t('streams.cloneStream')}
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                              </svg>
-                            </button>
-                          )}
-                          {/* Enable/Disable toggle button - only show if user can modify streams */}
-                          {canModifyStreams && (
-                            <button
-                                className="p-1 rounded-full focus:outline-none"
-                                style={{color: stream.enabled ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))'}}
-                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = stream.enabled ? 'hsl(var(--success) / 0.1)' : 'hsl(var(--muted-foreground) / 0.1)'}
-                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                onClick={(e) => { e.stopPropagation(); handleToggleStreamEnabled(stream); }}
-                                title={stream.enabled ? t('streams.toggleDisable') : t('streams.toggleEnable')}
-                            >
-                              {/* Power icon */}
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                              </svg>
-                            </button>
-                          )}
-                          {/* Delete button - only show if user can modify streams */}
-                          {canModifyStreams && (
-                            <button
-                                className="p-1 rounded-full focus:outline-none"
-                                style={{color: 'hsl(var(--danger))'}}
-                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--danger) / 0.1)'}
-                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                onClick={() => openDeleteModal(stream)}
-                                title={t('common.delete')}
-                            >
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"></path>
-                              </svg>
-                            </button>
-                          )}
-                          {/* Show dash when no actions available */}
-                          {!canModifyStreams && !hasAdminLauncher && (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    {/* Expandable detail row */}
-                    {isExpanded && (
-                      <tr className="bg-muted/30">
-                        <td colSpan={canModifyStreams && selectionMode ? 9 : 8} className="px-6 py-3">
-                          <div className="flex flex-wrap gap-4 text-sm">
-                            {/* Enabled */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">{t('common.enabled')}:</span>
-                              <span style={{color: stream.enabled ? 'hsl(var(--success))' : 'hsl(var(--danger))'}}>
-                                {stream.enabled ? t('common.yes') : t('common.no')}
-                              </span>
-                            </div>
-                            {/* Streaming */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">{t('streams.streaming')}:</span>
-                              <span style={{color: stream.streaming_enabled ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))'}}>
-                                {stream.streaming_enabled ? t('common.active') : t('streams.off')}
-                              </span>
-                            </div>
-                            {/* Recording */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">{t('streams.recording')}:</span>
-                              <span style={{color: stream.record ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))'}}>
-                                {stream.record
-                                  ? (stream.record_on_schedule ? t('streams.scheduled') : t('streams.continuous'))
-                                  : t('streams.off')}
-                              </span>
-                            </div>
-                            {/* Detection */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">{t('streams.detection')}:</span>
-                              <span style={{color: stream.detection_based_recording ? 'hsl(var(--success))' : 'hsl(var(--muted-foreground))'}}>
-                                {stream.detection_based_recording
-                                  ? (stream.detection_model ? stream.detection_model.split('/').pop() : t('common.enabled'))
-                                  : t('streams.off')}
-                              </span>
-                            </div>
-                            {/* Codec */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">{t('streams.codec')}:</span>
-                              <span>{stream.codec || t('streams.notAvailable')}</span>
-                            </div>
-                            {/* Priority */}
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-muted-foreground">{t('streams.priority')}:</span>
-                              <span>{stream.priority || t('streams.notAvailable')}</span>
-                            </div>
-                            {/* Segment duration */}
-                            {stream.record && (
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-muted-foreground">{t('streams.segment')}:</span>
-                                <span>{stream.segment_duration
-                                  ? (stream.segment_duration >= 60
-                                    ? `${Math.round(stream.segment_duration / 60)}min`
-                                    : `${stream.segment_duration}s`)
-                                  : t('streams.notAvailable')}</span>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              </tbody>
-            </table>
+          {/* Sort controls — kept as a compact toolbar above the grid so
+              the pre-T5 column-header sort affordances still work. */}
+          <div className="flex flex-wrap items-center gap-2 mb-3 text-sm text-muted-foreground">
+            <span className="font-medium">{t('streams.sortBy') || 'Sort by'}:</span>
+            {[
+              { key: 'name',       label: t('common.name') },
+              { key: 'status',     label: t('common.status') },
+              { key: 'url',        label: t('common.url') },
+              { key: 'resolution', label: t('streams.resolution') },
+              { key: 'fps',        label: t('streams.fps') },
+              { key: 'recording',  label: t('streams.recording') },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`px-2 py-1 text-xs rounded border transition-colors ${
+                  sortColumn === key
+                    ? 'bg-primary/10 border-primary text-primary'
+                    : 'border-input bg-background hover:bg-accent'
+                }`}
+                onClick={() => handleSort(key)}
+                aria-pressed={sortColumn === key}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {label}
+                  {sortColumn === key && (
+                    <span aria-hidden="true">{sortDirection === 'asc' ? '▲' : '▼'}</span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Responsive card grid.
+              `auto-fill` + `minmax(360px, 1fr)` is load-bearing — it
+              lets cards reflow naturally at every viewport from 375 px
+              up to 1920+ without forcing horizontal scroll (PRD §5.5 /
+              #399). */}
+          <div
+            id="streams-grid"
+            className="grid grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-4"
+            role="list"
+            aria-label={t('nav.streams')}
+          >
+            {sortedStreams.map(stream => (
+              <div role="listitem" key={stream.name}>
+                <StreamCard
+                  stream={stream}
+                  canModifyStreams={canModifyStreams}
+                  shouldHideCredentials={shouldHideCredentials}
+                  selectionMode={selectionMode}
+                  isSelected={selectedStreams.has(stream.name)}
+                  onToggleSelect={toggleSelect}
+                  onEdit={openEditStreamModal}
+                  onClone={openCloneStreamModal}
+                  onOpenDelete={openDeleteModal}
+                  onEnable={enableStreamFromCard}
+                  onDisable={disableStreamFromCard}
+                  t={t}
+                />
+              </div>
+            ))}
           </div>
         </div>
       </ContentLoader>

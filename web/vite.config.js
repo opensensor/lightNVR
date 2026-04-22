@@ -234,27 +234,34 @@ export default defineConfig({
             return;
           }
 
-          // Read all directory entries from css, including type information
-          const cssEntries = await fsPromises.readdir(srcCssDir, { withFileTypes: true });
-
-          // Copy each regular CSS file to dist/css
-          for (const entry of cssEntries) {
-            // Skip anything that isn't a regular file or doesn't end with .css
-            if (!entry.isFile() || !entry.name.endsWith('.css')) {
-              continue;
-            }
-
-            const srcPath = resolve(__dirname, 'css', entry.name);
-            const destPath = resolve(__dirname, 'dist/css', entry.name);
-
-            try {
-              await fsPromises.copyFile(srcPath, destPath);
-              console.log(`Copied ${entry.name} to dist/css/`);
-            } catch (copyError) {
-              // Log and continue copying other files
-              console.error(`Error copying CSS file ${srcPath} to ${destPath}:`, copyError);
+          // Recursively copy all *.css files under web/css/ to dist/css/,
+          // preserving subdirectory structure. Needed so native @import paths
+          // like './theme/scrollbar.css' (UXD T4) resolve at runtime from the
+          // dist/ output without inlining the CSS into main.css.
+          async function copyCssTree(srcDir, destDir) {
+            await fsPromises.mkdir(destDir, { recursive: true });
+            const entries = await fsPromises.readdir(srcDir, { withFileTypes: true });
+            for (const entry of entries) {
+              const srcPath = resolve(srcDir, entry.name);
+              const destPath = resolve(destDir, entry.name);
+              if (entry.isDirectory()) {
+                await copyCssTree(srcPath, destPath);
+                continue;
+              }
+              if (!entry.isFile() || !entry.name.endsWith('.css')) {
+                continue;
+              }
+              try {
+                await fsPromises.copyFile(srcPath, destPath);
+                const rel = destPath.slice(resolve(__dirname, 'dist').length + 1);
+                console.log(`Copied ${entry.name} to ${rel}`);
+              } catch (copyError) {
+                console.error(`Error copying CSS file ${srcPath} to ${destPath}:`, copyError);
+              }
             }
           }
+
+          await copyCssTree(srcCssDir, distCssDir);
         } catch (error) {
           console.error('Error copying CSS files:', error);
         }

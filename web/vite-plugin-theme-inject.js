@@ -145,6 +145,20 @@ function generateThemeScript(colorThemes) {
         console.warn('Theme script failed:', e);
         if (window.matchMedia('(prefers-color-scheme: dark)').matches) { document.documentElement.classList.add('dark'); }
       }
+      // UXD T4 — reduce-motion: apply the resolved preference on first paint so
+      // animations don't flash before the JS modules import reduceMotion.js.
+      // Mirrors web/js/utils/reduceMotion.js (localStorage key + 'auto' fallback
+      // to prefers-reduced-motion). Kept deliberately small and dependency-free.
+      try {
+        var rmPref = localStorage.getItem('lightnvr.reduceMotion');
+        if (rmPref !== 'on' && rmPref !== 'off') { rmPref = 'auto'; }
+        var rmActive = rmPref === 'on' ||
+          (rmPref === 'auto' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        document.documentElement.setAttribute('data-reduce-motion', rmActive ? 'true' : 'false');
+      } catch (e) {
+        // If storage/matchMedia fails, leave the attribute unset; CSS rule only
+        // fires on 'true' so defaulting to no-op is safe.
+      }
     })();
     </script>`;
 }

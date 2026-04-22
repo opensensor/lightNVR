@@ -7,6 +7,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { recordingsAPI } from './recordingsAPI.jsx';
 import { formatUtils } from './formatUtils.js';
 import { urlUtils } from './urlUtils.js';
+import { AsyncButton } from '../AsyncButton.jsx';
 import { useI18n } from '../../../i18n.js';
 
 /** Small reusable accordion section for filter groups */
@@ -354,13 +355,16 @@ export function FiltersSidebar({
           </FilterSection>
 
         <div className="flex gap-2 pt-2">
-          <button
+          {/* Apply Filters goes through AsyncButton so the pending refetch
+              shows a spinner and a rapid-tap can't fire a stampede of
+              requests (PRD UXD_01 §5.1 / #399). */}
+          <AsyncButton
             id="apply-filters-btn"
-            className="btn-primary flex-1 text-sm py-2"
-            onClick={applyFilters}
+            className="btn-primary flex-1 text-sm py-2 min-h-11 disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={() => Promise.resolve(applyFilters())}
           >
             {t('recordings.apply')}
-          </button>
+          </AsyncButton>
           <button
             id="reset-filters-btn"
             className="btn-secondary flex-1 text-sm py-2"

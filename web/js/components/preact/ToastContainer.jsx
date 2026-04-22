@@ -80,11 +80,15 @@ export function ToastContainer() {
     };
   }, []);
 
-  // Create portal for the toast container
+  // Create portal for the toast container.
+  // Positioning (PRD UXD_01 §5.3):
+  //   - < 640px (mobile):   top-center — never overlaps the bottom nav.
+  //   - ≥ 640px (desktop):  top-right.
+  //   - pt-[env(safe-area-inset-top)] keeps toasts clear of the iOS notch.
   return createPortal(
     <div
       ref={containerRef}
-      className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-full max-w-[450px] pointer-events-none"
+      className="fixed top-4 left-1/2 -translate-x-1/2 sm:top-4 sm:right-4 sm:left-auto sm:translate-x-0 pt-[env(safe-area-inset-top)] z-50 flex flex-col items-center sm:items-end gap-2.5 w-full max-w-[450px] px-4 sm:px-0 pointer-events-none"
     >
       {toasts.map(toast => {
         const getToastStyles = (type) => {

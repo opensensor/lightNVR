@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'preact/hooks';
+import { AsyncButton } from './AsyncButton.jsx';
 import { useI18n } from '../../i18n.js';
 
 /**
@@ -28,14 +29,18 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
     setIsConfirmDelete(true);
   };
 
-  // Handle disable stream - don't close modal, let parent handle it via onSuccess/onError
+  // Handle disable stream — returns the parent's promise so AsyncButton can
+  // track pending/error state. Parent handles closing the modal via
+  // onSuccess/onError in its mutation.
   const handleDisable = () => {
-    onDisable(streamId);
+    const result = onDisable(streamId);
+    return Promise.resolve(result);
   };
 
-  // Handle delete stream - don't close modal, let parent handle it via onSuccess/onError
+  // Handle delete stream — same contract as handleDisable above.
   const handleDelete = () => {
-    onDelete(streamId);
+    const result = onDelete(streamId);
+    return Promise.resolve(result);
   };
 
   return (
@@ -80,13 +85,17 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
                     <li>{t('streams.disableStreamBulletRecordingsKept')}</li>
                     <li>{t('streams.disableStreamBulletCanReenable')}</li>
                   </ul>
-                  <button
-                    class="w-full px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  {/* Disable goes straight to the server, so it gets the
+                      two-step confirmText guard to protect against accidental
+                      taps on mobile (PRD UXD_01 §5.1 destructive pattern). */}
+                  <AsyncButton
+                    class="w-full px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed min-h-11"
                     onClick={handleDisable}
                     disabled={isLoading}
+                    confirmText={t('streams.disableStreamConfirm')}
                   >
                     {t('common.disable')}
-                  </button>
+                  </AsyncButton>
                 </div>
 
                 <div class="p-4 border rounded-lg" style={{borderColor: 'hsl(var(--danger-muted))', backgroundColor: 'hsl(var(--danger-muted) / 0.3)'}}>
@@ -131,13 +140,16 @@ export function StreamDeleteModal({ streamId, streamName, onClose, onDisable, on
               >
                 {t('common.cancel')}
               </button>
-              <button
-                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              {/* Final commit uses AsyncButton so pending state is visible
+                  and rapid double-taps can't fire two DELETE calls
+                  (PRD UXD_01 §5.1 / #399). */}
+              <AsyncButton
+                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed min-h-11"
                 onClick={handleDelete}
                 disabled={isLoading}
               >
                 {t('streams.yesDeletePermanently')}
-              </button>
+              </AsyncButton>
             </div></>
           )}
         </div>
