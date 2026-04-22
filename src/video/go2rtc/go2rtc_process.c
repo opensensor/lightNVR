@@ -397,6 +397,9 @@ static bool g_initialized = false;
 static int g_rtsp_port = 8554; // Default RTSP port
 static int g_api_port = 1984;  // Configured API port (updated during init)
 
+// Forward declarations for helpers defined later in this file.
+static int write_stream_overrides(FILE *fp);
+
 // Callback function for libcurl to discard response data
 static size_t discard_response_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
     // Just return the size of the data to indicate we handled it
@@ -715,66 +718,19 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     // Streams section — write overridden streams directly into config,
     // other streams will be registered dynamically via the go2rtc API.
     fprintf(config_file, "\nstreams:\n");
-    {
-        bool has_overridden = false;
-        if (get_db_handle() != NULL) {
-            int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
-            stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
-            int count = streams ? get_all_stream_configs(streams, ms) : 0;
-
-            for (int i = 0; i < count; i++) {
-                if (!streams[i].enabled) continue;
-                if (streams[i].go2rtc_source_override[0] == '\0') continue;
-
-                has_overridden = true;
-
-                // Escape stream name for YAML double-quoted key safety
-                char escaped_name[MAX_STREAM_NAME * 2];
-                yaml_escape_string(streams[i].name, escaped_name, sizeof(escaped_name));
-
-                const char *override = streams[i].go2rtc_source_override;
-                bool is_single_line = (strchr(override, '\n') == NULL);
-
-                if (is_single_line) {
-                    // Single URL: write as inline YAML scalar
-                    //   "cam": rtsp://camera/stream
-                    fprintf(config_file, "  \"%s\": %s\n", escaped_name, override);
-                } else {
-                    // Multi-line: write as indented block under the key
-                    //   "cam":
-                    //     - rtsp://camera/main
-                    //     - ffmpeg:cam#video=h264
-                    fprintf(config_file, "  \"%s\":\n", escaped_name);
-                    const char *p = override;
-                    while (*p) {
-                        const char *eol = strchr(p, '\n');
-                        if (eol) {
-                            fprintf(config_file, "    %.*s\n", (int)(eol - p), p);
-                            p = eol + 1;
-                        } else {
-                            fprintf(config_file, "    %s\n", p);
-                            break;
-                        }
-                    }
-                }
-            }
-            free(streams);
-        }
-        if (!has_overridden) {
-            fprintf(config_file, "  # Streams will be added dynamically via API\n");
-        }
+    if (write_stream_overrides(config_file) == 0) {
+        // write_stream_overrides() returns 0 when it wrote zero override entries;
+        // keep the comment placeholder so the `streams:` key has a valid body.
+        fprintf(config_file, "  # Streams will be added dynamically via API\n");
     }
 
-    // Global go2rtc config override from system settings
-    {
-        char global_override[4096] = {0};
-        if (get_db_handle() != NULL
-            && db_get_system_setting("go2rtc_config_override", global_override, sizeof(global_override)) == 0
-            && global_override[0] != '\0') {
-            fprintf(config_file, "\n# User config override\n");
-            fprintf(config_file, "%s\n", global_override);
-        }
-    }
+    // NOTE: As of the T2 refactor, the global go2rtc config override from
+    // `system_settings.go2rtc_config_override` is NO LONGER appended to this
+    // file. Appending it caused duplicate top-level YAML keys (issue #394).
+    // The override is now emitted to a separate file by
+    // go2rtc_process_generate_override_file() and passed to go2rtc as a
+    // second `--config` argument, letting go2rtc merge the two YAMLs with
+    // its native yaml.v3 logic.
 
     fclose(config_file);
     log_info("Generated go2rtc configuration file: %s", config_path);
@@ -797,6 +753,96 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     }
 
     return true;
+}
+
+/**
+ * @brief Write per-stream go2rtc source overrides into the given YAML stream.
+ *
+ * Extracted from go2rtc_process_generate_config() by the T2 refactor.
+ * Preserves the pre-refactor behavior exactly:
+ *   - Skip disabled streams and streams with empty go2rtc_source_override.
+ *   - Escape stream names for YAML double-quoted key safety.
+ *   - Single-line overrides are emitted as an inline scalar.
+ *   - Multi-line overrides are emitted as an indented block under the key.
+ *
+ * @param fp  Open writable FILE * positioned directly after the `streams:` line.
+ * @return Number of per-stream override entries written (>= 0).
+ *         The caller decides whether to emit a placeholder comment when zero.
+ */
+static int write_stream_overrides(FILE *fp) {
+    if (!fp) return 0;
+    if (get_db_handle() == NULL) return 0;
+
+    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
+    if (!streams) return 0;
+
+    int count = get_all_stream_configs(streams, ms);
+    int written = 0;
+
+    for (int i = 0; i < count; i++) {
+        if (!streams[i].enabled) continue;
+        if (streams[i].go2rtc_source_override[0] == '\0') continue;
+
+        // Escape stream name for YAML double-quoted key safety
+        char escaped_name[MAX_STREAM_NAME * 2];
+        yaml_escape_string(streams[i].name, escaped_name, sizeof(escaped_name));
+
+        const char *override = streams[i].go2rtc_source_override;
+        bool is_single_line = (strchr(override, '\n') == NULL);
+
+        if (is_single_line) {
+            // Single URL: write as inline YAML scalar
+            //   "cam": rtsp://camera/stream
+            fprintf(fp, "  \"%s\": %s\n", escaped_name, override);
+        } else {
+            // Multi-line: write as indented block under the key
+            //   "cam":
+            //     - rtsp://camera/main
+            //     - ffmpeg:cam#video=h264
+            fprintf(fp, "  \"%s\":\n", escaped_name);
+            const char *p = override;
+            while (*p) {
+                const char *eol = strchr(p, '\n');
+                if (eol) {
+                    fprintf(fp, "    %.*s\n", (int)(eol - p), p);
+                    p = eol + 1;
+                } else {
+                    fprintf(fp, "    %s\n", p);
+                    break;
+                }
+            }
+        }
+
+        written++;
+    }
+
+    free(streams);
+    return written;
+}
+
+/**
+ * @brief STUB — to be implemented by T3.
+ *
+ * Writes the user override YAML (from system_settings.go2rtc_config_override)
+ * to the given path, or removes the file if the setting is empty. See the
+ * header comment for the full contract.
+ */
+int go2rtc_process_generate_override_file(const char *override_path) {
+    (void)override_path;
+    log_debug("go2rtc_process_generate_override_file: T3 will implement");
+    return 0;
+}
+
+/**
+ * @brief STUB — to be implemented by T3.
+ *
+ * Returns the path to the user override file, or NULL when no override is
+ * configured on disk.
+ */
+const char *go2rtc_process_get_override_path(void) {
+    log_debug("go2rtc_process_get_override_path: T3 will implement");
+    return NULL;
 }
 
 bool go2rtc_process_generate_startup_config(const char *binary_path,

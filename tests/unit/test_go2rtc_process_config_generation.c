@@ -83,10 +83,81 @@ void test_generate_startup_config_uses_saved_webrtc_settings(void) {
     rmdir(config_dir);
 }
 
+/**
+ * Post-T2 refactor assertion: the base go2rtc.yaml generator must NEVER append
+ * the user config override as a tail block — that caused duplicate top-level
+ * keys (issue #394). The override is now written to a sibling file and passed
+ * to go2rtc as a second --config argument (T3/T4).
+ */
+void test_base_config_has_no_user_override_append_block(void) {
+    load_default_config(&g_config);
+    g_config.go2rtc_api_port = 31984;
+    g_config.go2rtc_rtsp_port = 31554;
+    g_config.go2rtc_webrtc_enabled = false;
+
+    char dir_template[] = "/tmp/lightnvr-go2rtc-config-XXXXXX";
+    char *config_dir = mkdtemp(dir_template);
+    TEST_ASSERT_NOT_NULL(config_dir);
+
+    char config_path[PATH_MAX];
+    snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
+
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config("/bin/true",
+                                                            config_dir,
+                                                            g_config.go2rtc_api_port));
+
+    char *contents = read_text_file(config_path);
+    TEST_ASSERT_NOT_NULL(contents);
+
+    // The literal tail-append marker that used to dump the raw user setting
+    // into the same YAML file must no longer appear.
+    TEST_ASSERT_NULL_MESSAGE(strstr(contents, "# User config override"),
+                             "Base config must not contain appended user override block");
+
+    // Exactly one top-level `ffmpeg:` stanza — never duplicates (the exact
+    // symptom from issue #394). Count occurrences of "\nffmpeg:" plus a
+    // leading-of-file "ffmpeg:" case to be safe.
+    int ffmpeg_count = 0;
+    const char *scan = contents;
+    while ((scan = strstr(scan, "\nffmpeg:")) != NULL) {
+        ffmpeg_count++;
+        scan += strlen("\nffmpeg:");
+    }
+    if (strncmp(contents, "ffmpeg:", strlen("ffmpeg:")) == 0) {
+        ffmpeg_count++;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, ffmpeg_count,
+                                  "Base config must contain exactly one ffmpeg: stanza");
+
+    free(contents);
+    unlink(config_path);
+    rmdir(config_dir);
+}
+
+/**
+ * Link-time assertion that T2 exposed the T3 helper stubs. This guarantees
+ * downstream tasks can call them even before T3 lands, and prevents an
+ * accidental removal of the declarations.
+ */
+void test_override_helpers_are_linkable_stubs(void) {
+    // Stub currently returns 0 ("success / no-op"). When T3 lands it will
+    // return 0 on success and -1 on failure; either way the function must exist
+    // and be callable.
+    int rc = go2rtc_process_generate_override_file("/tmp/does-not-matter.yaml");
+    TEST_ASSERT_TRUE(rc == 0 || rc == -1);
+
+    // Stub currently returns NULL; T3 will return either NULL or a stable
+    // path string. Either way the symbol must exist.
+    const char *path = go2rtc_process_get_override_path();
+    TEST_ASSERT_TRUE(path == NULL || path[0] != '\0');
+}
+
 int main(void) {
     init_logger();
 
     UNITY_BEGIN();
     RUN_TEST(test_generate_startup_config_uses_saved_webrtc_settings);
+    RUN_TEST(test_base_config_has_no_user_override_append_block);
+    RUN_TEST(test_override_helpers_are_linkable_stubs);
     return UNITY_END();
 }

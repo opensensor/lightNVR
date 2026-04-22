@@ -42,12 +42,45 @@ bool go2rtc_process_is_running(void);
 
 /**
  * @brief Generate a go2rtc configuration file based on system settings
- * 
+ *
+ * After the T2 refactor this emits ONLY the lightNVR-owned sections
+ * (`api`, `rtsp`, `webrtc`, `ffmpeg` defaults, and `streams` with per-stream
+ * overrides). The global user override from `system_settings.go2rtc_config_override`
+ * is NO LONGER appended here — it is written to a separate override file by
+ * go2rtc_process_generate_override_file() and passed to go2rtc via a second
+ * `--config` argument.
+ *
  * @param config_path Path where the configuration file should be written
  * @param api_port Port for the go2rtc HTTP API
  * @return true if configuration was generated successfully, false otherwise
  */
 bool go2rtc_process_generate_config(const char *config_path, int api_port);
+
+/**
+ * @brief Write the user config override to a standalone YAML file.
+ *
+ * Reads `go2rtc_config_override` from `db_system_settings` and writes it to
+ * @p override_path with mode 0600. If the DB value is empty or absent, any
+ * existing file at @p override_path is removed so a stale override is never
+ * passed to go2rtc.
+ *
+ * NOTE: This is a STUB declaration placed here by T2 so that T3 and T4 can
+ * compile independently. T3 provides the real implementation.
+ *
+ * @param override_path Filesystem path where the override YAML should be written.
+ * @return 0 on success (file written or confirmed absent), -1 on failure.
+ */
+int go2rtc_process_generate_override_file(const char *override_path);
+
+/**
+ * @brief Return the path to the user override file, or NULL if not configured.
+ *
+ * NOTE: This is a STUB declaration placed here by T2. T3 provides the real
+ * implementation.
+ *
+ * @return Pointer to a stable internal string, or NULL.
+ */
+const char *go2rtc_process_get_override_path(void);
 
 /**
  * @brief Generate <config_dir>/go2rtc.yaml from the currently loaded settings.
