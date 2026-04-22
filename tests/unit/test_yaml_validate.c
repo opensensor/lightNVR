@@ -267,6 +267,26 @@ void test_go2rtc_validate_malformed_yaml_returns_parse_error(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, r.err_line);
 }
 
+/* Whitespace/comment-only documents must validate as a no-op (Copilot review).
+ * libyaml emits DOCUMENT_START → DOCUMENT_END with no node in between when
+ * the input is just comments and blank lines; the previous code mistakenly
+ * flagged that as a non-mapping root. */
+void test_go2rtc_validate_comments_only_is_valid(void) {
+    const char *src =
+        "# this is a comment-only override\n"
+        "# nothing to set right now\n"
+        "\n";
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, strlen(src), &r);
+    if (!yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+        return;
+    }
+    TEST_ASSERT_EQUAL_INT(1, r.valid);
+    TEST_ASSERT_EQUAL_INT(0, r.non_mapping_root);
+    TEST_ASSERT_EQUAL_INT(0, r.warning_count);
+}
+
 /* The exact reporter override from issue #394 — should pass cleanly. */
 void test_go2rtc_validate_issue_394_reporter_shape_is_valid(void) {
     const char *src =
@@ -310,6 +330,7 @@ int main(void) {
     RUN_TEST(test_go2rtc_validate_non_mapping_root_rejected);
     RUN_TEST(test_go2rtc_validate_unknown_section_warns);
     RUN_TEST(test_go2rtc_validate_malformed_yaml_returns_parse_error);
+    RUN_TEST(test_go2rtc_validate_comments_only_is_valid);
     RUN_TEST(test_go2rtc_validate_issue_394_reporter_shape_is_valid);
 
     return UNITY_END();

@@ -181,6 +181,12 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
                           yaml_redact_is_available());
 
     cJSON *order = cJSON_CreateArray();
+    if (!order) {
+        cJSON_Delete(root);
+        cJSON_Delete(warnings);
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
     cJSON_AddItemToArray(order, cJSON_CreateString("go2rtc.yaml"));
     cJSON_AddItemToArray(order, cJSON_CreateString("override.yaml"));
     cJSON_AddItemToObject(root, "merged_source_order", order);

@@ -1254,6 +1254,50 @@ static int write_stream_overrides(FILE *fp) {
  * ------------------------------------------------------------------ */
 
 /**
+ * In-place mask any URL userinfo (`://user:pass@`) in @p buf so the result
+ * does not leak credentials.  Best-effort scan: walks looking for "://",
+ * then for the next '@' before any of [ '/', '?', '#', ' ', '\t', '\n' ],
+ * and if a ':' appears in [scheme_end, at), overwrites every byte in that
+ * span (excluding '@') with '*'.  Operates on a NUL-terminated buffer in
+ * place so we don't allocate; safe to call on partial UTF-8 since we only
+ * touch ASCII boundary characters.
+ *
+ * Used before persisting the go2rtc.log tail to a DB setting that the UI
+ * surfaces — go2rtc routinely logs RTSP URLs with embedded userinfo.
+ */
+static void mask_url_userinfo_in_place(char *buf)
+{
+    if (!buf) return;
+    char *p = buf;
+    while ((p = strstr(p, "://")) != NULL) {
+        char *scheme_end = p + 3;
+        char *q = scheme_end;
+        char *at = NULL;
+        while (*q && *q != '/' && *q != '?' && *q != '#'
+               && *q != ' ' && *q != '\t' && *q != '\n' && *q != '"'
+               && *q != '\'') {
+            if (*q == '@') { at = q; break; }
+            q++;
+        }
+        if (at) {
+            int has_colon = 0;
+            for (char *r = scheme_end; r < at; r++) {
+                if (*r == ':') { has_colon = 1; break; }
+            }
+            if (has_colon) {
+                for (char *r = scheme_end; r < at; r++) {
+                    *r = '*';
+                }
+            }
+            p = at + 1;
+        } else {
+            p = q;
+            if (*p) p++;  /* skip the terminator we stopped at */
+        }
+    }
+}
+
+/**
  * Read up to @p cap bytes from the END of @p path into @p out (NUL-terminated).
  * Best-effort: failures are silent (out becomes empty).
  */
@@ -1319,12 +1363,17 @@ static void quarantine_override_file(void)
     log_error("T4b: quarantined go2rtc override after crash loop: %s -> %s",
               g_override_path, g_override_quarantined_path);
 
-    /* Build the reason payload: header + last 2 KB of go2rtc.log. */
+    /* Build the reason payload: header + last 2 KB of go2rtc.log.
+     * The log frequently contains RTSP URLs with embedded userinfo, and
+     * the reason is exposed via GET /api/settings → rendered in the UI
+     * banner. Mask URL userinfo before persisting so we don't broadcast
+     * camera passwords to anyone with admin access to the settings page. */
     char log_tail[2048] = {0};
     char log_path[PATH_MAX];
     snprintf(log_path, sizeof(log_path), "%s/go2rtc.log",
              g_config_dir ? g_config_dir : "");
     read_file_tail(log_path, log_tail, sizeof(log_tail));
+    mask_url_userinfo_in_place(log_tail);
 
     char *reason = malloc(sizeof(log_tail) + 512);
     if (reason) {
@@ -1667,27 +1716,62 @@ const char *go2rtc_process_get_config_path(void) {
 bool go2rtc_process_generate_startup_config(const char *binary_path,
                                             const char *config_dir,
                                             int api_port) {
+    /* Config generation never exec's a binary — it just writes YAML.  We
+     * therefore intentionally bypass go2rtc_process_init's binary discovery
+     * (well-known paths, version probe, external-service detection) which
+     * was added in T8 and would otherwise reject this call when no real
+     * go2rtc is present on the host (the unit-test scenario, and any
+     * config-bootstrap-only deployment).  We set up the minimum global
+     * state go2rtc_process_generate_config reads, then tear it down. */
+    (void)binary_path;  /* unused: no exec, no probe */
+
     if (!config_dir || config_dir[0] == '\0') {
         log_error("Invalid config_dir for go2rtc startup config generation");
         return false;
     }
 
+    if (g_initialized) {
+        log_warn("Cannot generate startup config: process manager already initialized");
+        return false;
+    }
+
     int resolved_api_port = api_port > 0 ? api_port : 1984;
-    if (!go2rtc_process_init(binary_path, config_dir, resolved_api_port)) {
-        log_error("Failed to initialize go2rtc process manager for startup config generation");
+
+    if (mkdir_recursive(config_dir)) {
+        log_error("Failed to create go2rtc config directory: %s", config_dir);
         return false;
     }
 
-    char config_path[PATH_MAX];
-    int written = snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
-    if (written < 0 || (size_t)written >= sizeof(config_path)) {
-        log_error("go2rtc config path too long for startup config generation: %s", config_dir);
-        go2rtc_process_cleanup();
+    g_config_dir = strdup(config_dir);
+    if (!g_config_dir) {
+        log_error("Memory allocation failed for config dir");
         return false;
     }
 
-    bool ok = go2rtc_process_generate_config(config_path, resolved_api_port);
-    go2rtc_process_cleanup();
+    size_t config_path_len = strlen(config_dir) + strlen("/go2rtc.yaml") + 1;
+    g_config_path = malloc(config_path_len);
+    if (!g_config_path) {
+        log_error("Memory allocation failed for config path");
+        free(g_config_dir);
+        g_config_dir = NULL;
+        return false;
+    }
+    snprintf(g_config_path, config_path_len, "%s/go2rtc.yaml", config_dir);
+
+    g_api_port = resolved_api_port;
+    g_rtsp_port = (g_config.go2rtc_rtsp_port > 0) ? g_config.go2rtc_rtsp_port : 8554;
+    g_initialized = true;
+
+    bool ok = go2rtc_process_generate_config(g_config_path, resolved_api_port);
+
+    /* Tear down the minimal state we set up. */
+    free(g_config_dir);
+    free(g_config_path);
+    g_config_dir = NULL;
+    g_config_path = NULL;
+    g_initialized = false;
+    g_using_external_service = false;
+
     return ok;
 }
 

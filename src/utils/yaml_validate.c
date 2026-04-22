@@ -248,6 +248,13 @@ void yaml_validate_go2rtc_override(const char *src, size_t len,
      * `expecting_key` at depth==1 is enough to catch every top-level key. */
     int depth = 0;
     int saw_root_mapping = 0;
+    int saw_any_root_node  = 0;  /* set when ANY scalar/seq/map/alias appears
+                                  * at the root — distinguishes "non-mapping
+                                  * root" (real error) from "empty document
+                                  * with only comments/whitespace" (which
+                                  * libyaml emits as DOCUMENT_START → DOCUMENT_END
+                                  * with no node in between, and which we
+                                  * treat as a valid no-op). */
     int expecting_key_at_depth_1 = 0;
 
     char seen[SEEN_KEYS_MAX][SEEN_KEY_LEN];
@@ -287,6 +294,7 @@ void yaml_validate_go2rtc_override(const char *src, size_t len,
             depth++;
             if (depth == 1) {
                 saw_root_mapping = 1;
+                saw_any_root_node = 1;
                 expecting_key_at_depth_1 = 1;
             }
             break;
@@ -302,6 +310,9 @@ void yaml_validate_go2rtc_override(const char *src, size_t len,
 
         case YAML_SEQUENCE_START_EVENT:
             depth++;
+            if (depth == 1) {
+                saw_any_root_node = 1;
+            }
             break;
 
         case YAML_SEQUENCE_END_EVENT:
@@ -364,6 +375,7 @@ void yaml_validate_go2rtc_override(const char *src, size_t len,
                 expecting_key_at_depth_1 = 1;
             } else if (depth == 0) {
                 /* Root is a scalar, not a mapping. */
+                saw_any_root_node = 1;
                 out->non_mapping_root = 1;
                 if (out->valid) {
                     out->valid = 0;
@@ -384,13 +396,19 @@ void yaml_validate_go2rtc_override(const char *src, size_t len,
                 expecting_key_at_depth_1 = 0;
             } else if (depth == 1) {
                 expecting_key_at_depth_1 = 1;
+            } else if (depth == 0) {
+                saw_any_root_node = 1;
             }
             break;
 
         case YAML_DOCUMENT_END_EVENT:
-            /* If we never saw a root mapping AND no other error fired,
-             * this is a non-mapping root (sequence, scalar, or empty). */
-            if (!saw_root_mapping && out->valid) {
+            /* Distinguish "non-mapping root" (real error: sequence/scalar at
+             * the top) from "empty document with only comments/whitespace"
+             * (libyaml emits DOCUMENT_START → DOCUMENT_END with no node in
+             * between). The latter is a valid no-op override — we only
+             * complain when an actual root node was present and it wasn't
+             * a mapping. */
+            if (saw_any_root_node && !saw_root_mapping && out->valid) {
                 out->non_mapping_root = 1;
                 out->valid = 0;
                 snprintf(out->err_message, sizeof(out->err_message),

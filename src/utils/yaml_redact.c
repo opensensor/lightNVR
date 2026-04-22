@@ -334,23 +334,37 @@ char *yaml_redact_alloc(const char *src, size_t len, size_t *out_len)
                 } else {
                     /* This scalar is a value.  Possibly redact. */
                     if (path_matches_full_redact(stack, depth)) {
+                        char *replacement = strdup(REDACTED_LITERAL);
+                        if (!replacement) {
+                            /* Fail closed: better to abort the whole emit
+                             * (caller fail-closes too) than to emit an
+                             * event with a NULL scalar value, which would
+                             * crash libyaml's emitter or produce malformed
+                             * YAML containing the original secret. */
+                            ok = 0;
+                            yaml_event_delete(&event);
+                            goto cleanup;
+                        }
                         free(event.data.scalar.value);
-                        event.data.scalar.value =
-                            (yaml_char_t *)strdup(REDACTED_LITERAL);
-                        event.data.scalar.length =
-                            event.data.scalar.value
-                                ? strlen(REDACTED_LITERAL) : 0;
+                        event.data.scalar.value = (yaml_char_t *)replacement;
+                        event.data.scalar.length = strlen(REDACTED_LITERAL);
                         /* Force plain style for the replacement so it looks
                          * literal in the rendered YAML. */
                         event.data.scalar.style = YAML_PLAIN_SCALAR_STYLE;
                     } else if (path_is_streams_value(stack, depth)) {
                         char *masked = mask_url_userinfo_alloc(
                             (const char *)event.data.scalar.value);
-                        if (masked) {
-                            free(event.data.scalar.value);
-                            event.data.scalar.value = (yaml_char_t *)masked;
-                            event.data.scalar.length = strlen(masked);
+                        if (!masked) {
+                            /* Fail closed: never emit a streams.* URL with
+                             * userinfo if we couldn't allocate the masked
+                             * version — credential leak risk. */
+                            ok = 0;
+                            yaml_event_delete(&event);
+                            goto cleanup;
                         }
+                        free(event.data.scalar.value);
+                        event.data.scalar.value = (yaml_char_t *)masked;
+                        event.data.scalar.length = strlen(masked);
                     }
                     after_value_emitted(stack, depth);
                 }
@@ -373,6 +387,7 @@ char *yaml_redact_alloc(const char *src, size_t len, size_t *out_len)
         if (is_end) break;
     }
 
+cleanup:
     yaml_emitter_flush(&emitter);
     yaml_emitter_delete(&emitter);
     yaml_parser_delete(&parser);
