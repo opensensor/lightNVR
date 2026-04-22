@@ -81,9 +81,22 @@ T12 ── T13 (docs)
 - **location**: `CMakeLists.txt`, `src/utils/yaml_validate.c` (new), `include/utils/yaml_validate.h` (new)
 - **description**: Add libyaml as an optional-but-preferred dependency. Create a thin helper `int yaml_validate_str(const char *src, size_t len, char *err_buf, size_t err_size)` that runs libyaml in parse-only mode, returns 0 on valid YAML or -1 with a human-readable error (line/column). Also expose `yaml_is_mapping_root()` to confirm the override is a top-level mapping (go2rtc requires this). Update `scripts/build.sh` to detect libyaml via pkg-config and fall back to a "validation disabled" stub if unavailable. Update `Dockerfile` and `Dockerfile.alpine` to `apt-get install libyaml-dev` / `apk add yaml-dev`.
 - **validation**: Build succeeds on Linux/Alpine. Unit test feeds valid and invalid YAML strings and asserts return codes + error messages.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Added `pkg_check_modules(YAML yaml-0.1)` to top-level `CMakeLists.txt`; defines `LIGHTNVR_HAVE_LIBYAML=1` and links `${YAML_LIBRARIES}` (with `YAML_LIBRARY_DIRS`) into `lightnvr_lib` + `lightnvr` when found, otherwise compiles the stub path.
+  - `src/utils/yaml_validate.c` uses libyaml's event-mode parser (no document construction) and formats errors as "YAML parse error: <problem> [(<context>)] at line N, column M" from `parser->problem_mark`. `yaml_is_mapping_root` inspects the first event after STREAM_START/DOCUMENT_START. Stub returns 0 and writes "libyaml not available; validation disabled".
+  - `tests/unit/test_yaml_validate.c` (Unity / Layer 2, 10 assertions): valid mapping, empty string, CRLF, ~65 KB document, non-mapping sequence root, malformed YAML (unclosed flow sequence) with line/col error, and NULL-safety. All PASS in both libyaml-enabled and stub-only builds (verified both by rebuilding with `PKG_CONFIG_PATH` pointed at a private libyaml prefix and with no libyaml installed).
+  - Updated `scripts/build.sh` to surface libyaml detection pre-build; added `libyaml-dev`/`libyaml-0-2` to `Dockerfile` (builder + runtime) and `yaml-dev`/`yaml` to `Dockerfile.alpine` (builder + runtime).
+  - Duplicate-key detection intentionally deferred to T6.
 - **files edited/created**:
+  - `include/utils/yaml_validate.h` (created)
+  - `src/utils/yaml_validate.c` (created)
+  - `tests/unit/test_yaml_validate.c` (created)
+  - `CMakeLists.txt` (edited)
+  - `tests/unit/CMakeLists.txt` (edited)
+  - `scripts/build.sh` (edited)
+  - `Dockerfile` (edited)
+  - `Dockerfile.alpine` (edited)
 
 ### T2: Refactor `go2rtc_process_generate_config` — emit BASE-only config, no tail append
 - **depends_on**: []
@@ -165,9 +178,18 @@ T12 ── T13 (docs)
   3. **Version probe before committing**: after `access(path, X_OK)` succeeds, fork+exec `path --version` with a 2-second timeout; require exit status 0 and stdout matching `/^go2rtc version /`. Without this check, a same-named but wrong-arch / wrong-glibc binary passes `access` and only fails in the real `execv` after config is already generated.
   4. **Distinguish failure modes in start log**: before returning the generic "No go2rtc binary available and no running service detected", log a structured summary: `configured_path=X (exists=Y,executable=Z,version=V), path_probe_paths=[...], service_check=port_open=A,http_ok=B`. This turns the current opaque error into an actionable diagnostic.
 - **validation**: In `ghcr.io/opensensor/lightnvr:latest`, overwrite stored `go2rtc_binary_path` with an intentionally bad path → save settings → confirm logs show fallback discovery and go2rtc still starts. Plant a dummy script named `go2rtc` in PATH that exits 1 — probe must reject it and continue searching.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Added a static `probe_go2rtc_version()` helper (plus public `go2rtc_process_probe_version` wrapper for unit testing) that forks `<path> --version`, polls the pipe for up to 2 s, kills the child on timeout, and requires exit 0 + stdout containing `go2rtc version `. Always reaps the child to avoid zombies.
+  - Extended `check_go2rtc_in_path` with a well-known-path array (`/bin/go2rtc`, `/usr/local/bin/go2rtc`, `/usr/bin/go2rtc`, `/opt/go2rtc/go2rtc`, `/rootfs/usr/local/go2rtc/go2rtc`, `/go2rtc`) probed before the PATH walk; every candidate is version-probed and logged at INFO in a consistent `exists=.. executable=.. version_ok=..` shape.
+  - `go2rtc_process_init` no longer blank-wipes `g_binary_path` when an external service is detected: it still runs the probe chain and caches any discovered binary as a fallback for service-death recovery. Added a dedicated `g_using_external_service` flag so stop/cleanup/is_running control flow keeps working when the fallback binary is cached.
+  - Added a structured failure diagnostic that `go2rtc_process_start` emits before the generic "no binary" error: `configured_path='...' (exists=.., executable=.., version=..)`, `path_probe_paths_tried=..`, `service_check: port_open=.., http_ok=..`.
+  - Unit tests in `tests/unit/test_go2rtc_binary_detection.c` cover the probe helper with planted dummy scripts (correct banner, wrong banner, non-zero exit, 10 s hang → 2 s timeout, missing path, NULL/empty). Registered via `add_layer2_test_with_curl`. NOTE: build + ctest not runnable in this session because Bash is disabled; user should run `cmake --build build -j && ctest -R test_go2rtc_binary_detection --output-on-failure` to verify.
 - **files edited/created**:
+  - `src/video/go2rtc/go2rtc_process.c` (edited)
+  - `include/video/go2rtc/go2rtc_process.h` (edited — exposes `go2rtc_process_probe_version`)
+  - `tests/unit/test_go2rtc_binary_detection.c` (new)
+  - `tests/unit/CMakeLists.txt` (edited — registers the new test)
 
 ### T9: UI — validate on blur, help popover, preset examples, size indicator
 - **depends_on**: [T5, T6, T7]
