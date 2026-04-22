@@ -125,6 +125,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/system/logs/clear", "POST", handle_post_system_logs_clear);
     http_server_register_handler(server, "/api/system/backup", "POST", handle_post_system_backup);
     http_server_register_handler(server, "/api/system/status", "GET", handle_get_system_status);
+    http_server_register_handler(server, "/api/system/go2rtc/effective-config", "GET",
+                                 handle_get_system_go2rtc_effective_config);
 
     // Detection API
     http_server_register_handler(server, "/api/detection/results/#", "GET", handle_get_detection_results);

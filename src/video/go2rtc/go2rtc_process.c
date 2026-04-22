@@ -1323,6 +1323,10 @@ const char *go2rtc_process_get_override_path(void) {
     return g_override_path;
 }
 
+const char *go2rtc_process_get_config_path(void) {
+    return g_config_path;
+}
+
 bool go2rtc_process_generate_startup_config(const char *binary_path,
                                             const char *config_dir,
                                             int api_port) {

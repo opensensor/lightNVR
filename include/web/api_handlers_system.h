@@ -38,4 +38,27 @@ void handle_post_system_backup(const http_request_t *request, http_response_t *r
  */
 void handle_get_system_status(const http_request_t *request, http_response_t *response);
 
+/**
+ * Handle GET /api/system/go2rtc/effective-config.
+ *
+ * Returns a JSON object with the redacted contents of the lightNVR-generated
+ * base config and the user override file, in the order go2rtc loads them:
+ *
+ *   {
+ *     "base": "<yaml>",
+ *     "override": "<yaml>",
+ *     "merged_source_order": ["go2rtc.yaml", "override.yaml"],
+ *     "redaction_available": true|false,
+ *     "go2rtc_initialized": true|false,
+ *     "warnings": [...]    // populated when files are missing or unreadable
+ *   }
+ *
+ * Sensitive scalar values (api/rtsp/mqtt passwords, ICE credentials, RTSP
+ * URL userinfo) are masked via a YAML-aware walker so block scalars are
+ * caught.  When libyaml is unavailable, redaction is skipped and the
+ * `redaction_available` flag is false — the UI must surface that prominently.
+ */
+void handle_get_system_go2rtc_effective_config(const http_request_t *request,
+                                                http_response_t *response);
+
 #endif /* API_HANDLERS_SYSTEM_H */

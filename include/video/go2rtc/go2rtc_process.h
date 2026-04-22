@@ -84,6 +84,16 @@ int go2rtc_process_generate_override_file(const char *override_path);
 const char *go2rtc_process_get_override_path(void);
 
 /**
+ * @brief Return the path to the lightNVR-generated base config, or NULL when
+ *        the process manager is not initialized.
+ *
+ * Used by the T7 effective-config preview so it can read the exact bytes
+ * go2rtc was started with.  Pointer ownership stays with this module and
+ * remains valid until go2rtc_process_cleanup().
+ */
+const char *go2rtc_process_get_config_path(void);
+
+/**
  * @brief Generate <config_dir>/go2rtc.yaml from the currently loaded settings.
  *
  * This initializes the go2rtc process manager just long enough to write the
