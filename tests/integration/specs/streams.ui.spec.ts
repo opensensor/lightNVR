@@ -45,6 +45,15 @@ test.describe('Streams Page @ui @streams', () => {
       throw new Error(`lightNVR server is not responding: ${health.error}`);
     }
 
+    // T5 (#399) — each <StreamCard> fires a go2rtc snapshot request.
+    // In CI those can dribble in slowly enough that `networkidle`
+    // never settles inside the navigation timeout. Short-circuit them
+    // so the grid can render and tests waiting on networkidle can
+    // proceed deterministically.
+    await page.route('**/go2rtc/api/frame.jpeg*', route => {
+      route.fulfill({ status: 204, body: '' }).catch(() => {});
+    });
+
     await login(page, USERS.admin);
   });
 
@@ -263,9 +272,9 @@ test.describe('Streams Page @ui @streams', () => {
         return;
       }
 
-      // The Clone button should be present in the first stream row
-      const firstRow = streamsPage.streamCards.filter({ has: page.locator('td') }).first();
-      const cloneBtn = firstRow.locator('button[title="Clone Stream"]');
+      // The Clone button should be present on the first stream card
+      const firstCard = streamsPage.streamCards.first();
+      const cloneBtn = firstCard.locator('button[title="Clone Stream"]');
       await expect(cloneBtn).toBeVisible();
 
       await page.screenshot({ path: 'test-results/streams-clone-button.png' });
@@ -283,9 +292,9 @@ test.describe('Streams Page @ui @streams', () => {
         return;
       }
 
-      // Click clone on the first stream row
-      const firstRow = streamsPage.streamCards.filter({ has: page.locator('td') }).first();
-      const cloneBtn = firstRow.locator('button[title="Clone Stream"]');
+      // Click clone on the first stream card
+      const firstCard = streamsPage.streamCards.first();
+      const cloneBtn = firstCard.locator('button[title="Clone Stream"]');
       await cloneBtn.click();
 
       // Modal must open
@@ -317,8 +326,8 @@ test.describe('Streams Page @ui @streams', () => {
         return;
       }
 
-      const firstRow = streamsPage.streamCards.filter({ has: page.locator('td') }).first();
-      await firstRow.locator('button[title="Clone Stream"]').click();
+      const firstCard = streamsPage.streamCards.first();
+      await firstCard.locator('button[title="Clone Stream"]').click();
       await expect(streamsPage.addStreamModal).toBeVisible();
 
       // Clear the pre-filled name and type a new one
@@ -358,24 +367,18 @@ test.describe('Streams Page @ui @streams', () => {
     test('should have edit and delete buttons on stream cards', async ({ page }) => {
       const streamsPage = new StreamsPage(page);
       await streamsPage.goto({ waitForNetworkIdle: true });
-      
+
       await sleep(2000);
-      
+
       const streamCount = await streamsPage.getStreamCount();
       if (streamCount > 0) {
         const firstCard = streamsPage.streamCards.first();
-        
-        // Check for edit button
-        const editButton = firstCard.locator('button').filter({ hasText: /edit/i });
-        const hasEdit = await editButton.count() > 0;
-        console.log(`Has edit button: ${hasEdit}`);
-        
-        // Check for delete button
-        const deleteButton = firstCard.locator('button').filter({ hasText: /delete|remove/i });
-        const hasDelete = await deleteButton.count() > 0;
-        console.log(`Has delete button: ${hasDelete}`);
+
+        // Icon-only buttons on StreamCard expose intent via `title`.
+        await expect(firstCard.locator('button[title="Edit"]').first()).toBeVisible();
+        await expect(firstCard.locator('button[title="Delete"]').first()).toBeVisible();
       }
-      
+
       await page.screenshot({ path: 'test-results/streams-buttons.png' });
     });
   });

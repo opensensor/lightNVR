@@ -20,12 +20,13 @@ export class StreamsPage extends BasePage {
   }
 
   get streamsList(): Locator {
-    return this.page.locator('#streams-table').first();
+    // T5 (#399) replaced the streams table with a responsive card grid.
+    return this.page.locator('#streams-grid').first();
   }
 
   get streamCards(): Locator {
-    // Streams are displayed in table rows - target tbody rows in #streams-table
-    return this.page.locator('#streams-table tbody tr');
+    // Each <StreamCard> is wrapped in a [role="listitem"] within #streams-grid.
+    return this.page.locator('#streams-grid [role="listitem"]');
   }
 
   get refreshButton(): Locator {
@@ -70,13 +71,6 @@ export class StreamsPage extends BasePage {
    * Click the clone button on a named stream and wait for the modal to open
    */
   async clickCloneStream(streamName: string): Promise<void> {
-    const row = this.getStreamByName(streamName);
-    // Expand the row if it is collapsed (rows are collapsible in the streams table)
-    const isExpanded = await row.locator('td button[title="Clone Stream"]').isVisible();
-    if (!isExpanded) {
-      await row.click();
-      await sleep(400);
-    }
     await this.cloneButtonForStream(streamName).click();
     await this.addStreamModal.waitFor({ state: 'visible', timeout: 5000 });
     await this.streamNameInput.waitFor({ state: 'visible', timeout: 5000 });
@@ -93,23 +87,25 @@ export class StreamsPage extends BasePage {
    */
   async getStreamCount(): Promise<number> {
     await sleep(1000); // Wait for data to load
-    // Wait for the streams table to be visible first
+    // Wait for the streams grid to be visible first
     try {
       await this.streamsList.waitFor({ state: 'visible', timeout: 5000 });
     } catch (e) {
-      // Table might not exist if no streams
+      // Grid might not render if no streams
       return 0;
     }
     await sleep(500); // Wait for list to render
-    // Only count rows that have td cells (actual data rows)
-    return await this.streamCards.filter({ has: this.page.locator('td') }).count();
+    return await this.streamCards.count();
   }
 
   /**
-   * Get a stream card by name
+   * Get a stream card by name. Cards expose `data-stream="<name>"` on the
+   * inner .stream-card so we can match precisely rather than relying on
+   * text substring matching (which would collide for names that share a
+   * prefix).
    */
   getStreamByName(name: string): Locator {
-    return this.streamCards.filter({ hasText: name }).first();
+    return this.page.locator(`#streams-grid [role="listitem"]:has(.stream-card[data-stream="${name}"])`).first();
   }
 
   /**
@@ -282,31 +278,31 @@ export class StreamsPage extends BasePage {
   }
 
   /**
-   * Click edit button on a stream card
+   * Click edit button on a stream card. StreamCard buttons are icon-only
+   * and expose their action through the `title` attribute.
    */
   async editStream(name: string): Promise<void> {
     const streamCard = this.getStreamByName(name);
-    const editButton = streamCard.locator('button').filter({ hasText: /edit/i });
-    await editButton.click();
+    await streamCard.locator('button[title="Edit"]').first().click();
     await sleep(500);
   }
 
   /**
-   * Click delete button on a stream card
+   * Click delete button on a stream card.
    */
   async deleteStream(name: string): Promise<void> {
     const streamCard = this.getStreamByName(name);
-    const deleteButton = streamCard.locator('button').filter({ hasText: /delete|remove/i });
-    await deleteButton.click();
+    await streamCard.locator('button[title="Delete"]').first().click();
     await sleep(500);
   }
 
   /**
-   * Get stream status
+   * Get stream status text from the card.
    */
   async getStreamStatus(name: string): Promise<string | null> {
     const streamCard = this.getStreamByName(name);
-    const statusBadge = streamCard.locator('.status, .badge, [data-status]').first();
+    // The status pill is the first rounded-full span next to the title.
+    const statusBadge = streamCard.locator('span.rounded-full').first();
     return await statusBadge.textContent();
   }
 }

@@ -128,7 +128,11 @@ test.describe('Authentication @ui @auth', () => {
       await sleep(1000);
       expect(page.url()).not.toContain('login');
       
-      await page.goto('/settings.html', { waitUntil: 'domcontentloaded' });
+      // T2 (#399) restructured settings into tabs; the session list lives
+      // on the Auth/Security tab (hash `#auth`). Inactive tab panels are
+      // mounted-but-CSS-hidden, so without the hash the session rows are
+      // present in the DOM yet not visible.
+      await page.goto('/settings.html#auth', { waitUntil: 'domcontentloaded' });
       await sleep(1000);
       expect(page.url()).not.toContain('login');
 
