@@ -362,14 +362,23 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "go2rtc_ice_servers", g_config.go2rtc_ice_servers);
     cJSON_AddBoolToObject(settings, "go2rtc_force_native_hls", g_config.go2rtc_force_native_hls);
 
-    // go2rtc global config override (stored in system_settings table)
+    // go2rtc global config override (stored in system_settings table).
+    // Value can be up to ~64 KB (ffmpeg templates, HomeKit blocks, etc.), so
+    // read it into a heap buffer rather than a large stack array — on musl
+    // libuv worker threads the default stack is only 128 KB.
     {
-        char go2rtc_config_override_buf[4096] = {0};
-        if (db_get_system_setting("go2rtc_config_override", go2rtc_config_override_buf, sizeof(go2rtc_config_override_buf)) == 0) {
+        char *go2rtc_config_override_buf = NULL;
+        size_t go2rtc_config_override_len = 0;
+        int rc_override = db_get_system_setting_alloc("go2rtc_config_override",
+                                                      &go2rtc_config_override_buf,
+                                                      &go2rtc_config_override_len);
+        if (rc_override == 0 && go2rtc_config_override_buf) {
             cJSON_AddStringToObject(settings, "go2rtc_config_override", go2rtc_config_override_buf);
         } else {
             cJSON_AddStringToObject(settings, "go2rtc_config_override", "");
         }
+        (void)go2rtc_config_override_len; /* length only needed for potential future logging */
+        free(go2rtc_config_override_buf); /* free(NULL) is well-defined */
     }
 
     // MQTT settings
@@ -960,16 +969,23 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated go2rtc_force_native_hls: %s", g_config.go2rtc_force_native_hls ? "true" : "false");
     }
 
-    // go2rtc global config override (stored in system_settings)
+    // go2rtc global config override (stored in system_settings).
+    // Cap at 64 KiB - 1 byte; this is large enough for ffmpeg templates and
+    // HomeKit blocks while still bounding the blob SQLite must page for the
+    // singleton settings row.
     cJSON *go2rtc_config_override = cJSON_GetObjectItem(settings, "go2rtc_config_override");
     if (go2rtc_config_override && cJSON_IsString(go2rtc_config_override)) {
         size_t override_len = strlen(go2rtc_config_override->valuestring);
-        if (override_len >= 4096) {
-            log_error("go2rtc_config_override too long (%zu bytes, max 4095)", override_len);
+        if (override_len >= 65536) {
+            log_error("go2rtc_config_override too long (%zu bytes, max 65535)", override_len);
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 413,
+                "go2rtc_config_override exceeds 65535 byte limit");
+            return;
         } else if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
             log_error("Failed to save go2rtc_config_override to system_settings");
         } else {
-            log_info("Updated go2rtc_config_override");
+            log_info("Updated go2rtc_config_override (%zu bytes)", override_len);
             go2rtc_config_changed = true;
             go2rtc_becoming_enabled = g_config.go2rtc_enabled;
         }
