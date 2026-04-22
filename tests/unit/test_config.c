@@ -38,6 +38,26 @@ void tearDown(void) {
 }
 
 /* ================================================================
+ * stream_config_t size sentinel (regression guard for T11 bump)
+ *
+ * Task T11 will raise `go2rtc_source_override` from 2048 to 8192 bytes
+ * (+6144 per struct). This test documents the present size and asserts
+ * that the struct stays below a 16 KB ceiling so that per-callsite
+ * fan-out (stack arrays, worker-task structs) remains manageable on
+ * musl/Alpine thread stacks (128 KB default).
+ *
+ * Expected sizes (x86_64, as of T11b):
+ *   current                     ~= 6184 B
+ *   projected after T11 bump   ~= 12328 B  (must remain < 16384)
+ * ================================================================ */
+
+void test_stream_config_t_size_under_16k(void) {
+    /* Sentinel: struct must stay below 16 KB so that future T11 +6144-byte
+       bump keeps call-site stack / task-struct cost predictable. */
+    TEST_ASSERT_LESS_THAN(16 * 1024, (int)sizeof(stream_config_t));
+}
+
+/* ================================================================
  * load_default_config
  * ================================================================ */
 
@@ -442,6 +462,8 @@ int main(void) {
     init_logger();
 
     UNITY_BEGIN();
+
+    RUN_TEST(test_stream_config_t_size_under_16k);
 
     RUN_TEST(test_default_config_web_port);
     RUN_TEST(test_default_config_log_level);

@@ -526,11 +526,20 @@ int mqtt_publish_ha_discovery(void) {
 
     log_info("MQTT HA: Publishing Home Assistant discovery messages...");
 
-    // Get all configured streams
-    stream_config_t streams[MAX_MOTION_STREAMS];
+    // Get all configured streams.
+    // Heap-allocated: sizeof(stream_config_t) is >6 KB today and will grow to
+    // ~12 KB after the T11 `go2rtc_source_override` bump. 16 entries on the
+    // stack (>190 KB post-T11) would blow musl/Alpine's 128 KB default thread
+    // stack. MQTT runs on a libuv worker thread.
+    stream_config_t *streams = calloc(MAX_MOTION_STREAMS, sizeof(stream_config_t));
+    if (!streams) {
+        log_error("MQTT HA: Failed to allocate streams buffer");
+        return -1;
+    }
     int num_streams = get_all_stream_configs(streams, MAX_MOTION_STREAMS);
     if (num_streams <= 0) {
         log_warn("MQTT HA: No streams configured, skipping discovery");
+        free(streams);
         return 0;
     }
 
@@ -729,6 +738,7 @@ int mqtt_publish_ha_discovery(void) {
     }
 
     log_info("MQTT HA: Published %d discovery messages for %d streams", published, num_streams);
+    free(streams);
     return 0;
 }
 
@@ -854,13 +864,21 @@ static void *ha_snapshot_thread_func(void *arg) {
     log_info("MQTT HA: Snapshot publishing thread started (interval=%ds)",
              mqtt_config->mqtt_ha_snapshot_interval);
 
+    // Heap-allocated once per-thread-lifetime: sizeof(stream_config_t)
+    // exceeds 6 KB (12 KB after T11's go2rtc_source_override bump);
+    // 16-entry stack array would exhaust musl/Alpine pthread stacks.
+    stream_config_t *streams = calloc(MAX_MOTION_STREAMS, sizeof(stream_config_t));
+    if (!streams) {
+        log_error("MQTT HA: Failed to allocate streams buffer, snapshot thread exiting");
+        return NULL;
+    }
+
     while (ha_services_running) {
         if (!mqtt_is_connected() || !mqtt_config) {
             sleep(1);
             continue;
         }
 
-        stream_config_t streams[MAX_MOTION_STREAMS];
         int num_streams = get_all_stream_configs(streams, MAX_MOTION_STREAMS);
 
         for (int i = 0; i < num_streams && ha_services_running; i++) {
@@ -892,6 +910,7 @@ static void *ha_snapshot_thread_func(void *arg) {
         }
     }
 
+    free(streams);
     go2rtc_snapshot_cleanup_thread();
     log_info("MQTT HA: Snapshot publishing thread stopped");
     return NULL;
