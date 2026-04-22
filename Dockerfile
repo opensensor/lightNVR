@@ -33,6 +33,7 @@ RUN apt-get update && \
     libcurl4-openssl-dev \
     libmbedtls-dev curl wget ca-certificates gpg libcjson-dev \
     libmosquitto-dev \
+    libyaml-dev \
     nodejs npm \
     golang-go && \
     # Verify installation
@@ -218,7 +219,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libcurl4t64 libmbedtls21 libmbedcrypto16 procps curl ca-certificates \
-    libmosquitto1 && \
+    libmosquitto1 \
+    libyaml-0-2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure

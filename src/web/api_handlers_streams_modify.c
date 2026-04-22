@@ -29,6 +29,7 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_api.h"
 #include "video/mp4_recording.h"
+#include "utils/yaml_validate.h"
 
 
 /**
@@ -688,10 +689,58 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         config.motion_trigger_source[0] = '\0';
     }
 
-    // Parse go2rtc source override
+    // Parse go2rtc source override (T11)
+    //
+    // Accept either a single line (URL) or multi-line YAML.  When the value
+    // contains a newline we treat it as YAML and run the syntax validator
+    // — this rejects malformed lists with HTTP 400 carrying line/column
+    // info instead of failing later in go2rtc with an opaque error.
+    // Single-line URLs skip validation; they're not YAML by intent.
     cJSON *go2rtc_source_override_post = cJSON_GetObjectItem(stream_json, "go2rtc_source_override");
     if (go2rtc_source_override_post && cJSON_IsString(go2rtc_source_override_post)) {
-        safe_strcpy(config.go2rtc_source_override, go2rtc_source_override_post->valuestring,
+        const char *src = go2rtc_source_override_post->valuestring;
+        size_t src_len = strlen(src);
+
+        if (src_len >= sizeof(config.go2rtc_source_override)) {
+            log_error("go2rtc_source_override too long (%zu bytes, max %zu)",
+                      src_len, sizeof(config.go2rtc_source_override) - 1);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 413,
+                "go2rtc_source_override exceeds size limit");
+            return;
+        }
+
+        if (strchr(src, '\n') != NULL) {
+            char err[256] = {0};
+            int rc = yaml_validate_str(src, src_len, err, sizeof(err));
+            if (rc < 0) {
+                log_warn("Rejecting go2rtc_source_override: %s", err);
+                cJSON_Delete(stream_json);
+                /* Build a structured 400 response with line/column when
+                 * the validator surfaced them in `err`. */
+                cJSON *response = cJSON_CreateObject();
+                if (response) {
+                    cJSON_AddBoolToObject(response, "valid", false);
+                    cJSON *errobj = cJSON_CreateObject();
+                    if (errobj) {
+                        cJSON_AddStringToObject(errobj, "message", err);
+                        cJSON_AddItemToObject(response, "error", errobj);
+                    }
+                    char *body = cJSON_PrintUnformatted(response);
+                    cJSON_Delete(response);
+                    if (body) {
+                        http_response_set_json(res, 400, body);
+                        free(body);
+                        return;
+                    }
+                }
+                http_response_set_json_error(res, 400,
+                    "go2rtc_source_override is not valid YAML");
+                return;
+            }
+        }
+
+        safe_strcpy(config.go2rtc_source_override, src,
                 sizeof(config.go2rtc_source_override), 0);
     } else {
         config.go2rtc_source_override[0] = '\0';

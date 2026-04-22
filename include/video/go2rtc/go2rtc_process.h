@@ -7,6 +7,7 @@
 #define GO2RTC_PROCESS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 /**
  * @brief Initialize the go2rtc process manager
@@ -42,12 +43,96 @@ bool go2rtc_process_is_running(void);
 
 /**
  * @brief Generate a go2rtc configuration file based on system settings
- * 
+ *
+ * After the T2 refactor this emits ONLY the lightNVR-owned sections
+ * (`api`, `rtsp`, `webrtc`, `ffmpeg` defaults, and `streams` with per-stream
+ * overrides). The global user override from `system_settings.go2rtc_config_override`
+ * is NO LONGER appended here — it is written to a separate override file by
+ * go2rtc_process_generate_override_file() and passed to go2rtc via a second
+ * `--config` argument.
+ *
  * @param config_path Path where the configuration file should be written
  * @param api_port Port for the go2rtc HTTP API
  * @return true if configuration was generated successfully, false otherwise
  */
 bool go2rtc_process_generate_config(const char *config_path, int api_port);
+
+/**
+ * @brief Write the user config override to a standalone YAML file.
+ *
+ * Reads `go2rtc_config_override` from `db_system_settings` and writes it to
+ * @p override_path with mode 0600 (fsynced). If the DB value is empty or
+ * absent, any existing file at @p override_path is removed AND verified
+ * gone via stat(); failure to remove a stale file is a hard error so a
+ * stale override is never passed to go2rtc.
+ *
+ * Honors the T4b crash-loop quarantine: when
+ * `go2rtc_config_override_disabled_reason` is non-empty in the DB, the
+ * override is treated as absent (and any existing file is removed) until
+ * the operator clears the quarantine via a successful settings save.
+ *
+ * Also enforces the 64 KB save-path cap defensively, in case the DB was
+ * edited out-of-band: oversize values are treated as absent and logged.
+ *
+ * @param override_path Filesystem path where the override YAML should be written.
+ * @return 0 on success (file written or confirmed absent), -1 on failure.
+ */
+int go2rtc_process_generate_override_file(const char *override_path);
+
+/**
+ * @brief Return the path to the user override file, or NULL when the
+ *        process manager is not initialized.
+ *
+ * The path is `<config_dir>/override.yaml` and is allocated during
+ * go2rtc_process_init().  The override file at this path is materialized
+ * by go2rtc_process_generate_override_file() and read by go2rtc as the
+ * second `--config` argument.
+ *
+ * @return Pointer to a stable internal string, or NULL when uninitialized.
+ */
+const char *go2rtc_process_get_override_path(void);
+
+/**
+ * @brief Return the path to the lightNVR-generated base config, or NULL when
+ *        the process manager is not initialized.
+ *
+ * Used by the T7 effective-config preview so it can read the exact bytes
+ * go2rtc was started with.  Pointer ownership stays with this module and
+ * remains valid until go2rtc_process_cleanup().
+ */
+const char *go2rtc_process_get_config_path(void);
+
+/**
+ * @brief One-time validation of the existing user override on startup (T14).
+ *
+ * The first time lightNVR boots after this release lands, we run the
+ * stored `go2rtc_config_override` through the same validator the settings
+ * POST handler uses.  If it fails — most commonly because of an old
+ * append-era duplicate-key shape — the value is COPIED to a sibling
+ * setting `go2rtc_config_override_quarantined`, the live setting is
+ * CLEARED, and `go2rtc_config_override_disabled_reason` is populated
+ * (this is what the UI banner reads — same field as T4b's runtime
+ * quarantine).  `go2rtc_override_validated_version` is written separately
+ * as the per-release idempotence marker so subsequent boots short-circuit.
+ *
+ * Idempotent: subsequent boots see the marker and short-circuit.  No-op
+ * when the live override is empty or already valid.
+ */
+void go2rtc_process_validate_existing_override_on_upgrade(void);
+
+/**
+ * @brief Clear any active override quarantine (T4b).
+ *
+ * If a prior crash loop quarantined the user override (renamed
+ * `override.yaml` → `override.quarantined.yaml` and stored a reason in the
+ * DB), this removes the quarantined file and clears the DB reason setting
+ * so the next start re-applies whatever override is currently configured.
+ *
+ * Idempotent — safe to call when no quarantine exists.  Intended to be
+ * called by the settings handler after a successful save of
+ * `go2rtc_config_override`.
+ */
+void go2rtc_process_clear_override_quarantine(void);
 
 /**
  * @brief Generate <config_dir>/go2rtc.yaml from the currently loaded settings.
@@ -82,5 +167,32 @@ int go2rtc_process_get_rtsp_port(void);
  * @return pid_t The process ID, or -1 if not running
  */
 int go2rtc_process_get_pid(void);
+
+/**
+ * @brief Probe a candidate go2rtc binary by running `<path> --version`.
+ *
+ * Spawns @p path with argument "--version" and reads up to 4 KB of its
+ * standard output.  Returns 1 when the child exits 0 within 2 seconds AND
+ * the collected stdout contains the substring "go2rtc version ".  Otherwise
+ * returns 0.  The child is always waited for and its pipe FDs closed before
+ * the call returns (no zombies).
+ *
+ * Exposed primarily for unit testing of the Docker binary-detection hardening
+ * in T8.  Safe to call from production code as an opaque "is this really a
+ * go2rtc binary?" oracle.
+ *
+ * @param path            Absolute or PATH-resolvable binary path.  Must be
+ *                        executable by the current process.
+ * @param version_out     Optional buffer to receive the matched version line
+ *                        (first line of stdout that contained the signature).
+ *                        May be NULL to discard.
+ * @param version_out_sz  Size of @p version_out, including space for the NUL
+ *                        terminator.  Ignored when @p version_out is NULL.
+ * @return 1 on successful match, 0 on any failure (exec error, non-zero exit,
+ *         timeout, or signature mismatch).
+ */
+int go2rtc_process_probe_version(const char *path,
+                                 char *version_out,
+                                 size_t version_out_sz);
 
 #endif /* GO2RTC_PROCESS_H */

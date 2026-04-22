@@ -86,6 +86,17 @@ pkg_check_modules(SQLITE REQUIRED sqlite3)
 pkg_check_modules(CURL REQUIRED libcurl)
 find_package(Threads REQUIRED)
 
+# libyaml (optional-but-preferred) — used for go2rtc override validation
+# When available, defines LIGHTNVR_HAVE_LIBYAML=1 so src/utils/yaml_validate.c
+# compiles the real parser path; otherwise the stub path is compiled.
+pkg_check_modules(YAML QUIET yaml-0.1)
+if(YAML_FOUND)
+    message(STATUS "Found libyaml: ${YAML_LIBRARIES} (version ${YAML_VERSION})")
+    add_compile_definitions(LIGHTNVR_HAVE_LIBYAML=1)
+else()
+    message(WARNING "libyaml (yaml-0.1) not found. YAML validation will be disabled. Install libyaml-dev / yaml-dev to enable.")
+endif()
+
 # MQTT support (optional, uses libmosquitto)
 option(ENABLE_MQTT "Enable MQTT support for detection event streaming" ON)
 if(ENABLE_MQTT)
@@ -374,6 +385,11 @@ if(HTTP_BACKEND_INCLUDE_DIRS)
     list(APPEND LIGHTNVR_INCLUDE_DIRS ${HTTP_BACKEND_INCLUDE_DIRS})
 endif()
 
+# Add libyaml include directories if available
+if(YAML_FOUND AND YAML_INCLUDE_DIRS)
+    list(APPEND LIGHTNVR_INCLUDE_DIRS ${YAML_INCLUDE_DIRS})
+endif()
+
 # Apply include directories
 include_directories(${LIGHTNVR_INCLUDE_DIRS})
 
@@ -555,6 +571,17 @@ target_link_libraries(rebuild_recordings
 target_link_libraries(lightnvr ${CJSON_LIBRARIES})
 target_link_libraries(rebuild_recordings ${CJSON_LIBRARIES})
 
+# Link libyaml if available (used by src/utils/yaml_validate.c)
+# Use LDFLAGS to get both -L and -l from pkg-config so non-default prefixes work.
+if(YAML_FOUND)
+    if(YAML_LIBRARY_DIRS)
+        target_link_directories(lightnvr_lib PUBLIC ${YAML_LIBRARY_DIRS})
+        target_link_directories(lightnvr PUBLIC ${YAML_LIBRARY_DIRS})
+    endif()
+    target_link_libraries(lightnvr_lib PUBLIC ${YAML_LIBRARIES})
+    target_link_libraries(lightnvr ${YAML_LIBRARIES})
+endif()
+
 # Link MQTT library if enabled
 if(ENABLE_MQTT AND MOSQUITTO_FOUND)
     target_link_libraries(lightnvr ${MOSQUITTO_LIBRARIES})
@@ -670,3 +697,8 @@ if(ENABLE_GO2RTC)
     message(STATUS "  - go2rtc API port: ${GO2RTC_API_PORT}")
 endif()
 message(STATUS "- Embedded A1 device optimizations: ${EMBEDDED_A1_DEVICE}")
+if(YAML_FOUND)
+    message(STATUS "- libyaml (YAML validation): ENABLED (${YAML_VERSION})")
+else()
+    message(STATUS "- libyaml (YAML validation): DISABLED (stub only)")
+endif()

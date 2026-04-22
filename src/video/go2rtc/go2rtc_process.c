@@ -15,6 +15,8 @@
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
+#include <time.h>
 #include <curl/curl.h>
 
 #include "video/go2rtc/go2rtc_process.h"
@@ -22,7 +24,9 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/path_utils.h"
+#include "core/version.h"
 #include "utils/strings.h"
+#include "utils/yaml_validate.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
@@ -392,10 +396,39 @@ static void recursive_remove(const char *path) {
 static char *g_binary_path = NULL;
 static char *g_config_dir = NULL;
 static char *g_config_path = NULL;
+static char *g_override_path = NULL;
+static char *g_override_quarantined_path = NULL;
 static pid_t g_process_pid = -1;
 static bool g_initialized = false;
+static bool g_using_external_service = false; // true when init detected a live service
 static int g_rtsp_port = 8554; // Default RTSP port
 static int g_api_port = 1984;  // Configured API port (updated during init)
+
+/* T4b — crash-loop quarantine bookkeeping.
+ *
+ * g_last_start_time:  monotonic (well, wall-clock) timestamp of the most
+ *                     recent successful go2rtc_process_start.  Used to
+ *                     compute "how long did the previous instance live"
+ *                     when start is called again.
+ *
+ * g_fast_death_history: ring of timestamps when a fast-death was recorded
+ *                       (i.e., go2rtc_process_start was called and the
+ *                       previous lifetime was < FAST_DEATH_THRESHOLD_SEC).
+ *                       Counted in a sliding window; if QUARANTINE_THRESHOLD
+ *                       events appear within QUARANTINE_WINDOW_SEC AND the
+ *                       override file is in use, we quarantine it.
+ */
+#define FAST_DEATH_THRESHOLD_SEC   10
+#define QUARANTINE_FAST_DEATH_COUNT 3
+#define QUARANTINE_WINDOW_SEC      60
+#define FAST_DEATH_RING_SIZE       8
+
+static time_t g_last_start_time = 0;
+static time_t g_fast_death_history[FAST_DEATH_RING_SIZE];
+static int    g_fast_death_history_idx = 0;
+
+// Forward declarations for helpers defined later in this file.
+static int write_stream_overrides(FILE *fp);
 
 // Callback function for libcurl to discard response data
 static size_t discard_response_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
@@ -473,20 +506,333 @@ static bool is_go2rtc_running_as_service(int api_port) {
 }
 
 /**
- * @brief Check if go2rtc is available in PATH
+ * @brief Well-known absolute paths where a go2rtc binary may live.
  *
- * @param binary_path Buffer to store the found binary path
- * @param buffer_size Size of the buffer
- * @return true if binary was found, false otherwise
+ * Probed in order before falling back to the PATH walk.  Covers common
+ * container layouts (lightNVR Docker → /bin/go2rtc, Frigate → /rootfs/...,
+ * Alpine root → /go2rtc, native package installs → /usr/{local/,}bin/go2rtc,
+ * /opt/go2rtc/go2rtc).
+ */
+static const char *const k_well_known_go2rtc_paths[] = {
+    "/bin/go2rtc",
+    "/usr/local/bin/go2rtc",
+    "/usr/bin/go2rtc",
+    "/opt/go2rtc/go2rtc",
+    "/rootfs/usr/local/go2rtc/go2rtc",
+    "/go2rtc",
+    NULL,
+};
+
+/**
+ * @brief Diagnostic state populated during binary/service discovery in
+ *        go2rtc_process_init() and rendered by go2rtc_process_start() when
+ *        startup fails.  Purely informational; never consulted for control
+ *        flow.
+ */
+static struct {
+    char configured_path[PATH_MAX];
+    bool configured_path_present;      /* user supplied a non-NULL, non-empty value */
+    bool configured_path_exists;       /* access(path, F_OK) == 0 */
+    bool configured_path_executable;   /* access(path, X_OK) == 0 */
+    bool configured_path_version_ok;   /* probe_go2rtc_version returned 1 */
+    char probe_paths_tried[1024];      /* comma-joined list */
+    bool service_port_open;
+    bool service_http_ok;
+} g_discovery_diag;
+
+static void discovery_diag_reset(void) {
+    memset(&g_discovery_diag, 0, sizeof(g_discovery_diag));
+}
+
+static void discovery_diag_append_probe(const char *path) {
+    if (!path) return;
+    size_t used = strlen(g_discovery_diag.probe_paths_tried);
+    size_t cap = sizeof(g_discovery_diag.probe_paths_tried);
+    if (used + 1 >= cap) return;
+    const char *sep = (used > 0) ? "," : "";
+    size_t need = strlen(sep) + strlen(path);
+    if (used + need + 1 >= cap) return;
+    snprintf(g_discovery_diag.probe_paths_tried + used,
+             cap - used, "%s%s", sep, path);
+}
+
+/**
+ * @brief Spawn `path --version` with a 2-second timeout and check the output
+ *        for the "go2rtc version " signature.
+ *
+ * @param path           Path to the candidate executable.
+ * @param version_out    Optional buffer that receives the first line of stdout
+ *                       that contained the signature.  May be NULL.
+ * @param version_out_sz Size of @p version_out including the NUL terminator.
+ * @return 1 if @p path is a valid go2rtc binary, 0 otherwise.
+ *
+ * Zombie-safety: the child is ALWAYS reaped before this function returns.
+ * Pipe FDs are closed in every exit path.
+ */
+static int probe_go2rtc_version(const char *path,
+                                char *version_out,
+                                size_t version_out_sz) {
+    if (version_out && version_out_sz > 0) {
+        version_out[0] = '\0';
+    }
+
+    if (!path || path[0] == '\0') {
+        return 0;
+    }
+
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        log_warn("probe_go2rtc_version: pipe() failed for %s: %s",
+                 path, strerror(errno));
+        return 0;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        log_warn("probe_go2rtc_version: fork() failed for %s: %s",
+                 path, strerror(errno));
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return 0;
+    }
+
+    if (pid == 0) {
+        /* Child: redirect stdout+stderr to the pipe write-end, then exec. */
+        close(pipefd[0]);
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1 ||
+            dup2(pipefd[1], STDERR_FILENO) == -1) {
+            _exit(127);
+        }
+        close(pipefd[1]);
+
+        /* Close standard input so the child cannot block on a TTY read. */
+        int devnull = open("/dev/null", O_RDONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDIN_FILENO);
+            close(devnull);
+        }
+
+        execl(path, path, "--version", (char *)NULL);
+        _exit(127);
+    }
+
+    /* Parent: poll the read end for up to 2 seconds, collect up to 4 KB. */
+    close(pipefd[1]);
+
+    char buf[4096];
+    size_t buf_used = 0;
+    const int timeout_ms_total = 2000;
+    struct timespec t_start;
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+    bool timed_out = false;
+    for (;;) {
+        struct timespec t_now;
+        clock_gettime(CLOCK_MONOTONIC, &t_now);
+        long elapsed_ms =
+            (t_now.tv_sec - t_start.tv_sec) * 1000L +
+            (t_now.tv_nsec - t_start.tv_nsec) / 1000000L;
+        int remain_ms = timeout_ms_total - (int)elapsed_ms;
+        if (remain_ms <= 0) {
+            timed_out = true;
+            break;
+        }
+
+        struct pollfd pfd = { .fd = pipefd[0], .events = POLLIN };
+        int pr = poll(&pfd, 1, remain_ms);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (pr == 0) {
+            timed_out = true;
+            break;
+        }
+
+        if (pfd.revents & (POLLIN | POLLHUP | POLLERR)) {
+            if (buf_used >= sizeof(buf) - 1) {
+                /* Buffer full — drain the pipe so the child isn't blocked,
+                 * but stop saving data. */
+                char scratch[512];
+                ssize_t drained = read(pipefd[0], scratch, sizeof(scratch));
+                if (drained <= 0) break;
+                continue;
+            }
+            ssize_t n = read(pipefd[0], buf + buf_used,
+                             sizeof(buf) - 1 - buf_used);
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                break;
+            }
+            if (n == 0) {
+                /* EOF */
+                break;
+            }
+            buf_used += (size_t)n;
+        }
+    }
+    buf[buf_used] = '\0';
+    close(pipefd[0]);
+
+    /* Reap the child.  If we timed out or the read loop exited via an error
+     * path (poll/read failure) while the child is still alive, force-kill it
+     * first so the final blocking waitpid() is guaranteed to return
+     * promptly.  SIGKILL on an already-exited child is harmless (ESRCH). */
+    if (timed_out) {
+        log_warn("probe_go2rtc_version: timeout waiting for %s --version", path);
+        kill(pid, SIGKILL);
+    } else {
+        /* Non-blocking check: is the child still running? */
+        int status_nb = 0;
+        pid_t w_nb;
+        do {
+            w_nb = waitpid(pid, &status_nb, WNOHANG);
+        } while (w_nb == -1 && errno == EINTR);
+        if (w_nb == 0) {
+            /* Still running after read loop ended (e.g. poll error). */
+            kill(pid, SIGKILL);
+        } else if (w_nb == pid) {
+            /* Already exited — check status now and skip the blocking wait. */
+            if (!WIFEXITED(status_nb) || WEXITSTATUS(status_nb) != 0) {
+                return 0;
+            }
+            goto check_signature;
+        }
+        /* w_nb == -1 (ECHILD etc.): fall through to the blocking wait, which
+         * will also return -1 and we'll treat as failure. */
+    }
+
+    {
+        int status = 0;
+        pid_t waited;
+        do {
+            waited = waitpid(pid, &status, 0);
+        } while (waited == -1 && errno == EINTR);
+
+        if (timed_out) {
+            return 0;
+        }
+        if (waited != pid) {
+            return 0;
+        }
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            return 0;
+        }
+    }
+
+check_signature:;
+    const char *match = strstr(buf, "go2rtc version ");
+    if (!match) {
+        return 0;
+    }
+
+    if (version_out && version_out_sz > 0) {
+        /* Copy the line containing the match (up to newline) into version_out. */
+        const char *line_end = strchr(match, '\n');
+        size_t len = line_end ? (size_t)(line_end - match) : strlen(match);
+        if (len >= version_out_sz) len = version_out_sz - 1;
+        memcpy(version_out, match, len);
+        version_out[len] = '\0';
+    }
+
+    return 1;
+}
+
+/**
+ * @brief Public wrapper around @ref probe_go2rtc_version.  Exposed for
+ *        unit testing of the Docker binary-detection hardening.
+ */
+int go2rtc_process_probe_version(const char *path,
+                                 char *version_out,
+                                 size_t version_out_sz) {
+    return probe_go2rtc_version(path, version_out, version_out_sz);
+}
+
+/**
+ * @brief Log a single probe attempt at INFO level in a consistent shape.
+ *
+ * Shape:
+ *   tried <path>: exists=yes|no, executable=yes|no|n/a, version_ok=yes|no|n/a
+ */
+static void log_probe_attempt(const char *path,
+                              bool exists,
+                              bool executable,
+                              bool checked_version,
+                              bool version_ok) {
+    log_info("go2rtc binary probe: tried %s: exists=%s, executable=%s, version_ok=%s",
+             path,
+             exists ? "yes" : "no",
+             !exists ? "n/a" : (executable ? "yes" : "no"),
+             !checked_version ? "n/a" : (version_ok ? "yes" : "no"));
+}
+
+/**
+ * @brief Try a single candidate path: access() + probe_go2rtc_version().
+ *        Appends to the diagnostic trace on every attempt.
+ *
+ * @return true if the candidate is a valid go2rtc binary (stored in @p out).
+ */
+static bool try_go2rtc_candidate(const char *candidate,
+                                 char *out,
+                                 size_t out_size) {
+    discovery_diag_append_probe(candidate);
+
+    bool exists = (access(candidate, F_OK) == 0);
+    bool executable = exists && (access(candidate, X_OK) == 0);
+    bool version_ok = false;
+    bool checked_version = false;
+
+    if (executable) {
+        checked_version = true;
+        version_ok = (probe_go2rtc_version(candidate, NULL, 0) == 1);
+    }
+
+    log_probe_attempt(candidate, exists, executable, checked_version, version_ok);
+
+    if (executable && version_ok) {
+        safe_strcpy(out, candidate, out_size, 0);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Check if go2rtc is available — first in well-known absolute paths,
+ *        then in PATH.  Every candidate is version-probed so a wrong-arch
+ *        or wrong-tool binary with the same name is rejected.
+ *
+ * @param binary_path Buffer to store the found binary path.
+ * @param buffer_size Size of the buffer.
+ * @return true if a verified go2rtc binary was found, false otherwise.
  */
 static bool check_go2rtc_in_path(char *binary_path, size_t buffer_size) {
-    // Use find_binary_in_path() which searches PATH directories directly
-    // (no shell / popen needed)
-    find_binary_in_path("go2rtc", binary_path, buffer_size);
+    if (!binary_path || buffer_size == 0) {
+        return false;
+    }
+    binary_path[0] = '\0';
 
-    if (binary_path[0] != '\0' && access(binary_path, X_OK) == 0) {
-        log_info("Found go2rtc binary in PATH: %s", binary_path);
-        return true;
+    /* 1) Well-known absolute paths first (covers /bin/go2rtc for the
+     *    ghcr.io/opensensor/lightnvr:latest Docker image — issue #394). */
+    for (int i = 0; k_well_known_go2rtc_paths[i] != NULL; i++) {
+        if (try_go2rtc_candidate(k_well_known_go2rtc_paths[i],
+                                 binary_path, buffer_size)) {
+            log_info("Found go2rtc binary at well-known path: %s", binary_path);
+            return true;
+        }
+    }
+
+    /* 2) PATH walk.  find_binary_in_path() performs its own access(X_OK),
+     *    so we only need to version-probe whatever it returns. */
+    char path_candidate[PATH_MAX] = {0};
+    find_binary_in_path("go2rtc", path_candidate, sizeof(path_candidate));
+    if (path_candidate[0] != '\0') {
+        if (try_go2rtc_candidate(path_candidate, binary_path, buffer_size)) {
+            log_info("Found go2rtc binary in PATH: %s", binary_path);
+            return true;
+        }
+    } else {
+        discovery_diag_append_probe("<PATH:not-found>");
+        log_info("go2rtc binary probe: PATH walk found no 'go2rtc' entry");
     }
 
     return false;
@@ -524,48 +870,133 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
 
     snprintf(g_config_path, config_path_len, "%s/go2rtc.yaml", config_dir);
 
+    size_t override_path_len = strlen(config_dir) + strlen("/override.yaml") + 1;
+    g_override_path = malloc(override_path_len);
+    if (!g_override_path) {
+        log_error("Memory allocation failed for override path");
+        free(g_config_dir);
+        free(g_config_path);
+        g_config_dir = NULL;
+        g_config_path = NULL;
+        return false;
+    }
+    snprintf(g_override_path, override_path_len, "%s/override.yaml", config_dir);
+
+    size_t quar_path_len = strlen(config_dir) + strlen("/override.quarantined.yaml") + 1;
+    g_override_quarantined_path = malloc(quar_path_len);
+    if (!g_override_quarantined_path) {
+        log_error("Memory allocation failed for override quarantine path");
+        free(g_config_dir);
+        free(g_config_path);
+        free(g_override_path);
+        g_config_dir = NULL;
+        g_config_path = NULL;
+        g_override_path = NULL;
+        return false;
+    }
+    snprintf(g_override_quarantined_path, quar_path_len,
+             "%s/override.quarantined.yaml", config_dir);
+
     // Store the configured API port so all runtime checks use the right port
     g_api_port = api_port > 0 ? api_port : 1984;
 
-    // Check if go2rtc is already running as a service
-    if (is_go2rtc_running_as_service(g_api_port)) {
-        log_info("go2rtc is already running as a service, will use the existing service");
-        // Set an empty binary path to indicate we're using an existing service
-        g_binary_path = strdup("");
-    } else {
-        // Check if binary exists at the specified path
-        char final_binary_path[PATH_MAX] = {0};
-
-        if (binary_path && access(binary_path, X_OK) == 0) {
-            // Use the provided binary path
-            safe_strcpy(final_binary_path, binary_path, sizeof(final_binary_path), 0);
-            log_info("Using provided go2rtc binary: %s", final_binary_path);
-        } else {
-            if (binary_path) {
-                log_warn("go2rtc binary not found or not executable at specified path: %s", binary_path);
-            }
-
-            // Use go2rtc from PATH
-            if (!check_go2rtc_in_path(final_binary_path, sizeof(final_binary_path))) {
-                log_error("go2rtc binary not found in PATH and no running service detected");
-                free(g_config_dir);
-                free(g_config_path);
-                return false;
-            }
+    // Reset diagnostic state for this init pass so go2rtc_process_start can
+    // render a structured failure log if discovery fails later.
+    discovery_diag_reset();
+    if (binary_path && binary_path[0] != '\0') {
+        g_discovery_diag.configured_path_present = true;
+        safe_strcpy(g_discovery_diag.configured_path, binary_path,
+                    sizeof(g_discovery_diag.configured_path), 0);
+        g_discovery_diag.configured_path_exists =
+            (access(binary_path, F_OK) == 0);
+        g_discovery_diag.configured_path_executable =
+            g_discovery_diag.configured_path_exists &&
+            (access(binary_path, X_OK) == 0);
+        if (g_discovery_diag.configured_path_executable) {
+            g_discovery_diag.configured_path_version_ok =
+                (probe_go2rtc_version(binary_path, NULL, 0) == 1);
         }
+    }
 
-        // Store binary path
+    /* Pre-compute service-check diagnostic details (the helper below only
+     * returns a boolean).  These feed the structured failure log and do not
+     * affect control flow on their own. */
+    g_discovery_diag.service_port_open = check_tcp_port_open(g_api_port);
+    bool service_running = is_go2rtc_running_as_service(g_api_port);
+    g_discovery_diag.service_http_ok = service_running;
+
+    // Always probe for a binary, even when a service is detected — that way,
+    // if the external service dies later, we still have a binary to fall back
+    // on (issue #394 follow-up).
+    char final_binary_path[PATH_MAX] = {0};
+    bool found_binary = false;
+
+    if (g_discovery_diag.configured_path_version_ok) {
+        // Configured path is a fully-verified go2rtc binary — prefer it.
+        safe_strcpy(final_binary_path, binary_path, sizeof(final_binary_path), 0);
+        log_info("Using provided go2rtc binary: %s", final_binary_path);
+        found_binary = true;
+    } else if (g_discovery_diag.configured_path_executable) {
+        /* Executable but failed version probe — warn, don't trust it, but
+         * still record in the diagnostic that we tried. */
+        log_warn("Configured go2rtc binary at %s is executable but did not "
+                 "respond to --version as expected; falling back to discovery",
+                 binary_path);
+    } else if (g_discovery_diag.configured_path_present) {
+        log_warn("go2rtc binary not found or not executable at specified path: %s",
+                 binary_path);
+    }
+
+    if (!found_binary) {
+        if (check_go2rtc_in_path(final_binary_path, sizeof(final_binary_path))) {
+            found_binary = true;
+        }
+    }
+
+    if (service_running) {
+        log_info("go2rtc is already running as a service, will use the existing service");
+        g_using_external_service = true;
+        if (found_binary) {
+            log_info("Also caching fallback binary for service-death recovery: %s",
+                     final_binary_path);
+            g_binary_path = strdup(final_binary_path);
+        } else {
+            log_warn("No local go2rtc binary found; running service is the only "
+                     "option (no fallback if the service dies)");
+            g_binary_path = strdup("");
+        }
+    } else {
+        g_using_external_service = false;
+        if (!found_binary) {
+            log_error("go2rtc binary not found in well-known paths or PATH, "
+                      "and no running service detected");
+            free(g_config_dir);
+            g_config_dir = NULL;
+            free(g_config_path);
+            g_config_path = NULL;
+            free(g_override_path);
+            g_override_path = NULL;
+            free(g_override_quarantined_path);
+            g_override_quarantined_path = NULL;
+            return false;
+        }
         g_binary_path = strdup(final_binary_path);
     }
 
     g_initialized = true;
 
-    if (g_binary_path[0] != '\0') {
+    if (g_using_external_service) {
+        if (g_binary_path && g_binary_path[0] != '\0') {
+            log_info("go2rtc process manager initialized to use existing service "
+                     "(fallback binary cached: %s), config dir: %s",
+                     g_binary_path, g_config_dir);
+        } else {
+            log_info("go2rtc process manager initialized to use existing service, "
+                     "config dir: %s", g_config_dir);
+        }
+    } else {
         log_info("go2rtc process manager initialized with binary: %s, config dir: %s",
                 g_binary_path, g_config_dir);
-    } else {
-        log_info("go2rtc process manager initialized to use existing service, config dir: %s",
-                g_config_dir);
     }
 
     return true;
@@ -715,66 +1146,19 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     // Streams section — write overridden streams directly into config,
     // other streams will be registered dynamically via the go2rtc API.
     fprintf(config_file, "\nstreams:\n");
-    {
-        bool has_overridden = false;
-        if (get_db_handle() != NULL) {
-            int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
-            stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
-            int count = streams ? get_all_stream_configs(streams, ms) : 0;
-
-            for (int i = 0; i < count; i++) {
-                if (!streams[i].enabled) continue;
-                if (streams[i].go2rtc_source_override[0] == '\0') continue;
-
-                has_overridden = true;
-
-                // Escape stream name for YAML double-quoted key safety
-                char escaped_name[MAX_STREAM_NAME * 2];
-                yaml_escape_string(streams[i].name, escaped_name, sizeof(escaped_name));
-
-                const char *override = streams[i].go2rtc_source_override;
-                bool is_single_line = (strchr(override, '\n') == NULL);
-
-                if (is_single_line) {
-                    // Single URL: write as inline YAML scalar
-                    //   "cam": rtsp://camera/stream
-                    fprintf(config_file, "  \"%s\": %s\n", escaped_name, override);
-                } else {
-                    // Multi-line: write as indented block under the key
-                    //   "cam":
-                    //     - rtsp://camera/main
-                    //     - ffmpeg:cam#video=h264
-                    fprintf(config_file, "  \"%s\":\n", escaped_name);
-                    const char *p = override;
-                    while (*p) {
-                        const char *eol = strchr(p, '\n');
-                        if (eol) {
-                            fprintf(config_file, "    %.*s\n", (int)(eol - p), p);
-                            p = eol + 1;
-                        } else {
-                            fprintf(config_file, "    %s\n", p);
-                            break;
-                        }
-                    }
-                }
-            }
-            free(streams);
-        }
-        if (!has_overridden) {
-            fprintf(config_file, "  # Streams will be added dynamically via API\n");
-        }
+    if (write_stream_overrides(config_file) == 0) {
+        // write_stream_overrides() returns 0 when it wrote zero override entries;
+        // keep the comment placeholder so the `streams:` key has a valid body.
+        fprintf(config_file, "  # Streams will be added dynamically via API\n");
     }
 
-    // Global go2rtc config override from system settings
-    {
-        char global_override[4096] = {0};
-        if (get_db_handle() != NULL
-            && db_get_system_setting("go2rtc_config_override", global_override, sizeof(global_override)) == 0
-            && global_override[0] != '\0') {
-            fprintf(config_file, "\n# User config override\n");
-            fprintf(config_file, "%s\n", global_override);
-        }
-    }
+    // NOTE: As of the T2 refactor, the global go2rtc config override from
+    // `system_settings.go2rtc_config_override` is NO LONGER appended to this
+    // file. Appending it caused duplicate top-level YAML keys (issue #394).
+    // The override is now emitted to a separate file by
+    // go2rtc_process_generate_override_file() and passed to go2rtc as a
+    // second `--config` argument, letting go2rtc merge the two YAMLs with
+    // its native yaml.v3 logic.
 
     fclose(config_file);
     log_info("Generated go2rtc configuration file: %s", config_path);
@@ -799,30 +1183,595 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     return true;
 }
 
+/**
+ * @brief Write per-stream go2rtc source overrides into the given YAML stream.
+ *
+ * Extracted from go2rtc_process_generate_config() by the T2 refactor.
+ * Preserves the pre-refactor behavior exactly:
+ *   - Skip disabled streams and streams with empty go2rtc_source_override.
+ *   - Escape stream names for YAML double-quoted key safety.
+ *   - Single-line overrides are emitted as an inline scalar.
+ *   - Multi-line overrides are emitted as an indented block under the key.
+ *
+ * @param fp  Open writable FILE * positioned directly after the `streams:` line.
+ * @return Number of per-stream override entries written (>= 0).
+ *         The caller decides whether to emit a placeholder comment when zero.
+ */
+static int write_stream_overrides(FILE *fp) {
+    if (!fp) return 0;
+    if (get_db_handle() == NULL) return 0;
+
+    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
+    if (!streams) return 0;
+
+    int count = get_all_stream_configs(streams, ms);
+    int written = 0;
+
+    for (int i = 0; i < count; i++) {
+        if (!streams[i].enabled) continue;
+        if (streams[i].go2rtc_source_override[0] == '\0') continue;
+
+        // Escape stream name for YAML double-quoted key safety
+        char escaped_name[MAX_STREAM_NAME * 2];
+        yaml_escape_string(streams[i].name, escaped_name, sizeof(escaped_name));
+
+        const char *override = streams[i].go2rtc_source_override;
+        bool is_single_line = (strchr(override, '\n') == NULL);
+
+        if (is_single_line) {
+            // Single URL: write as inline YAML scalar
+            //   "cam": rtsp://camera/stream
+            fprintf(fp, "  \"%s\": %s\n", escaped_name, override);
+        } else {
+            // Multi-line: write as indented block under the key
+            //   "cam":
+            //     - rtsp://camera/main
+            //     - ffmpeg:cam#video=h264
+            fprintf(fp, "  \"%s\":\n", escaped_name);
+            const char *p = override;
+            while (*p) {
+                const char *eol = strchr(p, '\n');
+                if (eol) {
+                    fprintf(fp, "    %.*s\n", (int)(eol - p), p);
+                    p = eol + 1;
+                } else {
+                    fprintf(fp, "    %s\n", p);
+                    break;
+                }
+            }
+        }
+
+        written++;
+    }
+
+    free(streams);
+    return written;
+}
+
+/* ------------------------------------------------------------------
+ * T4b — crash-loop quarantine helpers
+ * ------------------------------------------------------------------ */
+
+/**
+ * In-place mask any URL userinfo (`://user:pass@`) in @p buf so the result
+ * does not leak credentials.  Best-effort scan: walks looking for "://",
+ * then for the next '@' before any of [ '/', '?', '#', ' ', '\t', '\n' ],
+ * and if a ':' appears in [scheme_end, at), overwrites every byte in that
+ * span (excluding '@') with '*'.  Operates on a NUL-terminated buffer in
+ * place so we don't allocate; safe to call on partial UTF-8 since we only
+ * touch ASCII boundary characters.
+ *
+ * Used before persisting the go2rtc.log tail to a DB setting that the UI
+ * surfaces — go2rtc routinely logs RTSP URLs with embedded userinfo.
+ */
+static void mask_url_userinfo_in_place(char *buf)
+{
+    if (!buf) return;
+    char *p = buf;
+    while ((p = strstr(p, "://")) != NULL) {
+        char *scheme_end = p + 3;
+        char *q = scheme_end;
+        char *at = NULL;
+        while (*q && *q != '/' && *q != '?' && *q != '#'
+               && *q != ' ' && *q != '\t' && *q != '\n' && *q != '"'
+               && *q != '\'') {
+            if (*q == '@') { at = q; break; }
+            q++;
+        }
+        if (at) {
+            int has_colon = 0;
+            for (char *r = scheme_end; r < at; r++) {
+                if (*r == ':') { has_colon = 1; break; }
+            }
+            if (has_colon) {
+                for (char *r = scheme_end; r < at; r++) {
+                    *r = '*';
+                }
+            }
+            p = at + 1;
+        } else {
+            p = q;
+            if (*p) p++;  /* skip the terminator we stopped at */
+        }
+    }
+}
+
+/**
+ * Read up to @p cap bytes from the END of @p path into @p out (NUL-terminated).
+ * Best-effort: failures are silent (out becomes empty).
+ */
+static void read_file_tail(const char *path, char *out, size_t cap)
+{
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    if (!path || path[0] == '\0') return;
+
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return;
+
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+        close(fd);
+        return;
+    }
+
+    size_t want = cap - 1;
+    off_t off = 0;
+    if ((size_t)st.st_size > want) {
+        off = st.st_size - (off_t)want;
+    } else {
+        want = (size_t)st.st_size;
+    }
+
+    if (lseek(fd, off, SEEK_SET) == (off_t)-1) {
+        close(fd);
+        return;
+    }
+
+    size_t read_total = 0;
+    while (read_total < want) {
+        ssize_t n = read(fd, out + read_total, want - read_total);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (n == 0) break;
+        read_total += (size_t)n;
+    }
+    out[read_total] = '\0';
+    close(fd);
+}
+
+/**
+ * Move override.yaml -> override.quarantined.yaml, save the triggering log
+ * tail to DB setting `go2rtc_config_override_disabled_reason`, and clear
+ * the fast-death history so we don't re-quarantine immediately.
+ *
+ * Best-effort: any failure is logged but not propagated (we still want the
+ * caller to attempt to start go2rtc with base-only config).
+ */
+static void quarantine_override_file(void)
+{
+    if (!g_override_path || !g_override_quarantined_path) return;
+
+    if (rename(g_override_path, g_override_quarantined_path) != 0) {
+        log_error("T4b: failed to quarantine %s -> %s: %s",
+                  g_override_path, g_override_quarantined_path, strerror(errno));
+        return;
+    }
+    log_error("T4b: quarantined go2rtc override after crash loop: %s -> %s",
+              g_override_path, g_override_quarantined_path);
+
+    /* Build the reason payload: header + last 2 KB of go2rtc.log.
+     * The log frequently contains RTSP URLs with embedded userinfo, and
+     * the reason is exposed via GET /api/settings → rendered in the UI
+     * banner. Mask URL userinfo before persisting so we don't broadcast
+     * camera passwords to anyone with admin access to the settings page. */
+    char log_tail[2048] = {0};
+    char log_path[PATH_MAX];
+    snprintf(log_path, sizeof(log_path), "%s/go2rtc.log",
+             g_config_dir ? g_config_dir : "");
+    read_file_tail(log_path, log_tail, sizeof(log_tail));
+    mask_url_userinfo_in_place(log_tail);
+
+    char *reason = malloc(sizeof(log_tail) + 512);
+    if (reason) {
+        snprintf(reason, sizeof(log_tail) + 512,
+                 "go2rtc crashed >= %d times within %ds of start with "
+                 "override.yaml in use. Quarantined to %s.\n\n"
+                 "Last %zu bytes of go2rtc.log:\n%s",
+                 QUARANTINE_FAST_DEATH_COUNT,
+                 FAST_DEATH_THRESHOLD_SEC,
+                 g_override_quarantined_path,
+                 strlen(log_tail), log_tail);
+        if (db_set_system_setting("go2rtc_config_override_disabled_reason",
+                                  reason) != 0) {
+            log_warn("T4b: failed to persist quarantine reason to DB");
+        }
+        free(reason);
+    }
+
+    /* Clear the ring so the next start sees a fresh window. */
+    memset(g_fast_death_history, 0, sizeof(g_fast_death_history));
+    g_fast_death_history_idx = 0;
+}
+
+/**
+ * Inspect the previous lifetime and decide whether to quarantine.  Called
+ * at the top of go2rtc_process_start so it fires for both the initial
+ * start (no-op since g_last_start_time == 0) and every restart.
+ */
+static void check_and_handle_crash_loop(void)
+{
+    if (g_last_start_time == 0) return;  /* first start, nothing to compare */
+
+    time_t now = time(NULL);
+    time_t lifetime = now - g_last_start_time;
+    if (lifetime < 0 || lifetime >= FAST_DEATH_THRESHOLD_SEC) {
+        return;
+    }
+
+    /* Record this fast-death event. */
+    g_fast_death_history[g_fast_death_history_idx] = now;
+    g_fast_death_history_idx =
+        (g_fast_death_history_idx + 1) % FAST_DEATH_RING_SIZE;
+    log_warn("T4b: go2rtc previous instance lived only %lds (< %ds threshold)",
+             (long)lifetime, FAST_DEATH_THRESHOLD_SEC);
+
+    int recent = 0;
+    for (int i = 0; i < FAST_DEATH_RING_SIZE; i++) {
+        if (g_fast_death_history[i] > 0
+            && now - g_fast_death_history[i] < QUARANTINE_WINDOW_SEC) {
+            recent++;
+        }
+    }
+    if (recent < QUARANTINE_FAST_DEATH_COUNT) {
+        return;
+    }
+
+    /* Threshold hit — but only quarantine if the override file is actually
+     * present.  If go2rtc is crashing without an override, the user's base
+     * config has the bug and there's nothing for us to quarantine. */
+    if (g_override_path
+        && access(g_override_path, F_OK) == 0) {
+        log_error("T4b: %d fast-death events in %ds — quarantining override.yaml",
+                  recent, QUARANTINE_WINDOW_SEC);
+        quarantine_override_file();
+    } else {
+        log_warn("T4b: %d fast-death events but override.yaml is not in use; "
+                 "lightNVR cannot mitigate further", recent);
+    }
+}
+
+void go2rtc_process_validate_existing_override_on_upgrade(void)
+{
+    /* Marker key: presence (regardless of value) means we have already
+     * validated for THIS release.  We use the lightNVR version string as
+     * the value so a future release can revalidate by comparing strings. */
+    char *marker = NULL;
+    size_t marker_len = 0;
+    int rc = db_get_system_setting_alloc("go2rtc_override_validated_version",
+                                         &marker, &marker_len);
+    if (rc == 0 && marker
+        && strcmp(marker, LIGHTNVR_VERSION_STRING) == 0) {
+        free(marker);
+        return;  /* Already validated for this release. */
+    }
+    free(marker);
+
+    char *override = NULL;
+    size_t override_len = 0;
+    int orc = db_get_system_setting_alloc("go2rtc_config_override",
+                                          &override, &override_len);
+    if (orc != 0 || !override || override_len == 0) {
+        /* No live override to check. */
+        free(override);
+        if (db_set_system_setting("go2rtc_override_validated_version",
+                                  LIGHTNVR_VERSION_STRING) != 0) {
+            log_warn("T14: failed to set validation marker");
+        }
+        return;
+    }
+
+    yaml_validation_result_t vr;
+    yaml_validate_go2rtc_override(override, override_len, &vr);
+
+    if (vr.valid == 0) {
+        log_warn("T14: existing go2rtc_config_override is INVALID after "
+                 "upgrade (%s); quarantining", vr.err_message);
+
+        /* Copy live → quarantined sibling. */
+        if (db_set_system_setting("go2rtc_config_override_quarantined",
+                                  override) != 0) {
+            log_error("T14: failed to copy override to quarantine slot — "
+                      "leaving live setting alone");
+            free(override);
+            /* Don't set the marker; we'll retry next boot. */
+            return;
+        }
+
+        /* Persist the failure reason so the UI can show why. */
+        char reason[YAML_VALIDATE_ERR_LEN + 64];
+        snprintf(reason, sizeof(reason),
+                 "Pre-existing override quarantined on upgrade: %s",
+                 vr.err_message);
+        if (db_set_system_setting("go2rtc_config_override_disabled_reason",
+                                  reason) != 0) {
+            log_warn("T14: failed to persist quarantine reason");
+        }
+
+        /* Clear the live setting so the next start runs base-only. */
+        if (db_set_system_setting("go2rtc_config_override", "") != 0) {
+            log_error("T14: failed to clear live override after copy");
+        }
+
+        log_warn("T14: original override preserved at "
+                 "system_settings.go2rtc_config_override_quarantined; "
+                 "review and re-save via the UI to re-enable");
+    } else if (vr.valid == 1) {
+        log_info("T14: existing go2rtc_config_override validated cleanly (%d warnings)",
+                 vr.warning_count);
+    }
+    /* vr.valid == -1 (libyaml unavailable): can't validate; let go2rtc's
+     * own parser surface the issue at startup.  Don't set the marker so a
+     * future build with libyaml will revalidate. */
+
+    free(override);
+
+    if (vr.valid != -1) {
+        if (db_set_system_setting("go2rtc_override_validated_version",
+                                  LIGHTNVR_VERSION_STRING) != 0) {
+            log_warn("T14: failed to set validation marker");
+        }
+    }
+}
+
+void go2rtc_process_clear_override_quarantine(void)
+{
+    if (!g_override_quarantined_path) return;
+
+    if (unlink(g_override_quarantined_path) == 0) {
+        log_info("T4b: cleared quarantined go2rtc override file %s",
+                 g_override_quarantined_path);
+    } else if (errno != ENOENT) {
+        log_warn("T4b: failed to remove quarantined override %s: %s",
+                 g_override_quarantined_path, strerror(errno));
+    }
+
+    if (db_set_system_setting("go2rtc_config_override_disabled_reason",
+                              "") != 0) {
+        log_warn("T4b: failed to clear quarantine reason in DB");
+    }
+
+    /* Reset bookkeeping so a single user-driven save fully unblocks. */
+    g_last_start_time = 0;
+    memset(g_fast_death_history, 0, sizeof(g_fast_death_history));
+    g_fast_death_history_idx = 0;
+}
+
+int go2rtc_process_generate_override_file(const char *override_path) {
+    if (!override_path || override_path[0] == '\0') {
+        log_error("go2rtc_process_generate_override_file: invalid path");
+        return -1;
+    }
+
+    /* T4b — if a prior crash loop quarantined this override, the
+     * `go2rtc_config_override_disabled_reason` DB setting is non-empty.
+     * Honor it: remove any override.yaml on disk (in case one was created
+     * since the rename) and short-circuit to no-override.  The user clears
+     * the quarantine by saving a new override value, which the settings
+     * handler routes through go2rtc_process_clear_override_quarantine(). */
+    {
+        char *reason = NULL;
+        size_t reason_len = 0;
+        if (db_get_system_setting_alloc(
+                "go2rtc_config_override_disabled_reason",
+                &reason, &reason_len) == 0
+            && reason && reason_len > 0) {
+            free(reason);
+            log_warn("go2rtc override is currently QUARANTINED — skipping "
+                     "override.yaml. Save a new override to clear the "
+                     "quarantine.");
+            if (unlink(override_path) != 0 && errno != ENOENT) {
+                log_error("Failed to remove override during quarantine: %s",
+                          strerror(errno));
+                return -1;
+            }
+            return 0;
+        }
+        free(reason);
+    }
+
+    /* Tighten the enclosing directory permissions before writing a file that
+     * may contain credentials. We accept 0700 or 0750; anything looser gets a
+     * best-effort chmod and a WARN log. */
+    if (g_config_dir && g_config_dir[0] != '\0') {
+        struct stat dst;
+        if (stat(g_config_dir, &dst) == 0 && S_ISDIR(dst.st_mode)) {
+            mode_t perm = dst.st_mode & 0777;
+            if (perm != 0700 && perm != 0750) {
+                if (chmod(g_config_dir, 0700) == 0) {
+                    log_warn("go2rtc config dir %s was 0%o; tightened to 0700",
+                             g_config_dir, perm);
+                } else {
+                    log_warn("go2rtc config dir %s is 0%o (want 0700/0750); "
+                             "chmod failed: %s",
+                             g_config_dir, perm, strerror(errno));
+                }
+            }
+        }
+    }
+
+    char *content = NULL;
+    size_t content_len = 0;
+    int db_rc = db_get_system_setting_alloc("go2rtc_config_override",
+                                            &content, &content_len);
+    bool have_content = (db_rc == 0 && content && content_len > 0);
+
+    /* Enforce the same 64 KB cap the HTTP save path enforces.  If the DB
+     * was edited out-of-band (manual sqlite, restored backup), refuse to
+     * write the file rather than handing go2rtc an unexpectedly large
+     * --config that may be a denial-of-service vector. The override is
+     * treated as absent in this case so go2rtc starts on base alone. */
+    if (have_content && content_len > 65535) {
+        log_error("go2rtc override in DB is %zu bytes (cap 65535) — "
+                  "treating as absent and starting on base config alone",
+                  content_len);
+        free(content);
+        content = NULL;
+        content_len = 0;
+        have_content = false;
+    }
+
+    if (!have_content) {
+        free(content);
+        /* No override in the DB — remove any stale file on disk. We MUST
+         * confirm the file is gone, because passing a stale override.yaml as
+         * a second --config to go2rtc would silently mis-merge user config
+         * the operator believed they had cleared. */
+        if (unlink(override_path) != 0 && errno != ENOENT) {
+            log_error("Failed to remove stale go2rtc override file %s: %s",
+                      override_path, strerror(errno));
+            return -1;
+        }
+        struct stat st;
+        if (stat(override_path, &st) == 0) {
+            log_error("Stale go2rtc override file %s still present after unlink",
+                      override_path);
+            return -1;
+        }
+        if (errno != ENOENT) {
+            log_error("Failed to verify go2rtc override file %s removed: %s",
+                      override_path, strerror(errno));
+            return -1;
+        }
+        log_debug("go2rtc override file absent (no DB setting)");
+        return 0;
+    }
+
+    /* Write the content to override.yaml with mode 0600. We use open()+fdopen
+     * (not fopen) so we can specify the create-mode explicitly and so umask
+     * cannot loosen the permissions. */
+    int fd = open(override_path,
+                  O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                  0600);
+    if (fd < 0) {
+        log_error("Failed to open go2rtc override file %s for writing: %s",
+                  override_path, strerror(errno));
+        free(content);
+        return -1;
+    }
+
+    /* Belt-and-braces: chmod again in case the file pre-existed with looser
+     * perms and O_TRUNC kept the inode. */
+    if (fchmod(fd, 0600) != 0) {
+        log_warn("fchmod(%s, 0600) failed: %s",
+                 override_path, strerror(errno));
+    }
+
+    size_t written = 0;
+    while (written < content_len) {
+        ssize_t n = write(fd, content + written, content_len - written);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            log_error("Write to go2rtc override file %s failed: %s",
+                      override_path, strerror(errno));
+            close(fd);
+            unlink(override_path);
+            free(content);
+            return -1;
+        }
+        written += (size_t)n;
+    }
+
+    if (fsync(fd) != 0) {
+        log_warn("fsync on go2rtc override file %s failed: %s",
+                 override_path, strerror(errno));
+        /* Non-fatal: the data is in the page cache and go2rtc will read it
+         * via the same kernel; only durability across crashes is at risk. */
+    }
+
+    if (close(fd) != 0) {
+        log_error("close on go2rtc override file %s failed: %s",
+                  override_path, strerror(errno));
+        free(content);
+        return -1;
+    }
+
+    log_debug("Wrote %zu bytes to go2rtc override file %s",
+              content_len, override_path);
+    free(content);
+    return 0;
+}
+
+const char *go2rtc_process_get_override_path(void) {
+    return g_override_path;
+}
+
+const char *go2rtc_process_get_config_path(void) {
+    return g_config_path;
+}
+
 bool go2rtc_process_generate_startup_config(const char *binary_path,
                                             const char *config_dir,
                                             int api_port) {
+    /* Config generation never exec's a binary — it just writes YAML.  We
+     * therefore intentionally bypass go2rtc_process_init's binary discovery
+     * (well-known paths, version probe, external-service detection) which
+     * was added in T8 and would otherwise reject this call when no real
+     * go2rtc is present on the host (the unit-test scenario, and any
+     * config-bootstrap-only deployment).  We set up the minimum global
+     * state go2rtc_process_generate_config reads, then tear it down. */
+    (void)binary_path;  /* unused: no exec, no probe */
+
     if (!config_dir || config_dir[0] == '\0') {
         log_error("Invalid config_dir for go2rtc startup config generation");
         return false;
     }
 
+    if (g_initialized) {
+        log_warn("Cannot generate startup config: process manager already initialized");
+        return false;
+    }
+
     int resolved_api_port = api_port > 0 ? api_port : 1984;
-    if (!go2rtc_process_init(binary_path, config_dir, resolved_api_port)) {
-        log_error("Failed to initialize go2rtc process manager for startup config generation");
+
+    if (mkdir_recursive(config_dir)) {
+        log_error("Failed to create go2rtc config directory: %s", config_dir);
         return false;
     }
 
-    char config_path[PATH_MAX];
-    int written = snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
-    if (written < 0 || (size_t)written >= sizeof(config_path)) {
-        log_error("go2rtc config path too long for startup config generation: %s", config_dir);
-        go2rtc_process_cleanup();
+    g_config_dir = strdup(config_dir);
+    if (!g_config_dir) {
+        log_error("Memory allocation failed for config dir");
         return false;
     }
 
-    bool ok = go2rtc_process_generate_config(config_path, resolved_api_port);
-    go2rtc_process_cleanup();
+    size_t config_path_len = strlen(config_dir) + strlen("/go2rtc.yaml") + 1;
+    g_config_path = malloc(config_path_len);
+    if (!g_config_path) {
+        log_error("Memory allocation failed for config path");
+        free(g_config_dir);
+        g_config_dir = NULL;
+        return false;
+    }
+    snprintf(g_config_path, config_path_len, "%s/go2rtc.yaml", config_dir);
+
+    g_api_port = resolved_api_port;
+    g_rtsp_port = (g_config.go2rtc_rtsp_port > 0) ? g_config.go2rtc_rtsp_port : 8554;
+    g_initialized = true;
+
+    bool ok = go2rtc_process_generate_config(g_config_path, resolved_api_port);
+
+    /* Tear down the minimal state we set up. */
+    free(g_config_dir);
+    free(g_config_path);
+    g_config_dir = NULL;
+    g_config_path = NULL;
+    g_initialized = false;
+    g_using_external_service = false;
+
     return ok;
 }
 
@@ -1127,8 +2076,11 @@ bool go2rtc_process_is_running(void) {
         return false;
     }
 
-    // If we're using an existing service, check if the service is running
-    if (g_binary_path && g_binary_path[0] == '\0') {
+    // If we're using an existing service, check if the service is running.
+    // (We used to rely on an empty g_binary_path as the signal, but we now
+    // cache a fallback binary path even for externally-managed services so
+    // use the explicit flag set during init.)
+    if (g_using_external_service) {
         return is_go2rtc_running_as_service(g_api_port);
     }
 
@@ -1186,6 +2138,14 @@ bool go2rtc_process_start(int api_port) {
         return false;
     }
 
+    /* T4b — before any restart work, look at how the previous instance died.
+     * If we've seen too many fast deaths in a short window AND there is an
+     * override.yaml in use, quarantine it and let go2rtc start on the base
+     * config alone.  Has to run BEFORE the override-refresh below, because
+     * quarantining renames the file and we want the refresh to see the
+     * post-quarantine state. */
+    check_and_handle_crash_loop();
+
     // Always regenerate the go2rtc config file fresh at startup to avoid
     // stale/corrupted configs from prior versions causing stream errors
     // (see issue #165). The file is opened with O_TRUNC so any old content
@@ -1194,6 +2154,19 @@ bool go2rtc_process_start(int api_port) {
     if (!go2rtc_process_generate_config(g_config_path, api_port)) {
         log_warn("Failed to regenerate go2rtc configuration at startup");
         // Continue anyway - the old config may still work
+    }
+
+    /* Refresh the user override file from the DB on every start. This is the
+     * defensive sync point that prevents a stale override.yaml from being
+     * passed as a second --config when the operator has cleared the setting
+     * but a prior run wrote a file. A hard error here means we cannot
+     * guarantee what go2rtc will load, so refuse to start. */
+    const char *override_path = go2rtc_process_get_override_path();
+    if (override_path
+        && go2rtc_process_generate_override_file(override_path) != 0) {
+        log_error("Refusing to start go2rtc: failed to refresh override file %s",
+                  override_path);
+        return false;
     }
 
     // Check if go2rtc is already running as a service
@@ -1256,6 +2229,30 @@ bool go2rtc_process_start(int api_port) {
     // If we don't have a binary path (using existing service), but no service was detected,
     // we can't start go2rtc
     if (g_binary_path == NULL || g_binary_path[0] == '\0') {
+        // Structured diagnostic — turns an opaque "no binary" error into an
+        // actionable dump for the operator.  Matches the shape in the PRD:
+        //   configured_path='...' (exists=..., executable=..., version=...)
+        //   path_probe_paths_tried=...
+        //   service_check: port_open=..., http_ok=...
+        log_error("go2rtc binary discovery failed:");
+        if (g_discovery_diag.configured_path_present) {
+            log_error("  configured_path='%s' (exists=%s, executable=%s, version=%s)",
+                      g_discovery_diag.configured_path,
+                      g_discovery_diag.configured_path_exists ? "yes" : "no",
+                      !g_discovery_diag.configured_path_exists ? "n/a"
+                          : (g_discovery_diag.configured_path_executable ? "yes" : "no"),
+                      !g_discovery_diag.configured_path_executable ? "n/a"
+                          : (g_discovery_diag.configured_path_version_ok ? "ok" : "bad"));
+        } else {
+            log_error("  configured_path='' (none supplied)");
+        }
+        log_error("  path_probe_paths_tried=%s",
+                  g_discovery_diag.probe_paths_tried[0]
+                      ? g_discovery_diag.probe_paths_tried
+                      : "<none>");
+        log_error("  service_check: port_open=%s, http_ok=%s",
+                  g_discovery_diag.service_port_open ? "yes" : "no",
+                  g_discovery_diag.service_http_ok ? "yes" : "no");
         log_error("No go2rtc binary available and no running service detected");
         return false;
     }
@@ -1368,20 +2365,46 @@ bool go2rtc_process_start(int api_port) {
         dup2(log_fd, STDERR_FILENO);
         close(log_fd);
 
-        // Execute go2rtc with explicit config path (using correct argument format).
-        // Always use "go2rtc" as argv[0] (the process name visible in /proc/<pid>/cmdline
-        // and /proc/<pid>/comm) regardless of the actual binary path, so that
-        // scan_proc_for_argv0_basename("go2rtc") can reliably find the process even when
-        // g_binary_path is a full path or an alternate filename.
-        log_info("Executing go2rtc with command: %s --config %s", resolved_binary, g_config_path);
-        execl(resolved_binary, "go2rtc", "--config", g_config_path, NULL);
+        // Execute go2rtc with one or two --config files. Always use "go2rtc"
+        // as argv[0] (the process name visible in /proc/<pid>/cmdline and
+        // /proc/<pid>/comm) regardless of the actual binary path, so that
+        // scan_proc_for_argv0_basename("go2rtc") can reliably find the
+        // process even when g_binary_path is a full path or an alternate
+        // filename. The override file is only added if the parent successfully
+        // wrote it AND it exists on disk; go2rtc's internal/app/config.go
+        // calls yaml.Unmarshal once per --config so passing two files lets
+        // go2rtc merge with its own native semantics (issue #394).
+        bool have_override = (override_path
+                              && override_path[0] != '\0'
+                              && access(override_path, R_OK) == 0);
 
-        // If execl returns, it failed
+        char *argv[6];
+        int ai = 0;
+        argv[ai++] = (char *)"go2rtc";
+        argv[ai++] = (char *)"--config";
+        argv[ai++] = g_config_path;
+        if (have_override) {
+            argv[ai++] = (char *)"--config";
+            argv[ai++] = (char *)override_path;
+        }
+        argv[ai] = NULL;
+
+        if (have_override) {
+            log_info("Executing go2rtc with command: %s --config %s --config %s",
+                     resolved_binary, g_config_path, override_path);
+        } else {
+            log_info("Executing go2rtc with command: %s --config %s",
+                     resolved_binary, g_config_path);
+        }
+        execv(resolved_binary, argv);
+
+        // If execv returns, it failed
         fprintf(stderr, "Failed to execute go2rtc: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     } else {
         // Parent process
         g_process_pid = pid;
+        g_last_start_time = time(NULL);  /* T4b crash-loop bookkeeping */
         log_info("Started go2rtc process with PID: %d", pid);
 
         // Wait a moment for the process to start
@@ -1506,8 +2529,10 @@ bool go2rtc_process_stop(void) {
         return false;
     }
 
-    // Only stop go2rtc if we started it (g_binary_path is not empty)
-    if (g_binary_path && g_binary_path[0] != '\0') {
+    // Only stop go2rtc if we started it.  When init detected an external
+    // service, we never launched anything — even if g_binary_path was cached
+    // for fallback purposes.
+    if (!g_using_external_service && g_binary_path && g_binary_path[0] != '\0') {
         log_info("Stopping go2rtc process that we started");
 
         // Kill all go2rtc processes, not just the one we started
@@ -1534,8 +2559,8 @@ void go2rtc_process_cleanup(void) {
         return;
     }
 
-    // Only stop go2rtc if we started it (g_binary_path is not empty)
-    if (g_binary_path && g_binary_path[0] != '\0') {
+    // Only stop go2rtc if we started it (not an externally-managed service)
+    if (!g_using_external_service && g_binary_path && g_binary_path[0] != '\0') {
         log_info("Stopping go2rtc process that we started during cleanup");
         kill_all_go2rtc_processes();
     } else {
@@ -1546,13 +2571,22 @@ void go2rtc_process_cleanup(void) {
     free(g_binary_path);
     free(g_config_dir);
     free(g_config_path);
+    free(g_override_path);
+    free(g_override_quarantined_path);
 
     g_binary_path = NULL;
     g_config_dir = NULL;
     g_config_path = NULL;
+    g_override_path = NULL;
+    g_override_quarantined_path = NULL;
     g_process_pid = -1;
+    g_using_external_service = false;
     g_api_port = 1984;
     g_initialized = false;
+    /* Reset T4b crash-loop bookkeeping so a fresh init starts clean. */
+    g_last_start_time = 0;
+    memset(g_fast_death_history, 0, sizeof(g_fast_death_history));
+    g_fast_death_history_idx = 0;
 
     log_info("go2rtc process manager cleaned up");
 }

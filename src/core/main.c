@@ -735,6 +735,12 @@ int main(int argc, char *argv[]) {
         log_info("go2rtc is disabled in configuration. HLS will connect directly to camera streams.");
         log_info("WebRTC live view will not be available. Enable go2rtc in settings if needed.");
     } else {
+        /* T14 — validate any pre-existing override against the current
+         * release's rules before go2rtc gets a chance to choke on it.
+         * Idempotent across boots; first boot per release does work, the
+         * rest short-circuit on the version marker. */
+        go2rtc_process_validate_existing_override_on_upgrade();
+
         if (!go2rtc_integration_full_start()) {
             log_error("Failed to start go2rtc integration.");
             log_error("Ensure go2rtc is installed and accessible (scripts/install_go2rtc.sh).");

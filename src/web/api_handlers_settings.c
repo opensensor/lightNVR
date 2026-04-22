@@ -31,6 +31,7 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/hls/hls_api.h"
 #include "core/mqtt_client.h"
+#include "utils/yaml_validate.h"
 
 /**
  * @brief Validate that a path is safe to use as a storage path.
@@ -241,6 +242,131 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
 }
 
 /**
+ * @brief Build a cJSON object describing a yaml_validation_result_t.
+ *
+ * Shape:
+ *   {
+ *     "valid": true|false,
+ *     "libyaml_available": true|false,
+ *     "error": { "line": N, "column": N, "message": "..." }?,  // when invalid
+ *     "warnings": ["...", ...]                                   // always
+ *   }
+ *
+ * Caller takes ownership of the returned object.  Returns NULL on OOM.
+ */
+static cJSON *go2rtc_validation_result_to_json(const yaml_validation_result_t *r) {
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return NULL;
+
+    /* `valid` is asserted ONLY for actual validation outcomes:
+     *   r->valid == 1  → valid: true
+     *   r->valid == 0  → valid: false (real failure, error{} populated)
+     *   r->valid == -1 → valid: true (libyaml unavailable; we can't prove
+     *                    invalid, so don't block the user). The
+     *                    `libyaml_available: false` + `skipped` fields tell
+     *                    the API consumer this was not a real check. */
+    cJSON_AddBoolToObject(root, "valid", r->valid != 0);
+    cJSON_AddBoolToObject(root, "libyaml_available", r->valid != -1);
+    cJSON_AddBoolToObject(root, "skipped", r->valid == -1);
+
+    if (r->valid == 0) {
+        cJSON *err = cJSON_CreateObject();
+        if (err) {
+            cJSON_AddNumberToObject(err, "line", r->err_line);
+            cJSON_AddNumberToObject(err, "column", r->err_column);
+            cJSON_AddStringToObject(err, "message", r->err_message);
+            cJSON_AddBoolToObject(err, "duplicate_keys", r->duplicate_keys != 0);
+            cJSON_AddBoolToObject(err, "non_mapping_root", r->non_mapping_root != 0);
+            cJSON_AddBoolToObject(err, "parse_error", r->parse_error != 0);
+            cJSON_AddItemToObject(root, "error", err);
+        }
+    } else if (r->valid == -1) {
+        /* Surface the skip reason in a dedicated object too, for callers
+         * that want a structured message rather than just the boolean. */
+        cJSON *skip_obj = cJSON_CreateObject();
+        if (skip_obj) {
+            cJSON_AddStringToObject(skip_obj, "message", r->err_message);
+            cJSON_AddItemToObject(root, "skip_reason", skip_obj);
+        }
+    }
+
+    cJSON *warnings = cJSON_CreateArray();
+    if (!warnings) {
+        /* Stable contract: every successful response carries warnings: [].
+         * Treat a CreateArray failure as OOM so the caller can return 500
+         * rather than silently shipping a result that's missing a field
+         * the API documents as always-present. */
+        cJSON_Delete(root);
+        return NULL;
+    }
+    for (int i = 0; i < r->warning_count; i++) {
+        cJSON_AddItemToArray(warnings,
+            cJSON_CreateString(r->warnings[i]));
+    }
+    cJSON_AddItemToObject(root, "warnings", warnings);
+
+    return root;
+}
+
+void handle_post_settings_go2rtc_validate(const http_request_t *req,
+                                          http_response_t *res) {
+    log_info("Handling POST /api/settings/go2rtc/validate request");
+
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;
+    }
+
+    /* Empty body or {"override":""} both mean "validate the empty document",
+     * which is by definition valid. We only require valid JSON when a body
+     * was actually sent — httpd_parse_json_body returns NULL for body_len==0,
+     * which we want to treat as "validate empty" rather than 400. */
+    cJSON *body = NULL;
+    const char *src = "";
+    size_t src_len = 0;
+    if (req->body_len > 0) {
+        body = httpd_parse_json_body(req);
+        if (!body) {
+            http_response_set_json_error(res, 400, "Invalid JSON in request body");
+            return;
+        }
+        cJSON *override = cJSON_GetObjectItem(body, "override");
+        if (override && cJSON_IsString(override) && override->valuestring) {
+            src = override->valuestring;
+            src_len = strlen(src);
+        }
+    }
+
+    /* Same hard cap as the save path so the validator can't be used as a
+     * denial-of-service vector via huge payloads. */
+    if (src_len >= 65536) {
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 413,
+            "override exceeds 65535 byte limit");
+        return;
+    }
+
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, src_len, &r);
+
+    cJSON *result = go2rtc_validation_result_to_json(&r);
+    cJSON_Delete(body);
+    if (!result) {
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
+
+    char *result_str = cJSON_PrintUnformatted(result);
+    cJSON_Delete(result);
+    if (!result_str) {
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
+
+    http_response_set_json(res, 200, result_str);
+    free(result_str);
+}
+
+/**
  * @brief Direct handler for GET /api/settings
  */
 void handle_get_settings(const http_request_t *req, http_response_t *res) {
@@ -362,14 +488,56 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "go2rtc_ice_servers", g_config.go2rtc_ice_servers);
     cJSON_AddBoolToObject(settings, "go2rtc_force_native_hls", g_config.go2rtc_force_native_hls);
 
-    // go2rtc global config override (stored in system_settings table)
+    // go2rtc global config override (stored in system_settings table).
+    // Value can be up to ~64 KB (ffmpeg templates, HomeKit blocks, etc.), so
+    // read it into a heap buffer rather than a large stack array — on musl
+    // libuv worker threads the default stack is only 128 KB.
     {
-        char go2rtc_config_override_buf[4096] = {0};
-        if (db_get_system_setting("go2rtc_config_override", go2rtc_config_override_buf, sizeof(go2rtc_config_override_buf)) == 0) {
+        char *go2rtc_config_override_buf = NULL;
+        size_t go2rtc_config_override_len = 0;
+        int rc_override = db_get_system_setting_alloc("go2rtc_config_override",
+                                                      &go2rtc_config_override_buf,
+                                                      &go2rtc_config_override_len);
+        if (rc_override == 0 && go2rtc_config_override_buf) {
             cJSON_AddStringToObject(settings, "go2rtc_config_override", go2rtc_config_override_buf);
         } else {
             cJSON_AddStringToObject(settings, "go2rtc_config_override", "");
         }
+        (void)go2rtc_config_override_len; /* length only needed for potential future logging */
+        free(go2rtc_config_override_buf); /* free(NULL) is well-defined */
+    }
+
+    /* T4b/T14 — quarantine surface so the UI can render an inline banner.
+     * `go2rtc_config_override_disabled_reason` is set by the runtime
+     * crash-loop guard (T4b) and the upgrade-validator (T14); presence is
+     * the signal.  `go2rtc_config_override_quarantined` carries the
+     * pre-upgrade value the user may want to copy back after fixing it. */
+    {
+        char *reason = NULL;
+        size_t reason_len = 0;
+        int rc = db_get_system_setting_alloc(
+            "go2rtc_config_override_disabled_reason", &reason, &reason_len);
+        if (rc == 0 && reason && reason_len > 0) {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_disabled_reason", reason);
+        } else {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_disabled_reason", "");
+        }
+        free(reason);
+
+        char *quar = NULL;
+        size_t quar_len = 0;
+        rc = db_get_system_setting_alloc(
+            "go2rtc_config_override_quarantined", &quar, &quar_len);
+        if (rc == 0 && quar && quar_len > 0) {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_quarantined", quar);
+        } else {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_quarantined", "");
+        }
+        free(quar);
     }
 
     // MQTT settings
@@ -960,18 +1128,58 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated go2rtc_force_native_hls: %s", g_config.go2rtc_force_native_hls ? "true" : "false");
     }
 
-    // go2rtc global config override (stored in system_settings)
+    // go2rtc global config override (stored in system_settings).
+    // Cap at 64 KiB - 1 byte; this is large enough for ffmpeg templates and
+    // HomeKit blocks while still bounding the blob SQLite must page for the
+    // singleton settings row.
     cJSON *go2rtc_config_override = cJSON_GetObjectItem(settings, "go2rtc_config_override");
     if (go2rtc_config_override && cJSON_IsString(go2rtc_config_override)) {
         size_t override_len = strlen(go2rtc_config_override->valuestring);
-        if (override_len >= 4096) {
-            log_error("go2rtc_config_override too long (%zu bytes, max 4095)", override_len);
-        } else if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
+        if (override_len >= 65536) {
+            log_error("go2rtc_config_override too long (%zu bytes, max 65535)", override_len);
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 413,
+                "go2rtc_config_override exceeds 65535 byte limit");
+            return;
+        }
+
+        /* Run the same validator the dedicated /api/settings/go2rtc/validate
+         * endpoint uses.  Reject invalid YAML and duplicate top-level keys
+         * with HTTP 400 carrying the structured result, so the UI can render
+         * the error inline.  When libyaml is unavailable (valid==-1), skip
+         * the gate — the runtime will still get the original parse error
+         * from go2rtc itself. */
+        yaml_validation_result_t vr;
+        yaml_validate_go2rtc_override(go2rtc_config_override->valuestring,
+                                       override_len, &vr);
+        if (vr.valid == 0) {
+            log_warn("Rejecting go2rtc_config_override: %s", vr.err_message);
+            cJSON *result = go2rtc_validation_result_to_json(&vr);
+            cJSON_Delete(settings);
+            if (!result) {
+                http_response_set_json_error(res, 500, "Out of memory");
+                return;
+            }
+            char *result_str = cJSON_PrintUnformatted(result);
+            cJSON_Delete(result);
+            if (!result_str) {
+                http_response_set_json_error(res, 500, "Out of memory");
+                return;
+            }
+            http_response_set_json(res, 400, result_str);
+            free(result_str);
+            return;
+        }
+
+        if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
             log_error("Failed to save go2rtc_config_override to system_settings");
         } else {
-            log_info("Updated go2rtc_config_override");
+            log_info("Updated go2rtc_config_override (%zu bytes)", override_len);
             go2rtc_config_changed = true;
             go2rtc_becoming_enabled = g_config.go2rtc_enabled;
+            /* T4b — a successful save clears any active quarantine so the
+             * new value gets a clean shot at startup. */
+            go2rtc_process_clear_override_quarantine();
         }
     }
 

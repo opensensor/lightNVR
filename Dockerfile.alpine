@@ -18,6 +18,7 @@ RUN apk update && apk add --no-cache \
     mbedtls-dev \
     cjson-dev \
     mosquitto-dev \
+    yaml-dev \
     linux-headers \
     wget ca-certificates \
     bash
@@ -92,7 +93,8 @@ RUN apk update && apk add --no-cache \
     libcurl \
     mbedtls \
     cjson \
-    mosquitto-libs
+    mosquitto-libs \
+    yaml
 
 # Create necessary directories in runtime
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
