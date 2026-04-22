@@ -258,11 +258,16 @@ static cJSON *go2rtc_validation_result_to_json(const yaml_validation_result_t *r
     cJSON *root = cJSON_CreateObject();
     if (!root) return NULL;
 
-    /* valid==-1 means libyaml unavailable; the UI should treat this as
-     * "validation skipped" — surface that explicitly so the UI can show a
-     * subtler indicator instead of a green checkmark. */
-    cJSON_AddBoolToObject(root, "valid", r->valid == 1);
+    /* `valid` is asserted ONLY for actual validation outcomes:
+     *   r->valid == 1  → valid: true
+     *   r->valid == 0  → valid: false (real failure, error{} populated)
+     *   r->valid == -1 → valid: true (libyaml unavailable; we can't prove
+     *                    invalid, so don't block the user). The
+     *                    `libyaml_available: false` + `skipped` fields tell
+     *                    the API consumer this was not a real check. */
+    cJSON_AddBoolToObject(root, "valid", r->valid != 0);
     cJSON_AddBoolToObject(root, "libyaml_available", r->valid != -1);
+    cJSON_AddBoolToObject(root, "skipped", r->valid == -1);
 
     if (r->valid == 0) {
         cJSON *err = cJSON_CreateObject();
@@ -276,11 +281,12 @@ static cJSON *go2rtc_validation_result_to_json(const yaml_validation_result_t *r
             cJSON_AddItemToObject(root, "error", err);
         }
     } else if (r->valid == -1) {
-        /* Skipped — surface the reason as a warning so it's visible. */
-        cJSON *err = cJSON_CreateObject();
-        if (err) {
-            cJSON_AddStringToObject(err, "message", r->err_message);
-            cJSON_AddItemToObject(root, "skipped", err);
+        /* Surface the skip reason in a dedicated object too, for callers
+         * that want a structured message rather than just the boolean. */
+        cJSON *skip_obj = cJSON_CreateObject();
+        if (skip_obj) {
+            cJSON_AddStringToObject(skip_obj, "message", r->err_message);
+            cJSON_AddItemToObject(root, "skip_reason", skip_obj);
         }
     }
 

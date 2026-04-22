@@ -209,9 +209,12 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
         size_t out_len = 0;
         base_redacted = yaml_redact_alloc(base_yaml, base_len, &out_len);
         if (!base_redacted) {
+            /* Fail closed: returning raw YAML on redaction failure would
+             * defeat this endpoint's redaction guarantee — base.yaml
+             * contains stream URLs and may include credentials. */
             add_warning(warnings,
-                        "redaction failed for base config — returning raw");
-            cJSON_AddStringToObject(root, "base", base_yaml);
+                        "redaction failed for base config — content omitted");
+            cJSON_AddStringToObject(root, "base", "[REDACTION_FAILED]");
         } else {
             cJSON_AddStringToObject(root, "base", base_redacted);
         }
@@ -238,9 +241,12 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
         override_redacted = yaml_redact_alloc(override_yaml, override_len,
                                               &out_len);
         if (!override_redacted) {
+            /* Fail closed: override.yaml is explicitly user-supplied and
+             * the most likely place to find credentials (passwords, ICE
+             * creds, RTSP userinfo). Never return raw on redaction failure. */
             add_warning(warnings,
-                        "redaction failed for override — returning raw");
-            cJSON_AddStringToObject(root, "override", override_yaml);
+                        "redaction failed for override — content omitted");
+            cJSON_AddStringToObject(root, "override", "[REDACTION_FAILED]");
         } else {
             cJSON_AddStringToObject(root, "override", override_redacted);
         }

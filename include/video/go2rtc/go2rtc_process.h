@@ -61,12 +61,18 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port);
  * @brief Write the user config override to a standalone YAML file.
  *
  * Reads `go2rtc_config_override` from `db_system_settings` and writes it to
- * @p override_path with mode 0600. If the DB value is empty or absent, any
- * existing file at @p override_path is removed so a stale override is never
- * passed to go2rtc.
+ * @p override_path with mode 0600 (fsynced). If the DB value is empty or
+ * absent, any existing file at @p override_path is removed AND verified
+ * gone via stat(); failure to remove a stale file is a hard error so a
+ * stale override is never passed to go2rtc.
  *
- * NOTE: This is a STUB declaration placed here by T2 so that T3 and T4 can
- * compile independently. T3 provides the real implementation.
+ * Honors the T4b crash-loop quarantine: when
+ * `go2rtc_config_override_disabled_reason` is non-empty in the DB, the
+ * override is treated as absent (and any existing file is removed) until
+ * the operator clears the quarantine via a successful settings save.
+ *
+ * Also enforces the 64 KB save-path cap defensively, in case the DB was
+ * edited out-of-band: oversize values are treated as absent and logged.
  *
  * @param override_path Filesystem path where the override YAML should be written.
  * @return 0 on success (file written or confirmed absent), -1 on failure.
@@ -74,12 +80,15 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port);
 int go2rtc_process_generate_override_file(const char *override_path);
 
 /**
- * @brief Return the path to the user override file, or NULL if not configured.
+ * @brief Return the path to the user override file, or NULL when the
+ *        process manager is not initialized.
  *
- * NOTE: This is a STUB declaration placed here by T2. T3 provides the real
- * implementation.
+ * The path is `<config_dir>/override.yaml` and is allocated during
+ * go2rtc_process_init().  The override file at this path is materialized
+ * by go2rtc_process_generate_override_file() and read by go2rtc as the
+ * second `--config` argument.
  *
- * @return Pointer to a stable internal string, or NULL.
+ * @return Pointer to a stable internal string, or NULL when uninitialized.
  */
 const char *go2rtc_process_get_override_path(void);
 
@@ -101,8 +110,10 @@ const char *go2rtc_process_get_config_path(void);
  * POST handler uses.  If it fails — most commonly because of an old
  * append-era duplicate-key shape — the value is COPIED to a sibling
  * setting `go2rtc_config_override_quarantined`, the live setting is
- * CLEARED, and a banner-trigger flag is left in `go2rtc_override_validated_version`
- * so the UI can show a one-time warning.
+ * CLEARED, and `go2rtc_config_override_disabled_reason` is populated
+ * (this is what the UI banner reads — same field as T4b's runtime
+ * quarantine).  `go2rtc_override_validated_version` is written separately
+ * as the per-release idempotence marker so subsequent boots short-circuit.
  *
  * Idempotent: subsequent boots see the marker and short-circuit.  No-op
  * when the live override is empty or already valid.

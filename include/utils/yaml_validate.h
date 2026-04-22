@@ -1,19 +1,24 @@
 /**
  * @file yaml_validate.h
- * @brief Thin libyaml wrapper for parse-only YAML validation.
+ * @brief libyaml wrappers for YAML validation in the go2rtc override pipeline.
  *
- * This helper is used by the go2rtc override-config pipeline (see
- * go2rtc-override-plan.md, task T1) to pre-flight validate user-supplied
- * YAML before it is passed to go2rtc as a second `--config` file.
+ * Two layers, both used by the go2rtc override-config pipeline (see
+ * go2rtc-override-plan.md, tasks T1 and T6):
+ *
+ *   - `yaml_validate_str` / `yaml_is_mapping_root` are PARSE-ONLY checks
+ *     (T1). They answer "is this syntactically valid YAML?" / "does it
+ *     have a mapping at the root?" but do NOT detect duplicate top-level
+ *     keys (libyaml-C silently accepts those).
+ *
+ *   - `yaml_validate_go2rtc_override` (T6) walks the event stream with
+ *     its own bookkeeping to ALSO detect duplicate top-level keys,
+ *     non-mapping roots, and unknown go2rtc sections. This is the
+ *     validator the API endpoint and pre-save gate use.
  *
  * At build time, libyaml is detected via pkg-config; when available,
  * `LIGHTNVR_HAVE_LIBYAML` is defined and the real libyaml parser is used.
  * When libyaml is not available, the functions return a stable
  * "validation disabled" answer so callers can degrade gracefully.
- *
- * Duplicate-key detection is intentionally NOT implemented here — that
- * is scheduled for a later task (T6) which walks the event stream with
- * its own bookkeeping.
  */
 
 #ifndef LIGHTNVR_YAML_VALIDATE_H

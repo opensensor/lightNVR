@@ -1560,6 +1560,21 @@ int go2rtc_process_generate_override_file(const char *override_path) {
                                             &content, &content_len);
     bool have_content = (db_rc == 0 && content && content_len > 0);
 
+    /* Enforce the same 64 KB cap the HTTP save path enforces.  If the DB
+     * was edited out-of-band (manual sqlite, restored backup), refuse to
+     * write the file rather than handing go2rtc an unexpectedly large
+     * --config that may be a denial-of-service vector. The override is
+     * treated as absent in this case so go2rtc starts on base alone. */
+    if (have_content && content_len > 65535) {
+        log_error("go2rtc override in DB is %zu bytes (cap 65535) — "
+                  "treating as absent and starting on base config alone",
+                  content_len);
+        free(content);
+        content = NULL;
+        content_len = 0;
+        have_content = false;
+    }
+
     if (!have_content) {
         free(content);
         /* No override in the DB — remove any stale file on disk. We MUST

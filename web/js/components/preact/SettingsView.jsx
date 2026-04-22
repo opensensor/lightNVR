@@ -3,7 +3,7 @@
  * Preact component for the settings page
  */
 
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
@@ -451,36 +451,58 @@ export function SettingsView() {
 
   // ---------- T9 — go2rtc override validation, preview, presets ----------
   const GO2RTC_OVERRIDE_MAX_BYTES = 65535;
-  const [overrideValidation, setOverrideValidation] = useState(null); // null | { valid, error?, warnings, libyaml_available }
+  const [overrideValidation, setOverrideValidation] = useState(null); // null | { valid, error?, warnings, libyaml_available, skipped }
   const [overrideValidating, setOverrideValidating] = useState(false);
   const [effectiveConfig, setEffectiveConfig] = useState(null); // null | { base, override, warnings, ... }
   const [effectiveConfigOpen, setEffectiveConfigOpen] = useState(false);
   const [effectiveConfigLoading, setEffectiveConfigLoading] = useState(false);
-  const [overrideValidateTimer, setOverrideValidateTimer] = useState(null);
+  // Timer + mounted-flag in refs so they don't trigger re-renders and so we
+  // can suppress late setState after unmount (Copilot review #5/#8).
+  const overrideValidateTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (overrideValidateTimerRef.current) {
+        clearTimeout(overrideValidateTimerRef.current);
+        overrideValidateTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Fire validation against /api/settings/go2rtc/validate, debounced via blur.
   const validateOverride = async (yaml) => {
-    setOverrideValidating(true);
+    if (isMountedRef.current) setOverrideValidating(true);
     try {
       const result = await fetchJSON('/api/settings/go2rtc/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ override: yaml || '' }),
       });
-      setOverrideValidation(result);
+      if (isMountedRef.current) setOverrideValidation(result);
     } catch (err) {
       // Network/HTTP failure — don't block the user, just clear stale state.
       // The save-side validator will catch any real problem on POST /api/settings.
-      setOverrideValidation(null);
+      if (isMountedRef.current) setOverrideValidation(null);
     } finally {
-      setOverrideValidating(false);
+      if (isMountedRef.current) setOverrideValidating(false);
     }
   };
 
-  const handleOverrideBlur = () => {
-    if (overrideValidateTimer) clearTimeout(overrideValidateTimer);
-    const t = setTimeout(() => validateOverride(settings.go2rtcConfigOverride), 200);
-    setOverrideValidateTimer(t);
+  const handleOverrideBlur = (e) => {
+    if (overrideValidateTimerRef.current) {
+      clearTimeout(overrideValidateTimerRef.current);
+    }
+    // Capture the live event value to avoid racing the trailing onChange's
+    // setState. Falls back to state if the event ever fires without a target.
+    const liveValue = (e && e.target && typeof e.target.value === 'string')
+      ? e.target.value
+      : settings.go2rtcConfigOverride;
+    overrideValidateTimerRef.current = setTimeout(
+      () => validateOverride(liveValue),
+      200
+    );
   };
 
   // Clear validation state when the user resumes editing.
@@ -1678,7 +1700,11 @@ export function SettingsView() {
               <textarea
                 id="setting-go2rtc-config-override"
                 name="go2rtcConfigOverride"
-                class={`p-2 border rounded bg-background text-foreground w-full max-w-md font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed ${overrideValidation && overrideValidation.valid === false ? 'border-red-500' : 'border-input'}`}
+                /* Red border ONLY for actual validation failures.  When the
+                 * server skipped validation (libyaml unavailable / skipped),
+                 * the field is not in error — the size-row badge already
+                 * surfaces the skip. */
+                class={`p-2 border rounded bg-background text-foreground w-full max-w-md font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed ${overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'border-red-500' : 'border-input'}`}
                 rows="8"
                 value={settings.go2rtcConfigOverride}
                 onChange={handleOverrideChange}
