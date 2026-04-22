@@ -948,16 +948,19 @@ export function StreamsView() {
     }));
   };
 
-  // Disable stream (soft delete)
+  // Disable stream (soft delete). Returns a promise so <AsyncButton>
+  // inside the delete modal can show a pending spinner and guard
+  // rapid-tap double-submits (PRD UXD_01 §5.1 / #399).
   const disableStream = (streamId) => {
-    disableStreamMutation.mutate({
+    return disableStreamMutation.mutateAsync({
       streamId,
     });
   };
 
-  // Delete stream (permanent)
+  // Delete stream (permanent). Returns a promise for the same reasons
+  // as disableStream above.
   const deleteStream = (streamId) => {
-    deleteStreamMutation.mutate({
+    return deleteStreamMutation.mutateAsync({
       streamId,
     });
   };

@@ -8,6 +8,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
 import { ThemeCustomizer } from './ThemeCustomizer.jsx';
+import { AsyncButton } from './AsyncButton.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
 import { formatLocalDateTime } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
@@ -337,7 +338,9 @@ export function SettingsView() {
     }
   }, [settingsData]);
   
-  // Save settings
+  // Save settings.
+  // Returns a promise so <AsyncButton> can track pending state and guard
+  // against rapid-tap double-submits (#399 / PRD UXD_01 §5.1).
   const saveSettings = () => {
     // Map frontend property names to backend property names
     const webThreadPoolSize = parseInt(settings.webThreadPoolSize, 10);
@@ -426,8 +429,8 @@ export function SettingsView() {
       onvif_discovery_network: settings.onvifDiscoveryNetwork
     };
     
-    // Use mutation to save settings
-    saveSettingsMutation.mutate(mappedSettings);
+    // Return the promise so AsyncButton can track pending/error.
+    return saveSettingsMutation.mutateAsync(mappedSettings);
   };
   
   // Handle input change
@@ -2210,16 +2213,17 @@ export function SettingsView() {
           </div>
           </div>
 
-          {/* Save Settings Button - at bottom of form */}
+          {/* Save Settings Button - at bottom of form.
+              Uses AsyncButton for pending-state feedback (PRD UXD_01 §5.1 / #399). */}
           {canModifySettings && (
             <div class="flex justify-end mt-6">
-              <button
+              <AsyncButton
                 id="save-settings-btn"
-                class="px-6 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                class="px-6 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 min-h-11 disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={saveSettings}
               >
                 {t('settings.saveSettings')}
-              </button>
+              </AsyncButton>
             </div>
           )}
         </div>

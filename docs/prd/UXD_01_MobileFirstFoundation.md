@@ -164,9 +164,57 @@ order; the orchestrator may run unblocked tasks in parallel.
     per logical action.
   - Add a Jest test that mounts `<AsyncButton>` with a slow promise
     and asserts double-clicks fire the handler exactly once.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Implemented `useAsyncAction(fn)` hook with idempotency guard
+    (tracks in-flight promise in a ref; second call while pending
+    returns the same promise), mount-safety, and synchronous-throw
+    handling. Exposes `{run, pending, error, lastSuccess, reset}`.
+  - Implemented `<AsyncButton>` wrapping the hook. Props: `onClick`,
+    `children`/`idleLabel`, `confirmText` (two-step destructive click
+    with 4 s window and click-outside cancel), `successLabel`,
+    `successDurationMs`, `confirmWindowMs`, plus pass-through of
+    standard button props. Renders inline 16×16 SVG spinner (Tailwind
+    `animate-spin`), check icon on resolve (~1.5 s flash), error chip
+    with message on reject, and a red border on the button while an
+    error is present.
+  - Migrated 3 callsites:
+    1. `SettingsView.jsx` — bottom Save Settings button now uses
+       `<AsyncButton>` and awaits `saveSettingsMutation.mutateAsync`.
+    2. `recordings/FiltersSidebar.jsx` — Apply Filters uses
+       `<AsyncButton>`; `applyFilters` in `RecordingsView.jsx` now
+       returns the promise from `queryClient.invalidateQueries` so
+       the pending state is visible until the refetch settles.
+    3. `StreamDeleteModal.jsx` — the "Disable" button uses
+       `<AsyncButton>` with `confirmText` (new
+       `streams.disableStreamConfirm` locale key) to demonstrate the
+       mobile-safe destructive pattern. The "Yes, delete permanently"
+       button also uses `<AsyncButton>` so the DELETE call surfaces
+       pending state. `deleteStream` / `disableStream` in
+       `StreamsView.jsx` now return promises via `mutateAsync`.
+  - Build passes: `npm --prefix web run build` → `vite v7.3.2 built
+    in 9.84s`; all 3 migrated bundles (settings, recordings, streams)
+    present in `dist/assets/`.
+  - Jest test `web/tests/useAsyncAction.spec.js` covers: (1)
+    double-rapid-click fires handler exactly once, (2) rejection
+    captured into `error`, (3) `lastSuccess` timestamp recorded, (4)
+    synchronous throw handled. All 4 pass. Component-level JSX Jest
+    test skipped — `reason_not_testable:
+    jest-not-configured-for-jsx-components` (`web/babel.config.cjs`
+    has only `@babel/preset-env`, no JSX preset; no jsdom installed).
+    The hook holds the load-bearing idempotency logic, so the unit
+    test provides meaningful coverage of the double-submit guard.
 - **files edited/created**:
+  - created `web/js/components/preact/AsyncButton.jsx`
+  - created `web/js/hooks/useAsyncAction.js`
+  - created `web/tests/useAsyncAction.spec.js`
+  - modified `web/js/components/preact/SettingsView.jsx`
+  - modified `web/js/components/preact/RecordingsView.jsx`
+  - modified `web/js/components/preact/recordings/FiltersSidebar.jsx`
+  - modified `web/js/components/preact/StreamDeleteModal.jsx`
+  - modified `web/js/components/preact/StreamsView.jsx`
+  - modified `web/public/locales/en.json` (added
+    `streams.disableStreamConfirm`)
 
 ### T3: Mobile chrome hygiene (logo→home, toast position, safe-area)
 

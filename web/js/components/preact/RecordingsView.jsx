@@ -534,12 +534,17 @@ export function RecordingsView() {
     setActiveFiltersDisplay(activeFilters);
   };
 
-  // Apply filters — resets to page 1; URL sync is handled by the reactive useEffect
+  // Apply filters — resets to page 1; URL sync is handled by the reactive
+  // useEffect. Returns a Promise (resolved after the recordings query
+  // refetches) so <AsyncButton> can render pending state on the Apply
+  // button (PRD UXD_01 §5.1 / #399 anti-double-submit).
   const applyFilters = (resetToFirstPage = true) => {
     if (resetToFirstPage) {
       setPagination(prev => ({ ...prev, currentPage: 1 }));
     }
-    // URL sync handled by the reactive useEffect
+    // Invalidate + refetch so the pending spinner has a concrete signal to
+    // settle on; URL sync is still driven by the reactive useEffect.
+    return queryClient.invalidateQueries({ queryKey: ['recordings'] });
   };
 
   // Reset filters — resets all state to defaults; URL sync is handled by the reactive useEffect

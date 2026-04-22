@@ -677,6 +677,7 @@
   "streams.disableStreamBulletConfigurationPreserved": "Configuration is preserved",
   "streams.disableStreamBulletRecordingsKept": "Existing recordings are kept",
   "streams.disableStreamBulletCanReenable": "Can be re-enabled later",
+  "streams.disableStreamConfirm": "Tap again to confirm disable",
   "streams.deleteStreamPermanent": "Delete Stream (Permanent)",
   "streams.deleteStreamExplanation": "This option will permanently delete the stream configuration from the database. This action cannot be undone.",
   "streams.deleteStreamBulletRemoved": "Stream will be completely removed",
