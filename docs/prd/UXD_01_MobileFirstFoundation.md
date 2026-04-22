@@ -304,9 +304,54 @@ order; the orchestrator may run unblocked tasks in parallel.
   - Manual: scrollbar visible on dark theme; remains visible on light.
   - Manual: toggle Reduce Motion off → on; modal opens animate then
     cease to animate; CSS shows `prefers-reduced-motion` override.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Created standalone `web/css/theme/scrollbar.css` covering both the
+    custom-scrollbar rules (10px webkit thumb at
+    `hsl(var(--muted-foreground) / 0.6)` with `border-radius: 9999px`
+    and a 2px transparent border for visual padding, transparent
+    track; `scrollbar-color` + `scrollbar-width: thin` Firefox
+    fallback) and the reduce-motion neutralizer rule keyed off
+    `[data-reduce-motion="true"]`.  Wired into `web/css/main.css` via
+    a single `@import './theme/scrollbar.css';` line — kept app-side
+    CSS additions minimal to stay surgical ahead of T3/T2.
+  - Added `web/js/utils/reduceMotion.js` exporting
+    `getReduceMotionPref()`, `setReduceMotionPref(value)`,
+    `applyReduceMotion()`, plus `isReduceMotionActive()` and
+    `installReduceMotionMediaListener()`.  Storage key
+    `lightnvr.reduceMotion` with values `'auto' | 'on' | 'off'`
+    (default `'auto'`, which defers to
+    `matchMedia('(prefers-reduced-motion: reduce)')`).  Safe against
+    missing `localStorage` / `matchMedia` (SSR + test env).
+  - Extended the existing inline theme-init script in
+    `web/vite-plugin-theme-inject.js` to also resolve the
+    reduce-motion preference and set
+    `<html data-reduce-motion="true|false">` before first paint so
+    animations don't flash pre-JS.  Re-applied from JS in `i18n.js`
+    `initI18n()` (shared boot path imported by every page entry) and
+    installed a media-query change listener there so the `'auto'`
+    state tracks OS changes live.
+  - Surfaced a three-way Auto/On/Off radiogroup toggle in the
+    Appearance section of `SettingsView.jsx` (added to both the
+    viewer-only render path and the admin render path, since the
+    Appearance block is duplicated in both).  Additive only — the
+    surrounding Appearance collapse/expand UI is left untouched for
+    T2's future restructure.
+  - Also broadened the `copy-css-files` Vite plugin in
+    `web/vite.config.js` to recursively copy `web/css/**/*.css` so
+    the new `theme/` subdirectory reaches `dist/css/theme/` at build
+    time (the previous implementation walked only the top level).
+  - Verified via `npm --prefix web run build` — build succeeds;
+    `dist/css/theme/scrollbar.css` and the
+    `lightnvr.reduceMotion` snippet in `dist/index.html` both ship.
 - **files edited/created**:
+  - Created `web/css/theme/scrollbar.css`
+  - Created `web/js/utils/reduceMotion.js`
+  - Edited `web/css/main.css` (single `@import` line)
+  - Edited `web/js/i18n.js` (boot call in `initI18n`)
+  - Edited `web/vite-plugin-theme-inject.js` (first-paint attribute)
+  - Edited `web/vite.config.js` (recursive CSS copy)
+  - Edited `web/js/components/preact/SettingsView.jsx` (Appearance toggle)
 
 ### T2: Settings page restructure (tabs + search + sticky save)
 

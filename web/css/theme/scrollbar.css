@@ -1,0 +1,64 @@
+/* LightNVR — Theme polish: custom scrollbar + reduce-motion rule
+ * Scope: global. Applies to both light and dark themes via the existing
+ * CSS custom properties (--muted-foreground) defined in base.css.
+ * Created for PRD UXD_01 task T4 (addresses #399 "scrollbar is black almost
+ * blending in with background").
+ *
+ * This file is intentionally small and standalone — app.css only references
+ * it via a single @import line so T3's header/toast chrome work and T2's
+ * SettingsView refactor don't have to touch this surface.
+ */
+
+/* ---------------------------------------------------------------------------
+ * Webkit / Blink scrollbars (Chrome, Edge, Safari, iOS Safari, etc.)
+ * ------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.6);
+  border-radius: 9999px;
+  /* 2px transparent border gives the thumb visual padding inside the track
+     without needing a separate inset box. Uses background-clip so the border
+     shows through to the transparent track. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.8);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+ * Firefox fallback
+ * ------------------------------------------------------------------------- */
+* {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.6) transparent;
+  scrollbar-width: thin;
+}
+
+/* ---------------------------------------------------------------------------
+ * Reduce-motion rule
+ * Driven by <html data-reduce-motion="true"> set by
+ * web/js/utils/reduceMotion.js on boot (and on preference change).
+ * The utility resolves 'auto' against `prefers-reduced-motion: reduce` so
+ * users who only have the OS setting still get the reduction by default.
+ * ------------------------------------------------------------------------- */
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

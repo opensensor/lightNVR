@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
+import {
+  applyReduceMotion,
+  installReduceMotionMediaListener,
+} from './utils/reduceMotion.js';
 
 export const DEFAULT_LOCALE = 'en';
 export const AUTO_LOCALE = 'auto';
@@ -170,6 +174,15 @@ function ensureLanguageChangeListener() {
 
 export async function initI18n() {
   if (!initPromise) {
+    // UXD T4 — reduce-motion: re-apply on boot (the inline theme-init script
+    // already sets the attribute before paint, but calling this here covers
+    // any state drift from storage writes elsewhere in the session) and
+    // install the media-query listener so 'auto' tracks OS changes live.
+    try {
+      applyReduceMotion();
+      installReduceMotionMediaListener();
+    } catch (_err) { /* boot must not fail on preference plumbing */ }
+
     initPromise = (async () => {
       await loadManifest();
       ensureLanguageChangeListener();

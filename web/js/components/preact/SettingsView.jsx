@@ -12,6 +12,12 @@ import { AsyncButton } from './AsyncButton.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
 import { formatLocalDateTime } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
+import {
+  REDUCE_MOTION_VALUES,
+  getReduceMotionPref,
+  setReduceMotionPref,
+  applyReduceMotion,
+} from '../../utils/reduceMotion.js';
 
 /**
  * SettingsView component
@@ -131,6 +137,15 @@ export function SettingsView() {
       sessionStorage.setItem('lightnvr-show-appearance', next.toString());
       return next;
     });
+  };
+
+  // UXD T4 — Reduce Motion preference (Appearance section).
+  // Three-way control: Auto (default, follows prefers-reduced-motion) / On / Off.
+  const [reduceMotionPref, setReduceMotionPrefState] = useState(() => getReduceMotionPref());
+  const handleReduceMotionChange = (value) => {
+    const normalized = setReduceMotionPref(value);
+    setReduceMotionPrefState(normalized);
+    applyReduceMotion();
   };
 
   // Role is still loading if null
@@ -637,6 +652,46 @@ export function SettingsView() {
             {showAppearance && (
               <div id="appearance-settings-content">
                 <ThemeCustomizer />
+
+                {/* UXD T4 — Reduce Motion preference (§5.4).
+                    Auto respects prefers-reduced-motion; On/Off force-override. */}
+                <div class="mt-6 pt-4 border-t border-border">
+                  <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div class="font-medium">Reduce motion</div>
+                      <p class="text-sm text-muted-foreground mt-0.5">
+                        Disables non-essential animations and transitions.
+                        Auto follows your operating system preference.
+                      </p>
+                    </div>
+                    <div
+                      role="radiogroup"
+                      aria-label="Reduce motion preference"
+                      class="inline-flex rounded-md border border-border bg-background p-0.5 self-start md:self-auto"
+                    >
+                      {REDUCE_MOTION_VALUES.map((value) => {
+                        const labelMap = { auto: 'Auto', on: 'On', off: 'Off' };
+                        const isActive = reduceMotionPref === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={isActive}
+                            onClick={() => handleReduceMotionChange(value)}
+                            class={`px-3 py-1.5 text-sm rounded transition-colors ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-foreground hover:bg-muted'
+                            }`}
+                          >
+                            {labelMap[value]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -704,6 +759,46 @@ export function SettingsView() {
             {showAppearance && (
               <div id="appearance-settings-content">
                 <ThemeCustomizer />
+
+                {/* UXD T4 — Reduce Motion preference (§5.4).
+                    Auto respects prefers-reduced-motion; On/Off force-override. */}
+                <div class="mt-6 pt-4 border-t border-border">
+                  <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div class="font-medium">Reduce motion</div>
+                      <p class="text-sm text-muted-foreground mt-0.5">
+                        Disables non-essential animations and transitions.
+                        Auto follows your operating system preference.
+                      </p>
+                    </div>
+                    <div
+                      role="radiogroup"
+                      aria-label="Reduce motion preference"
+                      class="inline-flex rounded-md border border-border bg-background p-0.5 self-start md:self-auto"
+                    >
+                      {REDUCE_MOTION_VALUES.map((value) => {
+                        const labelMap = { auto: 'Auto', on: 'On', off: 'Off' };
+                        const isActive = reduceMotionPref === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            role="radio"
+                            aria-checked={isActive}
+                            onClick={() => handleReduceMotionChange(value)}
+                            class={`px-3 py-1.5 text-sm rounded transition-colors ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-foreground hover:bg-muted'
+                            }`}
+                          >
+                            {labelMap[value]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

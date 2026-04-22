@@ -3,6 +3,8 @@
 /* Import base styles */
 @import './base.css';
 @import './components.css';
+/* UXD T4 — theme polish: custom scrollbar + reduce-motion rule (#399) */
+@import './theme/scrollbar.css';
 
 /* Additional custom styles */
 .page {
