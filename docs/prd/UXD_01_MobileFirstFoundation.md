@@ -402,9 +402,83 @@ order; the orchestrator may run unblocked tasks in parallel.
     scrollbar; cards reflow gracefully.
   - With Constant + Detection both enabled, the badge reads
     "Constant + Detection" not "Enabled (Detection)".
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Extracted a new `web/js/components/preact/StreamCard.jsx`
+    component. Layout per PRD: snapshot (16:9 go2rtc frame.jpeg
+    proxy with neutral placeholder on error) → title + status
+    badge → resolution/FPS/codec secondary line → mode-badges row
+    → details disclosure → action row. Cards are focused and
+    testable in isolation; StreamsView keeps data-flow concerns.
+  - Replaced the former `<table id="streams-table">` block in
+    `StreamsView.jsx` with a responsive grid:
+    `grid grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-4`.
+    The `auto-fill` + `minmax` combo is load-bearing — it's what
+    eliminates the #399 "horizontal scroll even though there's
+    space" complaint at every viewport from 375 px through 1920+.
+  - Recording-mode badge fixes the #399 "Enabled (Detection) when
+    Constant is also on" bug. New `collectRecordingModes(stream)`
+    helper returns an ordered `[Constant, Detection, Schedule]`
+    subset built from `record`, `detection_based_recording`, and
+    `record_on_schedule`, then joins them with ` + ` for display
+    (`"Constant + Detection"`, `"Detection"`, `"Constant + Schedule"`).
+    Zero active modes renders a muted "Not recording" pill. Any
+    active mode uses a tinted green pill. `aria-label` spells out
+    the full set so screen readers aren't misled by the visual
+    join. Schedule flag semantics: when `record_on_schedule` is
+    true we surface "Schedule" instead of "Constant" (the stream
+    only records within the scheduled window).
+  - Binding / source URL collapses behind a `<details class="sm:hidden">`
+    disclosure on < 640 px, with a parallel `hidden sm:block`
+    copy for tablet/desktop. Per-card credential-reveal toggle
+    (eye / eye-off icon) replaces the page-level `revealedUrls`
+    Set that the old table owned.
+  - Action row uses T1's `<AsyncButton>` for the network-bound
+    enable and disable toggles. Disable path passes
+    `confirmText={t('streams.disableStreamConfirm')}` so the
+    destructive two-step click lives on the card itself — the
+    old `window.confirm` path stays in place as a fallback via
+    the non-card `handleToggleStreamEnabled` (bulk-action code
+    still calls it). Delete still opens `StreamDeleteModal`,
+    which already internally uses `<AsyncButton>` per T1.
+  - Bulk-select toolbar + sort controls preserved above the grid.
+    Sort chips replace the former sortable `<th>` headers.
+    Select-all checkbox moved into the bulk-action toolbar.
+  - Added 9 locale keys to `web/public/locales/en.json`:
+    `streams.notRecording`, `streams.recordingModesList`,
+    `streams.details`, `streams.binding`, `streams.subStreamUrl`,
+    `streams.transportLabel`, `streams.snapshotFor`,
+    `streams.snapshotUnavailable`, `streams.sortBy`. Other
+    locales inherit English fallbacks via the existing
+    `t(key) || key` path in `web/js/i18n.js`.
+  - `npm --prefix web run build` → 282 modules transformed,
+    built in 10.54 s, 0 errors. Streams bundle shipped at
+    `dist/assets/streams-*.js` (~110 kB gz 24 kB).
+  - `npm --prefix web test`:
+    - `tests/useAsyncAction.spec.js` → 4/4 pass (the hook T5
+      relies on for async-button semantics).
+    - `tests/navigation-utils.spec.js`,
+      `tests/timeline-utils.spec.js`,
+      `tests/recordingsAPI.spec.js` → pass.
+    - `tests/i18n.spec.js` → 4/5 pass; the one failure
+      ("handles complete locale loading failure gracefully") is
+      pre-existing and flagged by T1's agent report. Not
+      introduced by T5.
+    - `tests/e2e/*` specs all fail at WebDriver connect
+      (`net::ERR_CONNECTION_REFUSED`): they need a running
+      `http://localhost:8080`. Environment-dependent, not
+      related to T5.
 - **files edited/created**:
+  - created `web/js/components/preact/StreamCard.jsx`
+  - modified `web/js/components/preact/StreamsView.jsx`
+    (grid replaces table; card-based render; removed
+    `expandedStreams` / `revealedUrls` / `toggleUrlReveal`
+    helpers now owned per-card; added `enableStreamFromCard` /
+    `disableStreamFromCard` promise-returning helpers for
+    AsyncButton)
+  - modified `web/public/locales/en.json` (9 new keys)
+  - modified `docs/prd/UXD_01_MobileFirstFoundation.md`
+    (this log)
 
 ### T6: Touch-target & spacing audit
 
