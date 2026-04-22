@@ -24,7 +24,9 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/path_utils.h"
+#include "core/version.h"
 #include "utils/strings.h"
+#include "utils/yaml_validate.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
@@ -1390,6 +1392,89 @@ static void check_and_handle_crash_loop(void)
     } else {
         log_warn("T4b: %d fast-death events but override.yaml is not in use; "
                  "lightNVR cannot mitigate further", recent);
+    }
+}
+
+void go2rtc_process_validate_existing_override_on_upgrade(void)
+{
+    /* Marker key: presence (regardless of value) means we have already
+     * validated for THIS release.  We use the lightNVR version string as
+     * the value so a future release can revalidate by comparing strings. */
+    char *marker = NULL;
+    size_t marker_len = 0;
+    int rc = db_get_system_setting_alloc("go2rtc_override_validated_version",
+                                         &marker, &marker_len);
+    if (rc == 0 && marker
+        && strcmp(marker, LIGHTNVR_VERSION_STRING) == 0) {
+        free(marker);
+        return;  /* Already validated for this release. */
+    }
+    free(marker);
+
+    char *override = NULL;
+    size_t override_len = 0;
+    int orc = db_get_system_setting_alloc("go2rtc_config_override",
+                                          &override, &override_len);
+    if (orc != 0 || !override || override_len == 0) {
+        /* No live override to check. */
+        free(override);
+        if (db_set_system_setting("go2rtc_override_validated_version",
+                                  LIGHTNVR_VERSION_STRING) != 0) {
+            log_warn("T14: failed to set validation marker");
+        }
+        return;
+    }
+
+    yaml_validation_result_t vr;
+    yaml_validate_go2rtc_override(override, override_len, &vr);
+
+    if (vr.valid == 0) {
+        log_warn("T14: existing go2rtc_config_override is INVALID after "
+                 "upgrade (%s); quarantining", vr.err_message);
+
+        /* Copy live → quarantined sibling. */
+        if (db_set_system_setting("go2rtc_config_override_quarantined",
+                                  override) != 0) {
+            log_error("T14: failed to copy override to quarantine slot — "
+                      "leaving live setting alone");
+            free(override);
+            /* Don't set the marker; we'll retry next boot. */
+            return;
+        }
+
+        /* Persist the failure reason so the UI can show why. */
+        char reason[YAML_VALIDATE_ERR_LEN + 64];
+        snprintf(reason, sizeof(reason),
+                 "Pre-existing override quarantined on upgrade: %s",
+                 vr.err_message);
+        if (db_set_system_setting("go2rtc_config_override_disabled_reason",
+                                  reason) != 0) {
+            log_warn("T14: failed to persist quarantine reason");
+        }
+
+        /* Clear the live setting so the next start runs base-only. */
+        if (db_set_system_setting("go2rtc_config_override", "") != 0) {
+            log_error("T14: failed to clear live override after copy");
+        }
+
+        log_warn("T14: original override preserved at "
+                 "system_settings.go2rtc_config_override_quarantined; "
+                 "review and re-save via the UI to re-enable");
+    } else if (vr.valid == 1) {
+        log_info("T14: existing go2rtc_config_override validated cleanly (%d warnings)",
+                 vr.warning_count);
+    }
+    /* vr.valid == -1 (libyaml unavailable): can't validate; let go2rtc's
+     * own parser surface the issue at startup.  Don't set the marker so a
+     * future build with libyaml will revalidate. */
+
+    free(override);
+
+    if (vr.valid != -1) {
+        if (db_set_system_setting("go2rtc_override_validated_version",
+                                  LIGHTNVR_VERSION_STRING) != 0) {
+            log_warn("T14: failed to set validation marker");
+        }
     }
 }
 

@@ -491,6 +491,39 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
         free(go2rtc_config_override_buf); /* free(NULL) is well-defined */
     }
 
+    /* T4b/T14 — quarantine surface so the UI can render an inline banner.
+     * `go2rtc_config_override_disabled_reason` is set by the runtime
+     * crash-loop guard (T4b) and the upgrade-validator (T14); presence is
+     * the signal.  `go2rtc_config_override_quarantined` carries the
+     * pre-upgrade value the user may want to copy back after fixing it. */
+    {
+        char *reason = NULL;
+        size_t reason_len = 0;
+        int rc = db_get_system_setting_alloc(
+            "go2rtc_config_override_disabled_reason", &reason, &reason_len);
+        if (rc == 0 && reason && reason_len > 0) {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_disabled_reason", reason);
+        } else {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_disabled_reason", "");
+        }
+        free(reason);
+
+        char *quar = NULL;
+        size_t quar_len = 0;
+        rc = db_get_system_setting_alloc(
+            "go2rtc_config_override_quarantined", &quar, &quar_len);
+        if (rc == 0 && quar && quar_len > 0) {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_quarantined", quar);
+        } else {
+            cJSON_AddStringToObject(settings,
+                "go2rtc_config_override_quarantined", "");
+        }
+        free(quar);
+    }
+
     // MQTT settings
     cJSON_AddBoolToObject(settings, "mqtt_enabled", g_config.mqtt_enabled);
     cJSON_AddStringToObject(settings, "mqtt_broker_host", g_config.mqtt_broker_host);

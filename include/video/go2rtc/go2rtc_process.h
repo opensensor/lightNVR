@@ -94,6 +94,22 @@ const char *go2rtc_process_get_override_path(void);
 const char *go2rtc_process_get_config_path(void);
 
 /**
+ * @brief One-time validation of the existing user override on startup (T14).
+ *
+ * The first time lightNVR boots after this release lands, we run the
+ * stored `go2rtc_config_override` through the same validator the settings
+ * POST handler uses.  If it fails — most commonly because of an old
+ * append-era duplicate-key shape — the value is COPIED to a sibling
+ * setting `go2rtc_config_override_quarantined`, the live setting is
+ * CLEARED, and a banner-trigger flag is left in `go2rtc_override_validated_version`
+ * so the UI can show a one-time warning.
+ *
+ * Idempotent: subsequent boots see the marker and short-circuit.  No-op
+ * when the live override is empty or already valid.
+ */
+void go2rtc_process_validate_existing_override_on_upgrade(void);
+
+/**
  * @brief Clear any active override quarantine (T4b).
  *
  * If a prior crash loop quarantined the user override (renamed
