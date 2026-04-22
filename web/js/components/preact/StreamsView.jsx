@@ -1452,14 +1452,13 @@ export function StreamsView() {
             ))}
           </div>
 
-          {/* Responsive card grid.
-              `auto-fill` + `minmax(360px, 1fr)` is load-bearing — it
-              lets cards reflow naturally at every viewport from 375 px
-              up to 1920+ without forcing horizontal scroll (PRD §5.5 /
+          {/* Responsive card grid — explicit breakpoints so the grid
+              caps at 4 columns on ultra-wide (≥1536 px) displays while
+              still reflowing down to 1 column at ≤640 px (PRD §5.5 /
               #399). */}
           <div
             id="streams-grid"
-            className="grid grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-4"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4"
             role="list"
             aria-label={t('nav.streams')}
           >

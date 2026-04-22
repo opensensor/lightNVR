@@ -939,7 +939,7 @@ export function RecordingsView() {
           />
         )}
 
-        <div class="recordings-content flex-1">
+        <div class="recordings-content flex-1 min-w-0">
           <ActiveFilters
             activeFiltersDisplay={activeFiltersDisplay}
             removeFilter={removeFilter}

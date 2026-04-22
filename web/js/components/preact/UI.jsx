@@ -842,7 +842,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
       className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
       onClick={handleBackgroundClick}
     >
-      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[90vh] flex flex-col transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]`}>
+      <div className={`modal-content bg-card text-card-foreground rounded-lg shadow-xl max-w-4xl max-h-[95vh] h-[95vh] flex flex-col overflow-hidden transform transition-all duration-300 ease-out scale-95 opacity-0 w-full md:w-[90%]`}>
         <div className="flex justify-between items-center p-3 border-b border-border flex-shrink-0">
           <h3 id="video-preview-title" className="text-lg font-semibold text-gray-900 dark:text-white truncate mr-2">
             {title || 'Video'}
@@ -855,40 +855,38 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="p-3">
-            <div className="relative flex justify-center">
-              <div
-                ref={videoContainerRef}
-                data-testid="recording-video-container"
-                className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full w-full max-h-[50vh] bg-black overflow-hidden'}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 p-3 flex justify-center items-center">
+            <div
+              ref={videoContainerRef}
+              data-testid="recording-video-container"
+              className={isFullscreen ? 'relative w-screen h-screen bg-black' : 'relative inline-block max-w-full max-h-full h-full bg-black overflow-hidden'}
+            >
+              <video
+                ref={videoRef}
+                className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-full max-w-full max-h-full object-contain'}
+                controls
+                controlsList="nofullscreen"
+                key={videoUrl} /* Add key to force re-render when URL changes */
+                onError={(e) => {
+                  console.error('Video error:', e);
+                  showStatusMessage('Error loading video. Please try again.', 'error');
+                }}
+                onLoadStart={() => console.log('Video load started')}
+                onLoadedData={() => console.log('Video data loaded')}
               >
-                <video
-                  ref={videoRef}
-                  className={isFullscreen ? 'w-full h-full object-contain' : 'w-full h-auto max-w-full max-h-[50vh] object-contain'}
-                  controls
-                  controlsList="nofullscreen"
-                  key={videoUrl} /* Add key to force re-render when URL changes */
-                  onError={(e) => {
-                    console.error('Video error:', e);
-                    showStatusMessage('Error loading video. Please try again.', 'error');
-                  }}
-                  onLoadStart={() => console.log('Video load started')}
-                  onLoadedData={() => console.log('Video data loaded')}
-                >
-                  {/* Use source element instead of src attribute for better control */}
-                  {videoUrl && <source src={videoUrl} type="video/mp4" />}
-                </video>
-                <canvas
-                  ref={canvasRef}
-                  className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                  style={{ display: 'none', zIndex: 2 }}
-                />
-              </div>
+                {/* Use source element instead of src attribute for better control */}
+                {videoUrl && <source src={videoUrl} type="video/mp4" />}
+              </video>
+              <canvas
+                ref={canvasRef}
+                className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                style={{ display: 'none', zIndex: 2 }}
+              />
             </div>
           </div>
 
-          <div className="px-3 pb-1">
+          <div className="px-3 pb-1 flex-shrink-0">
             <div
               id="recording-playback-position"
               data-testid="recording-playback-position"
@@ -898,7 +896,7 @@ export function VideoModal({ isOpen, onClose, videoUrl, title, downloadUrl }) {
             </div>
           </div>
 
-          <div id="recordings-controls" className="mx-3 mb-3 p-3 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10">
+          <div id="recordings-controls" className="mx-3 mb-3 p-3 border border-green-500 rounded-lg bg-card text-card-foreground shadow-md relative z-10 flex-shrink-0 overflow-y-auto">
             <h3 className="text-base font-bold text-center mb-2 text-foreground">
               PLAYBACK CONTROLS
             </h3>
