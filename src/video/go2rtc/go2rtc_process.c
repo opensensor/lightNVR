@@ -395,11 +395,35 @@ static char *g_binary_path = NULL;
 static char *g_config_dir = NULL;
 static char *g_config_path = NULL;
 static char *g_override_path = NULL;
+static char *g_override_quarantined_path = NULL;
 static pid_t g_process_pid = -1;
 static bool g_initialized = false;
 static bool g_using_external_service = false; // true when init detected a live service
 static int g_rtsp_port = 8554; // Default RTSP port
 static int g_api_port = 1984;  // Configured API port (updated during init)
+
+/* T4b — crash-loop quarantine bookkeeping.
+ *
+ * g_last_start_time:  monotonic (well, wall-clock) timestamp of the most
+ *                     recent successful go2rtc_process_start.  Used to
+ *                     compute "how long did the previous instance live"
+ *                     when start is called again.
+ *
+ * g_fast_death_history: ring of timestamps when a fast-death was recorded
+ *                       (i.e., go2rtc_process_start was called and the
+ *                       previous lifetime was < FAST_DEATH_THRESHOLD_SEC).
+ *                       Counted in a sliding window; if QUARANTINE_THRESHOLD
+ *                       events appear within QUARANTINE_WINDOW_SEC AND the
+ *                       override file is in use, we quarantine it.
+ */
+#define FAST_DEATH_THRESHOLD_SEC   10
+#define QUARANTINE_FAST_DEATH_COUNT 3
+#define QUARANTINE_WINDOW_SEC      60
+#define FAST_DEATH_RING_SIZE       8
+
+static time_t g_last_start_time = 0;
+static time_t g_fast_death_history[FAST_DEATH_RING_SIZE];
+static int    g_fast_death_history_idx = 0;
 
 // Forward declarations for helpers defined later in this file.
 static int write_stream_overrides(FILE *fp);
@@ -856,6 +880,21 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
     }
     snprintf(g_override_path, override_path_len, "%s/override.yaml", config_dir);
 
+    size_t quar_path_len = strlen(config_dir) + strlen("/override.quarantined.yaml") + 1;
+    g_override_quarantined_path = malloc(quar_path_len);
+    if (!g_override_quarantined_path) {
+        log_error("Memory allocation failed for override quarantine path");
+        free(g_config_dir);
+        free(g_config_path);
+        free(g_override_path);
+        g_config_dir = NULL;
+        g_config_path = NULL;
+        g_override_path = NULL;
+        return false;
+    }
+    snprintf(g_override_quarantined_path, quar_path_len,
+             "%s/override.quarantined.yaml", config_dir);
+
     // Store the configured API port so all runtime checks use the right port
     g_api_port = api_port > 0 ? api_port : 1984;
 
@@ -935,6 +974,8 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
             g_config_path = NULL;
             free(g_override_path);
             g_override_path = NULL;
+            free(g_override_quarantined_path);
+            g_override_quarantined_path = NULL;
             return false;
         }
         g_binary_path = strdup(final_binary_path);
@@ -1206,10 +1247,206 @@ static int write_stream_overrides(FILE *fp) {
     return written;
 }
 
+/* ------------------------------------------------------------------
+ * T4b — crash-loop quarantine helpers
+ * ------------------------------------------------------------------ */
+
+/**
+ * Read up to @p cap bytes from the END of @p path into @p out (NUL-terminated).
+ * Best-effort: failures are silent (out becomes empty).
+ */
+static void read_file_tail(const char *path, char *out, size_t cap)
+{
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    if (!path || path[0] == '\0') return;
+
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return;
+
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+        close(fd);
+        return;
+    }
+
+    size_t want = cap - 1;
+    off_t off = 0;
+    if ((size_t)st.st_size > want) {
+        off = st.st_size - (off_t)want;
+    } else {
+        want = (size_t)st.st_size;
+    }
+
+    if (lseek(fd, off, SEEK_SET) == (off_t)-1) {
+        close(fd);
+        return;
+    }
+
+    size_t read_total = 0;
+    while (read_total < want) {
+        ssize_t n = read(fd, out + read_total, want - read_total);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (n == 0) break;
+        read_total += (size_t)n;
+    }
+    out[read_total] = '\0';
+    close(fd);
+}
+
+/**
+ * Move override.yaml -> override.quarantined.yaml, save the triggering log
+ * tail to DB setting `go2rtc_config_override_disabled_reason`, and clear
+ * the fast-death history so we don't re-quarantine immediately.
+ *
+ * Best-effort: any failure is logged but not propagated (we still want the
+ * caller to attempt to start go2rtc with base-only config).
+ */
+static void quarantine_override_file(void)
+{
+    if (!g_override_path || !g_override_quarantined_path) return;
+
+    if (rename(g_override_path, g_override_quarantined_path) != 0) {
+        log_error("T4b: failed to quarantine %s -> %s: %s",
+                  g_override_path, g_override_quarantined_path, strerror(errno));
+        return;
+    }
+    log_error("T4b: quarantined go2rtc override after crash loop: %s -> %s",
+              g_override_path, g_override_quarantined_path);
+
+    /* Build the reason payload: header + last 2 KB of go2rtc.log. */
+    char log_tail[2048] = {0};
+    char log_path[PATH_MAX];
+    snprintf(log_path, sizeof(log_path), "%s/go2rtc.log",
+             g_config_dir ? g_config_dir : "");
+    read_file_tail(log_path, log_tail, sizeof(log_tail));
+
+    char *reason = malloc(sizeof(log_tail) + 512);
+    if (reason) {
+        snprintf(reason, sizeof(log_tail) + 512,
+                 "go2rtc crashed >= %d times within %ds of start with "
+                 "override.yaml in use. Quarantined to %s.\n\n"
+                 "Last %zu bytes of go2rtc.log:\n%s",
+                 QUARANTINE_FAST_DEATH_COUNT,
+                 FAST_DEATH_THRESHOLD_SEC,
+                 g_override_quarantined_path,
+                 strlen(log_tail), log_tail);
+        if (db_set_system_setting("go2rtc_config_override_disabled_reason",
+                                  reason) != 0) {
+            log_warn("T4b: failed to persist quarantine reason to DB");
+        }
+        free(reason);
+    }
+
+    /* Clear the ring so the next start sees a fresh window. */
+    memset(g_fast_death_history, 0, sizeof(g_fast_death_history));
+    g_fast_death_history_idx = 0;
+}
+
+/**
+ * Inspect the previous lifetime and decide whether to quarantine.  Called
+ * at the top of go2rtc_process_start so it fires for both the initial
+ * start (no-op since g_last_start_time == 0) and every restart.
+ */
+static void check_and_handle_crash_loop(void)
+{
+    if (g_last_start_time == 0) return;  /* first start, nothing to compare */
+
+    time_t now = time(NULL);
+    time_t lifetime = now - g_last_start_time;
+    if (lifetime < 0 || lifetime >= FAST_DEATH_THRESHOLD_SEC) {
+        return;
+    }
+
+    /* Record this fast-death event. */
+    g_fast_death_history[g_fast_death_history_idx] = now;
+    g_fast_death_history_idx =
+        (g_fast_death_history_idx + 1) % FAST_DEATH_RING_SIZE;
+    log_warn("T4b: go2rtc previous instance lived only %lds (< %ds threshold)",
+             (long)lifetime, FAST_DEATH_THRESHOLD_SEC);
+
+    int recent = 0;
+    for (int i = 0; i < FAST_DEATH_RING_SIZE; i++) {
+        if (g_fast_death_history[i] > 0
+            && now - g_fast_death_history[i] < QUARANTINE_WINDOW_SEC) {
+            recent++;
+        }
+    }
+    if (recent < QUARANTINE_FAST_DEATH_COUNT) {
+        return;
+    }
+
+    /* Threshold hit — but only quarantine if the override file is actually
+     * present.  If go2rtc is crashing without an override, the user's base
+     * config has the bug and there's nothing for us to quarantine. */
+    if (g_override_path
+        && access(g_override_path, F_OK) == 0) {
+        log_error("T4b: %d fast-death events in %ds — quarantining override.yaml",
+                  recent, QUARANTINE_WINDOW_SEC);
+        quarantine_override_file();
+    } else {
+        log_warn("T4b: %d fast-death events but override.yaml is not in use; "
+                 "lightNVR cannot mitigate further", recent);
+    }
+}
+
+void go2rtc_process_clear_override_quarantine(void)
+{
+    if (!g_override_quarantined_path) return;
+
+    if (unlink(g_override_quarantined_path) == 0) {
+        log_info("T4b: cleared quarantined go2rtc override file %s",
+                 g_override_quarantined_path);
+    } else if (errno != ENOENT) {
+        log_warn("T4b: failed to remove quarantined override %s: %s",
+                 g_override_quarantined_path, strerror(errno));
+    }
+
+    if (db_set_system_setting("go2rtc_config_override_disabled_reason",
+                              "") != 0) {
+        log_warn("T4b: failed to clear quarantine reason in DB");
+    }
+
+    /* Reset bookkeeping so a single user-driven save fully unblocks. */
+    g_last_start_time = 0;
+    memset(g_fast_death_history, 0, sizeof(g_fast_death_history));
+    g_fast_death_history_idx = 0;
+}
+
 int go2rtc_process_generate_override_file(const char *override_path) {
     if (!override_path || override_path[0] == '\0') {
         log_error("go2rtc_process_generate_override_file: invalid path");
         return -1;
+    }
+
+    /* T4b — if a prior crash loop quarantined this override, the
+     * `go2rtc_config_override_disabled_reason` DB setting is non-empty.
+     * Honor it: remove any override.yaml on disk (in case one was created
+     * since the rename) and short-circuit to no-override.  The user clears
+     * the quarantine by saving a new override value, which the settings
+     * handler routes through go2rtc_process_clear_override_quarantine(). */
+    {
+        char *reason = NULL;
+        size_t reason_len = 0;
+        if (db_get_system_setting_alloc(
+                "go2rtc_config_override_disabled_reason",
+                &reason, &reason_len) == 0
+            && reason && reason_len > 0) {
+            free(reason);
+            log_warn("go2rtc override is currently QUARANTINED — skipping "
+                     "override.yaml. Save a new override to clear the "
+                     "quarantine.");
+            if (unlink(override_path) != 0 && errno != ENOENT) {
+                log_error("Failed to remove override during quarantine: %s",
+                          strerror(errno));
+                return -1;
+            }
+            return 0;
+        }
+        free(reason);
     }
 
     /* Tighten the enclosing directory permissions before writing a file that
@@ -1717,6 +1954,14 @@ bool go2rtc_process_start(int api_port) {
         return false;
     }
 
+    /* T4b — before any restart work, look at how the previous instance died.
+     * If we've seen too many fast deaths in a short window AND there is an
+     * override.yaml in use, quarantine it and let go2rtc start on the base
+     * config alone.  Has to run BEFORE the override-refresh below, because
+     * quarantining renames the file and we want the refresh to see the
+     * post-quarantine state. */
+    check_and_handle_crash_loop();
+
     // Always regenerate the go2rtc config file fresh at startup to avoid
     // stale/corrupted configs from prior versions causing stream errors
     // (see issue #165). The file is opened with O_TRUNC so any old content
@@ -1975,6 +2220,7 @@ bool go2rtc_process_start(int api_port) {
     } else {
         // Parent process
         g_process_pid = pid;
+        g_last_start_time = time(NULL);  /* T4b crash-loop bookkeeping */
         log_info("Started go2rtc process with PID: %d", pid);
 
         // Wait a moment for the process to start
@@ -2142,15 +2388,21 @@ void go2rtc_process_cleanup(void) {
     free(g_config_dir);
     free(g_config_path);
     free(g_override_path);
+    free(g_override_quarantined_path);
 
     g_binary_path = NULL;
     g_config_dir = NULL;
     g_config_path = NULL;
     g_override_path = NULL;
+    g_override_quarantined_path = NULL;
     g_process_pid = -1;
     g_using_external_service = false;
     g_api_port = 1984;
     g_initialized = false;
+    /* Reset T4b crash-loop bookkeeping so a fresh init starts clean. */
+    g_last_start_time = 0;
+    memset(g_fast_death_history, 0, sizeof(g_fast_death_history));
+    g_fast_death_history_idx = 0;
 
     log_info("go2rtc process manager cleaned up");
 }

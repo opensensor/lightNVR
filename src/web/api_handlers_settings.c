@@ -1128,6 +1128,9 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             log_info("Updated go2rtc_config_override (%zu bytes)", override_len);
             go2rtc_config_changed = true;
             go2rtc_becoming_enabled = g_config.go2rtc_enabled;
+            /* T4b — a successful save clears any active quarantine so the
+             * new value gets a clean shot at startup. */
+            go2rtc_process_clear_override_quarantine();
         }
     }
 

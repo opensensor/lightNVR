@@ -94,6 +94,20 @@ const char *go2rtc_process_get_override_path(void);
 const char *go2rtc_process_get_config_path(void);
 
 /**
+ * @brief Clear any active override quarantine (T4b).
+ *
+ * If a prior crash loop quarantined the user override (renamed
+ * `override.yaml` → `override.quarantined.yaml` and stored a reason in the
+ * DB), this removes the quarantined file and clears the DB reason setting
+ * so the next start re-applies whatever override is currently configured.
+ *
+ * Idempotent — safe to call when no quarantine exists.  Intended to be
+ * called by the settings handler after a successful save of
+ * `go2rtc_config_override`.
+ */
+void go2rtc_process_clear_override_quarantine(void);
+
+/**
  * @brief Generate <config_dir>/go2rtc.yaml from the currently loaded settings.
  *
  * This initializes the go2rtc process manager just long enough to write the
