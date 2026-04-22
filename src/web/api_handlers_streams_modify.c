@@ -14,6 +14,7 @@
 #define LOG_COMPONENT "StreamsAPI"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/path_utils.h"
 #include "core/url_utils.h"
 #include "utils/strings.h"
 #include "video/stream_manager.h"
@@ -469,6 +470,18 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     while (name_len > 0 && (config.name[name_len - 1] == ' ' || config.name[name_len - 1] == '\t')) {
         config.name[--name_len] = '\0';
     }
+
+    // Reject names with characters that would mismatch between URL-encoded
+    // client requests (MSE/HLS/WebRTC) and the decoded key stored by go2rtc
+    // and the filesystem sanitizer. See issue #396.
+    if (!is_valid_stream_name(config.name)) {
+        log_error("Invalid stream name: '%s' (allowed: letters, digits, '.', '-', '_')", config.name);
+        cJSON_Delete(stream_json);
+        http_response_set_json_error(res, 400,
+            "Stream name can only contain letters, digits, '.', '-', and '_'");
+        return;
+    }
+
     safe_strcpy(config.url, url->valuestring, sizeof(config.url), 0);
 
     // Optional fields with defaults

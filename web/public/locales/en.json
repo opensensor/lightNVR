@@ -753,6 +753,7 @@
   "streamsConfig.streamName": "Stream Name",
   "streamsConfig.streamNamePlaceholder": "e.g., front_door, backyard",
   "streamsConfig.streamNameImmutable": "Stream name cannot be changed after creation",
+  "streamsConfig.streamNameAllowedChars": "Only letters, digits, '.', '-', and '_' are allowed (no spaces).",
   "streamsConfig.streamUrl": "Stream URL",
   "streamsConfig.streamUrlPlaceholder": "rtsp://username:password@192.168.1.100:554/stream",
   "streamsConfig.subStreamUrl": "Sub-stream URL (optional)",

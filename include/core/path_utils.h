@@ -1,6 +1,7 @@
 #ifndef LIGHTNVR_PATH_UTILS_H
 #define LIGHTNVR_PATH_UTILS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <sys/types.h>
 
@@ -13,6 +14,25 @@
  * @param output_size The size of the output buffer
  */
 void sanitize_stream_name(const char *input, char *output, size_t output_size);
+
+/**
+ * Check whether a stream name is valid for use as an identifier.
+ *
+ * A stream name flows through filesystem paths, URLs, WebSocket query
+ * parameters, and the go2rtc stream table. Allowing spaces or other
+ * special characters leads to URL-encoding mismatches (e.g. "mse: stream
+ * not found" when the client requests "Front%20Door%20Camera" but go2rtc
+ * registered "Front Door Camera"), and also causes filesystem collisions
+ * because sanitize_stream_name() collapses all non-[A-Za-z0-9-] characters
+ * to underscores.
+ *
+ * Allowed characters: [A-Za-z0-9._-]. The name must be non-empty and may
+ * not start with '.' (to avoid hidden-file paths).
+ *
+ * @param name NUL-terminated stream name, may be NULL
+ * @return true if the name is valid, false otherwise
+ */
+bool is_valid_stream_name(const char *name);
 
 /**
  * Ensure the specified directory exists, creating it if necessary. Does not recur.

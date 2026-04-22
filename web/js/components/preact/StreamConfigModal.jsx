@@ -433,10 +433,14 @@ export function StreamConfigModal({
                     onChange={onInputChange}
                     disabled={isEditing}
                     required
+                    pattern="[A-Za-z0-9_\-][A-Za-z0-9._\-]*"
+                    title={t('streamsConfig.streamNameAllowedChars')}
                     placeholder={t('streamsConfig.streamNamePlaceholder')}
                   />
-                  {isEditing && (
+                  {isEditing ? (
                     <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.streamNameImmutable')}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.streamNameAllowedChars')}</p>
                   )}
                 </div>
 

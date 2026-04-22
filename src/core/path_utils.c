@@ -28,6 +28,23 @@ void sanitize_stream_name(const char *input, char *output, size_t output_size) {
     output[i] = '\0';
 }
 
+bool is_valid_stream_name(const char *name) {
+    if (!name || name[0] == '\0') {
+        return false;
+    }
+    // Reject leading '.' so names can't produce hidden-file paths.
+    if (name[0] == '.') {
+        return false;
+    }
+    for (size_t i = 0; name[i] != '\0'; i++) {
+        unsigned char c = (unsigned char) name[i];
+        if (!(isalpha(c) || isdigit(c) || c == '-' || c == '_' || c == '.')) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Ensure the specified directory exists, creating it if necessary. Does not recur.
 int ensure_dir(const char *path) {
     struct stat st;
