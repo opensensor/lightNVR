@@ -101,8 +101,14 @@ typedef struct {
 
     // go2rtc source override: when non-empty, written directly into go2rtc.yaml
     // streams section instead of auto-constructing the source URL.
-    // Supports single URLs or multi-source YAML lists (e.g. "- rtsp://cam/main\n- ffmpeg:cam#video=h264")
-    char go2rtc_source_override[2048];
+    // Supports single URLs or multi-source YAML lists (e.g. "- rtsp://cam/main\n- ffmpeg:cam#video=h264").
+    //
+    // T11: raised from 2048 → 8192 so longer ffmpeg-style command lines fit.
+    // The struct is no longer stack-allocated as a fixed-size array anywhere
+    // in production code (T11b heap-converted the two mqtt_client.c arrays);
+    // sizeof(stream_config_t) post-bump is still ~12 KB, well under the
+    // 16 KB sentinel guarded by test_stream_config_t_size_under_16k.
+    char go2rtc_source_override[8192];
 
     // Sub-stream URL: optional low-resolution stream for dashboard grid view.
     // When non-empty, registered with go2rtc as "{name}_sub" and used by the
