@@ -54,6 +54,24 @@ void go2rtc_process_cleanup(void) {}
 int go2rtc_process_get_rtsp_port(void) { return 0; }
 int go2rtc_process_get_pid(void) { return -1; }
 
+/* Stubs for the override-pipeline APIs added in PR #398.  When go2rtc is
+ * disabled at build time the override file is meaningless, so these are
+ * trivial no-ops that match the success-side return contracts. */
+int go2rtc_process_generate_override_file(const char *override_path) {
+    UNUSED(override_path); return 0;
+}
+const char *go2rtc_process_get_override_path(void) { return NULL; }
+const char *go2rtc_process_get_config_path(void)   { return NULL; }
+void go2rtc_process_clear_override_quarantine(void) {}
+void go2rtc_process_validate_existing_override_on_upgrade(void) {}
+int go2rtc_process_probe_version(const char *path,
+                                 char *version_out,
+                                 size_t version_out_sz) {
+    UNUSED(path);
+    if (version_out && version_out_sz > 0) version_out[0] = '\0';
+    return 0;
+}
+
 bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api_port) {
     UNUSED(binary_path); UNUSED(config_dir); UNUSED(api_port); return false;
 }
