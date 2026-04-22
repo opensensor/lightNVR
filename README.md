@@ -449,6 +449,7 @@ The configuration files will persist across container restarts and updates.
 - **[Zone Configuration](docs/ZONE_CONFIGURATION.md)** - Visual polygon-based detection zones
 - [API Documentation](docs/API.md)
 - [go2rtc Integration](docs/GO2RTC_INTEGRATION.md)
+- [go2rtc Config Override](docs/GO2RTC_CONFIG_OVERRIDE.md)
 - [MQTT Integration](docs/MQTT_INTEGRATION.md)
 - [ONVIF Detection](docs/ONVIF_DETECTION.md)
 - [Motion Buffer System](docs/MOTION_BUFFER.md)
