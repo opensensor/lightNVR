@@ -63,6 +63,68 @@ int yaml_is_mapping_root(const char *src, size_t len);
  */
 int yaml_validate_is_available(void);
 
+/* ------------------------------------------------------------------
+ * T6 — go2rtc override semantic validation
+ *
+ * `yaml_validate_str` checks syntax only.  The go2rtc override pipeline
+ * additionally needs to reject:
+ *   • non-mapping roots (go2rtc requires a top-level mapping)
+ *   • duplicate top-level keys (gopkg.in/yaml.v3 — what go2rtc actually
+ *     uses — REJECTS dupes; libyaml-C accepts them silently, so we have
+ *     to detect them ourselves with our own bookkeeping)
+ *
+ * It should also warn (not error) when an unfamiliar top-level section
+ * appears, so a future go2rtc release adding a new section doesn't break
+ * us — but typos still surface.
+ * ------------------------------------------------------------------ */
+
+#define YAML_VALIDATE_MAX_WARNINGS 16
+#define YAML_VALIDATE_WARN_LEN     192
+#define YAML_VALIDATE_ERR_LEN      256
+
+typedef struct {
+    /* 1 = valid (no errors).  Warnings may still be present.
+     * 0 = invalid.  err_message describes the first / most actionable error.
+     * -1 = could not validate (libyaml unavailable).  Caller should treat
+     *      this as "skip pre-save validation"; the message explains why. */
+    int valid;
+
+    char err_message[YAML_VALIDATE_ERR_LEN];
+    /* 1-based line/column.  0 when not applicable (e.g. non-syntactic error
+     * such as "duplicate root key" still carries the location of the second
+     * occurrence). */
+    int err_line;
+    int err_column;
+
+    /* Independent diagnostic flags (set even when other errors trigger first). */
+    int duplicate_keys;     /* 1 if any top-level key was duplicated */
+    int non_mapping_root;   /* 1 if the document root is not a mapping */
+    int parse_error;        /* 1 if libyaml emitted a parse error */
+
+    /* Up to YAML_VALIDATE_MAX_WARNINGS NUL-terminated warning strings.
+     * Warnings DO NOT make valid==0; they are advisory. */
+    char warnings[YAML_VALIDATE_MAX_WARNINGS][YAML_VALIDATE_WARN_LEN];
+    int  warning_count;
+} yaml_validation_result_t;
+
+/**
+ * Validate a go2rtc override YAML document for syntax + semantic concerns
+ * (duplicate top-level keys, non-mapping root) and surface unknown
+ * top-level sections as warnings.
+ *
+ * Single-pass: runs libyaml's event parser exactly once and populates @p out
+ * with everything in one walk.
+ *
+ * Safe to call with @p src == NULL && @p len == 0; treats empty input as
+ * valid (an empty override means "no overrides").
+ *
+ * When libyaml is unavailable, sets @p out->valid = -1 with an explanatory
+ * message and leaves all other fields zeroed.  Callers should treat this
+ * as "skip pre-save validation, allow the save".
+ */
+void yaml_validate_go2rtc_override(const char *src, size_t len,
+                                   yaml_validation_result_t *out);
+
 #ifdef __cplusplus
 }
 #endif

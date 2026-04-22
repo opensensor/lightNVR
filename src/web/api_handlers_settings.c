@@ -31,6 +31,7 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/hls/hls_api.h"
 #include "core/mqtt_client.h"
+#include "utils/yaml_validate.h"
 
 /**
  * @brief Validate that a path is safe to use as a storage path.
@@ -238,6 +239,115 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
 
     free(all_streams);
     free(task);
+}
+
+/**
+ * @brief Build a cJSON object describing a yaml_validation_result_t.
+ *
+ * Shape:
+ *   {
+ *     "valid": true|false,
+ *     "libyaml_available": true|false,
+ *     "error": { "line": N, "column": N, "message": "..." }?,  // when invalid
+ *     "warnings": ["...", ...]                                   // always
+ *   }
+ *
+ * Caller takes ownership of the returned object.  Returns NULL on OOM.
+ */
+static cJSON *go2rtc_validation_result_to_json(const yaml_validation_result_t *r) {
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return NULL;
+
+    /* valid==-1 means libyaml unavailable; the UI should treat this as
+     * "validation skipped" — surface that explicitly so the UI can show a
+     * subtler indicator instead of a green checkmark. */
+    cJSON_AddBoolToObject(root, "valid", r->valid == 1);
+    cJSON_AddBoolToObject(root, "libyaml_available", r->valid != -1);
+
+    if (r->valid == 0) {
+        cJSON *err = cJSON_CreateObject();
+        if (err) {
+            cJSON_AddNumberToObject(err, "line", r->err_line);
+            cJSON_AddNumberToObject(err, "column", r->err_column);
+            cJSON_AddStringToObject(err, "message", r->err_message);
+            cJSON_AddBoolToObject(err, "duplicate_keys", r->duplicate_keys != 0);
+            cJSON_AddBoolToObject(err, "non_mapping_root", r->non_mapping_root != 0);
+            cJSON_AddBoolToObject(err, "parse_error", r->parse_error != 0);
+            cJSON_AddItemToObject(root, "error", err);
+        }
+    } else if (r->valid == -1) {
+        /* Skipped — surface the reason as a warning so it's visible. */
+        cJSON *err = cJSON_CreateObject();
+        if (err) {
+            cJSON_AddStringToObject(err, "message", r->err_message);
+            cJSON_AddItemToObject(root, "skipped", err);
+        }
+    }
+
+    cJSON *warnings = cJSON_CreateArray();
+    if (warnings) {
+        for (int i = 0; i < r->warning_count; i++) {
+            cJSON_AddItemToArray(warnings,
+                cJSON_CreateString(r->warnings[i]));
+        }
+        cJSON_AddItemToObject(root, "warnings", warnings);
+    }
+
+    return root;
+}
+
+void handle_post_settings_go2rtc_validate(const http_request_t *req,
+                                          http_response_t *res) {
+    log_info("Handling POST /api/settings/go2rtc/validate request");
+
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;
+    }
+
+    cJSON *body = httpd_parse_json_body(req);
+    if (!body) {
+        http_response_set_json_error(res, 400, "Invalid JSON in request body");
+        return;
+    }
+
+    /* Empty body or empty string both mean "validate the empty document",
+     * which is by definition valid. */
+    cJSON *override = cJSON_GetObjectItem(body, "override");
+    const char *src = "";
+    size_t src_len = 0;
+    if (override && cJSON_IsString(override) && override->valuestring) {
+        src = override->valuestring;
+        src_len = strlen(src);
+    }
+
+    /* Same hard cap as the save path so the validator can't be used as a
+     * denial-of-service vector via huge payloads. */
+    if (src_len >= 65536) {
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 413,
+            "override exceeds 65535 byte limit");
+        return;
+    }
+
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, src_len, &r);
+
+    cJSON *result = go2rtc_validation_result_to_json(&r);
+    cJSON_Delete(body);
+    if (!result) {
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
+
+    char *result_str = cJSON_PrintUnformatted(result);
+    cJSON_Delete(result);
+    if (!result_str) {
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
+
+    http_response_set_json(res, 200, result_str);
+    free(result_str);
 }
 
 /**
@@ -982,7 +1092,37 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             http_response_set_json_error(res, 413,
                 "go2rtc_config_override exceeds 65535 byte limit");
             return;
-        } else if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
+        }
+
+        /* Run the same validator the dedicated /api/settings/go2rtc/validate
+         * endpoint uses.  Reject invalid YAML and duplicate top-level keys
+         * with HTTP 400 carrying the structured result, so the UI can render
+         * the error inline.  When libyaml is unavailable (valid==-1), skip
+         * the gate — the runtime will still get the original parse error
+         * from go2rtc itself. */
+        yaml_validation_result_t vr;
+        yaml_validate_go2rtc_override(go2rtc_config_override->valuestring,
+                                       override_len, &vr);
+        if (vr.valid == 0) {
+            log_warn("Rejecting go2rtc_config_override: %s", vr.err_message);
+            cJSON *result = go2rtc_validation_result_to_json(&vr);
+            cJSON_Delete(settings);
+            if (!result) {
+                http_response_set_json_error(res, 500, "Out of memory");
+                return;
+            }
+            char *result_str = cJSON_PrintUnformatted(result);
+            cJSON_Delete(result);
+            if (!result_str) {
+                http_response_set_json_error(res, 500, "Out of memory");
+                return;
+            }
+            http_response_set_json(res, 400, result_str);
+            free(result_str);
+            return;
+        }
+
+        if (db_set_system_setting("go2rtc_config_override", go2rtc_config_override->valuestring) != 0) {
             log_error("Failed to save go2rtc_config_override to system_settings");
         } else {
             log_info("Updated go2rtc_config_override (%zu bytes)", override_len);

@@ -110,6 +110,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Settings API
     http_server_register_handler(server, "/api/settings", "GET", handle_get_settings);
     http_server_register_handler(server, "/api/settings", "POST", handle_post_settings);
+    http_server_register_handler(server, "/api/settings/go2rtc/validate", "POST",
+                                 handle_post_settings_go2rtc_validate);
 
     // ICE Servers API (WebRTC TURN/STUN configuration)
     http_server_register_handler(server, "/api/ice-servers", "GET", handle_get_ice_servers);

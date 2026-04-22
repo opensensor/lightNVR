@@ -169,6 +169,124 @@ void test_null_err_buf_does_not_crash(void) {
 }
 
 /* ================================================================
+ * T6 — yaml_validate_go2rtc_override
+ * ================================================================ */
+
+void test_go2rtc_validate_empty_is_valid(void) {
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(NULL, 0, &r);
+    if (yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(1, r.valid);
+        TEST_ASSERT_EQUAL_INT(0, r.warning_count);
+    } else {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+    }
+}
+
+void test_go2rtc_validate_known_sections_no_warnings(void) {
+    const char *src =
+        "ffmpeg:\n"
+        "  h264: \"-codec:v copy\"\n"
+        "log:\n"
+        "  level: trace\n";
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, strlen(src), &r);
+    if (!yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+        return;
+    }
+    TEST_ASSERT_EQUAL_INT(1, r.valid);
+    TEST_ASSERT_EQUAL_INT(0, r.duplicate_keys);
+    TEST_ASSERT_EQUAL_INT(0, r.non_mapping_root);
+    TEST_ASSERT_EQUAL_INT(0, r.warning_count);
+}
+
+/* The exact issue #394 shape — a top-level `ffmpeg:` section that the
+ * generator already emits, duplicated in the user override. */
+void test_go2rtc_validate_duplicate_top_level_key_rejected(void) {
+    const char *src =
+        "ffmpeg:\n"
+        "  h264: \"-codec:v copy\"\n"
+        "log:\n"
+        "  level: trace\n"
+        "ffmpeg:\n"
+        "  h265: \"-codec:v copy\"\n";
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, strlen(src), &r);
+    if (!yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+        return;
+    }
+    TEST_ASSERT_EQUAL_INT(0, r.valid);
+    TEST_ASSERT_EQUAL_INT(1, r.duplicate_keys);
+    /* Error should pinpoint the SECOND `ffmpeg:` (line 5, column 1). */
+    TEST_ASSERT_EQUAL_INT(5, r.err_line);
+    TEST_ASSERT_EQUAL_INT(1, r.err_column);
+    TEST_ASSERT_NOT_NULL(strstr(r.err_message, "duplicate"));
+    TEST_ASSERT_NOT_NULL(strstr(r.err_message, "ffmpeg"));
+}
+
+void test_go2rtc_validate_non_mapping_root_rejected(void) {
+    const char *src = "- a\n- b\n";
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, strlen(src), &r);
+    if (!yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+        return;
+    }
+    TEST_ASSERT_EQUAL_INT(0, r.valid);
+    TEST_ASSERT_EQUAL_INT(1, r.non_mapping_root);
+}
+
+void test_go2rtc_validate_unknown_section_warns(void) {
+    /* "fmpeg" — typo of ffmpeg.  Should warn (not error). */
+    const char *src =
+        "fmpeg:\n"
+        "  h264: \"-codec:v copy\"\n";
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, strlen(src), &r);
+    if (!yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+        return;
+    }
+    TEST_ASSERT_EQUAL_INT(1, r.valid);   /* still valid — typos are warnings */
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(1, r.warning_count);
+    TEST_ASSERT_NOT_NULL(strstr(r.warnings[0], "fmpeg"));
+}
+
+void test_go2rtc_validate_malformed_yaml_returns_parse_error(void) {
+    const char *src = "ffmpeg: [unclosed\nlog: trace\n";
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, strlen(src), &r);
+    if (!yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+        return;
+    }
+    TEST_ASSERT_EQUAL_INT(0, r.valid);
+    TEST_ASSERT_EQUAL_INT(1, r.parse_error);
+    TEST_ASSERT_GREATER_THAN_INT(0, r.err_line);
+}
+
+/* The exact reporter override from issue #394 — should pass cleanly. */
+void test_go2rtc_validate_issue_394_reporter_shape_is_valid(void) {
+    const char *src =
+        "ffmpeg:\n"
+        "  h264: \"-codec:v copy -codec:a copy\"\n"
+        "  h265: \"-codec:v copy -codec:a copy\"\n"
+        "log:\n"
+        "  level: trace\n";
+    yaml_validation_result_t r;
+    yaml_validate_go2rtc_override(src, strlen(src), &r);
+    if (!yaml_validate_is_available()) {
+        TEST_ASSERT_EQUAL_INT(-1, r.valid);
+        return;
+    }
+    TEST_ASSERT_EQUAL_INT(1, r.valid);
+    TEST_ASSERT_EQUAL_INT(0, r.duplicate_keys);
+    TEST_ASSERT_EQUAL_INT(0, r.warning_count);
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 int main(void) {
@@ -184,6 +302,15 @@ int main(void) {
     RUN_TEST(test_huge_valid_document);
     RUN_TEST(test_null_src_returns_zero);
     RUN_TEST(test_null_err_buf_does_not_crash);
+
+    /* T6 */
+    RUN_TEST(test_go2rtc_validate_empty_is_valid);
+    RUN_TEST(test_go2rtc_validate_known_sections_no_warnings);
+    RUN_TEST(test_go2rtc_validate_duplicate_top_level_key_rejected);
+    RUN_TEST(test_go2rtc_validate_non_mapping_root_rejected);
+    RUN_TEST(test_go2rtc_validate_unknown_section_warns);
+    RUN_TEST(test_go2rtc_validate_malformed_yaml_returns_parse_error);
+    RUN_TEST(test_go2rtc_validate_issue_394_reporter_shape_is_valid);
 
     return UNITY_END();
 }
