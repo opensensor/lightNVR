@@ -24,7 +24,6 @@ const state = {
  * state between re-invocations (simulated re-renders).
  */
 jest.mock('preact/hooks', () => {
-  const listeners = new Set();
   return {
     useState: (initial) => {
       const slot = state.cursor++;
@@ -95,7 +94,7 @@ describe('useAsyncAction', () => {
     await first;
 
     // A third call after settlement is allowed to proceed.
-    const third = run('arg3');
+    run('arg3');
     expect(handler).toHaveBeenCalledTimes(2);
     expect(handler).toHaveBeenLastCalledWith('arg3');
     resolveHandler = null;
