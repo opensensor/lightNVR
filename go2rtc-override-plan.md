@@ -119,15 +119,29 @@ T12 ── T13 (docs)
 - **location**: `src/video/go2rtc/go2rtc_process.c`, `include/video/go2rtc/go2rtc_process.h`
 - **description**: New function that reads `go2rtc_config_override` from `db_system_settings` (up to the new 64 KB cap from T5), writes it to `${g_config_dir}/override.yaml` with mode 0600 via `open(O_WRONLY|O_CREAT|O_TRUNC)` + `fdopen`, then `fsync`s + closes. If the setting is empty/absent, `unlink()` any existing `override.yaml` AND `stat()` the path afterward to confirm it is gone — if the file still exists after unlink (EBUSY, EROFS, permission denied), return a hard error and refuse to proceed (prevents merging a stale override). Before writing, `stat(g_config_dir)` and assert mode is 0700 or 0750; if not, `chmod` it (best-effort) and log at WARN. Expose the final path via `go2rtc_process_get_override_path()` so the start routine and diagnostics can both use it. Log content only at DEBUG (credentials may be present). This function **must be called synchronously before every `go2rtc_process_start`** — not just on settings-save — to avoid the race where the DB was cleared but override.yaml still on disk.
 - **validation**: File exists with correct content when setting is present; file is absent after setting is cleared; function returns error (not silent success) when unlink fails. Permission 0600 on file, 0700 on enclosing dir.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Added a `g_override_path` global allocated alongside `g_config_path` in `go2rtc_process_init` (`<config_dir>/override.yaml`), freed and NULL'd in `go2rtc_process_cleanup`. Also extended the init-failure path so the new pointer is freed when `check_go2rtc_in_path` returns false.
+  - Replaced the T2 stubs with real implementations:
+    - `go2rtc_process_get_override_path()` returns `g_override_path` (NULL until init succeeds, matching the documented "or NULL if not configured" contract).
+    - `go2rtc_process_generate_override_file()` (a) tightens `g_config_dir` to 0700 if it is looser than 0700/0750 (best-effort `chmod`, WARN on failure); (b) reads `go2rtc_config_override` via the T5 `db_get_system_setting_alloc` helper; (c) when empty/absent, `unlink()`s and `stat()`s to confirm absence — returns -1 if the file is still present after unlink (covers EBUSY, EROFS, perm denied per plan); (d) when present, writes via `open(O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0600)` + `fchmod(0600)` belt-and-braces, EINTR-safe write loop, `fsync` (warn-only on failure), `close` (hard error). On any write error the partial file is `unlink()`ed before returning.
+  - Wired into the integration branch only — feature/go2rtc-override-hardening — not yet on main.
 - **files edited/created**:
+  - `src/video/go2rtc/go2rtc_process.c` (edited)
 
 ### T4: Pass both configs to go2rtc via repeated `--config` flags
 - **depends_on**: [T2, T3]
 - **location**: `src/video/go2rtc/go2rtc_process.c` (function `go2rtc_process_start`, `execl` at line ~1377)
 - **description**: Before forking, call `go2rtc_process_write_override_file()` (synchronous, return-checked). In the child, replace `execl(resolved_binary, "go2rtc", "--config", g_config_path, NULL);` with `execv` (for dynamic argv), building `{"go2rtc", "--config", base_path, "--config", override_path, NULL}` when the override file exists, otherwise the single-config form. go2rtc's `internal/app/config.go:LoadConfig` unmarshals each config in order onto the same struct. Update the log line to show both `--config` args.
 - **validation**: Start a local lightNVR+go2rtc with `ffmpeg: { h264: "-codec:v copy -codec:a copy" }` in the override; confirm the running go2rtc reports the copy-mode ffmpeg template via `GET /go2rtc/api/config` and that `log.level: trace` takes effect in `go2rtc.log`.
+- **status**: Completed
+- **log**:
+  - In `go2rtc_process_start`, immediately after the existing base-config regenerate, call `go2rtc_process_generate_override_file(go2rtc_process_get_override_path())`. Non-zero return is fatal — we refuse to start go2rtc rather than risk merging a stale or unverified override file.
+  - In the child, replaced `execl(resolved_binary, "go2rtc", "--config", g_config_path, NULL)` with a small dynamic `char *argv[6]` and `execv(resolved_binary, argv)`. The override `--config` pair is appended only when `override_path` exists AND `access(R_OK)` succeeds in the child — guaranteeing that the parent's prior write-or-confirm-removed call gates inclusion.
+  - Updated the pre-exec INFO log to print both `--config` arguments when the override is in use, so operators can see the merge composition in `go2rtc.log` without grepping `/proc/<pid>/cmdline`.
+  - Build + tests green: `cmake --build build` succeeds; `ctest -R 'test_yaml_validate|test_go2rtc_process|test_db_system_settings|test_config'` reports 5/5 PASS.
+- **files edited/created**:
+  - `src/video/go2rtc/go2rtc_process.c` (edited)
 
 ### T4b: Override crash-loop guard — auto-disable on repeated startup failure
 - **depends_on**: [T4]
