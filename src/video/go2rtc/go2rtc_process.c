@@ -392,6 +392,7 @@ static void recursive_remove(const char *path) {
 static char *g_binary_path = NULL;
 static char *g_config_dir = NULL;
 static char *g_config_path = NULL;
+static char *g_override_path = NULL;
 static pid_t g_process_pid = -1;
 static bool g_initialized = false;
 static int g_rtsp_port = 8554; // Default RTSP port
@@ -527,6 +528,18 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
 
     snprintf(g_config_path, config_path_len, "%s/go2rtc.yaml", config_dir);
 
+    size_t override_path_len = strlen(config_dir) + strlen("/override.yaml") + 1;
+    g_override_path = malloc(override_path_len);
+    if (!g_override_path) {
+        log_error("Memory allocation failed for override path");
+        free(g_config_dir);
+        free(g_config_path);
+        g_config_dir = NULL;
+        g_config_path = NULL;
+        return false;
+    }
+    snprintf(g_override_path, override_path_len, "%s/override.yaml", config_dir);
+
     // Store the configured API port so all runtime checks use the right port
     g_api_port = api_port > 0 ? api_port : 1984;
 
@@ -553,6 +566,10 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
                 log_error("go2rtc binary not found in PATH and no running service detected");
                 free(g_config_dir);
                 free(g_config_path);
+                free(g_override_path);
+                g_config_dir = NULL;
+                g_config_path = NULL;
+                g_override_path = NULL;
                 return false;
             }
         }
@@ -821,28 +838,121 @@ static int write_stream_overrides(FILE *fp) {
     return written;
 }
 
-/**
- * @brief STUB — to be implemented by T3.
- *
- * Writes the user override YAML (from system_settings.go2rtc_config_override)
- * to the given path, or removes the file if the setting is empty. See the
- * header comment for the full contract.
- */
 int go2rtc_process_generate_override_file(const char *override_path) {
-    (void)override_path;
-    log_debug("go2rtc_process_generate_override_file: T3 will implement");
+    if (!override_path || override_path[0] == '\0') {
+        log_error("go2rtc_process_generate_override_file: invalid path");
+        return -1;
+    }
+
+    /* Tighten the enclosing directory permissions before writing a file that
+     * may contain credentials. We accept 0700 or 0750; anything looser gets a
+     * best-effort chmod and a WARN log. */
+    if (g_config_dir && g_config_dir[0] != '\0') {
+        struct stat dst;
+        if (stat(g_config_dir, &dst) == 0 && S_ISDIR(dst.st_mode)) {
+            mode_t perm = dst.st_mode & 0777;
+            if (perm != 0700 && perm != 0750) {
+                if (chmod(g_config_dir, 0700) == 0) {
+                    log_warn("go2rtc config dir %s was 0%o; tightened to 0700",
+                             g_config_dir, perm);
+                } else {
+                    log_warn("go2rtc config dir %s is 0%o (want 0700/0750); "
+                             "chmod failed: %s",
+                             g_config_dir, perm, strerror(errno));
+                }
+            }
+        }
+    }
+
+    char *content = NULL;
+    size_t content_len = 0;
+    int db_rc = db_get_system_setting_alloc("go2rtc_config_override",
+                                            &content, &content_len);
+    bool have_content = (db_rc == 0 && content && content_len > 0);
+
+    if (!have_content) {
+        free(content);
+        /* No override in the DB — remove any stale file on disk. We MUST
+         * confirm the file is gone, because passing a stale override.yaml as
+         * a second --config to go2rtc would silently mis-merge user config
+         * the operator believed they had cleared. */
+        if (unlink(override_path) != 0 && errno != ENOENT) {
+            log_error("Failed to remove stale go2rtc override file %s: %s",
+                      override_path, strerror(errno));
+            return -1;
+        }
+        struct stat st;
+        if (stat(override_path, &st) == 0) {
+            log_error("Stale go2rtc override file %s still present after unlink",
+                      override_path);
+            return -1;
+        }
+        if (errno != ENOENT) {
+            log_error("Failed to verify go2rtc override file %s removed: %s",
+                      override_path, strerror(errno));
+            return -1;
+        }
+        log_debug("go2rtc override file absent (no DB setting)");
+        return 0;
+    }
+
+    /* Write the content to override.yaml with mode 0600. We use open()+fdopen
+     * (not fopen) so we can specify the create-mode explicitly and so umask
+     * cannot loosen the permissions. */
+    int fd = open(override_path,
+                  O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                  0600);
+    if (fd < 0) {
+        log_error("Failed to open go2rtc override file %s for writing: %s",
+                  override_path, strerror(errno));
+        free(content);
+        return -1;
+    }
+
+    /* Belt-and-braces: chmod again in case the file pre-existed with looser
+     * perms and O_TRUNC kept the inode. */
+    if (fchmod(fd, 0600) != 0) {
+        log_warn("fchmod(%s, 0600) failed: %s",
+                 override_path, strerror(errno));
+    }
+
+    size_t written = 0;
+    while (written < content_len) {
+        ssize_t n = write(fd, content + written, content_len - written);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            log_error("Write to go2rtc override file %s failed: %s",
+                      override_path, strerror(errno));
+            close(fd);
+            unlink(override_path);
+            free(content);
+            return -1;
+        }
+        written += (size_t)n;
+    }
+
+    if (fsync(fd) != 0) {
+        log_warn("fsync on go2rtc override file %s failed: %s",
+                 override_path, strerror(errno));
+        /* Non-fatal: the data is in the page cache and go2rtc will read it
+         * via the same kernel; only durability across crashes is at risk. */
+    }
+
+    if (close(fd) != 0) {
+        log_error("close on go2rtc override file %s failed: %s",
+                  override_path, strerror(errno));
+        free(content);
+        return -1;
+    }
+
+    log_debug("Wrote %zu bytes to go2rtc override file %s",
+              content_len, override_path);
+    free(content);
     return 0;
 }
 
-/**
- * @brief STUB — to be implemented by T3.
- *
- * Returns the path to the user override file, or NULL when no override is
- * configured on disk.
- */
 const char *go2rtc_process_get_override_path(void) {
-    log_debug("go2rtc_process_get_override_path: T3 will implement");
-    return NULL;
+    return g_override_path;
 }
 
 bool go2rtc_process_generate_startup_config(const char *binary_path,
@@ -1242,6 +1352,19 @@ bool go2rtc_process_start(int api_port) {
         // Continue anyway - the old config may still work
     }
 
+    /* Refresh the user override file from the DB on every start. This is the
+     * defensive sync point that prevents a stale override.yaml from being
+     * passed as a second --config when the operator has cleared the setting
+     * but a prior run wrote a file. A hard error here means we cannot
+     * guarantee what go2rtc will load, so refuse to start. */
+    const char *override_path = go2rtc_process_get_override_path();
+    if (override_path
+        && go2rtc_process_generate_override_file(override_path) != 0) {
+        log_error("Refusing to start go2rtc: failed to refresh override file %s",
+                  override_path);
+        return false;
+    }
+
     // Check if go2rtc is already running as a service
     if (is_go2rtc_running_as_service(api_port)) {
         log_info("go2rtc is already running as a service on port %d, using existing service", api_port);
@@ -1414,15 +1537,40 @@ bool go2rtc_process_start(int api_port) {
         dup2(log_fd, STDERR_FILENO);
         close(log_fd);
 
-        // Execute go2rtc with explicit config path (using correct argument format).
-        // Always use "go2rtc" as argv[0] (the process name visible in /proc/<pid>/cmdline
-        // and /proc/<pid>/comm) regardless of the actual binary path, so that
-        // scan_proc_for_argv0_basename("go2rtc") can reliably find the process even when
-        // g_binary_path is a full path or an alternate filename.
-        log_info("Executing go2rtc with command: %s --config %s", resolved_binary, g_config_path);
-        execl(resolved_binary, "go2rtc", "--config", g_config_path, NULL);
+        // Execute go2rtc with one or two --config files. Always use "go2rtc"
+        // as argv[0] (the process name visible in /proc/<pid>/cmdline and
+        // /proc/<pid>/comm) regardless of the actual binary path, so that
+        // scan_proc_for_argv0_basename("go2rtc") can reliably find the
+        // process even when g_binary_path is a full path or an alternate
+        // filename. The override file is only added if the parent successfully
+        // wrote it AND it exists on disk; go2rtc's internal/app/config.go
+        // calls yaml.Unmarshal once per --config so passing two files lets
+        // go2rtc merge with its own native semantics (issue #394).
+        bool have_override = (override_path
+                              && override_path[0] != '\0'
+                              && access(override_path, R_OK) == 0);
 
-        // If execl returns, it failed
+        char *argv[6];
+        int ai = 0;
+        argv[ai++] = (char *)"go2rtc";
+        argv[ai++] = (char *)"--config";
+        argv[ai++] = g_config_path;
+        if (have_override) {
+            argv[ai++] = (char *)"--config";
+            argv[ai++] = (char *)override_path;
+        }
+        argv[ai] = NULL;
+
+        if (have_override) {
+            log_info("Executing go2rtc with command: %s --config %s --config %s",
+                     resolved_binary, g_config_path, override_path);
+        } else {
+            log_info("Executing go2rtc with command: %s --config %s",
+                     resolved_binary, g_config_path);
+        }
+        execv(resolved_binary, argv);
+
+        // If execv returns, it failed
         fprintf(stderr, "Failed to execute go2rtc: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     } else {
@@ -1592,10 +1740,12 @@ void go2rtc_process_cleanup(void) {
     free(g_binary_path);
     free(g_config_dir);
     free(g_config_path);
+    free(g_override_path);
 
     g_binary_path = NULL;
     g_config_dir = NULL;
     g_config_path = NULL;
+    g_override_path = NULL;
     g_process_pid = -1;
     g_api_port = 1984;
     g_initialized = false;
