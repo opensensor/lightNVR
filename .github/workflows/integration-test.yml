@@ -184,6 +184,7 @@ jobs:
             libcjson-dev \
             libmbedtls-dev \
             libyaml-dev \
+            lcov \
             golang-go \
             curl \
             ca-certificates
@@ -201,16 +202,22 @@ jobs:
           ./go2rtc --version
           echo "GO2RTC_TEST_BINARY=$GITHUB_WORKSPACE/go2rtc/go2rtc" >> "$GITHUB_ENV"
 
-      - name: Configure with go2rtc enabled
+      - name: Configure with go2rtc enabled (+coverage)
         run: |
           mkdir -p build
           cd build
+          # --coverage on both CFLAGS and linker so the new yaml/go2rtc
+          # tests contribute to Codecov (previously the tests ran but
+          # their coverage was never uploaded, pinning patch coverage at
+          # ~0% for files only exercised here).
           cmake .. \
             -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTS=ON \
             -DENABLE_SOD=OFF \
             -DENABLE_GO2RTC=ON \
-            -DENABLE_MQTT=OFF
+            -DENABLE_MQTT=OFF \
+            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
 
       - name: Build go2rtc-related tests
         run: |
@@ -229,6 +236,35 @@ jobs:
           cd build
           ctest --output-on-failure -V \
             -R "test_yaml_validate|test_yaml_redact|test_db_system_settings|test_go2rtc_process_detection|test_go2rtc_process_config_generation|test_go2rtc_binary_detection|test_go2rtc_two_config_merge"
+
+      - name: Generate coverage report
+        if: always()
+        run: |
+          cd build
+          lcov --capture \
+               --directory . \
+               --output-file coverage.info \
+               --ignore-errors mismatch
+
+          lcov --remove coverage.info \
+               '/usr/*' \
+               '*/third_party/*' \
+               '*/external/*' \
+               '*/tests/*' \
+               --output-file coverage_filtered.info \
+               --ignore-errors unused
+
+          lcov --list coverage_filtered.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        if: always()
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/coverage_filtered.info
+          flags: go2rtc-unity
+          name: lightnvr-go2rtc-coverage
+          fail_ci_if_error: false
 
       - name: Upload test artifacts on failure
         uses: actions/upload-artifact@v6
