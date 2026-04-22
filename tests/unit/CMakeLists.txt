@@ -159,6 +159,7 @@ endif()
 add_layer2_test_with_curl(test_go2rtc_process_detection)
 if(ENABLE_GO2RTC)
     add_layer2_test_with_curl(test_go2rtc_process_config_generation)
+    add_layer2_test_with_curl(test_go2rtc_binary_detection)
 endif()
 
 # ====================================================================

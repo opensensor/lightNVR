@@ -7,6 +7,7 @@
 #define GO2RTC_PROCESS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 /**
  * @brief Initialize the go2rtc process manager
@@ -115,5 +116,32 @@ int go2rtc_process_get_rtsp_port(void);
  * @return pid_t The process ID, or -1 if not running
  */
 int go2rtc_process_get_pid(void);
+
+/**
+ * @brief Probe a candidate go2rtc binary by running `<path> --version`.
+ *
+ * Spawns @p path with argument "--version" and reads up to 4 KB of its
+ * standard output.  Returns 1 when the child exits 0 within 2 seconds AND
+ * the collected stdout contains the substring "go2rtc version ".  Otherwise
+ * returns 0.  The child is always waited for and its pipe FDs closed before
+ * the call returns (no zombies).
+ *
+ * Exposed primarily for unit testing of the Docker binary-detection hardening
+ * in T8.  Safe to call from production code as an opaque "is this really a
+ * go2rtc binary?" oracle.
+ *
+ * @param path            Absolute or PATH-resolvable binary path.  Must be
+ *                        executable by the current process.
+ * @param version_out     Optional buffer to receive the matched version line
+ *                        (first line of stdout that contained the signature).
+ *                        May be NULL to discard.
+ * @param version_out_sz  Size of @p version_out, including space for the NUL
+ *                        terminator.  Ignored when @p version_out is NULL.
+ * @return 1 on successful match, 0 on any failure (exec error, non-zero exit,
+ *         timeout, or signature mismatch).
+ */
+int go2rtc_process_probe_version(const char *path,
+                                 char *version_out,
+                                 size_t version_out_sz);
 
 #endif /* GO2RTC_PROCESS_H */

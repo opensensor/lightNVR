@@ -15,6 +15,8 @@
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
+#include <time.h>
 #include <curl/curl.h>
 
 #include "video/go2rtc/go2rtc_process.h"
@@ -395,6 +397,7 @@ static char *g_config_path = NULL;
 static char *g_override_path = NULL;
 static pid_t g_process_pid = -1;
 static bool g_initialized = false;
+static bool g_using_external_service = false; // true when init detected a live service
 static int g_rtsp_port = 8554; // Default RTSP port
 static int g_api_port = 1984;  // Configured API port (updated during init)
 
@@ -477,20 +480,333 @@ static bool is_go2rtc_running_as_service(int api_port) {
 }
 
 /**
- * @brief Check if go2rtc is available in PATH
+ * @brief Well-known absolute paths where a go2rtc binary may live.
  *
- * @param binary_path Buffer to store the found binary path
- * @param buffer_size Size of the buffer
- * @return true if binary was found, false otherwise
+ * Probed in order before falling back to the PATH walk.  Covers common
+ * container layouts (lightNVR Docker → /bin/go2rtc, Frigate → /rootfs/...,
+ * Alpine root → /go2rtc, native package installs → /usr/{local/,}bin/go2rtc,
+ * /opt/go2rtc/go2rtc).
+ */
+static const char *const k_well_known_go2rtc_paths[] = {
+    "/bin/go2rtc",
+    "/usr/local/bin/go2rtc",
+    "/usr/bin/go2rtc",
+    "/opt/go2rtc/go2rtc",
+    "/rootfs/usr/local/go2rtc/go2rtc",
+    "/go2rtc",
+    NULL,
+};
+
+/**
+ * @brief Diagnostic state populated during binary/service discovery in
+ *        go2rtc_process_init() and rendered by go2rtc_process_start() when
+ *        startup fails.  Purely informational; never consulted for control
+ *        flow.
+ */
+static struct {
+    char configured_path[PATH_MAX];
+    bool configured_path_present;      /* user supplied a non-NULL, non-empty value */
+    bool configured_path_exists;       /* access(path, F_OK) == 0 */
+    bool configured_path_executable;   /* access(path, X_OK) == 0 */
+    bool configured_path_version_ok;   /* probe_go2rtc_version returned 1 */
+    char probe_paths_tried[1024];      /* comma-joined list */
+    bool service_port_open;
+    bool service_http_ok;
+} g_discovery_diag;
+
+static void discovery_diag_reset(void) {
+    memset(&g_discovery_diag, 0, sizeof(g_discovery_diag));
+}
+
+static void discovery_diag_append_probe(const char *path) {
+    if (!path) return;
+    size_t used = strlen(g_discovery_diag.probe_paths_tried);
+    size_t cap = sizeof(g_discovery_diag.probe_paths_tried);
+    if (used + 1 >= cap) return;
+    const char *sep = (used > 0) ? "," : "";
+    size_t need = strlen(sep) + strlen(path);
+    if (used + need + 1 >= cap) return;
+    snprintf(g_discovery_diag.probe_paths_tried + used,
+             cap - used, "%s%s", sep, path);
+}
+
+/**
+ * @brief Spawn `path --version` with a 2-second timeout and check the output
+ *        for the "go2rtc version " signature.
+ *
+ * @param path           Path to the candidate executable.
+ * @param version_out    Optional buffer that receives the first line of stdout
+ *                       that contained the signature.  May be NULL.
+ * @param version_out_sz Size of @p version_out including the NUL terminator.
+ * @return 1 if @p path is a valid go2rtc binary, 0 otherwise.
+ *
+ * Zombie-safety: the child is ALWAYS reaped before this function returns.
+ * Pipe FDs are closed in every exit path.
+ */
+static int probe_go2rtc_version(const char *path,
+                                char *version_out,
+                                size_t version_out_sz) {
+    if (version_out && version_out_sz > 0) {
+        version_out[0] = '\0';
+    }
+
+    if (!path || path[0] == '\0') {
+        return 0;
+    }
+
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        log_warn("probe_go2rtc_version: pipe() failed for %s: %s",
+                 path, strerror(errno));
+        return 0;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        log_warn("probe_go2rtc_version: fork() failed for %s: %s",
+                 path, strerror(errno));
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return 0;
+    }
+
+    if (pid == 0) {
+        /* Child: redirect stdout+stderr to the pipe write-end, then exec. */
+        close(pipefd[0]);
+        if (dup2(pipefd[1], STDOUT_FILENO) == -1 ||
+            dup2(pipefd[1], STDERR_FILENO) == -1) {
+            _exit(127);
+        }
+        close(pipefd[1]);
+
+        /* Close standard input so the child cannot block on a TTY read. */
+        int devnull = open("/dev/null", O_RDONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDIN_FILENO);
+            close(devnull);
+        }
+
+        execl(path, path, "--version", (char *)NULL);
+        _exit(127);
+    }
+
+    /* Parent: poll the read end for up to 2 seconds, collect up to 4 KB. */
+    close(pipefd[1]);
+
+    char buf[4096];
+    size_t buf_used = 0;
+    const int timeout_ms_total = 2000;
+    struct timespec t_start;
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+    bool timed_out = false;
+    for (;;) {
+        struct timespec t_now;
+        clock_gettime(CLOCK_MONOTONIC, &t_now);
+        long elapsed_ms =
+            (t_now.tv_sec - t_start.tv_sec) * 1000L +
+            (t_now.tv_nsec - t_start.tv_nsec) / 1000000L;
+        int remain_ms = timeout_ms_total - (int)elapsed_ms;
+        if (remain_ms <= 0) {
+            timed_out = true;
+            break;
+        }
+
+        struct pollfd pfd = { .fd = pipefd[0], .events = POLLIN };
+        int pr = poll(&pfd, 1, remain_ms);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (pr == 0) {
+            timed_out = true;
+            break;
+        }
+
+        if (pfd.revents & (POLLIN | POLLHUP | POLLERR)) {
+            if (buf_used >= sizeof(buf) - 1) {
+                /* Buffer full — drain the pipe so the child isn't blocked,
+                 * but stop saving data. */
+                char scratch[512];
+                ssize_t drained = read(pipefd[0], scratch, sizeof(scratch));
+                if (drained <= 0) break;
+                continue;
+            }
+            ssize_t n = read(pipefd[0], buf + buf_used,
+                             sizeof(buf) - 1 - buf_used);
+            if (n < 0) {
+                if (errno == EINTR) continue;
+                break;
+            }
+            if (n == 0) {
+                /* EOF */
+                break;
+            }
+            buf_used += (size_t)n;
+        }
+    }
+    buf[buf_used] = '\0';
+    close(pipefd[0]);
+
+    /* Reap the child.  If we timed out or the read loop exited via an error
+     * path (poll/read failure) while the child is still alive, force-kill it
+     * first so the final blocking waitpid() is guaranteed to return
+     * promptly.  SIGKILL on an already-exited child is harmless (ESRCH). */
+    if (timed_out) {
+        log_warn("probe_go2rtc_version: timeout waiting for %s --version", path);
+        kill(pid, SIGKILL);
+    } else {
+        /* Non-blocking check: is the child still running? */
+        int status_nb = 0;
+        pid_t w_nb;
+        do {
+            w_nb = waitpid(pid, &status_nb, WNOHANG);
+        } while (w_nb == -1 && errno == EINTR);
+        if (w_nb == 0) {
+            /* Still running after read loop ended (e.g. poll error). */
+            kill(pid, SIGKILL);
+        } else if (w_nb == pid) {
+            /* Already exited — check status now and skip the blocking wait. */
+            if (!WIFEXITED(status_nb) || WEXITSTATUS(status_nb) != 0) {
+                return 0;
+            }
+            goto check_signature;
+        }
+        /* w_nb == -1 (ECHILD etc.): fall through to the blocking wait, which
+         * will also return -1 and we'll treat as failure. */
+    }
+
+    {
+        int status = 0;
+        pid_t waited;
+        do {
+            waited = waitpid(pid, &status, 0);
+        } while (waited == -1 && errno == EINTR);
+
+        if (timed_out) {
+            return 0;
+        }
+        if (waited != pid) {
+            return 0;
+        }
+        if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+            return 0;
+        }
+    }
+
+check_signature:;
+    const char *match = strstr(buf, "go2rtc version ");
+    if (!match) {
+        return 0;
+    }
+
+    if (version_out && version_out_sz > 0) {
+        /* Copy the line containing the match (up to newline) into version_out. */
+        const char *line_end = strchr(match, '\n');
+        size_t len = line_end ? (size_t)(line_end - match) : strlen(match);
+        if (len >= version_out_sz) len = version_out_sz - 1;
+        memcpy(version_out, match, len);
+        version_out[len] = '\0';
+    }
+
+    return 1;
+}
+
+/**
+ * @brief Public wrapper around @ref probe_go2rtc_version.  Exposed for
+ *        unit testing of the Docker binary-detection hardening.
+ */
+int go2rtc_process_probe_version(const char *path,
+                                 char *version_out,
+                                 size_t version_out_sz) {
+    return probe_go2rtc_version(path, version_out, version_out_sz);
+}
+
+/**
+ * @brief Log a single probe attempt at INFO level in a consistent shape.
+ *
+ * Shape:
+ *   tried <path>: exists=yes|no, executable=yes|no|n/a, version_ok=yes|no|n/a
+ */
+static void log_probe_attempt(const char *path,
+                              bool exists,
+                              bool executable,
+                              bool checked_version,
+                              bool version_ok) {
+    log_info("go2rtc binary probe: tried %s: exists=%s, executable=%s, version_ok=%s",
+             path,
+             exists ? "yes" : "no",
+             !exists ? "n/a" : (executable ? "yes" : "no"),
+             !checked_version ? "n/a" : (version_ok ? "yes" : "no"));
+}
+
+/**
+ * @brief Try a single candidate path: access() + probe_go2rtc_version().
+ *        Appends to the diagnostic trace on every attempt.
+ *
+ * @return true if the candidate is a valid go2rtc binary (stored in @p out).
+ */
+static bool try_go2rtc_candidate(const char *candidate,
+                                 char *out,
+                                 size_t out_size) {
+    discovery_diag_append_probe(candidate);
+
+    bool exists = (access(candidate, F_OK) == 0);
+    bool executable = exists && (access(candidate, X_OK) == 0);
+    bool version_ok = false;
+    bool checked_version = false;
+
+    if (executable) {
+        checked_version = true;
+        version_ok = (probe_go2rtc_version(candidate, NULL, 0) == 1);
+    }
+
+    log_probe_attempt(candidate, exists, executable, checked_version, version_ok);
+
+    if (executable && version_ok) {
+        safe_strcpy(out, candidate, out_size, 0);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Check if go2rtc is available — first in well-known absolute paths,
+ *        then in PATH.  Every candidate is version-probed so a wrong-arch
+ *        or wrong-tool binary with the same name is rejected.
+ *
+ * @param binary_path Buffer to store the found binary path.
+ * @param buffer_size Size of the buffer.
+ * @return true if a verified go2rtc binary was found, false otherwise.
  */
 static bool check_go2rtc_in_path(char *binary_path, size_t buffer_size) {
-    // Use find_binary_in_path() which searches PATH directories directly
-    // (no shell / popen needed)
-    find_binary_in_path("go2rtc", binary_path, buffer_size);
+    if (!binary_path || buffer_size == 0) {
+        return false;
+    }
+    binary_path[0] = '\0';
 
-    if (binary_path[0] != '\0' && access(binary_path, X_OK) == 0) {
-        log_info("Found go2rtc binary in PATH: %s", binary_path);
-        return true;
+    /* 1) Well-known absolute paths first (covers /bin/go2rtc for the
+     *    ghcr.io/opensensor/lightnvr:latest Docker image — issue #394). */
+    for (int i = 0; k_well_known_go2rtc_paths[i] != NULL; i++) {
+        if (try_go2rtc_candidate(k_well_known_go2rtc_paths[i],
+                                 binary_path, buffer_size)) {
+            log_info("Found go2rtc binary at well-known path: %s", binary_path);
+            return true;
+        }
+    }
+
+    /* 2) PATH walk.  find_binary_in_path() performs its own access(X_OK),
+     *    so we only need to version-probe whatever it returns. */
+    char path_candidate[PATH_MAX] = {0};
+    find_binary_in_path("go2rtc", path_candidate, sizeof(path_candidate));
+    if (path_candidate[0] != '\0') {
+        if (try_go2rtc_candidate(path_candidate, binary_path, buffer_size)) {
+            log_info("Found go2rtc binary in PATH: %s", binary_path);
+            return true;
+        }
+    } else {
+        discovery_diag_append_probe("<PATH:not-found>");
+        log_info("go2rtc binary probe: PATH walk found no 'go2rtc' entry");
     }
 
     return false;
@@ -543,49 +859,101 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
     // Store the configured API port so all runtime checks use the right port
     g_api_port = api_port > 0 ? api_port : 1984;
 
-    // Check if go2rtc is already running as a service
-    if (is_go2rtc_running_as_service(g_api_port)) {
-        log_info("go2rtc is already running as a service, will use the existing service");
-        // Set an empty binary path to indicate we're using an existing service
-        g_binary_path = strdup("");
-    } else {
-        // Check if binary exists at the specified path
-        char final_binary_path[PATH_MAX] = {0};
-
-        if (binary_path && access(binary_path, X_OK) == 0) {
-            // Use the provided binary path
-            safe_strcpy(final_binary_path, binary_path, sizeof(final_binary_path), 0);
-            log_info("Using provided go2rtc binary: %s", final_binary_path);
-        } else {
-            if (binary_path) {
-                log_warn("go2rtc binary not found or not executable at specified path: %s", binary_path);
-            }
-
-            // Use go2rtc from PATH
-            if (!check_go2rtc_in_path(final_binary_path, sizeof(final_binary_path))) {
-                log_error("go2rtc binary not found in PATH and no running service detected");
-                free(g_config_dir);
-                free(g_config_path);
-                free(g_override_path);
-                g_config_dir = NULL;
-                g_config_path = NULL;
-                g_override_path = NULL;
-                return false;
-            }
+    // Reset diagnostic state for this init pass so go2rtc_process_start can
+    // render a structured failure log if discovery fails later.
+    discovery_diag_reset();
+    if (binary_path && binary_path[0] != '\0') {
+        g_discovery_diag.configured_path_present = true;
+        safe_strcpy(g_discovery_diag.configured_path, binary_path,
+                    sizeof(g_discovery_diag.configured_path), 0);
+        g_discovery_diag.configured_path_exists =
+            (access(binary_path, F_OK) == 0);
+        g_discovery_diag.configured_path_executable =
+            g_discovery_diag.configured_path_exists &&
+            (access(binary_path, X_OK) == 0);
+        if (g_discovery_diag.configured_path_executable) {
+            g_discovery_diag.configured_path_version_ok =
+                (probe_go2rtc_version(binary_path, NULL, 0) == 1);
         }
+    }
 
-        // Store binary path
+    /* Pre-compute service-check diagnostic details (the helper below only
+     * returns a boolean).  These feed the structured failure log and do not
+     * affect control flow on their own. */
+    g_discovery_diag.service_port_open = check_tcp_port_open(g_api_port);
+    bool service_running = is_go2rtc_running_as_service(g_api_port);
+    g_discovery_diag.service_http_ok = service_running;
+
+    // Always probe for a binary, even when a service is detected — that way,
+    // if the external service dies later, we still have a binary to fall back
+    // on (issue #394 follow-up).
+    char final_binary_path[PATH_MAX] = {0};
+    bool found_binary = false;
+
+    if (g_discovery_diag.configured_path_version_ok) {
+        // Configured path is a fully-verified go2rtc binary — prefer it.
+        safe_strcpy(final_binary_path, binary_path, sizeof(final_binary_path), 0);
+        log_info("Using provided go2rtc binary: %s", final_binary_path);
+        found_binary = true;
+    } else if (g_discovery_diag.configured_path_executable) {
+        /* Executable but failed version probe — warn, don't trust it, but
+         * still record in the diagnostic that we tried. */
+        log_warn("Configured go2rtc binary at %s is executable but did not "
+                 "respond to --version as expected; falling back to discovery",
+                 binary_path);
+    } else if (g_discovery_diag.configured_path_present) {
+        log_warn("go2rtc binary not found or not executable at specified path: %s",
+                 binary_path);
+    }
+
+    if (!found_binary) {
+        if (check_go2rtc_in_path(final_binary_path, sizeof(final_binary_path))) {
+            found_binary = true;
+        }
+    }
+
+    if (service_running) {
+        log_info("go2rtc is already running as a service, will use the existing service");
+        g_using_external_service = true;
+        if (found_binary) {
+            log_info("Also caching fallback binary for service-death recovery: %s",
+                     final_binary_path);
+            g_binary_path = strdup(final_binary_path);
+        } else {
+            log_warn("No local go2rtc binary found; running service is the only "
+                     "option (no fallback if the service dies)");
+            g_binary_path = strdup("");
+        }
+    } else {
+        g_using_external_service = false;
+        if (!found_binary) {
+            log_error("go2rtc binary not found in well-known paths or PATH, "
+                      "and no running service detected");
+            free(g_config_dir);
+            g_config_dir = NULL;
+            free(g_config_path);
+            g_config_path = NULL;
+            free(g_override_path);
+            g_override_path = NULL;
+            return false;
+        }
         g_binary_path = strdup(final_binary_path);
     }
 
     g_initialized = true;
 
-    if (g_binary_path[0] != '\0') {
+    if (g_using_external_service) {
+        if (g_binary_path && g_binary_path[0] != '\0') {
+            log_info("go2rtc process manager initialized to use existing service "
+                     "(fallback binary cached: %s), config dir: %s",
+                     g_binary_path, g_config_dir);
+        } else {
+            log_info("go2rtc process manager initialized to use existing service, "
+                     "config dir: %s", g_config_dir);
+        }
+    } else {
         log_info("go2rtc process manager initialized with binary: %s, config dir: %s",
                 g_binary_path, g_config_dir);
-    } else {
-        log_info("go2rtc process manager initialized to use existing service, config dir: %s",
-                g_config_dir);
     }
 
     return true;
@@ -1283,8 +1651,11 @@ bool go2rtc_process_is_running(void) {
         return false;
     }
 
-    // If we're using an existing service, check if the service is running
-    if (g_binary_path && g_binary_path[0] == '\0') {
+    // If we're using an existing service, check if the service is running.
+    // (We used to rely on an empty g_binary_path as the signal, but we now
+    // cache a fallback binary path even for externally-managed services so
+    // use the explicit flag set during init.)
+    if (g_using_external_service) {
         return is_go2rtc_running_as_service(g_api_port);
     }
 
@@ -1425,6 +1796,30 @@ bool go2rtc_process_start(int api_port) {
     // If we don't have a binary path (using existing service), but no service was detected,
     // we can't start go2rtc
     if (g_binary_path == NULL || g_binary_path[0] == '\0') {
+        // Structured diagnostic — turns an opaque "no binary" error into an
+        // actionable dump for the operator.  Matches the shape in the PRD:
+        //   configured_path='...' (exists=..., executable=..., version=...)
+        //   path_probe_paths_tried=...
+        //   service_check: port_open=..., http_ok=...
+        log_error("go2rtc binary discovery failed:");
+        if (g_discovery_diag.configured_path_present) {
+            log_error("  configured_path='%s' (exists=%s, executable=%s, version=%s)",
+                      g_discovery_diag.configured_path,
+                      g_discovery_diag.configured_path_exists ? "yes" : "no",
+                      !g_discovery_diag.configured_path_exists ? "n/a"
+                          : (g_discovery_diag.configured_path_executable ? "yes" : "no"),
+                      !g_discovery_diag.configured_path_executable ? "n/a"
+                          : (g_discovery_diag.configured_path_version_ok ? "ok" : "bad"));
+        } else {
+            log_error("  configured_path='' (none supplied)");
+        }
+        log_error("  path_probe_paths_tried=%s",
+                  g_discovery_diag.probe_paths_tried[0]
+                      ? g_discovery_diag.probe_paths_tried
+                      : "<none>");
+        log_error("  service_check: port_open=%s, http_ok=%s",
+                  g_discovery_diag.service_port_open ? "yes" : "no",
+                  g_discovery_diag.service_http_ok ? "yes" : "no");
         log_error("No go2rtc binary available and no running service detected");
         return false;
     }
@@ -1700,8 +2095,10 @@ bool go2rtc_process_stop(void) {
         return false;
     }
 
-    // Only stop go2rtc if we started it (g_binary_path is not empty)
-    if (g_binary_path && g_binary_path[0] != '\0') {
+    // Only stop go2rtc if we started it.  When init detected an external
+    // service, we never launched anything — even if g_binary_path was cached
+    // for fallback purposes.
+    if (!g_using_external_service && g_binary_path && g_binary_path[0] != '\0') {
         log_info("Stopping go2rtc process that we started");
 
         // Kill all go2rtc processes, not just the one we started
@@ -1728,8 +2125,8 @@ void go2rtc_process_cleanup(void) {
         return;
     }
 
-    // Only stop go2rtc if we started it (g_binary_path is not empty)
-    if (g_binary_path && g_binary_path[0] != '\0') {
+    // Only stop go2rtc if we started it (not an externally-managed service)
+    if (!g_using_external_service && g_binary_path && g_binary_path[0] != '\0') {
         log_info("Stopping go2rtc process that we started during cleanup");
         kill_all_go2rtc_processes();
     } else {
@@ -1747,6 +2144,7 @@ void go2rtc_process_cleanup(void) {
     g_config_path = NULL;
     g_override_path = NULL;
     g_process_pid = -1;
+    g_using_external_service = false;
     g_api_port = 1984;
     g_initialized = false;
 
