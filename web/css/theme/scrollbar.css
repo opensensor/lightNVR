@@ -53,10 +53,13 @@
  * web/js/utils/reduceMotion.js on boot (and on preference change).
  * The utility resolves 'auto' against `prefers-reduced-motion: reduce` so
  * users who only have the OS setting still get the reduction by default.
+ *
+ * Exclude loading indicators and any explicit motion opt-outs so pending
+ * states (for example Tailwind `animate-spin`) continue to communicate work.
  * ------------------------------------------------------------------------- */
-[data-reduce-motion="true"] *,
-[data-reduce-motion="true"] *::before,
-[data-reduce-motion="true"] *::after {
+[data-reduce-motion="true"] *:not(.animate-spin):not([data-allow-motion]),
+[data-reduce-motion="true"] *:not(.animate-spin):not([data-allow-motion])::before,
+[data-reduce-motion="true"] *:not(.animate-spin):not([data-allow-motion])::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
