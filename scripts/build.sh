@@ -143,6 +143,17 @@ if ! command -v cmake &> /dev/null; then
     exit 1
 fi
 
+# Surface libyaml (yaml-0.1) detection for go2rtc override validation (T1).
+# Not fatal — build falls back to the validation-disabled stub.
+if command -v pkg-config &> /dev/null; then
+    if pkg-config --exists yaml-0.1; then
+        echo "libyaml detected: $(pkg-config --modversion yaml-0.1) — YAML validation enabled"
+    else
+        echo "libyaml (yaml-0.1) NOT found — YAML validation will be DISABLED (stub)"
+        echo "  Install: apt-get install libyaml-dev  /  apk add yaml-dev"
+    fi
+fi
+
 # Configure SOD and Tests options
 SOD_OPTION=""
 if [ "$ENABLE_SOD" -eq 1 ]; then
