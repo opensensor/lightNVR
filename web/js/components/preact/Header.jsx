@@ -318,10 +318,22 @@ export function Header({ version = VERSION }) {
       <>
       <header className="app-header py-2 shadow-md mb-4 w-full" style={{ position: 'relative', zIndex: 20, backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))' }}>
         <div className="container mx-auto px-4 flex justify-between items-center">
-          <div className="logo flex items-center">
+          <a
+            href={getLiveViewHref()}
+            id="nav-logo"
+            className="logo flex items-center no-underline text-inherit rounded hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] focus:ring-offset-2"
+            style={{ color: 'inherit' }}
+            aria-label={t('nav.live')}
+            onClick={(e) => {
+              forceNavigation(getLiveViewHref(), e);
+              if (mobileMenuOpen) {
+                toggleMobileMenu();
+              }
+            }}
+          >
             <h1 className="text-xl font-bold m-0">LightNVR</h1>
             <span className="version text-xs ml-2" style={{color: 'hsl(var(--muted-foreground))'}}>v{version}</span>
-          </div>
+          </a>
 
           {/* Desktop Navigation */}
           <nav className="hidden lg:block" style={{ position: 'relative', zIndex: 20 }}>

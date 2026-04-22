@@ -238,9 +238,50 @@ order; the orchestrator may run unblocked tasks in parallel.
   - Manual on a 375px viewport: trigger a toast (e.g. save Settings) —
     toast renders top-center, doesn't cover bottom nav, doesn't sit
     under the notch.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Header.jsx: wrapped the `LightNVR` + version logo block in an `<a>`
+    that routes to Live View via the existing `getLiveViewHref()`
+    helper and calls `forceNavigation()` on click (matches the
+    convention used by every other nav item in the same file). The
+    logo is now a real link with `aria-label={t('nav.live')}` and a
+    visible `focus:ring-2 ring-primary` ring on keyboard focus.
+    Behaviour is identical from every top-level page (Live,
+    Recordings, Streams, Settings, Users, System, Timeline).
+  - ToastContainer.jsx: replaced the single absolute-centered container
+    class with a responsive one — `top-4 left-1/2 -translate-x-1/2`
+    (mobile, top-center) flipping to
+    `sm:top-4 sm:right-4 sm:left-auto sm:translate-x-0` (desktop,
+    top-right). Added `pt-[env(safe-area-inset-top)]` so iOS notch
+    devices don't clip the first toast. Because toasts are now
+    top-anchored on mobile, they can never overlap the bottom nav.
+  - Footer.jsx is the only bottom-anchored chrome element in the
+    current tree (searched for `bottom-0`, `fixed bottom`,
+    `MobileBottomNav`, `BottomNav` — no dedicated bottom-nav
+    component exists yet; the 4-tab mobile nav is a dropdown under
+    the Header). Applied the §5.3 treatment there:
+    `backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--card)/0.8)]`
+    (opaque fallback on browsers without `backdrop-filter`) and
+    `pb-[calc(0.75rem+env(safe-area-inset-bottom))]` so the footer
+    clears the iOS home-indicator gesture bar without collapsing on
+    non-iOS browsers.
+  - Did NOT touch `web/css/app.css` (T4 owns theme / global CSS).
+    Tailwind v4 resolves `backdrop-blur`, `supports-[backdrop-filter]`,
+    arbitrary `bg-[hsl(var(--card)/0.8)]`, and
+    `pb-[calc(...+env(safe-area-inset-bottom))]` without additional
+    utility-layer work — verified by `grep`ing the compiled
+    `web/dist/css/*.css` output.
+  - `npm --prefix web run build` → 278 modules transformed, built in
+    ~10s, 0 errors. (Also regenerated `web/js/version.js` via
+    `scripts/extract_version.sh` first — it's a `.gitignore`d
+    auto-generated file required by the build.)
 - **files edited/created**:
+  - `web/js/components/preact/Header.jsx` (logo → Live View link)
+  - `web/js/components/preact/ToastContainer.jsx` (responsive
+    positioning + safe-area-top)
+  - `web/js/components/preact/Footer.jsx` (backdrop-blur +
+    safe-area-bottom)
+  - `docs/prd/UXD_01_MobileFirstFoundation.md` (this log)
 
 ### T4: Theme polish (scrollbar, reduce-motion)
 
