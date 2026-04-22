@@ -377,9 +377,97 @@ order; the orchestrator may run unblocked tasks in parallel.
     Save fires one request thanks to T1.
   - URL hash reflects active tab (e.g. `/settings#go2rtc`); reload
     restores it.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Split the 2,328-line `SettingsView.jsx` into an 853-line parent and 9
+    per-tab subcomponents under `web/js/components/preact/settings/`
+    (~1,881 lines distributed across tab files, biggest is Go2rtcTab
+    at 531 due to the T9 override editor).
+    The parent retains `settings` state, baseline snapshot for dirty
+    tracking, save wiring, the `saveSettingsMutation` / `handleSave`
+    flow, shared `handleInputChange` / `handleThresholdChange` handlers,
+    viewer-mode gating, restart notice, tab chrome, search input, and
+    the sticky-save bar. Every tab is a pure-JSX component that takes
+    `settings` + handlers as props; only `Go2rtcTab.jsx` holds local
+    state (the T9 override validation, effective-config modal state,
+    and preset-insertion helper) because no other tab needs them.
+  - Tab navigation mirrors SystemView's horizontal-on-mobile /
+    vertical-on-desktop pattern. On mobile (`< 640px`) the tab strip is
+    `flex overflow-x-auto snap-x snap-mandatory gap-2`, active tab gets
+    a primary-colored underline. On desktop (`≥ 640px`) the sidebar
+    becomes vertical (`sm:flex-col sm:gap-1`) with active tab rendered
+    as a primary-bg pill. Every tab button has `min-h-11` (T6 floor).
+  - URL hash persistence: parent reads `location.hash` on mount
+    (defaulting to `#general`), updates via `history.replaceState` on
+    tab change (no history stacking), and subscribes to `hashchange`
+    for browser back/forward. Valid hashes: `#general`, `#storage`,
+    `#streams`, `#detection`, `#go2rtc`, `#mqtt`, `#auth`,
+    `#appearance`, `#advanced`. Invalid / missing hash → `general`.
+  - Live label search: a debounced (150 ms) search input walks
+    `[data-setting-label]` attributes across ALL tab panels (kept
+    mounted with `display:none` on inactive tabs specifically so the
+    search scan doesn't miss anything). On non-empty query: matching
+    wrappers get `ring-2 ring-primary bg-primary/5`, non-matches get
+    `opacity-40`, and the tab that owns the first match is
+    auto-selected before `scrollIntoView({behavior:'smooth',
+    block:'center'})` fires. A `×` clear button appears while the
+    query is non-empty; clearing returns all fields to idle styling.
+    Labels are indexed by visible `<label>` text only (PRD §8 v1
+    default — no i18n-key plumbing).
+  - Sticky Save: `sticky bottom-0 z-30 backdrop-blur` bar with
+    `paddingBottom: calc(0.75rem + env(safe-area-inset-bottom))` so
+    it respects the iOS gesture bar. Preserves T1's `<AsyncButton>`
+    wiring verbatim (calls `saveSettingsMutation.mutateAsync` via the
+    existing `saveSettings()` helper). Save button is disabled until
+    `settings` differs from the baseline-snapshot ref that's captured
+    on load and re-captured after a successful POST.
+  - Preserved verbatim: T4 Reduce Motion toggle (now in
+    `AppearanceTab.jsx`, same three-way radiogroup), the T9/T14/T4b
+    go2rtc override editor with quarantine banner + size indicator +
+    validate-on-blur + effective-config modal + presets dropdown +
+    supported-sections collapsible (moved to `Go2rtcTab.jsx` along
+    with `overrideValidation`, `effectiveConfig`, `OVERRIDE_PRESETS`,
+    `KNOWN_GO2RTC_SECTIONS`, `utf8ByteLength`, `GO2RTC_OVERRIDE_MAX_BYTES`).
+  - Viewer short-circuit preserved: when `userRole === 'viewer'`, the
+    parent renders only `<AppearanceTab>` + the admin-only notice, no
+    tab chrome, no search, no save button.
+  - Counts:  71 `onChange={handleInputChange}` callsites before → 71
+    after (cross-checked with `grep -c`). Every `{settings.X}` state
+    access present in the original tree is present in exactly one tab.
+  - i18n: added 15 new keys to `en.json` (tab labels + search
+    placeholder + "Unsaved changes" + "Authentication & Access" +
+    "Streams Defaults" header + description) and the Portuguese
+    equivalents to `pt-BR.json`. Other locales fall back to the
+    English label via the existing `t(key) || key` path + the
+    `labelFallback` field on each tab definition.
+  - Build: `npm --prefix web run build` → `✓ built in 10.24s`, 0
+    errors. Settings bundle at `dist/assets/settings-*.js`
+    (~96 kB raw / ~17 kB gz — ~1 kB larger than pre-T2, accounting
+    for the tab-chrome and search logic).
+  - Tests: `npm --prefix web test -- tests/useAsyncAction.spec.js`
+    → 4/4 pass. Full Jest suite: `i18n.spec.js` 4/5 (same
+    pre-existing "handles complete locale loading failure
+    gracefully" failure flagged by T1/T5), `navigation-utils.spec.js`,
+    `timeline-utils.spec.js`, `recordingsAPI.spec.js` all pass.
 - **files edited/created**:
+  - created `web/js/components/preact/settings/GeneralTab.jsx`
+  - created `web/js/components/preact/settings/StorageTab.jsx`
+  - created `web/js/components/preact/settings/StreamsDefaultsTab.jsx`
+  - created `web/js/components/preact/settings/DetectionTab.jsx`
+  - created `web/js/components/preact/settings/Go2rtcTab.jsx`
+  - created `web/js/components/preact/settings/MqttTab.jsx`
+  - created `web/js/components/preact/settings/AuthTab.jsx`
+  - created `web/js/components/preact/settings/AppearanceTab.jsx`
+  - created `web/js/components/preact/settings/AdvancedTab.jsx`
+  - rewrote `web/js/components/preact/SettingsView.jsx`
+    (2,328 → 853 lines; kept shared state + handlers, added tab
+    chrome / hash sync / live search / sticky save)
+  - modified `web/public/locales/en.json` (15 new keys for tabs +
+    search + sticky-save strip + Authentication/StreamsDefaults
+    headers)
+  - modified `web/public/locales/pt-BR.json` (same 15 keys,
+    translated)
+  - modified `docs/prd/UXD_01_MobileFirstFoundation.md` (this log)
 
 ### T5: Streams page card layout (responsive grid + badge)
 

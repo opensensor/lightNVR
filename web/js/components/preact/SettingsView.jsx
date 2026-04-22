@@ -1,27 +1,69 @@
 /**
  * LightNVR Web Interface SettingsView Component
- * Preact component for the settings page
+ *
+ * PRD UXD_01 §5.2 / T2 (#399): tabbed layout, URL-hash persistence, live
+ * label search, and a sticky Save button that uses T1's <AsyncButton>.
+ * The per-tab form JSX lives in `web/js/components/preact/settings/*.jsx`;
+ * this file owns the shared `settings` state, the save wiring, and the
+ * chrome that wraps the tabs.
  */
 
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useMemo, useRef } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { useQuery, useMutation, fetchJSON } from '../../query-client.js';
-import { ThemeCustomizer } from './ThemeCustomizer.jsx';
 import { AsyncButton } from './AsyncButton.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
 import { formatLocalDateTime } from '../../utils/date-utils.js';
 import { useI18n } from '../../i18n.js';
 import {
-  REDUCE_MOTION_VALUES,
   getReduceMotionPref,
   setReduceMotionPref,
   applyReduceMotion,
 } from '../../utils/reduceMotion.js';
 
+import { GeneralTab } from './settings/GeneralTab.jsx';
+import { StorageTab } from './settings/StorageTab.jsx';
+import { StreamsDefaultsTab } from './settings/StreamsDefaultsTab.jsx';
+import { DetectionTab } from './settings/DetectionTab.jsx';
+import { Go2rtcTab } from './settings/Go2rtcTab.jsx';
+import { MqttTab } from './settings/MqttTab.jsx';
+import { AuthTab } from './settings/AuthTab.jsx';
+import { AppearanceTab } from './settings/AppearanceTab.jsx';
+import { AdvancedTab } from './settings/AdvancedTab.jsx';
+
+/**
+ * Tab definitions. `id` is the URL hash fragment ("#general", "#go2rtc", …).
+ * `label` resolves via i18n; we fall back to the English display label if the
+ * key is missing so existing locale files keep rendering.
+ */
+const TAB_DEFS = [
+  { id: 'general',   labelKey: 'settings.tab.general',        labelFallback: 'General' },
+  { id: 'storage',   labelKey: 'settings.tab.storage',        labelFallback: 'Storage' },
+  { id: 'streams',   labelKey: 'settings.tab.streamsDefaults', labelFallback: 'Streams Defaults' },
+  { id: 'detection', labelKey: 'settings.tab.detection',      labelFallback: 'Detection' },
+  { id: 'go2rtc',    labelKey: 'settings.tab.go2rtc',         labelFallback: 'go2rtc' },
+  { id: 'mqtt',      labelKey: 'settings.tab.mqtt',           labelFallback: 'MQTT' },
+  { id: 'auth',      labelKey: 'settings.tab.auth',           labelFallback: 'Auth / Security' },
+  { id: 'appearance', labelKey: 'settings.tab.appearance',    labelFallback: 'Appearance' },
+  { id: 'advanced',  labelKey: 'settings.tab.advanced',       labelFallback: 'Advanced' },
+];
+
+const VALID_TAB_IDS = new Set(TAB_DEFS.map(t => t.id));
+
+/** Read the initial tab from URL hash, defaulting to "general". */
+function readTabFromHash() {
+  try {
+    if (typeof window === 'undefined' || !window.location) return 'general';
+    const raw = (window.location.hash || '').replace(/^#/, '').trim();
+    return VALID_TAB_IDS.has(raw) ? raw : 'general';
+  } catch (_err) {
+    return 'general';
+  }
+}
+
 /**
  * SettingsView component
- * @returns {JSX.Element} SettingsView component
  */
 export function SettingsView() {
   const { t } = useI18n();
@@ -33,7 +75,7 @@ export function SettingsView() {
     syslogIdent: 'lightnvr',
     syslogFacility: 'LOG_USER',
     storagePath: '/var/lib/lightnvr/recordings',
-    storagePathHls: '', // Optional HLS storage path; when empty, HLS segments use storagePath
+    storagePathHls: '',
     maxStorage: '0',
     retention: '30',
     autoDelete: true,
@@ -44,16 +86,15 @@ export function SettingsView() {
     dbPostBackupScript: '',
     webPort: '8080',
     webBindIp: '0.0.0.0',
-    webThreadPoolSize: '',   // populated from API; blank = use server default (2x cores)
+    webThreadPoolSize: '',
     maxStreams: '32',
     authEnabled: true,
-    demoMode: false, // Demo mode: allows unauthenticated viewer access
-    webrtcDisabled: false, // Whether WebRTC is disabled (use HLS only)
+    demoMode: false,
+    webrtcDisabled: false,
     authTimeoutHours: '24',
     authAbsoluteTimeoutHours: '168',
     trustedDeviceDays: '30',
     trustedProxyCidrs: '',
-    // Security settings
     forceMfaOnLogin: false,
     loginRateLimitEnabled: true,
     loginRateLimitMaxAttempts: '5',
@@ -94,20 +135,29 @@ export function SettingsView() {
     mqttKeepalive: '60',
     mqttQos: '1',
     mqttRetain: false,
-    // Home Assistant MQTT auto-discovery
     mqttHaDiscovery: false,
     mqttHaDiscoveryPrefix: 'homeassistant',
     mqttHaSnapshotInterval: '30',
-    // TURN server settings for WebRTC relay
     turnEnabled: false,
     turnServerUrl: '',
     turnUsername: '',
     turnPassword: '',
-    // ONVIF discovery settings
     onvifDiscoveryEnabled: false,
     onvifDiscoveryInterval: '300',
     onvifDiscoveryNetwork: 'auto'
   });
+
+  // Baseline snapshot of the last-loaded/saved settings, used for dirty detection.
+  // The save button is disabled until `settings` differs from this reference.
+  const baselineRef = useRef(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Active tab (synced to window.location.hash) and search query.
+  const [activeTab, setActiveTab] = useState(readTabFromHash);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const containerRef = useRef(null);
+  const firstMatchScrolledRef = useRef(false);
 
   // Fetch user role on mount
   useEffect(() => {
@@ -115,32 +165,14 @@ export function SettingsView() {
       const session = await validateSession();
       if (session.valid) {
         setUserRole(session.role);
-        console.log('User role:', session.role);
       } else {
-        // Session invalid - set to empty string to indicate fetch completed
         setUserRole('');
-        console.log('Session validation failed, no role');
       }
     }
     fetchUserRole();
   }, []);
 
-  // Session-level toggle for Appearance section (persisted to sessionStorage)
-  const [showAppearance, setShowAppearance] = useState(() => {
-    const stored = sessionStorage.getItem('lightnvr-show-appearance');
-    return stored === null ? true : stored !== 'false';
-  });
-
-  const toggleAppearance = () => {
-    setShowAppearance(prev => {
-      const next = !prev;
-      sessionStorage.setItem('lightnvr-show-appearance', next.toString());
-      return next;
-    });
-  };
-
-  // UXD T4 — Reduce Motion preference (Appearance section).
-  // Three-way control: Auto (default, follows prefers-reduced-motion) / On / Off.
+  // UXD T4 — Reduce Motion preference.
   const [reduceMotionPref, setReduceMotionPrefState] = useState(() => getReduceMotionPref());
   const handleReduceMotionChange = (value) => {
     const normalized = setReduceMotionPref(value);
@@ -148,26 +180,23 @@ export function SettingsView() {
     applyReduceMotion();
   };
 
-  // Role is still loading if null
+  // Role loading / permissions
   const roleLoading = userRole === null;
-  // Check if user can modify system settings (admin only)
-  // While loading, default to enabled so admin doesn't see disabled inputs
   const canModifySettings = roleLoading || userRole === 'admin';
-  // Viewers can only see/change theme (only applies when role is confirmed)
   const isViewer = userRole === 'viewer';
-  
-  // Fetch settings using useQuery
+
+  // Fetch settings
   const {
     data: settingsData,
     isLoading,
     refetch
   } = useQuery(
-    ['settings'], 
+    ['settings'],
     '/api/settings',
     {
-      timeout: 15000, // 15 second timeout
-      retries: 2,     // Retry twice
-      retryDelay: 1000 // 1 second between retries
+      timeout: 15000,
+      retries: 2,
+      retryDelay: 1000
     }
   );
 
@@ -177,13 +206,11 @@ export function SettingsView() {
     mutationFn: async (mappedSettings) => {
       return await fetchJSON('/api/settings', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(mappedSettings),
-        timeout: 20000, // 20 second timeout for saving settings
-        retries: 1,     // Retry once
-        retryDelay: 2000 // 2 seconds between retries
+        timeout: 20000,
+        retries: 1,
+        retryDelay: 2000
       });
     },
     onSuccess: (response) => {
@@ -193,7 +220,11 @@ export function SettingsView() {
       } else {
         showStatusMessage(t('settings.saved'));
       }
-      refetch(); // Refresh settings after saving
+      // Re-baseline: the server accepted our payload, so the current in-memory
+      // `settings` is the new ground truth until the user edits again.
+      baselineRef.current = settings;
+      setIsDirty(false);
+      refetch();
     },
     onError: (error) => {
       console.error('Error saving settings:', error);
@@ -254,110 +285,116 @@ export function SettingsView() {
     return formatLocalDateTime(timestamp);
   };
 
-  // Update settings state when data is loaded
+  // Map server response → local `settings` shape and stash baseline for dirty tracking.
   useEffect(() => {
-    if (settingsData) {
-      console.log('Settings loaded:', settingsData);
-      
-      // Map backend property names to frontend property names
-      const mappedData = {
-        logLevel: settingsData.log_level?.toString() || '',
-        syslogEnabled: settingsData.syslog_enabled || false,
-        syslogIdent: settingsData.syslog_ident || 'lightnvr',
-        syslogFacility: settingsData.syslog_facility || 'LOG_USER',
-        storagePath: settingsData.storage_path || '',
-        storagePathHls: settingsData.storage_path_hls || '', // Map the HLS storage path
-        maxStorage: settingsData.max_storage_size?.toString() || '',
-        retention: settingsData.retention_days?.toString() || '',
-        autoDelete: settingsData.auto_delete_oldest || false,
-        generateThumbnails: settingsData.generate_thumbnails !== false,
-        dbPath: settingsData.db_path || '',
-        dbBackupIntervalMinutes: settingsData.db_backup_interval_minutes?.toString() || '60',
-        dbBackupRetentionCount: settingsData.db_backup_retention_count?.toString() || '24',
-        dbPostBackupScript: settingsData.db_post_backup_script || '',
-        webPort: settingsData.web_port?.toString() || '',
-        webBindIp: settingsData.web_bind_ip?.toString() || '0.0.0.0',
-        webThreadPoolSize: settingsData.web_thread_pool_size?.toString() || '',
-        maxStreams: settingsData.max_streams?.toString() || '32',
-        authEnabled: settingsData.web_auth_enabled || false,
-        demoMode: settingsData.demo_mode || false,
-        webrtcDisabled: settingsData.webrtc_disabled || false,
-        authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
-        authAbsoluteTimeoutHours: settingsData.auth_absolute_timeout_hours?.toString() || '168',
-        trustedDeviceDays: settingsData.trusted_device_days?.toString() || '30',
-        trustedProxyCidrs: settingsData.trusted_proxy_cidrs || '',
-        // Security settings
-        forceMfaOnLogin: settingsData.force_mfa_on_login || false,
-        loginRateLimitEnabled: settingsData.login_rate_limit_enabled !== undefined ? settingsData.login_rate_limit_enabled : true,
-        loginRateLimitMaxAttempts: settingsData.login_rate_limit_max_attempts?.toString() || '5',
-        loginRateLimitWindowSeconds: settingsData.login_rate_limit_window_seconds?.toString() || '300',
-        bufferSize: settingsData.buffer_size?.toString() || '',
-        useSwap: settingsData.use_swap || false,
-        swapSize: settingsData.swap_size?.toString() || '',
-        detectionModelsPath: settingsData.models_path || '',
-        apiDetectionUrl: settingsData.api_detection_url || 'http://localhost:8000/detect',
-        apiDetectionBackend: settingsData.api_detection_backend || 'onnx',
-        defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
-        defaultPreBuffer: settingsData.pre_detection_buffer ?? 5,
-        defaultPostBuffer: settingsData.post_detection_buffer ?? 10,
-        bufferStrategy: settingsData.buffer_strategy || 'auto',
-        // go2rtc settings
-        go2rtcEnabled: settingsData.go2rtc_enabled !== undefined ? settingsData.go2rtc_enabled : true,
-        go2rtcBinaryPath: settingsData.go2rtc_binary_path || '/usr/local/bin/go2rtc',
-        go2rtcConfigDir: settingsData.go2rtc_config_dir || '/etc/lightnvr/go2rtc',
-        go2rtcApiPort: settingsData.go2rtc_api_port?.toString() || '1984',
-        go2rtcRtspPort: settingsData.go2rtc_rtsp_port?.toString() || '8554',
-        go2rtcWebrtcEnabled: settingsData.go2rtc_webrtc_enabled !== undefined ? settingsData.go2rtc_webrtc_enabled : true,
-        go2rtcWebrtcListenPort: settingsData.go2rtc_webrtc_listen_port?.toString() || '8555',
-        go2rtcStunEnabled: settingsData.go2rtc_stun_enabled !== undefined ? settingsData.go2rtc_stun_enabled : true,
-        go2rtcStunServer: settingsData.go2rtc_stun_server || 'stun.l.google.com:19302',
-        go2rtcExternalIp: settingsData.go2rtc_external_ip || '',
-        go2rtcIceServers: settingsData.go2rtc_ice_servers || '',
-        go2rtcForceNativeHls: settingsData.go2rtc_force_native_hls || false,
-        go2rtcConfigOverride: settingsData.go2rtc_config_override || '',
-        // T4b/T14 quarantine surface — read-only, drives the inline banner
-        go2rtcOverrideDisabledReason: settingsData.go2rtc_config_override_disabled_reason || '',
-        go2rtcOverrideQuarantined: settingsData.go2rtc_config_override_quarantined || '',
-        // MQTT settings
-        mqttEnabled: settingsData.mqtt_enabled || false,
-        mqttBrokerHost: settingsData.mqtt_broker_host || 'localhost',
-        mqttBrokerPort: settingsData.mqtt_broker_port?.toString() || '1883',
-        mqttUsername: settingsData.mqtt_username || '',
-        mqttPassword: settingsData.mqtt_password || '',
-        mqttClientId: settingsData.mqtt_client_id || 'lightnvr',
-        mqttTopicPrefix: settingsData.mqtt_topic_prefix || 'lightnvr',
-        mqttTlsEnabled: settingsData.mqtt_tls_enabled || false,
-        mqttKeepalive: settingsData.mqtt_keepalive?.toString() || '60',
-        mqttQos: settingsData.mqtt_qos?.toString() || '1',
-        mqttRetain: settingsData.mqtt_retain || false,
-        // Home Assistant MQTT auto-discovery
-        mqttHaDiscovery: settingsData.mqtt_ha_discovery || false,
-        mqttHaDiscoveryPrefix: settingsData.mqtt_ha_discovery_prefix || 'homeassistant',
-        mqttHaSnapshotInterval: settingsData.mqtt_ha_snapshot_interval?.toString() || '30',
-        // TURN server settings for WebRTC relay
-        turnEnabled: settingsData.turn_enabled || false,
-        turnServerUrl: settingsData.turn_server_url || '',
-        turnUsername: settingsData.turn_username || '',
-        turnPassword: settingsData.turn_password || '',
-        // ONVIF discovery settings
-        onvifDiscoveryEnabled: settingsData.onvif_discovery_enabled || false,
-        onvifDiscoveryInterval: settingsData.onvif_discovery_interval?.toString() || '300',
-        onvifDiscoveryNetwork: settingsData.onvif_discovery_network || 'auto'
-      };
-      
-      // Update state with loaded settings
-      setSettings(prev => ({
-        ...prev,
-        ...mappedData
-      }));
-    }
+    if (!settingsData) return;
+    const mappedData = {
+      logLevel: settingsData.log_level?.toString() || '',
+      syslogEnabled: settingsData.syslog_enabled || false,
+      syslogIdent: settingsData.syslog_ident || 'lightnvr',
+      syslogFacility: settingsData.syslog_facility || 'LOG_USER',
+      storagePath: settingsData.storage_path || '',
+      storagePathHls: settingsData.storage_path_hls || '',
+      maxStorage: settingsData.max_storage_size?.toString() || '',
+      retention: settingsData.retention_days?.toString() || '',
+      autoDelete: settingsData.auto_delete_oldest || false,
+      generateThumbnails: settingsData.generate_thumbnails !== false,
+      dbPath: settingsData.db_path || '',
+      dbBackupIntervalMinutes: settingsData.db_backup_interval_minutes?.toString() || '60',
+      dbBackupRetentionCount: settingsData.db_backup_retention_count?.toString() || '24',
+      dbPostBackupScript: settingsData.db_post_backup_script || '',
+      webPort: settingsData.web_port?.toString() || '',
+      webBindIp: settingsData.web_bind_ip?.toString() || '0.0.0.0',
+      webThreadPoolSize: settingsData.web_thread_pool_size?.toString() || '',
+      maxStreams: settingsData.max_streams?.toString() || '32',
+      authEnabled: settingsData.web_auth_enabled || false,
+      demoMode: settingsData.demo_mode || false,
+      webrtcDisabled: settingsData.webrtc_disabled || false,
+      authTimeoutHours: settingsData.auth_timeout_hours?.toString() || '24',
+      authAbsoluteTimeoutHours: settingsData.auth_absolute_timeout_hours?.toString() || '168',
+      trustedDeviceDays: settingsData.trusted_device_days?.toString() || '30',
+      trustedProxyCidrs: settingsData.trusted_proxy_cidrs || '',
+      forceMfaOnLogin: settingsData.force_mfa_on_login || false,
+      loginRateLimitEnabled: settingsData.login_rate_limit_enabled !== undefined ? settingsData.login_rate_limit_enabled : true,
+      loginRateLimitMaxAttempts: settingsData.login_rate_limit_max_attempts?.toString() || '5',
+      loginRateLimitWindowSeconds: settingsData.login_rate_limit_window_seconds?.toString() || '300',
+      bufferSize: settingsData.buffer_size?.toString() || '',
+      useSwap: settingsData.use_swap || false,
+      swapSize: settingsData.swap_size?.toString() || '',
+      detectionModelsPath: settingsData.models_path || '',
+      apiDetectionUrl: settingsData.api_detection_url || 'http://localhost:8000/detect',
+      apiDetectionBackend: settingsData.api_detection_backend || 'onnx',
+      defaultDetectionThreshold: settingsData.default_detection_threshold || 50,
+      defaultPreBuffer: settingsData.pre_detection_buffer ?? 5,
+      defaultPostBuffer: settingsData.post_detection_buffer ?? 10,
+      bufferStrategy: settingsData.buffer_strategy || 'auto',
+      go2rtcEnabled: settingsData.go2rtc_enabled !== undefined ? settingsData.go2rtc_enabled : true,
+      go2rtcBinaryPath: settingsData.go2rtc_binary_path || '/usr/local/bin/go2rtc',
+      go2rtcConfigDir: settingsData.go2rtc_config_dir || '/etc/lightnvr/go2rtc',
+      go2rtcApiPort: settingsData.go2rtc_api_port?.toString() || '1984',
+      go2rtcRtspPort: settingsData.go2rtc_rtsp_port?.toString() || '8554',
+      go2rtcWebrtcEnabled: settingsData.go2rtc_webrtc_enabled !== undefined ? settingsData.go2rtc_webrtc_enabled : true,
+      go2rtcWebrtcListenPort: settingsData.go2rtc_webrtc_listen_port?.toString() || '8555',
+      go2rtcStunEnabled: settingsData.go2rtc_stun_enabled !== undefined ? settingsData.go2rtc_stun_enabled : true,
+      go2rtcStunServer: settingsData.go2rtc_stun_server || 'stun.l.google.com:19302',
+      go2rtcExternalIp: settingsData.go2rtc_external_ip || '',
+      go2rtcIceServers: settingsData.go2rtc_ice_servers || '',
+      go2rtcForceNativeHls: settingsData.go2rtc_force_native_hls || false,
+      go2rtcConfigOverride: settingsData.go2rtc_config_override || '',
+      // T4b/T14 quarantine surface — read-only
+      go2rtcOverrideDisabledReason: settingsData.go2rtc_config_override_disabled_reason || '',
+      go2rtcOverrideQuarantined: settingsData.go2rtc_config_override_quarantined || '',
+      mqttEnabled: settingsData.mqtt_enabled || false,
+      mqttBrokerHost: settingsData.mqtt_broker_host || 'localhost',
+      mqttBrokerPort: settingsData.mqtt_broker_port?.toString() || '1883',
+      mqttUsername: settingsData.mqtt_username || '',
+      mqttPassword: settingsData.mqtt_password || '',
+      mqttClientId: settingsData.mqtt_client_id || 'lightnvr',
+      mqttTopicPrefix: settingsData.mqtt_topic_prefix || 'lightnvr',
+      mqttTlsEnabled: settingsData.mqtt_tls_enabled || false,
+      mqttKeepalive: settingsData.mqtt_keepalive?.toString() || '60',
+      mqttQos: settingsData.mqtt_qos?.toString() || '1',
+      mqttRetain: settingsData.mqtt_retain || false,
+      mqttHaDiscovery: settingsData.mqtt_ha_discovery || false,
+      mqttHaDiscoveryPrefix: settingsData.mqtt_ha_discovery_prefix || 'homeassistant',
+      mqttHaSnapshotInterval: settingsData.mqtt_ha_snapshot_interval?.toString() || '30',
+      turnEnabled: settingsData.turn_enabled || false,
+      turnServerUrl: settingsData.turn_server_url || '',
+      turnUsername: settingsData.turn_username || '',
+      turnPassword: settingsData.turn_password || '',
+      onvifDiscoveryEnabled: settingsData.onvif_discovery_enabled || false,
+      onvifDiscoveryInterval: settingsData.onvif_discovery_interval?.toString() || '300',
+      onvifDiscoveryNetwork: settingsData.onvif_discovery_network || 'auto'
+    };
+    setSettings(prev => {
+      const merged = { ...prev, ...mappedData };
+      baselineRef.current = merged;
+      return merged;
+    });
+    setIsDirty(false);
   }, [settingsData]);
-  
-  // Save settings.
+
+  // Shallow-diff settings vs baseline to drive the sticky-save enabled state.
+  useEffect(() => {
+    const base = baselineRef.current;
+    if (!base) {
+      setIsDirty(false);
+      return;
+    }
+    let dirty = false;
+    for (const key of Object.keys(settings)) {
+      if (settings[key] !== base[key]) {
+        dirty = true;
+        break;
+      }
+    }
+    setIsDirty(dirty);
+  }, [settings]);
+
+  // Save.
   // Returns a promise so <AsyncButton> can track pending state and guard
   // against rapid-tap double-submits (#399 / PRD UXD_01 §5.1).
   const saveSettings = () => {
-    // Map frontend property names to backend property names
     const webThreadPoolSize = parseInt(settings.webThreadPoolSize, 10);
     const parsedMaxStreams = parseInt(settings.maxStreams, 10);
     const parsedDbBackupIntervalMinutes = parseInt(settings.dbBackupIntervalMinutes, 10);
@@ -368,7 +405,7 @@ export function SettingsView() {
       syslog_ident: settings.syslogIdent,
       syslog_facility: settings.syslogFacility,
       storage_path: settings.storagePath,
-      storage_path_hls: settings.storagePathHls, // Include the HLS storage path
+      storage_path_hls: settings.storagePathHls,
       max_storage_size: parseInt(settings.maxStorage, 10),
       retention_days: parseInt(settings.retention, 10),
       auto_delete_oldest: settings.autoDelete,
@@ -388,7 +425,6 @@ export function SettingsView() {
       auth_absolute_timeout_hours: parseInt(settings.authAbsoluteTimeoutHours, 10),
       trusted_device_days: parseInt(settings.trustedDeviceDays, 10),
       trusted_proxy_cidrs: settings.trustedProxyCidrs,
-      // Security settings
       force_mfa_on_login: settings.forceMfaOnLogin,
       login_rate_limit_enabled: settings.loginRateLimitEnabled,
       login_rate_limit_max_attempts: parseInt(settings.loginRateLimitMaxAttempts, 10),
@@ -403,7 +439,6 @@ export function SettingsView() {
       pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
       post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
       buffer_strategy: settings.bufferStrategy,
-      // go2rtc settings
       go2rtc_enabled: settings.go2rtcEnabled,
       go2rtc_binary_path: settings.go2rtcBinaryPath,
       go2rtc_config_dir: settings.go2rtcConfigDir,
@@ -417,7 +452,6 @@ export function SettingsView() {
       go2rtc_ice_servers: settings.go2rtcIceServers,
       go2rtc_force_native_hls: settings.go2rtcForceNativeHls,
       go2rtc_config_override: settings.go2rtcConfigOverride,
-      // MQTT settings
       mqtt_enabled: settings.mqttEnabled,
       mqtt_broker_host: settings.mqttBrokerHost,
       mqtt_broker_port: parseInt(settings.mqttBrokerPort, 10),
@@ -429,205 +463,137 @@ export function SettingsView() {
       mqtt_keepalive: parseInt(settings.mqttKeepalive, 10),
       mqtt_qos: parseInt(settings.mqttQos, 10),
       mqtt_retain: settings.mqttRetain,
-      // Home Assistant MQTT auto-discovery
       mqtt_ha_discovery: settings.mqttHaDiscovery,
       mqtt_ha_discovery_prefix: settings.mqttHaDiscoveryPrefix,
       mqtt_ha_snapshot_interval: parseInt(settings.mqttHaSnapshotInterval, 10),
-      // TURN server settings for WebRTC relay
       turn_enabled: settings.turnEnabled,
       turn_server_url: settings.turnServerUrl,
       turn_username: settings.turnUsername,
       turn_password: settings.turnPassword,
-      // ONVIF discovery settings
       onvif_discovery_enabled: settings.onvifDiscoveryEnabled,
       onvif_discovery_interval: parseInt(settings.onvifDiscoveryInterval, 10),
       onvif_discovery_network: settings.onvifDiscoveryNetwork
     };
-    
-    // Return the promise so AsyncButton can track pending/error.
     return saveSettingsMutation.mutateAsync(mappedSettings);
   };
-  
-  // Handle input change
+
+  // Shared input handlers (passed to every tab via props).
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
     setSettings(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
   };
-  
-  // Handle threshold slider change
+
   const handleThresholdChange = (e) => {
     const value = parseInt(e.target.value, 10);
-    setSettings(prev => ({
-      ...prev,
-      defaultDetectionThreshold: value
-    }));
+    setSettings(prev => ({ ...prev, defaultDetectionThreshold: value }));
   };
 
-  // ---------- T9 — go2rtc override validation, preview, presets ----------
-  const GO2RTC_OVERRIDE_MAX_BYTES = 65535;
-  const [overrideValidation, setOverrideValidation] = useState(null); // null | { valid, error?, warnings, libyaml_available, skipped }
-  const [overrideValidating, setOverrideValidating] = useState(false);
-  const [effectiveConfig, setEffectiveConfig] = useState(null); // null | { base, override, warnings, ... }
-  const [effectiveConfigOpen, setEffectiveConfigOpen] = useState(false);
-  const [effectiveConfigLoading, setEffectiveConfigLoading] = useState(false);
-  // Timer + mounted-flag in refs so they don't trigger re-renders and so we
-  // can suppress late setState after unmount (Copilot review #5/#8).
-  const overrideValidateTimerRef = useRef(null);
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      if (overrideValidateTimerRef.current) {
-        clearTimeout(overrideValidateTimerRef.current);
-        overrideValidateTimerRef.current = null;
+  // Tab → hash sync.  Keep `history.replaceState` calls so reloads + shared
+  // links preserve position without stacking history entries.
+  const selectTab = (id) => {
+    if (!VALID_TAB_IDS.has(id)) return;
+    setActiveTab(id);
+    try {
+      if (typeof window !== 'undefined' && window.location && window.history && typeof window.history.replaceState === 'function') {
+        window.history.replaceState(null, '', `#${id}`);
       }
+    } catch (_err) {
+      /* no-op */
+    }
+  };
+
+  // React to external hash changes (back/forward buttons, user pasting URL).
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = readTabFromHash();
+      setActiveTab(prev => (prev === next ? prev : next));
     };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('hashchange', onHashChange);
+      return () => window.removeEventListener('hashchange', onHashChange);
+    }
+    return undefined;
   }, []);
 
-  // Fire validation against /api/settings/go2rtc/validate, debounced via blur.
-  const validateOverride = async (yaml) => {
-    if (isMountedRef.current) setOverrideValidating(true);
-    try {
-      const result = await fetchJSON('/api/settings/go2rtc/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ override: yaml || '' }),
+  // Debounce search input (150 ms per PRD).
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 150);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
+
+  // On query change, walk [data-setting-label] across ALL tabs (they're
+  // rendered concurrently via display:none toggling — see render below),
+  // mark matches, optionally auto-switch tab, scroll first match into view.
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const root = containerRef.current;
+    const query = debouncedQuery.toLowerCase();
+    const nodes = root.querySelectorAll('[data-setting-label]');
+
+    if (!query) {
+      nodes.forEach((node) => {
+        node.classList.remove('ring-2', 'ring-primary', 'bg-primary/5', 'rounded-md', 'opacity-40');
       });
-      if (isMountedRef.current) setOverrideValidation(result);
-    } catch (err) {
-      // Network/HTTP failure — don't block the user, just clear stale state.
-      // The save-side validator will catch any real problem on POST /api/settings.
-      if (isMountedRef.current) setOverrideValidation(null);
-    } finally {
-      if (isMountedRef.current) setOverrideValidating(false);
+      firstMatchScrolledRef.current = false;
+      return;
     }
-  };
 
-  const handleOverrideBlur = (e) => {
-    if (overrideValidateTimerRef.current) {
-      clearTimeout(overrideValidateTimerRef.current);
-    }
-    // Capture the live event value to avoid racing the trailing onChange's
-    // setState. Falls back to state if the event ever fires without a target.
-    const liveValue = (e && e.target && typeof e.target.value === 'string')
-      ? e.target.value
-      : settings.go2rtcConfigOverride;
-    overrideValidateTimerRef.current = setTimeout(
-      () => validateOverride(liveValue),
-      200
-    );
-  };
-
-  // Clear validation state when the user resumes editing.
-  const handleOverrideChange = (e) => {
-    setOverrideValidation(null);
-    handleInputChange(e);
-  };
-
-  const loadEffectiveConfig = async () => {
-    setEffectiveConfigOpen(true);
-    setEffectiveConfigLoading(true);
-    try {
-      const res = await fetchJSON('/api/system/go2rtc/effective-config');
-      if (isMountedRef.current) setEffectiveConfig(res);
-    } catch (err) {
-      if (isMountedRef.current) setEffectiveConfig({ error: String(err) });
-    } finally {
-      // Same mounted-flag guard as validateOverride — avoids setState
-      // on an unmounted component if the user closes the modal or
-      // navigates away while the request is in flight.
-      if (isMountedRef.current) setEffectiveConfigLoading(false);
-    }
-  };
-
-  const formatBytes = (n) => {
-    if (n < 1024) return `${n} B`;
-    return `${(n / 1024).toFixed(1)} KB`;
-  };
-
-  // Count UTF-8 bytes (NOT JS string length, which is UTF-16 code units).
-  // The server enforces a byte cap, so non-ASCII in the override would
-  // otherwise let the UI report "within limit" while the save is rejected
-  // with HTTP 413.  TextEncoder is universally available in modern browsers.
-  const TEXT_ENCODER = (typeof TextEncoder !== 'undefined') ? new TextEncoder() : null;
-  const utf8ByteLength = (s) => {
-    if (!s) return 0;
-    if (TEXT_ENCODER) return TEXT_ENCODER.encode(s).length;
-    // Fallback for ancient runtimes — slightly slower but correct.
-    return unescape(encodeURIComponent(s)).length;
-  };
-
-  // Curated example presets (T9 scope: 5–8).  Inserts at cursor / end —
-  // never overwrites existing content.
-  const OVERRIDE_PRESETS = [
-    {
-      label: 'ffmpeg copy mode (no transcode)',
-      yaml: 'ffmpeg:\n  h264: "-codec:v copy -codec:a copy"\n  h265: "-codec:v copy -codec:a copy"\n',
-    },
-    {
-      label: 'Trace logging',
-      yaml: 'log:\n  level: trace\n',
-    },
-    {
-      label: 'Custom STUN server',
-      yaml: 'webrtc:\n  ice_servers:\n    - urls: [stun:stun.example.com:3478]\n',
-    },
-    {
-      label: 'TURN server with credentials',
-      yaml: 'webrtc:\n  ice_servers:\n    - urls: [turn:turn.example.com:3478]\n      username: "USER"\n      credential: "PASS"\n',
-    },
-    {
-      label: 'MQTT bridge',
-      yaml: 'mqtt:\n  host: mqtt.example.com\n  port: 1883\n  username: "USER"\n  password: "PASS"\n',
-    },
-    {
-      label: 'HomeKit accessory',
-      yaml: 'homekit:\n  cam1:\n    pin: "12345678"\n    name: "Front Camera"\n',
-    },
-    {
-      label: 'Preload streams at start',
-      yaml: 'preload:\n  cam1: video=h264&audio=copy\n',
-    },
-  ];
-
-  const handleInsertPreset = (e) => {
-    const idx = parseInt(e.target.value, 10);
-    e.target.value = ''; // reset the dropdown
-    if (Number.isNaN(idx) || idx < 0 || idx >= OVERRIDE_PRESETS.length) return;
-    const preset = OVERRIDE_PRESETS[idx];
-    setSettings(prev => {
-      const cur = prev.go2rtcConfigOverride || '';
-      const sep = (cur && !cur.endsWith('\n')) ? '\n' : '';
-      return { ...prev, go2rtcConfigOverride: cur + sep + preset.yaml };
+    let firstMatch = null;
+    nodes.forEach((node) => {
+      const label = (node.getAttribute('data-setting-label') || '').toLowerCase();
+      const matches = label.includes(query);
+      if (matches) {
+        node.classList.add('ring-2', 'ring-primary', 'bg-primary/5', 'rounded-md');
+        node.classList.remove('opacity-40');
+        if (!firstMatch) firstMatch = node;
+      } else {
+        node.classList.remove('ring-2', 'ring-primary', 'bg-primary/5', 'rounded-md');
+        node.classList.add('opacity-40');
+      }
     });
-    setOverrideValidation(null);
-  };
 
-  const KNOWN_GO2RTC_SECTIONS = [
-    ['api', 'HTTP/WS API server (listen, password, base_path, tls)'],
-    ['rtsp', 'RTSP server (listen, default_query, credentials)'],
-    ['webrtc', 'WebRTC (listen, candidates, ice_servers, filters)'],
-    ['ffmpeg', 'Transcoding presets (bin, h264, h265, opus, custom templates)'],
-    ['log', 'Logging (level, format, output, per-module overrides)'],
-    ['streams', 'Stream definitions — overrides clash with lightNVR auto-streams'],
-    ['publish', 'RTMP/S push destinations'],
-    ['hass', 'Home Assistant integration'],
-    ['mqtt', 'MQTT bridge (host, port, credentials, topic)'],
-    ['hls', 'HLS output server'],
-    ['srtp', 'SRTP server'],
-    ['homekit', 'HomeKit accessory bridge'],
-    ['ngrok', 'Ngrok tunnel'],
-    ['echo', 'Dynamic URL via shell expansion'],
-    ['preload', 'Auto-start streams (name → filter spec)'],
-    ['app', 'Module enable/disable (modules list)'],
-  ];
+    if (firstMatch && !firstMatchScrolledRef.current) {
+      // Auto-switch to the tab containing the first match.
+      const panel = firstMatch.closest('[data-tab-panel]');
+      if (panel) {
+        const nextTab = panel.getAttribute('data-tab-panel');
+        if (nextTab && VALID_TAB_IDS.has(nextTab) && nextTab !== activeTab) {
+          selectTab(nextTab);
+        }
+      }
+      // Scroll into view after a tick so tab switch has landed.
+      setTimeout(() => {
+        try {
+          firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (_err) {
+          /* no-op for non-DOM env */
+        }
+      }, 0);
+      firstMatchScrolledRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery]);
 
-  // For viewers, show only appearance settings
+  // When the user clears the search, reset the auto-scroll guard so the next
+  // query re-scrolls.
+  useEffect(() => {
+    if (!debouncedQuery) firstMatchScrolledRef.current = false;
+  }, [debouncedQuery]);
+
+  // Memoize tab metadata with live-resolved labels.
+  const tabs = useMemo(() => TAB_DEFS.map((tab) => {
+    const label = t(tab.labelKey);
+    return {
+      ...tab,
+      // `t()` returns the key back when missing; fall back to English label.
+      label: (label && label !== tab.labelKey) ? label : tab.labelFallback,
+    };
+  }), [t]);
+
+  // ---- Viewer short-circuit: Appearance only, no tabs ----
   if (isViewer) {
     return (
       <section id="settings-page" class="page">
@@ -636,65 +602,11 @@ export function SettingsView() {
         </div>
 
         <div class="settings-container space-y-6">
-          {/* Appearance Settings - available to all users */}
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-            <button
-              onClick={toggleAppearance}
-              class="w-full flex items-center justify-between pb-2 border-b border-border mb-4 group"
-              aria-expanded={showAppearance}
-              aria-controls="appearance-settings-content"
-            >
-              <h3 class="text-lg font-semibold">{t('settings.appearance')}</h3>
-              <span class={`text-muted-foreground transition-transform duration-200 ${showAppearance ? 'rotate-0' : '-rotate-90'}`}>
-                ▾
-              </span>
-            </button>
-            {showAppearance && (
-              <div id="appearance-settings-content">
-                <ThemeCustomizer />
-
-                {/* UXD T4 — Reduce Motion preference (§5.4).
-                    Auto respects prefers-reduced-motion; On/Off force-override. */}
-                <div class="mt-6 pt-4 border-t border-border">
-                  <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div class="font-medium">Reduce motion</div>
-                      <p class="text-sm text-muted-foreground mt-0.5">
-                        Disables non-essential animations and transitions.
-                        Auto follows your operating system preference.
-                      </p>
-                    </div>
-                    <div
-                      role="radiogroup"
-                      aria-label="Reduce motion preference"
-                      class="inline-flex rounded-md border border-border bg-background p-0.5 self-start md:self-auto"
-                    >
-                      {REDUCE_MOTION_VALUES.map((value) => {
-                        const labelMap = { auto: 'Auto', on: 'On', off: 'Off' };
-                        const isActive = reduceMotionPref === value;
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            role="radio"
-                            aria-checked={isActive}
-                            onClick={() => handleReduceMotionChange(value)}
-                            class={`px-3 py-1.5 text-sm rounded transition-colors ${
-                              isActive
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-foreground hover:bg-muted'
-                            }`}
-                          >
-                            {labelMap[value]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <AppearanceTab
+            reduceMotionPref={reduceMotionPref}
+            handleReduceMotionChange={handleReduceMotionChange}
+            t={t}
+          />
 
           <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
             <p class="text-muted-foreground">
@@ -705,6 +617,111 @@ export function SettingsView() {
       </section>
     );
   }
+
+  // ---- Admin render: tabs + search + sticky save ----
+  const renderTabPanel = (tab) => {
+    const hidden = tab.id !== activeTab;
+    // We keep every panel mounted so the search scan can walk labels across
+    // all tabs; CSS-hide the inactive ones.  `data-tab-panel` lets the search
+    // handler auto-switch to whichever tab owns the first match.
+    const style = hidden ? { display: 'none' } : undefined;
+    return (
+      <div
+        key={tab.id}
+        data-tab-panel={tab.id}
+        role="tabpanel"
+        id={`settings-panel-${tab.id}`}
+        aria-labelledby={`settings-tab-${tab.id}`}
+        style={style}
+      >
+        {tab.id === 'general' && (
+          <GeneralTab
+            settings={settings}
+            handleInputChange={handleInputChange}
+            canModifySettings={canModifySettings}
+            restartNotice={restartNotice}
+            t={t}
+          />
+        )}
+        {tab.id === 'storage' && (
+          <StorageTab
+            settings={settings}
+            handleInputChange={handleInputChange}
+            canModifySettings={canModifySettings}
+            t={t}
+          />
+        )}
+        {tab.id === 'streams' && (
+          <StreamsDefaultsTab
+            settings={settings}
+            handleInputChange={handleInputChange}
+            canModifySettings={canModifySettings}
+            t={t}
+          />
+        )}
+        {tab.id === 'detection' && (
+          <DetectionTab
+            settings={settings}
+            handleInputChange={handleInputChange}
+            handleThresholdChange={handleThresholdChange}
+            canModifySettings={canModifySettings}
+            t={t}
+          />
+        )}
+        {tab.id === 'go2rtc' && (
+          <Go2rtcTab
+            settings={settings}
+            setSettings={setSettings}
+            handleInputChange={handleInputChange}
+            canModifySettings={canModifySettings}
+            t={t}
+          />
+        )}
+        {tab.id === 'mqtt' && (
+          <MqttTab
+            settings={settings}
+            handleInputChange={handleInputChange}
+            canModifySettings={canModifySettings}
+            t={t}
+          />
+        )}
+        {tab.id === 'auth' && (
+          <AuthTab
+            settings={settings}
+            handleInputChange={handleInputChange}
+            canModifySettings={canModifySettings}
+            t={t}
+            authSessionsData={authSessionsData}
+            authSessionsLoading={authSessionsLoading}
+            authSessionsIsError={authSessionsIsError}
+            authSessionsError={authSessionsError}
+            revokeSessionMutation={revokeSessionMutation}
+            trustedDevicesData={trustedDevicesData}
+            trustedDevicesLoading={trustedDevicesLoading}
+            trustedDevicesIsError={trustedDevicesIsError}
+            trustedDevicesError={trustedDevicesError}
+            revokeTrustedDeviceMutation={revokeTrustedDeviceMutation}
+            formatTimestamp={formatTimestamp}
+          />
+        )}
+        {tab.id === 'appearance' && (
+          <AppearanceTab
+            reduceMotionPref={reduceMotionPref}
+            handleReduceMotionChange={handleReduceMotionChange}
+            t={t}
+          />
+        )}
+        {tab.id === 'advanced' && (
+          <AdvancedTab
+            settings={settings}
+            handleInputChange={handleInputChange}
+            canModifySettings={canModifySettings}
+            t={t}
+          />
+        )}
+      </div>
+    );
+  };
 
   return (
     <section id="settings-page" class="page">
@@ -725,1603 +742,111 @@ export function SettingsView() {
         loadingMessage={t('settings.loading')}
         emptyMessage={t('settings.empty')}
       >
-        <div class="settings-container space-y-6">
-          {restartNotice && (
-            <div class="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100 shadow p-4">
-              <div class="flex items-start gap-3">
-                <div class="text-lg leading-none">⚠️</div>
-                <div>
-                  <div class="font-semibold">{t('settings.restartRequired')}</div>
-                  <p class="text-sm mt-1">
-                    {restartNotice}
-                  </p>
-                  <p class="text-sm mt-2 opacity-90">
-                    {t('settings.restartExplanation')}
-                  </p>
-                </div>
+        {restartNotice && (
+          <div class="rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100 shadow p-4 mb-4">
+            <div class="flex items-start gap-3">
+              <div class="text-lg leading-none">⚠️</div>
+              <div>
+                <div class="font-semibold">{t('settings.restartRequired')}</div>
+                <p class="text-sm mt-1">{restartNotice}</p>
+                <p class="text-sm mt-2 opacity-90">{t('settings.restartExplanation')}</p>
               </div>
             </div>
-          )}
-
-          {/* Appearance Settings - available to all users */}
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-            <button
-              onClick={toggleAppearance}
-              class="w-full flex items-center justify-between pb-2 border-b border-border mb-4 group"
-              aria-expanded={showAppearance}
-              aria-controls="appearance-settings-content"
-            >
-              <h3 class="text-lg font-semibold">{t('settings.appearance')}</h3>
-              <span class={`text-muted-foreground transition-transform duration-200 ${showAppearance ? 'rotate-0' : '-rotate-90'}`}>
-                ▾
-              </span>
-            </button>
-            {showAppearance && (
-              <div id="appearance-settings-content">
-                <ThemeCustomizer />
-
-                {/* UXD T4 — Reduce Motion preference (§5.4).
-                    Auto respects prefers-reduced-motion; On/Off force-override. */}
-                <div class="mt-6 pt-4 border-t border-border">
-                  <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div class="font-medium">Reduce motion</div>
-                      <p class="text-sm text-muted-foreground mt-0.5">
-                        Disables non-essential animations and transitions.
-                        Auto follows your operating system preference.
-                      </p>
-                    </div>
-                    <div
-                      role="radiogroup"
-                      aria-label="Reduce motion preference"
-                      class="inline-flex rounded-md border border-border bg-background p-0.5 self-start md:self-auto"
-                    >
-                      {REDUCE_MOTION_VALUES.map((value) => {
-                        const labelMap = { auto: 'Auto', on: 'On', off: 'Off' };
-                        const isActive = reduceMotionPref === value;
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            role="radio"
-                            aria-checked={isActive}
-                            onClick={() => handleReduceMotionChange(value)}
-                            class={`px-3 py-1.5 text-sm rounded transition-colors ${
-                              isActive
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-foreground hover:bg-muted'
-                            }`}
-                          >
-                            {labelMap[value]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
+        )}
 
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.general')}</h3>
-            <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-              <label for="setting-log-level" class="font-medium">{t('settings.logLevel')}</label>
-              <select
-                id="setting-log-level"
-                name="logLevel"
-                class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.logLevel}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              >
-                <option value="0">{t('settings.logLevelError')}</option>
-                <option value="1">{t('settings.logLevelWarning')}</option>
-                <option value="2">{t('settings.logLevelInfo')}</option>
-                <option value="3">{t('settings.logLevelDebug')}</option>
-              </select>
-            </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-syslog-enabled" class="font-medium">{t('settings.enableSyslog')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-syslog-enabled"
-                name="syslogEnabled"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.syslogEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.enableSyslogHelp')}</span>
-            </div>
-          </div>
-          {settings.syslogEnabled && (
-            <>
-            <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-              <label for="setting-syslog-ident" class="font-medium">{t('settings.syslogIdent')}</label>
-              <div class="col-span-2">
+        {/* Layout: vertical sidebar on desktop, horizontal scrollable chip
+            strip on mobile — mirrors the pattern described in PRD §5.2 and
+            the in-page navigation already familiar from SystemView's tabs. */}
+        <div ref={containerRef} class="settings-container grid grid-cols-1 sm:grid-cols-[220px_minmax(0,1fr)] gap-4 pb-28 sm:pb-32">
+          {/* Sidebar / mobile tab strip + search */}
+          <div class="sm:sticky sm:top-4 self-start">
+            <div class="mb-3">
+              <div class="relative">
                 <input
-                  type="text"
-                  id="setting-syslog-ident"
-                  name="syslogIdent"
-                  class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={settings.syslogIdent}
-                  onChange={handleInputChange}
-                  disabled={!canModifySettings}
-                  placeholder="lightnvr"
+                  type="search"
+                  value={searchQuery}
+                  onInput={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t('settings.searchPlaceholder') !== 'settings.searchPlaceholder' ? t('settings.searchPlaceholder') : 'Search settings…'}
+                  class="w-full p-2 pr-8 border border-input rounded bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary min-h-11"
+                  aria-label="Search settings"
                 />
-                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.syslogIdentHelp')}</span>
-              </div>
-            </div>
-            <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-              <label for="setting-syslog-facility" class="font-medium">{t('settings.syslogFacility')}</label>
-              <div class="col-span-2">
-                <select
-                  id="setting-syslog-facility"
-                  name="syslogFacility"
-                  class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={settings.syslogFacility}
-                  onChange={handleInputChange}
-                  disabled={!canModifySettings}
-                >
-                  <option value="LOG_USER">LOG_USER</option>
-                  <option value="LOG_DAEMON">LOG_DAEMON</option>
-                  <option value="LOG_LOCAL0">LOG_LOCAL0</option>
-                  <option value="LOG_LOCAL1">LOG_LOCAL1</option>
-                  <option value="LOG_LOCAL2">LOG_LOCAL2</option>
-                  <option value="LOG_LOCAL3">LOG_LOCAL3</option>
-                  <option value="LOG_LOCAL4">LOG_LOCAL4</option>
-                  <option value="LOG_LOCAL5">LOG_LOCAL5</option>
-                  <option value="LOG_LOCAL6">LOG_LOCAL6</option>
-                  <option value="LOG_LOCAL7">LOG_LOCAL7</option>
-                </select>
-                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.syslogFacilityHelp')}</span>
-              </div>
-            </div>
-            </>
-          )}
-          </div>
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.storage')}</h3>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-storage-path" class="font-medium">{t('settings.storagePath')}</label>
-            <input
-              type="text"
-              id="setting-storage-path"
-              name="storagePath"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.storagePath}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-storage-path-hls" class="font-medium">{t('settings.hlsStoragePath')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-storage-path-hls"
-                name="storagePathHls"
-                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.storagePathHls}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.hlsStoragePathHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-max-storage" class="font-medium">{t('settings.maxStorageGb')}</label>
-            <div class="col-span-2 flex items-center">
-              <input
-                type="number"
-                id="setting-max-storage"
-                name="maxStorage"
-                min="0"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.maxStorage}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.zeroUnlimited')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-retention" class="font-medium">{t('settings.retentionDays')}</label>
-            <input
-              type="number"
-              id="setting-retention"
-              name="retention"
-              min="1"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.retention}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auto-delete" class="font-medium">{t('settings.autoDeleteOldest')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-auto-delete"
-                name="autoDelete"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.autoDelete}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-generate-thumbnails" class="font-medium">{t('settings.enableGridViewThumbnails')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-generate-thumbnails"
-                name="generateThumbnails"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.generateThumbnails}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableGridViewThumbnailsHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-db-path" class="font-medium">{t('settings.databasePath')}</label>
-            <input
-              type="text"
-              id="setting-db-path"
-              name="dbPath"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.dbPath}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-db-backup-interval" class="font-medium">{t('settings.databaseBackupIntervalMinutes')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-db-backup-interval"
-                name="dbBackupIntervalMinutes"
-                min="0"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.dbBackupIntervalMinutes}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.databaseBackupIntervalHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-db-backup-retention" class="font-medium">{t('settings.databaseBackupRetentionCopies')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-db-backup-retention"
-                name="dbBackupRetentionCount"
-                min="0"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.dbBackupRetentionCount}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.databaseBackupRetentionHelpBefore')} <code>.bak</code> {t('settings.databaseBackupRetentionHelpAfter')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
-            <label for="setting-db-post-backup-script" class="font-medium">{t('settings.postBackupScript')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-db-post-backup-script"
-                name="dbPostBackupScript"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-2xl disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.dbPostBackupScript}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="/usr/local/bin/lightnvr-post-backup"
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.postBackupScriptHelp')}</span>
-            </div>
-          </div>
-          </div>
-          
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.webInterface')}</h3>
-          {restartNotice && (
-            <div class="mb-4 rounded border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 text-sm text-yellow-900 dark:text-yellow-100">
-              <strong>{t('settings.pendingRestartLabel')}</strong> {restartNotice}
-            </div>
-          )}
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-web-port" class="font-medium">{t('settings.webPort')}</label>
-            <input
-              type="number"
-              id="setting-web-port"
-              name="webPort"
-              min="1"
-              max="65535"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.webPort}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-web-bind-ip" class="font-medium">{t('settings.webBindIp')}</label>
-            <input
-              type="text"
-              id="setting-web-bind-ip"
-              name="webBindIp"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.webBindIp}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-              placeholder="0.0.0.0"
-            />
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-thread-pool" class="font-medium">
-              {t('settings.threadPoolSize')}
-              <span class="ml-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
-            </label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-thread-pool"
-                name="webThreadPoolSize"
-                min="2"
-                max="128"
-                placeholder={t('settings.threadPoolPlaceholder')}
-                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.webThreadPoolSize}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <p class="text-xs text-muted-foreground mt-1">
-                {t('settings.threadPoolHelp')}
-              </p>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-max-streams" class="font-medium">
-              {t('settings.maxStreams')}
-              <span class="ml-1 text-xs text-muted-foreground">({t('settings.requiresRestart')})</span>
-            </label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-max-streams"
-                name="maxStreams"
-                min="1"
-                max="256"
-                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.maxStreams}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <p class="text-xs text-muted-foreground mt-1">
-                {t('settings.maxStreamsHelpBefore')} <strong>{t('settings.serviceRestart')}</strong>. {t('settings.maxStreamsHelpAfter')}
-              </p>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auth-enabled" class="font-medium">{t('settings.enableAuthentication')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-auth-enabled"
-                name="authEnabled"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.authEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-demo-mode" class="font-medium">{t('auth.demoMode')}</label>
-            <div class="col-span-2 flex items-center">
-              <input
-                type="checkbox"
-                id="setting-demo-mode"
-                name="demoMode"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.demoMode}
-                onChange={handleInputChange}
-                disabled={!canModifySettings || !settings.authEnabled}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.demoModeHelp')}</span>
-            </div>
-          </div>
-
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-webrtc-disabled" class="font-medium">{t('settings.disableWebrtcUseHlsOnly')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-webrtc-disabled"
-                name="webrtcDisabled"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.webrtcDisabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.disableWebrtcHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auth-timeout" class="font-medium">{t('settings.sessionIdleTimeoutHours')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-auth-timeout"
-                name="authTimeoutHours"
-                min="1"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.authTimeoutHours}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.sessionIdleTimeoutHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-auth-absolute-timeout" class="font-medium">{t('settings.absoluteSessionLifetimeHours')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-auth-absolute-timeout"
-                name="authAbsoluteTimeoutHours"
-                min="1"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.authAbsoluteTimeoutHours}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.absoluteSessionLifetimeHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-trusted-device-days" class="font-medium">{t('settings.rememberDeviceDays')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-trusted-device-days"
-                name="trustedDeviceDays"
-                min="0"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.trustedDeviceDays}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.rememberDeviceDaysHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
-            <label for="setting-trusted-proxy-cidrs" class="font-medium">{t('settings.trustedProxyCidrs')}</label>
-            <div class="col-span-2">
-              <textarea
-                id="setting-trusted-proxy-cidrs"
-                name="trustedProxyCidrs"
-                rows="3"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-2xl disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.trustedProxyCidrs}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="127.0.0.1/32,::1/128"
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.trustedProxyCidrsHelpBefore')} <code>X-Forwarded-For</code> / <code>X-Real-IP</code> {t('settings.trustedProxyCidrsHelpAfter')}</span>
-            </div>
-          </div>
-          {/* Setup Wizard reset */}
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label class="font-medium">{t('settings.setupWizard')}</label>
-            <div class="col-span-2">
-              <button
-                type="button"
-                class="px-4 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                disabled={!canModifySettings}
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/setup/status', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ complete: false }),
-                    });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    window.location.href = 'index.html';
-                  } catch (err) {
-                    showStatusMessage(t('settings.resetWizardError', { message: err.message }), 'error');
-                  }
-                }}
-              >
-                {t('settings.rerunSetupWizard')}
-              </button>
-              <p class="text-xs text-muted-foreground mt-1">
-                {t('settings.setupWizardHelp')}
-              </p>
-            </div>
-          </div>
-          </div>
-
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.sessionAndDeviceManagement')}</h3>
-          <div class="mb-6">
-            <h4 class="font-medium mb-2">{t('settings.activeSessions')}</h4>
-            <div class="space-y-3">
-              {authSessionsLoading ? (
-                <p class="text-sm text-muted-foreground">{t('settings.loadingSessions')}</p>
-              ) : authSessionsIsError ? (
-                <p class="text-sm text-destructive">{t('settings.failedToLoadSessions', { message: authSessionsError?.message || '' })}</p>
-              ) : ((authSessionsData?.sessions || []).length === 0 ? (
-                <p class="text-sm text-muted-foreground">{t('settings.noActiveSessionsFound')}</p>
-              ) : (
-                (authSessionsData?.sessions || []).map((session) => (
-                  <div key={session.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div class="text-sm">
-                      <div class="font-medium">{session.current ? t('settings.currentSession') : t('settings.sessionNumber', { id: session.id })}</div>
-                      <div class="text-muted-foreground">{t('settings.lastActive')}: {formatTimestamp(session.last_activity_at)}</div>
-                      <div class="text-muted-foreground">{t('settings.idleExpiry')}: {formatTimestamp(session.idle_expires_at)} · {t('settings.absoluteExpiry')}: {formatTimestamp(session.expires_at)}</div>
-                      <div class="text-muted-foreground">{session.ip_address || t('settings.unknownIp')} · {session.user_agent || t('settings.unknownBrowser')}</div>
-                    </div>
-                    <button
-                      type="button"
-                      class="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
-                      disabled={revokeSessionMutation.isPending}
-                      onClick={() => revokeSessionMutation.mutate(session.id)}
-                    >
-                      {t('settings.revoke')}
-                    </button>
-                  </div>
-                ))
-              ))}
-            </div>
-          </div>
-          <div>
-            <h4 class="font-medium mb-2">{t('settings.trustedDevices')}</h4>
-            <div class="space-y-3">
-              {trustedDevicesLoading ? (
-                <p class="text-sm text-muted-foreground">{t('settings.loadingTrustedDevices')}</p>
-              ) : trustedDevicesIsError ? (
-                <p class="text-sm text-destructive">{t('settings.failedToLoadTrustedDevices', { message: trustedDevicesError?.message || '' })}</p>
-              ) : ((trustedDevicesData?.trusted_devices || []).length === 0 ? (
-                <p class="text-sm text-muted-foreground">{t('settings.noRememberedDevicesFound')}</p>
-              ) : (
-                (trustedDevicesData?.trusted_devices || []).map((device) => (
-                  <div key={device.id} class="border border-border rounded p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div class="text-sm">
-                      <div class="font-medium">{device.current ? t('settings.thisDevice') : t('settings.trustedDeviceNumber', { id: device.id })}</div>
-                      <div class="text-muted-foreground">{t('settings.lastUsed')}: {formatTimestamp(device.last_used_at)}</div>
-                      <div class="text-muted-foreground">{t('settings.expires')}: {formatTimestamp(device.expires_at)}</div>
-                      <div class="text-muted-foreground">{device.ip_address || t('settings.unknownIp')} · {device.user_agent || t('settings.unknownBrowser')}</div>
-                    </div>
-                    <button
-                      type="button"
-                      class="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
-                      disabled={revokeTrustedDeviceMutation.isPending}
-                      onClick={() => revokeTrustedDeviceMutation.mutate(device.id)}
-                    >
-                      {t('settings.revoke')}
-                    </button>
-                  </div>
-                ))
-              ))}
-            </div>
-          </div>
-          </div>
-
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.loginSecurity')}</h3>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-force-mfa" class="font-medium">{t('settings.forceMfaOnLogin')}</label>
-            <div class="col-span-2 flex items-center">
-              <input
-                type="checkbox"
-                id="setting-force-mfa"
-                name="forceMfaOnLogin"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.forceMfaOnLogin}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.forceMfaOnLoginHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-rate-limit-enabled" class="font-medium">{t('settings.loginRateLimiting')}</label>
-            <div class="col-span-2 flex items-center">
-              <input
-                type="checkbox"
-                id="setting-rate-limit-enabled"
-                name="loginRateLimitEnabled"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.loginRateLimitEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.loginRateLimitingHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-rate-limit-max" class="font-medium">{t('settings.maxLoginAttempts')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-rate-limit-max"
-                name="loginRateLimitMaxAttempts"
-                min="1"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.loginRateLimitMaxAttempts}
-                onChange={handleInputChange}
-                disabled={!canModifySettings || !settings.loginRateLimitEnabled}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.maxLoginAttemptsHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-rate-limit-window" class="font-medium">{t('settings.rateLimitWindowSeconds')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-rate-limit-window"
-                name="loginRateLimitWindowSeconds"
-                min="10"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.loginRateLimitWindowSeconds}
-                onChange={handleInputChange}
-                disabled={!canModifySettings || !settings.loginRateLimitEnabled}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.rateLimitWindowSecondsHelp')}</span>
-            </div>
-          </div>
-          </div>
-
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.memoryOptimization')}</h3>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-buffer-size" class="font-medium">{t('settings.bufferSizeKb')}</label>
-            <input
-              type="number"
-              id="setting-buffer-size"
-              name="bufferSize"
-              min="128"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.bufferSize}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-use-swap" class="font-medium">{t('settings.useSwapFile')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-use-swap"
-                name="useSwap"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.useSwap}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-swap-size" class="font-medium">{t('settings.swapSizeMb')}</label>
-            <input
-              type="number"
-              id="setting-swap-size"
-              name="swapSize"
-              min="32"
-              class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-              value={settings.swapSize}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-          </div>
-          </div>
-
-          <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
-          <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.detectionBasedRecording')}</h3>
-          <div class="setting mb-4">
-            <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              {t('settings.detectionBasedRecordingDescription')}
-            </p>
-            <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              <strong>{t('settings.motionDetectionLabel')}</strong> {t('settings.motionDetectionDescription')}
-            </p>
-            <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
-              <strong>{t('settings.optimizedMotionDetectionLabel')}</strong> {t('settings.optimizedMotionDetectionDescription')}
-            </p>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-detection-models-path" class="font-medium">{t('settings.detectionModelsPath')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-detection-models-path"
-                name="detectionModelsPath"
-                placeholder="/var/lib/lightnvr/models"
-                class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.detectionModelsPath}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.detectionModelsPathHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-api-detection-url" class="font-medium">{t('settings.apiDetectionUrl')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-api-detection-url"
-                name="apiDetectionUrl"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.apiDetectionUrl}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="http://localhost:8000/detect"
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionUrlHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-api-detection-backend" class="font-medium">{t('settings.apiDetectionBackend')}</label>
-            <div class="col-span-2">
-              <select
-                id="setting-api-detection-backend"
-                name="apiDetectionBackend"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.apiDetectionBackend}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              >
-                <option value="onnx">{t('settings.apiDetectionBackendOnnx')}</option>
-                <option value="tflite">{t('settings.apiDetectionBackendTflite')}</option>
-                <option value="opencv">{t('settings.apiDetectionBackendOpencv')}</option>
-              </select>
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.apiDetectionBackendHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-default-detection-threshold" class="font-medium">{t('settings.defaultDetectionThreshold')}</label>
-            <div class="col-span-2">
-              <div class="flex items-center">
-                <input
-                  type="range"
-                  id="setting-default-detection-threshold"
-                  name="defaultDetectionThreshold"
-                  min="0"
-                  max="100"
-                  step="1"
-                  class="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                  value={settings.defaultDetectionThreshold}
-                  onChange={handleThresholdChange}
-                  disabled={!canModifySettings}
-                />
-                <span id="threshold-value" class="ml-2 min-w-[3rem] text-center">{settings.defaultDetectionThreshold}%</span>
-              </div>
-              <span class="hint text-sm text-muted-foreground">{t('settings.defaultDetectionThresholdHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-default-pre-buffer" class="font-medium">{t('settings.defaultPreDetectionBufferSeconds')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-default-pre-buffer"
-                name="defaultPreBuffer"
-                min="0"
-                max="60"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.defaultPreBuffer}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.defaultPreDetectionBufferHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-default-post-buffer" class="font-medium">{t('settings.defaultPostDetectionBufferSeconds')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-default-post-buffer"
-                name="defaultPostBuffer"
-                min="0"
-                max="300"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.defaultPostBuffer}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.defaultPostDetectionBufferHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-buffer-strategy" class="font-medium">{t('settings.defaultBufferStrategy')}</label>
-            <div class="col-span-2">
-              <select
-                id="setting-buffer-strategy"
-                name="bufferStrategy"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.bufferStrategy}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              >
-                <option value="auto">{t('settings.bufferStrategyAuto')}</option>
-                <option value="go2rtc">{t('settings.bufferStrategyGo2rtc')}</option>
-                <option value="hls_segment">{t('settings.bufferStrategyHlsSegment')}</option>
-                <option value="memory_packet">{t('settings.bufferStrategyMemoryPacket')}</option>
-                <option value="mmap_hybrid">{t('settings.bufferStrategyMmapHybrid')}</option>
-              </select>
-              <p class="hint text-sm text-muted-foreground mt-1">
-                {t('settings.defaultBufferStrategyHelp')}
-              </p>
-            </div>
-          </div>
-          </div>
-
-          {/* go2rtc Settings */}
-          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.go2rtcIntegration')}</h3>
-            <p class="text-sm text-muted-foreground mb-4">
-              {t('settings.go2rtcIntegrationDescription')}
-            </p>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-enabled" class="font-medium">{t('settings.enableGo2rtc')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-go2rtc-enabled"
-                name="go2rtcEnabled"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.go2rtcEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableGo2rtcHelp')}</span>
-            </div>
-          </div>
-          {settings.go2rtcEnabled && (
-          <>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-force-native-hls" class="font-medium">{t('settings.forceNativeHls')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-go2rtc-force-native-hls"
-                name="go2rtcForceNativeHls"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.go2rtcForceNativeHls}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.forceNativeHlsHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-binary-path" class="font-medium">{t('settings.binaryPath')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-go2rtc-binary-path"
-                name="go2rtcBinaryPath"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcBinaryPath}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="/usr/local/bin/go2rtc"
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.go2rtcBinaryPathHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-config-dir" class="font-medium">{t('settings.configDirectory')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-go2rtc-config-dir"
-                name="go2rtcConfigDir"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcConfigDir}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="/etc/lightnvr/go2rtc"
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.go2rtcConfigDirectoryHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-api-port" class="font-medium">{t('settings.apiPort')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-go2rtc-api-port"
-                name="go2rtcApiPort"
-                min="1"
-                max="65535"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcApiPort}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.go2rtcApiPortHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-rtsp-port" class="font-medium">{t('settings.rtspPort')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-go2rtc-rtsp-port"
-                name="go2rtcRtspPort"
-                min="1"
-                max="65535"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcRtspPort}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.go2rtcRtspPortHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-webrtc-enabled" class="font-medium">{t('settings.enableWebrtc')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-go2rtc-webrtc-enabled"
-                name="go2rtcWebrtcEnabled"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.go2rtcWebrtcEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableWebrtcHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-webrtc-listen-port" class="font-medium">{t('settings.webrtcListenPort')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-go2rtc-webrtc-listen-port"
-                name="go2rtcWebrtcListenPort"
-                min="1"
-                max="65535"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcWebrtcListenPort}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.webrtcListenPortHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-stun-enabled" class="font-medium">{t('settings.enableStun')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-go2rtc-stun-enabled"
-                name="go2rtcStunEnabled"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.go2rtcStunEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableStunHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-stun-server" class="font-medium">{t('settings.stunServer')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-go2rtc-stun-server"
-                name="go2rtcStunServer"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcStunServer}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="stun.l.google.com:19302"
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.stunServerHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-external-ip" class="font-medium">{t('settings.externalIp')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-go2rtc-external-ip"
-                name="go2rtcExternalIp"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcExternalIp}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('settings.autoDetect')}
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.externalIpHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-go2rtc-ice-servers" class="font-medium">{t('settings.iceServers')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-go2rtc-ice-servers"
-                name="go2rtcIceServers"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.go2rtcIceServers}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('settings.iceServersPlaceholder')}
-              />
-              <span class="hint text-sm text-muted-foreground">{t('settings.iceServersHelp')}</span>
-            </div>
-          </div>
-
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
-            <label for="setting-go2rtc-config-override" class="font-medium pt-2">
-              {t('settings.go2rtcConfigOverride')}
-            </label>
-            <div class="col-span-2 space-y-2">
-              {/* T14/T4b — quarantine banner */}
-              {settings.go2rtcOverrideDisabledReason ? (
-                <div class="p-3 border border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded text-sm">
-                  <div class="font-medium text-yellow-800 dark:text-yellow-200 mb-1">
-                    Override quarantined
-                  </div>
-                  <div class="text-yellow-900 dark:text-yellow-100 whitespace-pre-wrap font-mono text-xs">
-                    {settings.go2rtcOverrideDisabledReason}
-                  </div>
-                  {settings.go2rtcOverrideQuarantined ? (
-                    <button
-                      type="button"
-                      class="mt-2 text-xs underline text-yellow-900 dark:text-yellow-100"
-                      onClick={() => {
-                        setSettings(prev => ({
-                          ...prev,
-                          go2rtcConfigOverride: prev.go2rtcOverrideQuarantined,
-                        }));
-                        setOverrideValidation(null);
-                      }}
-                    >
-                      Restore quarantined version into the editor
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {/* Editor */}
-              <textarea
-                id="setting-go2rtc-config-override"
-                name="go2rtcConfigOverride"
-                /* Red border ONLY for actual validation failures.  When the
-                 * server skipped validation (libyaml unavailable / skipped),
-                 * the field is not in error — the size-row badge already
-                 * surfaces the skip. */
-                class={`p-2 border rounded bg-background text-foreground w-full max-w-md font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed ${overrideValidation && overrideValidation.valid === false && overrideValidation.error ? 'border-red-500' : 'border-input'}`}
-                rows="8"
-                value={settings.go2rtcConfigOverride}
-                onChange={handleOverrideChange}
-                onBlur={handleOverrideBlur}
-                disabled={!canModifySettings}
-                maxLength={GO2RTC_OVERRIDE_MAX_BYTES}
-                placeholder={"ffmpeg:\n  h264_hw: \"-codec:v h264_v4l2m2m\"\n\nlog:\n  level: trace"}
-              />
-
-              {/* Size indicator — UTF-8 bytes, matching the server cap */}
-              <div class="flex items-center justify-between text-xs text-muted-foreground max-w-md">
-                <span>
-                  {formatBytes(utf8ByteLength(settings.go2rtcConfigOverride))} / {formatBytes(GO2RTC_OVERRIDE_MAX_BYTES)}
-                  {overrideValidating ? ' • validating…' : null}
-                </span>
-                {overrideValidation && overrideValidation.libyaml_available === false ? (
-                  <span class="text-yellow-700 dark:text-yellow-300">libyaml unavailable — server-side validation skipped</span>
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                    class="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                  >
+                    ×
+                  </button>
                 ) : null}
               </div>
+            </div>
 
-              {/* Inline error */}
-              {overrideValidation && overrideValidation.valid === false && overrideValidation.error ? (
-                <div class="p-2 border border-red-500 bg-red-50 dark:bg-red-900/20 rounded text-sm text-red-800 dark:text-red-200 max-w-md">
-                  <div class="font-medium">
-                    Line {overrideValidation.error.line || '?'}, col {overrideValidation.error.column || '?'}
-                  </div>
-                  <div class="text-xs mt-1 whitespace-pre-wrap">{overrideValidation.error.message}</div>
-                </div>
+            {/* Mobile: horizontal scrollable chip strip.
+                Desktop: vertical pill list. */}
+            <div
+              role="tablist"
+              aria-label={t('settings.tabsLabel') !== 'settings.tabsLabel' ? t('settings.tabsLabel') : 'Settings sections'}
+              class="flex overflow-x-auto snap-x snap-mandatory gap-2 border-b border-border pb-2 sm:flex-col sm:border-b-0 sm:overflow-x-visible sm:snap-none sm:gap-1"
+            >
+              {tabs.map((tab) => {
+                const isActive = tab.id === activeTab;
+                const baseCls = 'px-4 py-2 text-sm font-medium transition-colors snap-start shrink-0 min-h-11 whitespace-nowrap';
+                const mobileCls = isActive
+                  ? 'border-b-2 border-primary text-primary -mb-px'
+                  : 'text-muted-foreground hover:text-foreground border-b-2 border-transparent';
+                const desktopCls = isActive
+                  ? 'sm:bg-primary sm:text-primary-foreground sm:rounded-md sm:border-b-0 sm:whitespace-normal sm:text-left sm:shadow-sm'
+                  : 'sm:hover:bg-muted sm:rounded-md sm:border-b-0 sm:whitespace-normal sm:text-left';
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    id={`settings-tab-${tab.id}`}
+                    aria-selected={isActive}
+                    aria-controls={`settings-panel-${tab.id}`}
+                    class={`${baseCls} ${mobileCls} ${desktopCls}`}
+                    onClick={() => selectTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Panel area */}
+          <div class="min-w-0">
+            {tabs.map(renderTabPanel)}
+          </div>
+        </div>
+
+        {/* Sticky Save bar.
+            Preserves T1's <AsyncButton> wiring verbatim — only the chrome
+            (sticky container + disabled-when-clean state) is new. */}
+        {canModifySettings && (
+          <div
+            class="sticky bottom-0 left-0 right-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-[hsl(var(--card)/0.85)] bg-card border-t border-border px-4 py-3"
+            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+          >
+            <div class="flex items-center justify-end gap-3">
+              {isDirty ? (
+                <span class="text-xs text-muted-foreground">{t('settings.unsavedChanges') !== 'settings.unsavedChanges' ? t('settings.unsavedChanges') : 'Unsaved changes'}</span>
               ) : null}
-
-              {/* Inline warnings (e.g. unknown sections) */}
-              {overrideValidation && Array.isArray(overrideValidation.warnings) && overrideValidation.warnings.length > 0 ? (
-                <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ml-5 max-w-md">
-                  {overrideValidation.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              ) : null}
-
-              {/* Action row */}
-              <div class="flex flex-wrap items-center gap-2 max-w-md">
-                <button
-                  type="button"
-                  class="px-2 py-1 text-xs border border-input rounded hover:bg-muted disabled:opacity-60"
-                  disabled={!canModifySettings}
-                  onClick={loadEffectiveConfig}
-                >
-                  Show effective config
-                </button>
-                <select
-                  class="px-2 py-1 text-xs border border-input rounded bg-background disabled:opacity-60"
-                  value=""
-                  disabled={!canModifySettings}
-                  onChange={handleInsertPreset}
-                >
-                  <option value="">Load example…</option>
-                  {OVERRIDE_PRESETS.map((p, i) => (
-                    <option key={i} value={i}>{p.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Supported-sections collapsible */}
-              <details class="text-xs text-muted-foreground max-w-md">
-                <summary class="cursor-pointer hover:text-foreground">Supported go2rtc sections</summary>
-                <ul class="mt-2 space-y-1">
-                  {KNOWN_GO2RTC_SECTIONS.map(([k, desc]) => (
-                    <li key={k}><code class="font-mono">{k}</code> — {desc}</li>
-                  ))}
-                </ul>
-              </details>
-
-              <span class="hint text-sm text-muted-foreground block">{t('settings.go2rtcConfigOverrideHelp')}</span>
-
-              {/* Effective-config modal */}
-              {effectiveConfigOpen ? (
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEffectiveConfigOpen(false)}>
-                  <div class="bg-card text-card-foreground rounded-lg shadow-lg max-w-4xl w-full max-h-[80vh] overflow-auto p-4" onClick={(e) => e.stopPropagation()}>
-                    <div class="flex items-center justify-between mb-3 pb-2 border-b">
-                      <h3 class="font-semibold">go2rtc effective config (redacted)</h3>
-                      <button type="button" class="text-sm underline" onClick={() => setEffectiveConfigOpen(false)}>Close</button>
-                    </div>
-                    {effectiveConfigLoading ? (
-                      <div class="text-sm text-muted-foreground">Loading…</div>
-                    ) : effectiveConfig?.error ? (
-                      <div class="text-sm text-red-600">Failed to load: {effectiveConfig.error}</div>
-                    ) : effectiveConfig ? (
-                      <div class="space-y-3">
-                        {effectiveConfig.redaction_available === false ? (
-                          <div class="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-500 rounded text-xs text-yellow-800 dark:text-yellow-200">
-                            libyaml unavailable on the server — secret redaction is SKIPPED. Treat this preview as if it contained your secrets in cleartext.
-                          </div>
-                        ) : null}
-                        {Array.isArray(effectiveConfig.warnings) && effectiveConfig.warnings.length > 0 ? (
-                          <ul class="text-xs text-yellow-800 dark:text-yellow-200 list-disc ml-5">
-                            {effectiveConfig.warnings.map((w, i) => <li key={i}>{w}</li>)}
-                          </ul>
-                        ) : null}
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <div class="text-xs font-medium mb-1">go2rtc.yaml (base)</div>
-                            <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.base || '(empty)'}</pre>
-                          </div>
-                          <div>
-                            <div class="text-xs font-medium mb-1">override.yaml</div>
-                            <pre class="text-xs font-mono p-2 border border-input bg-muted rounded overflow-auto max-h-96 whitespace-pre-wrap">{effectiveConfig.override || '(none)'}</pre>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-          </>
-          )}
-          </div>
-
-          {/* MQTT Settings */}
-          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.mqttEventStreaming')}</h3>
-            <p class="text-sm text-muted-foreground mb-4">
-              {t('settings.mqttEventStreamingDescription')}
-            </p>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-enabled" class="font-medium">{t('settings.enableMqtt')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-mqtt-enabled"
-                name="mqttEnabled"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.mqttEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableMqttHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-broker-host" class="font-medium">{t('settings.brokerHost')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-mqtt-broker-host"
-                name="mqttBrokerHost"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttBrokerHost}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="localhost"
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.brokerHostHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-broker-port" class="font-medium">{t('settings.brokerPort')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-mqtt-broker-port"
-                name="mqttBrokerPort"
-                min="1"
-                max="65535"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttBrokerPort}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.brokerPortHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-username" class="font-medium">{t('auth.username')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-mqtt-username"
-                name="mqttUsername"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttUsername}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('settings.optionalPlaceholder')}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.leaveEmptyForAnonymousAccess')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-password" class="font-medium">{t('auth.password')}</label>
-            <div class="col-span-2">
-              <input
-                type="password"
-                id="setting-mqtt-password"
-                name="mqttPassword"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttPassword}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('settings.optionalPlaceholder')}
-              />
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-client-id" class="font-medium">{t('settings.clientId')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-mqtt-client-id"
-                name="mqttClientId"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttClientId}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="lightnvr"
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.clientIdHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-topic-prefix" class="font-medium">{t('settings.topicPrefix')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-mqtt-topic-prefix"
-                name="mqttTopicPrefix"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttTopicPrefix}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="lightnvr"
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.topicPrefixPublishedTo', { prefix: settings.mqttTopicPrefix })}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-tls-enabled" class="font-medium">{t('settings.enableTls')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-mqtt-tls-enabled"
-                name="mqttTlsEnabled"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.mqttTlsEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableTlsHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-keepalive" class="font-medium">{t('settings.keepaliveSeconds')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-mqtt-keepalive"
-                name="mqttKeepalive"
-                min="10"
-                max="3600"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttKeepalive}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.keepaliveSecondsHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-qos" class="font-medium">{t('settings.qosLevel')}</label>
-            <div class="col-span-2">
-              <select
-                id="setting-mqtt-qos"
-                name="mqttQos"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttQos}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              >
-                <option value="0">{t('settings.qosAtMostOnce')}</option>
-                <option value="1">{t('settings.qosAtLeastOnce')}</option>
-                <option value="2">{t('settings.qosExactlyOnce')}</option>
-              </select>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-retain" class="font-medium">{t('settings.retainMessages')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-mqtt-retain"
-                name="mqttRetain"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.mqttRetain}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.retainMessagesHelp')}</span>
-            </div>
-          </div>
-
-          {/* Home Assistant Auto-Discovery sub-section */}
-          <h4 class="text-md font-semibold mt-6 mb-3 pb-1 border-b border-border">{t('settings.homeAssistantAutoDiscovery')}</h4>
-          <p class="text-sm text-muted-foreground mb-4">
-            {t('settings.homeAssistantAutoDiscoveryDescription')}
-          </p>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-ha-discovery" class="font-medium">{t('settings.enableHaDiscovery')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-mqtt-ha-discovery"
-                name="mqttHaDiscovery"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.mqttHaDiscovery}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableHaDiscoveryHelp')}</span>
-            </div>
-          </div>
-          {settings.mqttHaDiscovery && (
-          <>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-ha-discovery-prefix" class="font-medium">{t('settings.discoveryPrefix')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-mqtt-ha-discovery-prefix"
-                name="mqttHaDiscoveryPrefix"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttHaDiscoveryPrefix}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder="homeassistant"
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.discoveryPrefixHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-mqtt-ha-snapshot-interval" class="font-medium">{t('settings.snapshotIntervalSeconds')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-mqtt-ha-snapshot-interval"
-                name="mqttHaSnapshotInterval"
-                min="0"
-                max="300"
-                class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.mqttHaSnapshotInterval}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.snapshotIntervalSecondsHelp')}</span>
-            </div>
-          </div>
-          </>
-          )}
-          </div>
-
-          {/* TURN Server Settings */}
-          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.webrtcTurnServer')}</h3>
-            <p class="text-sm text-muted-foreground mb-4">
-              {t('settings.webrtcTurnServerDescription')}
-            </p>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-enabled" class="font-medium">{t('settings.enableTurnRelay')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-turn-enabled"
-                name="turnEnabled"
-                class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded disabled:opacity-60 disabled:cursor-not-allowed"
-                checked={settings.turnEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableTurnRelayHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-server-url" class="font-medium">{t('settings.turnServerUrl')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-turn-server-url"
-                name="turnServerUrl"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.turnServerUrl}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('settings.turnServerUrlPlaceholder')}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">
-                {t('settings.turnServerUrlHelp')}
-              </span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-username" class="font-medium">{t('auth.username')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-turn-username"
-                name="turnUsername"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.turnUsername}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('settings.optionalPlaceholder')}
-              />
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-turn-password" class="font-medium">{t('auth.password')}</label>
-            <div class="col-span-2">
-              <input
-                type="password"
-                id="setting-turn-password"
-                name="turnPassword"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.turnPassword}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('settings.optionalPlaceholder')}
-              />
-            </div>
-          </div>
-          </div>
-
-          {/* ONVIF Discovery Settings */}
-          <div class="settings-group bg-card rounded-lg shadow p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.onvifDiscovery')}</h3>
-            <p class="text-sm text-muted-foreground mb-4">
-              {t('settings.onvifDiscoveryDescription')}
-            </p>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-onvif-discovery-enabled" class="font-medium">{t('settings.enableOnvifDiscovery')}</label>
-            <div class="col-span-2">
-              <input
-                type="checkbox"
-                id="setting-onvif-discovery-enabled"
-                name="onvifDiscoveryEnabled"
-                class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{accentColor: 'hsl(var(--primary))'}}
-                checked={settings.onvifDiscoveryEnabled}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.enableOnvifDiscoveryHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-onvif-discovery-interval" class="font-medium">{t('settings.discoveryIntervalSeconds')}</label>
-            <div class="col-span-2">
-              <input
-                type="number"
-                id="setting-onvif-discovery-interval"
-                name="onvifDiscoveryInterval"
-                min="30"
-                max="3600"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.onvifDiscoveryInterval}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.discoveryIntervalSecondsRangeHelp')}</span>
-            </div>
-          </div>
-          <div class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-            <label for="setting-onvif-discovery-network" class="font-medium">{t('settings.discoveryNetwork')}</label>
-            <div class="col-span-2">
-              <input
-                type="text"
-                id="setting-onvif-discovery-network"
-                name="onvifDiscoveryNetwork"
-                class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
-                value={settings.onvifDiscoveryNetwork}
-                onChange={handleInputChange}
-                disabled={!canModifySettings}
-                placeholder={t('streams.auto')}
-              />
-              <span class="hint text-sm text-muted-foreground block mt-1">
-                {t('settings.discoveryNetworkExamples')}
-              </span>
-            </div>
-          </div>
-          </div>
-
-          {/* Save Settings Button - at bottom of form.
-              Uses AsyncButton for pending-state feedback (PRD UXD_01 §5.1 / #399). */}
-          {canModifySettings && (
-            <div class="flex justify-end mt-6">
               <AsyncButton
                 id="save-settings-btn"
                 class="px-6 py-2 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 min-h-11 disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={saveSettings}
+                disabled={!isDirty}
               >
                 {t('settings.saveSettings')}
               </AsyncButton>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </ContentLoader>
     </section>
   );
