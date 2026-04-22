@@ -187,7 +187,8 @@ jobs:
             lcov \
             golang-go \
             curl \
-            ca-certificates
+            ca-certificates \
+            gpg
 
       - name: Checkout (with go2rtc submodule)
         uses: actions/checkout@v5

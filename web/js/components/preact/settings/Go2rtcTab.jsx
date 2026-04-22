@@ -91,6 +91,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const [effectiveConfig, setEffectiveConfig] = useState(null);
   const [effectiveConfigOpen, setEffectiveConfigOpen] = useState(false);
   const [effectiveConfigLoading, setEffectiveConfigLoading] = useState(false);
+  const [overrideStatus, setOverrideStatus] = useState(null);
   const overrideValidateTimerRef = useRef(null);
   const isMountedRef = useRef(true);
 
@@ -144,14 +145,85 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
   const loadEffectiveConfig = async () => {
     setEffectiveConfigOpen(true);
     setEffectiveConfigLoading(true);
+    setOverrideStatus(null);
     try {
-      const res = await fetchJSON('/api/system/go2rtc/effective-config');
-      if (isMountedRef.current) setEffectiveConfig(res);
+      /* Fetch the YAML previews and the override-pipeline status in
+       * parallel.  The status surfaces DB-bytes / file-bytes /
+       * quarantine state so that when override.yaml is empty, the user
+       * can see WHY instead of just seeing "(none)" (see #394). */
+      const [cfg, status] = await Promise.all([
+        fetchJSON('/api/system/go2rtc/effective-config'),
+        fetchJSON('/api/system/go2rtc/override-status').catch(() => null),
+      ]);
+      if (isMountedRef.current) {
+        setEffectiveConfig(cfg);
+        setOverrideStatus(status);
+      }
     } catch (err) {
       if (isMountedRef.current) setEffectiveConfig({ error: String(err) });
     } finally {
       if (isMountedRef.current) setEffectiveConfigLoading(false);
     }
+  };
+
+  /* Summarize the override-status response into a single, actionable
+   * line.  Priorities are in order of "most likely to explain why the
+   * user's override isn't applying". */
+  const describeOverrideStatus = (s) => {
+    if (!s) return null;
+    if (s.quarantine_active) {
+      return {
+        kind: 'error',
+        text: `Override is QUARANTINED — go2rtc refused to load it. ` +
+              `Reason: ${s.quarantine_reason || '(unknown)'}. ` +
+              `Save a new value to clear the quarantine.`,
+      };
+    }
+    if (s.db_bytes > 0 && !s.file_present) {
+      return {
+        kind: 'error',
+        text: `${s.db_bytes} bytes saved in DB, but ${s.expected_file_path || 'override.yaml'} ` +
+              `is NOT present on disk. go2rtc is running WITHOUT your override. ` +
+              `Check server logs for a "Failed to open go2rtc override file" error; ` +
+              `likely a permissions or filesystem problem on the config dir.`,
+      };
+    }
+    if (s.db_bytes > 0 && s.file_present && !s.content_matches) {
+      return {
+        kind: 'warn',
+        text: `DB has ${s.db_bytes} bytes but override.yaml on disk is ${s.file_bytes} bytes ` +
+              `and the contents differ — go2rtc may be using a stale override. ` +
+              `A go2rtc restart will regenerate the file from the DB.`,
+      };
+    }
+    if (s.db_bytes === 0 && s.file_present) {
+      return {
+        kind: 'warn',
+        text: `override.yaml exists on disk but the DB setting is empty. ` +
+              `The file will be removed on the next go2rtc restart.`,
+      };
+    }
+    if (s.db_bytes > 0 && s.content_matches && !s.process_running) {
+      return {
+        kind: 'warn',
+        text: `Override is saved and on disk, but go2rtc is not running — ` +
+              `the override is not live. Enable go2rtc or check the service logs.`,
+      };
+    }
+    if (s.db_bytes === 0 && !s.file_present) {
+      return {
+        kind: 'info',
+        text: 'No override configured (DB and disk both empty). ' +
+              'Nothing to apply — save a value in the textarea above first.',
+      };
+    }
+    if (s.db_bytes > 0 && s.content_matches && s.process_running) {
+      return {
+        kind: 'ok',
+        text: `Override is active: ${s.db_bytes} bytes on disk, matching DB, go2rtc PID ${s.process_pid}.`,
+      };
+    }
+    return null;
   };
 
   const handleInsertPreset = (e) => {
@@ -494,6 +566,22 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                         <div class="text-sm text-red-600">Failed to load: {effectiveConfig.error}</div>
                       ) : effectiveConfig ? (
                         <div class="space-y-3">
+                          {(() => {
+                            const note = describeOverrideStatus(overrideStatus);
+                            if (!note) return null;
+                            const cls = note.kind === 'error'
+                              ? 'bg-red-50 dark:bg-red-900/20 border-red-500 text-red-800 dark:text-red-200'
+                              : note.kind === 'warn'
+                              ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-500 text-yellow-800 dark:text-yellow-200'
+                              : note.kind === 'ok'
+                              ? 'bg-green-50 dark:bg-green-900/20 border-green-500 text-green-800 dark:text-green-200'
+                              : 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-800 dark:text-blue-200';
+                            return (
+                              <div class={`p-2 border rounded text-xs ${cls}`}>
+                                {note.text}
+                              </div>
+                            );
+                          })()}
                           {effectiveConfig.redaction_available === false ? (
                             <div class="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-500 rounded text-xs text-yellow-800 dark:text-yellow-200">
                               libyaml unavailable on the server — secret redaction is SKIPPED. Treat this preview as if it contained your secrets in cleartext.

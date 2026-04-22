@@ -61,4 +61,20 @@ void handle_get_system_status(const http_request_t *request, http_response_t *re
 void handle_get_system_go2rtc_effective_config(const http_request_t *request,
                                                 http_response_t *response);
 
+/**
+ * @brief GET /api/system/go2rtc/override-status
+ *
+ * Diagnostic summary of the go2rtc override pipeline: compares the DB value
+ * in `go2rtc_config_override` against the on-disk `override.yaml` and reports
+ * quarantine / upgrade-validation state. Answers issue #394-shaped
+ * reports ("my override isn't taking effect") without shell access to the
+ * container — operators can see exactly where the chain breaks (DB empty vs
+ * file missing vs quarantined vs byte-for-byte mismatch).
+ *
+ * No YAML content is returned — only sizes + a content hash — so this is
+ * safe to render without redaction.
+ */
+void handle_get_system_go2rtc_override_status(const http_request_t *request,
+                                               http_response_t *response);
+
 #endif /* API_HANDLERS_SYSTEM_H */

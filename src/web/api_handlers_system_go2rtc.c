@@ -8,6 +8,7 @@
 #include "web/httpd_utils.h"
 #include "video/go2rtc/go2rtc_process.h"
 #include "utils/yaml_redact.h"
+#include "database/db_system_settings.h"
 #define LOG_COMPONENT "SystemAPI"
 #include "core/logger.h"
 #include <cjson/cJSON.h>
@@ -300,6 +301,163 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
         return;
     }
 
+    http_response_set_json(res, 200, body);
+    free(body);
+}
+
+/* ------------------------------------------------------------------
+ * Override-status diagnostic
+ * ------------------------------------------------------------------
+ *
+ * Issue #394 gave us the prototype symptom report: "my override YAML
+ * has no effect, and the Effective Config modal shows override.yaml =
+ * (none)."  Diagnosing it from the outside required shell access to
+ * the container + knowing which log lines to grep.  This endpoint
+ * reports the state of every link in the chain so the failure is
+ * visible from the UI alone.
+ *
+ * The response deliberately carries SIZES ONLY (plus a byte-equality
+ * bool), never content, so it's safe to expose without the redaction
+ * pass the effective-config endpoint needs.
+ */
+
+static int try_read_file(const char *path, char **out, size_t *out_len)
+{
+    *out = NULL;
+    *out_len = 0;
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return (errno == ENOENT) ? 0 : -1;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+        (size_t)st.st_size > EFFECTIVE_CONFIG_FILE_CAP) {
+        close(fd);
+        return -1;
+    }
+    char *buf = malloc((size_t)st.st_size + 1);
+    if (!buf) { close(fd); return -1; }
+    size_t total = 0;
+    while (total < (size_t)st.st_size) {
+        ssize_t n = read(fd, buf + total, (size_t)st.st_size - total);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            free(buf); close(fd); return -1;
+        }
+        if (n == 0) break;
+        total += (size_t)n;
+    }
+    close(fd);
+    if (total != (size_t)st.st_size) { free(buf); return -1; }
+    buf[total] = '\0';
+    *out = buf;
+    *out_len = total;
+    return 1;
+}
+
+void handle_get_system_go2rtc_override_status(const http_request_t *req,
+                                               http_response_t *res)
+{
+    log_info("Handling GET /api/system/go2rtc/override-status");
+
+    if (!httpd_check_admin_privileges(req, res)) {
+        return;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
+
+    const char *override_path = go2rtc_process_get_override_path();
+    cJSON_AddStringToObject(root, "expected_file_path",
+                            override_path ? override_path : "");
+
+    /* DB-side state. */
+    char *db_content = NULL;
+    size_t db_len = 0;
+    int db_rc = db_get_system_setting_alloc("go2rtc_config_override",
+                                            &db_content, &db_len);
+    bool db_has_content = (db_rc == 0 && db_content && db_len > 0);
+    cJSON_AddNumberToObject(root, "db_bytes",
+                            (double)(db_has_content ? db_len : 0));
+
+    /* Disk-side state. */
+    char *file_content = NULL;
+    size_t file_len = 0;
+    int file_rc = override_path
+                      ? try_read_file(override_path, &file_content, &file_len)
+                      : -1;
+    bool file_present = (file_rc == 1);
+    cJSON_AddBoolToObject(root, "file_present", file_present);
+    cJSON_AddNumberToObject(root, "file_bytes",
+                            (double)(file_present ? (long)file_len : -1L));
+    if (file_rc < 0) {
+        cJSON_AddStringToObject(root, "file_read_error",
+                                override_path ? strerror(errno) : "no override path");
+    }
+
+    /* Byte-for-byte equality between what the DB holds and what got
+     * written.  Mismatch points at a stale file OR a failed regeneration
+     * between the last save and now — the key diagnostic for "I saved
+     * but nothing changed." */
+    bool content_matches = false;
+    if (db_has_content && file_present && db_len == file_len) {
+        content_matches = (memcmp(db_content, file_content, db_len) == 0);
+    } else if (!db_has_content && !file_present) {
+        /* Both empty/absent is a coherent "no override" state. */
+        content_matches = true;
+    }
+    cJSON_AddBoolToObject(root, "content_matches", content_matches);
+
+    /* Quarantine state (T4b + T14).  If `disabled_reason` is non-empty,
+     * go2rtc_process_generate_override_file() short-circuits and
+     * unlinks override.yaml — which is exactly the #394 symptom. */
+    char *reason = NULL;
+    size_t reason_len = 0;
+    int rc_reason = db_get_system_setting_alloc(
+        "go2rtc_config_override_disabled_reason", &reason, &reason_len);
+    bool quarantine_active = (rc_reason == 0 && reason && reason_len > 0);
+    cJSON_AddBoolToObject(root, "quarantine_active", quarantine_active);
+    if (quarantine_active) {
+        cJSON_AddStringToObject(root, "quarantine_reason", reason);
+    }
+    free(reason);
+
+    char *quar_copy = NULL;
+    size_t quar_copy_len = 0;
+    int rc_quar = db_get_system_setting_alloc(
+        "go2rtc_config_override_quarantined", &quar_copy, &quar_copy_len);
+    bool has_quar_copy = (rc_quar == 0 && quar_copy && quar_copy_len > 0);
+    cJSON_AddNumberToObject(root, "quarantined_copy_bytes",
+                            (double)(has_quar_copy ? quar_copy_len : 0));
+    free(quar_copy);
+
+    char *validated = NULL;
+    size_t validated_len = 0;
+    int rc_v = db_get_system_setting_alloc(
+        "go2rtc_override_validated_version", &validated, &validated_len);
+    if (rc_v == 0 && validated) {
+        cJSON_AddStringToObject(root, "validated_version", validated);
+    } else {
+        cJSON_AddStringToObject(root, "validated_version", "");
+    }
+    free(validated);
+
+    /* Runtime state — is there actually a go2rtc to consume the
+     * override? */
+    int pid = go2rtc_process_get_pid();
+    cJSON_AddBoolToObject(root, "process_running", pid > 0);
+    cJSON_AddNumberToObject(root, "process_pid", pid > 0 ? (double)pid : 0);
+
+    free(db_content);
+    free(file_content);
+
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!body) {
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
     http_response_set_json(res, 200, body);
     free(body);
 }
