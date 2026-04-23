@@ -49,17 +49,21 @@ Also supported as a fallback for tools that only understand basic auth.
 
 ### Roles
 
-Role-based access is enforced per-endpoint:
+Role-based access is enforced per-endpoint. The table below is a high-level
+summary of the intended access model:
 
 | Role     | Can read | Can write | Can administer |
 |----------|:--------:|:---------:|:--------------:|
 | `ADMIN`  | yes      | yes       | yes            |
 | `USER`   | yes      | yes       | no             |
 | `API`    | yes      | yes       | no             |
-| `VIEWER` | yes      | no        | no             |
+| `VIEWER` | yes      | typically no | no          |
 
-Write endpoints (including [`POST /api/motion/trigger`](#trigger-motion-event))
-reject `VIEWER` with 403.
+Write authorization is endpoint-specific. Some write endpoints (including
+[`POST /api/motion/trigger`](#trigger-motion-event)) may reject `VIEWER` with
+`403`, but callers should rely on each endpoint's documented or implemented
+access checks rather than assuming all write endpoints enforce the same role
+restriction.
 
 ## API Endpoints
 
