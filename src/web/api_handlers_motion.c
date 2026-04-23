@@ -7,7 +7,8 @@
  * ONVIF events normally drive. See discussion #375 for motivation.
  *
  * The endpoint:
- *   - authenticates the caller via X-API-Key / Bearer token / session cookie
+ *   - authenticates the caller via httpd_get_authenticated_user() (for example:
+ *     X-API-Key, Bearer token, session cookie, or HTTP Basic auth)
  *   - rejects USER_ROLE_VIEWER
  *   - validates the target stream exists and has detection-based recording on
  *   - sets the UDT external_motion_trigger atomic for the target stream
