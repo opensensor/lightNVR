@@ -143,10 +143,25 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
     frame = av_frame_alloc();
     if (!pkt || !frame) goto done;
 
-    time_t decode_deadline = time(NULL) + THUMBNAIL_DECODE_BUDGET_SEC;
+    struct timespec decode_start;
+    if (clock_gettime(CLOCK_MONOTONIC, &decode_start) != 0) {
+        log_warn("Thumbnail: clock_gettime(CLOCK_MONOTONIC) failed for %s: %s",
+                 input_path, strerror(errno));
+        goto done;
+    }
+
     bool got_frame = false;
     while (!got_frame) {
-        if (time(NULL) > decode_deadline) {
+        struct timespec now;
+        if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+            log_warn("Thumbnail: clock_gettime(CLOCK_MONOTONIC) failed for %s: %s",
+                     input_path, strerror(errno));
+            goto done;
+        }
+
+        if ((now.tv_sec - decode_start.tv_sec) > THUMBNAIL_DECODE_BUDGET_SEC ||
+            ((now.tv_sec - decode_start.tv_sec) == THUMBNAIL_DECODE_BUDGET_SEC &&
+             now.tv_nsec > decode_start.tv_nsec)) {
             log_warn("Thumbnail: decode budget exceeded for %s", input_path);
             goto done;
         }
