@@ -580,9 +580,6 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     }
     cJSON_AddItemToObject(response, "stream", stream_obj);
 
-    // Add obsolete motion config
-    cJSON_AddNullToObject(response, "motion_config");
-
     char *json_str = cJSON_PrintUnformatted(response);
     if (!json_str) {
         cJSON_Delete(response);

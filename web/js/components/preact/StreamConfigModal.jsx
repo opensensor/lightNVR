@@ -287,7 +287,6 @@ export function StreamConfigModal({
   onInputChange,
   onThresholdChange,
   onTestConnection,
-  onTestMotion,
   onSave,
   onClose,
   onRefreshModels,

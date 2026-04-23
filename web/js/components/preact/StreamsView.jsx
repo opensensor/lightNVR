@@ -641,33 +641,6 @@ export function StreamsView() {
     });
   };
 
-  // Trigger a simulated ONVIF motion event for the current stream
-  const triggerTestMotionEvent = async () => {
-    if (!currentStream?.name) {
-      showStatusMessage(t('streams.setStreamNameAndSaveBeforeTestingMotion'), 'error', 5000);
-      return;
-    }
-    if (!currentStream?.isOnvif) {
-      showStatusMessage(t('streams.enableOnvifCameraFirst'), 'error', 5000);
-      return;
-    }
-    try {
-      // Now fire the test motion event
-      const data = await fetchJSON(`/api/motion/test/${encodeURIComponent(currentStream.name)}`, {
-        method: 'POST',
-        timeout: 15000
-      });
-      if (data?.success) {
-        showStatusMessage(t('streams.testMotionEventTriggeredSuccessfully'), 'success', 3000);
-      } else {
-        showStatusMessage(t('streams.testMotionEventFailed', { message: data?.message || t('common.unknown') }), 'error', 5000);
-      }
-    } catch (err) {
-      showStatusMessage(t('streams.errorTriggeringTestMotion', { message: err.message }), 'error', 5000);
-    }
-  };
-
-
   // Open delete modal
   const openDeleteModal = (stream) => {
     setStreamToDelete(stream);
@@ -746,7 +719,6 @@ export function StreamsView() {
         staleTime: 0 // Always fetch fresh when opening modal
       });
       const stream = data.stream || {};
-      const motion = data.motion_config || null;
 
       setCurrentStream({
         ...stream,
@@ -825,7 +797,6 @@ export function StreamsView() {
         staleTime: 0
       });
       const stream = data.stream || {};
-      const motion = data.motion_config || null;
 
       setCurrentStream({
         ...stream,
@@ -1530,7 +1501,6 @@ export function StreamsView() {
           onInputChange={handleInputChange}
           onThresholdChange={handleThresholdChange}
           onTestConnection={testStreamConnection}
-          onTestMotion={triggerTestMotionEvent}
           onSave={handleSubmit}
           onClose={closeModal}
           onRefreshModels={loadDetectionModels}
