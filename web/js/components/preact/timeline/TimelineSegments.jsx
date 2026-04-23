@@ -31,6 +31,9 @@ export function TimelineSegments({ segments: propSegments }) {
   // Refs
   const containerRef = useRef(null);
   const isDragging = useRef(false);
+  // Capture playback state at drag-start so we can preserve it across the seek
+  // (standard scrubber UX: clicking/dragging while playing keeps playing).
+  const wasPlayingAtDragStartRef = useRef(false);
   const lastSegmentsRef = useRef([]);
 
   // Subscribe to timeline state changes
@@ -78,6 +81,8 @@ export function TimelineSegments({ segments: propSegments }) {
           (target.classList.contains('timeline-clickable-area') ||
             target.classList.contains('timeline-segment')))
       ) {
+        // Remember whether we were playing so we can resume after the seek.
+        wasPlayingAtDragStartRef.current = !!timelineState.isPlaying;
         isDragging.current = true;
         handleTimelineClick(e);
 
@@ -93,9 +98,36 @@ export function TimelineSegments({ segments: propSegments }) {
     };
 
     const handleMouseUp = () => {
+      if (!isDragging.current) {
+        return;
+      }
       isDragging.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+
+      // If playback was active before the seek, resume at the new cursor
+      // position.  handleTimelineClick forces isPlaying=false so the video
+      // loads cleanly; re-assert the playing state here and let
+      // TimelinePlayer.handleVideoPlayback drive the actual video.play().
+      if (wasPlayingAtDragStartRef.current) {
+        wasPlayingAtDragStartRef.current = false;
+        const segs = timelineState.timelineSegments || [];
+        const ts = timelineState.currentTime;
+        let targetIndex = timelineState.currentSegmentIndex;
+        if (ts !== null && segs.length > 0) {
+          const containing = findContainingSegmentIndex(segs, ts);
+          if (containing !== -1) {
+            targetIndex = containing;
+          }
+        }
+        if (targetIndex >= 0 && targetIndex < segs.length) {
+          timelineState.setState({
+            isPlaying: true,
+            currentSegmentIndex: targetIndex,
+            forceReload: true
+          });
+        }
+      }
     };
 
     container.addEventListener('mousedown', handleMouseDown);

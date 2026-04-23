@@ -29,6 +29,9 @@ export function TimelineCursor() {
   // always see the latest value without needing to re-attach listeners.
   const cursorRef = useRef(null);
   const isDraggingRef = useRef(false);
+  // Capture playback state at drag-start so we can resume after the seek
+  // (standard scrubber UX: dragging while playing should keep playing).
+  const wasPlayingAtDragStartRef = useRef(false);
   const startHourRef = useRef(startHour);
   const endHourRef = useRef(endHour);
   startHourRef.current = startHour;
@@ -62,6 +65,8 @@ export function TimelineCursor() {
     const handleMouseDown = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      // Capture playback state at drag-start so we can resume after release.
+      wasPlayingAtDragStartRef.current = !!timelineState.isPlaying;
       isDraggingRef.current = true;
 
       timelineState.userControllingCursor = true;
@@ -137,6 +142,9 @@ export function TimelineCursor() {
       }
 
       timelineState.prevCurrentTime = timelineState.currentTime;
+      // Pause briefly so the video element can reload the (possibly different)
+      // segment from a known state; we will re-assert isPlaying below if the
+      // user was playing when they started dragging.
       timelineState.isPlaying = false;
       timelineState.setState({});
 
@@ -146,7 +154,25 @@ export function TimelineCursor() {
       timelineState.currentSegmentIndex = containingIndex !== -1
         ? containingIndex
         : findNearestSegmentIndex(segs, timestamp);
-      timelineState.setState({});
+
+      // Restore playback state if we were playing before the drag began.
+      // Standard scrubber UX: releasing the drag while previously playing
+      // should resume playback at the new cursor position.
+      const shouldResume = wasPlayingAtDragStartRef.current;
+      wasPlayingAtDragStartRef.current = false;
+      if (shouldResume && timelineState.currentSegmentIndex >= 0) {
+        // Clear the cursor-lock flags so the cursor can follow the video
+        // as it plays, and force a reload so the video element picks up
+        // the new segment / seek position cleanly.
+        timelineState.preserveCursorPosition = false;
+        timelineState.cursorPositionLocked = false;
+        timelineState.setState({
+          isPlaying: true,
+          forceReload: true
+        });
+      } else {
+        timelineState.setState({});
+      }
     };
 
     // Add event listeners
