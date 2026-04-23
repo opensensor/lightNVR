@@ -238,6 +238,8 @@ void onvif_log_soap_fault(const char *response, size_t response_len, const char 
         if (faultstring) reason_str = ezxml_txt(faultstring);
     }
 
+    bool have_reason = (reason_str && reason_str[0] != '\0');
+
     /* Build and log the message */
     if (code_str && code_str[0] != '\0') {
         if (subcode_str && subcode_str[0] != '\0') {
@@ -245,14 +247,14 @@ void onvif_log_soap_fault(const char *response, size_t response_len, const char 
                       ctx,
                       code_str,
                       subcode_str,
-                      (reason_str && reason_str[0] != '\0') ? reason_str : "(none)");
+                      have_reason ? reason_str : "(none)");
         } else {
             log_error("[%s] SOAP Fault: Code=%s, Reason=%s",
                       ctx,
                       code_str,
-                      (reason_str && reason_str[0] != '\0') ? reason_str : "(none)");
+                      have_reason ? reason_str : "(none)");
         }
-    } else if (reason_str && reason_str[0] != '\0') {
+    } else if (have_reason) {
         log_error("[%s] SOAP Fault: %s", ctx, reason_str);
     } else {
         /* Could not extract anything useful — log raw */
@@ -261,6 +263,18 @@ void onvif_log_soap_fault(const char *response, size_t response_len, const char 
         memcpy(snippet, response, n);
         snippet[n] = '\0';
         log_error("[%s] SOAP Fault (could not extract details): %s", ctx, snippet);
+    }
+
+    /* Extra diagnostic: when the structured fault lacks a Reason — as happens
+     * with strict ONVIF servers like Reolink (#374) — dump a snippet of the
+     * raw XML so future bug reports include enough for us to spot vendor
+     * quirks (Subcode values, Detail elements, etc.) without needing a pcap. */
+    if (!have_reason && code_str && code_str[0] != '\0') {
+        char snippet[768];
+        size_t n = response_len < sizeof(snippet) - 1 ? response_len : sizeof(snippet) - 1;
+        memcpy(snippet, response, n);
+        snippet[n] = '\0';
+        log_error("[%s] SOAP Fault raw XML (no Reason/Text): %s", ctx, snippet);
     }
 
     ezxml_free(xml);

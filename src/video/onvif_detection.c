@@ -22,6 +22,18 @@
 #include "video/onvif_motion_recording.h"
 #include "video/zone_filter.h"
 #include "database/db_detections.h"
+#include "ezxml.h"
+
+/* WS-Addressing action URIs for the ONVIF operations this file emits.
+ * Strict ONVIF servers (Reolink, some Vivotek) reject requests that don't
+ * carry a matching wsa:Action header and `action=` Content-Type parameter —
+ * see #374. */
+#define ONVIF_ACTION_GET_SERVICES        "http://www.onvif.org/ver10/device/wsdl/GetServices"
+#define ONVIF_ACTION_CREATE_PULLPOINT    "http://www.onvif.org/ver10/events/wsdl/EventPortType/CreatePullPointSubscriptionRequest"
+#define ONVIF_ACTION_PULL_MESSAGES       "http://www.onvif.org/ver10/events/wsdl/PullPointSubscription/PullMessagesRequest"
+
+/* External UUID generator (used for wsa:MessageID). */
+extern void generate_uuid(char *uuid, size_t size);
 
 // Global variables
 static bool initialized = false;
@@ -70,8 +82,15 @@ static size_t write_memory_callback(void *contents, size_t size, size_t nmemb, v
     return realsize;
 }
 
-// Create ONVIF SOAP request with WS-Security (if credentials provided)
-static char *create_onvif_request(const char *username, const char *password, const char *request_body) {
+/*
+ * Create ONVIF SOAP request with WS-Security (if credentials provided) and
+ * WS-Addressing headers. `action` and `to` are the WS-Addressing action URI
+ * and destination URL respectively; both are required (strict ONVIF servers
+ * such as Reolink reject requests missing either — #374).
+ */
+static char *create_onvif_request(const char *username, const char *password,
+                                  const char *request_body,
+                                  const char *action, const char *to) {
     bool has_credentials = (username && strlen(username) > 0 && password && strlen(password) > 0);
     char *security_header = NULL;
 
@@ -87,8 +106,22 @@ static char *create_onvif_request(const char *username, const char *password, co
         }
     }
 
-    // Allocate envelope dynamically to accommodate variable-length body and header
-    size_t envelope_size = strlen(request_body) + strlen(security_header) + 1024;
+    /* Build a WS-Addressing fragment if an action was provided. Using
+     * `urn:uuid:<v4>` for MessageID and leaving mustUnderstand off on To/Action
+     * — cameras that ignore WS-Addressing shouldn't then fault because they
+     * "didn't understand" an optional header. */
+    char uuid[48] = {0};
+    generate_uuid(uuid, sizeof(uuid));
+
+    const char *safe_action = action ? action : "";
+    const char *safe_to     = to     ? to     : "";
+
+    /* The WS-Addressing block inflates the envelope; reserve enough for
+     * MessageID (urn:uuid:… = ~45 chars), the action URI, the destination URL,
+     * the security header, and the body. 2 KB of slack above those sizes is
+     * plenty. */
+    size_t envelope_size = strlen(request_body) + strlen(security_header)
+                           + strlen(safe_action) + strlen(safe_to) + 2048;
     char *soap_request = malloc(envelope_size);
     if (!soap_request) {
         free(security_header);
@@ -97,20 +130,32 @@ static char *create_onvif_request(const char *username, const char *password, co
 
     snprintf(soap_request, envelope_size,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-        "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\">"
-        "<s:Header>%s</s:Header>"
+        "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" "
+                   "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">"
+        "<s:Header>"
+            "<wsa:MessageID>urn:uuid:%s</wsa:MessageID>"
+            "<wsa:To>%s</wsa:To>"
+            "<wsa:Action>%s</wsa:Action>"
+            "%s"
+        "</s:Header>"
         "<s:Body xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
-        "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
+                "xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\">%s</s:Body>"
         "</s:Envelope>",
-        security_header, request_body);
+        uuid, safe_to, safe_action, security_header, request_body);
 
     free(security_header);
     return soap_request;
 }
 
-// Send ONVIF request to a full URL (bypassing the base URL + /onvif/ + service construction)
+/*
+ * Send ONVIF request to a full URL (bypassing the base URL + /onvif/ + service
+ * construction). `action` is the WS-Addressing action URI; it's also added as
+ * the `action=` parameter on the Content-Type header per SOAP 1.2, which
+ * strict ONVIF servers require (#374).
+ */
 static char *send_onvif_request_to_url(const char *full_url, const char *username,
-                                       const char *password, const char *request_body) {
+                                       const char *password, const char *request_body,
+                                       const char *action) {
     if (!initialized || !curl_handle) {
         log_error("ONVIF detection system not initialized");
         return NULL;
@@ -118,7 +163,10 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
 
     log_info("ONVIF Detection: Sending request to %s", full_url);
 
-    char *soap_request = create_onvif_request(username, password, request_body);
+    /* Use full_url as the WS-Addressing To, which is exactly what the request
+     * is being POSTed to. */
+    char *soap_request = create_onvif_request(username, password, request_body,
+                                              action, full_url);
     if (!soap_request) {
         log_error("Failed to create ONVIF request");
         return NULL;
@@ -131,9 +179,20 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
     curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, soap_request);
     curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, strlen(soap_request));
 
-    // Set headers
+    /* Content-Type carries the SOAP 1.2 action parameter in addition to the
+     * charset. Fall back to the plain type when no action is provided. */
+    char content_type[512];
+    if (action && action[0] != '\0') {
+        snprintf(content_type, sizeof(content_type),
+                 "Content-Type: application/soap+xml; charset=utf-8; action=\"%s\"",
+                 action);
+    } else {
+        snprintf(content_type, sizeof(content_type),
+                 "Content-Type: application/soap+xml; charset=utf-8");
+    }
+
     struct curl_slist *headers = NULL;
-    headers = curl_slist_append(headers, "Content-Type: application/soap+xml; charset=utf-8");
+    headers = curl_slist_append(headers, content_type);
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
 
     // Set up response buffer
@@ -179,8 +238,9 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
 }
 
 // Send ONVIF request and get response
-static char *send_onvif_request(const char *url, const char *username, const char *password, 
-                               const char *request_body, const char *service) {
+static char *send_onvif_request(const char *url, const char *username, const char *password,
+                               const char *request_body, const char *service,
+                               const char *action) {
     if (!initialized || !curl_handle) {
         log_error("ONVIF detection system not initialized");
         return NULL;
@@ -190,7 +250,7 @@ static char *send_onvif_request(const char *url, const char *username, const cha
     char full_url[512];
     snprintf(full_url, sizeof(full_url), "%s/onvif/%s", url, service);
 
-    return send_onvif_request_to_url(full_url, username, password, request_body);
+    return send_onvif_request_to_url(full_url, username, password, request_body, action);
 }
 
 // Extract subscription address from response
@@ -219,8 +279,31 @@ static char *extract_subscription_address(const char *response) {
     return NULL;
 }
 
-// Query GetServices and return the event service URL, or NULL if not found.
-// The returned string is heap-allocated; caller must free() it.
+/* Return the local name of an ezxml element (strips any "prefix:" prefix). */
+static const char *local_name(ezxml_t el) {
+    if (!el || !el->name) return "";
+    const char *colon = strchr(el->name, ':');
+    return colon ? colon + 1 : el->name;
+}
+
+/* Find a direct child with the given local name, ignoring namespace prefix. */
+static ezxml_t child_by_local_name(ezxml_t parent, const char *local) {
+    if (!parent || !local) return NULL;
+    for (ezxml_t c = parent->child; c; c = c->ordered) {
+        if (strcmp(local_name(c), local) == 0) return c;
+    }
+    return NULL;
+}
+
+/*
+ * Query GetServices and return the event service URL, or NULL if not found.
+ * The returned string is heap-allocated; caller must free() it.
+ *
+ * Previous implementation used substring matching with a 512-byte window,
+ * which misses the XAddr when a Service element carries a Capabilities
+ * subtree (#374, Reolink Argus). We now parse the response with ezxml and
+ * walk Service elements, comparing the Namespace text to the events WSDL.
+ */
 static char *discover_event_service_url(const char *url, const char *username, const char *password) {
     const char *request_body =
         "<GetServices xmlns=\"http://www.onvif.org/ver10/device/wsdl\">"
@@ -228,36 +311,60 @@ static char *discover_event_service_url(const char *url, const char *username, c
         "</GetServices>";
 
     // GetServices is always sent to the standard device management endpoint
-    char *response = send_onvif_request(url, username, password, request_body, "device_service");
+    char *response = send_onvif_request(url, username, password, request_body,
+                                        "device_service", ONVIF_ACTION_GET_SERVICES);
     if (!response) {
         log_warn("ONVIF: GetServices to device_service endpoint failed");
         return NULL;
     }
 
-    // Find the events service namespace in the response
-    const char *events_ns = "http://www.onvif.org/ver10/events/wsdl";
-    const char *ns_pos = strstr(response, events_ns);
-    if (!ns_pos) {
-        log_warn("ONVIF: Events service namespace not found in GetServices response");
-        free(response);
-        return NULL;
-    }
-
-    // Search forward from the namespace position for XAddr (prefixed and un-prefixed variants)
-    const char *xaddr_open[]  = {"<tds:XAddr>", "<XAddr>", NULL};
-    const char *xaddr_close[] = {"</tds:XAddr>", "</XAddr>", NULL};
+    /* ezxml_parse_str modifies the buffer in place, and the returned
+     * tree references it, so keep `response` alive until we copy the
+     * matched URL out. */
+    ezxml_t xml = ezxml_parse_str(response, strlen(response));
     char *event_url = NULL;
 
-    for (int i = 0; xaddr_open[i] != NULL; i++) {
-        const char *tag = strstr(ns_pos, xaddr_open[i]);
-        // Only accept the XAddr if it is within the same Service element (~512 bytes window)
-        if (tag && (tag - ns_pos) < 512) {
-            const char *val_start = tag + strlen(xaddr_open[i]);
-            const char *val_end   = strstr(val_start, xaddr_close[i]);
-            if (val_end) {
-                size_t url_len = (size_t)(val_end - val_start);
-                event_url = strndup(val_start, url_len);
-                break;
+    if (xml) {
+        ezxml_t body = child_by_local_name(xml, "Body");
+        ezxml_t resp = body ? child_by_local_name(body, "GetServicesResponse") : NULL;
+
+        if (resp) {
+            const char *events_ns = "http://www.onvif.org/ver10/events/wsdl";
+            for (ezxml_t svc = resp->child; svc && !event_url; svc = svc->ordered) {
+                if (strcmp(local_name(svc), "Service") != 0) continue;
+
+                ezxml_t ns    = child_by_local_name(svc, "Namespace");
+                ezxml_t xaddr = child_by_local_name(svc, "XAddr");
+                const char *ns_text    = ns    ? ezxml_txt(ns)    : "";
+                const char *xaddr_text = xaddr ? ezxml_txt(xaddr) : "";
+
+                if (ns_text && xaddr_text && xaddr_text[0] != '\0'
+                    && strcmp(ns_text, events_ns) == 0) {
+                    event_url = strdup(xaddr_text);
+                }
+            }
+        }
+        ezxml_free(xml);
+    }
+
+    /* Fallback: the old substring heuristic, for responses that ezxml
+     * can't parse (malformed XML from buggy firmware). */
+    if (!event_url) {
+        const char *events_ns = "http://www.onvif.org/ver10/events/wsdl";
+        const char *ns_pos = strstr(response, events_ns);
+        if (ns_pos) {
+            const char *xaddr_open[]  = {"<tds:XAddr>", "<XAddr>", NULL};
+            const char *xaddr_close[] = {"</tds:XAddr>", "</XAddr>", NULL};
+            for (int i = 0; xaddr_open[i] != NULL; i++) {
+                const char *tag = strstr(ns_pos, xaddr_open[i]);
+                if (tag && (tag - ns_pos) < 2048) {
+                    const char *val_start = tag + strlen(xaddr_open[i]);
+                    const char *val_end   = strstr(val_start, xaddr_close[i]);
+                    if (val_end) {
+                        event_url = strndup(val_start, (size_t)(val_end - val_start));
+                        break;
+                    }
+                }
             }
         }
     }
@@ -311,16 +418,18 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
 
     if (discovered_url) {
         log_info("ONVIF: Sending CreatePullPointSubscription to discovered URL: %s", discovered_url);
-        response = send_onvif_request_to_url(discovered_url, username, password, request_body);
+        response = send_onvif_request_to_url(discovered_url, username, password, request_body,
+                                              ONVIF_ACTION_CREATE_PULLPOINT);
         free(discovered_url);
     }
 
     if (!response) {
         // Fall back through common event service path suffixes
-        const char *fallback_services[] = {"service", "event_service", NULL};
+        const char *fallback_services[] = {"service", "event_service", "Events", NULL};
         for (int i = 0; fallback_services[i] && !response; i++) {
             log_info("ONVIF: Trying fallback event endpoint: onvif/%s", fallback_services[i]);
-            response = send_onvif_request(url, username, password, request_body, fallback_services[i]);
+            response = send_onvif_request(url, username, password, request_body,
+                                          fallback_services[i], ONVIF_ACTION_CREATE_PULLPOINT);
         }
     }
 
@@ -554,7 +663,8 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         response = send_onvif_request_to_url(subscription->subscription_address,
                                              subscription->username,
                                              subscription->password,
-                                             request_body);
+                                             request_body,
+                                             ONVIF_ACTION_PULL_MESSAGES);
     } else {
         // Legacy fallback: extract last path component and re-append under /onvif/
         log_warn("ONVIF Detection: subscription_address is not a full URL ('%s'), using legacy path extraction",
@@ -565,7 +675,8 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
                                          subscription->username,
                                          subscription->password,
                                          request_body,
-                                         service);
+                                         service,
+                                         ONVIF_ACTION_PULL_MESSAGES);
             free(service);
         }
     }

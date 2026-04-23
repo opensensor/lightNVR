@@ -163,6 +163,21 @@ void test_soap_env_namespace(void) {
 }
 
 /* ================================================================
+ * Reolink-style fault: Code present but no Reason/Text element (#374)
+ * Exercises the raw-XML-snippet diagnostic branch in onvif_log_soap_fault.
+ * ================================================================ */
+void test_fault_code_no_reason(void) {
+    const char *xml =
+        "<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"http://www.w3.org/2003/05/soap-envelope\">"
+        "<SOAP-ENV:Body><SOAP-ENV:Fault>"
+        "<SOAP-ENV:Code><SOAP-ENV:Value>SOAP-ENV:Sender</SOAP-ENV:Value></SOAP-ENV:Code>"
+        "</SOAP-ENV:Fault></SOAP-ENV:Body></SOAP-ENV:Envelope>";
+
+    onvif_log_soap_fault(xml, strlen(xml), "TestReolink");
+    TEST_PASS();
+}
+
+/* ================================================================
  * Uppercase S namespace prefix
  * ================================================================ */
 void test_uppercase_s_namespace(void) {
@@ -196,6 +211,7 @@ int main(void) {
     RUN_TEST(test_null_context);
     RUN_TEST(test_empty_fault);
     RUN_TEST(test_soap_env_namespace);
+    RUN_TEST(test_fault_code_no_reason);
     RUN_TEST(test_uppercase_s_namespace);
 
     return UNITY_END();
