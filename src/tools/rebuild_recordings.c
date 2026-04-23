@@ -163,7 +163,7 @@ static bool create_disabled_stream(const char *stream_name) {
     safe_strcpy(stream.codec, "h264", sizeof(stream.codec), 0);
     stream.priority = 5;
     stream.record = false;  // Set record to false for disabled streams
-    stream.segment_duration = 60;
+    stream.segment_duration = 30;
     stream.detection_based_recording = false;
     stream.protocol = STREAM_PROTOCOL_TCP;
     stream.record_audio = false;  // Set record_audio to false for disabled streams

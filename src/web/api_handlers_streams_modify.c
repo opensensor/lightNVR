@@ -494,7 +494,7 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     config.codec[0] = '\0'; // Auto-detected from stream
     config.priority = 5;
     config.record = true;
-    config.segment_duration = 60;
+    config.segment_duration = 30;
     config.detection_based_recording = false;
     config.detection_interval = 10;
     config.detection_threshold = 0.5f;

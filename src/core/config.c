@@ -1809,7 +1809,7 @@ void print_config(const config_t *config) {
             if (config->streams[i].detection_based_recording) {
                 printf("      Detection Model: %s\n", 
                        config->streams[i].detection_model[0] ? config->streams[i].detection_model : "None");
-                printf("      Detection Interval: %d frames\n", config->streams[i].detection_interval);
+                printf("      Detection Interval: %d seconds\n", config->streams[i].detection_interval);
                 printf("      Detection Threshold: %.2f\n", config->streams[i].detection_threshold);
                 printf("      Pre-detection Buffer: %d seconds\n", config->streams[i].pre_detection_buffer);
                 printf("      Post-detection Buffer: %d seconds\n", config->streams[i].post_detection_buffer);

@@ -609,7 +609,7 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     // Set default values
     config.priority = 5;
     config.record = true;  // Enable recording by default
-    config.segment_duration = 60;
+    config.segment_duration = 30;
     config.detection_based_recording = true;  // Enable detection-based recording by default
     config.detection_interval = 10;
     config.detection_threshold = 0.5f;

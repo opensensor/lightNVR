@@ -1347,7 +1347,7 @@ export function StreamConfigModal({
                     id="stream-segment"
                     name="segment"
                     className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                    min="60"
+                    min="30"
                     max="3600"
                     value={currentStream.segment}
                     onChange={onInputChange}
