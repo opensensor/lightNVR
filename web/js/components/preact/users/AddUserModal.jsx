@@ -5,6 +5,7 @@
 import { USER_ROLE_KEYS } from './UserRoles.js';
 import { useEffect, useRef } from 'preact/hooks';
 import { useI18n } from '../../../i18n.js';
+import { AsyncButton } from '../AsyncButton.jsx';
 
 const FOCUSABLE_SELECTORS = [
   'a[href]',
@@ -38,11 +39,12 @@ export function AddUserModal({ formData, handleInputChange, handleAddUser, onClo
 2001:db8::1
 ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
-  // Direct submit handler
+  // Direct submit handler. Returns the add-user promise so the
+  // <AsyncButton> below can track pending state (#399 / PRD UXD_01 §5.1).
   const handleSubmit = (e) => {
-    e.preventDefault();
-    e.stopPropagation(); // Stop event from bubbling up
-    handleAddUser(e);
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    return Promise.resolve(handleAddUser(e));
   };
 
   // Stop click propagation on modal content
@@ -295,12 +297,18 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
               >
                 {t('common.cancel')}
               </button>
-              <button
+              {/* AsyncButton locks the submit + spins while the POST is in
+                  flight so the #399 rapid-tap double-save can't fire twice.
+                  handleSubmit (onSubmit of the form) also calls handleAddUser,
+                  but AsyncButton's onClick preventDefaults the click before
+                  the form submit fires, so only AsyncButton's path runs. */}
+              <AsyncButton
                 type="submit"
                 className="btn-primary"
+                onClick={handleSubmit}
               >
                 {t('users.addUser')}
-              </button>
+              </AsyncButton>
             </div>
           </form>
         </div>

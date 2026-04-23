@@ -1,4 +1,5 @@
 import { useI18n } from '../../../i18n.js';
+import { AsyncButton } from '../AsyncButton.jsx';
 
 /**
  * API Key Modal Component
@@ -70,12 +71,15 @@ export function ApiKeyModal({ currentUser, newApiKey, handleGenerateApiKey, copy
               <p className="mb-4">
                 {t('users.generateApiKeyDescription')}
               </p>
-              <button
+              {/* AsyncButton self-disables + spins while the POST for the new
+                  API key is in flight so users can't rapid-tap and generate
+                  two keys (#399 / PRD UXD_01 §5.1 / T1). */}
+              <AsyncButton
                 className="btn-primary w-full font-bold py-2 px-4 rounded mb-4"
-                onClick={handleGenerateApiKey}
+                onClick={() => Promise.resolve(handleGenerateApiKey())}
               >
                 {t('users.generateNewApiKey')}
-              </button>
+              </AsyncButton>
             </>
           )}
         </div>

@@ -546,9 +546,16 @@ export function StreamsView() {
     return Array(168).fill(true);
   };
 
-  // Handle form submission
+  // Handle form submission.
+  //
+  // Returns the save promise so the <AsyncButton> in StreamConfigModal can
+  // track pending state and suppress the rapid double-tap re-submit that
+  // #399 / PRD UXD_01 §5.1 was chasing. The click event is a MouseEvent
+  // from AsyncButton (not a form-submit event), so preventDefault is a
+  // best-effort no-op in the AsyncButton path; we still call it so the
+  // handler works if it's ever invoked from a form submit path.
   const handleSubmit = (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
     // Prepare stream data for API
     const streamData = {
@@ -611,16 +618,16 @@ export function StreamsView() {
       streamData.is_deleted = false;
     }
 
-    // Use mutation to save stream
+    // Use mutation to save stream. We return mutateAsync's promise so
+    // AsyncButton in StreamConfigModal can observe pending/error state.
     const savedStreamName = streamData.name;
-    saveStreamMutation.mutate(streamData, {
-      onSuccess: async () => {
-        // Ensure both list and details are refreshed after save
-        await queryClient.invalidateQueries({ queryKey: ['stream-full', savedStreamName] });
-        queryClient.invalidateQueries({ queryKey: ['streams'] });
-        // Close the modal after successful save
-        closeModal();
-      }
+    return saveStreamMutation.mutateAsync(streamData).then(async (result) => {
+      // Ensure both list and details are refreshed after save
+      await queryClient.invalidateQueries({ queryKey: ['stream-full', savedStreamName] });
+      queryClient.invalidateQueries({ queryKey: ['streams'] });
+      // Close the modal after successful save
+      closeModal();
+      return result;
     });
   };
 

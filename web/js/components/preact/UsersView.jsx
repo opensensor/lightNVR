@@ -245,14 +245,17 @@ export function UsersView() {
     }
   });
 
-  const { mutate: addUserMutate } = addUserMutation;
+  const { mutateAsync: addUserMutateAsync } = addUserMutation;
 
   /**
-   * Handle form submission for adding a user
-   * @param {Event} e - Form submit event
+   * Handle form submission for adding a user.
+   *
+   * Returns the mutation's promise so the AddUserModal's <AsyncButton>
+   * can disable the submit button + show a spinner while the POST is in
+   * flight, preventing the #399 rapid-tap duplicate-save bug.
    */
   const handleAddUser = useCallback((e) => {
-    if (e) e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
     console.log('Adding user:', formData.username);
     const userData = {
@@ -260,15 +263,17 @@ export function UsersView() {
       allowed_tags: formData.allowed_tags?.trim() || null,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
     };
-    addUserMutate(userData);
-  }, [formData, addUserMutate]);
+    return addUserMutateAsync(userData);
+  }, [formData, addUserMutateAsync]);
 
   /**
-   * Handle form submission for editing a user
-   * @param {Event} e - Form submit event
+   * Handle form submission for editing a user.
+   *
+   * Returns the mutation's promise so the EditUserModal's <AsyncButton>
+   * can lock the submit button while the PUT is in flight (#399).
    */
   const handleEditUser = useCallback((e) => {
-    if (e) e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
 
     console.log('Editing user:', selectedUser.id, selectedUser.username);
     const userData = {
@@ -276,26 +281,30 @@ export function UsersView() {
       allowed_tags: formData.allowed_tags?.trim() || null,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
     };
-    editUserMutation.mutate({
+    return editUserMutation.mutateAsync({
       userId: selectedUser.id,
       userData
     });
   }, [selectedUser, formData, editUserMutation]);
 
   /**
-   * Handle user deletion
+   * Handle user deletion. Returns the mutation's promise so the child
+   * DeleteUserModal's <AsyncButton> can disable itself + spin while the
+   * DELETE is in flight (#399 / PRD UXD_01 §5.1 / T1).
    */
   const handleDeleteUser = useCallback(() => {
     console.log('Deleting user:', selectedUser.id, selectedUser.username);
-    deleteUserMutation.mutate(selectedUser.id);
+    return deleteUserMutation.mutateAsync(selectedUser.id);
   }, [selectedUser, deleteUserMutation]);
 
   /**
-   * Handle generating a new API key for a user
+   * Handle generating a new API key for a user. Returns the mutation's
+   * promise so the child ApiKeyModal's <AsyncButton> can track pending
+   * state and block the rapid double-tap (#399).
    */
   const handleGenerateApiKey = useCallback(() => {
     console.log('Generating API key for user:', selectedUser.id, selectedUser.username);
-    generateApiKeyMutation.mutate(selectedUser.id);
+    return generateApiKeyMutation.mutateAsync(selectedUser.id);
   }, [selectedUser, generateApiKeyMutation]);
 
   const handleClearLoginLockout = useCallback(() => {
