@@ -8,17 +8,57 @@ LightNVR provides a RESTful API that allows you to interact with the system prog
 
 ## Authentication
 
-If authentication is enabled in the configuration file, API requests must include a valid session token. Obtain a session by calling the login endpoint, then include the session cookie in subsequent requests.
+If authentication is enabled in the configuration file, API requests must
+authenticate using one of three mechanisms. All three resolve to the same
+`user_t` and the same role-based access checks, so pick whichever fits the
+caller.
+
+### 1. Session cookie (interactive UI, scripts that log in once)
+
+Obtain a session by calling the login endpoint, then include the session
+cookie on subsequent requests.
 
 ```bash
-# Login to get a session
 curl -c cookies.txt -X POST -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"yourpassword"}' \
   http://your-lightnvr-ip:8080/api/auth/login
 
-# Use session cookie for subsequent requests
 curl -b cookies.txt http://your-lightnvr-ip:8080/api/streams
 ```
+
+### 2. API key (automation, long-lived integrations)
+
+Every user has an `api_key` field. Pass it via either header:
+
+```bash
+# Preferred
+curl -H "X-API-Key: <your-api-key>" http://your-lightnvr-ip:8080/api/streams
+
+# Also accepted
+curl -H "Authorization: Bearer <your-api-key>" http://your-lightnvr-ip:8080/api/streams
+```
+
+For automation (Home Assistant, NodeRED, cron jobs, etc.), create a dedicated
+user with the `USER_ROLE_API` role and use that user's `api_key`. Keep admin
+keys out of automation configs.
+
+### 3. HTTP Basic Auth
+
+Also supported as a fallback for tools that only understand basic auth.
+
+### Roles
+
+Role-based access is enforced per-endpoint:
+
+| Role     | Can read | Can write | Can administer |
+|----------|:--------:|:---------:|:--------------:|
+| `ADMIN`  | yes      | yes       | yes            |
+| `USER`   | yes      | yes       | no             |
+| `API`    | yes      | yes       | no             |
+| `VIEWER` | yes      | no        | no             |
+
+Write endpoints (including [`POST /api/motion/trigger`](#trigger-motion-event))
+reject `VIEWER` with 403.
 
 ## API Endpoints
 
@@ -249,6 +289,97 @@ PUT /api/streams/{name}/ptz/preset
 ```
 
 Creates or updates a PTZ preset.
+
+### Motion
+
+#### Trigger Motion Event
+
+```
+POST /api/motion/trigger
+```
+
+Drives the same motion-recording path that ONVIF events normally drive. Useful
+for cameras whose ONVIF event stream is unreliable or missing — the caller
+(Home Assistant, NodeRED, a shell script, a PIR sensor bridge) can post a
+motion event and the target stream's detection-based recording pipeline
+(pre-buffer → recording → post-buffer) handles the rest.
+
+The target stream must have `detection_based_recording` enabled; otherwise the
+unified detection thread is not running and there is nothing for the trigger
+to drive (409 Conflict).
+
+**Authentication:** See [Authentication](#authentication). For automation use
+a dedicated `USER_ROLE_API` user and its `api_key`; `USER_ROLE_VIEWER` is
+rejected with 403.
+
+**Request body:**
+
+| Field         | Type    | Required | Notes                                                   |
+|---------------|---------|----------|---------------------------------------------------------|
+| `stream`      | string  | yes      | Stream name, as shown in the streams list.              |
+| `action`      | string  | yes      | One of `start`, `stop`, `pulse`.                        |
+| `duration_ms` | integer | no       | Only valid with `pulse`. Default 2000, max 600000 (10m).|
+
+**Actions:**
+
+- `start` — motion began. Equivalent to an ONVIF motion-start event. Recording
+  begins (after the pre-buffer window) and continues until a corresponding
+  `stop` arrives, at which point the UDT transitions into the post-buffer
+  hold and then closes the recording.
+- `stop` — motion ended. Mirror of `start`.
+- `pulse` — convenience: fires `start`, waits `duration_ms`, then fires `stop`.
+  One request produces one complete motion event. Ideal for motion sensors that
+  only report a single edge (e.g. a Home Assistant automation that fires when a
+  PIR sensor goes active but does not send a separate "cleared" webhook).
+
+**Response:** `202 Accepted`
+
+```json
+{
+  "success": true,
+  "stream": "Front Door",
+  "action": "pulse",
+  "duration_ms": 5000
+}
+```
+
+**Errors:**
+
+- `400` — missing/invalid JSON, missing `stream`/`action`, bad `duration_ms`.
+- `401` — auth enabled and caller is not authenticated.
+- `403` — caller is `USER_ROLE_VIEWER`.
+- `404` — `stream` does not match a configured stream.
+- `409` — stream does not have `detection_based_recording` enabled.
+
+**Examples:**
+
+Start/stop (matches how an ONVIF sensor would report):
+```bash
+curl -X POST http://lightnvr:8080/api/motion/trigger \
+  -H "X-API-Key: <key>" -H "Content-Type: application/json" \
+  -d '{"stream":"Front Door","action":"start"}'
+
+# ...later, when motion clears:
+curl -X POST http://lightnvr:8080/api/motion/trigger \
+  -H "X-API-Key: <key>" -H "Content-Type: application/json" \
+  -d '{"stream":"Front Door","action":"stop"}'
+```
+
+One-shot pulse (Home Assistant rest_command with a PIR sensor):
+```yaml
+rest_command:
+  lightnvr_motion:
+    url: "http://lightnvr:8080/api/motion/trigger"
+    method: POST
+    headers:
+      X-API-Key: !secret lightnvr_api_key
+    content_type: "application/json"
+    payload: '{"stream":"{{ stream }}","action":"pulse","duration_ms":{{ duration | default(5000) }}}'
+```
+
+Cross-stream linking (`motion_trigger_source` in stream config) is honoured:
+an API-driven motion event on one stream will also drive recording on any
+stream that lists it as a trigger source, same as an ONVIF-driven event.
 
 ### Recordings
 
