@@ -29,6 +29,7 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/log.h>
 #include <libavutil/time.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
@@ -1226,8 +1227,20 @@ static void *unified_detection_thread_func(void *arg) {
     log_set_thread_context("Detection", stream_name);
     log_info("[%s] Unified detection thread started", stream_name);
 
+    // Silence libav's default stderr logging. Detection streams often
+    // connect to a go2rtc proxy whose upstream can EOF (e.g. unplugged
+    // camera, #402); libav's RTSP demuxer then floods stderr with
+    // `Failed reading RTSP data: End of file` via its AV_LOG_WARNING
+    // callback. We surface errors through log_error() ourselves.
+    av_log_set_level(AV_LOG_QUIET);
+
     unified_detection_state_t state;
     int reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
+    // Track whether this particular connection produced any real media
+    // packets. Used in the packet-timeout branch below to distinguish an
+    // interrupted-but-otherwise-healthy stream from one where the RTSP
+    // handshake succeeded against a proxy but no media ever arrived.
+    int saw_real_packets = 0;
     AVPacket *pkt = av_packet_alloc();
     AVFrame *frame = av_frame_alloc();
 
@@ -1258,8 +1271,21 @@ static void *unified_detection_thread_func(void *arg) {
                 if (connect_to_stream(ctx) == 0) {
                     state = UDT_STATE_BUFFERING;
                     ctx->reconnect_attempt = 0;
-                    reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
+                    // Intentionally *not* resetting reconnect_delay_ms here.
+                    // RTSP handshake success doesn't mean the stream is
+                    // healthy (go2rtc proxies an unplugged camera just
+                    // fine); we only reset the backoff once a real media
+                    // packet arrives, below. #402
                     atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+                    saw_real_packets = 0;
+                    // Reset per-connection heartbeat counters so the log
+                    // reports fresh numbers instead of carrying 700+ s of
+                    // stale state across reconnects (#402).
+                    pthread_mutex_lock(&ctx->mutex);
+                    ctx->total_packets_processed = 0;
+                    ctx->total_detections = 0;
+                    pthread_mutex_unlock(&ctx->mutex);
+                    atomic_store(&ctx->last_detection_check_time, (long long)time(NULL));
                     // Reset replay-detection state for the new connection
                     ctx->stream_connect_time = time(NULL);
                     ctx->first_video_pts_set = false;
@@ -1305,7 +1331,23 @@ static void *unified_detection_thread_func(void *arg) {
 
                 // Read packet
                 if (av_read_frame(ctx->input_ctx, pkt) >= 0) {
-                    atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+                    // Only treat non-empty packets as evidence the stream
+                    // is delivering media. Libav's RTSP demuxer can return
+                    // zero-length packets (RTSP control chatter, EOF resync)
+                    // that would otherwise keep last_packet_time fresh
+                    // forever and prevent MAX_PACKET_TIMEOUT_SEC from ever
+                    // firing (#402).
+                    if (pkt->size > 0) {
+                        atomic_store(&ctx->last_packet_time, (int_fast64_t)time(NULL));
+                        if (!saw_real_packets) {
+                            saw_real_packets = 1;
+                            // First real packet — connection is confirmed
+                            // healthy, so any future natural interruption
+                            // starts from the base reconnect delay again.
+                            reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
+                            atomic_store(&ctx->consecutive_failures, 0);
+                        }
+                    }
 
                     // Process packet (buffer, detect, record)
                     process_packet(ctx, pkt);
@@ -1321,7 +1363,30 @@ static void *unified_detection_thread_func(void *arg) {
                     time_t last = atomic_load(&ctx->last_packet_time);
 
                     if (now - last > MAX_PACKET_TIMEOUT_SEC) {
-                        log_warn("[%s] Packet timeout, reconnecting", stream_name);
+                        if (!saw_real_packets) {
+                            // Handshake succeeded but no real media packets
+                            // ever arrived. Treat as a soft connection
+                            // failure: apply the same exponential backoff
+                            // the failed-connect branch uses so we don't
+                            // tight-loop reconnecting to a go2rtc proxy
+                            // whose upstream camera is offline (#402).
+                            log_warn("[%s] Packet timeout with no media received; "
+                                     "backing off %d ms before reconnect",
+                                     stream_name, reconnect_delay_ms);
+                            atomic_fetch_add(&ctx->consecutive_failures, 1);
+                            int remaining_ms = reconnect_delay_ms;
+                            while (remaining_ms > 0 && atomic_load(&ctx->running) && !is_shutdown_initiated()) {
+                                int sleep_ms = remaining_ms > 500 ? 500 : remaining_ms;
+                                usleep(sleep_ms * 1000);
+                                remaining_ms -= sleep_ms;
+                            }
+                            reconnect_delay_ms = reconnect_delay_ms * 2;
+                            if (reconnect_delay_ms > MAX_RECONNECT_DELAY_MS) {
+                                reconnect_delay_ms = MAX_RECONNECT_DELAY_MS;
+                            }
+                        } else {
+                            log_warn("[%s] Packet timeout, reconnecting", stream_name);
+                        }
                         disconnect_from_stream(ctx);
                         state = UDT_STATE_RECONNECTING;
                     } else {
