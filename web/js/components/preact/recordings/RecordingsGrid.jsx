@@ -97,7 +97,18 @@ function RecordingCard({
   const [currentFrame, setCurrentFrame] = useState(0);
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
   const tagBtnRef = useRef(null);
-  const [isHovering, setIsHovering] = useState(false);
+  const [rawIsHovering, setRawIsHovering] = useState(false);
+  const isHovering = hoverFramesEnabled && rawIsHovering;
+  const setIsHovering = useCallback((nextIsHovering) => {
+    setRawIsHovering((prevIsHovering) => {
+      const resolvedIsHovering =
+        typeof nextIsHovering === 'function'
+          ? nextIsHovering(prevIsHovering)
+          : nextIsHovering;
+
+      return hoverFramesEnabled ? resolvedIsHovering : false;
+    });
+  }, [hoverFramesEnabled]);
   const [framesReady, setFramesReady] = useState(false); // true once frames 1+2 are loaded
   const [loadState, setLoadState] = useState('loading'); // 'loading', 'loaded', 'error'
   const intervalRef = useRef(null);
