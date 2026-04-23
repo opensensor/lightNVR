@@ -129,6 +129,15 @@ export function WebRTCView() {
   // True when we're in single-stream mode
   const isSingleStream = maxStreams === 1;
 
+  // Toggle a body class so the page can lock to viewport height and avoid
+  // scroll when a single 1x1 stream is displayed. Fullscreen mode has its own
+  // sizing, so skip when fullscreen is active.
+  useEffect(() => {
+    if (!isSingleStream || isFullscreen) return;
+    document.body.classList.add('live-single-stream');
+    return () => document.body.classList.remove('live-single-stream');
+  }, [isSingleStream, isFullscreen]);
+
   // Initialize selectedStream from URL or sessionStorage if available
   const [selectedStream, setSelectedStream] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -483,7 +492,7 @@ export function WebRTCView() {
   return (
     <section
       id="live-page"
-      className={`page ${isFullscreen ? 'fullscreen-mode' : ''}`}
+      className={`page ${isFullscreen ? 'fullscreen-mode' : ''} ${isSingleStream && !isFullscreen ? 'single-stream' : ''}`}
     >
       {/* Include the SnapshotManager component */}
       <SnapshotManager />
