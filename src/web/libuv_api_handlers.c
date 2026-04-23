@@ -32,6 +32,7 @@
 #include "web/api_handlers_setup.h"
 #include "web/api_handlers_recording_tags.h"
 #include "web/api_handlers_metrics.h"
+#include "web/api_handlers_motion.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -69,6 +70,9 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Metrics & Telemetry API
     http_server_register_handler(server, "/api/metrics", "GET", handle_get_metrics);
     http_server_register_handler(server, "/api/telemetry/player", "POST", handle_post_player_telemetry);
+
+    // Motion API — external trigger for automation (Home Assistant etc.)
+    http_server_register_handler(server, "/api/motion/trigger", "POST", handle_post_motion_trigger);
 
     // Streams API
     http_server_register_handler(server, "/api/streams", "GET", handle_get_streams);
