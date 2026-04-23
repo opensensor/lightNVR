@@ -97,6 +97,23 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
             <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableGridViewThumbnailsHelp')}</span>
           </div>
         </div>
+        <div data-setting-label={t('settings.thumbnailsPerRecording')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-thumbnails-per-recording" class="font-medium">{t('settings.thumbnailsPerRecording')}</label>
+          <div class="col-span-2">
+            <select
+              id="setting-thumbnails-per-recording"
+              name="thumbnailsPerRecording"
+              class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.thumbnailsPerRecording}
+              onChange={handleInputChange}
+              disabled={!canModifySettings || !settings.generateThumbnails}
+            >
+              <option value={1}>{t('settings.thumbnailsPerRecordingOne')}</option>
+              <option value={3}>{t('settings.thumbnailsPerRecordingThree')}</option>
+            </select>
+            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.thumbnailsPerRecordingHelp')}</span>
+          </div>
+        </div>
         <div data-setting-label={t('settings.databasePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-db-path" class="font-medium">{t('settings.databasePath')}</label>
           <input

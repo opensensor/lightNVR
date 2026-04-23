@@ -326,6 +326,7 @@ void load_default_config(config_t *config) {
 
     // Thumbnail/grid view settings
     config->generate_thumbnails = true;
+    config->thumbnails_per_recording = 3;
 
     // MP4 recording settings
     config->record_mp4_directly = false;
@@ -653,6 +654,9 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->mp4_retention_days = safe_atoi(value, 0);
         } else if (strcmp(name, "generate_thumbnails") == 0) {
             config->generate_thumbnails = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "thumbnails_per_recording") == 0) {
+            int n = safe_atoi(value, 3);
+            config->thumbnails_per_recording = (n <= 1) ? 1 : 3;
         }
     }
     // Models settings
@@ -1584,7 +1588,9 @@ int save_config(const config_t *config, const char *path) {
 
     // Write thumbnail/grid view settings
     fprintf(file, "; Thumbnail preview settings\n");
-    fprintf(file, "generate_thumbnails = %s\n\n", config->generate_thumbnails ? "true" : "false");
+    fprintf(file, "generate_thumbnails = %s\n", config->generate_thumbnails ? "true" : "false");
+    fprintf(file, "; Thumbnails per recording: 1 = single first-frame thumb (saves CPU on slow hardware); 3 = start/middle/end with hover cycling\n");
+    fprintf(file, "thumbnails_per_recording = %d\n\n", config->thumbnails_per_recording);
 
     // Write models settings
     fprintf(file, "[models]\n");
