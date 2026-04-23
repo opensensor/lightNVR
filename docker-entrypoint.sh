@@ -171,6 +171,11 @@ EOF
     # configs from prior versions causing stream errors (see issue #165).
     # The entrypoint will then ask LightNVR to rewrite this file from the saved
     # runtime settings before go2rtc itself is launched.
+    #
+    # Note: any user override at /etc/lightnvr/go2rtc/override.yaml (and its
+    # quarantined counterpart) is deliberately preserved — go2rtc is launched
+    # with `--config go2rtc.yaml --config override.yaml` and merges both (#394);
+    # the override is user-owned and must survive container recreates.
     if [ -f /etc/lightnvr/go2rtc/go2rtc.yaml ]; then
         log_info "Removing old go2rtc configuration to regenerate fresh..."
         rm -f /etc/lightnvr/go2rtc/go2rtc.yaml
