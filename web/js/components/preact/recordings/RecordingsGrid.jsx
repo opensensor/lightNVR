@@ -143,14 +143,17 @@ function RecordingCard({
     loadThumbnail();
   }, [loadThumbnail]);
 
-  // Debounced mouse handlers — only set isHovering after sustained hover
+  // Debounced mouse handlers — only set isHovering after sustained hover.
+  // setIsHovering is in the dep array because it's recreated when
+  // hoverFramesEnabled changes; omitting it would leave a stale closure
+  // that ignores the updated thumbnailsPerRecording value.
   const handleMouseEnter = useCallback(() => {
     hoverTimerRef.current = setTimeout(() => setIsHovering(true), 200);
-  }, []);
+  }, [setIsHovering]);
   const handleMouseLeave = useCallback(() => {
     clearTimeout(hoverTimerRef.current);
     setIsHovering(false);
-  }, []);
+  }, [setIsHovering]);
   // Cleanup debounce timer on unmount
   useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
 
