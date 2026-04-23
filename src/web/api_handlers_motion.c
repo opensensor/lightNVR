@@ -146,11 +146,20 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
                 "Field 'duration_ms' must be a positive integer");
             return;
         }
-        int d = (int)j_duration->valuedouble;
-        if (d <= 0 || d > MOTION_PULSE_MAX_MS) {
+
+        double duration_value = j_duration->valuedouble;
+        if (duration_value <= 0 || duration_value > MOTION_PULSE_MAX_MS) {
             cJSON_Delete(body);
             http_response_set_json_error(res, 400,
                 "Field 'duration_ms' must be between 1 and 600000");
+            return;
+        }
+
+        int d = (int)duration_value;
+        if ((double)d != duration_value) {
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 400,
+                "Field 'duration_ms' must be a positive integer");
             return;
         }
         duration_ms = d;
