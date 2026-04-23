@@ -63,10 +63,21 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
         <div data-setting-label={t('auth.username')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-mqtt-username" class="font-medium">{t('auth.username')}</label>
           <div class="col-span-2">
+            {/*
+              Firefox autofill suppression (#399): the password manager was
+              repopulating these fields with a saved site-login (or blank) on
+              every Settings page load. `autocomplete="off"` is honored for
+              text fields, but for password fields Firefox ignores `off` and
+              only respects `new-password` — see the password input below.
+              The visible username field is kept as `name="mqttUsername"` so
+              it stays wired to the shared `handleInputChange` reducer in
+              SettingsView, which keys off `e.target.name`.
+            */}
             <input
               type="text"
               id="setting-mqtt-username"
               name="mqttUsername"
+              autocomplete="off"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.mqttUsername}
               onChange={handleInputChange}
@@ -83,6 +94,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               type="password"
               id="setting-mqtt-password"
               name="mqttPassword"
+              autocomplete="new-password"
               class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.mqttPassword}
               onChange={handleInputChange}
