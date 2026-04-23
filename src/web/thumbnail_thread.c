@@ -100,12 +100,19 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
     int video_stream_idx = -1;
     int ret = -1;
 
-    if (avformat_open_input(&fmt_ctx, input_path, NULL, NULL) < 0) {
-        log_warn("Thumbnail: avformat_open_input failed for %s", input_path);
+    char av_errbuf[AV_ERROR_MAX_STRING_SIZE];
+    int av_ret;
+
+    av_ret = avformat_open_input(&fmt_ctx, input_path, NULL, NULL);
+    if (av_ret < 0) {
+        av_strerror(av_ret, av_errbuf, sizeof(av_errbuf));
+        log_warn("Thumbnail: avformat_open_input failed for %s: %s", input_path, av_errbuf);
         goto done;
     }
-    if (avformat_find_stream_info(fmt_ctx, NULL) < 0) {
-        log_warn("Thumbnail: avformat_find_stream_info failed for %s", input_path);
+    av_ret = avformat_find_stream_info(fmt_ctx, NULL);
+    if (av_ret < 0) {
+        av_strerror(av_ret, av_errbuf, sizeof(av_errbuf));
+        log_warn("Thumbnail: avformat_find_stream_info failed for %s: %s", input_path, av_errbuf);
         goto done;
     }
 
@@ -119,9 +126,16 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
     AVStream *vs = fmt_ctx->streams[video_stream_idx];
     dec_ctx = avcodec_alloc_context3(decoder);
     if (!dec_ctx) goto done;
-    if (avcodec_parameters_to_context(dec_ctx, vs->codecpar) < 0) goto done;
-    if (avcodec_open2(dec_ctx, decoder, NULL) < 0) {
-        log_warn("Thumbnail: avcodec_open2 failed for %s", input_path);
+    av_ret = avcodec_parameters_to_context(dec_ctx, vs->codecpar);
+    if (av_ret < 0) {
+        av_strerror(av_ret, av_errbuf, sizeof(av_errbuf));
+        log_warn("Thumbnail: avcodec_parameters_to_context failed for %s: %s", input_path, av_errbuf);
+        goto done;
+    }
+    av_ret = avcodec_open2(dec_ctx, decoder, NULL);
+    if (av_ret < 0) {
+        av_strerror(av_ret, av_errbuf, sizeof(av_errbuf));
+        log_warn("Thumbnail: avcodec_open2 failed for %s: %s", input_path, av_errbuf);
         goto done;
     }
 
