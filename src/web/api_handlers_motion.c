@@ -93,18 +93,22 @@ static uint64_t pulse_gen_increment(const char *stream_name) {
         g_pulse_gen[i].generation = 1;
         return 1;
     }
-    /* Table full (shouldn't happen with MAX_STREAMS=256 streams).  Return a
-     * sentinel of 1 so the pulse worker will still fire its stop — a
-     * spurious stop on table overflow is safer than a hung recording. */
-    log_warn("pulse_gen table full; pulse stop will not be generation-gated for '%s'",
+    /* Table full (shouldn't happen with MAX_STREAMS=256 streams).
+     * Return 0 — the reserved "generation tracking disabled" sentinel.
+     * The pulse worker treats generation==0 as "always fire the stop",
+     * which is safer than leaving the stream permanently in motion-active. */
+    log_warn("pulse_gen table full; pulse stop for '%s' will fire unconditionally",
              stream_name);
-    return 1;
+    return 0;
 }
 
 typedef struct {
     char     stream_name[MAX_STREAM_NAME];
     int      duration_ms;
-    uint64_t generation; /* generation at the time the pulse was scheduled */
+    /* Generation counter snapshot taken when this pulse was scheduled.
+     * 0 is the reserved sentinel meaning "generation tracking disabled":
+     * the worker will fire the stop unconditionally in that case. */
+    uint64_t generation;
 } motion_pulse_task_t;
 
 /* Fire motion-start, sleep for duration_ms, fire motion-stop — but only if no
@@ -123,11 +127,18 @@ static void *motion_pulse_worker(void *arg) {
         usec -= chunk;
     }
 
-    /* Check whether a newer action has superseded this pulse. */
-    pthread_mutex_lock(&g_pulse_gen_mutex);
-    uint64_t current_gen = pulse_gen_get(task->stream_name);
-    bool still_current = (current_gen == task->generation);
-    pthread_mutex_unlock(&g_pulse_gen_mutex);
+    /* Check whether a newer action has superseded this pulse.
+     * generation==0 means tracking was disabled (table-full fallback);
+     * in that case always fire the stop rather than leave motion active. */
+    bool still_current;
+    if (task->generation == 0) {
+        still_current = true;
+    } else {
+        pthread_mutex_lock(&g_pulse_gen_mutex);
+        uint64_t current_gen = pulse_gen_get(task->stream_name);
+        still_current = (current_gen == task->generation);
+        pthread_mutex_unlock(&g_pulse_gen_mutex);
+    }
 
     if (still_current) {
         time_t now = time(NULL);
