@@ -18,12 +18,17 @@ import { initI18n } from '../i18n.js';
  * based on whether WebRTC is disabled in settings
  */
 function App() {
-    const [isWebRTCDisabled, setIsWebRTCDisabled] = useState(false);
+    const [viewFlags, setViewFlags] = useState({
+        webrtcDisabled: false,
+        hlsDisabled: false,
+        mseDisabled: false,
+    });
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Check if WebRTC is disabled in settings
-        async function checkWebRTCStatus() {
+        // Fetch the three view-method flags (#397). go2rtc being off
+        // forces WebRTC+MSE off regardless of the user's configuration.
+        async function loadViewFlags() {
             try {
                 const response = await fetch('/api/settings');
                 if (!response.ok) {
@@ -31,24 +36,21 @@ function App() {
                     setIsLoading(false);
                     return;
                 }
-
                 const settings = await response.json();
-
-                if (settings.webrtc_disabled || settings.go2rtc_enabled === false) {
-                    console.log('WebRTC is disabled' + (settings.go2rtc_enabled === false ? ' (go2rtc disabled)' : '') + ', using HLS view');
-                    setIsWebRTCDisabled(true);
-                } else {
-                    console.log('WebRTC is enabled, using WebRTC view');
-                    setIsWebRTCDisabled(false);
-                }
+                const go2rtcOff = settings.go2rtc_enabled === false;
+                setViewFlags({
+                    webrtcDisabled: !!settings.webrtc_disabled || go2rtcOff,
+                    hlsDisabled:    !!settings.hls_disabled,
+                    mseDisabled:    !!settings.mse_disabled  || go2rtcOff,
+                });
             } catch (error) {
-                console.error('Error checking WebRTC status:', error);
+                console.error('Error loading view-method flags:', error);
             } finally {
                 setIsLoading(false);
             }
         }
 
-        checkWebRTCStatus();
+        loadViewFlags();
     }, []);
 
     if (isLoading) {
@@ -59,7 +61,11 @@ function App() {
         <>
             <Header />
             <ToastContainer />
-            <LiveView isWebRTCDisabled={isWebRTCDisabled} />
+            <LiveView
+                isWebRTCDisabled={viewFlags.webrtcDisabled}
+                isHlsDisabled={viewFlags.hlsDisabled}
+                isMseDisabled={viewFlags.mseDisabled}
+            />
             <Footer />
         </>
     );

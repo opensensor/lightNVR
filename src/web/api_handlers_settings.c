@@ -409,6 +409,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(settings, "demo_mode", g_config.demo_mode);
     // Note: web_username and web_password removed - user management is now fully database-based
     cJSON_AddBoolToObject(settings, "webrtc_disabled", g_config.webrtc_disabled);
+    cJSON_AddBoolToObject(settings, "hls_disabled",    g_config.hls_disabled);
+    cJSON_AddBoolToObject(settings, "mse_disabled",    g_config.mse_disabled);
     
     cJSON_AddStringToObject(settings, "storage_path", g_config.storage_path);
     cJSON_AddStringToObject(settings, "storage_path_hls", g_config.storage_path_hls);
@@ -712,20 +714,56 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
 
     // Note: web_username and web_password settings removed - user management is now fully database-based
 
-    // WebRTC disabled - track old value to detect changes
+    // Dashboard view methods (#397) — WebRTC / HLS / MSE can be individually
+    // disabled.  Validate first that at least one remains enabled; reject with
+    // 400 otherwise so the UI can surface a meaningful error instead of
+    // leaving the user with a dashboard that shows nothing.
     cJSON *webrtc_disabled = cJSON_GetObjectItem(settings, "webrtc_disabled");
+    cJSON *hls_disabled    = cJSON_GetObjectItem(settings, "hls_disabled");
+    cJSON *mse_disabled    = cJSON_GetObjectItem(settings, "mse_disabled");
+    {
+        bool new_webrtc_disabled = (webrtc_disabled && cJSON_IsBool(webrtc_disabled))
+            ? cJSON_IsTrue(webrtc_disabled) : g_config.webrtc_disabled;
+        bool new_hls_disabled    = (hls_disabled && cJSON_IsBool(hls_disabled))
+            ? cJSON_IsTrue(hls_disabled)    : g_config.hls_disabled;
+        bool new_mse_disabled    = (mse_disabled && cJSON_IsBool(mse_disabled))
+            ? cJSON_IsTrue(mse_disabled)    : g_config.mse_disabled;
+
+        if (new_webrtc_disabled && new_hls_disabled && new_mse_disabled) {
+            log_warn("Rejected settings: all three dashboard view methods disabled");
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "At least one dashboard view method (WebRTC, HLS, or MSE) must remain enabled");
+            return;
+        }
+    }
+
     if (webrtc_disabled && cJSON_IsBool(webrtc_disabled)) {
         bool old_webrtc_disabled = g_config.webrtc_disabled;
         g_config.webrtc_disabled = cJSON_IsTrue(webrtc_disabled);
         settings_changed = true;
         log_info("Updated webrtc_disabled: %s", g_config.webrtc_disabled ? "true" : "false");
 
-        // If webrtc_disabled changed, we need to restart go2rtc
+        // If webrtc_disabled changed, we need to restart go2rtc so its
+        // generated config reflects the new WebRTC state.  HLS/MSE don't
+        // change go2rtc's config — they're UI-side view toggles only.
         if (old_webrtc_disabled != g_config.webrtc_disabled) {
             go2rtc_config_changed = true;
             go2rtc_becoming_enabled = g_config.go2rtc_enabled;  // restart, not a toggle
             log_info("WebRTC disabled setting changed, will restart go2rtc");
         }
+    }
+
+    if (hls_disabled && cJSON_IsBool(hls_disabled)) {
+        g_config.hls_disabled = cJSON_IsTrue(hls_disabled);
+        settings_changed = true;
+        log_info("Updated hls_disabled: %s", g_config.hls_disabled ? "true" : "false");
+    }
+
+    if (mse_disabled && cJSON_IsBool(mse_disabled)) {
+        g_config.mse_disabled = cJSON_IsTrue(mse_disabled);
+        settings_changed = true;
+        log_info("Updated mse_disabled: %s", g_config.mse_disabled ? "true" : "false");
     }
 
     // Auth timeout hours

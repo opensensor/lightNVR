@@ -174,7 +174,9 @@ typedef struct {
     bool web_auth_enabled;
     char web_username[32];
     char web_password[32]; // Stored as hash in actual implementation
-    bool webrtc_disabled;  // Whether WebRTC is disabled (use HLS only)
+    bool webrtc_disabled;  // Hide WebRTC view on the dashboard (#397)
+    bool hls_disabled;     // Hide HLS view on the dashboard (#397)
+    bool mse_disabled;     // Hide MSE view on the dashboard (#397)
     int auth_timeout_hours; // Session idle timeout in hours (default: 24)
     int auth_absolute_timeout_hours; // Absolute session lifetime in hours (default: 168)
     int trusted_device_days; // Remember-device lifetime in days (default: 30, 0 disables)

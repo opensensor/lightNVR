@@ -66,22 +66,46 @@ export function AuthTab({
           </div>
         </div>
 
-        <div data-setting-label={t('settings.disableWebrtcUseHlsOnly')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
-          <label for="setting-webrtc-disabled" class="font-medium">{t('settings.disableWebrtcUseHlsOnly')}</label>
-          <div class="col-span-2">
-            <input
-              type="checkbox"
-              id="setting-webrtc-disabled"
-              name="webrtcDisabled"
-              class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              style={{ accentColor: 'hsl(var(--primary))' }}
-              checked={settings.webrtcDisabled}
-              onChange={handleInputChange}
-              disabled={!canModifySettings}
-            />
-            <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.disableWebrtcHelp')}</span>
-          </div>
-        </div>
+        {/* Dashboard view methods (#397) — WebRTC / HLS / MSE as independent
+            checkboxes.  Internally each is stored as a *_disabled flag; the
+            UI presents them as positive "enable" toggles so the control
+            direction matches user intent.  Backend rejects the save if all
+            three would end up disabled. */}
+        {(() => {
+          const viewMethods = [
+            { key: 'webrtcDisabled', id: 'setting-webrtc-enabled', label: t('settings.viewMethodWebrtc') },
+            { key: 'hlsDisabled',    id: 'setting-hls-enabled',    label: t('settings.viewMethodHls') },
+            { key: 'mseDisabled',    id: 'setting-mse-enabled',    label: t('settings.viewMethodMse') },
+          ];
+          const enabledCount = viewMethods.filter(m => !settings[m.key]).length;
+          return (
+            <div data-setting-label={t('settings.enabledViewMethods')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
+              <label class="font-medium">{t('settings.enabledViewMethods')}</label>
+              <div class="col-span-2 flex flex-col gap-2">
+                {viewMethods.map(m => (
+                  <label key={m.key} for={m.id} class="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id={m.id}
+                      class="w-4 h-4 rounded focus:ring-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ accentColor: 'hsl(var(--primary))' }}
+                      checked={!settings[m.key]}
+                      onChange={(e) => handleInputChange({
+                        target: { name: m.key, type: 'checkbox', checked: !e.target.checked }
+                      })}
+                      /* Block the user from unchecking the last enabled method
+                         client-side; backend also rejects this, but disabling
+                         the control avoids an error round-trip. */
+                      disabled={!canModifySettings || (enabledCount === 1 && !settings[m.key])}
+                    />
+                    <span class="text-sm">{m.label}</span>
+                  </label>
+                ))}
+                <span class="hint text-sm text-muted-foreground mt-1">{t('settings.enabledViewMethodsHelp')}</span>
+              </div>
+            </div>
+          );
+        })()}
         <div data-setting-label={t('settings.sessionIdleTimeoutHours')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-auth-timeout" class="font-medium">{t('settings.sessionIdleTimeoutHours')}</label>
           <div class="col-span-2">

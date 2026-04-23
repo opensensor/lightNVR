@@ -34,7 +34,7 @@ function legacyLayoutToColsRowsHLS(layout) {
  * LiveView component
  * @returns {JSX.Element} LiveView component
  */
-export function LiveView({isWebRTCDisabled}) {
+export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled = false}) {
   const { t } = useI18n();
   // Use the snapshot manager hook
   useSnapshotManager();
@@ -76,11 +76,14 @@ export function LiveView({isWebRTCDisabled}) {
   // State for go2rtc availability
   const [go2rtcAvailable, setGo2rtcAvailable] = useState(false);
 
-  // State for go2rtc mode - determines whether to use MSE or HLS
-  // Initialize from URL param if present
+  // State for go2rtc mode - determines whether to use MSE or HLS.
+  // Initialize from URL param, but if HLS is disabled via settings (#397)
+  // force MSE as the initial mode so the page has something to render.
   const [useMSE, setUseMSE] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('mode') === 'mse';
+    if (urlParams.get('mode') === 'mse') return true;
+    if (isHlsDisabled && !isMseDisabled) return true;
+    return false;
   });
 
   // Initialize cols/rows from URL params, shared localStorage key, or legacy per-view keys.
@@ -502,7 +505,9 @@ export function LiveView({isWebRTCDisabled}) {
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
         <div className="flex items-center gap-3">
           <h2 className="text-xl font-bold whitespace-nowrap">{t('live.liveView')}</h2>
-          {/* View-mode tab strip: WebRTC | HLS | MSE */}
+          {/* View-mode tab strip: WebRTC | HLS | MSE — each tab only
+              renders if the corresponding method is enabled in settings
+              (#397). MSE additionally requires go2rtc to be reachable. */}
           <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
             {!isWebRTCDisabled && (
               <a
@@ -512,20 +517,22 @@ export function LiveView({isWebRTCDisabled}) {
                 WebRTC
               </a>
             )}
-            <button
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors focus:outline-none ${!useMSE ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'}`}
-              onClick={() => {
-                if (useMSE) {
-                  setUseMSE(false);
-                  const url = new URL(window.location);
-                  url.searchParams.delete('mode');
-                  window.history.replaceState({}, '', url);
-                }
-              }}
-            >
-              {t('live.hlsShort')}
-            </button>
-            {go2rtcAvailable && (
+            {!isHlsDisabled && (
+              <button
+                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors focus:outline-none ${!useMSE ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'}`}
+                onClick={() => {
+                  if (useMSE) {
+                    setUseMSE(false);
+                    const url = new URL(window.location);
+                    url.searchParams.delete('mode');
+                    window.history.replaceState({}, '', url);
+                  }
+                }}
+              >
+                {t('live.hlsShort')}
+              </button>
+            )}
+            {!isMseDisabled && go2rtcAvailable && (
               <button
                 className={`px-3 py-1.5 rounded text-sm font-medium transition-colors focus:outline-none ${useMSE ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'}`}
                 onClick={() => {

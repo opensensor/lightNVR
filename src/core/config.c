@@ -361,6 +361,8 @@ void load_default_config(config_t *config) {
     // No default password - will be generated randomly on first run
     config->web_password[0] = '\0';
     config->webrtc_disabled = false; // WebRTC is enabled by default
+    config->hls_disabled = false;    // HLS is enabled by default (#397)
+    config->mse_disabled = false;    // MSE is enabled by default (#397)
     config->auth_timeout_hours = 24; // Default session idle timeout: 24 hours
     config->auth_absolute_timeout_hours = 168; // Default absolute session lifetime: 7 days
     config->trusted_device_days = 30; // Default trusted-device lifetime: 30 days
@@ -712,6 +714,10 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             safe_strcpy(config->web_password, value, sizeof(config->web_password), 0);
         } else if (strcmp(name, "webrtc_disabled") == 0) {
             config->webrtc_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "hls_disabled") == 0) {
+            config->hls_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "mse_disabled") == 0) {
+            config->mse_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "auth_timeout_hours") == 0) {
             config->auth_timeout_hours = safe_atoi(value, 0);
             if (config->auth_timeout_hours < 1) {
@@ -1612,7 +1618,9 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "auth_enabled = %s\n", config->web_auth_enabled ? "true" : "false");
     fprintf(file, "username = %s\n", config->web_username);
     // Note: web_password is no longer saved to config - user passwords are managed in the database
-    fprintf(file, "webrtc_disabled = %s\n", config->webrtc_disabled ? "true" : "false");
+    fprintf(file, "webrtc_disabled = %s  ; Hide WebRTC view on dashboard\n", config->webrtc_disabled ? "true" : "false");
+    fprintf(file, "hls_disabled = %s     ; Hide HLS view on dashboard\n", config->hls_disabled ? "true" : "false");
+    fprintf(file, "mse_disabled = %s     ; Hide MSE view on dashboard\n", config->mse_disabled ? "true" : "false");
     fprintf(file, "auth_timeout_hours = %d  ; Session idle timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "auth_absolute_timeout_hours = %d  ; Absolute session lifetime in hours (default: 168)\n", config->auth_absolute_timeout_hours);
     fprintf(file, "trusted_device_days = %d  ; Remember trusted device for N days (0 disables, default: 30)\n", config->trusted_device_days);
@@ -1754,6 +1762,8 @@ void print_config(const config_t *config) {
     printf("    Web Username: %s\n", config->web_username);
     printf("    Web Password: %s\n", "********");
     printf("    WebRTC Disabled: %s\n", config->webrtc_disabled ? "true" : "false");
+    printf("    HLS Disabled: %s\n",    config->hls_disabled ? "true" : "false");
+    printf("    MSE Disabled: %s\n",    config->mse_disabled ? "true" : "false");
     printf("    Auth Idle Timeout: %d hours\n", config->auth_timeout_hours);
     printf("    Auth Absolute Timeout: %d hours\n", config->auth_absolute_timeout_hours);
     printf("    Trusted Device Lifetime: %d days\n", config->trusted_device_days);

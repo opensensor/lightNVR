@@ -20,12 +20,16 @@ import { initI18n } from '../i18n.js';
  * based on whether WebRTC is disabled in settings
  */
 function App() {
-    const [isWebRTCDisabled, setIsWebRTCDisabled] = useState(false);
+    const [viewFlags, setViewFlags] = useState({
+        webrtcDisabled: false,
+        hlsDisabled: false,
+        mseDisabled: false,
+    });
     const [isLoading, setIsLoading] = useState(true);
     const [showWizard, setShowWizard] = useState(false);
 
     useEffect(() => {
-        // Check setup wizard status and WebRTC settings in parallel
+        // Check setup wizard status and view-method settings in parallel.
         async function init() {
             try {
                 const [settingsRes, setupRes] = await Promise.all([
@@ -35,14 +39,15 @@ function App() {
 
                 if (settingsRes.ok) {
                     const settings = await settingsRes.json();
-                    if (settings.webrtc_disabled || settings.go2rtc_enabled === false) {
-                        console.log('WebRTC is disabled' + (settings.go2rtc_enabled === false ? ' (go2rtc disabled)' : '') + ', using HLS view');
-                        setIsWebRTCDisabled(true);
-                        document.title = 'HLS View - LightNVR';
-                    } else {
-                        console.log('WebRTC is enabled, using WebRTC view');
-                        setIsWebRTCDisabled(false);
-                    }
+                    // WebRTC requires go2rtc. If go2rtc is off, treat WebRTC
+                    // and MSE as unavailable regardless of the user's flags.
+                    // #397
+                    const go2rtcOff = settings.go2rtc_enabled === false;
+                    setViewFlags({
+                        webrtcDisabled: !!settings.webrtc_disabled || go2rtcOff,
+                        hlsDisabled:    !!settings.hls_disabled,
+                        mseDisabled:    !!settings.mse_disabled  || go2rtcOff,
+                    });
                 } else {
                     console.error('Failed to fetch settings:', settingsRes.status, settingsRes.statusText);
                 }
@@ -67,10 +72,24 @@ function App() {
         return <div className="loading">Loading...</div>;
     }
 
+    // Choose the initial view: prefer WebRTC, fall back to whichever of
+    // HLS / MSE remain. The LiveView component itself handles HLS↔MSE
+    // tab switching and will hide tabs for disabled methods. #397
+    const useWebRTC = !viewFlags.webrtcDisabled;
+    if (!useWebRTC) {
+        document.title = 'HLS View - LightNVR';
+    }
+
     return (
         <>
             {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
-            {isWebRTCDisabled ? <LiveView isWebRTCDisabled={true} /> : <WebRTCView />}
+            {useWebRTC
+                ? <WebRTCView />
+                : <LiveView
+                    isWebRTCDisabled={viewFlags.webrtcDisabled}
+                    isHlsDisabled={viewFlags.hlsDisabled}
+                    isMseDisabled={viewFlags.mseDisabled}
+                  />}
         </>
     );
 }
