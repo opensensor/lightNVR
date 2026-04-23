@@ -203,7 +203,18 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
     if (out_h < 2) out_h = 2;
     if (out_h & 1) out_h++;
 
-    sws_ctx = sws_getContext(frame->width, frame->height, dec_ctx->pix_fmt,
+    enum AVPixelFormat src_pix_fmt = (enum AVPixelFormat)frame->format;
+    if (src_pix_fmt == AV_PIX_FMT_NONE) {
+        log_warn("Thumbnail: decoded frame has no valid pixel format for %s", input_path);
+        goto done;
+    }
+    if (frame->hw_frames_ctx != NULL) {
+        log_warn("Thumbnail: hardware-backed frames are not supported for thumbnail scaling: %s",
+                 input_path);
+        goto done;
+    }
+
+    sws_ctx = sws_getContext(frame->width, frame->height, src_pix_fmt,
                              out_w, out_h, AV_PIX_FMT_RGB24,
                              SWS_BILINEAR, NULL, NULL, NULL);
     if (!sws_ctx) {
