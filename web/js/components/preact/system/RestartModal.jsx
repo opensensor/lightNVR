@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { createPortal } from 'preact/compat';
 import { useI18n } from '../../../i18n.js';
+import { AsyncButton } from '../AsyncButton.jsx';
 
 /**
  * RestartModal component
@@ -159,12 +160,16 @@ export function RestartModal({ isOpen, onClose, onConfirm, isRestarting }) {
               >
                 {t('common.cancel')}
               </button>
-              <button
+              {/* AsyncButton — locks + spins the brief window between
+                  click and the parent flipping isRestarting=true so a
+                  rapid second tap can't fire two restart POSTs (#399 /
+                  PRD UXD_01 §5.1 / T1). */}
+              <AsyncButton
                 className="btn-warning focus:outline-none focus:ring-2 focus:ring-offset-2"
-                onClick={onConfirm}
+                onClick={() => Promise.resolve(onConfirm())}
               >
                 {t('system.restart')}
-              </button>
+              </AsyncButton>
             </div>
           </>
         ) : (

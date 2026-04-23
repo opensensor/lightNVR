@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import QRCode from 'qrcode';
 import { useI18n } from '../../../i18n.js';
+import { AsyncButton } from '../AsyncButton.jsx';
 
 /**
  * TOTP Setup Modal Component
@@ -148,9 +149,12 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
             <p className="mb-4 text-sm text-muted-foreground">
               {t('users.mfaDescription')}
             </p>
-            <button className="btn-primary w-full" onClick={handleSetup}>
+            {/* AsyncButton — locks + spins while the POST /totp/setup is in
+                flight so the #399 rapid-tap double-submit can't fire twice
+                and generate two secrets. */}
+            <AsyncButton className="btn-primary w-full" onClick={handleSetup}>
               {t('users.setupTwoFactorAuthentication')}
-            </button>
+            </AsyncButton>
           </div>
         )}
 
@@ -159,9 +163,11 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
             <div className="mb-4 p-3 rounded-lg badge-success">
               {t('users.twoFactorEnabled')}
             </div>
-            <button className="btn-danger w-full" onClick={handleDisable}>
+            {/* AsyncButton — pending-guarded disable prevents duplicate
+                POST /totp/disable calls. */}
+            <AsyncButton className="btn-danger w-full" onClick={handleDisable}>
               {t('users.disableTwoFactorAuthentication')}
-            </button>
+            </AsyncButton>
           </div>
         )}
 
@@ -179,6 +185,12 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
                 {secret}
               </code>
             </div>
+            {/* Swapped the form's submit button to AsyncButton so the
+                verify POST is pending-guarded (#399 / PRD UXD_01 §5.1 / T1).
+                Keep the <form> for Enter-to-submit; onSubmit still routes
+                through handleVerify, and AsyncButton's onClick funnels the
+                same call. The button's own handleClick preventDefaults
+                while pending so a second Enter press is dropped. */}
             <form onSubmit={handleVerify}>
               <label className="block text-sm font-medium mb-1">{t('users.enterVerificationCode')}</label>
               <input
@@ -191,13 +203,14 @@ export function TotpSetupModal({ user, onClose, onSuccess, getAuthHeaders }) {
                 autoFocus
                 required
               />
-              <button
+              <AsyncButton
                 type="submit"
                 className="btn-primary w-full"
                 disabled={verifyCode.length !== 6}
+                onClick={handleVerify}
               >
                 {t('users.verifyAndEnable')}
-              </button>
+              </AsyncButton>
             </form>
           </div>
         )}

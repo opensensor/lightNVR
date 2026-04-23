@@ -10,6 +10,8 @@
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
+import { AsyncButton } from '../AsyncButton.jsx';
+
 export function AuthTab({
   settings,
   handleInputChange,
@@ -167,14 +169,16 @@ export function AuthTab({
                     <div class="text-muted-foreground">{t('settings.idleExpiry')}: {formatTimestamp(session.idle_expires_at)} · {t('settings.absoluteExpiry')}: {formatTimestamp(session.expires_at)}</div>
                     <div class="text-muted-foreground">{session.ip_address || t('settings.unknownIp')} · {session.user_agent || t('settings.unknownBrowser')}</div>
                   </div>
-                  <button
+                  {/* AsyncButton shows a spinner + self-disables while the
+                      DELETE is in flight so users don't rapid-tap and fire
+                      duplicate revokes (#399 / PRD UXD_01 §5.1 / T1). */}
+                  <AsyncButton
                     type="button"
-                    class="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
-                    disabled={revokeSessionMutation.isPending}
-                    onClick={() => revokeSessionMutation.mutate(session.id)}
+                    className="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
+                    onClick={() => revokeSessionMutation.mutateAsync(session.id)}
                   >
                     {t('settings.revoke')}
-                  </button>
+                  </AsyncButton>
                 </div>
               ))
             ))}
@@ -198,14 +202,15 @@ export function AuthTab({
                     <div class="text-muted-foreground">{t('settings.expires')}: {formatTimestamp(device.expires_at)}</div>
                     <div class="text-muted-foreground">{device.ip_address || t('settings.unknownIp')} · {device.user_agent || t('settings.unknownBrowser')}</div>
                   </div>
-                  <button
+                  {/* AsyncButton — same pending-guard pattern as the
+                      session revoke button above. */}
+                  <AsyncButton
                     type="button"
-                    class="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
-                    disabled={revokeTrustedDeviceMutation.isPending}
-                    onClick={() => revokeTrustedDeviceMutation.mutate(device.id)}
+                    className="px-3 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm self-start"
+                    onClick={() => revokeTrustedDeviceMutation.mutateAsync(device.id)}
                   >
                     {t('settings.revoke')}
-                  </button>
+                  </AsyncButton>
                 </div>
               ))
             ))}

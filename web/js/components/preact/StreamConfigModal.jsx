@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { ZoneEditor } from './ZoneEditor.jsx';
+import { AsyncButton } from './AsyncButton.jsx';
 import { obfuscateUrlCredentials } from '../../utils/url-utils.js';
 import { useI18n } from '../../i18n.js';
 import { showStatusMessage } from './ToastContainer.jsx';
@@ -1412,14 +1413,21 @@ export function StreamConfigModal({
             >
               {t('common.cancel')}
             </button>
-            <button
+            {/* AsyncButton disables + spins while the POST/PUT is in flight so
+                rapid taps can't fire multiple stream-save calls (#399 / PRD
+                UXD_01 §5.1 / T1). Keeps the btn-primary class + "Add Stream"
+                / "Update Stream" text verbatim so the Playwright selector in
+                tests/integration/pages/StreamsPage.ts lines 52-56 still
+                matches. onSave is expected to return a promise (StreamsView's
+                handleSubmit now uses saveStreamMutation.mutateAsync). */}
+            <AsyncButton
               id="stream-save-btn"
               type="button"
               onClick={onSave}
               className="px-6 py-2 btn-primary font-medium"
             >
               {isEditing ? t('streamsConfig.updateStream') : t('streams.addStream')}
-            </button>
+            </AsyncButton>
           </div>
         </div>
       </div>

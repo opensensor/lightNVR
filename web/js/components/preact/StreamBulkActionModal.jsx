@@ -4,6 +4,7 @@
  */
 
 import { useI18n } from '../../i18n.js';
+import { AsyncButton } from './AsyncButton.jsx';
 
 /**
  * StreamBulkActionModal component
@@ -105,17 +106,20 @@ export function StreamBulkActionModal({ action, streamNames, onClose, onConfirm,
                 >
                   {t('common.cancel')}
                 </button>
-                <button
+                {/* AsyncButton locks + spins between click and the parent's
+                    isWorking flip so a rapid second tap can't fire the bulk
+                    action twice (#399 / PRD UXD_01 §5.1 / T1). */}
+                <AsyncButton
                   type="button"
-                  class={`px-4 py-2 text-white rounded transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                  className={`px-4 py-2 text-white rounded transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                     isDelete  ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
                     : isEnable ? 'bg-green-600 hover:bg-green-700 focus:ring-green-500'
                     :             'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500'
                   }`}
-                  onClick={onConfirm}
+                  onClick={() => Promise.resolve(onConfirm())}
                 >
                   {isDelete ? t('streams.deletePermanently') : isEnable ? t('streams.enableSelected') : t('streams.disableSelected')}
-                </button>
+                </AsyncButton>
               </div>
             </>
           )}

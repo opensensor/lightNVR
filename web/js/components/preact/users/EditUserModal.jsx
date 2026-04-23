@@ -5,6 +5,7 @@
 import { USER_ROLE_KEYS } from './UserRoles.js';
 import { useEffect, useRef } from 'preact/hooks';
 import { useI18n } from '../../../i18n.js';
+import { AsyncButton } from '../AsyncButton.jsx';
 
 const FOCUSABLE_SELECTORS = [
   'a[href]',
@@ -111,11 +112,12 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
     }
   };
 
-  // Direct submit handler
+  // Direct submit handler. Returns the edit-user promise so the
+  // <AsyncButton> below can track pending state (#399 / PRD UXD_01 §5.1).
   const handleSubmit = (e) => {
-    e.preventDefault();
-    e.stopPropagation(); // Stop event from bubbling up
-    handleEditUser(e);
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    return Promise.resolve(handleEditUser(e));
   };
 
   // Stop click propagation on modal content
@@ -322,12 +324,17 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
             >
               {t('common.cancel')}
             </button>
-            <button
+            {/* AsyncButton — locks + spins while the PUT is in flight so the
+                #399 rapid-tap double-update can't fire twice. Keeps the form
+                onSubmit path but AsyncButton preventDefaults the click once
+                our handler has run, so only one mutation fires. */}
+            <AsyncButton
               type="submit"
               className="btn-primary"
+              onClick={handleSubmit}
             >
               {resolvedSubmitLabel}
-            </button>
+            </AsyncButton>
             </div>
           </div>
         </form>

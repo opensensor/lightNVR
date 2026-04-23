@@ -1,4 +1,5 @@
 import { useI18n } from '../../../i18n.js';
+import { AsyncButton } from '../AsyncButton.jsx';
 
 /**
  * Delete User Modal Component
@@ -15,10 +16,13 @@ import { useI18n } from '../../../i18n.js';
 export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
   const { t } = useI18n();
 
-  // Direct delete handler
+  // Direct delete handler — wrapped in Promise.resolve so AsyncButton can
+  // observe pending state whether the parent uses mutate or mutateAsync.
   const handleDeleteClick = (e) => {
-    e.stopPropagation(); // Stop event from bubbling up
-    handleDeleteUser();
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation(); // Stop event from bubbling up
+    }
+    return Promise.resolve(handleDeleteUser());
   };
 
   // Stop click propagation on modal content
@@ -42,12 +46,15 @@ export function DeleteUserModal({ currentUser, handleDeleteUser, onClose }) {
           >
             {t('common.cancel')}
           </button>
-          <button
+          {/* AsyncButton locks the button + shows a spinner while the DELETE
+              is in flight so the #399 rapid-tap double-submit can't fire
+              more than one deletion. */}
+          <AsyncButton
             className="btn-danger"
             onClick={handleDeleteClick}
           >
             {t('users.deleteUser')}
-          </button>
+          </AsyncButton>
         </div>
       </div>
     </div>
