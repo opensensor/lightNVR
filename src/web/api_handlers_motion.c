@@ -21,6 +21,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include <cjson/cJSON.h>
 
@@ -47,12 +48,62 @@ typedef enum {
     MOTION_ACTION_PULSE
 } motion_action_t;
 
+/*
+ * Per-stream pulse generation counters.
+ *
+ * Every motion trigger action (start, stop, or pulse) increments the counter
+ * for the target stream.  A pulse worker records the counter value at the
+ * moment it is created and checks it again before emitting the deferred
+ * motion-stop.  If a newer action has arrived in the meantime the counter
+ * will have changed, and the worker silently discards the stop so it cannot
+ * cut short an active recording.
+ */
 typedef struct {
-    char stream_name[MAX_STREAM_NAME];
-    int  duration_ms;
+    char     name[MAX_STREAM_NAME];
+    uint64_t generation;
+} pulse_gen_entry_t;
+
+static pulse_gen_entry_t g_pulse_gen[MAX_STREAMS];
+static int               g_pulse_gen_count = 0;
+static pthread_mutex_t   g_pulse_gen_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* Return the current generation for stream_name (0 if not seen before). */
+static uint64_t pulse_gen_get(const char *stream_name) {
+    for (int i = 0; i < g_pulse_gen_count; i++) {
+        if (strcmp(g_pulse_gen[i].name, stream_name) == 0)
+            return g_pulse_gen[i].generation;
+    }
+    return 0;
+}
+
+/* Increment the generation counter for stream_name and return the new value.
+ * Must be called with g_pulse_gen_mutex held. */
+static uint64_t pulse_gen_increment(const char *stream_name) {
+    for (int i = 0; i < g_pulse_gen_count; i++) {
+        if (strcmp(g_pulse_gen[i].name, stream_name) == 0)
+            return ++g_pulse_gen[i].generation;
+    }
+    /* First time we see this stream — add an entry. */
+    if (g_pulse_gen_count < MAX_STREAMS) {
+        int i = g_pulse_gen_count++;
+        safe_strcpy(g_pulse_gen[i].name, stream_name,
+                    sizeof(g_pulse_gen[i].name), 0);
+        g_pulse_gen[i].generation = 1;
+        return 1;
+    }
+    /* Table full (shouldn't happen in practice); return a non-zero sentinel. */
+    log_warn("pulse_gen table full; generation tracking disabled for '%s'", stream_name);
+    return 1;
+}
+
+typedef struct {
+    char     stream_name[MAX_STREAM_NAME];
+    int      duration_ms;
+    uint64_t generation; /* generation at the time the pulse was scheduled */
 } motion_pulse_task_t;
 
-/* Fire motion-start, sleep for duration_ms, fire motion-stop. Runs in a
+/* Fire motion-start, sleep for duration_ms, fire motion-stop — but only if no
+ * newer motion trigger has arrived since the pulse was scheduled.  Runs in a
  * detached worker thread because the HTTP handler must return immediately.
  * Matches the deferred-work idiom already used in api_handlers_streams_modify.c. */
 static void *motion_pulse_worker(void *arg) {
@@ -67,11 +118,23 @@ static void *motion_pulse_worker(void *arg) {
         usec -= chunk;
     }
 
-    time_t now = time(NULL);
-    unified_detection_notify_motion(task->stream_name, false);
-    process_motion_event(task->stream_name, false, now, false);
+    /* Check whether a newer action has superseded this pulse. */
+    pthread_mutex_lock(&g_pulse_gen_mutex);
+    uint64_t current_gen = pulse_gen_get(task->stream_name);
+    bool still_current = (current_gen == task->generation);
+    pthread_mutex_unlock(&g_pulse_gen_mutex);
 
-    log_info("Pulse ended for stream '%s' after %d ms", task->stream_name, task->duration_ms);
+    if (still_current) {
+        time_t now = time(NULL);
+        unified_detection_notify_motion(task->stream_name, false);
+        process_motion_event(task->stream_name, false, now, false);
+        log_info("Pulse ended for stream '%s' after %d ms",
+                 task->stream_name, task->duration_ms);
+    } else {
+        log_info("Pulse for stream '%s' superseded by newer trigger; stop skipped",
+                 task->stream_name);
+    }
+
     free(task);
     return NULL;
 }
@@ -196,6 +259,13 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     time_t now = time(NULL);
     bool active = (action != MOTION_ACTION_STOP);
 
+    /* Increment the per-stream generation counter before dispatching.  This
+     * invalidates any in-flight pulse worker for this stream so it will not
+     * emit a spurious stop that could cut short the new motion activity. */
+    pthread_mutex_lock(&g_pulse_gen_mutex);
+    uint64_t new_gen = pulse_gen_increment(stream_name);
+    pthread_mutex_unlock(&g_pulse_gen_mutex);
+
     unified_detection_notify_motion(stream_name, active);
     process_motion_event(stream_name, active, now, false);
 
@@ -215,6 +285,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
         }
         safe_strcpy(task->stream_name, stream_name, sizeof(task->stream_name), 0);
         task->duration_ms = duration_ms;
+        task->generation  = new_gen;
 
         pthread_t tid;
         pthread_attr_t attr;
