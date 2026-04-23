@@ -67,7 +67,8 @@ static pulse_gen_entry_t g_pulse_gen[MAX_STREAMS];
 static int               g_pulse_gen_count = 0;
 static pthread_mutex_t   g_pulse_gen_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* Return the current generation for stream_name (0 if not seen before). */
+/* Return the current generation for stream_name (0 if not seen before).
+ * Caller MUST hold g_pulse_gen_mutex. */
 static uint64_t pulse_gen_get(const char *stream_name) {
     for (int i = 0; i < g_pulse_gen_count; i++) {
         if (strcmp(g_pulse_gen[i].name, stream_name) == 0)
@@ -77,7 +78,7 @@ static uint64_t pulse_gen_get(const char *stream_name) {
 }
 
 /* Increment the generation counter for stream_name and return the new value.
- * Must be called with g_pulse_gen_mutex held. */
+ * Caller MUST hold g_pulse_gen_mutex. */
 static uint64_t pulse_gen_increment(const char *stream_name) {
     for (int i = 0; i < g_pulse_gen_count; i++) {
         if (strcmp(g_pulse_gen[i].name, stream_name) == 0)
@@ -91,8 +92,11 @@ static uint64_t pulse_gen_increment(const char *stream_name) {
         g_pulse_gen[i].generation = 1;
         return 1;
     }
-    /* Table full (shouldn't happen in practice); return a non-zero sentinel. */
-    log_warn("pulse_gen table full; generation tracking disabled for '%s'", stream_name);
+    /* Table full (shouldn't happen with MAX_STREAMS=256 streams).  Return a
+     * sentinel of 1 so the pulse worker will still fire its stop — a
+     * spurious stop on table overflow is safer than a hung recording. */
+    log_warn("pulse_gen table full; pulse stop will not be generation-gated for '%s'",
+             stream_name);
     return 1;
 }
 
