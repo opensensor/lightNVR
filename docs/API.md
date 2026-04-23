@@ -8,9 +8,10 @@ LightNVR provides a RESTful API that allows you to interact with the system prog
 
 ## Authentication
 
-If authentication is enabled in the configuration file, API requests must
-authenticate using one of three mechanisms. All three resolve to the same
-`user_t` and the same role-based access checks, so pick whichever fits the
+If authentication is enabled in the configuration file, endpoints that require
+authentication accept one of three mechanisms. Authentication and role-based
+access checks are enforced per-endpoint. Where authentication is required, all
+three mechanisms resolve to the same `user_t`, so pick whichever fits the
 caller.
 
 ### 1. Session cookie (interactive UI, scripts that log in once)
