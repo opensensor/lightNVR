@@ -870,7 +870,7 @@ export function WebRTCVideoCell({
     };
 
     return cleanupWebRTCResources;
-  }, [stream, retryCount, t]);
+  }, [stream, retryCount, useSubStream, t]);
 
   /**
    * Refresh the stream's go2rtc registration
@@ -1159,6 +1159,7 @@ export function WebRTCVideoCell({
       className="video-cell"
       data-stream-name={stream.name}
       data-stream-id={streamId}
+      data-sub-stream={useSubStream ? 'true' : 'false'}
       ref={cellRef}
       style={{
         position: 'relative',

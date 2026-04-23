@@ -502,7 +502,7 @@ export function HLSVideoCell({
         videoRef.current.load();
       }
     };
-  }, [stream, retryCount, initDelay, hlsMode, t]);
+  }, [stream, retryCount, initDelay, hlsMode, useSubStream, t]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -627,6 +627,7 @@ export function HLSVideoCell({
       className="video-cell"
       data-stream-name={stream.name}
       data-stream-id={streamId}
+      data-sub-stream={useSubStream ? 'true' : 'false'}
       ref={cellRef}
       style={{
         position: 'relative',

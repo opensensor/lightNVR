@@ -189,6 +189,30 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
 }
 
 /**
+ * Returns the stream name of the video cell currently in native fullscreen,
+ * or null. Reads `data-stream-name` from `document.fullscreenElement` and
+ * updates on every `fullscreenchange`. LiveView/WebRTCView use it to swap
+ * the fullscreened cell off the sub-stream and onto the main stream (#366).
+ *
+ * @returns {string|null}
+ */
+export function useFullscreenCellStream() {
+  const [fullscreenStream, setFullscreenStream] = useState(null);
+
+  useEffect(() => {
+    const update = () => {
+      const el = document.fullscreenElement;
+      setFullscreenStream(el && el.dataset ? (el.dataset.streamName || null) : null);
+    };
+    update();
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
+
+  return fullscreenStream;
+}
+
+/**
  * Hook: bind arrow keys for grid navigation while a stream is in native
  * fullscreen.  Refs keep streamsToShow/cols/rows fresh without re-subscribing
  * tinykeys on every render.

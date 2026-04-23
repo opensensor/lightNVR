@@ -508,7 +508,7 @@ export function MSEVideoCell({
       if (delayTimeout) clearTimeout(delayTimeout);
       cleanup();
     };
-  }, [stream?.name, retryCount, initDelay]);
+  }, [stream?.name, retryCount, initDelay, useSubStream]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -575,6 +575,7 @@ export function MSEVideoCell({
       className="video-cell"
       data-stream-name={stream.name}
       data-stream-id={streamId}
+      data-sub-stream={useSubStream ? 'true' : 'false'}
       ref={cellRef}
       style={{
         position: 'relative',

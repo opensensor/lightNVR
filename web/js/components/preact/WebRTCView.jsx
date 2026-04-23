@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 // Note: useCallback is still used by getStreamsToShow
 import { showStatusMessage } from './ToastContainer.jsx';
-import { useFullscreenManager, FullscreenManager, useFullscreenGridNav } from './FullscreenManager.jsx';
+import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';
 import { WebRTCVideoCell } from './WebRTCVideoCell.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
@@ -42,6 +42,11 @@ export function WebRTCView() {
 
   // Use the fullscreen manager hook
   const { isFullscreen, setIsFullscreen, toggleFullscreen } = useFullscreenManager();
+
+  // Name of the video cell currently in per-cell native fullscreen (or null).
+  // When a cell enters fullscreen we flip that cell off the sub-stream so the
+  // full-resolution main stream is shown (#366).
+  const fullscreenCellStream = useFullscreenCellStream();
 
   // State for streams and layout
   const [streams, setStreams] = useState([]);
@@ -750,7 +755,7 @@ export function WebRTCView() {
                   )}
                   <WebRTCVideoCell
                     stream={stream}
-                    useSubStream={!isSingleStream && !!stream.sub_stream_url}
+                    useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && !!stream.sub_stream_url}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
                     initDelay={initDelay}
