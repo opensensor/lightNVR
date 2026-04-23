@@ -660,11 +660,19 @@ export function StreamConfigModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">{t('streams.codec')}</label>
-                  <span className="block w-full px-3 py-2 border border-input rounded-md bg-muted/30 text-muted-foreground">
-                    {currentStream.codec ? currentStream.codec.toUpperCase() : t('streamsConfig.autoDetected')}
-                  </span>
-                  <span className="text-xs text-muted-foreground mt-1 block">{t('streamsConfig.detectedFromSource')}</span>
+                  <label htmlFor="stream-codec" className="block text-sm font-medium mb-2">{t('streams.codec')}</label>
+                  <select
+                    id="stream-codec"
+                    name="codec"
+                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                    value={(currentStream.codec || '').toLowerCase()}
+                    onChange={onInputChange}
+                  >
+                    <option value="">{t('streamsConfig.codecAutoDetect')}</option>
+                    <option value="h264">H.264 (AVC)</option>
+                    <option value="hevc">H.265 (HEVC)</option>
+                  </select>
+                  <span className="text-xs text-muted-foreground mt-1 block">{t('streamsConfig.codecHelp')}</span>
                 </div>
 
                 <div>

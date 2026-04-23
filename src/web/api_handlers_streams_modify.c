@@ -384,7 +384,8 @@ static void put_stream_worker(put_stream_task_t *task) {
                 go2rtc_stream_register(sub_name, task->config.sub_stream_url,
                                        task->config.onvif_username[0] != '\0' ? task->config.onvif_username : NULL,
                                        task->config.onvif_password[0] != '\0' ? task->config.onvif_password : NULL,
-                                       false, task->config.protocol, false);
+                                       false, task->config.protocol, false,
+                                       task->config.codec);
             } else {
                 log_info("Sub-stream %s removed from go2rtc", sub_name);
             }
@@ -576,6 +577,16 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     cJSON *protocol = cJSON_GetObjectItem(stream_json, "protocol");
     if (protocol && cJSON_IsNumber(protocol)) {
         config.protocol = (stream_protocol_t)protocol->valueint;
+    }
+
+    /* codec is user-settable as a hint (select Auto / H.264 / H.265) so
+     * lightNVR can make the right call on the initial go2rtc registration —
+     * specifically whether to pre-add the ffmpeg H.264 fallback for WebRTC
+     * (#374). The detection thread overwrites this with the real codec once
+     * it reads a packet, and re-registers with go2rtc if the user was wrong. */
+    cJSON *codec_hint = cJSON_GetObjectItem(stream_json, "codec");
+    if (codec_hint && cJSON_IsString(codec_hint)) {
+        safe_strcpy(config.codec, codec_hint->valuestring, sizeof(config.codec), 0);
     }
 
     cJSON *record_audio = cJSON_GetObjectItem(stream_json, "record_audio");
@@ -1327,6 +1338,24 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             requires_restart = true;  // Protocol changes always require restart
             log_info("Protocol changed from %d to %d - restart required",
                     original_protocol, config.protocol);
+        }
+    }
+
+    /* codec hint (#374): lets the user declare H.264 vs H.265 so the initial
+     * go2rtc registration picks the right source list. If the value changes,
+     * require a stream restart so the go2rtc re-registration picks it up
+     * immediately rather than waiting for the detection thread's next run. */
+    cJSON *codec_put = cJSON_GetObjectItem(stream_json, "codec");
+    if (codec_put && cJSON_IsString(codec_put)) {
+        char new_codec[sizeof(config.codec)];
+        safe_strcpy(new_codec, codec_put->valuestring, sizeof(new_codec), 0);
+        if (strcasecmp(config.codec, new_codec) != 0) {
+            safe_strcpy(config.codec, new_codec, sizeof(config.codec), 0);
+            config_changed = true;
+            non_dynamic_config_changed = true;
+            requires_restart = true;
+            log_info("Codec hint changed to '%s' for stream %s - restart required",
+                     config.codec, config.name);
         }
     }
 

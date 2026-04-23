@@ -564,7 +564,12 @@ export function StreamsView() {
       admin_url: currentStream.adminUrl || '',
       enabled: currentStream.enabled,
       streaming_enabled: currentStream.streamingEnabled,
-      // Note: width, height, fps, and codec are auto-detected and not sent from the frontend
+      // width/height/fps are read-only (auto-detected). codec is user-settable
+      // as a hint (select Auto / H.264 / H.265) — the detection thread still
+      // overwrites it with the real value from the source if they differ,
+      // and triggers a go2rtc re-registration so WebRTC negotiation keeps
+      // working after the correction (#374).
+      codec: (currentStream.codec || '').toLowerCase(),
       protocol: parseInt(currentStream.protocol, 10),
       priority: parseInt(currentStream.priority, 10),
       segment_duration: parseInt(currentStream.segment, 10),

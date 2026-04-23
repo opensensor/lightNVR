@@ -54,6 +54,7 @@
 #include "video/streams.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
+#include "video/go2rtc/go2rtc_integration.h"
 #include "database/db_recordings.h"
 #include "database/db_detections.h"
 #include "database/db_streams.h"
@@ -1184,9 +1185,34 @@ static void udt_update_stream_video_params(unified_detection_ctx_t *ctx,
     }
     pthread_mutex_unlock(&ctx->mutex);
 
+    /* Snapshot the previously-stored codec before writing the new row so we
+     * can detect a codec transition and re-register the stream with go2rtc.
+     * This covers the case where the user declared (or we guessed) H.264 at
+     * stream-add time but the camera is actually delivering H.265 — without
+     * the re-register, go2rtc keeps its original H.264-only source list and
+     * WebRTC clients can't negotiate (#374). */
+    char prev_codec[16] = {0};
+    {
+        stream_config_t prev = {0};
+        if (get_stream_config_by_name(ctx->stream_name, &prev) == 0) {
+            safe_strcpy(prev_codec, prev.codec, sizeof(prev_codec), 0);
+        }
+    }
+
     // Persist the (possibly provisional) values to the database
     update_stream_video_params(ctx->stream_name, det_width, det_height,
                                det_fps, det_codec);
+
+    if (det_codec && det_codec[0] != '\0' &&
+        strcasecmp(prev_codec, det_codec) != 0) {
+        log_info("[%s] Source codec transitioned %s -> %s; re-registering with go2rtc",
+                 ctx->stream_name,
+                 prev_codec[0] ? prev_codec : "(unknown)", det_codec);
+        /* Pass all defaults so reload_stream_config reads the freshly-written
+         * codec out of the DB itself. */
+        go2rtc_integration_reload_stream_config(ctx->stream_name,
+                                                NULL, NULL, NULL, -1, -1, -1);
+    }
 }
 
 /**

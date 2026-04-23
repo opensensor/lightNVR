@@ -30,12 +30,21 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
  * @param backchannel_enabled Whether to enable two-way audio (backchannel) support
  * @param protocol Stream protocol (TCP or UDP) - used to set transport parameter for go2rtc
  * @param record_audio Whether audio recording is enabled - if true, adds FFmpeg AAC transcoding source
+ * @param codec Detected or user-declared source video codec (e.g. "h264", "hevc").
+ *              May be NULL or empty when unknown. Used to decide whether to add
+ *              an `ffmpeg:<id>#video=h264#hardware` fallback source so that
+ *              WebRTC clients (which only accept H.264/VP8/VP9/AV1) can consume
+ *              H.265 streams via on-demand transcoding. The fallback is added
+ *              for anything that isn't explicitly "h264" — unknown codecs are
+ *              treated as "might be H.265" to be safe; once the detection
+ *              thread learns the real codec it re-registers via
+ *              go2rtc_integration_reregister_stream().
  * @return true if stream was registered successfully, false otherwise
  */
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
                            const char *username, const char *password,
                            bool backchannel_enabled, stream_protocol_t protocol,
-                           bool record_audio);
+                           bool record_audio, const char *codec);
 
 /**
  * @brief Unregister a stream from go2rtc

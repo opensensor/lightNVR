@@ -783,6 +783,8 @@
   "streamsConfig.zeroAutoDetect": "0 = auto-detect",
   "streamsConfig.autoDetected": "Auto-detected",
   "streamsConfig.detectedFromSource": "Detected from stream source",
+  "streamsConfig.codecAutoDetect": "Auto-detect",
+  "streamsConfig.codecHelp": "Used to pre-configure go2rtc. H.265 sources get an ffmpeg H.264 fallback so WebRTC can still negotiate. lightNVR will auto-correct this once it reads a packet from the source.",
   "streamsConfig.protocol": "Protocol",
   "streamsConfig.recordingSettings": "Recording Settings",
   "streamsConfig.recordingMode": "Recording Mode",
