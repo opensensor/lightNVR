@@ -13,12 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <time.h>
 #include <errno.h>
-#include <signal.h>
 
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "web/request_response.h"
@@ -80,89 +77,6 @@ static void thumbnail_complete_callback(deferred_action_handle_t handle,
     }
 }
 
-/**
- * @brief Generate a thumbnail using ffmpeg
- */
-static int generate_thumbnail(const char *input_path, const char *output_path,
-                              double seek_seconds) {
-    // Clamp seek time to 0 minimum
-    if (seek_seconds < 0) seek_seconds = 0;
-
-    char seek_str[32];
-    snprintf(seek_str, sizeof(seek_str), "%.2f", seek_seconds);
-
-    log_debug("Generating thumbnail: ffmpeg -ss %s -i \"%s\" -> \"%s\"",
-              seek_str, input_path, output_path);
-
-    // Use fork/execvp instead of system() to avoid spawning a shell
-    pid_t pid = fork();
-    if (pid < 0) {
-        log_warn("fork() failed for thumbnail generation: %s", strerror(errno));
-        return -1;
-    }
-
-    if (pid == 0) {
-        // Child process: redirect stderr to /dev/null, then exec ffmpeg
-        int devnull = open("/dev/null", O_WRONLY);
-        if (devnull >= 0) {
-            dup2(devnull, STDERR_FILENO);
-            close(devnull);
-        }
-        const char *args[] = {
-            "ffmpeg", "-ss", seek_str,
-            "-i", input_path,
-            "-frames:v", "1",
-            "-vf", "scale=320:-1",
-            "-q:v", "8",
-            "-y", output_path,
-            NULL
-        };
-        execvp("ffmpeg", (char *const *)args);
-        _exit(127);
-    }
-
-    // Parent: wait up to 5 seconds for child to complete
-    int ret = -1;
-    time_t deadline = time(NULL) + 5;
-    while (time(NULL) < deadline) {
-        int status = 0;
-        pid_t result = waitpid(pid, &status, WNOHANG);
-        if (result == pid) {
-            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-                ret = 0;
-            }
-            pid = -1;
-            break;
-        }
-        if (result < 0) {
-            pid = -1;
-            break;
-        }
-        usleep(50000);
-    }
-    if (pid > 0) {
-        kill(pid, SIGKILL);
-        waitpid(pid, NULL, 0);
-    }
-
-    if (ret != 0) {
-        log_warn("ffmpeg thumbnail generation failed for: %s", input_path);
-        return -1;
-    }
-
-    // Verify the file was created
-    struct stat st;
-    if (stat(output_path, &st) != 0 || st.st_size == 0) {
-        log_warn("Thumbnail file not created or empty: %s", output_path);
-        unlink(output_path); // Clean up empty file
-        return -1;
-    }
-
-    log_debug("Generated thumbnail: %s (%lld bytes)", output_path,
-              (long long)st.st_size);
-    return 0;
-}
-
 void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res) {
     if (!req || !res) {
         log_error("Invalid parameters for handle_recordings_thumbnail");
@@ -220,6 +134,14 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
         http_response_set_json_error(res, 400, "Invalid thumbnail index (must be 0, 1, or 2)");
         return;
     }
+    // When thumbnails_per_recording is 1 (CPU-save mode, #364) the client
+    // shouldn't be requesting hover frames at all. Reject cleanly so a
+    // stale frontend can't force extra ffmpeg work.
+    if (index > 0 && g_config.thumbnails_per_recording <= 1) {
+        http_response_set_json_error(res, 403,
+            "Hover frames disabled (thumbnails_per_recording=1)");
+        return;
+    }
 
     // Build thumbnail path
     char thumb_path[MAX_PATH_LENGTH];
@@ -267,7 +189,12 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
     double seek_seconds;
     switch (index) {
         case 0:
-            seek_seconds = 1.0; // 1 second in (avoid black frames at start)
+            // First frame — no seek at all. On slow CPUs (#364) the seek
+            // dominates the cost, and the earlier "1s in to dodge black
+            // frames" heuristic isn't worth it: modern IP cameras don't
+            // emit black intros, and the mount-time thumbnail is the one
+            // users see by default, so it must be the cheapest path.
+            seek_seconds = 0.0;
             break;
         case 1:
             seek_seconds = duration / 2.0;

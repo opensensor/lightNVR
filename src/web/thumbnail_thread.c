@@ -9,13 +9,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
 #include <errno.h>
+
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/avutil.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
 
 #include "web/thumbnail_thread.h"
 #include "core/config.h"
@@ -23,9 +29,18 @@
 #include "core/logger.h"
 #include "utils/memory.h"
 #include "utils/strings.h"
+#include "video/ffmpeg_utils.h"
 
 // Maximum concurrent thumbnail generations
 #define MAX_CONCURRENT_THUMBNAILS 4
+
+// Thumbnail output width (height is derived to preserve aspect ratio).
+#define THUMBNAIL_WIDTH 320
+
+// Per-decode wall-clock budget. Generous fallback when seeking into a
+// slow-to-demux container on low-end hardware; a healthy decode on an
+// Atom CPU finishes in well under a second.
+#define THUMBNAIL_DECODE_BUDGET_SEC 5
 
 /**
  * @brief Work item for thumbnail generation
@@ -56,88 +71,163 @@ static struct {
 } g_thumbnail_state = {0};
 
 /**
- * @brief Generate a thumbnail using ffmpeg
+ * @brief Decode one frame from @p input_path near @p seek_seconds, scale to
+ *        THUMBNAIL_WIDTH preserving aspect, and write a JPEG to @p output_path.
+ *
+ * Calls libavformat/libavcodec/libswscale directly — no fork/exec of the
+ * ffmpeg binary. On an Atom D245 the fork+exec path was dominated by
+ * ~900 ms of startup overhead per thumbnail (issue #364); this variant
+ * skips that entirely and decodes in-process.
+ *
+ * Seek strategy: when @p seek_seconds > 0, seek BACKWARD to the nearest
+ * keyframe and decode forward. When @p seek_seconds == 0, skip the seek
+ * and decode from the first packet — the cheapest path and the default
+ * for the index-0 mount-time thumbnail.
  */
 static int generate_thumbnail_internal(const char *input_path, const char *output_path,
                                        double seek_seconds) {
-    // Clamp seek time to 0 minimum
     if (seek_seconds < 0) seek_seconds = 0;
 
-    char seek_str[32];
-    snprintf(seek_str, sizeof(seek_str), "%.2f", seek_seconds);
+    log_debug("Generating thumbnail (libav): seek=%.2fs \"%s\" -> \"%s\"",
+              seek_seconds, input_path, output_path);
 
-    log_debug("Generating thumbnail: ffmpeg -ss %s -i \"%s\" -> \"%s\"",
-              seek_str, input_path, output_path);
-
-    // Use fork/execvp instead of system() to avoid spawning a shell
-    pid_t pid = fork();
-    if (pid < 0) {
-        log_warn("fork() failed for thumbnail generation: %s", strerror(errno));
-        return -1;
-    }
-
-    if (pid == 0) {
-        // Child process: redirect stderr to /dev/null, then exec ffmpeg
-        int devnull = open("/dev/null", O_WRONLY);
-        if (devnull >= 0) {
-            dup2(devnull, STDERR_FILENO);
-            close(devnull);
-        }
-        const char *args[] = {
-            "ffmpeg", "-ss", seek_str,
-            "-i", input_path,
-            "-frames:v", "1",
-            "-vf", "scale=320:-1",
-            "-q:v", "8",
-            "-y", output_path,
-            NULL
-        };
-        execvp("ffmpeg", (char *const *)args);
-        // execvp only returns on failure
-        _exit(127);
-    }
-
-    // Parent: wait up to 5 seconds for child to complete
+    AVFormatContext *fmt_ctx = NULL;
+    AVCodecContext *dec_ctx = NULL;
+    AVFrame *frame = NULL;
+    AVPacket *pkt = NULL;
+    struct SwsContext *sws_ctx = NULL;
+    uint8_t *rgb_buf = NULL;
+    int video_stream_idx = -1;
     int ret = -1;
-    time_t deadline = time(NULL) + 5;
-    while (time(NULL) < deadline) {
-        int status = 0;
-        pid_t result = waitpid(pid, &status, WNOHANG);
-        if (result == pid) {
-            if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-                ret = 0;
+
+    if (avformat_open_input(&fmt_ctx, input_path, NULL, NULL) < 0) {
+        log_warn("Thumbnail: avformat_open_input failed for %s", input_path);
+        goto done;
+    }
+    if (avformat_find_stream_info(fmt_ctx, NULL) < 0) {
+        log_warn("Thumbnail: avformat_find_stream_info failed for %s", input_path);
+        goto done;
+    }
+
+    const AVCodec *decoder = NULL;
+    video_stream_idx = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0);
+    if (video_stream_idx < 0 || !decoder) {
+        log_warn("Thumbnail: no video stream in %s", input_path);
+        goto done;
+    }
+
+    AVStream *vs = fmt_ctx->streams[video_stream_idx];
+    dec_ctx = avcodec_alloc_context3(decoder);
+    if (!dec_ctx) goto done;
+    if (avcodec_parameters_to_context(dec_ctx, vs->codecpar) < 0) goto done;
+    if (avcodec_open2(dec_ctx, decoder, NULL) < 0) {
+        log_warn("Thumbnail: avcodec_open2 failed for %s", input_path);
+        goto done;
+    }
+
+    // Seek to the nearest keyframe at or before seek_seconds. Skipped entirely
+    // when seek_seconds==0 — that's the whole point of gap #1 in #364.
+    if (seek_seconds > 0) {
+        int64_t target_ts = (int64_t)(seek_seconds * AV_TIME_BASE);
+        if (av_seek_frame(fmt_ctx, -1, target_ts, AVSEEK_FLAG_BACKWARD) < 0) {
+            log_debug("Thumbnail: seek to %.2fs failed, decoding from start", seek_seconds);
+        } else {
+            avcodec_flush_buffers(dec_ctx);
+        }
+    }
+
+    pkt = av_packet_alloc();
+    frame = av_frame_alloc();
+    if (!pkt || !frame) goto done;
+
+    time_t decode_deadline = time(NULL) + THUMBNAIL_DECODE_BUDGET_SEC;
+    bool got_frame = false;
+    while (!got_frame) {
+        if (time(NULL) > decode_deadline) {
+            log_warn("Thumbnail: decode budget exceeded for %s", input_path);
+            goto done;
+        }
+
+        int read_ret = av_read_frame(fmt_ctx, pkt);
+        if (read_ret == AVERROR_EOF) {
+            // Flush decoder
+            avcodec_send_packet(dec_ctx, NULL);
+        } else if (read_ret < 0) {
+            log_warn("Thumbnail: av_read_frame failed (%d) for %s", read_ret, input_path);
+            goto done;
+        } else if (pkt->stream_index != video_stream_idx) {
+            av_packet_unref(pkt);
+            continue;
+        } else {
+            if (avcodec_send_packet(dec_ctx, pkt) < 0) {
+                av_packet_unref(pkt);
+                continue;
             }
-            pid = -1;
-            break;
+            av_packet_unref(pkt);
         }
-        if (result < 0) {
-            pid = -1;
-            break;
+
+        int recv_ret = avcodec_receive_frame(dec_ctx, frame);
+        if (recv_ret == AVERROR(EAGAIN)) {
+            if (read_ret == AVERROR_EOF) goto done; // nothing more to feed
+            continue;
+        } else if (recv_ret == AVERROR_EOF) {
+            goto done;
+        } else if (recv_ret < 0) {
+            goto done;
         }
-        usleep(50000); // 50 ms polling interval
-    }
-    if (pid > 0) {
-        // Timeout — kill the child
-        kill(pid, SIGKILL);
-        waitpid(pid, NULL, 0);
+        got_frame = true;
     }
 
-    if (ret != 0) {
-        log_warn("ffmpeg thumbnail generation failed for: %s", input_path);
-        return -1;
+    // Preserve aspect ratio: width fixed at THUMBNAIL_WIDTH, height derived.
+    // Round to even to keep YUVJ420P happy downstream.
+    int out_w = THUMBNAIL_WIDTH;
+    int out_h = (int)((double)frame->height * out_w / frame->width + 0.5);
+    if (out_h < 2) out_h = 2;
+    if (out_h & 1) out_h++;
+
+    sws_ctx = sws_getContext(frame->width, frame->height, dec_ctx->pix_fmt,
+                             out_w, out_h, AV_PIX_FMT_RGB24,
+                             SWS_BILINEAR, NULL, NULL, NULL);
+    if (!sws_ctx) {
+        log_warn("Thumbnail: sws_getContext failed for %s", input_path);
+        goto done;
     }
 
-    // Verify the file was created
+    int rgb_linesize = out_w * 3;
+    rgb_buf = av_malloc((size_t)rgb_linesize * out_h);
+    if (!rgb_buf) goto done;
+
+    uint8_t *dst_data[4] = {rgb_buf, NULL, NULL, NULL};
+    int dst_linesize[4] = {rgb_linesize, 0, 0, 0};
+    sws_scale(sws_ctx, (const uint8_t *const *)frame->data, frame->linesize,
+              0, frame->height, dst_data, dst_linesize);
+
+    // Reuse the shared MJPEG encoder helper. Quality 70 is the rough
+    // equivalent of the legacy `-q:v 8` CLI invocation we replaced.
+    if (ffmpeg_encode_jpeg(rgb_buf, out_w, out_h, 3, 70, output_path) != 0) {
+        log_warn("Thumbnail: ffmpeg_encode_jpeg failed for %s", output_path);
+        goto done;
+    }
+
     struct stat st;
     if (stat(output_path, &st) != 0 || st.st_size == 0) {
         log_warn("Thumbnail file not created or empty: %s", output_path);
-        unlink(output_path); // Clean up empty file
-        return -1;
+        unlink(output_path);
+        goto done;
     }
 
-    log_debug("Generated thumbnail: %s (%lld bytes)", output_path,
-              (long long)st.st_size);
-    return 0;
+    log_debug("Generated thumbnail: %s (%lld bytes, %dx%d)", output_path,
+              (long long)st.st_size, out_w, out_h);
+    ret = 0;
+
+done:
+    if (rgb_buf) av_free(rgb_buf);
+    if (sws_ctx) sws_freeContext(sws_ctx);
+    if (frame) av_frame_free(&frame);
+    if (pkt) av_packet_free(&pkt);
+    if (dec_ctx) avcodec_free_context(&dec_ctx);
+    if (fmt_ctx) avformat_close_input(&fmt_ctx);
+    return ret;
 }
 
 /**

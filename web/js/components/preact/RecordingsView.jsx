@@ -140,6 +140,8 @@ export function RecordingsView() {
     return localStorage.getItem('recordings_view_mode') || 'table';
   });
   const [thumbnailsEnabled, setThumbnailsEnabled] = useState(true);
+  // 1 = single first-frame thumb only (CPU-save, #364); 3 = start/middle/end with hover cycling.
+  const [thumbnailsPerRecording, setThumbnailsPerRecording] = useState(3);
 
   useEffect(() => {
     clearRestoredSelectionFlag();
@@ -167,7 +169,7 @@ export function RecordingsView() {
     localStorage.setItem('recordings_view_mode', mode);
   };
 
-  // Fetch generate_thumbnails setting
+  // Fetch generate_thumbnails + thumbnails_per_recording settings
   useEffect(() => {
     fetch('/api/settings')
       .then(res => res.json())
@@ -178,6 +180,9 @@ export function RecordingsView() {
           if (!data.generate_thumbnails && viewMode === 'grid') {
             handleViewModeChange('table');
           }
+        }
+        if (data && typeof data.thumbnails_per_recording === 'number') {
+          setThumbnailsPerRecording(data.thumbnails_per_recording <= 1 ? 1 : 3);
         }
       })
       .catch(() => {}); // Silently ignore - default to enabled
@@ -1009,6 +1014,7 @@ export function RecordingsView() {
                 toggleColumn={toggleColumn}
                 onTagsChanged={handleTagsChanged}
                 viewSelectedInTimeline={viewSelectedInTimeline}
+                thumbnailsPerRecording={thumbnailsPerRecording}
               />
             ) : (
               <RecordingsTable

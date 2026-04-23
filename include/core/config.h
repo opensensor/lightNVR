@@ -140,6 +140,7 @@ typedef struct {
 
     // Thumbnail/grid view settings
     bool generate_thumbnails;        // Enable grid view with thumbnail previews on recordings page
+    int thumbnails_per_recording;    // 1 = single mount-time thumb only (CPU-save, #364); 3 = start+middle+end with hover cycling
 
     // New recording format options
     bool record_mp4_directly;        // Record directly to MP4 alongside HLS

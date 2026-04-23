@@ -418,6 +418,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
     cJSON_AddBoolToObject(settings, "generate_thumbnails", g_config.generate_thumbnails);
+    cJSON_AddNumberToObject(settings, "thumbnails_per_recording", g_config.thumbnails_per_recording);
     cJSON_AddNumberToObject(settings, "max_streams", g_config.max_streams);
     cJSON_AddNumberToObject(settings, "max_streams_ceiling", MAX_STREAMS);
     cJSON_AddStringToObject(settings, "log_file", g_config.log_file);
@@ -911,6 +912,16 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.generate_thumbnails = cJSON_IsTrue(generate_thumbnails);
         settings_changed = true;
         log_info("Updated generate_thumbnails: %s", g_config.generate_thumbnails ? "true" : "false");
+    }
+
+    // Thumbnails per recording (1 or 3). Anything else is coerced to 3 — we
+    // don't want a typo turning the whole grid into dead cards.
+    cJSON *tpr = cJSON_GetObjectItem(settings, "thumbnails_per_recording");
+    if (tpr && cJSON_IsNumber(tpr)) {
+        int n = tpr->valueint;
+        g_config.thumbnails_per_recording = (n <= 1) ? 1 : 3;
+        settings_changed = true;
+        log_info("Updated thumbnails_per_recording: %d", g_config.thumbnails_per_recording);
     }
 
     // Models path

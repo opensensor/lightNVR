@@ -86,23 +86,28 @@ function RecordingCard({
   canDelete,
   selectionMode,
   hiddenColumns,
-  onTagsChanged
+  onTagsChanged,
+  thumbnailsPerRecording = 3
 }) {
   const { t } = useI18n();
-  const [currentFrame, setCurrentFrame] = useState(1); // Start with middle frame
+  // Mount-time frame: always index 0 (first frame, no ffmpeg seek — #364).
+  // Hover cycling animates 0→1→2 when thumbnailsPerRecording === 3; in
+  // single-thumb mode the frame never changes.
+  const hoverFramesEnabled = thumbnailsPerRecording > 1;
+  const [currentFrame, setCurrentFrame] = useState(0);
   const [showTagsOverlay, setShowTagsOverlay] = useState(false);
   const tagBtnRef = useRef(null);
   const [isHovering, setIsHovering] = useState(false);
-  const [framesReady, setFramesReady] = useState(false); // true once frames 0+2 are loaded
+  const [framesReady, setFramesReady] = useState(false); // true once frames 1+2 are loaded
   const [loadState, setLoadState] = useState('loading'); // 'loading', 'loaded', 'error'
   const intervalRef = useRef(null);
   const preloadedRef = useRef(false);
   const imgErrorCountRef = useRef(0);
   const hoverTimerRef = useRef(null); // debounce timer for hover
 
-  /** Load (or reload) the middle-frame thumbnail. */
+  /** Load (or reload) the mount-time (first-frame) thumbnail. */
   const loadThumbnail = useCallback(() => {
-    const url = `/api/recordings/thumbnail/${recording.id}/1`;
+    const url = `/api/recordings/thumbnail/${recording.id}/0`;
     setLoadState('loading');
     imgErrorCountRef.current = 0;
     queueThumbnailLoad(url, Priority.HIGH)
@@ -142,10 +147,12 @@ function RecordingCard({
   // Only start cycling once both frames are loaded so the <img> src never
   // points at a URL the browser hasn't fetched yet (which would bypass the
   // request queue and cause a stampede).
+  // Skipped entirely when hoverFramesEnabled is false (#364 single-thumb mode).
   useEffect(() => {
+    if (!hoverFramesEnabled) return;
     if (isHovering && !preloadedRef.current) {
       preloadedRef.current = true;
-      const promises = [0, 2].map(i => {
+      const promises = [1, 2].map(i => {
         const url = `/api/recordings/thumbnail/${recording.id}/${i}`;
         return queueThumbnailLoad(url, Priority.LOW);
       });
@@ -156,7 +163,7 @@ function RecordingCard({
           setFramesReady(true);
         });
     }
-  }, [isHovering, recording.id]);
+  }, [isHovering, recording.id, hoverFramesEnabled]);
 
   // Reset framesReady when no longer hovering
   // (preloadedRef stays true so we don't re-fetch on next hover)
@@ -164,9 +171,10 @@ function RecordingCard({
     if (!isHovering) setFramesReady(false);
   }, [isHovering]);
 
-  // Cycle through frames on hover — only after preloaded frames are ready
+  // Cycle through frames on hover — only after preloaded frames are ready,
+  // and only when hover frames are enabled (single-thumb mode never cycles).
   useEffect(() => {
-    if (isHovering && framesReady) {
+    if (hoverFramesEnabled && isHovering && framesReady) {
       intervalRef.current = setInterval(() => {
         setCurrentFrame(prev => (prev + 1) % 3);
       }, 800);
@@ -175,12 +183,12 @@ function RecordingCard({
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      if (!isHovering) setCurrentFrame(1); // Reset to middle frame
+      if (!isHovering) setCurrentFrame(0); // Reset to first frame
     }
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [isHovering, framesReady]);
+  }, [isHovering, framesReady, hoverFramesEnabled]);
 
   const thumbnailUrl = `/api/recordings/thumbnail/${recording.id}/${currentFrame}`;
   const isSelected = !!selectedRecordings[recording.id];
@@ -434,7 +442,8 @@ export function RecordingsGrid({
   hiddenColumns = {},
   toggleColumn = () => {},
   onTagsChanged,
-  viewSelectedInTimeline
+  viewSelectedInTimeline,
+  thumbnailsPerRecording = 3
 }) {
   const { t } = useI18n();
   const [selectionMode, setSelectionMode] = useState(false);
@@ -580,6 +589,7 @@ export function RecordingsGrid({
               selectionMode={selectionMode}
               hiddenColumns={hiddenColumns}
               onTagsChanged={onTagsChanged}
+              thumbnailsPerRecording={thumbnailsPerRecording}
             />
           ))
         )}
