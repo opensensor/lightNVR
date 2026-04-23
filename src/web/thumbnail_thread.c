@@ -196,6 +196,14 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
         got_frame = true;
     }
 
+    // Guard against degenerate frames (corrupt/unsupported streams can produce
+    // width==0 or height==0, which would cause a divide-by-zero below).
+    if (frame->width <= 0 || frame->height <= 0) {
+        log_warn("Thumbnail: decoded frame has invalid dimensions (%dx%d) for %s",
+                 frame->width, frame->height, input_path);
+        goto done;
+    }
+
     // Preserve aspect ratio: width fixed at THUMBNAIL_WIDTH, height derived.
     // Round to even to keep YUVJ420P happy downstream.
     int out_w = THUMBNAIL_WIDTH;
