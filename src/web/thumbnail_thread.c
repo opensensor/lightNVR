@@ -125,13 +125,16 @@ static int generate_thumbnail_internal(const char *input_path, const char *outpu
         goto done;
     }
 
-    // Seek to the nearest keyframe at or before seek_seconds. Skipped entirely
-    // when seek_seconds==0 — that's the whole point of gap #1 in #364.
+    // Seek to the nearest keyframe at or before seek_seconds in the selected
+    // video stream. Skipped entirely when seek_seconds==0 — that's the whole
+    // point of gap #1 in #364.
     if (seek_seconds > 0) {
-        int64_t target_ts = (int64_t)(seek_seconds * AV_TIME_BASE);
-        if (av_seek_frame(fmt_ctx, -1, target_ts, AVSEEK_FLAG_BACKWARD) < 0) {
+        int64_t target_us = (int64_t)(seek_seconds * AV_TIME_BASE);
+        int64_t target_ts = av_rescale_q(target_us, AV_TIME_BASE_Q, vs->time_base);
+        if (av_seek_frame(fmt_ctx, video_stream_idx, target_ts, AVSEEK_FLAG_BACKWARD) < 0) {
             log_debug("Thumbnail: seek to %.2fs failed, decoding from start", seek_seconds);
         } else {
+            avformat_flush(fmt_ctx);
             avcodec_flush_buffers(dec_ctx);
         }
     }
