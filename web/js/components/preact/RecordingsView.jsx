@@ -8,6 +8,7 @@ import { useQueryClient } from '../../query-client.js';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
 import { BatchDownloadModal } from './BatchDownloadModal.jsx';
+import { AsyncButton } from './AsyncButton.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { clearThumbnailQueue } from '../../request-queue.js';
 import { useI18n } from '../../i18n.js';
@@ -373,7 +374,8 @@ export function RecordingsView() {
   const {
     data: recordingsData,
     isLoading: isLoadingRecordings,
-    error: recordingsError
+    error: recordingsError,
+    refetch: refetchRecordings
   } = recordingsAPI.hooks.useRecordings(filters, pagination, sortField, sortDirection);
 
   // Update recordings state when data is loaded
@@ -870,16 +872,48 @@ export function RecordingsView() {
     <section id="recordings-page" class="page">
       <div class="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 class="text-xl font-bold">{t('nav.recordings')}</h2>
-        {/* Right: contextual action — only shown when recordings are selected */}
-        {getSelectedCount() > 0 && (
-          <button
-            onClick={viewSelectedInTimeline}
-            class="btn-primary text-sm"
-            title={t('recordings.viewSelectedCountInTimeline', { count: getSelectedCount() })}
-          >
-            ▶ {t('nav.timeline')} ({getSelectedCount()})
-          </button>
-        )}
+        {/* Right: toolbar actions */}
+        <div class="flex items-center gap-2">
+          {/* Refresh pulls a fresh page of recordings without a full reload.
+              Uses AsyncButton so the spinner + auto-disable mirrors the
+              Apply-filters button below (PRD UXD_01 §5.1 / #399). */}
+          <AsyncButton
+            id="refresh-recordings-btn"
+            className="btn-secondary text-sm inline-flex items-center gap-1.5 min-h-11"
+            onClick={() => refetchRecordings()}
+            title={t('recordings.refreshTitle')}
+            aria-label={t('recordings.refreshTitle')}
+            idleLabel={(
+              <span class="inline-flex items-center gap-1.5">
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+                <span>{t('recordings.refresh')}</span>
+              </span>
+            )}
+          />
+          {/* Contextual action — only shown when recordings are selected */}
+          {getSelectedCount() > 0 && (
+            <button
+              onClick={viewSelectedInTimeline}
+              class="btn-primary text-sm"
+              title={t('recordings.viewSelectedCountInTimeline', { count: getSelectedCount() })}
+            >
+              ▶ {t('nav.timeline')} ({getSelectedCount()})
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Sub-navigation tabs — matches System page style */}
