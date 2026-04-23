@@ -274,6 +274,8 @@
   "recordings.itemsPerPage": "Items per page",
   "recordings.apply": "Apply",
   "recordings.reset": "Reset",
+  "recordings.refresh": "Refresh",
+  "recordings.refreshTitle": "Refresh recordings",
   "recordings.removeFilterValue": "Remove {value}",
   "recordings.activeFilters": "Active filters",
   "recordings.showingAllRecordings": "Showing all {count} recordings",
