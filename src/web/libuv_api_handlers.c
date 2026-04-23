@@ -17,7 +17,6 @@
 #include "web/api_handlers_settings.h"
 #include "web/api_handlers_system.h"
 #include "web/api_handlers_zones.h"
-#include "web/api_handlers_motion.h"
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
@@ -133,9 +132,6 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Detection API
     http_server_register_handler(server, "/api/detection/results/#", "GET", handle_get_detection_results);
     http_server_register_handler(server, "/api/detection/models", "GET", handle_get_detection_models);
-
-    // Motion Recording API
-    http_server_register_handler(server, "/api/motion/test/#", "POST", handle_test_motion_event);
 
     // Storage Management API
     http_server_register_handler(server, "/api/storage/health", "GET", handle_get_storage_health);

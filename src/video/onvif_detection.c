@@ -19,7 +19,7 @@
 #include "video/onvif_detection.h"
 #include "video/onvif_soap.h"
 #include "video/detection_result.h"
-#include "video/onvif_motion_recording.h"
+#include "video/cross_stream_motion_trigger.h"
 #include "video/zone_filter.h"
 #include "database/db_detections.h"
 #include "ezxml.h"

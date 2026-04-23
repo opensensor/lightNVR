@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "video/onvif_motion_recording.h"
+#include "video/cross_stream_motion_trigger.h"
 
 /**
  * Motion Recording Configuration Database Module

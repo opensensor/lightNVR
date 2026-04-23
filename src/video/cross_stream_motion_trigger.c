@@ -1,7 +1,9 @@
 /**
- * ONVIF Motion Detection Recording Implementation
- * 
- * This module implements automated recording triggered by ONVIF motion detection events.
+ * Cross-Stream Motion Trigger Implementation
+ *
+ * Propagates a motion event from one stream to any linked streams via the
+ * `motion_trigger_source` configuration. See cross_stream_motion_trigger.h
+ * for the module-level rationale.
  */
 
 #include <stdio.h>
@@ -13,7 +15,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-#include "video/onvif_motion_recording.h"
+#include "video/cross_stream_motion_trigger.h"
 #include "video/streams.h"
 #include "video/stream_manager.h"
 #include "video/unified_detection_thread.h"

@@ -1,5 +1,5 @@
-#ifndef LIGHTNVR_ONVIF_MOTION_RECORDING_H
-#define LIGHTNVR_ONVIF_MOTION_RECORDING_H
+#ifndef LIGHTNVR_CROSS_STREAM_MOTION_TRIGGER_H
+#define LIGHTNVR_CROSS_STREAM_MOTION_TRIGGER_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -10,13 +10,18 @@
 #include "video/packet_buffer.h"
 
 /**
- * ONVIF Motion Detection Recording Module
- * 
- * This module implements automated recording triggered by ONVIF motion detection events.
- * It provides:
- * - Event-based recording triggered by ONVIF motion events
- * - Configurable pre/post-event buffer recording
- * - Integration with existing LightNVR detection framework
+ * Cross-Stream Motion Trigger Module
+ *
+ * Fans an incoming motion event out to any streams linked via the
+ * `motion_trigger_source` configuration, so a silent PTZ lens can start
+ * recording when its paired wide-angle lens fires a motion event, and
+ * vice-versa for dual-lens devices that share a single ONVIF endpoint.
+ *
+ * This used to be onvif_motion_recording.{c,h}; the bulk of that module
+ * (per-camera motion recording configuration with its own buffers and
+ * retention) was removed along with the separate "Motion Recording (ONVIF)"
+ * UI section. What remained was just the cross-stream propagation hook,
+ * hence the rename.
  */
 
 // Maximum number of motion events in queue
@@ -43,5 +48,5 @@ typedef struct {
  */
 int process_motion_event(const char *stream_name, bool motion_detected, time_t timestamp, bool is_propagated);
 
-#endif /* LIGHTNVR_ONVIF_MOTION_RECORDING_H */
+#endif /* LIGHTNVR_CROSS_STREAM_MOTION_TRIGGER_H */
 

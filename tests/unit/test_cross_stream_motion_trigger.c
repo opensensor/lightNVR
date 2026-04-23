@@ -2,13 +2,14 @@
  * @file test_cross_stream_motion_trigger.c
  * @brief Layer 3 Unity tests for cross-stream motion trigger feature
  *
- * Tests the process_motion_event() cross-stream propagation logic added in
- * src/video/onvif_motion_recording.c.  The feature allows a "silent" stream
- * (e.g. PTZ lens) to have its recording triggered by motion events from a
- * different "source" stream (e.g. fixed wide-angle lens with ONVIF support).
+ * Tests the process_motion_event() cross-stream propagation logic in
+ * src/video/cross_stream_motion_trigger.c.  The feature allows a "silent"
+ * stream (e.g. PTZ lens) to have its recording triggered by motion events
+ * from a different "source" stream (e.g. fixed wide-angle lens with ONVIF
+ * support).
  *
- * Layer 3: requires lightnvr_lib + FFmpeg (for onvif_motion_recording.c which
- * includes libavformat/avformat.h).
+ * Layer 3: requires lightnvr_lib + FFmpeg (the module header pulls in
+ * libavformat/avformat.h transitively).
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -23,7 +24,7 @@
 #include "unity.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
-#include "video/onvif_motion_recording.h"
+#include "video/cross_stream_motion_trigger.h"
 #include "core/config.h"
 #include "core/logger.h"
 #include "utils/strings.h"

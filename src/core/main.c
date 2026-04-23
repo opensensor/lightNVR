@@ -44,7 +44,7 @@
 #include "video/timestamp_manager.h"
 #include "video/onvif_discovery.h"
 #include "video/ffmpeg_leak_detector.h"
-#include "video/onvif_motion_recording.h"
+#include "video/cross_stream_motion_trigger.h"
 #include "telemetry/stream_metrics.h"
 #include "telemetry/player_telemetry.h"
 

@@ -23,7 +23,7 @@
 #include "video/sod_integration.h"
 #include "video/api_detection.h"
 #include "video/onvif_detection.h"
-#include "video/onvif_motion_recording.h"
+#include "video/cross_stream_motion_trigger.h"
 #include "utils/memory.h"
 
 // Include our new modules
