@@ -10,7 +10,7 @@
   "language.label": "Sprache",
   "language.browserDefault": "Browserstandard",
   "language.changeError": "Sprache konnte nicht gewechselt werden.",
-  "footer.tagline": "Leichter Netzwerk-Videorekorder",
+  "footer.tagline": "Lightweight Network Video Recorder",
   "auth.demoViewer": "Demo-Viewer",
   "auth.user": "Benutzer",
   "auth.demoMode": "Demomodus",
