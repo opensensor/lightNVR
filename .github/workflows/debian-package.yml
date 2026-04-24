@@ -231,7 +231,7 @@ jobs:
           Architecture: ${DEB_ARCH}
           Maintainer: OpenSensor <support@opensensor.io>
           Installed-Size: ${INSTALLED_SIZE}
-          Depends: ffmpeg, ${FFMPEG_DEPS}, libuv1t64, libsqlite3-0, ${LLHTTP_DEP}, libcurl4t64 | libcurl4, libmbedtls21, libmosquitto1, libcjson1, procps
+          Depends: ffmpeg, ${FFMPEG_DEPS}, libuv1t64, libsqlite3-0, ${LLHTTP_DEP}, libcurl4t64 | libcurl4, libmbedtls21, libmosquitto1, libcjson1, libyaml-0-2, procps
           Section: net
           Priority: optional
           Homepage: https://github.com/opensensor/lightNVR
