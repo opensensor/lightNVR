@@ -57,7 +57,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.brokerPortHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.brokerPortHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('auth.username')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -164,7 +164,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.keepaliveSecondsHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.keepaliveSecondsHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.qosLevel')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -252,7 +252,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                 />
-                <span class="hint text-sm text-muted-foreground ml-2">{t('settings.snapshotIntervalSecondsHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.snapshotIntervalSecondsHelp')}</span>
               </div>
             </div>
           </>

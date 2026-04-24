@@ -34,23 +34,23 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground">{t('settings.hlsStoragePathHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.hlsStoragePathHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.maxStorageGb')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-max-storage" class="font-medium">{t('settings.maxStorageGb')}</label>
-          <div class="col-span-2 flex items-center">
+          <div class="col-span-2">
             <input
               type="number"
               id="setting-max-storage"
               name="maxStorage"
               min="0"
-              class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.maxStorage}
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.zeroUnlimited')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.zeroUnlimited')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.retentionDays')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -111,7 +111,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
               <option value={1}>{t('settings.thumbnailsPerRecordingOne')}</option>
               <option value={3}>{t('settings.thumbnailsPerRecordingThree')}</option>
             </select>
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.thumbnailsPerRecordingHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.thumbnailsPerRecordingHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.databasePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

@@ -48,6 +48,8 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
   const preloadedVideoCleanupRef = useRef(null);
   const initialPausedSyncEventLoggedRef = useRef(false);
   const lastInitialPausedSegmentIdRef = useRef(null);
+  const suppressNativePlaybackSyncRef = useRef(false);
+  const suppressNativePlaybackSyncTokenRef = useRef(0);
 
   const setVideoRefs = useCallback((node) => {
     videoRef.current = node;
@@ -80,6 +82,17 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
 
     preloadedVideoCleanupRef.current();
     preloadedVideoCleanupRef.current = null;
+  }, []);
+
+  const suppressNativePlaybackSync = useCallback((ms = 150) => {
+    const token = suppressNativePlaybackSyncTokenRef.current + 1;
+    suppressNativePlaybackSyncTokenRef.current = token;
+    suppressNativePlaybackSyncRef.current = true;
+    window.setTimeout(() => {
+      if (suppressNativePlaybackSyncTokenRef.current === token) {
+        suppressNativePlaybackSyncRef.current = false;
+      }
+    }, ms);
   }, []);
 
   // Handle video playback based on state changes
@@ -148,6 +161,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
       video.currentTime = relativeTime;
     } else if (state.isPlaying && video.paused) {
       // Resume playback if needed
+      suppressNativePlaybackSync();
       video.play().catch(error => {
         if (error.name === 'AbortError') {
           // play() was interrupted by a new load or pause — expected when clicking around the timeline
@@ -168,6 +182,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
   }, [
     cleanupPreloadedVideo,
     releaseDirectVideoControl,
+    suppressNativePlaybackSync,
   ]);
 
   // Subscribe to timeline state changes
@@ -201,6 +216,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
     console.log(`Loading segment ${segment.id} at time ${seekTime}s, autoplay: ${autoplay}`);
 
     // Pause current playback
+    suppressNativePlaybackSync();
     video.pause();
 
     // Set new source using a deterministic version to allow caching of identical segments
@@ -269,6 +285,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
 
       // Play if needed
       if (autoplay) {
+        suppressNativePlaybackSync();
         video.play().catch(error => {
           if (error.name === 'AbortError') {
             console.log('Video play() interrupted during segment load, ignoring AbortError');
@@ -289,7 +306,7 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
     // Set new source
     video.src = recordingUrl;
     video.load();
-  }, [playbackSpeed]);
+  }, [playbackSpeed, suppressNativePlaybackSync, t]);
 
   // Handle video ended event
   const handleEnded = () => {
@@ -352,6 +369,9 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
 
   // Handle native video play event (user pressed play inside the browser video controls)
   const handlePlay = () => {
+    if (suppressNativePlaybackSyncRef.current) {
+      return;
+    }
     if (!timelineState.isPlaying) {
       timelineState.setState({ isPlaying: true });
     }
@@ -359,6 +379,9 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
 
   // Handle native video pause event (user pressed pause inside the browser video controls)
   const handlePause = () => {
+    if (suppressNativePlaybackSyncRef.current) {
+      return;
+    }
     // Only sync if our own code didn't trigger the pause (e.g. during segment load)
     if (timelineState.isPlaying && !timelineState.directVideoControl) {
       timelineState.setState({ isPlaying: false });

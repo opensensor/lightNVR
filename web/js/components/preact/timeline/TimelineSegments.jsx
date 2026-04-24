@@ -5,7 +5,11 @@
 
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
-import { findContainingSegmentIndex, getClippedSegmentHourRange } from './timelineUtils.js';
+import {
+  findContainingSegmentIndex,
+  findNearestSegmentIndex,
+  getClippedSegmentHourRange
+} from './timelineUtils.js';
 import { formatLocalTime } from '../../../utils/date-utils.js';
 
 /**
@@ -153,6 +157,9 @@ export function TimelineSegments({ segments: propSegments }) {
 
     // Find segment that contains this timestamp
     const foundIndex = findContainingSegmentIndex(segments, clickTimestamp);
+    const targetIndex = foundIndex !== -1
+      ? foundIndex
+      : findNearestSegmentIndex(segments, clickTimestamp);
 
     // Move cursor to click position and update segment index in a single atomic setState so
     // that currentTime is never skipped by the "time-only update" batching logic.  When the
@@ -163,7 +170,7 @@ export function TimelineSegments({ segments: propSegments }) {
       currentTime: clickTimestamp,
       prevCurrentTime: timelineState.currentTime,
       isPlaying: false,
-      currentSegmentIndex: foundIndex
+      currentSegmentIndex: targetIndex
     });
   };
 

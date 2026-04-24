@@ -291,7 +291,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   disabled={!canModifySettings}
                   placeholder="/usr/local/bin/go2rtc"
                 />
-                <span class="hint text-sm text-muted-foreground">{t('settings.go2rtcBinaryPathHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.go2rtcBinaryPathHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.configDirectory')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -307,7 +307,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   disabled={!canModifySettings}
                   placeholder="/etc/lightnvr/go2rtc"
                 />
-                <span class="hint text-sm text-muted-foreground">{t('settings.go2rtcConfigDirectoryHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.go2rtcConfigDirectoryHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.apiPort')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -324,7 +324,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                 />
-                <span class="hint text-sm text-muted-foreground ml-2">{t('settings.go2rtcApiPortHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.go2rtcApiPortHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.rtspPort')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -341,7 +341,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                 />
-                <span class="hint text-sm text-muted-foreground ml-2">{t('settings.go2rtcRtspPortHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.go2rtcRtspPortHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.enableWebrtc')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -373,7 +373,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                 />
-                <span class="hint text-sm text-muted-foreground ml-2">{t('settings.webrtcListenPortHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.webrtcListenPortHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.enableStun')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -404,7 +404,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   disabled={!canModifySettings}
                   placeholder="stun.l.google.com:19302"
                 />
-                <span class="hint text-sm text-muted-foreground">{t('settings.stunServerHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.stunServerHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.externalIp')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -420,7 +420,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   disabled={!canModifySettings}
                   placeholder={t('settings.autoDetect')}
                 />
-                <span class="hint text-sm text-muted-foreground">{t('settings.externalIpHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.externalIpHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.iceServers')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
