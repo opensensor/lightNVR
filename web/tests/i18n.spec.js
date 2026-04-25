@@ -96,7 +96,7 @@ describe('i18n locale selection', () => {
 
   test('matches supported locales exactly and by base language', () => {
     expect(resolveSupportedLocale('pt-BR')).toBe('pt-BR');
-    expect(resolveSupportedLocale('pt-PT')).toBe('pt-BR');
+    expect(resolveSupportedLocale('pt-PT')).toBe('pt-PT');
     expect(resolveSupportedLocale('de-DE')).toBe('de');
   });
 
