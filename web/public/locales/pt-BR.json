@@ -326,7 +326,7 @@
   "timeline.help.playFromCursor": "Use o botão verde de reprodução para iniciar a partir da posição atual do cursor",
   "timeline.help.zoomControls": "Use os botões Ajustar, + e − ou Ctrl/Cmd + roda do mouse para ampliar a linha do tempo",
   "timeline.help.panControls": "Desloque para a esquerda/direita no nível de zoom atual com Shift + roda do mouse ou gesto horizontal do trackpad",
-  "timeline.help.actions": "Use Snapshot, Download, Protect ou Delete na gravação atualmente em reprodução",
+  "timeline.help.actions": "Use Snapshot, Baixar, Proteger ou Excluir na gravação atualmente em reprodução",
   "timeline.arrowKeysHelpTitle": "Clique no vídeo para alternar as setas para busca de 1 segundo. Clique fora dele para voltar a saltar entre gravações.",
   "timeline.arrowKeys": "Setas",
   "timeline.seekOneSecond": "buscar ±1s",
