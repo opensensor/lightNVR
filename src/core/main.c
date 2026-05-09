@@ -253,6 +253,49 @@ static void init_signals() {
     log_info("Signal handlers initialized with improved handling");
 }
 /**
+ * Check whether the process with the given PID is a LightNVR instance.
+ *
+ * On Linux we inspect /proc/<pid>/comm which contains the executable name
+ * (up to 15 characters, as set by the kernel).  A lightnvr process will
+ * always have "lightnvr" there.
+ *
+ * This prevents false positives on container restart: after a container is
+ * stopped and started again the PID namespace is reused from 1, so the PID
+ * that was recorded in the PID file from the previous run may now belong to
+ * a completely unrelated process (e.g. a shell, go2rtc, or a system daemon).
+ * Killing that unrelated process would crash the container.
+ *
+ * Returns true  if the process is (or may be) a LightNVR instance.
+ * Returns false if we can positively confirm it is NOT LightNVR (stale PID).
+ */
+static bool is_lightnvr_process(pid_t pid) {
+#ifdef __linux__
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/comm", (int)pid);
+    FILE *fp = fopen(path, "r");
+    if (!fp) {
+        /* Cannot read comm – be conservative and assume it might be lightnvr. */
+        return true;
+    }
+    char comm[32] = {0};
+    bool ok = (fgets(comm, sizeof(comm), fp) != NULL);
+    fclose(fp);
+    if (!ok) {
+        return true;
+    }
+    comm[strcspn(comm, "\n")] = '\0';
+    /* The kernel truncates comm to TASK_COMM_LEN-1 (15) characters, so
+     * "lightnvr" (8 chars) is always preserved in full. */
+    return strcmp(comm, "lightnvr") == 0;
+#else
+    /* On non-Linux platforms we cannot easily inspect the process name,
+     * so conservatively assume it might be lightnvr. */
+    (void)pid;
+    return true;
+#endif
+}
+
+/**
  * Check if another instance is running and kill it if needed
  */
 static int check_and_kill_existing_instance(const char *pid_file) {
@@ -282,6 +325,18 @@ static int check_and_kill_existing_instance(const char *pid_file) {
 
     // Check if process exists
     if (kill(existing_pid, 0) == 0) {
+        // Process exists – but verify it is actually a LightNVR instance before
+        // killing it.  On container restart the PID namespace starts fresh so the
+        // PID stored in the file may have been reused by an unrelated process
+        // (e.g. go2rtc, a shell, or a system daemon).  Killing that process would
+        // crash the container, creating the restart loop described in issue #438.
+        if (!is_lightnvr_process(existing_pid)) {
+            log_warn("PID %d from stale PID file is not a LightNVR process (PID reuse after container restart); removing stale PID file",
+                     existing_pid);
+            unlink(pid_file);
+            return 0;
+        }
+
         // Process exists, ask user if they want to kill it
         log_warn("Another instance with PID %d appears to be running", existing_pid);
 
