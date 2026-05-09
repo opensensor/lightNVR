@@ -306,7 +306,8 @@ cleanup_stale_pid_file() {
     if [ -f /etc/lightnvr/lightnvr.ini ]; then
         local cfg_val
         cfg_val=$(grep -E '^\s*pid_file\s*=' /etc/lightnvr/lightnvr.ini \
-                  | sed 's/[^=]*=[ \t]*//' | sed 's/[ \t]*[;#].*//' | tr -d '[:space:]' | head -1)
+                  | sed 's/[^=]*=[ \t]*//' | sed 's/[ \t]*[;#].*//' \
+                  | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | head -1)
         if [ -n "$cfg_val" ]; then
             pid_file="$cfg_val"
         fi

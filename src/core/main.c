@@ -277,7 +277,7 @@ static bool is_lightnvr_process(pid_t pid) {
         /* Cannot read comm – be conservative and assume it might be lightnvr. */
         return true;
     }
-    char comm[256] = {0};
+    char comm[32] = {0};
     bool ok = (fgets(comm, sizeof(comm), fp) != NULL);
     fclose(fp);
     if (!ok) {
