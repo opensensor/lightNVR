@@ -291,6 +291,33 @@ generate_go2rtc_config_from_settings() {
     fi
 }
 
+# Remove any stale PID file left over from a previous container run.
+# When a container is stopped and restarted (without being recreated) the
+# container filesystem is preserved, so /var/run/lightnvr.pid may still exist
+# with the PID from the old run.  In the new container the PID namespace
+# restarts from 1, meaning that old PID can be reused by an unrelated process
+# (e.g. go2rtc or a shell).  If LightNVR then finds that PID it would send
+# SIGTERM to the wrong process, crashing the container in a restart loop.
+# Removing the stale file here, before LightNVR starts, prevents that.
+cleanup_stale_pid_file() {
+    # Determine the PID file path.  Try to read it from the config; fall back
+    # to the compiled-in default of /var/run/lightnvr.pid.
+    local pid_file="/var/run/lightnvr.pid"
+    if [ -f /etc/lightnvr/lightnvr.ini ]; then
+        local cfg_val
+        cfg_val=$(grep -E '^\s*pid_file\s*=' /etc/lightnvr/lightnvr.ini \
+                  | sed 's/[^=]*=[ \t]*//' | sed 's/[ \t]*[;#].*//' | tr -d '[:space:]' | head -1)
+        if [ -n "$cfg_val" ]; then
+            pid_file="$cfg_val"
+        fi
+    fi
+
+    if [ -f "$pid_file" ]; then
+        log_info "Removing stale PID file from previous container run: $pid_file"
+        rm -f "$pid_file" || log_warn "Could not remove stale PID file: $pid_file"
+    fi
+}
+
 # Function to display startup information
 display_startup_info() {
     echo ""
@@ -322,6 +349,9 @@ init_config
 
 # Setup go2rtc configuration
 setup_go2rtc_config
+
+# Remove any stale PID file before starting LightNVR
+cleanup_stale_pid_file
 
 # Regenerate go2rtc.yaml from saved LightNVR settings before go2rtc starts
 generate_go2rtc_config_from_settings
