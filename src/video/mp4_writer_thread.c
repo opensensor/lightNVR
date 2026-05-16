@@ -75,6 +75,13 @@ static void on_segment_started_cb(void *user_ctx) {
     }
 }
 
+static void on_segment_activity_cb(void *user_ctx) {
+    mp4_writer_thread_t *thread_ctx = (mp4_writer_thread_t *)user_ctx;
+    if (!thread_ctx || !thread_ctx->writer) return;
+
+    thread_ctx->writer->last_packet_time = time(NULL);
+}
+
 
 /**
  * RTSP stream reading thread function
@@ -430,10 +437,11 @@ static void *mp4_writer_rtsp_thread(void *arg) {
         // can interrupt blocking calls when this specific thread needs to be stopped
         // (e.g., during dead recording recovery), not just during global shutdown.
         time_t segment_start = time(NULL);
+        on_segment_activity_cb(thread_ctx);
         ret = record_segment(thread_ctx->rtsp_url, thread_ctx->writer->output_path,
                            segment_duration, thread_ctx->writer->has_audio,
                            &thread_ctx->input_ctx, &thread_ctx->segment_info,
-                           on_segment_started_cb, thread_ctx,
+                           on_segment_started_cb, on_segment_activity_cb, thread_ctx,
                            &thread_ctx->shutdown_requested);
         time_t segment_end = time(NULL);
 
@@ -477,7 +485,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             // BUGFIX: Signal to the death detector that this thread is still
             // alive and actively retrying.  Without this, a stream whose
             // upstream (go2rtc) takes >60 s to connect to the camera will be
-            // killed by mp4_writer_is_recording() ("never wrote any packets")
+            // killed by mp4_writer_is_recording() ("never reported activity")
             // and restarted in an infinite death-loop.  Setting last_packet_time
             // resets the 45-second inactivity timer; the thread's own retry
             // backoff ensures we don't spin.
@@ -541,6 +549,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                     thread_ctx->running = 0;
                     goto thread_cleanup;
                 }
+                on_segment_activity_cb(thread_ctx);
                 av_usleep(500000);  // 500ms
             }
 
@@ -882,8 +891,8 @@ void mp4_writer_stop_recording_thread(mp4_writer_t *writer) {
  * Check if the recording thread is running and actively producing recordings
  *
  * This function checks not only if the thread is running, but also if it has
- * written packets recently. A thread that is "running" but hasn't written
- * packets in a long time is considered dead and should be restarted.
+ * observed packet/retry activity recently. A thread that is "running" but has
+ * not made progress in a long time is considered dead and should be restarted.
  */
 int mp4_writer_is_recording(mp4_writer_t *writer) {
     if (!writer) {
@@ -905,19 +914,23 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
         return 0;
     }
 
-    // CRITICAL FIX: Check if the recording is actually producing output
-    // A thread can be "running" but stuck or not actually writing packets
-    // If no packets have been written in the last 45 seconds, consider it dead
-    // (45 seconds = segment duration of 30 seconds + 15 second buffer for retries)
+    // CRITICAL FIX: Check if the recording is actually making progress.
+    // A thread can be "running" but stuck in FFmpeg or not receiving packets.
+    // Use at least 45 seconds, and extend the allowance for installations with
+    // longer MP4 segments so a valid in-progress segment is not interrupted.
     time_t now = time(NULL);
     time_t last_packet = writer->last_packet_time;
+    int inactivity_timeout = 45;
+    if (writer->segment_duration > 0 && writer->segment_duration + 15 > inactivity_timeout) {
+        inactivity_timeout = writer->segment_duration + 15;
+    }
 
     // If last_packet_time is 0, the recording just started - give it time to initialize
     // Allow up to 60 seconds for initial connection and first packet
     if (last_packet == 0) {
         time_t creation_time = writer->creation_time;
         if (creation_time > 0 && (now - creation_time) > 60) {
-            log_debug("MP4 recording for stream %s has been running for %ld seconds but never wrote any packets - considering it dead",
+            log_debug("MP4 recording for stream %s has been running for %ld seconds but never reported activity - considering it dead",
                     writer->stream_name, (long)(now - creation_time));
             return 0;
         }
@@ -925,11 +938,11 @@ int mp4_writer_is_recording(mp4_writer_t *writer) {
         return 1;
     }
 
-    // Check if packets have been written recently
+    // Check if packet/retry activity has been observed recently
     long seconds_since_last_packet = (long)(now - last_packet);
-    if (seconds_since_last_packet > 45) {
-        log_debug("MP4 recording for stream %s hasn't written packets in %ld seconds - considering it dead",
-                writer->stream_name, seconds_since_last_packet);
+    if (seconds_since_last_packet > inactivity_timeout) {
+        log_debug("MP4 recording for stream %s has had no activity in %ld seconds (timeout %d) - considering it dead",
+                writer->stream_name, seconds_since_last_packet, inactivity_timeout);
         return 0;
     }
 

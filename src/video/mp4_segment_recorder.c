@@ -203,6 +203,12 @@ static int interrupt_callback(void *ctx) {
     return 0;
 }
 
+static void notify_recording_activity(record_segment_activity_cb activity_cb, void *cb_ctx) {
+    if (activity_cb) {
+        activity_cb(cb_ctx);
+    }
+}
+
 /**
  * Initialize the MP4 segment recorder
  * This function should be called during program startup
@@ -246,12 +252,16 @@ void mp4_segment_recorder_init(void) {
  * @param has_audio Flag indicating whether to include audio in the recording
  * @param input_ctx_ptr Pointer to the input context for this stream (reused between segments)
  * @param segment_info_ptr Pointer to the segment info for this stream
+ * @param started_cb Optional callback invoked once when the first keyframe is detected
+ * @param activity_cb Optional callback invoked when input packet activity is observed
+ * @param cb_ctx Opaque context pointer passed to started_cb and activity_cb
  * @param shutdown_flag Optional pointer to per-thread atomic shutdown flag (checked by interrupt callback)
  * @return 0 on success, negative value on error
  */
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
                    AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr,
-                   record_segment_started_cb started_cb, void *cb_ctx,
+                   record_segment_started_cb started_cb,
+                   record_segment_activity_cb activity_cb, void *cb_ctx,
                    atomic_int *shutdown_flag) {
     int ret = 0;
     AVFormatContext *input_ctx = NULL;
@@ -356,7 +366,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         // parameters from go2rtc's RTSP output.  Use the FFmpeg defaults (5s / 5MB)
         // to give go2rtc enough time to connect to the upstream camera and start
         // forwarding frames — the dead-recording timer issue is separately handled
-        // by updating last_packet_time during retries.
+        // by updating the writer activity heartbeat during packet reads/retries.
         av_dict_set(&opts, "analyzeduration", "5000000", 0);  // 5 seconds (FFmpeg default)
         av_dict_set(&opts, "probesize", "5242880", 0);        // 5 MB (5 * 1024 * 1024 bytes, FFmpeg default)
 
@@ -520,6 +530,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                 int probe_ret = av_read_frame(input_ctx, probe_pkt);
                                 if (probe_ret < 0) {
                                     if (probe_ret == AVERROR(EAGAIN)) {
+                                        notify_recording_activity(activity_cb, cb_ctx);
                                         av_usleep(10000);
                                         continue;
                                     }
@@ -529,6 +540,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                                              "probe: %s", err_buf);
                                     break;
                                 }
+                                notify_recording_activity(activity_cb, cb_ctx);
 
                                 if (probe_pkt->stream_index == video_stream_idx) {
                                     probe_packets++;
@@ -941,6 +953,7 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
 			av_usleep(10000);  // Sleep 10ms to avoid busy waiting
 			continue;
 		}
+        notify_recording_activity(activity_cb, cb_ctx);
 
         // Process video packets
         if (pkt->stream_index == video_stream_idx) {

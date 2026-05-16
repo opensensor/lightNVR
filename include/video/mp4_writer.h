@@ -39,7 +39,7 @@ struct mp4_writer {
     AVRational time_base;     // Video stream timebase
     int is_initialized;
     time_t creation_time;
-    time_t last_packet_time;  // Time when the last packet was written
+    time_t last_packet_time;  // Time when the last packet/activity heartbeat was observed
     mp4_audio_state_t audio;  // Audio state - completely separate from video
     pthread_mutex_t mutex;    // Mutex to protect video state
     uint64_t current_recording_id; // ID of the current recording in the database

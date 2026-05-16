@@ -27,6 +27,13 @@
 typedef void (*record_segment_started_cb)(void *user_ctx);
 
 /**
+ * Callback invoked when recording work makes progress, such as receiving a
+ * packet from the RTSP input. Used by the owner thread to keep watchdog state
+ * fresh during long segments and keyframe waits.
+ */
+typedef void (*record_segment_activity_cb)(void *user_ctx);
+
+/**
  * Record an RTSP stream to an MP4 file for a specified duration
  *
  * This function handles the actual recording of an RTSP stream to an MP4 file.
@@ -56,13 +63,15 @@ typedef void (*record_segment_started_cb)(void *user_ctx);
  * @param input_ctx_ptr Pointer to the input context for this stream (reused between segments)
  * @param segment_info_ptr Pointer to the segment info for this stream
  * @param started_cb Optional callback invoked once when the first keyframe is detected
- * @param cb_ctx Opaque context pointer passed to started_cb
+ * @param activity_cb Optional callback invoked when input packet activity is observed
+ * @param cb_ctx Opaque context pointer passed to started_cb and activity_cb
  * @param shutdown_flag Optional pointer to per-thread atomic shutdown flag (checked by interrupt callback)
  * @return 0 on success, negative value on error
  */
 int record_segment(const char *rtsp_url, const char *output_file, int duration, int has_audio,
                    AVFormatContext **input_ctx_ptr, segment_info_t *segment_info_ptr,
-                   record_segment_started_cb started_cb, void *cb_ctx,
+                   record_segment_started_cb started_cb,
+                   record_segment_activity_cb activity_cb, void *cb_ctx,
                    atomic_int *shutdown_flag);
 
 /**
