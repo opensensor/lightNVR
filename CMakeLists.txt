@@ -16,8 +16,9 @@ set(GO2RTC_BINARY_PATH "/usr/local/bin/go2rtc" CACHE STRING "Path to go2rtc bina
 set(GO2RTC_CONFIG_DIR "/etc/lightnvr/go2rtc" CACHE STRING "Directory for go2rtc configuration files")
 set(GO2RTC_API_PORT 1984 CACHE STRING "Port for go2rtc HTTP API")
 
-# llhttp download configuration
-set(LLHTTP_VERSION "release/v9.2.1" CACHE STRING "llhttp version to download from GitHub")
+# llhttp download configuration. Avoid the LLHTTP_VERSION name because
+# pkg_check_modules(LLHTTP ...) owns that variable when libllhttp is probed.
+set(LLHTTP_DOWNLOAD_REF "release/v9.2.1" CACHE STRING "llhttp tag/ref to download from GitHub")
 
 # SSL/TLS options
 option(ENABLE_SSL "Enable SSL/TLS support" OFF)
@@ -255,64 +256,56 @@ pkg_check_modules(LIBUV REQUIRED libuv)
 # llhttp - try to find via pkg-config first, otherwise download and build
 pkg_check_modules(LLHTTP QUIET libllhttp)
 if(NOT LLHTTP_FOUND)
-    # Check if llhttp is in external directory, if not download it
+    # Check if llhttp is in external directory, downloading any missing files.
+    # A partial prior download can leave src/llhttp.c present while api.c/http.c
+    # are absent, which would otherwise fail later with "No SOURCES given".
     set(LLHTTP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/llhttp")
-    if(NOT EXISTS "${LLHTTP_DIR}/src/llhttp.c")
-        message(STATUS "llhttp not found, downloading from GitHub...")
-        file(MAKE_DIRECTORY "${LLHTTP_DIR}")
-        file(MAKE_DIRECTORY "${LLHTTP_DIR}/src")
-        file(MAKE_DIRECTORY "${LLHTTP_DIR}/include")
+    set(LLHTTP_REQUIRED_FILES
+        "src/llhttp.c"
+        "src/api.c"
+        "src/http.c"
+        "include/llhttp.h"
+    )
+    set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/refs/tags/${LLHTTP_DOWNLOAD_REF}")
 
-        # Download the pinned llhttp release
-        # LLHTTP_VERSION is defined as a cache variable earlier; use it here without overriding it
-        set(LLHTTP_BASE_URL "https://raw.githubusercontent.com/nodejs/llhttp/${LLHTTP_VERSION}")
-
-        file(DOWNLOAD
-            "${LLHTTP_BASE_URL}/src/llhttp.c"
-            "${LLHTTP_DIR}/src/llhttp.c"
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS
-        )
-        list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
-        if(NOT STATUS_CODE EQUAL 0)
-            message(FATAL_ERROR "Failed to download llhttp.c")
+    foreach(LLHTTP_FILE IN LISTS LLHTTP_REQUIRED_FILES)
+        set(LLHTTP_LOCAL_PATH "${LLHTTP_DIR}/${LLHTTP_FILE}")
+        set(LLHTTP_NEEDS_DOWNLOAD FALSE)
+        set(LLHTTP_DOWNLOAD_REASON "not found")
+        if(NOT EXISTS "${LLHTTP_LOCAL_PATH}")
+            set(LLHTTP_NEEDS_DOWNLOAD TRUE)
+        else()
+            file(READ "${LLHTTP_LOCAL_PATH}" LLHTTP_FILE_PROBE LIMIT 1)
+            if(LLHTTP_FILE_PROBE STREQUAL "")
+                set(LLHTTP_NEEDS_DOWNLOAD TRUE)
+                set(LLHTTP_DOWNLOAD_REASON "is empty")
+            endif()
         endif()
 
-        file(DOWNLOAD
-            "${LLHTTP_BASE_URL}/src/api.c"
-            "${LLHTTP_DIR}/src/api.c"
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS_API
-        )
-        list(GET DOWNLOAD_STATUS_API 0 STATUS_CODE_API)
-        if(NOT STATUS_CODE_API EQUAL 0)
-            message(FATAL_ERROR "Failed to download llhttp api.c")
-        endif()
+        if(LLHTTP_NEEDS_DOWNLOAD)
+            message(STATUS "llhttp ${LLHTTP_FILE} ${LLHTTP_DOWNLOAD_REASON}, downloading from GitHub...")
+            get_filename_component(LLHTTP_LOCAL_DIR "${LLHTTP_LOCAL_PATH}" DIRECTORY)
+            file(MAKE_DIRECTORY "${LLHTTP_LOCAL_DIR}")
+            file(REMOVE "${LLHTTP_LOCAL_PATH}")
 
-        file(DOWNLOAD
-            "${LLHTTP_BASE_URL}/src/http.c"
-            "${LLHTTP_DIR}/src/http.c"
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS_HTTP
-        )
-        list(GET DOWNLOAD_STATUS_HTTP 0 STATUS_CODE_HTTP)
-        if(NOT STATUS_CODE_HTTP EQUAL 0)
-            message(FATAL_ERROR "Failed to download llhttp http.c")
+            file(DOWNLOAD
+                "${LLHTTP_BASE_URL}/${LLHTTP_FILE}"
+                "${LLHTTP_LOCAL_PATH}"
+                SHOW_PROGRESS
+                STATUS LLHTTP_DOWNLOAD_STATUS
+            )
+            list(GET LLHTTP_DOWNLOAD_STATUS 0 LLHTTP_STATUS_CODE)
+            list(GET LLHTTP_DOWNLOAD_STATUS 1 LLHTTP_STATUS_MESSAGE)
+            if(NOT LLHTTP_STATUS_CODE EQUAL 0)
+                message(FATAL_ERROR
+                    "Failed to download llhttp ${LLHTTP_FILE}: ${LLHTTP_STATUS_MESSAGE}")
+            endif()
+            file(READ "${LLHTTP_LOCAL_PATH}" LLHTTP_FILE_PROBE LIMIT 1)
+            if(LLHTTP_FILE_PROBE STREQUAL "")
+                message(FATAL_ERROR "Downloaded llhttp ${LLHTTP_FILE} is empty")
+            endif()
         endif()
-
-        file(DOWNLOAD
-            "${LLHTTP_BASE_URL}/include/llhttp.h"
-            "${LLHTTP_DIR}/include/llhttp.h"
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS_HEADER
-        )
-        list(GET DOWNLOAD_STATUS_HEADER 0 STATUS_CODE_HEADER)
-        if(NOT STATUS_CODE_HEADER EQUAL 0)
-            message(FATAL_ERROR "Failed to download llhttp.h header")
-        endif()
-
-        message(STATUS "llhttp downloaded successfully")
-    endif()
+    endforeach()
 
     # Build llhttp from source
     set(LLHTTP_SOURCES
