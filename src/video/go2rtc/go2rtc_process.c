@@ -1758,17 +1758,54 @@ bool go2rtc_process_generate_startup_config(const char *binary_path,
     }
     snprintf(g_config_path, config_path_len, "%s/go2rtc.yaml", config_dir);
 
+    size_t override_path_len = strlen(config_dir) + strlen("/override.yaml") + 1;
+    g_override_path = malloc(override_path_len);
+    if (!g_override_path) {
+        log_error("Memory allocation failed for override path");
+        free(g_config_dir);
+        free(g_config_path);
+        g_config_dir = NULL;
+        g_config_path = NULL;
+        return false;
+    }
+    snprintf(g_override_path, override_path_len, "%s/override.yaml", config_dir);
+
+    size_t quar_path_len = strlen(config_dir) + strlen("/override.quarantined.yaml") + 1;
+    g_override_quarantined_path = malloc(quar_path_len);
+    if (!g_override_quarantined_path) {
+        log_error("Memory allocation failed for override quarantine path");
+        free(g_config_dir);
+        free(g_config_path);
+        free(g_override_path);
+        g_config_dir = NULL;
+        g_config_path = NULL;
+        g_override_path = NULL;
+        return false;
+    }
+    snprintf(g_override_quarantined_path, quar_path_len,
+             "%s/override.quarantined.yaml", config_dir);
+
     g_api_port = resolved_api_port;
     g_rtsp_port = (g_config.go2rtc_rtsp_port > 0) ? g_config.go2rtc_rtsp_port : 8554;
     g_initialized = true;
 
     bool ok = go2rtc_process_generate_config(g_config_path, resolved_api_port);
+    if (ok && get_db_handle() != NULL
+        && go2rtc_process_generate_override_file(g_override_path) != 0) {
+        log_error("Failed to generate go2rtc startup override file: %s",
+                  g_override_path);
+        ok = false;
+    }
 
     /* Tear down the minimal state we set up. */
     free(g_config_dir);
     free(g_config_path);
+    free(g_override_path);
+    free(g_override_quarantined_path);
     g_config_dir = NULL;
     g_config_path = NULL;
+    g_override_path = NULL;
+    g_override_quarantined_path = NULL;
     g_initialized = false;
     g_using_external_service = false;
 

@@ -5,15 +5,19 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <dirent.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "unity.h"
 #include "core/config.h"
 #include "core/logger.h"
+#include "database/db_core.h"
+#include "database/db_system_settings.h"
 #include "video/go2rtc/go2rtc_process.h"
 
 void setUp(void) {}
@@ -50,6 +54,37 @@ static char *read_text_file(const char *path) {
     return buffer;
 }
 
+static void remove_tree(const char *path) {
+    DIR *dir = opendir(path);
+    if (!dir) {
+        return;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char child[PATH_MAX];
+        snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+
+        struct stat st;
+        if (lstat(child, &st) != 0) {
+            continue;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            remove_tree(child);
+        } else {
+            unlink(child);
+        }
+    }
+
+    closedir(dir);
+    rmdir(path);
+}
+
 void test_generate_startup_config_uses_saved_webrtc_settings(void) {
     load_default_config(&g_config);
     g_config.go2rtc_api_port = 31984;
@@ -81,6 +116,55 @@ void test_generate_startup_config_uses_saved_webrtc_settings(void) {
     free(contents);
     unlink(config_path);
     rmdir(config_dir);
+}
+
+void test_generate_startup_config_writes_db_override_file(void) {
+    load_default_config(&g_config);
+    g_config.go2rtc_api_port = 31984;
+    g_config.go2rtc_rtsp_port = 31554;
+    g_config.go2rtc_webrtc_enabled = false;
+
+    char root_template[] = "/tmp/lightnvr-go2rtc-startup-XXXXXX";
+    char *root_dir = mkdtemp(root_template);
+    TEST_ASSERT_NOT_NULL(root_dir);
+
+    char config_dir[256];
+    snprintf(config_dir, sizeof(config_dir), "%s/go2rtc", root_dir);
+
+    char db_path[256];
+    snprintf(db_path, sizeof(db_path), "%s/lightnvr.db", root_dir);
+
+    const char *override_yaml =
+        "log:\n"
+        "  level: trace\n";
+
+    TEST_ASSERT_EQUAL_INT(0, init_database(db_path));
+    TEST_ASSERT_EQUAL_INT(0, db_set_system_setting("go2rtc_config_override",
+                                                   override_yaml));
+
+    TEST_ASSERT_TRUE(go2rtc_process_generate_startup_config("/bin/true",
+                                                            config_dir,
+                                                            g_config.go2rtc_api_port));
+
+    char config_path[PATH_MAX];
+    snprintf(config_path, sizeof(config_path), "%s/go2rtc.yaml", config_dir);
+
+    char override_path[PATH_MAX];
+    snprintf(override_path, sizeof(override_path), "%s/override.yaml", config_dir);
+
+    char *override_contents = read_text_file(override_path);
+    TEST_ASSERT_NOT_NULL(override_contents);
+    TEST_ASSERT_EQUAL_STRING(override_yaml, override_contents);
+
+    char *base_contents = read_text_file(config_path);
+    TEST_ASSERT_NOT_NULL(base_contents);
+    TEST_ASSERT_NULL_MESSAGE(strstr(base_contents, "  level: trace"),
+                             "Base config must not contain DB-backed override content");
+
+    free(base_contents);
+    free(override_contents);
+    shutdown_database();
+    remove_tree(root_dir);
 }
 
 /**
@@ -157,6 +241,7 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_generate_startup_config_uses_saved_webrtc_settings);
+    RUN_TEST(test_generate_startup_config_writes_db_override_file);
     RUN_TEST(test_base_config_has_no_user_override_append_block);
     RUN_TEST(test_override_helpers_are_linkable_stubs);
     return UNITY_END();

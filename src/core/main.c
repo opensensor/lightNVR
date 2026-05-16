@@ -609,6 +609,19 @@ int main(int argc, char *argv[]) {
             return EXIT_FAILURE;
         }
 
+        bool db_initialized_for_generation = false;
+        if (config.db_path[0] != '\0') {
+            if (init_database(config.db_path) == 0) {
+                db_initialized_for_generation = true;
+                if (load_stream_configs(&config) < 0) {
+                    log_warn("Failed to load stream configurations while generating go2rtc config");
+                }
+                memcpy(&g_config, &config, sizeof(config_t));
+            } else {
+                log_warn("Failed to initialize database while generating go2rtc config; DB-backed overrides unavailable");
+            }
+        }
+
         const char *go2rtc_binary = config.go2rtc_binary_path[0] != '\0'
                                    ? config.go2rtc_binary_path : NULL;
         const char *go2rtc_config_dir = config.go2rtc_config_dir[0] != '\0'
@@ -616,6 +629,9 @@ int main(int argc, char *argv[]) {
         bool generated = go2rtc_process_generate_startup_config(go2rtc_binary,
                                                                 go2rtc_config_dir,
                                                                 config.go2rtc_api_port);
+        if (db_initialized_for_generation) {
+            shutdown_database();
+        }
         curl_cleanup_global();
         return generated ? EXIT_SUCCESS : EXIT_FAILURE;
 #else

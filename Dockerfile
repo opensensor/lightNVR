@@ -270,7 +270,13 @@ RUN echo '#!/bin/bash' > /bin/start.sh && \
     echo 'trap cleanup EXIT' >> /bin/start.sh && \
     echo '' >> /bin/start.sh && \
     echo '# Start go2rtc in the background' >> /bin/start.sh && \
-    echo '/bin/go2rtc --config /etc/lightnvr/go2rtc/go2rtc.yaml &' >> /bin/start.sh && \
+    echo 'if [ -r /etc/lightnvr/go2rtc/override.yaml ]; then' >> /bin/start.sh && \
+    echo '    echo "Starting go2rtc with LightNVR base config and user override"' >> /bin/start.sh && \
+    echo '    /bin/go2rtc --config /etc/lightnvr/go2rtc/go2rtc.yaml --config /etc/lightnvr/go2rtc/override.yaml &' >> /bin/start.sh && \
+    echo 'else' >> /bin/start.sh && \
+    echo '    echo "Starting go2rtc with LightNVR base config"' >> /bin/start.sh && \
+    echo '    /bin/go2rtc --config /etc/lightnvr/go2rtc/go2rtc.yaml &' >> /bin/start.sh && \
+    echo 'fi' >> /bin/start.sh && \
     echo 'GO2RTC_PID=$!' >> /bin/start.sh && \
     echo '' >> /bin/start.sh && \
     echo '# Wait a moment for go2rtc to start' >> /bin/start.sh && \
