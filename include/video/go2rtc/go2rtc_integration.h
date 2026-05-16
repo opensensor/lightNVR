@@ -104,6 +104,17 @@ bool go2rtc_sync_streams_from_database(void);
 bool go2rtc_integration_full_start(void);
 
 /**
+ * @brief Restart the managed go2rtc process and re-register dynamic streams
+ *
+ * Use this when a setting is loaded only from go2rtc.yaml, such as a
+ * per-stream source override. Dynamic API registration cannot apply those
+ * YAML-backed changes to a running go2rtc process.
+ *
+ * @return true if go2rtc restarted and dynamic streams were re-registered
+ */
+bool go2rtc_integration_restart_process(void);
+
+/**
  * @brief Clean up the go2rtc integration module
  */
 void go2rtc_integration_cleanup(void);

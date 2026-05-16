@@ -344,8 +344,12 @@ static void put_stream_worker(put_stream_task_t *task) {
             }
         }
 
-        // If URL, protocol, record_audio, or credentials changed, update go2rtc stream registration
-        if ((url_changed || protocol_changed || record_audio_changed || task->credentials_changed)) {
+        // If URL, protocol, record_audio, or credentials changed, update the dynamic
+        // go2rtc API registration. Streams with a source override are YAML-backed;
+        // those changes are applied by the go2rtc process restart below instead.
+        if (!task->go2rtc_override_changed &&
+            task->config.go2rtc_source_override[0] == '\0' &&
+            (url_changed || protocol_changed || record_audio_changed || task->credentials_changed)) {
             log_info("URL, protocol, record_audio, or credentials changed for stream %s, updating go2rtc registration", task->config.name);
 
             if (go2rtc_integration_reload_stream_config(task->config.name, task->config.url,
@@ -364,16 +368,21 @@ static void put_stream_worker(put_stream_task_t *task) {
         }
 
         // If go2rtc_source_override changed, regenerate config and fully re-register.
-        // The override is baked into go2rtc.yaml so a config regen + re-registration is needed.
+        // The override is baked into go2rtc.yaml, so the running process must be
+        // restarted to load it. Removing/re-adding the stream through the API
+        // would either ignore the override or overwrite it with the normal URL.
         if (task->go2rtc_override_changed) {
-            log_info("go2rtc source override changed for stream %s, re-registering with go2rtc", task->config.name);
-            go2rtc_api_remove_stream(task->config.name);
-            go2rtc_integration_register_stream(task->config.name);
+            log_info("go2rtc source override changed for stream %s, restarting go2rtc to load generated YAML", task->config.name);
+            if (go2rtc_integration_restart_process()) {
+                log_info("Successfully restarted go2rtc after source override change for stream %s", task->config.name);
+            } else {
+                log_error("Failed to restart go2rtc after source override change for stream %s", task->config.name);
+            }
             usleep(500000);
         }
 
         // If sub-stream URL changed, register or unregister the {name}_sub stream
-        if (task->sub_stream_changed) {
+        if (task->sub_stream_changed && !task->go2rtc_override_changed) {
             char sub_name[MAX_STREAM_NAME + 8];
             snprintf(sub_name, sizeof(sub_name), "%s_sub", task->config.name);
             // Always remove old sub-stream first

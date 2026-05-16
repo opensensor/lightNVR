@@ -505,11 +505,6 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
         }
     }
 
-    // Check if already registered
-    if (is_stream_registered_with_go2rtc(stream_name)) {
-        return true;
-    }
-
     // Get the stream configuration
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
@@ -521,6 +516,18 @@ static bool ensure_stream_registered_with_go2rtc(const char *stream_name) {
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get config for stream %s", stream_name);
         return false;
+    }
+
+    if (config.go2rtc_source_override[0] != '\0') {
+        log_info("Stream %s is YAML-defined by go2rtc source override; restarting go2rtc to load config",
+                 stream_name);
+        return go2rtc_integration_restart_process();
+    }
+
+    // Check if already registered after handling YAML-backed streams. A stale
+    // dynamic API entry with the same name must not mask a source override.
+    if (is_stream_registered_with_go2rtc(stream_name)) {
+        return true;
     }
 
     // Register the stream with go2rtc
@@ -705,7 +712,7 @@ static bool can_restart_go2rtc(void) {
  * @brief Restart the go2rtc process
  */
 static bool restart_go2rtc_process(void) {
-    log_warn("Attempting to restart go2rtc process due to health check failure");
+    log_warn("Attempting to restart managed go2rtc process");
 
     log_info("Stopping go2rtc process...");
     if (!go2rtc_process_stop()) {
@@ -777,6 +784,20 @@ static bool restart_go2rtc_process(void) {
     log_info("go2rtc restart completed (total restarts: %d)", g_restart_count);
 
     return true;
+}
+
+bool go2rtc_integration_restart_process(void) {
+    if (!go2rtc_stream_is_initialized()) {
+        log_info("go2rtc stream module is not initialized, performing full start");
+        return go2rtc_integration_full_start();
+    }
+
+    if (!g_initialized) {
+        log_info("go2rtc integration module is not initialized, performing full start");
+        return go2rtc_integration_full_start();
+    }
+
+    return restart_go2rtc_process();
 }
 
 /**
@@ -1707,12 +1728,6 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
 
     log_info("Reloading stream configuration for %s in go2rtc", stream_name);
 
-    // Check if go2rtc is ready
-    if (!go2rtc_stream_is_ready()) {
-        log_warn("go2rtc service is not ready, cannot reload stream config");
-        return false;
-    }
-
     // Get current stream configuration if new values not provided
     stream_handle_t stream = get_stream_by_name(stream_name);
     stream_config_t config;
@@ -1720,6 +1735,18 @@ bool go2rtc_integration_reload_stream_config(const char *stream_name,
 
     if (stream && get_stream_config(stream, &config) == 0) {
         have_config = true;
+    }
+
+    if (have_config && config.go2rtc_source_override[0] != '\0') {
+        log_info("Stream %s uses a go2rtc source override; restarting go2rtc to reload YAML config",
+                 stream_name);
+        return go2rtc_integration_restart_process();
+    }
+
+    // Check if go2rtc is ready
+    if (!go2rtc_stream_is_ready()) {
+        log_warn("go2rtc service is not ready, cannot reload stream config");
+        return false;
     }
 
     // Determine the values to use
@@ -1827,13 +1854,6 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
         return false;
     }
 
-    // Check if stream is already registered with go2rtc
-    // This prevents re-registering streams that were pre-registered (e.g., in tests)
-    if (is_stream_registered_with_go2rtc(stream_name)) {
-        log_debug("Stream %s is already registered with go2rtc, skipping re-registration", stream_name);
-        return true;
-    }
-
     // Look up the stream config
     stream_handle_t stream = get_stream_by_name(stream_name);
     if (!stream) {
@@ -1845,6 +1865,21 @@ bool go2rtc_integration_register_stream(const char *stream_name) {
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get config for stream %s", stream_name);
         return false;
+    }
+
+    if (config.go2rtc_source_override[0] != '\0') {
+        log_info("Stream %s has go2rtc source override; restarting go2rtc so YAML source is loaded",
+                 stream_name);
+        return go2rtc_integration_restart_process();
+    }
+
+    // Check if stream is already registered with go2rtc.
+    // This prevents re-registering streams that were pre-registered (e.g., in tests).
+    // YAML-backed override streams are handled above because a stale dynamic API
+    // entry with the same name must not mask the generated go2rtc.yaml source.
+    if (is_stream_registered_with_go2rtc(stream_name)) {
+        log_debug("Stream %s is already registered with go2rtc, skipping re-registration", stream_name);
+        return true;
     }
 
     // Check for go2rtc source override — main stream is defined in go2rtc.yaml

@@ -113,6 +113,7 @@ bool go2rtc_integration_is_using_go2rtc_for_hls(const char *stream_name) { UNUSE
 bool go2rtc_integration_register_all_streams(void) { return true; }
 bool go2rtc_sync_streams_from_database(void) { return true; }
 bool go2rtc_integration_full_start(void) { return false; }
+bool go2rtc_integration_restart_process(void) { return false; }
 void go2rtc_integration_cleanup(void) {}
 bool go2rtc_integration_is_initialized(void) { return false; }
 bool go2rtc_get_rtsp_url(const char *stream_name, char *url, size_t url_size) {
