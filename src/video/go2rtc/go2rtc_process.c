@@ -1666,7 +1666,7 @@ int go2rtc_process_generate_override_file(const char *override_path) {
     /* Belt-and-braces: chmod again in case the file pre-existed with looser
      * perms and O_TRUNC kept the inode. */
     if (fchmod(fd, 0600) != 0) {
-        log_warn("fchmod(%s, 0600) failed: %s",
+        log_warn("fchmod(%s, 0600) failed: %s; continuing with existing filesystem permissions",
                  override_path, strerror(errno));
     }
 

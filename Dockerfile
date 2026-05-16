@@ -257,40 +257,10 @@ COPY --from=builder /opt/db/migrations/ /usr/share/lightnvr/migrations/
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Create a startup script to launch both services
-RUN echo '#!/bin/bash' > /bin/start.sh && \
-    echo 'set -e' >> /bin/start.sh && \
-    echo '' >> /bin/start.sh && \
-    echo '# Trap to ensure cleanup on exit' >> /bin/start.sh && \
-    echo 'cleanup() {' >> /bin/start.sh && \
-    echo '    echo "Cleaning up processes..."' >> /bin/start.sh && \
-    echo '    kill $GO2RTC_PID 2>/dev/null || true' >> /bin/start.sh && \
-    echo '    wait $GO2RTC_PID 2>/dev/null || true' >> /bin/start.sh && \
-    echo '}' >> /bin/start.sh && \
-    echo 'trap cleanup EXIT' >> /bin/start.sh && \
-    echo '' >> /bin/start.sh && \
-    echo '# Start go2rtc in the background' >> /bin/start.sh && \
-    echo 'if [ -r /etc/lightnvr/go2rtc/override.yaml ]; then' >> /bin/start.sh && \
-    echo '    echo "Starting go2rtc with LightNVR base config and user override"' >> /bin/start.sh && \
-    echo '    /bin/go2rtc --config /etc/lightnvr/go2rtc/go2rtc.yaml --config /etc/lightnvr/go2rtc/override.yaml &' >> /bin/start.sh && \
-    echo 'else' >> /bin/start.sh && \
-    echo '    echo "Starting go2rtc with LightNVR base config"' >> /bin/start.sh && \
-    echo '    /bin/go2rtc --config /etc/lightnvr/go2rtc/go2rtc.yaml &' >> /bin/start.sh && \
-    echo 'fi' >> /bin/start.sh && \
-    echo 'GO2RTC_PID=$!' >> /bin/start.sh && \
-    echo '' >> /bin/start.sh && \
-    echo '# Wait a moment for go2rtc to start' >> /bin/start.sh && \
-    echo 'sleep 2' >> /bin/start.sh && \
-    echo '' >> /bin/start.sh && \
-    echo '# Start lightnvr in the foreground' >> /bin/start.sh && \
-    echo '# When lightnvr exits (including for restart), this script will exit' >> /bin/start.sh && \
-    echo '# and the container orchestrator will restart the entire container' >> /bin/start.sh && \
-    echo '/bin/lightnvr -c /etc/lightnvr/lightnvr.ini' >> /bin/start.sh && \
-    echo 'LIGHTNVR_EXIT_CODE=$?' >> /bin/start.sh && \
-    echo '' >> /bin/start.sh && \
-    echo '# Cleanup will be called by the trap' >> /bin/start.sh && \
-    echo 'exit $LIGHTNVR_EXIT_CODE' >> /bin/start.sh && \
-    chmod +x /bin/start.sh
+# Start LightNVR only. LightNVR owns the go2rtc process lifecycle so stream
+# source overrides and config override changes can restart go2rtc in-place.
+COPY docker-start.sh /bin/start.sh
+RUN chmod +x /bin/start.sh
 
 # Define volumes for persistent data only
 # Note: Do NOT mount /var/lib/lightnvr directly as it will overwrite web assets
