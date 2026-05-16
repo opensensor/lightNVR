@@ -34,7 +34,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground">{t('settings.detectionModelsPathHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.detectionModelsPathHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.apiDetectionUrl')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -89,7 +89,7 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
               />
               <span id="threshold-value" class="ml-2 min-w-[3rem] text-center">{settings.defaultDetectionThreshold}%</span>
             </div>
-            <span class="hint text-sm text-muted-foreground">{t('settings.defaultDetectionThresholdHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.defaultDetectionThresholdHelp')}</span>
           </div>
         </div>
       </div>

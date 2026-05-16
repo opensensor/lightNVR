@@ -42,7 +42,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint ml-2 text-sm text-muted-foreground">{t('settings.enableSyslogHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableSyslogHelp')}</span>
           </div>
         </div>
         {settings.syslogEnabled && (

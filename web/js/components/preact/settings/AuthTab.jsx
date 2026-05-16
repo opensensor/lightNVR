@@ -51,7 +51,7 @@ export function AuthTab({
         </div>
         <div data-setting-label={t('auth.demoMode')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-demo-mode" class="font-medium">{t('auth.demoMode')}</label>
-          <div class="col-span-2 flex items-center">
+          <div class="col-span-2">
             <input
               type="checkbox"
               id="setting-demo-mode"
@@ -62,7 +62,7 @@ export function AuthTab({
               onChange={handleInputChange}
               disabled={!canModifySettings || !settings.authEnabled}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.demoModeHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.demoModeHelp')}</span>
           </div>
         </div>
 
@@ -101,7 +101,7 @@ export function AuthTab({
                     <span class="text-sm">{m.label}</span>
                   </label>
                 ))}
-                <span class="hint text-sm text-muted-foreground mt-1">{t('settings.enabledViewMethodsHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enabledViewMethodsHelp')}</span>
               </div>
             </div>
           );
@@ -247,7 +247,7 @@ export function AuthTab({
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.loginSecurity')}</h3>
         <div data-setting-label={t('settings.forceMfaOnLogin')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-force-mfa" class="font-medium">{t('settings.forceMfaOnLogin')}</label>
-          <div class="col-span-2 flex items-center">
+          <div class="col-span-2">
             <input
               type="checkbox"
               id="setting-force-mfa"
@@ -258,12 +258,12 @@ export function AuthTab({
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.forceMfaOnLoginHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.forceMfaOnLoginHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.loginRateLimiting')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-rate-limit-enabled" class="font-medium">{t('settings.loginRateLimiting')}</label>
-          <div class="col-span-2 flex items-center">
+          <div class="col-span-2">
             <input
               type="checkbox"
               id="setting-rate-limit-enabled"
@@ -274,7 +274,7 @@ export function AuthTab({
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.loginRateLimitingHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.loginRateLimitingHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.maxLoginAttempts')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

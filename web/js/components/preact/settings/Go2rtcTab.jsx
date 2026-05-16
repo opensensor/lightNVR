@@ -258,7 +258,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableGo2rtcHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableGo2rtcHelp')}</span>
           </div>
         </div>
         {settings.go2rtcEnabled && (
@@ -275,7 +275,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                 />
-                <span class="hint text-sm text-muted-foreground ml-2">{t('settings.forceNativeHlsHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.forceNativeHlsHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.binaryPath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -356,7 +356,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                 />
-                <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableWebrtcHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableWebrtcHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.webrtcListenPort')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -388,7 +388,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   onChange={handleInputChange}
                   disabled={!canModifySettings}
                 />
-                <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableStunHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableStunHelp')}</span>
               </div>
             </div>
             <div data-setting-label={t('settings.stunServer')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -436,7 +436,7 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
                   disabled={!canModifySettings}
                   placeholder={t('settings.iceServersPlaceholder')}
                 />
-                <span class="hint text-sm text-muted-foreground">{t('settings.iceServersHelp')}</span>
+                <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.iceServersHelp')}</span>
               </div>
             </div>
 

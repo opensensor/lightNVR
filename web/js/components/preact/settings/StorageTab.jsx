@@ -94,7 +94,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableGridViewThumbnailsHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableGridViewThumbnailsHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.thumbnailsPerRecording')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">

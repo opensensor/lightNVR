@@ -24,7 +24,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableMqttHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableMqttHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.brokerHost')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -147,7 +147,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableTlsHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableTlsHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.keepaliveSeconds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -196,7 +196,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.retainMessagesHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.retainMessagesHelp')}</span>
           </div>
         </div>
 
@@ -217,7 +217,7 @@ export function MqttTab({ settings, handleInputChange, canModifySettings, t }) {
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground ml-2">{t('settings.enableHaDiscoveryHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.enableHaDiscoveryHelp')}</span>
           </div>
         </div>
         {settings.mqttHaDiscovery && (

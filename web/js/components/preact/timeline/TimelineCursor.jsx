@@ -69,10 +69,11 @@ export function TimelineCursor() {
       wasPlayingAtDragStartRef.current = !!timelineState.isPlaying;
       isDraggingRef.current = true;
 
-      timelineState.userControllingCursor = true;
-      timelineState.preserveCursorPosition = true;
-      timelineState.cursorPositionLocked = true;
-      timelineState.setState({});
+      timelineState.setState({
+        userControllingCursor: true,
+        preserveCursorPosition: true,
+        cursorPositionLocked: true
+      });
 
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
@@ -123,56 +124,37 @@ export function TimelineCursor() {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
 
-      // Release cursor control after a short delay
-      setTimeout(() => {
-        timelineState.userControllingCursor = false;
-        timelineState.setState({});
-      }, 100);
-
-      // Set the cursor time
-      timelineState.currentTime = timestamp;
+      let targetTimestamp = timestamp;
 
       // Snap-guard: nudge away from segment start to prevent snap-back
       if (timelineState.timelineSegments && timelineState.timelineSegments.length > 0) {
         const segIndex = findContainingSegmentIndex(timelineState.timelineSegments, timestamp);
         const seg = segIndex !== -1 ? timelineState.timelineSegments[segIndex] : null;
         if (seg && (timestamp - seg.start_timestamp) < 1.0) {
-          timelineState.currentTime = seg.start_timestamp + 1.0;
+          targetTimestamp = seg.start_timestamp + 1.0;
         }
       }
 
-      timelineState.prevCurrentTime = timelineState.currentTime;
-      // Pause briefly so the video element can reload the (possibly different)
-      // segment from a known state; we will re-assert isPlaying below if the
-      // user was playing when they started dragging.
-      timelineState.isPlaying = false;
-      timelineState.setState({});
-
       // Find the segment at the drop position (exact match or closest)
       const segs = timelineState.timelineSegments || [];
-      const containingIndex = findContainingSegmentIndex(segs, timestamp);
-      timelineState.currentSegmentIndex = containingIndex !== -1
+      const containingIndex = findContainingSegmentIndex(segs, targetTimestamp);
+      const targetSegmentIndex = containingIndex !== -1
         ? containingIndex
-        : findNearestSegmentIndex(segs, timestamp);
+        : findNearestSegmentIndex(segs, targetTimestamp);
 
-      // Restore playback state if we were playing before the drag began.
-      // Standard scrubber UX: releasing the drag while previously playing
-      // should resume playback at the new cursor position.
       const shouldResume = wasPlayingAtDragStartRef.current;
       wasPlayingAtDragStartRef.current = false;
-      if (shouldResume && timelineState.currentSegmentIndex >= 0) {
-        // Clear the cursor-lock flags so the cursor can follow the video
-        // as it plays, and force a reload so the video element picks up
-        // the new segment / seek position cleanly.
-        timelineState.preserveCursorPosition = false;
-        timelineState.cursorPositionLocked = false;
-        timelineState.setState({
-          isPlaying: true,
-          forceReload: true
-        });
-      } else {
-        timelineState.setState({});
-      }
+
+      timelineState.setState({
+        currentTime: targetTimestamp,
+        prevCurrentTime: timelineState.currentTime,
+        currentSegmentIndex: targetSegmentIndex,
+        isPlaying: shouldResume && targetSegmentIndex >= 0,
+        userControllingCursor: false,
+        preserveCursorPosition: false,
+        cursorPositionLocked: false,
+        forceReload: targetSegmentIndex >= 0
+      });
     };
 
     // Add event listeners

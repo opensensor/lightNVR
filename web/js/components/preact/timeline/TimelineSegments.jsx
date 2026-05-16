@@ -109,10 +109,9 @@ export function TimelineSegments({ segments: propSegments }) {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
 
-      // If playback was active before the seek, resume at the new cursor
-      // position.  handleTimelineClick forces isPlaying=false so the video
-      // loads cleanly; re-assert the playing state here and let
-      // TimelinePlayer.handleVideoPlayback drive the actual video.play().
+      // Keep the same playback state after the seek; if we were already
+      // playing, TimelinePlayer.handleVideoPlayback drives the actual
+      // video.play() at the new cursor position.
       if (wasPlayingAtDragStartRef.current) {
         wasPlayingAtDragStartRef.current = false;
         const segs = timelineState.timelineSegments || [];
@@ -169,8 +168,9 @@ export function TimelineSegments({ segments: propSegments }) {
     timelineState.setState({
       currentTime: clickTimestamp,
       prevCurrentTime: timelineState.currentTime,
-      isPlaying: false,
-      currentSegmentIndex: targetIndex
+      isPlaying: wasPlayingAtDragStartRef.current && targetIndex >= 0,
+      currentSegmentIndex: targetIndex,
+      forceReload: wasPlayingAtDragStartRef.current && targetIndex >= 0
     });
   };
 

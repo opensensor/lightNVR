@@ -27,7 +27,7 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground">{t('settings.defaultPreDetectionBufferHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.defaultPreDetectionBufferHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.defaultPostDetectionBufferSeconds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
@@ -44,7 +44,7 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
               onChange={handleInputChange}
               disabled={!canModifySettings}
             />
-            <span class="hint text-sm text-muted-foreground">{t('settings.defaultPostDetectionBufferHelp')}</span>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.defaultPostDetectionBufferHelp')}</span>
           </div>
         </div>
         <div data-setting-label={t('settings.defaultBufferStrategy')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
