@@ -602,6 +602,7 @@
   "live.failedToCreateMediaBuffer": "Failed to create media buffer",
   "live.webSocketConnectionError": "WebSocket connection error",
   "live.webrtcAutoplayBlocked": "Click to play video (autoplay blocked)",
+  "live.audioPlaybackBlocked": "Browser blocked camera audio. Click the speaker button again to retry.",
   "live.webrtcConnectionLostRetry": "WebRTC connection lost. Click Retry to reconnect.",
   "live.streamConnectedNoVideoDataRetry": "Stream connected but no video data. Click Retry to reconnect.",
   "live.failedToLoadVideo": "Failed to load video",
