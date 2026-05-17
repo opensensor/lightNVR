@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "ビデオのロードに失敗しました",
   "live.webrtcIceConnectionFailed": "WebRTC ICE 接続に失敗しました",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC 接続が失われました。再試行してください。",
+  "live.autoRetryingIn": "{seconds} 秒後に再試行します…",
   "live.connectionTimeoutCheckNetwork": "接続タイムアウト。ネットワーク/ファイアウォールの設定を確認してください。",
   "live.failedToEstablishWebrtcConnection": "WebRTC 接続を確立できませんでした",
   "live.cannotConnectToSource": "カメラソースに接続できません",

@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "Video yüklenemedi",
   "live.webrtcIceConnectionFailed": "WebRTC ICE bağlantısı başarısız oldu",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC bağlantısı kesildi. Lütfen tekrar deneyin.",
+  "live.autoRetryingIn": "{seconds} sn içinde yeniden deneniyor…",
   "live.connectionTimeoutCheckNetwork": "Bağlantı zaman aşımı. Ağ/güvenlik duvarı ayarlarını kontrol edin.",
   "live.failedToEstablishWebrtcConnection": "WebRTC bağlantısı kurulamadı",
   "live.cannotConnectToSource": "Kamera kaynağına bağlanılamıyor",

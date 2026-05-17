@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "视频加载失败",
   "live.webrtcIceConnectionFailed": "WebRTC ICE 连接失败",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC 连接丢失。请重试。",
+  "live.autoRetryingIn": "{seconds} 秒后重试…",
   "live.connectionTimeoutCheckNetwork": "连接超时。检查网络/防火墙设置。",
   "live.failedToEstablishWebrtcConnection": "无法建立WebRTC连接",
   "live.cannotConnectToSource": "无法连接到摄像头源",

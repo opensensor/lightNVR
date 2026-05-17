@@ -17,6 +17,7 @@ import { formatUtils } from './recordings/formatUtils.js';
 import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
+import { useAutoRetry } from './useAutoRetry.js';
 import Hls from 'hls.js';
 
 /**
@@ -554,6 +555,9 @@ export function HLSVideoCell({
     setRetryCount(prev => prev + 1);
   };
 
+  // Auto-retry while the error overlay is visible — see WebRTCVideoCell for rationale.
+  const autoRetryCountdown = useAutoRetry(error, handleRetry);
+
   /**
    * Pause stream for privacy — sets privacy_mode=true without touching the enabled flag.
    * The stream stays in the Live View grid under a privacy overlay.
@@ -1053,7 +1057,9 @@ export function HLSVideoCell({
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
             >
-              {t('common.retry')}
+              {autoRetryCountdown !== null && autoRetryCountdown > 0
+                ? t('live.autoRetryingIn', { seconds: autoRetryCountdown })
+                : t('common.retry')}
             </button>
           </div>
         </div>

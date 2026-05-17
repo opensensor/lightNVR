@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "فشل تحميل الفيديو",
   "live.webrtcIceConnectionFailed": "فشل اتصال WebRTC ICE",
   "live.webrtcConnectionLostPleaseRetry": "فُقد اتصال WebRTC. يرجى إعادة المحاولة.",
+  "live.autoRetryingIn": "إعادة المحاولة خلال {seconds} ث…",
   "live.connectionTimeoutCheckNetwork": "انتهت مهلة الاتصال. تحقق من إعدادات الشبكة/الجدار الناري.",
   "live.failedToEstablishWebrtcConnection": "فشل إنشاء اتصال WebRTC",
   "live.cannotConnectToSource": "تعذر الاتصال بمصدر الكاميرا",

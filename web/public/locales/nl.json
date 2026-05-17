@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "Kan video niet laden",
   "live.webrtcIceConnectionFailed": "WebRTC ICE-verbinding mislukt",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC verbinding verbroken. Probeer het opnieuw.",
+  "live.autoRetryingIn": "Opnieuw proberen over {seconds} s…",
   "live.connectionTimeoutCheckNetwork": "Time-out voor verbinding. Controleer de netwerk-/firewallinstellingen.",
   "live.failedToEstablishWebrtcConnection": "Kan geen WebRTC-verbinding tot stand brengen",
   "live.cannotConnectToSource": "Kan geen verbinding maken met de camerabron",

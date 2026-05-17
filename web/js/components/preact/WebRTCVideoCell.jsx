@@ -18,6 +18,7 @@ import { formatUtils } from './recordings/formatUtils.js';
 import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
+import { useAutoRetry } from './useAutoRetry.js';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -1008,6 +1009,14 @@ export function WebRTCVideoCell({
     setRetryCount(prev => prev + 1);
   };
 
+  // Auto-retry while the error overlay is visible — recovers unattended
+  // monitoring dashboards from transient drops (camera reboot, network
+  // blip, server restart) without a human clicking Retry. Returns the
+  // ticking countdown for the button label, or null when no retry is
+  // pending. Clicking the button manually cancels the timer (handleRetry
+  // clears `error` which unmounts the effect).
+  const autoRetryCountdown = useAutoRetry(error, handleRetry);
+
   /**
    * Pause stream for privacy — sets privacy_mode=true without touching the enabled flag.
    */
@@ -1799,7 +1808,9 @@ export function WebRTCVideoCell({
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
             >
-              {t('common.retry')}
+              {autoRetryCountdown !== null && autoRetryCountdown > 0
+                ? t('live.autoRetryingIn', { seconds: autoRetryCountdown })
+                : t('common.retry')}
             </button>
           </div>
         </div>

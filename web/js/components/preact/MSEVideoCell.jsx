@@ -17,6 +17,7 @@ import { formatUtils } from './recordings/formatUtils.js';
 import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
+import { useAutoRetry } from './useAutoRetry.js';
 
 /**
  * MSEVideoCell component
@@ -382,6 +383,9 @@ export function MSEVideoCell({
     setIsLoading(true);
   };
 
+  // Auto-retry while the error overlay is visible — see WebRTCVideoCell for rationale.
+  const autoRetryCountdown = useAutoRetry(error, handleRetry);
+
   /**
    * Pause stream for privacy — sets privacy_mode=true without touching the enabled flag.
    */
@@ -725,7 +729,9 @@ export function MSEVideoCell({
               transition: 'background-color 0.2s ease'
             }}
           >
-            Retry
+            {autoRetryCountdown !== null && autoRetryCountdown > 0
+              ? t('live.autoRetryingIn', { seconds: autoRetryCountdown })
+              : t('common.retry')}
           </button>
         </div>
       )}

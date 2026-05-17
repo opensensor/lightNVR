@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "Impossibile caricare il video",
   "live.webrtcIceConnectionFailed": "WebRTC ICE connessione non riuscita",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC connessione interrotta. Per favore riprova.",
+  "live.autoRetryingIn": "Nuovo tentativo tra {seconds} s…",
   "live.connectionTimeoutCheckNetwork": "Timeout della connessione. Controlla le impostazioni di rete/firewall.",
   "live.failedToEstablishWebrtcConnection": "Impossibile stabilire la connessione WebRTC",
   "live.cannotConnectToSource": "Impossibile connettersi alla sorgente telecamera",

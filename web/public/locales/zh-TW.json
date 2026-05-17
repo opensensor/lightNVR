@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "影片載入失敗",
   "live.webrtcIceConnectionFailed": "WebRTC ICE 連線失敗",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC 連線遺失。請重試。",
+  "live.autoRetryingIn": "{seconds} 秒後重試…",
   "live.connectionTimeoutCheckNetwork": "連接逾時。檢查網路/防火牆設定。",
   "live.failedToEstablishWebrtcConnection": "無法建立WebRTC連接",
   "live.cannotConnectToSource": "無法連接到相機來源",

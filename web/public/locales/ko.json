@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "동영상을 로드하지 못했습니다.",
   "live.webrtcIceConnectionFailed": "WebRTC ICE 연결 실패",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC 연결이 끊어졌습니다. 다시 시도해 주세요.",
+  "live.autoRetryingIn": "{seconds}초 후 재시도…",
   "live.connectionTimeoutCheckNetwork": "연결 시간이 초과되었습니다. 네트워크/방화벽 설정을 확인하세요.",
   "live.failedToEstablishWebrtcConnection": "WebRTC 연결을 설정하지 못했습니다.",
   "live.cannotConnectToSource": "카메라 소스에 연결할 수 없습니다",

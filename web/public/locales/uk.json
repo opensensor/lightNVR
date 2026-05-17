@@ -607,6 +607,7 @@
   "live.failedToLoadVideo": "Не вдалося завантажити відео",
   "live.webrtcIceConnectionFailed": "WebRTC Збій підключення ICE",
   "live.webrtcConnectionLostPleaseRetry": "WebRTC з’єднання втрачено. Будь ласка, повторіть спробу.",
+  "live.autoRetryingIn": "Повторна спроба через {seconds} с…",
   "live.connectionTimeoutCheckNetwork": "Час очікування підключення. Перевірте налаштування мережі/брандмауера.",
   "live.failedToEstablishWebrtcConnection": "Не вдалося встановити з'єднання WebRTC",
   "live.cannotConnectToSource": "Не вдається підключитися до джерела камери",
