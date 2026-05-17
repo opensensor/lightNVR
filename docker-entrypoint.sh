@@ -245,6 +245,19 @@ EOF
             chown "${CURRENT_UID}:${CURRENT_GID}" "$dir" 2>/dev/null || true
             chmod 755 "$dir" 2>/dev/null || true
         done
+
+        # Per-stream subdirectories (one per camera) — chown one level deep
+        # so a data volume mounted from a host with a different UID still ends
+        # up writable. Bounded by camera count, NOT file count: -mindepth 1
+        # -maxdepth 1 -type d skips the recording files inside. Even a
+        # 100-camera deployment touches at most ~200 entries here.
+        for parent in /var/lib/lightnvr/data/recordings /var/lib/lightnvr/data/recordings/mp4; do
+            [ -d "$parent" ] || continue
+            find "$parent" -mindepth 1 -maxdepth 1 -type d \
+                -exec chown "${CURRENT_UID}:${CURRENT_GID}" {} + 2>/dev/null || true
+            find "$parent" -mindepth 1 -maxdepth 1 -type d \
+                -exec chmod 755 {} + 2>/dev/null || true
+        done
     fi
 
     # Test write permissions on critical directories
