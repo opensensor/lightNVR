@@ -227,6 +227,7 @@ auth_enabled = true
 username = admin
 ; password is auto-generated on first run
 auth_timeout_hours = 24
+; trusted_proxy_cidrs = 127.0.0.1/32,::1/128
 web_thread_pool_size = 8
 ```
 
@@ -237,6 +238,7 @@ web_thread_pool_size = 8
 - `username`: Username for web interface authentication
 - `password`: Password for web interface authentication (auto-generated on first run if not set)
 - `auth_timeout_hours`: Session timeout in hours (default: 24)
+- `trusted_proxy_cidrs`: Comma- or newline-separated list of IPv4/IPv6 CIDRs allowed to set `X-Forwarded-For` / `X-Real-IP` headers. Required when running behind a reverse proxy (nginx, Caddy, Traefik, Kubernetes ingress) — without it, the audit log, login allow-list, and rate limiter all see every request as coming from the proxy itself. See [Reverse Proxy & HTTPS](REVERSE_PROXY.md).
 - `web_thread_pool_size`: Number of worker threads for the web server (default: 8)
 
 ### Stream Settings
