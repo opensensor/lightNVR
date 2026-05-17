@@ -145,6 +145,47 @@ webrtc:
       credential: PASS
 ```
 
+### Wyze cameras (stock firmware, no reflash)
+
+go2rtc speaks Wyze's account API natively through the `wyze://` source. Drop your developer API credentials into the override and go2rtc enumerates every camera on your Wyze account, fetches the per-camera DTLS keys, and connects to each camera **directly over the LAN** — Wyze's cloud is only touched for the initial key exchange.
+
+```yaml
+# Account-wide credentials — fetched once at startup. Get api_id / api_key from
+# https://developer-api-console.wyze.com/ ; password is your Wyze account password.
+wyze:
+  api_id: YOUR_WYZE_API_ID
+  api_key: YOUR_WYZE_API_KEY
+  password: YOUR_WYZE_ACCOUNT_PASSWORD
+```
+
+Save the override, restart go2rtc, then open the go2rtc web UI and click **Suggest**. Each Wyze camera on your account is returned as a fully-formed `wyze://` URL:
+
+```
+wyze://10.0.1.242?dtls=true&enr=<encrypted-key>&mac=2CAA8E1460B5&model=WYZEC1-JZ&uid=11D6C733WYJZC2LA111A
+```
+
+You can either paste those URLs into **Settings → Streams** in the LightNVR dashboard, or define them config-as-code in the same override file:
+
+```yaml
+streams:
+  # Primary producer (the wyze:// URL from Suggest) plus optional ffmpeg shims
+  # that expose hardware-decoded H.264 video and a separate AAC audio track.
+  # Browsers and the LightNVR recorder consume whichever fits their codec needs.
+  front_door:
+    - wyze://10.0.1.242?dtls=true&enr=<...>&mac=<...>&model=WYZEC1-JZ&uid=<...>
+    - ffmpeg:front_door#audio=aac
+    - ffmpeg:front_door#video=h264#hardware
+```
+
+A few things worth knowing:
+
+- **The `streams:` map merges** with lightNVR's auto-generated entries — Wyze cameras you list here appear alongside any RTSP cameras you added through the Streams page (see [Merge semantics](#merge-semantics)).
+- **Credentials are redacted** in `GET /api/system/go2rtc/effective-config` and the **Show effective config** modal, but they sit in plaintext inside `override.yaml` (mode 0600 on disk). Don't share the override.
+- **Wyze's DTLS keys rotate periodically.** go2rtc handles re-keying automatically using your stored credentials. If reconnects start failing days later, regenerate the API key at the Wyze developer console.
+- **Pan/tilt controls** for the Wyze Pan v3 stay in the Wyze app — go2rtc only bridges the video/audio stream.
+
+Full walkthrough on the marketing site: [Connect Wyze Cameras to LightNVR Cloud](https://lightnvr.com/how-to/connect-wyze-cameras).
+
 ## Reference
 
 - Source: [`src/utils/yaml_validate.c`](../src/utils/yaml_validate.c), [`src/utils/yaml_redact.c`](../src/utils/yaml_redact.c), [`src/video/go2rtc/go2rtc_process.c`](../src/video/go2rtc/go2rtc_process.c)
