@@ -87,14 +87,33 @@
     z-index: 10;
 }
 
-/* Timeline player container */
+/* Timeline player container
+ *
+ * Fits within the visible viewport so the timeline strip below the player
+ * stays on-screen on tall displays (issue #421).  --timeline-chrome-height
+ * approximates the combined height of everything *other* than the player
+ * (header, selectors, controls, timeline strip, help, footer); the player's
+ * max-width is derived from the remaining vertical space via aspect ratio.
+ */
 .timeline-player-container {
+    --timeline-chrome-height: 480px;
     width: 100%;
+    max-width: calc((100vh - var(--timeline-chrome-height)) * 16 / 9);
     aspect-ratio: 16 / 9;
     background-color: #000;
     border-radius: 4px;
     overflow: hidden;
     position: relative;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Short viewports: drop the height-based cap so the player isn't shrunk
+ * to a postage stamp on landscape phones / small laptops. */
+@media (max-height: 720px) {
+    .timeline-player-container {
+        max-width: 100%;
+    }
 }
 
 .timeline-player-container video {
