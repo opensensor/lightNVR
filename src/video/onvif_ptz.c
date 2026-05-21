@@ -139,16 +139,43 @@ int onvif_ptz_continuous_move(const char *ptz_url, const char *profile_token,
         return -1;
     }
 
+    // Only emit axis elements the caller is actually moving.  Including a
+    // <tt:PanTilt> or <tt:Zoom> with no space attribute forces the device to
+    // look up the corresponding DefaultContinuous*VelocitySpace from its PTZ
+    // configuration; PT-only (or zoom-only) nodes don't expose a default for
+    // the missing axis and answer with InvalidArgVal — "A space is referenced
+    // in an argument which is not supported by the PTZ Node" (issue #420).
+    bool has_pan_tilt = pan_velocity != 0.0f || tilt_velocity != 0.0f;
+    bool has_zoom = zoom_velocity != 0.0f;
+
+    if (!has_pan_tilt && !has_zoom) {
+        // A ContinuousMove with an empty Velocity is rejected by the spec.
+        // Treat an all-zero call as a no-op so the UI can keep firing
+        // mouse-move events without spamming SOAP faults.
+        return 0;
+    }
+
+    char velocity_xml[160];
+    int velocity_len = 0;
+    if (has_pan_tilt) {
+        velocity_len += snprintf(velocity_xml + velocity_len,
+                                 sizeof(velocity_xml) - velocity_len,
+                                 "<tt:PanTilt x=\"%.2f\" y=\"%.2f\"/>",
+                                 pan_velocity, tilt_velocity);
+    }
+    if (has_zoom) {
+        velocity_len += snprintf(velocity_xml + velocity_len,
+                                 sizeof(velocity_xml) - velocity_len,
+                                 "<tt:Zoom x=\"%.2f\"/>", zoom_velocity);
+    }
+
     char request_body[1024];
     snprintf(request_body, sizeof(request_body),
         "<tptz:ContinuousMove>"
             "<tptz:ProfileToken>%s</tptz:ProfileToken>"
-            "<tptz:Velocity>"
-                "<tt:PanTilt x=\"%.2f\" y=\"%.2f\"/>"
-                "<tt:Zoom x=\"%.2f\"/>"
-            "</tptz:Velocity>"
+            "<tptz:Velocity>%s</tptz:Velocity>"
         "</tptz:ContinuousMove>",
-        profile_token, pan_velocity, tilt_velocity, zoom_velocity);
+        profile_token, velocity_xml);
 
     char *response = send_ptz_soap_request(ptz_url,
         "http://www.onvif.org/ver20/ptz/wsdl/ContinuousMove",
