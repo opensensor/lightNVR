@@ -832,6 +832,21 @@ export function StreamConfigModal({
                       <span className="text-sm font-medium">{t('streamsConfig.twoWayAudio')}</span>
                     </label>
                   </div>
+                  <label
+                    className={`mt-3 flex items-center space-x-2 ${currentStream.recordAudio ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      id="stream-audio-voice-enhancement"
+                      name="audioVoiceEnhancement"
+                      className="h-4 w-4 rounded border-input"
+                      style={primaryAccentStyle}
+                      checked={!!currentStream.audioVoiceEnhancement}
+                      disabled={!currentStream.recordAudio}
+                      onChange={onInputChange}
+                    />
+                    <span className="text-sm font-medium">{t('streamsConfig.audioVoiceEnhancement')}</span>
+                  </label>
                   <p className="text-sm text-muted-foreground mt-2">
                     {t('streamsConfig.audioSettingsHelp')}
                   </p>

@@ -1465,7 +1465,13 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
                     continue;
                 }
 
-                int tc_ret = transcode_audio_packet(rtsp_url, pkt, transcoded_pkt,
+                // Key the transcoder pool by stream name (writer-scoped lifetime)
+                // rather than rtsp_url so the slot persists across segment
+                // rotations and matches mp4_writer.c:161 / mp4_writer_core.c:277.
+                // Falls back to rtsp_url if stream_name wasn't propagated.
+                const char *transcoder_key = segment_info_ptr->stream_name[0] != '\0'
+                    ? segment_info_ptr->stream_name : rtsp_url;
+                int tc_ret = transcode_audio_packet(transcoder_key, pkt, transcoded_pkt,
                                                     input_ctx->streams[audio_stream_idx]);
                 if (tc_ret < 0) {
                     // Transcoding failed — skip this packet silently
@@ -1590,10 +1596,11 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
             segment_index, has_audio && audio_stream_idx >= 0, segment_info_ptr->last_frame_was_key);
 
 cleanup:
-    // Clean up audio transcoder if we set one up
-    if (needs_audio_transcoding) {
-        cleanup_audio_transcoder(rtsp_url);
-    }
+    // Audio transcoder lifetime is now writer-scoped, not segment-scoped:
+    // mp4_writer_close() → cleanup_audio_transcoder(writer->stream_name) frees
+    // the slot when the whole recording session ends.  Tearing it down here
+    // every segment was forcing afftdn (and any future filter graph) to
+    // re-profile the noise floor on every rotation — discussion #395.
 
     // CRITICAL FIX: Aggressive cleanup to prevent memory growth over time
     log_debug("Starting aggressive cleanup of FFmpeg resources");

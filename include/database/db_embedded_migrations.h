@@ -630,6 +630,12 @@ static const char migration_0040_up[] =
 static const char migration_0040_down[] =
     "SELECT 1;";
 
+static const char migration_0041_up[] =
+    "ALTER TABLE streams ADD COLUMN audio_voice_enhancement INTEGER DEFAULT 0;";
+
+static const char migration_0041_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -911,8 +917,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0040_down,
         .is_embedded = true
     },
+    {
+        .version = "0041",
+        .description = "add_audio_voice_enhancement",
+        .sql_up = migration_0041_up,
+        .sql_down = migration_0041_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 40
+#define EMBEDDED_MIGRATIONS_COUNT 41
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
