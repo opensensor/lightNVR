@@ -51,6 +51,17 @@ typedef struct {
     AVPacket *in_pkt;
     AVPacket *out_pkt;
     int initialized;
+
+    // Voice-enhancement filter graph (discussion #395).  filter_graph is NULL
+    // when the feature is disabled or the graph hasn't been constructed yet.
+    // The actual filter chain (afftdn / highpass / lowpass, codec-aware
+    // defaults) is deferred to a follow-up PR — for now this is a stub that
+    // routes the per-stream opt-in through to the transcoder lifecycle so
+    // future filter-graph code has a stable insertion point.
+    bool voice_enhancement_enabled;
+    void *filter_graph;            // AVFilterGraph*; void* to avoid header churn
+    void *filter_buffersrc_ctx;    // AVFilterContext* (buffer source)
+    void *filter_buffersink_ctx;   // AVFilterContext* (buffer sink)
 } audio_transcoder_t;
 
 /**
@@ -72,6 +83,16 @@ static int get_encoder_frame_size(const AVCodecContext *encoder_ctx)
 static audio_transcoder_t audio_transcoders[MAX_STREAMS] = {0};
 static char audio_transcoder_stream_names[MAX_STREAMS][MAX_STREAM_NAME] = {{0}};
 static pthread_mutex_t audio_transcoder_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Voice-enhancement opt-in staged for streams that don't yet have a transcoder
+// slot — read once at init_audio_transcoder() time so the flag is correct on
+// the very first packet of a recording session (discussion #395).
+// Protected by audio_transcoder_mutex.
+typedef struct {
+    char stream_name[MAX_STREAM_NAME];
+    bool enabled;
+} voice_enhancement_pending_t;
+static voice_enhancement_pending_t voice_enhancement_pending[MAX_STREAMS] = {{{0}, false}};
 
 static inline void lock_audio_transcoders(void) {
     pthread_mutex_lock(&audio_transcoder_mutex);
@@ -293,6 +314,23 @@ static int init_audio_transcoder(const char *stream_name,
         goto cleanup;
     }
 
+    // Pick up any voice-enhancement opt-in staged before this slot was
+    // allocated.  The actual filter graph is built lazily in
+    // transcode_audio_packet() once the decoder frame format is known
+    // (currently stubbed — discussion #395).
+    audio_transcoders[slot].voice_enhancement_enabled = false;
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (voice_enhancement_pending[i].stream_name[0] != '\0' &&
+            strcmp(voice_enhancement_pending[i].stream_name, stream_name) == 0) {
+            audio_transcoders[slot].voice_enhancement_enabled =
+                voice_enhancement_pending[i].enabled;
+            break;
+        }
+    }
+    audio_transcoders[slot].filter_graph = NULL;
+    audio_transcoders[slot].filter_buffersrc_ctx = NULL;
+    audio_transcoders[slot].filter_buffersink_ctx = NULL;
+
     // Mark as initialized
     audio_transcoders[slot].initialized = 1;
 
@@ -417,11 +455,75 @@ void cleanup_audio_transcoder(const char *stream_name) {
             }
 
             audio_transcoders[i].initialized = 0;
+            audio_transcoders[i].voice_enhancement_enabled = false;
+            // filter_graph et al. will be freed here once the real filter
+            // chain lands (discussion #395) — currently always NULL.
             audio_transcoder_stream_names[i][0] = '\0';
 
             log_info("Cleaned up audio transcoder for stream %s", stream_name);
             break;
         }
+    }
+
+    // Drop any staged voice-enhancement opt-in for this stream too.
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (voice_enhancement_pending[i].stream_name[0] != '\0' &&
+            strcmp(voice_enhancement_pending[i].stream_name, stream_name) == 0) {
+            voice_enhancement_pending[i].stream_name[0] = '\0';
+            voice_enhancement_pending[i].enabled = false;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&audio_transcoder_mutex);
+}
+
+void set_audio_voice_enhancement(const char *stream_name, bool enabled) {
+    if (!stream_name || stream_name[0] == '\0') {
+        return;
+    }
+
+    pthread_mutex_lock(&audio_transcoder_mutex);
+
+    // If the transcoder slot already exists, flip the flag in place.  The
+    // future filter-graph code reads this on the next packet and rebuilds
+    // the graph if the state changed.
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (audio_transcoders[i].initialized &&
+            audio_transcoder_stream_names[i][0] != '\0' &&
+            strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
+            if (audio_transcoders[i].voice_enhancement_enabled != enabled) {
+                audio_transcoders[i].voice_enhancement_enabled = enabled;
+                log_info("Audio voice enhancement %s for stream %s (live)",
+                         enabled ? "enabled" : "disabled", stream_name);
+            }
+            pthread_mutex_unlock(&audio_transcoder_mutex);
+            return;
+        }
+    }
+
+    // No slot yet — stage the preference so init_audio_transcoder() picks
+    // it up when the slot is allocated on the first audio packet.
+    int free_slot = -1;
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (voice_enhancement_pending[i].stream_name[0] != '\0' &&
+            strcmp(voice_enhancement_pending[i].stream_name, stream_name) == 0) {
+            voice_enhancement_pending[i].enabled = enabled;
+            pthread_mutex_unlock(&audio_transcoder_mutex);
+            return;
+        }
+        if (free_slot < 0 && voice_enhancement_pending[i].stream_name[0] == '\0') {
+            free_slot = i;
+        }
+    }
+
+    if (free_slot >= 0) {
+        safe_strcpy(voice_enhancement_pending[free_slot].stream_name, stream_name,
+                    MAX_STREAM_NAME, 0);
+        voice_enhancement_pending[free_slot].enabled = enabled;
+    } else {
+        log_warn("No staging slot available for voice-enhancement opt-in (stream=%s)",
+                 stream_name);
     }
 
     pthread_mutex_unlock(&audio_transcoder_mutex);

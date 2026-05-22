@@ -205,6 +205,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", db_streams[i].detection_object_filter_list);
         cJSON_AddNumberToObject(stream_obj, "protocol", (int)db_streams[i].protocol);
         cJSON_AddBoolToObject(stream_obj, "record_audio", db_streams[i].record_audio);
+        cJSON_AddBoolToObject(stream_obj, "audio_voice_enhancement", db_streams[i].audio_voice_enhancement);
         cJSON_AddBoolToObject(stream_obj, "isOnvif", db_streams[i].is_onvif);
         cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", db_streams[i].backchannel_enabled);
         cJSON_AddNumberToObject(stream_obj, "retention_days", db_streams[i].retention_days);
@@ -363,6 +364,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", config.detection_object_filter_list);
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
+    cJSON_AddBoolToObject(stream_obj, "audio_voice_enhancement", config.audio_voice_enhancement);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
     cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", config.backchannel_enabled);
     cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
@@ -515,6 +517,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "detection_object_filter_list", config.detection_object_filter_list);
     cJSON_AddNumberToObject(stream_obj, "protocol", (int)config.protocol);
     cJSON_AddBoolToObject(stream_obj, "record_audio", config.record_audio);
+    cJSON_AddBoolToObject(stream_obj, "audio_voice_enhancement", config.audio_voice_enhancement);
     cJSON_AddBoolToObject(stream_obj, "isOnvif", config.is_onvif);
     cJSON_AddBoolToObject(stream_obj, "backchannel_enabled", config.backchannel_enabled);
     cJSON_AddNumberToObject(stream_obj, "retention_days", config.retention_days);
