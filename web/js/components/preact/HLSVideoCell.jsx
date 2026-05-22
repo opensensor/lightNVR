@@ -1173,6 +1173,29 @@ export function HLSVideoCell({
           </button>
         </div>
       )}
+
+      {/* HLS mode indicator */}
+      {showLabels && isPlaying && (
+        <div
+          className="mode-indicator"
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '8px',
+            backgroundColor: 'rgba(16, 185, 129, 0.8)',
+            color: 'white',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            zIndex: 10,
+            pointerEvents: 'none'
+          }}
+          title={t('live.mseLowLatencyStreaming')}
+        >
+          HLS
+        </div>
+      )}      
     </div>
   );
 }

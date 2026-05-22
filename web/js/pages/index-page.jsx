@@ -42,11 +42,13 @@ function App() {
                     // WebRTC requires go2rtc. If go2rtc is off, treat WebRTC
                     // and MSE as unavailable regardless of the user's flags.
                     // #397
-                    const go2rtcOff = settings.go2rtc_enabled === false;
+                    const go2rtcOff = settings.go2rtcEnabled === false || settings.go2rtc_enabled === false;
+                    
                     setViewFlags({
-                        webrtcDisabled: !!settings.webrtc_disabled || go2rtcOff,
-                        hlsDisabled:    !!settings.hls_disabled,
-                        mseDisabled:    !!settings.mse_disabled  || go2rtcOff,
+                        // Membaca versi camelCase agar sinkron dengan AuthTab
+                        webrtcDisabled: settings.webrtcDisabled !== undefined ? !!settings.webrtcDisabled || go2rtcOff : !!settings.webrtc_disabled || go2rtcOff,
+                        hlsDisabled:    settings.hlsDisabled !== undefined ? !!settings.hlsDisabled : !!settings.hls_disabled,
+                        mseDisabled:    settings.mseDisabled !== undefined ? !!settings.mseDisabled || go2rtcOff : !!settings.mse_disabled || go2rtcOff,
                     });
                 } else {
                     console.error('Failed to fetch settings:', settingsRes.status, settingsRes.statusText);
@@ -78,13 +80,19 @@ function App() {
     const useWebRTC = !viewFlags.webrtcDisabled;
     if (!useWebRTC) {
         document.title = 'HLS View - LightNVR';
+    } else {
+        document.title = 'Live View - LightNVR';
     }
 
     return (
         <>
             {showWizard && <SetupWizard onClose={() => setShowWizard(false)} />}
             {useWebRTC
-                ? <WebRTCView />
+                ? <WebRTCView 
+                    isWebRTCDisabled={viewFlags.webrtcDisabled}
+                    isHlsDisabled={viewFlags.hlsDisabled}
+                    isMseDisabled={viewFlags.mseDisabled}
+                  />
                 : <LiveView
                     isWebRTCDisabled={viewFlags.webrtcDisabled}
                     isHlsDisabled={viewFlags.hlsDisabled}
