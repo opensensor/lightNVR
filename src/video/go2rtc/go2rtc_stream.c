@@ -213,48 +213,53 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
      * codec, go2rtc_integration_reregister_stream() re-issues this call
      * with the corrected value.
      */
-    const char *sources[3];
+    const char *sources[4];
     int num_sources = 0;
+    
     sources[num_sources++] = modified_url;
-
-    char ffmpeg_aac_source[URL_BUFFER_SIZE];
-    if (record_audio) {
-        snprintf(ffmpeg_aac_source, sizeof(ffmpeg_aac_source),
-                 "ffmpeg:%s#audio=aac", encoded_stream_id);
-        sources[num_sources++] = ffmpeg_aac_source;
-    }
-
-    bool is_h264 = (codec && codec[0] != '\0' && strcasecmp(codec, "h264") == 0);
-    char ffmpeg_h264_source[URL_BUFFER_SIZE];
+    
+    char combined_buf[URL_BUFFER_SIZE];
+    int combined_idx = -1;
+    
+    const char *audio_codec = (strstr(encoded_stream_id, "_sub") != NULL) ? "opus" : "aac";
+    
+    bool is_h264 = (codec != NULL && strcasestr(codec, "h264") != NULL);
+    
     if (!is_h264) {
-        snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
-                 "ffmpeg:%s#video=h264#hardware", encoded_stream_id);
-        sources[num_sources++] = ffmpeg_h264_source;
-        log_info("Stream %s codec=%s; adding ffmpeg H.264 fallback source for WebRTC",
-                 stream_id, (codec && codec[0]) ? codec : "unknown");
+        snprintf(combined_buf, sizeof(combined_buf), 
+                 "ffmpeg:%s#video=h264#audio=%s#hardware", 
+                 encoded_stream_id, audio_codec);
     } else {
-        log_info("Stream %s codec=h264; no transcoding fallback needed", stream_id);
+        snprintf(combined_buf, sizeof(combined_buf), 
+                 "ffmpeg:%s#audio=%s", 
+                 encoded_stream_id, audio_codec);
     }
-
-    bool result;
-    if (num_sources > 1) {
-        result = go2rtc_api_add_stream_multi(encoded_stream_id, sources, num_sources);
-        if (!result) {
-            log_error("Failed to register stream %s with go2rtc (%d sources); falling back to primary-only",
-                      encoded_stream_id, num_sources);
-            result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
-        }
-    } else {
-        result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+    
+    sources[num_sources] = strdup(combined_buf);
+    if (sources[num_sources] != NULL) {
+        combined_idx = num_sources;
+        num_sources++;
+        log_info("Stream %s: Combined producer added (audio=%s, h264_detected=%s)", 
+                 encoded_stream_id, audio_codec, is_h264 ? "yes" : "no");
     }
-
+    
+    bool result = false;
+    if (num_sources > 0) {
+        result = (num_sources > 1) 
+                 ? go2rtc_api_add_stream_multi(encoded_stream_id, sources, num_sources)
+                 : go2rtc_api_add_stream(encoded_stream_id, modified_url);
+    }
+    
     if (result) {
-        log_info("Successfully registered stream %s with go2rtc (%d source%s)",
-                 encoded_stream_id, num_sources, num_sources == 1 ? "" : "s");
+        log_info("Successfully registered stream %s", encoded_stream_id);
     } else {
-        log_error("Failed to register stream %s with go2rtc", encoded_stream_id);
+        log_error("Failed to register stream %s", encoded_stream_id);
     }
-
+    
+    if (combined_idx != -1) {
+        free((void*)sources[combined_idx]);
+    }
+    
     // Intentionally do NOT preload here.
     //
     // Registration happens during startup for every enabled stream.  Preloading
