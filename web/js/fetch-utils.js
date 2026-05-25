@@ -13,9 +13,10 @@ function handleAuthenticationFailure(reason = 'Session expired') {
   // Clear all auth-related storage
   localStorage.removeItem('auth');
 
-  // Clear auth cookies
-  document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-  document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+  // Clear non-HttpOnly cookies (session cookie is HttpOnly and can only be
+  // cleared server-side via Set-Cookie, but we clear legacy/fallback cookies here)
+  document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+  document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
 
   // Only redirect if we're not already on the login page
   if (!window.location.pathname.includes('login.html')) {

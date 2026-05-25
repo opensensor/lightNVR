@@ -58,6 +58,14 @@ export function LoginView() {
     document.title = `${t('login.signIn')} - LightNVR`;
   }, [locale, t]);
 
+  // Clear any stale server-side session on login page load.
+  // The session cookie is HttpOnly so JavaScript cannot clear it directly;
+  // calling the logout endpoint lets the server expire it via Set-Cookie.
+  useEffect(() => {
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+      .catch(() => {});
+  }, []);
+
   // Fetch login config to determine if force MFA is enabled
   useEffect(() => {
     async function fetchLoginConfig() {

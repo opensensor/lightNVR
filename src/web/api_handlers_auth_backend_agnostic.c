@@ -489,6 +489,7 @@ void handle_auth_logout(const http_request_t *req, http_response_t *res) {
     }
 
     httpd_clear_session_cookie(res);
+    httpd_clear_trusted_device_cookie(res);
 
     // Check if this is an API request or browser request
     const char *accept = http_request_get_header(req, "Accept");
@@ -584,7 +585,10 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // No valid authentication
+    // No valid authentication — clear any stale session cookie so the browser
+    // stops resending an expired/invalid HttpOnly token on every request.
+    httpd_clear_session_cookie(res);
+
     log_debug("Authentication verification failed");
     http_response_set_json_error(res, 401, "Unauthorized");
 }

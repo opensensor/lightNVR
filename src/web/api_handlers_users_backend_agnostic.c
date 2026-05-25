@@ -594,6 +594,9 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
                 http_response_set_json_error(res, 500, "Failed to update password");
                 return;
             }
+
+            db_auth_delete_user_sessions(user_id);
+            log_info("Invalidated all sessions for user %lld after password change", (long long)user_id);
         }
     }
 
@@ -615,6 +618,11 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
         cJSON_Delete(json_req);
         http_response_set_json_error(res, 409, "Username already exists");
         return;
+    }
+
+    if (rc == 0 && is_active == 0) {
+        db_auth_delete_user_sessions(user_id);
+        log_info("Invalidated all sessions for user %lld after deactivation", (long long)user_id);
     }
 
     if (rc == 0 && allowed_tags_json) {
@@ -915,6 +923,9 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
         http_response_set_json_error(res, 500, "Failed to change password");
         return;
     }
+
+    db_auth_delete_user_sessions(target_user_id);
+    log_info("Invalidated all sessions for user %lld after password change", (long long)target_user_id);
 
     cJSON_Delete(json_req);
 

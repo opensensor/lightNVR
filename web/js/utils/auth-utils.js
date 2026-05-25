@@ -30,10 +30,11 @@ export function getAuthHeaders() {
 export function clearAuthState() {
   // Clear localStorage
   localStorage.removeItem('auth');
-  
-  // Clear cookies
-  document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
-  document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict";
+
+  // Clear non-HttpOnly cookies (session cookie is HttpOnly and can only be
+  // cleared server-side, but we clear legacy/fallback cookies here)
+  document.cookie = "auth=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+  document.cookie = "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
 }
 
 /**
