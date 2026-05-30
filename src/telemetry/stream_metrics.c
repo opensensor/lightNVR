@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -197,6 +198,9 @@ void metrics_shutdown(void) {
     /* Stop sampler thread */
     if (g_sampler_running) {
         g_sampler_running = false;
+        pthread_kill(g_sampler_thread, SIGALRM);
+        sched_yield();
+
         pthread_join(g_sampler_thread, NULL);
         log_info("Metrics sampler thread stopped");
     }

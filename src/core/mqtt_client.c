@@ -1001,6 +1001,9 @@ int mqtt_start_ha_services(void) {
         log_error("MQTT HA: Failed to create motion timeout thread");
         // Signal any already-started HA service threads to stop
         ha_services_running = false;
+        pthread_kill(ha_snapshot_thread, SIGALRM);
+        sched_yield();
+
         // If the snapshot thread was started, wait for it to exit
         if (ha_snapshot_thread_started) {
             pthread_join(ha_snapshot_thread, NULL);
@@ -1023,6 +1026,9 @@ void mqtt_stop_ha_services(void) {
 
     log_info("MQTT HA: Stopping background services...");
     ha_services_running = false;
+    pthread_kill(ha_snapshot_thread, SIGALRM);
+    pthread_kill(ha_motion_thread, SIGALRM);
+    sched_yield();
 
     // Wait for threads to finish (they check ha_services_running each second)
     if (ha_snapshot_thread_started) {

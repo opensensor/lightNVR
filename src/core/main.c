@@ -1376,7 +1376,6 @@ cleanup:
         usleep(1500000);  // 1500ms
 
         // Finalize all MP4 recordings first before cleaning up the backend
-        log_info("Finalizing all MP4 recordings...");
         close_all_mp4_writers();
 
         // Update MP4 writer components state
@@ -1428,7 +1427,6 @@ cleanup:
         usleep(200000);  // 200ms (reduced from 1000ms)
 
         // Clean up all HLS writers first to ensure proper FFmpeg resource cleanup
-        log_info("Cleaning up all HLS writers...");
         cleanup_all_hls_writers();
 
         // Clean up HLS streaming backend

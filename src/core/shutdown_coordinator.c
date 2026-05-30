@@ -35,7 +35,8 @@ int init_shutdown_coordinator(void) {
         return -1;
     }
 
-    g_coordinator.all_components_stopped = false;
+    // Initially no components are running. The first to register will mark this false.
+    g_coordinator.all_components_stopped = true;
 
     log_info("Shutdown coordinator initialized");
     return 0;
@@ -114,6 +115,8 @@ int register_component(const char *name, component_type_t type, void *context, i
     atomic_store(&component->state, COMPONENT_RUNNING);
     component->context = context;
     component->priority = priority;
+
+    g_coordinator.all_components_stopped = false;
 
     pthread_mutex_unlock(&g_coordinator.mutex);
 
@@ -268,8 +271,9 @@ bool wait_for_all_components_stopped(int timeout_seconds) {
     }
     
     // First, log which components are still not stopped
-    log_info("Waiting for components to stop (timeout: %d seconds):", timeout_seconds);
-    for (int i = 0; i < atomic_load(&g_coordinator.component_count); i++) {
+    int component_count = atomic_load(&g_coordinator.component_count);
+    log_info("Waiting for %d components to stop (timeout: %d seconds):", component_count, timeout_seconds);
+    for (int i = 0; i < component_count; i++) {
         component_state_t state = atomic_load(&g_coordinator.components[i].state);
         if (state != COMPONENT_STOPPED) {
             log_info("Component %s (ID: %d) is in state %d", 

@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 #include <time.h>
 #include <sqlite3.h>
 
@@ -295,6 +296,7 @@ int stop_recording_sync_thread(void) {
     // Signal thread to stop
     sync_thread.running = false;
     pthread_mutex_unlock(&sync_thread.mutex);
+    pthread_kill(sync_thread.thread, SIGALRM);
     
     // Wait for thread to exit
     if (pthread_join(sync_thread.thread, NULL) != 0) {

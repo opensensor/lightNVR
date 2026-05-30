@@ -594,6 +594,8 @@ void stop_health_check_thread(void) {
 
     log_info("Stopping health check thread...");
     g_health_thread_running = false;
+    pthread_kill(g_health_check_thread, SIGALRM);
+    sched_yield();
 
     // Use portable polling approach with timeout (5 seconds)
     // Poll every 50ms to check if thread has exited
