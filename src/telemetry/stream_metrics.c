@@ -179,12 +179,16 @@ int metrics_init(int max_streams) {
     g_initialized = true;
 
     /* Start sampler thread */
-    interruptible_sleep_init(&g_sampler_wake);
-    g_sampler_running = true;
-    if (pthread_create(&g_sampler_thread, NULL, sampler_thread_func, NULL) != 0) {
-        log_error("Failed to create metrics sampler thread: %s", strerror(errno));
-        g_sampler_running = false;
-        interruptible_sleep_destroy(&g_sampler_wake);
+    if (interruptible_sleep_init(&g_sampler_wake) == 0) {
+        g_sampler_running = true;
+        if (pthread_create(&g_sampler_thread, NULL, sampler_thread_func, NULL) != 0) {
+            log_error("Failed to create metrics sampler thread: %s", strerror(errno));
+            g_sampler_running = false;
+            interruptible_sleep_destroy(&g_sampler_wake);
+            /* Non-fatal: metrics still work, just no sparkline/health updates */
+        }
+    } else {
+        log_error("Failed to initialize metrics sampler wake handle");
         /* Non-fatal: metrics still work, just no sparkline/health updates */
     }
 
