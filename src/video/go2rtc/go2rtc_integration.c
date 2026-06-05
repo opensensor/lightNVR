@@ -1549,10 +1549,18 @@ bool go2rtc_sync_streams_from_database(void) {
             snprintf(sub_name, sizeof(sub_name), "%s_sub", db_streams[i].name);
             if (!go2rtc_api_stream_exists(sub_name)) {
                 log_info("Registering missing sub-stream %s with go2rtc", sub_name);
-                go2rtc_stream_register(sub_name, db_streams[i].sub_stream_url,
-                                       username, password,
-                                       false, db_streams[i].protocol, false,
-                                       db_streams[i].codec);
+                if (!go2rtc_stream_register(sub_name, db_streams[i].sub_stream_url,
+                                            username, password,
+                                            false, db_streams[i].protocol,
+                                            db_streams[i].record_audio,
+                                            db_streams[i].codec)) {
+                    log_error("Failed to register sub-stream %s with go2rtc", sub_name);
+                    all_success = false;
+                    failed++;
+                } else {
+                    log_info("Successfully synced sub-stream %s to go2rtc", sub_name);
+                    synced++;
+                }
             }
         }
     }
