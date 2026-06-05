@@ -500,7 +500,15 @@ static void *health_check_thread_func(void *arg) {
 
         // Sleep for the health check interval; stop_health_check_thread() wakes
         // us out of this immediately.
-        interruptible_sleep_wait(&g_health_wake, g_health_check_interval);
+        if (g_health_wake_initialized) {
+            interruptible_sleep_wait(&g_health_wake, g_health_check_interval);
+        } else {
+            // Fallback if wakeable sleep could not be initialized.
+            for (int i = 0; i < g_health_check_interval && g_health_thread_running; i++) {
+                sleep(1);
+                if (is_shutdown_initiated()) break;
+            }
+        }
 
         if (!g_health_thread_running || is_shutdown_initiated()) {
             break;
