@@ -434,6 +434,73 @@ void test_repair_onvif_embedded_credentials_migration_normalizes_legacy_rows(voi
 }
 
 /* ================================================================
+ * audio_voice_enhancement (discussion #395)
+ * ================================================================ */
+
+void test_audio_voice_enhancement_defaults_false(void) {
+    stream_config_t s = make_stream("cam_avoe_def", true);
+    add_stream_config(&s);
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_avoe_def", &got));
+    TEST_ASSERT_FALSE(got.audio_voice_enhancement);
+}
+
+void test_audio_voice_enhancement_round_trip(void) {
+    stream_config_t s = make_stream("cam_avoe_rt", true);
+    s.audio_voice_enhancement = true;
+    add_stream_config(&s);
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_avoe_rt", &got));
+    TEST_ASSERT_TRUE(got.audio_voice_enhancement);
+}
+
+void test_audio_voice_enhancement_update(void) {
+    stream_config_t s = make_stream("cam_avoe_upd", true);
+    s.audio_voice_enhancement = false;
+    add_stream_config(&s);
+
+    s.audio_voice_enhancement = true;
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("cam_avoe_upd", &s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_avoe_upd", &got));
+    TEST_ASSERT_TRUE(got.audio_voice_enhancement);
+
+    /* And flips back off */
+    s.audio_voice_enhancement = false;
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("cam_avoe_upd", &s));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_avoe_upd", &got));
+    TEST_ASSERT_FALSE(got.audio_voice_enhancement);
+}
+
+void test_audio_voice_enhancement_in_get_all(void) {
+    stream_config_t plain = make_stream("cam_avoe_off", true);
+    stream_config_t enhanced = make_stream("cam_avoe_on", true);
+    enhanced.audio_voice_enhancement = true;
+    add_stream_config(&plain);
+    add_stream_config(&enhanced);
+
+    stream_config_t out[10];
+    int n = get_all_stream_configs(out, 10);
+    TEST_ASSERT_EQUAL_INT(2, n);
+
+    bool found_on = false, found_off = false;
+    for (int i = 0; i < n; i++) {
+        if (strcmp(out[i].name, "cam_avoe_on") == 0) {
+            TEST_ASSERT_TRUE(out[i].audio_voice_enhancement);
+            found_on = true;
+        } else if (strcmp(out[i].name, "cam_avoe_off") == 0) {
+            TEST_ASSERT_FALSE(out[i].audio_voice_enhancement);
+            found_off = true;
+        }
+    }
+    TEST_ASSERT_TRUE(found_on);
+    TEST_ASSERT_TRUE(found_off);
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -469,6 +536,10 @@ int main(void) {
     RUN_TEST(test_sub_stream_url_round_trip);
     RUN_TEST(test_sub_stream_url_update);
     RUN_TEST(test_sub_stream_url_in_get_all);
+    RUN_TEST(test_audio_voice_enhancement_defaults_false);
+    RUN_TEST(test_audio_voice_enhancement_round_trip);
+    RUN_TEST(test_audio_voice_enhancement_update);
+    RUN_TEST(test_audio_voice_enhancement_in_get_all);
 
     int result = UNITY_END();
     shutdown_database();

@@ -807,7 +807,7 @@
   "streamsConfig.recordAudio": "Record Audio",
   "streamsConfig.twoWayAudio": "Two-Way Audio",
   "streamsConfig.audioVoiceEnhancement": "Voice Enhancement (recordings)",
-  "streamsConfig.audioSettingsHelp": "Audio recording applies to both continuous and detection-based recordings (requires audio track in stream). Voice Enhancement applies a noise-reduction filter chain during the G.711 → AAC transcode; recordings only, live audio is unchanged.",
+  "streamsConfig.audioSettingsHelp": "Audio recording applies to both continuous and detection-based recordings (requires audio track in stream). Voice Enhancement is a preview opt-in that has no effect yet — the noise-reduction filter chain for the G.711 → AAC transcode lands in a future update; recordings only, live audio is unchanged.",
   "streamsConfig.aiDetectionSettings": "AI Detection Settings",
   "streamsConfig.detectionModel": "Detection Model",
   "streamsConfig.selectModel": "Select a model",

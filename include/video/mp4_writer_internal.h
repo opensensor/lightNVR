@@ -106,4 +106,17 @@ void cleanup_audio_transcoder(const char *stream_name);
  */
 void set_audio_voice_enhancement(const char *stream_name, bool enabled);
 
+/**
+ * Query the effective voice-enhancement state for a stream.
+ *
+ * Returns the live transcoder's flag when a slot is allocated, otherwise the
+ * staged opt-in set via set_audio_voice_enhancement(), or false when neither
+ * exists.  Mirrors the lookup init_audio_transcoder() performs, so callers can
+ * read back exactly what the transcode path will use.
+ *
+ * @param stream_name Stream name (same key used for transcode_audio_packet)
+ * @return true if voice enhancement is (or will be) applied for this stream
+ */
+bool get_audio_voice_enhancement(const char *stream_name);
+
 #endif /* MP4_WRITER_INTERNAL_H */

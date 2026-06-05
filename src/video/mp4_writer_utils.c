@@ -92,7 +92,7 @@ typedef struct {
     char stream_name[MAX_STREAM_NAME];
     bool enabled;
 } voice_enhancement_pending_t;
-static voice_enhancement_pending_t voice_enhancement_pending[MAX_STREAMS] = {{{0}, false}};
+static voice_enhancement_pending_t voice_enhancement_pending[MAX_STREAMS] = {0};
 
 static inline void lock_audio_transcoders(void) {
     pthread_mutex_lock(&audio_transcoder_mutex);
@@ -527,6 +527,40 @@ void set_audio_voice_enhancement(const char *stream_name, bool enabled) {
     }
 
     pthread_mutex_unlock(&audio_transcoder_mutex);
+}
+
+bool get_audio_voice_enhancement(const char *stream_name) {
+    if (!stream_name || stream_name[0] == '\0') {
+        return false;
+    }
+
+    bool enabled = false;
+    pthread_mutex_lock(&audio_transcoder_mutex);
+
+    // Prefer the live transcoder slot if one exists — that's the value the
+    // transcode path actually uses.
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (audio_transcoders[i].initialized &&
+            audio_transcoder_stream_names[i][0] != '\0' &&
+            strcmp(audio_transcoder_stream_names[i], stream_name) == 0) {
+            enabled = audio_transcoders[i].voice_enhancement_enabled;
+            pthread_mutex_unlock(&audio_transcoder_mutex);
+            return enabled;
+        }
+    }
+
+    // Otherwise report any staged opt-in that init_audio_transcoder() will pick
+    // up when the slot is first allocated.
+    for (int i = 0; i < g_config.max_streams; i++) {
+        if (voice_enhancement_pending[i].stream_name[0] != '\0' &&
+            strcmp(voice_enhancement_pending[i].stream_name, stream_name) == 0) {
+            enabled = voice_enhancement_pending[i].enabled;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&audio_transcoder_mutex);
+    return enabled;
 }
 
 /**
