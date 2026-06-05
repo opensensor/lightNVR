@@ -104,12 +104,15 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         return false;
     }
 
-    // Log the input parameters for debugging
-    // Sanitize the stream name so it can be safely used in a URL. Note that URL-encoding
-    // the spaces results in go2rtc complaining with "source with spaces may be insecure",
-    // so we strip any problematic characters from the string.
-    char encoded_stream_id[URL_BUFFER_SIZE * 3];
-    simple_url_escape(stream_id, encoded_stream_id, URL_BUFFER_SIZE * 3);
+    // Use the raw stream_id for registration. The go2rtc API client
+    // (go2rtc_api_add_stream / _multi) URL-escapes the name itself when it
+    // builds the ?name= query parameter, exactly like every other API call
+    // (unregister, webrtc-url, preload, exists) and the recording consumer.
+    // Pre-escaping it here would double-encode the name (e.g. "Front Cam" ->
+    // "Front%2520Cam"), registering the stream under a name that none of the
+    // later lookups can match. The ffmpeg fallback sources below likewise
+    // reference the stream by its raw name; go2rtc_api_add_stream_multi()
+    // escapes each source string as a whole before sending it.
 
     // Ensure go2rtc is running
     if (!go2rtc_stream_is_ready()) {
@@ -231,7 +234,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         // so the OPUS track is what actually makes audio audible in the
         // browser's WebRTC player. (#429)
         snprintf(ffmpeg_audio_source, sizeof(ffmpeg_audio_source),
-                 "ffmpeg:%s#audio=aac#audio=opus", encoded_stream_id);
+                 "ffmpeg:%s#audio=aac#audio=opus", stream_id);
         sources[num_sources++] = ffmpeg_audio_source;
     }
 
@@ -246,10 +249,10 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         // Falling back to software libx264 keeps the WebRTC fallback working. (#429)
         if (g_config.hw_accel_enabled) {
             snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
-                     "ffmpeg:%s#video=h264#hardware", encoded_stream_id);
+                     "ffmpeg:%s#video=h264#hardware", stream_id);
         } else {
             snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
-                     "ffmpeg:%s#video=h264", encoded_stream_id);
+                     "ffmpeg:%s#video=h264", stream_id);
         }
         sources[num_sources++] = ffmpeg_h264_source;
         log_info("Stream %s codec=%s; adding ffmpeg H.264 fallback source for WebRTC (hw_accel=%s)",
@@ -261,21 +264,21 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
     bool result;
     if (num_sources > 1) {
-        result = go2rtc_api_add_stream_multi(encoded_stream_id, sources, num_sources);
+        result = go2rtc_api_add_stream_multi(stream_id, sources, num_sources);
         if (!result) {
             log_error("Failed to register stream %s with go2rtc (%d sources); falling back to primary-only",
-                      encoded_stream_id, num_sources);
-            result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+                      stream_id, num_sources);
+            result = go2rtc_api_add_stream(stream_id, modified_url);
         }
     } else {
-        result = go2rtc_api_add_stream(encoded_stream_id, modified_url);
+        result = go2rtc_api_add_stream(stream_id, modified_url);
     }
 
     if (result) {
         log_info("Successfully registered stream %s with go2rtc (%d source%s)",
-                 encoded_stream_id, num_sources, num_sources == 1 ? "" : "s");
+                 stream_id, num_sources, num_sources == 1 ? "" : "s");
     } else {
-        log_error("Failed to register stream %s with go2rtc", encoded_stream_id);
+        log_error("Failed to register stream %s with go2rtc", stream_id);
     }
 
     // Intentionally do NOT preload here.
@@ -290,7 +293,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     // is already listening.
     if (result) {
         log_debug("Registered stream %s with go2rtc without preloading; startup paths will preload on demand",
-                  encoded_stream_id);
+                  stream_id);
     }
 
     return result;
