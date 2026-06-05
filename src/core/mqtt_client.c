@@ -988,8 +988,17 @@ int mqtt_start_ha_services(void) {
     ha_snapshot_thread_started = false;
 
     // Fresh wakeable-sleep handles for this run (HA services can be cycled).
-    interruptible_sleep_init(&ha_snapshot_wake);
-    interruptible_sleep_init(&ha_motion_wake);
+    if (interruptible_sleep_init(&ha_snapshot_wake) != 0) {
+        log_error("MQTT HA: Failed to initialize snapshot wake handle");
+        ha_services_running = false;
+        return -1;
+    }
+    if (interruptible_sleep_init(&ha_motion_wake) != 0) {
+        log_error("MQTT HA: Failed to initialize motion wake handle");
+        interruptible_sleep_destroy(&ha_snapshot_wake);
+        ha_services_running = false;
+        return -1;
+    }
 
     // Start snapshot publishing thread if interval > 0
     if (mqtt_config->mqtt_ha_snapshot_interval > 0) {
