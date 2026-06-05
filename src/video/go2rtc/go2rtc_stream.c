@@ -223,7 +223,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     
     const char *audio_codec = (strstr(encoded_stream_id, "_sub") != NULL) ? "opus" : "aac";
     
-    bool is_h264 = (codec != NULL && strcasestr(codec, "h264") != NULL);
+    bool is_h264 = (codec != NULL && strcasecmp(codec, "h264") == 0);
     
     if (!is_h264) {
         snprintf(combined_buf, sizeof(combined_buf), 
