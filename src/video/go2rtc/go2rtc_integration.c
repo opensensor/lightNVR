@@ -1436,7 +1436,7 @@ bool go2rtc_integration_register_all_streams(void) {
                 if (!go2rtc_stream_register(sub_name, streams[i].sub_stream_url,
                                            streams[i].onvif_username[0] != '\0' ? streams[i].onvif_username : NULL,
                                            streams[i].onvif_password[0] != '\0' ? streams[i].onvif_password : NULL,
-                                           false, streams[i].protocol, true,
+                                           false, streams[i].protocol, streams[i].record_audio,
                                            streams[i].codec)) {
                     log_warn("Failed to register sub-stream %s with go2rtc", sub_name);
                 }
