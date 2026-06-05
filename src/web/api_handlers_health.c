@@ -30,6 +30,7 @@
 #define LOG_COMPONENT "HealthCheck"
 #include "core/logger.h"
 #include "core/config.h"
+#include "utils/interruptible_sleep.h"
 
 // Forward declarations for functions defined later in this file
 static bool is_web_server_thread_running(void);
@@ -55,6 +56,13 @@ static pthread_t g_health_check_thread;
 static volatile bool g_health_thread_running = false;
 static volatile bool g_health_thread_exited = false;  // Flag to indicate thread has exited
 static int g_health_check_interval = 10; // seconds
+
+// Wakeable sleep so stop_health_check_thread() can pull the thread out of its
+// interval sleep immediately. Initialized once and never destroyed: the stop
+// path may detach (rather than join) the thread on timeout, so the thread can
+// outlive the stop call and must not race a destroy.
+static interruptible_sleep_t g_health_wake;
+static bool g_health_wake_initialized = false;
 static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health";
 
 // Web server thread tracking
@@ -490,11 +498,9 @@ static void *health_check_thread_func(void *arg) {
             break;
         }
 
-        // Sleep for the health check interval
-        for (int i = 0; i < g_health_check_interval && g_health_thread_running; i++) {
-            sleep(1);
-            if (is_shutdown_initiated()) break;
-        }
+        // Sleep for the health check interval; stop_health_check_thread() wakes
+        // us out of this immediately.
+        interruptible_sleep_wait(&g_health_wake, g_health_check_interval);
 
         if (!g_health_thread_running || is_shutdown_initiated()) {
             break;
@@ -568,6 +574,16 @@ void start_health_check_thread(void) {
         return;
     }
 
+    // Initialize the wakeable sleep once for the process; reset any stale
+    // pending wake from a previous start/stop cycle.
+    if (!g_health_wake_initialized) {
+        if (interruptible_sleep_init(&g_health_wake) == 0) {
+            g_health_wake_initialized = true;
+        }
+    } else {
+        interruptible_sleep_reset(&g_health_wake);
+    }
+
     g_health_thread_running = true;
     g_health_thread_exited = false;  // Reset the exited flag
 
@@ -594,6 +610,12 @@ void stop_health_check_thread(void) {
 
     log_info("Stopping health check thread...");
     g_health_thread_running = false;
+
+    // Wake the thread out of its interval sleep so it exits promptly instead of
+    // the poll loop below waiting out the timeout.
+    if (g_health_wake_initialized) {
+        interruptible_sleep_wake(&g_health_wake);
+    }
 
     // Use portable polling approach with timeout (5 seconds)
     // Poll every 50ms to check if thread has exited
