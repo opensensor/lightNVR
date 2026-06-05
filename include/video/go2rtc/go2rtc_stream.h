@@ -29,10 +29,12 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
  * @param password Optional password for authentication (can be NULL)
  * @param backchannel_enabled Whether to enable two-way audio (backchannel) support
  * @param protocol Stream protocol (TCP or UDP) - used to set transport parameter for go2rtc
- * @param record_audio Whether audio recording is enabled - if true, adds FFmpeg AAC transcoding source
+ * @param record_audio Whether audio recording is enabled - if true, adds an FFmpeg
+ *              `#audio=aac#audio=opus` source (AAC for recording/HLS, OPUS for WebRTC)
  * @param codec Detected or user-declared source video codec (e.g. "h264", "hevc").
  *              May be NULL or empty when unknown. Used to decide whether to add
- *              an `ffmpeg:<id>#video=h264#hardware` fallback source so that
+ *              an `ffmpeg:<id>#video=h264` fallback source (with `#hardware`
+ *              appended only when hw_accel_enabled is set) so that
  *              WebRTC clients (which only accept H.264/VP8/VP9/AV1) can consume
  *              H.265 streams via on-demand transcoding. The fallback is added
  *              for anything that isn't explicitly "h264" — unknown codecs are

@@ -188,21 +188,28 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     /*
      * Compose the multi-source list for go2rtc.
      *
-     * Source 0 is always the primary RTSP URL. We optionally append:
+     * Source 0 is always the primary source URL. We optionally append:
      *
-     *   - ffmpeg:<id>#audio=aac   when record_audio is true, so the MP4
-     *     muxer has a persistent AAC producer. go2rtc still transcodes to
-     *     OPUS on demand for WebRTC viewers without a second ffmpeg.
+     *   - ffmpeg:<id>#audio=aac#audio=opus   when record_audio is true.
+     *     A single ffmpeg process emits two audio tracks:
+     *       * AAC  feeds the MP4 recorder and the MPEG-TS HLS consumer.
+     *       * OPUS is what WebRTC needs. go2rtc's pure-Go build does NOT
+     *         transcode AAC -> OPUS: its WebRTC consumer only repackages
+     *         OPUS/PCMU/PCMA (no AAC decode) and codec matching is name-exact
+     *         (pkg/core/codec.go Codec.Match). Without an OPUS producer the
+     *         browser negotiates an opus track in the SDP that never carries
+     *         any audio — the exact "speaker icon but no sound" symptom. (#429)
      *
-     *   - ffmpeg:<id>#video=h264#hardware   when the source codec is
+     *   - ffmpeg:<id>#video=h264[#hardware]   when the source codec is
      *     anything other than "h264" (including unknown/empty). Browsers'
      *     WebRTC stacks don't accept H.265, so go2rtc needs a transcoded
      *     fallback to negotiate with them — this one only spawns its
      *     ffmpeg process when a consumer actually asks for H.264 and the
      *     primary doesn't supply it (H.264 sources leave it idle).
-     *     #hardware lets go2rtc pick VAAPI/NVENC/v4l2m2m if the host has
-     *     it and fall back to libx264.
-     *     (Neither #video=copy on the AAC source nor transcoding from
+     *     #hardware (VAAPI/NVENC/v4l2m2m) is only appended when
+     *     hw_accel_enabled is set; otherwise we force software libx264 so a
+     *     broken host encoder can't crash the producer. (#429)
+     *     (Neither #video=copy on the audio source nor transcoding from
      *     the AAC feed — each ffmpeg: entry opens its own producer.)
      *
      * codec may be NULL/empty on first registration since the detection
@@ -217,21 +224,37 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     int num_sources = 0;
     sources[num_sources++] = modified_url;
 
-    char ffmpeg_aac_source[URL_BUFFER_SIZE];
+    char ffmpeg_audio_source[URL_BUFFER_SIZE];
     if (record_audio) {
-        snprintf(ffmpeg_aac_source, sizeof(ffmpeg_aac_source),
-                 "ffmpeg:%s#audio=aac", encoded_stream_id);
-        sources[num_sources++] = ffmpeg_aac_source;
+        // Emit AAC (for MP4 recording + MPEG-TS HLS) and OPUS (for WebRTC)
+        // from one ffmpeg process — go2rtc cannot transcode AAC->OPUS itself,
+        // so the OPUS track is what actually makes audio audible in the
+        // browser's WebRTC player. (#429)
+        snprintf(ffmpeg_audio_source, sizeof(ffmpeg_audio_source),
+                 "ffmpeg:%s#audio=aac#audio=opus", encoded_stream_id);
+        sources[num_sources++] = ffmpeg_audio_source;
     }
 
     bool is_h264 = (codec && codec[0] != '\0' && strcasecmp(codec, "h264") == 0);
     char ffmpeg_h264_source[URL_BUFFER_SIZE];
     if (!is_h264) {
-        snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
-                 "ffmpeg:%s#video=h264#hardware", encoded_stream_id);
+        // Only ask go2rtc for the #hardware encoder when the operator opted in
+        // via hw_accel_enabled. Some hosts (e.g. LXC containers where vainfo
+        // probes succeed but VAAPI encoding fails with "Function not
+        // implemented") have a broken hardware encoder that crashes the ffmpeg
+        // producer, leaving go2rtc with a null consumer and a 404 stream.
+        // Falling back to software libx264 keeps the WebRTC fallback working. (#429)
+        if (g_config.hw_accel_enabled) {
+            snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
+                     "ffmpeg:%s#video=h264#hardware", encoded_stream_id);
+        } else {
+            snprintf(ffmpeg_h264_source, sizeof(ffmpeg_h264_source),
+                     "ffmpeg:%s#video=h264", encoded_stream_id);
+        }
         sources[num_sources++] = ffmpeg_h264_source;
-        log_info("Stream %s codec=%s; adding ffmpeg H.264 fallback source for WebRTC",
-                 stream_id, (codec && codec[0]) ? codec : "unknown");
+        log_info("Stream %s codec=%s; adding ffmpeg H.264 fallback source for WebRTC (hw_accel=%s)",
+                 stream_id, (codec && codec[0]) ? codec : "unknown",
+                 g_config.hw_accel_enabled ? "on" : "off");
     } else {
         log_info("Stream %s codec=h264; no transcoding fallback needed", stream_id);
     }
