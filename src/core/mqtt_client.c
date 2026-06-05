@@ -17,6 +17,7 @@
 #include "core/version.h"
 #include "database/db_streams.h"
 #include "utils/strings.h"
+#include "utils/interruptible_sleep.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
 
 #define MAX_TOPIC_LENGTH 512
@@ -33,6 +34,10 @@ static volatile bool ha_services_running = false;
 static bool ha_snapshot_thread_started = false;
 static pthread_t ha_snapshot_thread;
 static pthread_t ha_motion_thread;
+// Wakeable sleeps so mqtt_stop_ha_services() pulls the HA threads out of their
+// interval sleeps immediately instead of waiting up to a full interval.
+static interruptible_sleep_t ha_snapshot_wake;
+static interruptible_sleep_t ha_motion_wake;
 
 // Motion state tracking per stream
 #define MAX_MOTION_STREAMS 16
@@ -875,7 +880,7 @@ static void *ha_snapshot_thread_func(void *arg) {
 
     while (ha_services_running) {
         if (!mqtt_is_connected() || !mqtt_config) {
-            sleep(1);
+            interruptible_sleep_wait(&ha_snapshot_wake, 1);
             continue;
         }
 
@@ -904,10 +909,8 @@ static void *ha_snapshot_thread_func(void *arg) {
             }
         }
 
-        // Sleep in 1-second increments so we can check ha_services_running
-        for (int s = 0; s < mqtt_config->mqtt_ha_snapshot_interval && ha_services_running; s++) {
-            sleep(1);
-        }
+        // Sleep until the next interval; mqtt_stop_ha_services() wakes us early.
+        interruptible_sleep_wait(&ha_snapshot_wake, mqtt_config->mqtt_ha_snapshot_interval);
     }
 
     free(streams);
@@ -926,7 +929,7 @@ static void *ha_motion_thread_func(void *arg) {
 
     while (ha_services_running) {
         if (!mqtt_is_connected() || !mqtt_config) {
-            sleep(1);
+            interruptible_sleep_wait(&ha_motion_wake, 1);
             continue;
         }
 
@@ -963,7 +966,7 @@ static void *ha_motion_thread_func(void *arg) {
         }
         pthread_mutex_unlock(&motion_mutex);
 
-        sleep(1); // Check every second
+        interruptible_sleep_wait(&ha_motion_wake, 1); // Check ~every second
     }
 
     log_info("MQTT HA: Motion timeout thread stopped");
@@ -984,11 +987,26 @@ int mqtt_start_ha_services(void) {
     ha_services_running = true;
     ha_snapshot_thread_started = false;
 
+    // Fresh wakeable-sleep handles for this run (HA services can be cycled).
+    if (interruptible_sleep_init(&ha_snapshot_wake) != 0) {
+        log_error("MQTT HA: Failed to initialize snapshot wake handle");
+        ha_services_running = false;
+        return -1;
+    }
+    if (interruptible_sleep_init(&ha_motion_wake) != 0) {
+        log_error("MQTT HA: Failed to initialize motion wake handle");
+        interruptible_sleep_destroy(&ha_snapshot_wake);
+        ha_services_running = false;
+        return -1;
+    }
+
     // Start snapshot publishing thread if interval > 0
     if (mqtt_config->mqtt_ha_snapshot_interval > 0) {
         if (pthread_create(&ha_snapshot_thread, NULL, ha_snapshot_thread_func, NULL) != 0) {
             log_error("MQTT HA: Failed to create snapshot thread");
             ha_services_running = false;
+            interruptible_sleep_destroy(&ha_snapshot_wake);
+            interruptible_sleep_destroy(&ha_motion_wake);
             return -1;
         }
         ha_snapshot_thread_started = true;
@@ -1001,11 +1019,14 @@ int mqtt_start_ha_services(void) {
         log_error("MQTT HA: Failed to create motion timeout thread");
         // Signal any already-started HA service threads to stop
         ha_services_running = false;
-        // If the snapshot thread was started, wait for it to exit
+        // If the snapshot thread was started, wake and wait for it to exit
         if (ha_snapshot_thread_started) {
+            interruptible_sleep_wake(&ha_snapshot_wake);
             pthread_join(ha_snapshot_thread, NULL);
             ha_snapshot_thread_started = false;
         }
+        interruptible_sleep_destroy(&ha_snapshot_wake);
+        interruptible_sleep_destroy(&ha_motion_wake);
         return -1;
     }
 
@@ -1024,12 +1045,19 @@ void mqtt_stop_ha_services(void) {
     log_info("MQTT HA: Stopping background services...");
     ha_services_running = false;
 
-    // Wait for threads to finish (they check ha_services_running each second)
+    // Wake both threads out of their interval sleeps so the joins return now.
+    interruptible_sleep_wake(&ha_snapshot_wake);
+    interruptible_sleep_wake(&ha_motion_wake);
+
+    // Wait for threads to finish
     if (ha_snapshot_thread_started) {
         pthread_join(ha_snapshot_thread, NULL);
         ha_snapshot_thread_started = false;
     }
     pthread_join(ha_motion_thread, NULL);
+
+    interruptible_sleep_destroy(&ha_snapshot_wake);
+    interruptible_sleep_destroy(&ha_motion_wake);
 
     // Reset motion state tracking to avoid stale states on reinit
     pthread_mutex_lock(&motion_mutex);

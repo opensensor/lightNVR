@@ -23,6 +23,7 @@
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 #include "utils/strings.h"
+#include "utils/interruptible_sleep.h"
 
 // Thread state
 static struct {
@@ -30,6 +31,7 @@ static struct {
     bool running;
     int interval_seconds;
     pthread_mutex_t mutex;
+    interruptible_sleep_t wake;  // woken by stop_recording_sync_thread()
     time_t startup_time;  // Track when the sync thread started
 } sync_thread = {
     .running = false,
@@ -218,10 +220,8 @@ static void *sync_thread_func(void *arg) {
     }
 
     while (sync_thread.running && !is_shutdown_initiated()) {
-        // Sleep for the interval, checking for shutdown each second
-        for (int i = 0; i < sync_thread.interval_seconds && sync_thread.running && !is_shutdown_initiated(); i++) {
-            sleep(1);
-        }
+        // Sleep for the interval; stop_recording_sync_thread() wakes us early.
+        interruptible_sleep_wait(&sync_thread.wake, sync_thread.interval_seconds);
 
         if (!sync_thread.running || is_shutdown_initiated()) {
             break;
@@ -265,10 +265,18 @@ int start_recording_sync_thread(int interval_seconds) {
     sync_thread.interval_seconds = (interval_seconds < 10) ? 10 : interval_seconds;
     sync_thread.running = true;
 
+    // Fresh wakeable-sleep handle for this run (the thread can be cycled).
+    if (interruptible_sleep_init(&sync_thread.wake) != 0) {
+        log_error("Failed to initialize recording sync wake handle");
+        sync_thread.running = false;
+        pthread_mutex_unlock(&sync_thread.mutex);
+        return -1;
+    }
     // Create thread
     if (pthread_create(&sync_thread.thread, NULL, sync_thread_func, NULL) != 0) {
         log_error("Failed to create recording sync thread");
         sync_thread.running = false;
+        interruptible_sleep_destroy(&sync_thread.wake);
         pthread_mutex_unlock(&sync_thread.mutex);
         return -1;
     }
@@ -295,13 +303,18 @@ int stop_recording_sync_thread(void) {
     // Signal thread to stop
     sync_thread.running = false;
     pthread_mutex_unlock(&sync_thread.mutex);
-    
+
+    // Wake it out of its interval sleep so the join returns promptly.
+    interruptible_sleep_wake(&sync_thread.wake);
+
     // Wait for thread to exit
     if (pthread_join(sync_thread.thread, NULL) != 0) {
         log_error("Failed to join recording sync thread");
         return -1;
     }
-    
+
+    interruptible_sleep_destroy(&sync_thread.wake);
+
     log_info("Recording sync thread stopped");
     return 0;
 }

@@ -766,8 +766,8 @@ int mp4_writer_start_recording_thread(mp4_writer_t *writer, const char *rtsp_url
         if (is_shutdown_initiated()) {
             break;
         }
-        usleep(1000);  // Sleep for 1ms
-        waited_ms += 1;
+        usleep(50000);  // Sleep for 50ms
+        waited_ms += 50;
     }
 
     // If the thread did not report running within the timeout, treat as failure

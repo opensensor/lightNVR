@@ -19,6 +19,7 @@
 #define LOG_COMPONENT "Metrics"
 #include "core/logger.h"
 #include "utils/strings.h"
+#include "utils/interruptible_sleep.h"
 
 /* ------------------------------------------------------------------ */
 /*  Global state                                                       */
@@ -31,6 +32,7 @@ static bool              g_initialized = false;
 /* Sampler thread */
 static pthread_t         g_sampler_thread;
 static volatile bool     g_sampler_running = false;
+static interruptible_sleep_t g_sampler_wake;   /* woken by metrics_shutdown() */
 #define SAMPLER_INTERVAL_SEC 5
 
 /* ------------------------------------------------------------------ */
@@ -78,13 +80,10 @@ static void *sampler_thread_func(void *arg) {
     log_info("Metrics sampler thread started (interval: %ds)", SAMPLER_INTERVAL_SEC);
 
     while (g_sampler_running) {
-        /* Interruptible sleep */
-        for (int s = 0; s < SAMPLER_INTERVAL_SEC && g_sampler_running; s++) {
-            sleep(1);
-            if (is_shutdown_initiated()) {
-                g_sampler_running = false;
-                break;
-            }
+        /* Interruptible sleep — metrics_shutdown() wakes this immediately. */
+        interruptible_sleep_wait(&g_sampler_wake, SAMPLER_INTERVAL_SEC);
+        if (is_shutdown_initiated()) {
+            g_sampler_running = false;
         }
         if (!g_sampler_running) break;
 
@@ -180,10 +179,16 @@ int metrics_init(int max_streams) {
     g_initialized = true;
 
     /* Start sampler thread */
-    g_sampler_running = true;
-    if (pthread_create(&g_sampler_thread, NULL, sampler_thread_func, NULL) != 0) {
-        log_error("Failed to create metrics sampler thread: %s", strerror(errno));
-        g_sampler_running = false;
+    if (interruptible_sleep_init(&g_sampler_wake) == 0) {
+        g_sampler_running = true;
+        if (pthread_create(&g_sampler_thread, NULL, sampler_thread_func, NULL) != 0) {
+            log_error("Failed to create metrics sampler thread: %s", strerror(errno));
+            g_sampler_running = false;
+            interruptible_sleep_destroy(&g_sampler_wake);
+            /* Non-fatal: metrics still work, just no sparkline/health updates */
+        }
+    } else {
+        log_error("Failed to initialize metrics sampler wake handle");
         /* Non-fatal: metrics still work, just no sparkline/health updates */
     }
 
@@ -197,7 +202,9 @@ void metrics_shutdown(void) {
     /* Stop sampler thread */
     if (g_sampler_running) {
         g_sampler_running = false;
+        interruptible_sleep_wake(&g_sampler_wake);   /* leave its sleep now */
         pthread_join(g_sampler_thread, NULL);
+        interruptible_sleep_destroy(&g_sampler_wake);
         log_info("Metrics sampler thread stopped");
     }
 

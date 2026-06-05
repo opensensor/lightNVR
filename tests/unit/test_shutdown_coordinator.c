@@ -11,6 +11,7 @@
 #define _GNU_SOURCE
 
 #include <string.h>
+#include <time.h>
 #include "unity.h"
 #include "core/shutdown_coordinator.h"
 #include "core/logger.h"
@@ -100,6 +101,44 @@ void test_wait_all_stopped_no_components(void) {
     TEST_ASSERT_TRUE(result);
 }
 
+/* The coordinator starts in the "all stopped" state, so when nothing ever
+ * registers, wait_for_all_components_stopped() must return immediately rather
+ * than blocking for the full timeout. This guards the shutdown-latency fix:
+ * with a 10s timeout the call should complete in well under a second. */
+void test_wait_all_stopped_no_components_returns_immediately(void) {
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    bool result = wait_for_all_components_stopped(10);
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    long elapsed_ms = (end.tv_sec - start.tv_sec) * 1000 +
+                      (end.tv_nsec - start.tv_nsec) / 1000000;
+
+    TEST_ASSERT_TRUE(result);
+    TEST_ASSERT_LESS_THAN_INT(500, elapsed_ms);
+}
+
+/* After a component registers, the coordinator is no longer "all stopped", so a
+ * wait must block until the timeout (and then force-stop). This is the
+ * complementary guard ensuring the fast-path doesn't fire while work is live. */
+void test_wait_blocks_until_timeout_when_component_registered(void) {
+    register_component("late_stopper", COMPONENT_OTHER, NULL, 50);
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    wait_for_all_components_stopped(1);
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    long elapsed_ms = (end.tv_sec - start.tv_sec) * 1000 +
+                      (end.tv_nsec - start.tv_nsec) / 1000000;
+
+    /* Should have actually waited for roughly the 1s timeout, not returned
+     * instantly via the fast-path. */
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(900, elapsed_ms);
+}
+
 void test_wait_all_stopped_after_marking_stopped(void) {
     int id = register_component("worker", COMPONENT_OTHER, NULL, 1);
     update_component_state(id, COMPONENT_STOPPED);
@@ -140,6 +179,8 @@ int main(void) {
     RUN_TEST(test_initiate_shutdown_sets_flag);
 
     RUN_TEST(test_wait_all_stopped_no_components);
+    RUN_TEST(test_wait_all_stopped_no_components_returns_immediately);
+    RUN_TEST(test_wait_blocks_until_timeout_when_component_registered);
     RUN_TEST(test_wait_all_stopped_after_marking_stopped);
     RUN_TEST(test_wait_all_stopped_timeout_when_running);
 
