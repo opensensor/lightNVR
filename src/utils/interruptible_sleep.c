@@ -18,10 +18,13 @@ int interruptible_sleep_init(interruptible_sleep_t *s) {
 
     pthread_condattr_t attr;
     pthread_condattr_init(&attr);
+    s->clock_id = CLOCK_REALTIME;
 #if defined(CLOCK_MONOTONIC)
     /* Use a monotonic clock so an NTP/admin wall-clock step can't lengthen the
      * timeout. Falls back to the default (CLOCK_REALTIME) if unsupported. */
-    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) == 0) {
+        s->clock_id = CLOCK_MONOTONIC;
+    }
 #endif
     int rc = pthread_cond_init(&s->cond, &attr);
     pthread_condattr_destroy(&attr);
@@ -57,11 +60,7 @@ void interruptible_sleep_wait(interruptible_sleep_t *s, int seconds) {
     }
 
     struct timespec ts;
-#if defined(CLOCK_MONOTONIC)
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-#else
-    clock_gettime(CLOCK_REALTIME, &ts);
-#endif
+    clock_gettime(s->clock_id, &ts);
     if (seconds > 0) {
         ts.tv_sec += seconds;
     }

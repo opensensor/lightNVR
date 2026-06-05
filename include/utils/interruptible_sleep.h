@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdbool.h>
+#include <time.h>
 
 /*
  * A small wakeable sleep primitive for background worker threads.
@@ -25,7 +26,8 @@
 typedef struct {
     pthread_mutex_t mutex;
     pthread_cond_t  cond;
-    bool            woken;   /* sticky pending-wake flag, protected by mutex */
+    bool            woken;     /* sticky pending-wake flag, protected by mutex */
+    clockid_t       clock_id;  /* clock used for the condvar timeout */
 } interruptible_sleep_t;
 
 /* Initialize. The condition variable uses CLOCK_MONOTONIC where available so
