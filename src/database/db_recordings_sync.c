@@ -266,8 +266,12 @@ int start_recording_sync_thread(int interval_seconds) {
     sync_thread.running = true;
 
     // Fresh wakeable-sleep handle for this run (the thread can be cycled).
-    interruptible_sleep_init(&sync_thread.wake);
-
+    if (interruptible_sleep_init(&sync_thread.wake) != 0) {
+        log_error("Failed to initialize recording sync wake handle");
+        sync_thread.running = false;
+        pthread_mutex_unlock(&sync_thread.mutex);
+        return -1;
+    }
     // Create thread
     if (pthread_create(&sync_thread.thread, NULL, sync_thread_func, NULL) != 0) {
         log_error("Failed to create recording sync thread");
