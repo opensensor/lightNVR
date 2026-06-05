@@ -214,6 +214,7 @@ export function StreamsView() {
     segment: 30,
     record: true,
     recordAudio: true,
+    audioVoiceEnhancement: false,
     backchannelEnabled: false,
     // ONVIF capability flag
     isOnvif: false,
@@ -588,6 +589,7 @@ export function StreamsView() {
       pre_detection_buffer: parseInt(currentStream.preBuffer, 10),
       post_detection_buffer: parseInt(currentStream.postBuffer, 10),
       record_audio: currentStream.recordAudio,
+      audio_voice_enhancement: !!currentStream.audioVoiceEnhancement,
       backchannel_enabled: currentStream.backchannelEnabled,
       // PTZ control settings
       ptz_enabled: !!currentStream.ptzEnabled,
@@ -675,6 +677,7 @@ export function StreamsView() {
       segment: 30,
       record: true,
       recordAudio: true,
+      audioVoiceEnhancement: false,
       backchannelEnabled: false,
       isOnvif: false,
       onvifUsername: '',
@@ -752,6 +755,7 @@ export function StreamsView() {
         detectionEnabled: stream.detection_based_recording || false,
         detectionModel: stream.detection_model || '',
         recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,
+        audioVoiceEnhancement: !!stream.audio_voice_enhancement,
         backchannelEnabled: stream.backchannel_enabled !== undefined ? stream.backchannel_enabled : false,
         // PTZ control settings
         ptzEnabled: stream.ptz_enabled !== undefined ? stream.ptz_enabled : false,
@@ -830,6 +834,7 @@ export function StreamsView() {
         detectionEnabled: stream.detection_based_recording || false,
         detectionModel: stream.detection_model || '',
         recordAudio: stream.record_audio !== undefined ? stream.record_audio : true,
+        audioVoiceEnhancement: !!stream.audio_voice_enhancement,
         backchannelEnabled: stream.backchannel_enabled !== undefined ? stream.backchannel_enabled : false,
         ptzEnabled: stream.ptz_enabled !== undefined ? stream.ptz_enabled : false,
         ptzMaxX: stream.ptz_max_x || 0,
@@ -1147,6 +1152,7 @@ export function StreamsView() {
       segment_duration: 30,
       record: true,
       record_audio: true,
+      audio_voice_enhancement: false,
       backchannel_enabled: false,
       // Backend expects camelCase key 'isOnvif'
       isOnvif: true

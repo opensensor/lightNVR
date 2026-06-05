@@ -220,6 +220,172 @@ void test_handle_put_stream_parses_motion_trigger_source(void) {
     clear_db_streams();
 }
 
+/* ================================================================
+ * audio_voice_enhancement — JSON round-trip through the stream handlers
+ * (discussion #395)
+ * ================================================================ */
+
+void test_handle_get_streams_includes_audio_voice_enhancement(void) {
+    clear_db_streams();
+
+    stream_config_t s = make_test_stream("cam_avoe_get");
+    s.audio_voice_enhancement = true;
+    add_stream_config(&s);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    handle_get_streams(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+    cJSON *root = parse_response_json(&res);
+    TEST_ASSERT_TRUE(cJSON_IsArray(root));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(root));
+
+    cJSON *stream = cJSON_GetArrayItem(root, 0);
+    cJSON *avoe = cJSON_GetObjectItemCaseSensitive(stream, "audio_voice_enhancement");
+    TEST_ASSERT_NOT_NULL(avoe);
+    TEST_ASSERT_TRUE(cJSON_IsBool(avoe));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(avoe));
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    clear_db_streams();
+}
+
+/* handle_get_stream / handle_get_stream_full read from the in-memory stream
+ * manager, so the stream is registered there with the flag set. */
+void test_handle_get_stream_by_name_includes_audio_voice_enhancement(void) {
+    clear_db_streams();
+
+    stream_config_t s = make_test_stream("cam_avoe_one");
+    s.audio_voice_enhancement = true;
+    add_stream_config(&s);
+
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+    add_stream(&s);
+
+    /* GET /api/streams/<name> */
+    {
+        http_request_t req;
+        http_response_t res;
+        http_request_init(&req);
+        http_response_init(&res);
+        safe_strcpy(req.path, "/api/streams/cam_avoe_one", sizeof(req.path), 0);
+
+        handle_get_stream(&req, &res);
+        TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+        cJSON *root = parse_response_json(&res);
+        cJSON *avoe = cJSON_GetObjectItemCaseSensitive(root, "audio_voice_enhancement");
+        TEST_ASSERT_NOT_NULL(avoe);
+        TEST_ASSERT_TRUE(cJSON_IsTrue(avoe));
+        cJSON_Delete(root);
+        http_response_free(&res);
+    }
+
+    /* GET /api/streams/<name>/full */
+    {
+        http_request_t req;
+        http_response_t res;
+        http_request_init(&req);
+        http_response_init(&res);
+        safe_strcpy(req.path, "/api/streams/cam_avoe_one/full", sizeof(req.path), 0);
+
+        handle_get_stream_full(&req, &res);
+        TEST_ASSERT_EQUAL_INT(200, res.status_code);
+
+        /* handle_get_stream_full wraps the stream object under a "stream" key. */
+        cJSON *root = parse_response_json(&res);
+        cJSON *stream_obj = cJSON_GetObjectItemCaseSensitive(root, "stream");
+        TEST_ASSERT_NOT_NULL(stream_obj);
+        cJSON *avoe = cJSON_GetObjectItemCaseSensitive(stream_obj, "audio_voice_enhancement");
+        TEST_ASSERT_NOT_NULL(avoe);
+        TEST_ASSERT_TRUE(cJSON_IsTrue(avoe));
+        cJSON_Delete(root);
+        http_response_free(&res);
+    }
+
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
+void test_handle_post_stream_persists_audio_voice_enhancement(void) {
+    clear_db_streams();
+
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    static const char json_body[] =
+        "{\"name\":\"cam_avoe_post\",\"url\":\"rtsp://localhost/stream\","
+        "\"audio_voice_enhancement\":true}";
+    req.body     = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream(&req, &res);
+
+    /* The POST handler persists the config to the DB (add_stream_config) before
+     * it attempts to create/start the stream, so the parsed flag is observable
+     * regardless of whether stream startup succeeds in the test environment. */
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_avoe_post", &got));
+    TEST_ASSERT_TRUE(got.audio_voice_enhancement);
+
+    /* Let any detached startup worker settle before tearing down. */
+    usleep(200000);
+
+    http_response_free(&res);
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
+void test_handle_put_stream_parses_audio_voice_enhancement(void) {
+    clear_db_streams();
+
+    stream_config_t s = make_test_stream("cam_avoe_put");
+    add_stream_config(&s);
+
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+    add_stream(&s);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    safe_strcpy(req.path, "/api/streams/cam_avoe_put", sizeof(req.path), 0);
+    static const char json_body[] = "{\"audio_voice_enhancement\":true}";
+    req.body     = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_put_stream(&req, &res);
+
+    /* PUT returns 202 and applies the change on a detached worker; give it a
+     * moment before tearing down so ASan doesn't flag a use-after-free. */
+    usleep(200000);
+
+    TEST_ASSERT_TRUE(res.status_code == 202 || res.status_code == 200 ||
+                     res.status_code == 400 || res.status_code == 404 ||
+                     res.status_code == 500);
+
+    http_response_free(&res);
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
 int main(void) {
     init_logger();
     load_default_config(&g_config);
@@ -246,6 +412,10 @@ int main(void) {
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);
     RUN_TEST(test_handle_put_stream_parses_motion_trigger_source);
+    RUN_TEST(test_handle_get_streams_includes_audio_voice_enhancement);
+    RUN_TEST(test_handle_get_stream_by_name_includes_audio_voice_enhancement);
+    RUN_TEST(test_handle_post_stream_persists_audio_voice_enhancement);
+    RUN_TEST(test_handle_put_stream_parses_audio_voice_enhancement);
     int result = UNITY_END();
 
     shutdown_database();

@@ -46,6 +46,7 @@ typedef struct {
     bool streaming_enabled; // Whether HLS streaming is enabled for this stream
     stream_protocol_t protocol; // Stream protocol (TCP, UDP, or ONVIF)
     bool record_audio; // Whether to record audio with video
+    bool audio_voice_enhancement; // Apply voice-enhancement filter chain to recordings (discussion #395). Opt-in, defaults off.
 
     // ONVIF specific fields
     char onvif_username[64];

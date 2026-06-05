@@ -605,6 +605,14 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
                 config.record_audio ? "enabled" : "disabled", config.name);
     }
 
+    // Opt-in voice-enhancement filter for recordings (discussion #395).
+    // Defaults to false in stream_config_t zero-init; only flipped on if
+    // the client explicitly requests it.
+    cJSON *audio_voice_enhancement = cJSON_GetObjectItem(stream_json, "audio_voice_enhancement");
+    if (audio_voice_enhancement && cJSON_IsBool(audio_voice_enhancement)) {
+        config.audio_voice_enhancement = cJSON_IsTrue(audio_voice_enhancement);
+    }
+
     // Check if backchannel_enabled flag is set in the request
     cJSON *backchannel_enabled = cJSON_GetObjectItem(stream_json, "backchannel_enabled");
     if (backchannel_enabled && cJSON_IsBool(backchannel_enabled)) {
@@ -1161,6 +1169,20 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             log_info("Audio recording changed from %s to %s - restart required",
                     prev_record_audio ? "enabled" : "disabled",
                     config.record_audio ? "enabled" : "disabled");
+        }
+    }
+
+    // Voice-enhancement is a runtime toggle — the filter graph is rebuilt on the
+    // next recording session, so flipping it doesn't require a stream restart.
+    // (Discussion #395.)
+    cJSON *audio_voice_enhancement = cJSON_GetObjectItem(stream_json, "audio_voice_enhancement");
+    if (audio_voice_enhancement && cJSON_IsBool(audio_voice_enhancement)) {
+        bool prev_avoe = config.audio_voice_enhancement;
+        config.audio_voice_enhancement = cJSON_IsTrue(audio_voice_enhancement);
+        if (prev_avoe != config.audio_voice_enhancement) {
+            config_changed = true;
+            log_info("Audio voice enhancement %s for stream %s",
+                    config.audio_voice_enhancement ? "enabled" : "disabled", config.name);
         }
     }
 

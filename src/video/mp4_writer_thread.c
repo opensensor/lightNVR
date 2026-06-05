@@ -224,6 +224,14 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 }
             }
 
+            // Propagate the per-stream voice-enhancement opt-in to the audio
+            // transcoder pool every segment.  set_audio_voice_enhancement()
+            // either flips the flag on the live transcoder slot or stages it
+            // for the next init.  Cheap: just two pool walks under a mutex
+            // (discussion #395).
+            set_audio_voice_enhancement(stream_name,
+                                        db_stream_config.audio_voice_enhancement);
+
             // Update audio recording setting if it has changed
             int has_audio = db_stream_config.record_audio ? 1 : 0;
             if (thread_ctx->writer->has_audio != has_audio) {

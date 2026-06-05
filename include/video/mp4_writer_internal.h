@@ -92,4 +92,31 @@ int transcode_audio_packet(const char *stream_name,
  */
 void cleanup_audio_transcoder(const char *stream_name);
 
+/**
+ * Opt the stream's audio transcoder in or out of the voice-enhancement filter
+ * chain (afftdn / highpass / lowpass — see discussion #395).
+ *
+ * Safe to call before the transcoder slot exists; the flag is staged and
+ * applied when the slot is allocated.  Safe to call repeatedly during a
+ * recording session — the filter graph is rebuilt lazily on the next packet
+ * after a state flip.
+ *
+ * @param stream_name Stream name (same key used for transcode_audio_packet)
+ * @param enabled     Whether voice enhancement should be applied
+ */
+void set_audio_voice_enhancement(const char *stream_name, bool enabled);
+
+/**
+ * Query the effective voice-enhancement state for a stream.
+ *
+ * Returns the live transcoder's flag when a slot is allocated, otherwise the
+ * staged opt-in set via set_audio_voice_enhancement(), or false when neither
+ * exists.  Mirrors the lookup init_audio_transcoder() performs, so callers can
+ * read back exactly what the transcode path will use.
+ *
+ * @param stream_name Stream name (same key used for transcode_audio_packet)
+ * @return true if voice enhancement is (or will be) applied for this stream
+ */
+bool get_audio_voice_enhancement(const char *stream_name);
+
 #endif /* MP4_WRITER_INTERNAL_H */
