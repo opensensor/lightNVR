@@ -188,7 +188,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     /*
      * Compose the multi-source list for go2rtc.
      *
-     * Source 0 is always the primary RTSP URL. We optionally append:
+     * Source 0 is always the primary source URL. We optionally append:
      *
      *   - ffmpeg:<id>#audio=aac#audio=opus   when record_audio is true.
      *     A single ffmpeg process emits two audio tracks:
