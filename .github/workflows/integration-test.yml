@@ -43,7 +43,7 @@ jobs:
             gpg
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -132,7 +132,7 @@ jobs:
           echo "Coverage report generated at coverage-report/"
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: c-coverage-report
@@ -140,7 +140,7 @@ jobs:
           retention-days: 30
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -150,7 +150,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload test results on failure
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: unity-test-results
@@ -191,7 +191,7 @@ jobs:
             gpg
 
       - name: Checkout (with go2rtc submodule)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -258,7 +258,7 @@ jobs:
           lcov --list coverage_filtered.info
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -268,7 +268,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload test artifacts on failure
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: go2rtc-unity-test-results
@@ -310,7 +310,7 @@ jobs:
             procps
 
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -453,7 +453,7 @@ jobs:
           CI: true
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
@@ -461,7 +461,7 @@ jobs:
           retention-days: 30
 
       - name: Upload test screenshots
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-screenshots
@@ -469,7 +469,7 @@ jobs:
           retention-days: 7
 
       - name: Upload lightNVR logs
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: lightnvr-logs

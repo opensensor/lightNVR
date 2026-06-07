@@ -47,7 +47,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -302,7 +302,7 @@ jobs:
           echo "Built: pkg/${PKG_NAME}.deb ($(du -sh "pkg/${PKG_NAME}.deb" | cut -f1))"
 
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: deb-${{ matrix.debian_suite }}-${{ matrix.deb_arch }}
           path: pkg/*.deb
@@ -316,7 +316,7 @@ jobs:
 
     steps:
       - name: Download all .deb artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: deb-*
           merge-multiple: true
@@ -326,7 +326,7 @@ jobs:
         run: ls -lh packages/
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: packages/*.deb
