@@ -219,6 +219,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // WebRTC connects directly to go2rtc for lower latency
     // Streams list endpoint (for health check)
     http_server_register_handler(server, "/go2rtc/api/streams", "GET", handle_go2rtc_proxy);
+    // Stream reload endpoint
+    http_server_register_handler(server, "/go2rtc/api/reload", "POST", handle_go2rtc_proxy);
     // HLS manifest endpoint
     http_server_register_handler(server, "/go2rtc/api/stream.m3u8", "GET", handle_go2rtc_proxy);
     // HLS segments (fMP4 and MPEG-TS)
@@ -256,4 +258,3 @@ int register_static_file_handler(http_server_handle_t server) {
 
     return 0;
 }
-

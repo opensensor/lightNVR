@@ -115,6 +115,7 @@ static bool should_proxy_path(const char *path) {
     // Only proxy HLS streaming endpoints and health check
     // WebRTC connects directly to go2rtc for lower latency
     if (strstr(path, "/api/streams") != NULL) return true;   // Health check endpoint
+    if (strstr(path, "/api/reload") != NULL) return true;    // Stream reload endpoint
     if (strstr(path, "/api/stream.m3u8") != NULL) return true;
     if (strstr(path, "/api/hls/") != NULL) return true;
     if (strstr(path, "/api/frame.jpeg") != NULL) return true;
@@ -263,4 +264,3 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
               req->method_str, req->path, ctx.http_code, ctx.buffer_size,
               ctx.content_type[0] ? ctx.content_type : "unknown");
 }
-
