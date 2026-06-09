@@ -159,7 +159,7 @@ static bool go2rtc_sanitize_rtsp_fragments(char *url, size_t url_size, const cha
             }
         } else {
             log_warn("Stream %s: dropping unsupported RTSP source fragment '#%.*s' "
-                     "(go2rtc would ignore it)", stream_id, (int)tok_len, tok);
+                     "(value redacted; go2rtc would ignore it)", stream_id, (int)key_len, tok);
         }
 
         if (!end) {
