@@ -111,7 +111,7 @@ static bool go2rtc_rtsp_fragment_key_supported(const char *key, size_t len) {
         "pkt_size", "log_level", "source", "mp4", "weak_timeout"
     };
     for (size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
-        if (strlen(known[i]) == len && strncasecmp(known[i], key, len) == 0) {
+        if (strlen(known[i]) == len && strncmp(known[i], key, len) == 0) {
             return true;
         }
     }
