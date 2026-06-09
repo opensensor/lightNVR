@@ -90,6 +90,88 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
     return true;
 }
 
+/*
+ * go2rtc's RTSP source only understands a fixed set of '#' fragment keys
+ * (internal/rtsp/rtsp.go: transport, timeout, backchannel, media, pkt_size,
+ * log_level, source, mp4, weak_timeout). It parses the fragment with strings.Cut + ParseQuery,
+ * so any other token an operator appends to the camera URL — most commonly
+ * "#noaudio" — is silently swallowed: it neither errors nor does what the
+ * operator intended, and it rides along in the stored source confusing later
+ * inspection. We sanitize the fragment of native rtsp:// sources here so only
+ * supported keys survive, and we promote the common "#noaudio" intent into an
+ * actual audio-producer suppression instead of a no-op. (#429)
+ *
+ * Only valueless flags and the known keys are considered; non-RTSP sources
+ * (ffmpeg:, wyze://, onvif://, http://, ...) are never passed here, so their
+ * fragments are left untouched.
+ */
+static bool go2rtc_rtsp_fragment_key_supported(const char *key, size_t len) {
+    static const char *const known[] = {
+        "transport", "timeout", "backchannel", "media",
+        "pkt_size", "log_level", "source", "mp4", "weak_timeout"
+    };
+    for (size_t i = 0; i < sizeof(known) / sizeof(known[0]); i++) {
+        if (strlen(known[i]) == len && strncmp(known[i], key, len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Rewrite `url` in place, dropping unsupported fragment tokens. Returns true if a
+// "#noaudio" intent token was present so the caller can suppress the audio source.
+static bool go2rtc_sanitize_rtsp_fragments(char *url, size_t url_size, const char *stream_id) {
+    char *hash = strchr(url, '#');
+    if (!hash) {
+        return false;
+    }
+
+    bool suppress_audio = false;
+    char rebuilt[URL_BUFFER_SIZE];
+    size_t base_len = (size_t)(hash - url);
+    if (base_len >= sizeof(rebuilt)) {
+        return false; // pathologically long base; leave the URL untouched
+    }
+    memcpy(rebuilt, url, base_len);
+    rebuilt[base_len] = '\0';
+    size_t out = base_len;
+
+    for (const char *p = hash + 1; *p; ) {
+        const char *tok = p;
+        const char *end = strchr(p, '#');
+        size_t tok_len = end ? (size_t)(end - tok) : strlen(tok);
+
+        // Key is the part before '=' (or the whole token for valueless flags).
+        const char *eq = memchr(tok, '=', tok_len);
+        size_t key_len = eq ? (size_t)(eq - tok) : tok_len;
+
+        if ((key_len == 7 && strncasecmp(tok, "noaudio", 7) == 0) ||
+            (key_len == 8 && strncasecmp(tok, "no-audio", 8) == 0)) {
+            suppress_audio = true;
+            log_info("Stream %s: '#noaudio' in source URL -> suppressing go2rtc audio producer",
+                     stream_id);
+        } else if (go2rtc_rtsp_fragment_key_supported(tok, key_len)) {
+            if (out + tok_len + 1 < url_size && out + tok_len + 1 < sizeof(rebuilt)) {
+                rebuilt[out++] = '#';
+                memcpy(rebuilt + out, tok, tok_len);
+                out += tok_len;
+                rebuilt[out] = '\0';
+            }
+        } else {
+            log_warn("Stream %s: dropping unsupported RTSP source fragment '#%.*s' "
+                     "(value redacted; go2rtc would ignore it)", stream_id, (int)key_len, tok);
+        }
+
+        if (!end) {
+            break;
+        }
+        p = end + 1;
+    }
+
+    safe_strcpy(url, rebuilt, url_size, 0);
+    return suppress_audio;
+}
+
 bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
                            const char *username, const char *password,
                            bool backchannel_enabled, stream_protocol_t protocol,
@@ -159,7 +241,14 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     bool is_rtsp = (strncmp(modified_url, "rtsp://", 7) == 0 ||
                     strncmp(modified_url, "rtsps://", 8) == 0);
 
+    // Drop fragment tokens go2rtc can't act on (e.g. a hand-added "#noaudio")
+    // before we append our own, and honor a "#noaudio" request by suppressing the
+    // audio producer below. Only native rtsp:// sources are sanitized. (#429)
+    bool suppress_audio = false;
+
     if (is_rtsp) {
+        suppress_audio = go2rtc_sanitize_rtsp_fragments(modified_url, URL_BUFFER_SIZE, stream_id);
+
         char fragment_params[256] = {0};
         int offset = 0;
 
@@ -228,7 +317,7 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     sources[num_sources++] = modified_url;
 
     char ffmpeg_audio_source[URL_BUFFER_SIZE];
-    if (record_audio) {
+    if (record_audio && !suppress_audio) {
         // Emit AAC (for MP4 recording + MPEG-TS HLS) and OPUS (for WebRTC)
         // from one ffmpeg process — go2rtc cannot transcode AAC->OPUS itself,
         // so the OPUS track is what actually makes audio audible in the
