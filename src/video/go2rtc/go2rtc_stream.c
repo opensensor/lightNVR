@@ -93,7 +93,7 @@ bool go2rtc_stream_init(const char *binary_path, const char *config_dir, int api
 /*
  * go2rtc's RTSP source only understands a fixed set of '#' fragment keys
  * (internal/rtsp/rtsp.go: transport, timeout, backchannel, media, pkt_size,
- * log_level, source, mp4). It parses the fragment with strings.Cut + ParseQuery,
+ * log_level, source, mp4, weak_timeout). It parses the fragment with strings.Cut + ParseQuery,
  * so any other token an operator appends to the camera URL — most commonly
  * "#noaudio" — is silently swallowed: it neither errors nor does what the
  * operator intended, and it rides along in the stored source confusing later
