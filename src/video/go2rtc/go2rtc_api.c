@@ -772,18 +772,11 @@ bool go2rtc_api_preload_stream(const char *stream_id) {
         return false;
     }
 
-    // First attempt: video+audio (10 s timeout).
-    // Cameras with an incompatible or absent audio track cause go2rtc to stall
-    // negotiating audio, making this call time out.  If that happens, fall back
-    // to video-only preload so the producer is at least kept alive for HLS and
-    // motion/object detection (which only need video frames).
-    if (preload_attempt(stream_id, "video&audio", 10L)) {
-        return true;
-    }
-
-    log_warn("video+audio preload timed out or failed for stream %s — retrying with video-only "
-             "(camera may lack a compatible audio track)", stream_id);
-
+    // Background preload exists to keep the camera producer warm for HLS and
+    // detection snapshots. Those paths only need video. Asking go2rtc for audio
+    // here keeps the optional ffmpeg AAC/OPUS producer alive indefinitely, which
+    // can fan out into high CPU across many cameras (#437). Recording/WebRTC
+    // consumers still request audio explicitly when they need it.
     return preload_attempt(stream_id, "video", 10L);
 }
 

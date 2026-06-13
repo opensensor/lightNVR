@@ -107,10 +107,12 @@ bool go2rtc_api_get_application_info(int *rtsp_port,
 /**
  * @brief Preload a stream in go2rtc to keep it active
  *
- * This keeps a persistent consumer connected to the stream, ensuring
- * the producer (camera connection) stays active. This is essential for
- * detection-based recording, as it ensures snapshots are always available
- * without needing an active WebRTC viewer.
+ * This keeps a persistent video-only consumer connected to the stream,
+ * ensuring the producer (camera connection) stays active. This is essential
+ * for detection-based recording, as it ensures snapshots are always available
+ * without needing an active WebRTC viewer. Audio is intentionally not requested
+ * by this background keepalive; recording/WebRTC consumers request audio when
+ * they actually need it.
  *
  * @param stream_id Identifier of the stream to preload
  * @return true if stream was preloaded successfully, false otherwise
