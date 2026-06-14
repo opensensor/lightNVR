@@ -966,7 +966,7 @@ export function StreamsView() {
 
   // ONVIF discovery mutation
   const onvifDiscoveryMutation = usePostMutation(
-    '/api/onvif/discover',
+    '/api/onvif/discovery/discover',
     {
       timeout: 120000,
       retries: 0
