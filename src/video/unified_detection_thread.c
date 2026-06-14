@@ -38,6 +38,7 @@
 #include "core/config.h"
 #include "core/path_utils.h"
 #include "core/shutdown_coordinator.h"
+#include "core/mqtt_client.h"
 #include "utils/strings.h"
 #include "video/unified_detection_thread.h"
 #include "video/packet_buffer.h"
@@ -2469,6 +2470,14 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
             if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
                 log_warn("[%s] Failed to store motion detections in database", ctx->stream_name);
             }
+
+            // Keep MQTT/Home Assistant motion topics in sync with built-in
+            // motion detections. Other detection backends publish here via
+            // their own pipelines; built-in motion must do the same after
+            // threshold and zone filtering.
+            mqtt_publish_detection(ctx->stream_name, &result, now);
+            mqtt_set_motion_state(ctx->stream_name, &result);
+
             pthread_mutex_lock(&ctx->mutex);
             ctx->total_detections += result.count;
             pthread_mutex_unlock(&ctx->mutex);
