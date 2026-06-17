@@ -194,11 +194,23 @@ static ezxml_t find_child(ezxml_t parent, const char *name) {
 // Find a child element by name with namespace prefix
 static ezxml_t find_child_with_ns(ezxml_t parent, const char *ns, const char *name) {
     if (!parent) return NULL;
-    
+
     char full_name[256];
     snprintf(full_name, sizeof(full_name), "%s:%s", ns, name);
-    
+
     return ezxml_child(parent, full_name);
+}
+
+// Find the SOAP Body element regardless of namespace prefix used by the device.
+// Different vendors use: s:Body (onvif_simple_server), SOAP-ENV:Body (generic),
+// env:Body (HikVision and other cameras using the standard "env" abbreviation).
+static ezxml_t find_soap_body(ezxml_t xml) {
+    if (!xml) return NULL;
+    ezxml_t body = ezxml_child(xml, "SOAP-ENV:Body");
+    if (!body) body = ezxml_child(xml, "s:Body");
+    if (!body) body = ezxml_child(xml, "env:Body");
+    if (!body) body = ezxml_child(xml, "Body");
+    return body;
 }
 
 // Find all elements with a specific name
@@ -243,13 +255,7 @@ static char* get_media_service_url(const char *device_url, const char *username,
     // Find the media service URL
     char *media_url = NULL;
     
-    // Try with SOAP-ENV namespace first
-    ezxml_t body = find_child(xml, "SOAP-ENV:Body");
-    if (!body) {
-        // Try with s namespace (used by onvif_simple_server)
-        body = find_child(xml, "s:Body");
-        log_info("Using 's:Body' namespace for XML parsing");
-    }
+    ezxml_t body = find_soap_body(xml);
     
     if (body) {
         // Try with tds namespace
@@ -387,7 +393,7 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
     ezxml_t profile_elements[max_profiles];
     int profile_count = 0;
     
-    ezxml_t body = find_child(xml, "SOAP-ENV:Body");
+    ezxml_t body = find_soap_body(xml);
     if (body) {
         ezxml_t get_profiles_response = find_child(body, "trt:GetProfilesResponse");
         if (get_profiles_response) {
@@ -522,7 +528,7 @@ int get_onvif_stream_url(const char *device_url, const char *username,
     
     // Extract the URI
     const char *uri = NULL;
-    ezxml_t body = find_child(xml, "SOAP-ENV:Body");
+    ezxml_t body = find_soap_body(xml);
     if (body) {
         ezxml_t get_stream_uri_response = find_child(body, "trt:GetStreamUriResponse");
         if (get_stream_uri_response) {

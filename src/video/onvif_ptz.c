@@ -406,8 +406,9 @@ int onvif_ptz_get_presets(const char *ptz_url, const char *profile_token,
     if (xml) {
         // Find Preset elements in the response
         ezxml_t body = ezxml_child(xml, "s:Body");
-        if (!body) body = ezxml_child(xml, "Body");
         if (!body) body = ezxml_child(xml, "SOAP-ENV:Body");
+        if (!body) body = ezxml_child(xml, "env:Body");
+        if (!body) body = ezxml_child(xml, "Body");
 
         if (body) {
             ezxml_t get_presets_response = ezxml_child(body, "tptz:GetPresetsResponse");
@@ -513,6 +514,8 @@ int onvif_ptz_set_preset(const char *ptz_url, const char *profile_token,
         ezxml_t xml = ezxml_parse_str(response, strlen(response));
         if (xml) {
             ezxml_t body = ezxml_child(xml, "s:Body");
+            if (!body) body = ezxml_child(xml, "SOAP-ENV:Body");
+            if (!body) body = ezxml_child(xml, "env:Body");
             if (!body) body = ezxml_child(xml, "Body");
             if (body) {
                 ezxml_t set_preset_response = ezxml_child(body, "tptz:SetPresetResponse");
