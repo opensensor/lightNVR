@@ -68,7 +68,7 @@ export function urlHasCredentials(url) {
  */
 export function shouldHideCredentials(userRole, isDemoMode) {
   // Hide credentials in demo mode or for viewer role
-  return isDemoMode === true || userRole === 'viewer';
+  return isDemoMode || userRole === 'viewer';
 }
 
 /**

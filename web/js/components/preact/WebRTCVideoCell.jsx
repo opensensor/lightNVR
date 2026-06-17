@@ -298,7 +298,7 @@ export function WebRTCVideoCell({
 
         // Function to attempt play with retry logic
         const attemptPlay = () => {
-          if (!videoElement || videoElement.paused === false) {
+          if (!videoElement || !videoElement.paused) {
             // Already playing or element gone
             return;
           }
@@ -344,8 +344,6 @@ export function WebRTCVideoCell({
           clearTimeout(videoDataTimeout);
         }
         let videoDataCheckCount = 0;
-        const maxVideoDataChecks = MAX_VIDEO_DATA_CHECKS;
-        const videoDataCheckInterval = VIDEO_DATA_CHECK_INTERVAL_MS;
 
         const scheduleVideoDataCheck = () => {
           videoDataTimeout = setTimeout(() => {
@@ -362,8 +360,8 @@ export function WebRTCVideoCell({
               : 'closed';
 
             console.warn(
-              `No video data for stream ${stream.name} after ${videoDataCheckCount * videoDataCheckInterval / 1000}s ` +
-              `(check ${videoDataCheckCount}/${maxVideoDataChecks}, ICE: ${iceState}, ` +
+              `No video data for stream ${stream.name} after ${videoDataCheckCount * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s ` +
+              `(check ${videoDataCheckCount}/${MAX_VIDEO_DATA_CHECKS}, ICE: ${iceState}, ` +
               `readyState: ${videoElement ? videoElement.readyState : 'N/A'})`
             );
 
@@ -377,7 +375,7 @@ export function WebRTCVideoCell({
             // ICE is still connected/checking — camera stream may still be
             // coming up.  Keep loading state and schedule another check unless
             // we've exceeded the maximum wait time.
-            if (videoDataCheckCount < maxVideoDataChecks) {
+            if (videoDataCheckCount < MAX_VIDEO_DATA_CHECKS) {
               console.log(`ICE still ${iceState} for stream ${stream.name}, waiting for camera stream...`);
               // Re-attempt play() in case the element got stuck. Failures here are non-fatal;
               // the surrounding retry logic will handle recovery.
@@ -405,7 +403,7 @@ export function WebRTCVideoCell({
                 noDataReconnectAttemptsRef.current++;
                 console.log(
                   `Auto-reconnecting stream ${stream.name}: ICE connected but no video data ` +
-                  `after ${videoDataCheckCount * videoDataCheckInterval / 1000}s ` +
+                  `after ${videoDataCheckCount * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s ` +
                   `(attempt ${noDataReconnectAttemptsRef.current}/${MAX_NO_DATA_RECONNECT_ATTEMPTS})`
                 );
                 (async () => {
@@ -424,11 +422,11 @@ export function WebRTCVideoCell({
               scheduleVideoDataCheck();
             } else {
               // Exceeded 90 seconds — give up and show error
-              console.error(`Stream ${stream.name} connected but no video data after ${maxVideoDataChecks * videoDataCheckInterval / 1000}s`);
+              console.error(`Stream ${stream.name} connected but no video data after ${MAX_VIDEO_DATA_CHECKS * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s`);
               setError(t('live.streamConnectedNoVideoDataRetry'));
               setIsLoading(false);
             }
-          }, videoDataCheckInterval);
+          }, VIDEO_DATA_CHECK_INTERVAL_MS);
         };
 
         scheduleVideoDataCheck();
@@ -707,8 +705,6 @@ export function WebRTCVideoCell({
         // On slower devices, go2rtc may not have the stream ready yet when we
         // first try to send the offer, resulting in a 404. We retry with
         // exponential backoff to give it time.
-        const maxOfferRetries = MAX_OFFER_RETRIES;
-        const baseRetryDelayMs = BASE_RETRY_DELAY_MS;
 
         const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
         const sendOfferWithRetry = async (attempt) => {

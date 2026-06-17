@@ -242,7 +242,7 @@ export function subscribeToLocaleChange(listener) {
 }
 
 export function useI18n() {
-  const [, setVersion] = useState(0);
+  const [, setVersion] = useState(0); // intentional: state value unused; setVersion used only to force re-render
 
   useEffect(() => {
     let mounted = true;
