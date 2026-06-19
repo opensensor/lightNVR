@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "檢測所使用的推理後端API",
   "settings.defaultDetectionThreshold": "預設檢測閾值",
   "settings.defaultDetectionThresholdHelp": "檢測置信閾值（0-100%）",
+  "settings.detectionGracePeriod": "檢測寬限期（秒）",
+  "settings.detectionGracePeriodHelp": "最後一次檢測後錄製切換至後置緩衝區之前的秒數。若檢測存在短暫間隔但應視為連續動作，請增大此值（0–60，預設：2）。",
   "settings.defaultPreDetectionBufferSeconds": "預設預檢測緩衝區（秒）",
   "settings.defaultPreDetectionBufferHelp": "檢測前保留的影片秒數",
   "settings.defaultPostDetectionBufferSeconds": "預設檢測後緩衝區（秒）",

@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Von der Erkennung verwendetes Inferenz-Backend API",
   "settings.defaultDetectionThreshold": "Standarderkennungsschwelle",
   "settings.defaultDetectionThresholdHelp": "Vertrauensschwelle für die Erkennung (0–100 %)",
+  "settings.detectionGracePeriod": "Erkennungs-Toleranzzeit (Sekunden)",
+  "settings.detectionGracePeriodHelp": "Sekunden nach der letzten Erkennung, bevor die Aufnahme in den Nachpuffer wechselt. Erhöhen Sie diesen Wert, wenn Erkennungen kurze Lücken aufweisen, die als kontinuierliche Bewegung behandelt werden sollen (0–60, Standard: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Standard-Vorerkennungspuffer (Sekunden)",
   "settings.defaultPreDetectionBufferHelp": "Sekundenlanges Video, das vor der Erkennung aufbewahrt werden muss",
   "settings.defaultPostDetectionBufferSeconds": "Standardpuffer nach der Erkennung (Sekunden)",

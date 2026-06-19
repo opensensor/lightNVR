@@ -464,6 +464,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "pre_detection_buffer", g_config.default_pre_detection_buffer);
     cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
     cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
+    cJSON_AddNumberToObject(settings, "detection_grace_period", g_config.detection_grace_period);
 
     // Auth timeout
     cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
@@ -1064,6 +1065,14 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         safe_strcpy(g_config.default_buffer_strategy, buffer_strategy->valuestring, sizeof(g_config.default_buffer_strategy), 0);
         settings_changed = true;
         log_info("Updated default_buffer_strategy: %s", g_config.default_buffer_strategy);
+    }
+
+    // Detection grace period
+    cJSON *detection_grace_period = cJSON_GetObjectItem(settings, "detection_grace_period");
+    if (detection_grace_period && cJSON_IsNumber(detection_grace_period)) {
+        config_set_detection_grace_period(&g_config, detection_grace_period->valueint);
+        settings_changed = true;
+        log_info("Updated detection_grace_period: %d seconds", g_config.detection_grace_period);
     }
 
     // API detection URL

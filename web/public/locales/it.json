@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Backend di inferenza utilizzato dal rilevamento API",
   "settings.defaultDetectionThreshold": "Soglia di rilevamento predefinita",
   "settings.defaultDetectionThresholdHelp": "Soglia di confidenza per il rilevamento (0-100%)",
+  "settings.detectionGracePeriod": "Periodo di tolleranza rilevamento (secondi)",
+  "settings.detectionGracePeriodHelp": "Secondi dopo l'ultimo rilevamento prima che la registrazione passi al buffer post-rilevamento. Aumentare se i rilevamenti presentano brevi lacune che devono essere trattate come movimento continuo (0–60, predefinito: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Buffer di pre-rilevamento predefinito (secondi)",
   "settings.defaultPreDetectionBufferHelp": "Secondi di video da conservare prima del rilevamento",
   "settings.defaultPostDetectionBufferSeconds": "Buffer post-rilevamento predefinito (secondi)",

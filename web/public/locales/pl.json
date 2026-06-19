@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Backend wnioskowania używany przez detekcję API",
   "settings.defaultDetectionThreshold": "Domyślny próg wykrywania",
   "settings.defaultDetectionThresholdHelp": "Próg ufności dla wykrycia (0-100%)",
+  "settings.detectionGracePeriod": "Okres tolerancji detekcji (sekundy)",
+  "settings.detectionGracePeriodHelp": "Sekundy po ostatnim wykryciu przed przejściem nagrania do bufora końcowego. Zwiększ, jeśli detekcje mają krótkie przerwy, które powinny być traktowane jako ciągły ruch (0–60, domyślnie: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Domyślny bufor wstępnego wykrywania (sekundy)",
   "settings.defaultPreDetectionBufferHelp": "Sekundy filmu, które należy zachować przed wykryciem",
   "settings.defaultPostDetectionBufferSeconds": "Domyślny bufor po wykryciu (sekundy)",

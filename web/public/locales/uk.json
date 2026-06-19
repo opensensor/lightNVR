@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Сервер виведення, який використовується виявленням API",
   "settings.defaultDetectionThreshold": "Поріг виявлення за замовчуванням",
   "settings.defaultDetectionThresholdHelp": "Достовірний поріг виявлення (0-100%)",
+  "settings.detectionGracePeriod": "Пільговий період виявлення (секунди)",
+  "settings.detectionGracePeriodHelp": "Секунди після останнього виявлення до переходу запису в пост-буфер. Збільшіть значення, якщо виявлення мають короткі паузи, які слід вважати безперервним рухом (0–60, за замовчуванням: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Буфер попереднього виявлення за замовчуванням (секунди)",
   "settings.defaultPreDetectionBufferHelp": "Секунди відео, які потрібно зберегти до виявлення",
   "settings.defaultPostDetectionBufferSeconds": "Буфер після виявлення за замовчуванням (секунди)",

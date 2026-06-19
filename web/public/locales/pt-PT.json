@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Backend de inferência usado pela API de deteção",
   "settings.defaultDetectionThreshold": "Limiar de deteção predefinido",
   "settings.defaultDetectionThresholdHelp": "Limiar de confiança para deteção (0-100%)",
+  "settings.detectionGracePeriod": "Período de tolerância da deteção (segundos)",
+  "settings.detectionGracePeriodHelp": "Segundos após a última deteção antes de a gravação transitar para o buffer pós-deteção. Aumente se as deteções tiverem breves lacunas que devem ser tratadas como movimento contínuo (0–60, predefinição: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Buffer pré-deteção predefinido (segundos)",
   "settings.defaultPreDetectionBufferHelp": "Segundos de vídeo a manter antes da deteção",
   "settings.defaultPostDetectionBufferSeconds": "Buffer pós-deteção predefinido (segundos)",

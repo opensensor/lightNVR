@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "検出で使用される推論バックエンド API",
   "settings.defaultDetectionThreshold": "デフォルトの検出しきい値",
   "settings.defaultDetectionThresholdHelp": "検出の信頼しきい値 (0 ～ 100%)",
+  "settings.detectionGracePeriod": "検出グレース期間（秒）",
+  "settings.detectionGracePeriodHelp": "最後の検出後、録画がポストバッファーに移行するまでの秒数。検出に短い間隔があり、連続した動きとして扱うべき場合は増やしてください（0～60、デフォルト: 2）。",
   "settings.defaultPreDetectionBufferSeconds": "デフォルトの事前検出バッファー (秒)",
   "settings.defaultPreDetectionBufferHelp": "検出されるまでに保存するビデオの秒数",
   "settings.defaultPostDetectionBufferSeconds": "デフォルトの検出後バッファ (秒)",

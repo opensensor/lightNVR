@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Inferentie-backend gebruikt door de detectie API",
   "settings.defaultDetectionThreshold": "Standaard detectiedrempel",
   "settings.defaultDetectionThresholdHelp": "Betrouwbaarheidsdrempel voor detectie (0-100%)",
+  "settings.detectionGracePeriod": "Detectie-uitlooptijd (seconden)",
+  "settings.detectionGracePeriodHelp": "Seconden na de laatste detectie voordat de opname overgaat naar de nabuffer. Verhoog dit als detecties korte onderbrekingen hebben die als continue beweging moeten worden behandeld (0–60, standaard: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Standaard voordetectiebuffer (seconden)",
   "settings.defaultPreDetectionBufferHelp": "Aantal seconden video dat moet worden bewaard vóór detectie",
   "settings.defaultPostDetectionBufferSeconds": "Standaard post-detectiebuffer (seconden)",

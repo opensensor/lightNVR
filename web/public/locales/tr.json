@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Algılama API tarafından kullanılan çıkarım arka ucu",
   "settings.defaultDetectionThreshold": "Varsayılan Algılama Eşiği",
   "settings.defaultDetectionThresholdHelp": "Tespit için güven eşiği (%0-100)",
+  "settings.detectionGracePeriod": "Algılama Tolerans Süresi (saniye)",
+  "settings.detectionGracePeriodHelp": "Son algılamadan sonra kaydın son arabelleğe geçmesine kadar geçen saniye sayısı. Algılamalar sürekli hareket olarak değerlendirilmesi gereken kısa aralıklara sahipse artırın (0–60, varsayılan: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Varsayılan Ön Tespit Arabelleği (saniye)",
   "settings.defaultPreDetectionBufferHelp": "Tespit edilmeden önce saklanacak saniyelik video",
   "settings.defaultPostDetectionBufferSeconds": "Varsayılan Algılama Sonrası Ara Bellek (saniye)",

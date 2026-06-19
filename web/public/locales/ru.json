@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Сервер вывода, используемый для обнаружения API",
   "settings.defaultDetectionThreshold": "Порог обнаружения по умолчанию",
   "settings.defaultDetectionThresholdHelp": "Порог уверенности для обнаружения (0–100 %)",
+  "settings.detectionGracePeriod": "Льготный период обнаружения (секунды)",
+  "settings.detectionGracePeriodHelp": "Секунды после последнего обнаружения до перехода записи в пост-буфер. Увеличьте значение, если обнаружения имеют короткие паузы, которые следует считать непрерывным движением (0–60, по умолчанию: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Буфер предварительного обнаружения по умолчанию (секунды)",
   "settings.defaultPreDetectionBufferHelp": "Секунды видео, которые нужно сохранить до обнаружения",
   "settings.defaultPostDetectionBufferSeconds": "Буфер после обнаружения по умолчанию (секунды)",

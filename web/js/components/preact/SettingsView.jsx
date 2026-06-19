@@ -112,6 +112,7 @@ export function SettingsView() {
     defaultPreBuffer: 5,
     defaultPostBuffer: 10,
     bufferStrategy: 'auto',
+    detectionGracePeriod: 2,
     // go2rtc settings
     go2rtcEnabled: true,
     go2rtcBinaryPath: '/usr/local/bin/go2rtc',
@@ -334,6 +335,7 @@ export function SettingsView() {
       defaultPreBuffer: settingsData.pre_detection_buffer ?? 5,
       defaultPostBuffer: settingsData.post_detection_buffer ?? 10,
       bufferStrategy: settingsData.buffer_strategy || 'auto',
+      detectionGracePeriod: settingsData.detection_grace_period ?? 2,
       go2rtcEnabled: settingsData.go2rtc_enabled !== undefined ? settingsData.go2rtc_enabled : true,
       go2rtcBinaryPath: settingsData.go2rtc_binary_path || '/usr/local/bin/go2rtc',
       go2rtcConfigDir: settingsData.go2rtc_config_dir || '/etc/lightnvr/go2rtc',
@@ -448,6 +450,7 @@ export function SettingsView() {
       pre_detection_buffer: parseInt(settings.defaultPreBuffer, 10),
       post_detection_buffer: parseInt(settings.defaultPostBuffer, 10),
       buffer_strategy: settings.bufferStrategy,
+      detection_grace_period: parseInt(settings.detectionGracePeriod, 10),
       go2rtc_enabled: settings.go2rtcEnabled,
       go2rtc_binary_path: settings.go2rtcBinaryPath,
       go2rtc_config_dir: settings.go2rtcConfigDir,

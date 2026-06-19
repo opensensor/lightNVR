@@ -92,6 +92,23 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
             <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.defaultDetectionThresholdHelp')}</span>
           </div>
         </div>
+        <div data-setting-label={t('settings.detectionGracePeriod')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-detection-grace-period" class="font-medium">{t('settings.detectionGracePeriod')}</label>
+          <div class="col-span-2">
+            <input
+              type="number"
+              id="setting-detection-grace-period"
+              name="detectionGracePeriod"
+              min="0"
+              max="60"
+              class="p-2 border border-input rounded bg-background text-foreground w-24 disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.detectionGracePeriod}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            />
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.detectionGracePeriodHelp')}</span>
+          </div>
+        </div>
       </div>
     </div>
   );

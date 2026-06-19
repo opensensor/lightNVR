@@ -1065,6 +1065,8 @@
   "settings.apiDetectionBackendHelp": "감지 API에 사용되는 추론 백엔드",
   "settings.defaultDetectionThreshold": "기본 감지 임계값",
   "settings.defaultDetectionThresholdHelp": "감지 신뢰도 임계값 (0~100%)",
+  "settings.detectionGracePeriod": "감지 유예 기간 (초)",
+  "settings.detectionGracePeriodHelp": "마지막 감지 후 녹화가 사후 버퍼로 전환되기까지의 초 수. 감지에 연속 움직임으로 처리해야 할 짧은 간격이 있는 경우 늘리세요 (0–60, 기본값: 2).",
   "settings.defaultPreDetectionBufferSeconds": "기본 감지 전 버퍼 (초)",
   "settings.defaultPreDetectionBufferHelp": "감지 전 보존할 영상 시간 (초)",
   "settings.defaultPostDetectionBufferSeconds": "기본 감지 후 버퍼 (초)",

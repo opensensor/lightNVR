@@ -1065,6 +1065,8 @@
   "settings.apiDetectionBackendHelp": "Inference backend used by the detection API",
   "settings.defaultDetectionThreshold": "Default Detection Threshold",
   "settings.defaultDetectionThresholdHelp": "Confidence threshold for detection (0-100%)",
+  "settings.detectionGracePeriod": "Detection Grace Period (seconds)",
+  "settings.detectionGracePeriodHelp": "Seconds after the last detection before recording transitions to post-buffer. Increase if detections have brief gaps that should be treated as continuous motion (0–60, default: 2).",
   "settings.defaultPreDetectionBufferSeconds": "Default Pre-detection Buffer (seconds)",
   "settings.defaultPreDetectionBufferHelp": "Seconds of video to keep before detection",
   "settings.defaultPostDetectionBufferSeconds": "Default Post-detection Buffer (seconds)",

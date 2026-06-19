@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "Backend d'inférence utilisé par la détection API",
   "settings.defaultDetectionThreshold": "Seuil de détection par défaut",
   "settings.defaultDetectionThresholdHelp": "Seuil de confiance pour la détection (0-100 %)",
+  "settings.detectionGracePeriod": "Délai de grâce de détection (secondes)",
+  "settings.detectionGracePeriodHelp": "Secondes après la dernière détection avant que l’enregistrement passe au tampon post-détection. Augmentez cette valeur si les détections ont de brèves interruptions devant être traitées comme un mouvement continu (0–60, par défaut : 2).",
   "settings.defaultPreDetectionBufferSeconds": "Tampon de pré-détection par défaut (secondes)",
   "settings.defaultPreDetectionBufferHelp": "Secondes de vidéo à conserver avant détection",
   "settings.defaultPostDetectionBufferSeconds": "Tampon de post-détection par défaut (secondes)",

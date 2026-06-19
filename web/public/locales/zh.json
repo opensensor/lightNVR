@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "检测使用的推理后端API",
   "settings.defaultDetectionThreshold": "默认检测阈值",
   "settings.defaultDetectionThresholdHelp": "检测置信阈值（0-100%）",
+  "settings.detectionGracePeriod": "检测宽限期（秒）",
+  "settings.detectionGracePeriodHelp": "最后一次检测后录制切换到后置缓冲区之前的秒数。如果检测存在短暂间隔但应视为连续运动，请增大此值（0–60，默认：2）。",
   "settings.defaultPreDetectionBufferSeconds": "默认预检测缓冲区（秒）",
   "settings.defaultPreDetectionBufferHelp": "检测前保留的视频秒数",
   "settings.defaultPostDetectionBufferSeconds": "默认检测后缓冲区（秒）",

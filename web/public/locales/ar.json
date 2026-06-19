@@ -1063,6 +1063,8 @@
   "settings.apiDetectionBackendHelp": "محرك الاستدلال المستخدم بواسطة API الاكتشاف",
   "settings.defaultDetectionThreshold": "عتبة الاكتشاف الافتراضية",
   "settings.defaultDetectionThresholdHelp": "عتبة الثقة للاكتشاف (0-100%)",
+  "settings.detectionGracePeriod": "فترة السماح للاكتشاف (ثوانٍ)",
+  "settings.detectionGracePeriodHelp": "الثواني بعد آخر اكتشاف قبل انتقال التسجيل إلى المخزن المؤقت اللاحق. زد هذه القيمة إذا كانت الاكتشافات تحتوي على فجوات قصيرة ينبغي التعامل معها كحركة مستمرة (0–60، الافتراضي: 2).",
   "settings.defaultPreDetectionBufferSeconds": "مخزن ما قبل الاكتشاف الافتراضي (ثوانٍ)",
   "settings.defaultPreDetectionBufferHelp": "عدد ثواني الفيديو المحفوظة قبل الاكتشاف",
   "settings.defaultPostDetectionBufferSeconds": "مخزن ما بعد الاكتشاف الافتراضي (ثوانٍ)",
