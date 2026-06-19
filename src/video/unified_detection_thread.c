@@ -112,7 +112,8 @@ static void  stop_detection_stream_thread(unified_detection_ctx_t *ctx);
 static bool  detect_on_decoded_frame(unified_detection_ctx_t *ctx,
                                      AVFrame *frame, time_t now,
                                      detection_result_t *result);
-static bool  run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt);
+static bool  run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
+                                    time_t frame_timestamp);
 /* Action layer */
 static void  report_detections(unified_detection_ctx_t *ctx,
                                 const detection_result_t *result, time_t now);
@@ -808,11 +809,16 @@ static void *detection_stream_thread_func(void *arg) {
                     bool hit = detect_on_decoded_frame(ctx, frame, now, &result);
 
                     if (hit) {
-                        /* Write result to shared slot then raise the flag.
-                         * process_packet() reads flag + slot and calls
-                         * report_detections() + handle_recording_state(). */
+                        /* Write result + its frame time to the shared slot, then
+                         * raise the flag. process_packet() reads flag + slot and
+                         * calls report_detections() + handle_recording_state().
+                         * Carrying the timestamp keeps detections.timestamp at
+                         * detection time rather than the consumer's later time —
+                         * matching the API path, which writes the DB here with
+                         * the same `now`. */
                         pthread_mutex_lock(&ctx->detection_stream_result_mutex);
                         ctx->detection_stream_pending = result;
+                        ctx->detection_stream_pending_ts = now;
                         pthread_mutex_unlock(&ctx->detection_stream_result_mutex);
                         atomic_store(&ctx->detection_stream_result, 1);
                     }
@@ -847,6 +853,7 @@ static int start_detection_stream_thread(unified_detection_ctx_t *ctx) {
     atomic_store(&ctx->detection_stream_connected, 0);
     atomic_store(&ctx->detection_stream_result, 0);
     memset(&ctx->detection_stream_pending, 0, sizeof(ctx->detection_stream_pending));
+    ctx->detection_stream_pending_ts = 0;
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -1054,6 +1061,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     atomic_store(&ctx->detection_stream_connected, 0);
     atomic_store(&ctx->detection_stream_result, 0);
     memset(&ctx->detection_stream_pending, 0, sizeof(ctx->detection_stream_pending));
+    ctx->detection_stream_pending_ts = 0;
 
     // For ONVIF model: cache connection parameters and start the background
     // polling thread BEFORE the UDT starts reading packets.  This ensures a
@@ -2071,14 +2079,21 @@ stats_done:
         bool detected = false;
         if (atomic_exchange(&ctx->detection_stream_result, 0)) {
             detection_result_t result;
+            time_t result_ts;
             pthread_mutex_lock(&ctx->detection_stream_result_mutex);
             result = ctx->detection_stream_pending;
+            result_ts = ctx->detection_stream_pending_ts;
             pthread_mutex_unlock(&ctx->detection_stream_result_mutex);
             log_info("[%s] Detection stream result: %d detection(s)",
                      ctx->stream_name, result.count);
-            report_detections(ctx, &result, now);
+            /* Stamp the DB write with the producer's detection time (when the
+             * frame was actually analyzed), not this consumer's wall-clock —
+             * otherwise detections lag the video by the hand-off latency. */
+            report_detections(ctx, &result, result_ts > 0 ? result_ts : now);
             detected = true;
         }
+        // handle_recording_state drives the recording state machine, which is a
+        // "now" decision (grace/post-buffer), so it keeps the consumer's now.
         handle_recording_state(ctx, detected, now);
         // Re-read state: handle_recording_state may have transitioned
         // BUFFERING → RECORDING or POST_BUFFER → RECORDING above.
@@ -2219,7 +2234,7 @@ stats_done:
             log_info("[%s] Running detection (interval=%ds, elapsed=%lds, model=%s)",
                     ctx->stream_name, ctx->detection_interval,
                     (long)time_since_last_check, ctx->model_path);
-            bool detected = run_detection_on_frame(ctx, pkt);
+            bool detected = run_detection_on_frame(ctx, pkt, now);
             handle_recording_state(ctx, detected, now);
         }
     }
@@ -2495,10 +2510,15 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx) {
  * @param pkt The video packet containing a keyframe (unused for API detection)
  * @return true if detection was triggered, false otherwise
  */
-static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) {
+static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
+                                   time_t frame_timestamp) {
     if (!ctx) return false;
 
-    time_t now = time(NULL);
+    /* frame_timestamp reflects when the packet entered the pipeline
+     * (captured at the top of process_packet).  Reuse it for reporting,
+     * DB writes, and MQTT so detections.timestamp records frame time
+     * rather than inference-finished time. */
+    time_t now = frame_timestamp;
 
     /* API detection: try the go2rtc snapshot shortcut first.
      * The snapshot path handles zone filtering, DB storage, and MQTT
@@ -2518,7 +2538,8 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
         detection_result_t result;
         memset(&result, 0, sizeof(result));
         int detect_ret = detect_objects_api_snapshot(ctx->model_path, ctx->stream_name,
-                                                     &result, ctx->detection_threshold, rec_id);
+                                                     &result, ctx->detection_threshold,
+                                                     rec_id, frame_timestamp);
 
         if (detect_ret != DETECT_SNAPSHOT_UNAVAILABLE) {
             if (detect_ret != 0) {
@@ -2649,7 +2670,8 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
         const char *api_url = get_actual_api_url(ctx->stream_name, ctx->model_path);
         int ret = api_url
             ? detect_objects_api(api_url, rgb_buf, width, height, 3,
-                                 result, ctx->stream_name, ctx->detection_threshold, rec_id)
+                                 result, ctx->stream_name, ctx->detection_threshold,
+                                 rec_id, now)
             : -1;
         free(rgb_buf);
 

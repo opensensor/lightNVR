@@ -23,7 +23,7 @@ static void assert_invalid_detection_url(const char *url) {
     detection_result_t result;
     memset(&result, 0xAB, sizeof(result));
 
-    int rc = detect_objects_api(url, NULL, 0, 0, 0, &result, NULL, 0.5f, 0);
+    int rc = detect_objects_api(url, NULL, 0, 0, 0, &result, NULL, 0.5f, 0, 0);
 
     TEST_ASSERT_EQUAL_INT(-1, rc);
     TEST_ASSERT_EQUAL_INT(0, result.count);

@@ -173,6 +173,7 @@ typedef struct {
     atomic_int        detection_stream_connected;      // 1 = open & decoding, 0 = connecting/disconnected
     atomic_int        detection_stream_result;         // 1 = pending result ready, 0 = none
     detection_result_t detection_stream_pending;       // latest result; guarded by result_mutex
+    time_t            detection_stream_pending_ts;     // frame time of the pending result (producer's detect time); guarded by result_mutex
     pthread_mutex_t   detection_stream_result_mutex;   // protects detection_stream_pending
     char              detection_stream_url[MAX_URL_LENGTH]; // cached at thread-start
 
