@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -54,6 +55,7 @@ typedef struct {
     bool has_detection_model;                  // Whether detection_model was provided
     bool has_detection_threshold;              // Whether detection_threshold was provided
     bool has_detection_interval;               // Whether detection_interval was provided
+    bool has_detection_url;                    // Whether detection_url was provided
     bool has_record;                           // Whether record flag was provided
     bool has_streaming_enabled;                // Whether streaming_enabled flag was provided
     bool non_dynamic_config_changed;           // Whether non-dynamic fields changed
@@ -189,7 +191,7 @@ static void put_stream_worker(put_stream_task_t *task) {
     // we need to restart the stream to apply the new detection settings
     if (task->config_changed &&
         (task->has_detection_based_recording || task->has_detection_model ||
-         task->has_detection_threshold || task->has_detection_interval) &&
+         task->has_detection_threshold || task->has_detection_interval || task->has_detection_url) &&
         task->is_running && !task->requires_restart) {
         log_info("Detection settings changed for stream %s, marking for restart to apply changes", task->config.name);
         task->requires_restart = true;
@@ -267,7 +269,7 @@ static void put_stream_worker(put_stream_task_t *task) {
         }
     }
     // If detection settings changed but detection was already enabled, restart the thread
-    else if (detection_now_enabled && (task->has_detection_model || task->has_detection_threshold || task->has_detection_interval)) {
+    else if (detection_now_enabled && (task->has_detection_model || task->has_detection_threshold || task->has_detection_interval || task->has_detection_url)) {
         log_info("Detection settings changed for stream %s, restarting unified detection thread", task->config.name);
 
         if (stop_unified_detection_thread(task->config.name) != 0) {
@@ -434,6 +436,21 @@ static void put_stream_worker(put_stream_task_t *task) {
  * This function is called by the multithreading system.
  */
 // put_stream_handler removed - work done via update_stream_task_func
+
+/* detection_url is user-supplied and passed to avformat_open_input in the
+ * detection stream thread. Restrict the scheme to network protocols so
+ * file://, concat:, subfile:, etc. can't be used to coerce server-side reads.
+ * An empty string is allowed (means "fall back to main stream"). */
+static bool is_allowed_detection_url(const char *u) {
+    if (!u || u[0] == '\0') return true;
+    static const char *const prefixes[] = {
+        "http://", "https://", "rtsp://", "rtsps://", NULL
+    };
+    for (size_t i = 0; prefixes[i] != NULL; i++) {
+        if (strncasecmp(u, prefixes[i], strlen(prefixes[i])) == 0) return true;
+    }
+    return false;
+}
 
 /**
  * @brief Direct handler for POST /api/streams
@@ -794,6 +811,23 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
                 sizeof(config.sub_stream_url), 0);
     } else {
         config.sub_stream_url[0] = '\0';
+    }
+
+    // Parse secondary detection stream URL
+    cJSON *detection_url_post = cJSON_GetObjectItem(stream_json, "detection_url");
+    if (detection_url_post && cJSON_IsString(detection_url_post)) {
+        if (!is_allowed_detection_url(detection_url_post->valuestring)) {
+            log_error("Rejected detection_url with disallowed scheme for stream %s",
+                      config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400,
+                "detection_url must use http, https, rtsp, or rtsps");
+            return;
+        }
+        safe_strcpy(config.detection_url, detection_url_post->valuestring,
+                sizeof(config.detection_url), 0);
+    } else {
+        config.detection_url[0] = '\0';
     }
 
     // Check if isOnvif flag is set in the request
@@ -1481,6 +1515,37 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    // Parse secondary detection stream URL
+    bool has_detection_url = false;
+    cJSON *detection_url_put = cJSON_GetObjectItem(stream_json, "detection_url");
+    if (detection_url_put && cJSON_IsString(detection_url_put)) {
+        if (!is_allowed_detection_url(detection_url_put->valuestring)) {
+            log_error("Rejected detection_url with disallowed scheme for stream %s",
+                      config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400,
+                "detection_url must use http, https, rtsp, or rtsps");
+            return;
+        }
+        if (strncmp(config.detection_url, detection_url_put->valuestring,
+                    sizeof(config.detection_url) - 1) != 0) {
+            safe_strcpy(config.detection_url, detection_url_put->valuestring,
+                    sizeof(config.detection_url), 0);
+            has_detection_url = true;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+            log_info("Detection URL changed for stream %s", config.name);
+        }
+    } else if (detection_url_put && cJSON_IsNull(detection_url_put)) {
+        if (config.detection_url[0] != '\0') {
+            config.detection_url[0] = '\0';
+            has_detection_url = true;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+            log_info("Detection URL cleared for stream %s", config.name);
+        }
+    }
+
     // Update is_onvif flag based on request or URL
     bool original_is_onvif = config.is_onvif;
 
@@ -1727,6 +1792,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     task->has_detection_model = has_detection_model;
     task->has_detection_threshold = has_detection_threshold;
     task->has_detection_interval = has_detection_interval;
+    task->has_detection_url = has_detection_url;
     task->has_record = has_record;
     task->has_streaming_enabled = has_streaming_enabled;
     task->non_dynamic_config_changed = non_dynamic_config_changed;
