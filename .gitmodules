@@ -2,3 +2,6 @@
 	path = go2rtc
 	url = https://github.com/opensensor/go2rtc.git
 	branch = dev
+[submodule "third_party/litert"]
+	path = third_party/litert
+	url = https://github.com/google-ai-edge/LiteRT.git

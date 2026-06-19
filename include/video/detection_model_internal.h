@@ -16,14 +16,15 @@
 
 /* ------------------------------------------------------------------
  * TFLite sub-structure (embedded in model_t union)
+ *
+ * Refcounted engine pointer (litert_engine_t*) owned by the LiteRT
+ * registry in src/video/detection/litert_engine.cc. The per-stream
+ * confidence threshold lives in the shared model_t::threshold field
+ * (set at load time, passed to litert_engine_detect() by detection.c),
+ * so this sub-struct only needs the engine handle.
  * ------------------------------------------------------------------ */
 typedef struct {
-    void *handle;                  /* Dynamic library handle          */
-    void *model;                   /* TFLite model handle             */
-    float threshold;               /* Detection threshold             */
-    void *(*load_model)(const char *);
-    void (*free_model)(void *);
-    void *(*detect)(void *, const unsigned char *, int, int, int, int *, float);
+    void *engine;                  /* litert_engine_t* (opaque)       */
 } tflite_model_t;
 
 /* ------------------------------------------------------------------

@@ -25,6 +25,9 @@
 #ifdef SOD_ENABLED
 #include "sod/sod.h"  // For sod_cnn_destroy
 #endif
+#ifdef HAVE_LITERT
+#include "video/detection/litert_engine.h"
+#endif
 
 // Static variable to track if we're in shutdown mode
 static bool in_shutdown_mode = false;
@@ -51,14 +54,15 @@ int init_detection_model_system(void) {
         log_error("Failed to initialize SOD detection system");
     }
 
-    // Check for TFLite library
-    void *tflite_handle = dlopen("libtensorflowlite.so", RTLD_LAZY);
-    if (tflite_handle) {
-        log_info("TensorFlow Lite library found and loaded");
-        dlclose(tflite_handle);
-    } else {
-        log_warn("TensorFlow Lite library not found: %s", dlerror());
-    }
+    // Report in-process LiteRT availability. The old dlopen-based probe of
+    // libtensorflowlite.so was replaced by a vendored LiteRT submodule built
+    // at configure time when -DENABLE_LITERT=ON.
+#ifdef HAVE_LITERT
+    log_info("In-process LiteRT detection engine compiled in (enabled=%s)",
+             g_config.detection_engine.enabled ? "true" : "false");
+#else
+    log_info("In-process LiteRT detection engine NOT compiled in (rebuild with -DENABLE_LITERT=ON to enable)");
+#endif
 
     initialized = true;
     log_info("Detection model system initialized");
@@ -110,14 +114,13 @@ bool is_model_supported(const char *model_path) {
         return is_sod_available();
     }
 
-    // Check for TFLite models
+    // Check for TFLite models (in-process LiteRT engine)
     if (strcasecmp(ext, ".tflite") == 0) {
-        void *handle = dlopen("libtensorflowlite.so", RTLD_LAZY);
-        if (handle) {
-            dlclose(handle);
-            return true;
-        }
+#ifdef HAVE_LITERT
+        return true;
+#else
         return false;
+#endif
     }
 
     return false;
@@ -169,74 +172,40 @@ const char* get_model_type(const char *model_path) {
 }
 
 /**
- * Load a TFLite model
+ * Load a TFLite model via the in-process LiteRT engine.
+ *
+ * Each stream gets its own model_t wrapper (with the per-stream threshold
+ * recorded on it for use by detect_objects()), but multiple wrappers
+ * referencing the same .tflite path share one engine via the LiteRT
+ * registry's refcount.
  */
 static detection_model_t load_tflite_model(const char *model_path, float threshold) {
-    // Open TFLite library
-    void *handle = dlopen("libtensorflowlite.so", RTLD_LAZY);
-    if (!handle) {
-        log_error("Failed to load TensorFlow Lite library: %s", dlerror());
+#ifdef HAVE_LITERT
+    void *engine = litert_engine_acquire(model_path);
+    if (!engine) {
+        // litert_engine_acquire already logged the specific cause.
         return NULL;
     }
 
-    // Clear any existing error
-    dlerror();
-
-    // Load TFLite functions
-    void *(*tflite_load_model)(const char *) = dlsym(handle, "tflite_load_model");
-    const char *dlsym_error = dlerror();
-    if (dlsym_error) {
-        log_error("Failed to load TFLite function 'tflite_load_model': %s", dlsym_error);
-        dlclose(handle);
-        return NULL;
-    }
-
-    void (*tflite_free_model)(void *) = dlsym(handle, "tflite_free_model");
-    dlsym_error = dlerror();
-    if (dlsym_error) {
-        log_error("Failed to load TFLite function 'tflite_free_model': %s", dlsym_error);
-        dlclose(handle);
-        return NULL;
-    }
-
-    void *(*tflite_detect)(void *, const unsigned char *, int, int, int, int *, float) =
-        dlsym(handle, "tflite_detect");
-    dlsym_error = dlerror();
-    if (dlsym_error) {
-        log_error("Failed to load TFLite function 'tflite_detect': %s", dlsym_error);
-        dlclose(handle);
-        return NULL;
-    }
-
-    // Load the model
-    void *tflite_model = tflite_load_model(model_path);
-    if (!tflite_model) {
-        log_error("Failed to load TFLite model: %s", model_path);
-        dlclose(handle);
-        return NULL;
-    }
-
-    // Create model structure
     model_t *model = (model_t *)malloc(sizeof(model_t));
     if (!model) {
         log_error("Failed to allocate memory for model structure");
-        tflite_free_model(tflite_model);
-        dlclose(handle);
+        litert_engine_release(engine);
         return NULL;
     }
+    memset(model, 0, sizeof(model_t));
 
-    // Initialize model structure
     safe_strcpy(model->type, MODEL_TYPE_TFLITE, sizeof(model->type), 0);
-    model->tflite.handle = handle;
-    model->tflite.model = tflite_model;
-    model->tflite.threshold = threshold;
-    model->tflite.load_model = tflite_load_model;
-    model->tflite.free_model = tflite_free_model;
-    model->tflite.detect = tflite_detect;
+    model->tflite.engine = engine;
+    model->threshold = threshold;
     safe_strcpy(model->path, model_path, MAX_PATH_LENGTH, 0);
-
-    log_info("TFLite model loaded: %s", model_path);
     return model;
+#else
+    (void)threshold;
+    log_error("LiteRT not compiled in; cannot load .tflite model %s "
+              "(rebuild with -DENABLE_LITERT=ON)", model_path);
+    return NULL;
+#endif
 }
 
 /**
@@ -511,23 +480,15 @@ void unload_detection_model(detection_model_t model) {
             m->sod_realnet = NULL;
         }
     } else if (strcmp(m->type, MODEL_TYPE_TFLITE) == 0) {
-        // Unload TFLite model - also try during shutdown
-        if (m->tflite.model && m->tflite.free_model) {
-            if (is_shutdown_initiated() || in_shutdown_mode) {
-                log_info("MEMORY LEAK FIX: Destroying TFLite model during shutdown");
-                m->tflite.free_model(m->tflite.model);
-                if (m->tflite.handle) {
-                    dlclose(m->tflite.handle);
-                }
-            } else {
-                m->tflite.free_model(m->tflite.model);
-                if (m->tflite.handle) {
-                    dlclose(m->tflite.handle);
-                }
-            }
-            m->tflite.model = NULL;
-            m->tflite.handle = NULL;
+        // Release reference on the shared LiteRT engine. The engine's
+        // registry destroys the underlying tflite::Interpreter and delegate
+        // when the refcount drops to zero.
+#ifdef HAVE_LITERT
+        if (m->tflite.engine) {
+            litert_engine_release(m->tflite.engine);
+            m->tflite.engine = NULL;
         }
+#endif
     }
 
     // Log that we're unloading the model

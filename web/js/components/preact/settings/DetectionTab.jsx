@@ -110,6 +110,63 @@ export function DetectionTab({ settings, handleInputChange, handleThresholdChang
           </div>
         </div>
       </div>
+
+      {/* In-process LiteRT (TFLite) detection engine — runtime knobs. */}
+      <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
+        <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.detectionEngine')}</h3>
+        <div class="setting mb-4">
+          <p class="setting-description mb-2 text-gray-700 dark:text-gray-300">
+            {t('settings.detectionEngineEnabledHelp')}
+          </p>
+        </div>
+        <div data-setting-label={t('settings.detectionEngineEnabled')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-detection-engine-enabled" class="font-medium">{t('settings.detectionEngineEnabled')}</label>
+          <div class="col-span-2">
+            <input
+              type="checkbox"
+              id="setting-detection-engine-enabled"
+              name="detectionEngineEnabled"
+              class="h-5 w-5 disabled:opacity-60 disabled:cursor-not-allowed"
+              checked={!!settings.detectionEngineEnabled}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            />
+          </div>
+        </div>
+        <div data-setting-label={t('settings.detectionEngineThreads')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-detection-engine-threads" class="font-medium">{t('settings.detectionEngineThreads')}</label>
+          <div class="col-span-2">
+            <input
+              type="number"
+              id="setting-detection-engine-threads"
+              name="detectionEngineThreads"
+              min="1"
+              max="16"
+              class="p-2 border border-input rounded bg-background text-foreground w-24 disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.detectionEngineThreads}
+              onChange={handleInputChange}
+              disabled={!canModifySettings || !settings.detectionEngineEnabled}
+            />
+          </div>
+        </div>
+        <div data-setting-label={t('settings.detectionEngineDelegate')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-detection-engine-delegate" class="font-medium">{t('settings.detectionEngineDelegate')}</label>
+          <div class="col-span-2">
+            <select
+              id="setting-detection-engine-delegate"
+              name="detectionEngineDelegate"
+              class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.detectionEngineDelegate}
+              onChange={handleInputChange}
+              disabled={!canModifySettings || !settings.detectionEngineEnabled}
+            >
+              <option value="xnnpack">{t('settings.detectionEngineDelegateXnnpack')}</option>
+              <option value="gpu">{t('settings.detectionEngineDelegateGpu')}</option>
+              <option value="none">{t('settings.detectionEngineDelegateNone')}</option>
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

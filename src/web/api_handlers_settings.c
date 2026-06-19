@@ -466,6 +466,11 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
     cJSON_AddNumberToObject(settings, "detection_grace_period", g_config.detection_grace_period);
 
+    // In-process LiteRT detection engine settings
+    cJSON_AddBoolToObject(settings,   "detection_engine_enabled",  g_config.detection_engine.enabled);
+    cJSON_AddNumberToObject(settings, "detection_engine_threads",  g_config.detection_engine.num_threads);
+    cJSON_AddStringToObject(settings, "detection_engine_delegate", g_config.detection_engine.delegate);
+
     // Auth timeout
     cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
     cJSON_AddNumberToObject(settings, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
@@ -1089,6 +1094,30 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         safe_strcpy(g_config.api_detection_backend, api_detection_backend->valuestring, sizeof(g_config.api_detection_backend), 0);
         settings_changed = true;
         log_info("Updated api_detection_backend: %s", g_config.api_detection_backend);
+    }
+
+    // In-process LiteRT (TFLite) detection engine settings
+    cJSON *de_enabled = cJSON_GetObjectItem(settings, "detection_engine_enabled");
+    if (de_enabled && cJSON_IsBool(de_enabled)) {
+        g_config.detection_engine.enabled = cJSON_IsTrue(de_enabled);
+        settings_changed = true;
+        log_info("Updated detection_engine.enabled: %s",
+                 g_config.detection_engine.enabled ? "true" : "false");
+    }
+    cJSON *de_threads = cJSON_GetObjectItem(settings, "detection_engine_threads");
+    if (de_threads && cJSON_IsNumber(de_threads)) {
+        config_set_detection_engine_threads(&g_config, de_threads->valueint);
+        settings_changed = true;
+        log_info("Updated detection_engine.num_threads: %d", g_config.detection_engine.num_threads);
+    }
+    cJSON *de_delegate = cJSON_GetObjectItem(settings, "detection_engine_delegate");
+    if (de_delegate && cJSON_IsString(de_delegate)) {
+        if (config_set_detection_engine_delegate(&g_config, de_delegate->valuestring)) {
+            settings_changed = true;
+            log_info("Updated detection_engine.delegate: %s", g_config.detection_engine.delegate);
+        } else {
+            log_warn("Ignored unknown detection_engine_delegate '%s'", de_delegate->valuestring);
+        }
     }
 
     // go2rtc settings

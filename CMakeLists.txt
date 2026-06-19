@@ -10,6 +10,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(ENABLE_SOD "Enable SOD library for object detection" ON)
 option(SOD_DYNAMIC_LINK "Dynamically link SOD library instead of static linking" OFF)
 
+# In-process LiteRT (TFLite) detection engine. Default OFF — when ON, the
+# vendored LiteRT submodule at third_party/litert is built and linked, and
+# the litert_engine module is compiled.
+option(ENABLE_LITERT "Enable in-process LiteRT (TFLite) detection engine" ON)
+option(LITERT_WITH_XNNPACK "Compile XNNPACK delegate into the LiteRT engine" ON)
+option(LITERT_WITH_GPU "Compile GPU (OpenCL/GLES) delegate into the LiteRT engine" OFF)
+
 # go2rtc integration options
 option(ENABLE_GO2RTC "Enable go2rtc integration for WebRTC streaming" ON)
 set(GO2RTC_BINARY_PATH "/usr/local/bin/go2rtc" CACHE STRING "Path to go2rtc binary")
@@ -246,6 +253,57 @@ if(ENABLE_SOD)
     endif()
 endif()
 
+# Set up LiteRT (in-process TFLite engine) if enabled
+set(LITERT_ENGINE_SOURCES "")
+if(ENABLE_LITERT)
+    set(LITERT_SUBDIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/litert/tflite")
+    if(NOT EXISTS "${LITERT_SUBDIR}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "ENABLE_LITERT=ON but ${LITERT_SUBDIR} is missing. "
+            "Run: git submodule update --init --recursive third_party/litert")
+    endif()
+
+    # Forward delegate selections to the LiteRT subproject.
+    set(TFLITE_ENABLE_XNNPACK ${LITERT_WITH_XNNPACK} CACHE BOOL "" FORCE)
+    set(TFLITE_ENABLE_GPU ${LITERT_WITH_GPU} CACHE BOOL "" FORCE)
+    # ruy is TFLite's ARM CPU GEMM backend; it runs any ops the XNNPACK delegate
+    # doesn't handle (falling back to it instead of the slower gemmlowp/Eigen path).
+    set(TFLITE_ENABLE_RUY ON CACHE BOOL "" FORCE)
+    set(TFLITE_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+
+    # Build XNNPACK without its hand-written assembly microkernels, so it uses the
+    # portable NEON-intrinsic kernels instead. XNNPACK's cortex_a53 asm f32 6x8 GEMM
+    # kernel corrupts an A-row pointer under a multi-threaded pthreadpool on aarch64
+    # big.LITTLE, SIGSEGV-ing with threads>1 (root-caused from a core dump; present
+    # even at XNNPACK HEAD). Disabling the asm path makes multi-threaded inference
+    # stable; confirmed on target. Small single-thread perf cost vs tuned asm.
+    if(LITERT_WITH_XNNPACK)
+        set(XNNPACK_ENABLE_ASSEMBLY OFF CACHE BOOL "" FORCE)
+    endif()
+
+    add_subdirectory(${LITERT_SUBDIR} EXCLUDE_FROM_ALL)
+    add_compile_definitions(HAVE_LITERT)
+
+    if(LITERT_WITH_XNNPACK)
+        add_compile_definitions(HAVE_LITERT_XNNPACK)
+    endif()
+    if(LITERT_WITH_GPU)
+        add_compile_definitions(HAVE_LITERT_GPU)
+    endif()
+
+    set(LITERT_ENGINE_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/video/detection/litert_engine.cc"
+    )
+    # TFLite public headers (and the Abseil/FlatBuffers they pull in) require
+    # C++17, but the project default is C++14. Linking the tensorflow-lite
+    # target propagates cxx_std_17, yet make the requirement explicit on our
+    # own engine source so it compiles correctly regardless of propagation.
+    set_source_files_properties(${LITERT_ENGINE_SOURCES} PROPERTIES CXX_STANDARD 17)
+    message(STATUS "LiteRT engine enabled (XNNPACK=${LITERT_WITH_XNNPACK}, GPU=${LITERT_WITH_GPU})")
+else()
+    message(STATUS "LiteRT engine disabled (set -DENABLE_LITERT=ON to enable)")
+endif()
+
 # HTTP Backend Configuration - libuv + llhttp only
 message(STATUS "Using libuv + llhttp HTTP backend")
 add_definitions(-DHTTP_BACKEND_LIBUV)
@@ -471,6 +529,7 @@ set(SOURCES
         ${HLS_UNIFIED_THREAD_SOURCES}
         ${TELEMETRY_SOURCES}
         ${EZXML_SOURCES}
+        ${LITERT_ENGINE_SOURCES}
 )
 
 
@@ -581,6 +640,14 @@ if(ENABLE_MQTT AND MOSQUITTO_FOUND)
     target_include_directories(lightnvr PRIVATE ${MOSQUITTO_INCLUDE_DIRS})
 endif()
 
+# Link LiteRT if enabled
+if(ENABLE_LITERT)
+    # LiteRT's CMake target is named tensorflow-lite (provided by the LiteRT
+    # submodule's tflite/CMakeLists.txt).
+    target_link_libraries(lightnvr_lib PUBLIC tensorflow-lite)
+    target_link_libraries(lightnvr tensorflow-lite)
+endif()
+
 # Link SOD library if enabled
 if(ENABLE_SOD)
     # Always link to the sod target, whether it's built as static or shared
@@ -682,6 +749,11 @@ if(ENABLE_SOD)
     else()
         message(STATUS "  - SOD linking method: Static")
     endif()
+endif()
+message(STATUS "- LiteRT (in-process TFLite engine): ${ENABLE_LITERT}")
+if(ENABLE_LITERT)
+    message(STATUS "  - XNNPACK delegate: ${LITERT_WITH_XNNPACK}")
+    message(STATUS "  - GPU delegate: ${LITERT_WITH_GPU}")
 endif()
 message(STATUS "- go2rtc WebRTC integration: ${ENABLE_GO2RTC}")
 if(ENABLE_GO2RTC)

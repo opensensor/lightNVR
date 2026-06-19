@@ -21,6 +21,22 @@ typedef enum {
 } stream_state_t;
 
 /**
+ * Stream error code categories — passed to handle_stream_error().
+ *
+ * Negative POSIX errno values (-ETIMEDOUT, -EINVAL, -EIO) are also accepted
+ * and classified into "timeout"/"protocol"/"io" buckets in the telemetry
+ * metrics. The positive STREAM_ERR_* values below are reserved for
+ * application-level conditions that should NOT trigger reconnect (the
+ * problem is permanent until config or operator action fixes it).
+ */
+#define STREAM_ERR_MODEL_LOAD  1   /* Detection model failed to load (missing file, bad shape, etc.) */
+
+/* Length of the optional human-readable error message attached to a stream
+ * state manager when in STREAM_STATE_ERROR. Sized to fit a path plus a
+ * short prefix without truncation in most cases. */
+#define STREAM_ERROR_MESSAGE_MAX 256
+
+/**
  * Stream feature flags - represents which features are enabled for a stream
  */
 typedef struct {
@@ -98,6 +114,10 @@ typedef struct {
     
     // Callback management
     bool callbacks_enabled;      // Whether callbacks are enabled
+
+    // Human-readable error message set when handle_stream_error() drives the
+    // stream into STREAM_STATE_ERROR. Empty string in other states.
+    char last_error_message[STREAM_ERROR_MESSAGE_MAX];
 } stream_state_manager_t;
 
 /**

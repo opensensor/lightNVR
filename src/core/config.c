@@ -348,6 +348,11 @@ void load_default_config(config_t *config) {
     config->detection_grace_period = 2;         // 2 seconds grace before post-buffer
     safe_strcpy(config->default_buffer_strategy, "auto", 32, 0); // Auto-select buffer strategy
 
+    // In-process LiteRT detection engine defaults
+    config->detection_engine.enabled = false;
+    config->detection_engine.num_threads = 1;
+    safe_strcpy(config->detection_engine.delegate, "xnnpack", 16, 0);
+
     // Database settings
     safe_strcpy(config->db_path, "/var/lib/lightnvr/lightnvr.db", MAX_PATH_LENGTH, 0);
     config->db_backup_interval_minutes = 60;
@@ -604,6 +609,23 @@ void config_set_detection_grace_period(config_t *config, int seconds) {
     config->detection_grace_period = seconds;
 }
 
+void config_set_detection_engine_threads(config_t *config, int threads) {
+    if (threads < 1)  threads = 1;
+    if (threads > 16) threads = 16;
+    config->detection_engine.num_threads = threads;
+}
+
+bool config_set_detection_engine_delegate(config_t *config, const char *delegate) {
+    if (!delegate ||
+        (strcmp(delegate, "xnnpack") != 0 && strcmp(delegate, "gpu") != 0 &&
+         strcmp(delegate, "none") != 0)) {
+        return false;
+    }
+    safe_strcpy(config->detection_engine.delegate, delegate,
+                sizeof(config->detection_engine.delegate), 0);
+    return true;
+}
+
 // Handler function for inih
 static int config_ini_handler(void* user, const char* section, const char* name, const char* value) {
     config_t* config = (config_t*)user;
@@ -695,6 +717,22 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (config->default_post_detection_buffer > 300) config->default_post_detection_buffer = 300;
         } else if (strcmp(name, "buffer_strategy") == 0) {
             safe_strcpy(config->default_buffer_strategy, value, sizeof(config->default_buffer_strategy), 0);
+        }
+    }
+    // In-process LiteRT (TFLite) detection engine settings
+    else if (strcmp(section, "detection_engine") == 0) {
+        if (strcmp(name, "enabled") == 0) {
+            config->detection_engine.enabled = (strcmp(value, "true") == 0 ||
+                                                 strcmp(value, "1") == 0 ||
+                                                 strcmp(value, "yes") == 0 ||
+                                                 strcmp(value, "on") == 0);
+        } else if (strcmp(name, "threads") == 0) {
+            config_set_detection_engine_threads(config, safe_atoi(value, 1));
+        } else if (strcmp(name, "delegate") == 0) {
+            if (!config_set_detection_engine_delegate(config, value)) {
+                log_warn("Unknown detection_engine.delegate '%s'; using xnnpack", value);
+                config_set_detection_engine_delegate(config, "xnnpack");
+            }
         }
     }
     // General detection behaviour settings (apply to all detection backends)
@@ -1622,6 +1660,17 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
     fprintf(file, "post_detection_buffer = %d\n", config->default_post_detection_buffer);
     fprintf(file, "buffer_strategy = %s\n\n", config->default_buffer_strategy);
+
+    // Write in-process LiteRT detection engine settings
+    fprintf(file, "[detection_engine]\n");
+    fprintf(file, "; In-process TFLite/LiteRT inference. Streams using a .tflite model_path\n");
+    fprintf(file, "; will route through this engine. Per-model labels are read from embedded\n");
+    fprintf(file, "; TFLite metadata or a sidecar <basename>.labels.txt next to the model.\n");
+    fprintf(file, "enabled = %s\n", config->detection_engine.enabled ? "true" : "false");
+    fprintf(file, "threads = %d  ; Interpreter threads (1-16, default: 4)\n",
+            config->detection_engine.num_threads);
+    fprintf(file, "delegate = %s  ; xnnpack | gpu | none (default: xnnpack; gpu requires -DLITERT_WITH_GPU=ON)\n\n",
+            config->detection_engine.delegate);
 
     // Write database settings
     fprintf(file, "[database]\n");

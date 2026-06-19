@@ -129,6 +129,14 @@ typedef struct {
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator
 #define RECORDING_SCHEDULE_TEXT_SIZE 512
 
+// In-process LiteRT (TFLite) detection engine — runtime knobs only.
+// Per-model state (model_path, labels) is configured per-stream, not here.
+typedef struct {
+    bool enabled;       // Master toggle (default: false)
+    int  num_threads;   // Interpreter::SetNumThreads, clamped 1..16 (default: 1)
+    char delegate[16];  // "xnnpack" | "gpu" | "none" (default: "xnnpack")
+} detection_engine_config_t;
+
 // Main configuration structure
 typedef struct {
     // General settings
@@ -271,6 +279,10 @@ typedef struct {
     bool mqtt_ha_discovery;               // Enable HA MQTT auto-discovery (default: false)
     char mqtt_ha_discovery_prefix[128];   // HA discovery topic prefix (default: "homeassistant")
     int mqtt_ha_snapshot_interval;        // Snapshot publish interval in seconds (default: 30, 0=disabled)
+
+    // In-process LiteRT (TFLite) detection engine.
+    // Runtime knobs only; per-model state (path, labels) lives elsewhere.
+    detection_engine_config_t detection_engine;
 } config_t;
 
 /**
@@ -316,6 +328,13 @@ void load_default_config(config_t *config);
  * in one place.
  */
 void config_set_detection_grace_period(config_t *config, int seconds);
+
+/** Set the LiteRT interpreter thread count, clamped to 1..16. */
+void config_set_detection_engine_threads(config_t *config, int threads);
+
+/** Set the LiteRT delegate if it is one of "xnnpack"/"gpu"/"none"; returns
+ *  true if accepted, false (leaving the config unchanged) otherwise. */
+bool config_set_detection_engine_delegate(config_t *config, const char *delegate);
 
 /**
  * Validate and normalize configuration values

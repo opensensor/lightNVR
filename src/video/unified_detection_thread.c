@@ -53,6 +53,7 @@
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_recording.h"
 #include "video/streams.h"
+#include "video/stream_state.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
 #include "video/go2rtc/go2rtc_integration.h"
@@ -2697,10 +2698,28 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
         /* Embedded model (SOD / TFLite / etc.). */
         if (!ctx->model) {
             if (ctx->model_path[0] == '\0') return false;
+            if (ctx->model_load_failed) {
+                /* One-shot hard error already reported; don't retry. */
+                return false;
+            }
             ctx->model = load_detection_model(ctx->model_path, ctx->detection_threshold);
             if (!ctx->model) {
-                log_warn("[%s] Failed to load detection model: %s",
-                         ctx->stream_name, ctx->model_path);
+                /* Hard error: drive the stream into STREAM_STATE_ERROR so the
+                 * UI surfaces the cause via streams.error_message. The specific
+                 * reason (missing file, unsupported dtype, etc.) was already
+                 * logged by load_detection_model / the engine. */
+                /* Scratch sized exactly for the prefix + longest possible
+                 * model_path (sizeof includes the null). handle_stream_error()
+                 * truncates to STREAM_ERROR_MESSAGE_MAX when persisting. */
+                static const char kPrefix[] = "Failed to load detection model: ";
+                char msg[sizeof kPrefix + MAX_PATH_LENGTH];
+                snprintf(msg, sizeof msg, "%s%s", kPrefix, ctx->model_path);
+                log_error("[%s] %s", ctx->stream_name, msg);
+                stream_state_manager_t *sm = get_stream_state_by_name(ctx->stream_name);
+                if (sm) {
+                    handle_stream_error(sm, STREAM_ERR_MODEL_LOAD, msg);
+                }
+                ctx->model_load_failed = true;
                 return false;
             }
             log_info("[%s] Loaded detection model: %s", ctx->stream_name, ctx->model_path);

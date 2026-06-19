@@ -92,7 +92,10 @@ typedef struct {
     atomic_llong post_buffer_end_time;     // When post-buffer recording should end
     atomic_int log_counter;          // Counter for periodic logging; intentionally accessed without ctx->mutex,
                                      // but all accesses must use atomic operations, and exact accuracy is not critical.
-
+    bool model_load_failed;          // Set on first load_detection_model() failure to suppress
+                                     // per-frame retry/log spam. Once true, the stream has been
+                                     // driven into STREAM_STATE_ERROR via handle_stream_error().
+    
     // Connection state
     atomic_int_fast64_t last_packet_time;
     atomic_int consecutive_failures;
