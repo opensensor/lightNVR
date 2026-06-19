@@ -115,6 +115,15 @@ typedef struct {
     // When non-empty, registered with go2rtc as "{name}_sub" and used by the
     // frontend in grid view while the main URL is used for fullscreen/recording.
     char sub_stream_url[MAX_URL_LENGTH];
+
+    // Detection stream URL: optional secondary stream used exclusively for
+    // object detection (e.g. an MJPEG sub-stream).  When non-empty the UDT
+    // opens this URL in a dedicated background thread and runs the configured
+    // detection model against its frames; the main stream is used only for
+    // buffering and recording.  MJPEG is ideal here because every frame is a
+    // full keyframe, eliminating the large inter-frame gap that limits detection
+    // accuracy on the main H.264/H.265 RTSP stream.
+    char detection_url[MAX_URL_LENGTH];
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator
