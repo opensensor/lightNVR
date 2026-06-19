@@ -253,7 +253,8 @@ export function StreamsView() {
     // events trigger recording on this stream (e.g., PTZ slaved to fixed wide lens)
     motionTriggerSource: '',
     go2rtcSourceOverride: '',
-    subStreamUrl: ''
+    subStreamUrl: '',
+    detectionUrl: ''
   });
   const [isEditing, setIsEditing] = useState(false);
   const [isCloning, setIsCloning] = useState(false);
@@ -617,7 +618,9 @@ export function StreamsView() {
       // go2rtc source override
       go2rtc_source_override: currentStream.go2rtcSourceOverride || '',
       // Sub-stream URL
-      sub_stream_url: currentStream.subStreamUrl || ''
+      sub_stream_url: currentStream.subStreamUrl || '',
+      // Secondary stream used only for detection (e.g. MJPEG sub-stream)
+      detection_url: currentStream.detectionUrl || ''
     };
 
     // When editing, set is_deleted to false to allow undeleting soft-deleted streams
@@ -704,7 +707,11 @@ export function StreamsView() {
       recordOnSchedule: false,
       recordingSchedule: Array(168).fill(true),
       // Tags
-      tags: ''
+      tags: '',
+      motionTriggerSource: '',
+      go2rtcSourceOverride: '',
+      subStreamUrl: '',
+      detectionUrl: ''
     });
     setIsEditing(false);
     setIsCloning(false);
@@ -780,7 +787,8 @@ export function StreamsView() {
         // Cross-stream motion trigger source
         motionTriggerSource: stream.motion_trigger_source || '',
         go2rtcSourceOverride: stream.go2rtc_source_override || '',
-        subStreamUrl: stream.sub_stream_url || ''
+        subStreamUrl: stream.sub_stream_url || '',
+        detectionUrl: stream.detection_url || ''
       });
       setIsEditing(true);
       setModalVisible(true);
@@ -854,7 +862,8 @@ export function StreamsView() {
         // Cross-stream motion trigger source
         motionTriggerSource: stream.motion_trigger_source || '',
         go2rtcSourceOverride: stream.go2rtc_source_override || '',
-        subStreamUrl: stream.sub_stream_url || ''
+        subStreamUrl: stream.sub_stream_url || '',
+        detectionUrl: stream.detection_url || ''
       });
       setIsEditing(false);
       setIsCloning(true);
