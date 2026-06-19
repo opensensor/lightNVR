@@ -1810,6 +1810,33 @@ int mp4_segment_recorder_write_packet(mp4_writer_t *writer, const AVPacket *pkt,
             out_pkt->pts = out_pkt->dts;
         }
 
+        // Detect implausible forward DTS jumps before the monotonicity fixup
+        // masks them. A jump larger than 3 × pre_buffer_seconds (fallback 60s)
+        // means the writer is about to bake a multi-minute gap into the moov —
+        // exactly the failure mode that produces unplayable detection MP4s.
+        if (out_pkt->dts != AV_NOPTS_VALUE && writer->last_dts != AV_NOPTS_VALUE &&
+            out_pkt->dts > writer->last_dts) {
+            int threshold_sec = (writer->pre_buffer_seconds > 0)
+                                ? (3 * writer->pre_buffer_seconds)
+                                : 60;
+            int64_t threshold_units = av_rescale_q(threshold_sec,
+                                                   (AVRational){1, 1},
+                                                   input_stream->time_base);
+            int64_t gap_units = out_pkt->dts - writer->last_dts;
+            if (gap_units > threshold_units) {
+                double gap_sec = (double)gap_units * av_q2d(input_stream->time_base);
+                log_warn("[%s] DTS gap detector: %.2fs forward jump in %s "
+                         "(last_dts=%lld new_dts=%lld threshold=%ds) — "
+                         "MP4 timeline will be discontinuous",
+                         writer->stream_name,
+                         gap_sec,
+                         writer->output_path,
+                         (long long)writer->last_dts,
+                         (long long)out_pkt->dts,
+                         threshold_sec);
+            }
+        }
+
         // Ensure monotonically increasing DTS values
         if (out_pkt->dts != AV_NOPTS_VALUE && writer->last_dts != AV_NOPTS_VALUE && out_pkt->dts <= writer->last_dts) {
             int64_t fixed_dts = writer->last_dts + 1;
