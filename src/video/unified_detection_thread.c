@@ -77,7 +77,8 @@
 // is configured via the application's stream/detection settings (i.e. when
 // the configured detection interval is missing or <= 0).
 #define DEFAULT_DETECTION_INTERVAL 5
-#define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
+/* DETECTION_GRACE_PERIOD_SEC is no longer a compile-time constant.
+ * Use g_config.detection_grace_period (configured via [detection] grace_period). */
 
 // Video/default FPS settings
 // Conservative low-end fallback for cameras that omit FPS in SDP.
@@ -2810,8 +2811,10 @@ static void handle_recording_state(unified_detection_ctx_t *ctx,
                              ctx->stream_name, clamped_pre, pre_dur);
                 }
 
-                time_t lookback = now - (ctx->detection_interval > 0
-                                         ? ctx->detection_interval + 2 : 7);
+                /* detection_interval is forced > 0 in start_unified_detection_thread
+                 * (zero / negative fall back to DEFAULT_DETECTION_INTERVAL), so the
+                 * lookback is always at least 1 s + grace_period. */
+                time_t lookback = now - (ctx->detection_interval + g_config.detection_grace_period);
                 int updated = update_detections_recording_id(
                     ctx->stream_name, ctx->current_recording_id, lookback);
                 if (updated > 0)
@@ -2829,9 +2832,16 @@ static void handle_recording_state(unified_detection_ctx_t *ctx,
 
     } else if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
         time_t since_last = now - (time_t)atomic_load(&ctx->last_detection_time);
-        if (since_last > DETECTION_GRACE_PERIOD_SEC) {
-            log_info("[%s] No detection, entering post-buffer (%d seconds)",
-                     ctx->stream_name, ctx->post_buffer_seconds);
+        // Detection is only sampled once per detection_interval, so last_detection_time
+        // is inherently stale by up to one interval even while a scene stays active.
+        // The recording must therefore survive at least one full sampling gap before
+        // grace_period applies — otherwise (e.g. interval=5s, grace=2s) a continuous
+        // scene would drop to post-buffer between samples and fragment the clip.
+        // This mirrors the detection-linking lookback above.
+        time_t grace_window = (time_t)ctx->detection_interval + (time_t)g_config.detection_grace_period;
+        if (since_last > grace_window) {
+            log_info("[%s] No detection for %lds, entering post-buffer (%d seconds)",
+                     ctx->stream_name, (long)since_last, ctx->post_buffer_seconds);
             atomic_store(&ctx->post_buffer_end_time,
                          (long long)(now + ctx->post_buffer_seconds));
             atomic_store(&ctx->state, UDT_STATE_POST_BUFFER);

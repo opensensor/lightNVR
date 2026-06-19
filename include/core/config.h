@@ -170,6 +170,7 @@ typedef struct {
     int default_pre_detection_buffer;      // Default seconds to keep before detection (0-60)
     int default_post_detection_buffer;     // Default seconds to keep after detection (0-300)
     char default_buffer_strategy[32];      // Default buffer strategy: auto, go2rtc, hls_segment, memory_packet, mmap_hybrid
+    int detection_grace_period;            // Seconds after last detection before entering post-buffer (default: 2)
 
     // Database settings
     char db_path[MAX_PATH_LENGTH];
@@ -308,6 +309,13 @@ int save_config(const config_t *config, const char *path);
  * @param config Pointer to config structure to fill with defaults
  */
 void load_default_config(config_t *config);
+
+/**
+ * Set the detection grace period, clamped to its valid range (0..60 s).
+ * Shared by the config-file loader and the settings API so the range lives
+ * in one place.
+ */
+void config_set_detection_grace_period(config_t *config, int seconds);
 
 /**
  * Validate and normalize configuration values

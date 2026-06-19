@@ -345,6 +345,7 @@ void load_default_config(config_t *config) {
     config->default_detection_threshold = 50;  // 50% confidence threshold
     config->default_pre_detection_buffer = 5;   // 5 seconds before detection
     config->default_post_detection_buffer = 10; // 10 seconds after detection
+    config->detection_grace_period = 2;         // 2 seconds grace before post-buffer
     safe_strcpy(config->default_buffer_strategy, "auto", 32, 0); // Auto-select buffer strategy
 
     // Database settings
@@ -597,6 +598,12 @@ int validate_config(config_t *config) {
     return 0;
 }
 
+void config_set_detection_grace_period(config_t *config, int seconds) {
+    if (seconds < 0)  seconds = 0;
+    if (seconds > 60) seconds = 60;
+    config->detection_grace_period = seconds;
+}
+
 // Handler function for inih
 static int config_ini_handler(void* user, const char* section, const char* name, const char* value) {
     config_t* config = (config_t*)user;
@@ -688,6 +695,12 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (config->default_post_detection_buffer > 300) config->default_post_detection_buffer = 300;
         } else if (strcmp(name, "buffer_strategy") == 0) {
             safe_strcpy(config->default_buffer_strategy, value, sizeof(config->default_buffer_strategy), 0);
+        }
+    }
+    // General detection behaviour settings (apply to all detection backends)
+    else if (strcmp(section, "detection") == 0) {
+        if (strcmp(name, "grace_period") == 0) {
+            config_set_detection_grace_period(config, safe_atoi(value, 0));
         }
     }
     // Database settings
@@ -1595,7 +1608,12 @@ int save_config(const config_t *config, const char *path) {
     // Write models settings
     fprintf(file, "[models]\n");
     fprintf(file, "path = %s\n\n", config->models_path);
-    
+
+    // Write general detection behaviour settings (apply to all backends)
+    fprintf(file, "[detection]\n");
+    fprintf(file, "grace_period = %d  ; Seconds after last detection before entering post-buffer (0-60, default: 2)\n\n",
+            config->detection_grace_period);
+
     // Write API detection settings
     fprintf(file, "[api_detection]\n");
     fprintf(file, "url = %s\n", config->api_detection_url);
