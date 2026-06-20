@@ -47,6 +47,13 @@ void litert_engine_release(litert_engine_t *engine);
 int litert_engine_input_width(const litert_engine_t *engine);
 int litert_engine_input_height(const litert_engine_t *engine);
 
+/* Combined size of the loaded model flatbuffers (weights + graph) across all
+ * engines — the detector's resident footprint for the system memory stats.
+ * The tensor arena is deliberately excluded: it can't be measured accurately
+ * here and over-counting it made the reported figure exceed process RSS.
+ * Returns 0 when ENABLE_LITERT=OFF or no engines are loaded. Thread-safe. */
+uint64_t litert_engine_registry_memory_bytes(void);
+
 /* Run inference on a single RGB24 frame (packed HxWx3 in original frame
  * coordinates). The engine letterboxes internally to its model HxW.
  *

@@ -43,6 +43,9 @@
 #include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
 #include "video/stream_manager.h"
+#ifdef HAVE_LITERT
+#include "video/detection/litert_engine.h"
+#endif
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
 #include "storage/storage_manager_streams.h"
@@ -728,6 +731,15 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
     unsigned long long system_free  = (system_total > system_used) ? (system_total - system_used) : 0;
 
     // Get memory information for the LightNVR process
+    // Compute the in-process LiteRT engine footprint once. It lives inside this
+    // process, so it is subtracted from the lightnvr process figure below and
+    // reported separately as detectorMemory — otherwise the UI, which sums the
+    // process and detector figures, would double-count it.
+    unsigned long long litert_used = 0;
+#ifdef HAVE_LITERT
+    litert_used = (unsigned long long)litert_engine_registry_memory_bytes();
+#endif
+
     cJSON *memory = cJSON_CreateObject();
     unsigned long process_threads = 0;
     if (memory) {
@@ -752,6 +764,11 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
 
         // Convert kB to bytes
         unsigned long long used = vm_rss * 1024;
+
+        // The in-process LiteRT detector is reported separately as
+        // detectorMemory; subtract it here so the process and detector
+        // figures (summed by the UI) don't double-count the same RSS.
+        used = (used > litert_used) ? (used - litert_used) : 0;
 
         // Use the system total memory as the total for LightNVR as well
         // This makes it simpler to understand the memory usage
@@ -808,6 +825,15 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
             log_debug("light-object-detect memory usage: %llu bytes", detector_used);
         } else {
             log_debug("light-object-detect not running or memory unavailable, using 0");
+        }
+
+        // Add the in-process LiteRT engine footprint (computed above and
+        // subtracted from the lightnvr process figure, so process + detector
+        // sum correctly). Detection runs inside this process now, so there is
+        // no separate detector process to scan for the LiteRT backend.
+        if (litert_used > 0) {
+            detector_used += litert_used;
+            log_debug("in-process LiteRT engine memory: %llu bytes", litert_used);
         }
 
         // Use the system total memory as the total for detector as well

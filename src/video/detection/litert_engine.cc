@@ -91,6 +91,8 @@ struct engine_impl {
     int32_t output_zp    = 0;
     int output_num_rows  = 0;   // N in [1, N, 6]
 
+    size_t mem_bytes = 0;       // size of the loaded model flatbuffer (weights+graph), for memory stats
+
     std::vector<std::string> labels;
 
     ~engine_impl() {
@@ -104,6 +106,11 @@ struct engine_impl {
 
 std::mutex g_registry_mu;
 std::unordered_map<std::string, std::unique_ptr<engine_impl>> g_registry;
+
+// Running total of all loaded engines' memory (model flatbuffer + tensor
+// arena), maintained on engine create/destroy under g_registry_mu. Lets the
+// stats reader be a single lock-free load that never touches a live interpreter.
+std::atomic<uint64_t> g_engine_memory_bytes{0};
 
 std::string canonicalize_path(const char *p) {
     if (!p || !*p) return {};
@@ -209,6 +216,16 @@ std::unique_ptr<engine_impl> create_engine(const std::string &canon_path) {
     if (!e->model) {
         log_error("LiteRT: failed to load model file %s", canon_path.c_str());
         return nullptr;
+    }
+    // Reported as the detector's memory in the system stats. Only the model
+    // flatbuffer (weights + graph) is measured: it is accurate and always a
+    // subset of this process's RSS. The interpreter's tensor arena is excluded
+    // — there is no arena_used_bytes() in this TFLite, and summing tensor sizes
+    // wildly over-counts it (the planner reuses arena memory across tensors),
+    // which previously made the subtracted detector figure exceed the lightnvr
+    // RSS and report 0 for the process.
+    if (e->model->allocation()) {
+        e->mem_bytes = e->model->allocation()->bytes();
     }
 
     tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -472,6 +489,7 @@ extern "C" litert_engine_t *litert_engine_acquire(const char *model_path) {
     if (!e) return nullptr;
     e->refcount = 1;
     engine_impl *raw = e.get();
+    g_engine_memory_bytes.fetch_add(raw->mem_bytes, std::memory_order_relaxed);
     g_registry.emplace(canon, std::move(e));
     return reinterpret_cast<litert_engine_t *>(raw);
 #else
@@ -491,6 +509,7 @@ extern "C" void litert_engine_release(litert_engine_t *engine) {
         return;
     }
     log_info("LiteRT: destroying engine for %s", e->canonical_path.c_str());
+    g_engine_memory_bytes.fetch_sub(e->mem_bytes, std::memory_order_relaxed);
     g_registry.erase(e->canonical_path);  // destroys the unique_ptr
 #else
     (void)engine;
@@ -513,6 +532,14 @@ extern "C" int litert_engine_input_height(const litert_engine_t *engine) {
     return reinterpret_cast<const engine_impl *>(engine)->input_h;
 #else
     (void)engine;
+    return 0;
+#endif
+}
+
+extern "C" uint64_t litert_engine_registry_memory_bytes(void) {
+#ifdef HAVE_LITERT
+    return g_engine_memory_bytes.load(std::memory_order_relaxed);
+#else
     return 0;
 #endif
 }
