@@ -1580,7 +1580,10 @@ static void *unified_detection_thread_func(void *arg) {
     char stream_name[MAX_STREAM_NAME];
     safe_strcpy(stream_name, ctx->stream_name, sizeof(stream_name), 0);
 
-    log_set_thread_context("Detection", stream_name);
+    // Component only: each message already carries the stream name in its
+    // own "[%s]" prefix, so also putting it in the thread context would print
+    // it twice ([Detection] [stream] [stream] ...).
+    log_set_thread_context("Detection", NULL);
     log_info("[%s] Unified detection thread started", stream_name);
 
     // Silence libav's default stderr logging. Detection streams often
