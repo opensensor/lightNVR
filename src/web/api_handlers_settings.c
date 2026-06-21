@@ -1934,16 +1934,15 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             
             log_info("Configuration saved successfully");
 
-            // Reload the configuration to ensure changes are applied
-            log_info("Reloading configuration after save");
-            if (reload_config(&g_config) != 0) {
-                log_warn("Failed to reload configuration after save, changes may not be applied until restart");
-            } else {
-                log_info("Configuration reloaded successfully");
-
-                // Verify the database path after reload
-                log_info("Database path after reload: %s", g_config.db_path);
-            }
+            // Do NOT re-read the config from disk here. Every setting above is
+            // already applied to g_config in place and persisted by
+            // save_config(), so reloading is redundant — and was dangerous: it
+            // ran load_default_config(), which free()s the global config.streams
+            // array on this libuv worker thread while the main thread is reading
+            // config.streams[...] (a use-after-free; ASan caught it in
+            // stop_detection_stream_reader). Settings that need more than an
+            // in-memory update (e.g. max_streams) already set restart_required
+            // and take effect on the next restart.
 
         } else {
             log_info("No settings changed");

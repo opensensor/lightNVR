@@ -298,15 +298,6 @@ typedef struct {
 int load_config(config_t *config);
 
 /**
- * Reload configuration from disk
- * This is used to refresh the global config after settings changes
- * 
- * @param config Pointer to config structure to fill
- * @return 0 on success, non-zero on failure
- */
-int reload_config(config_t *config);
-
-/**
  * Save configuration to specified file
  * 
  * @param config Pointer to config structure to save
