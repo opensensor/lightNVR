@@ -1579,10 +1579,10 @@ int save_config(const config_t *config, const char *path) {
     // Write in-process LiteRT detection engine settings
     fprintf(file, "[detection_engine]\n");
     fprintf(file, "; In-process TFLite/LiteRT inference. Streams using a .tflite model_path\n");
-    fprintf(file, "; will route through this engine. Per-model labels are read from embedded\n");
-    fprintf(file, "; TFLite metadata or a sidecar <basename>.labels.txt next to the model.\n");
+    fprintf(file, "; will route through this engine. Per-model labels are read from a sidecar\n");
+    fprintf(file, "; <basename>.labels.txt next to the model.\n");
     fprintf(file, "enabled = %s\n", config->detection_engine.enabled ? "true" : "false");
-    fprintf(file, "threads = %d  ; Interpreter threads (1-16, default: 4)\n",
+    fprintf(file, "threads = %d  ; Interpreter threads (1-16, default: 1)\n",
             config->detection_engine.num_threads);
     fprintf(file, "delegate = %s  ; xnnpack | gpu | none (default: xnnpack; gpu requires -DLITERT_WITH_GPU=ON)\n\n",
             config->detection_engine.delegate);

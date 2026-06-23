@@ -386,6 +386,103 @@ void test_handle_put_stream_parses_audio_voice_enhancement(void) {
     clear_db_streams();
 }
 
+/* detection_url validation (api_handlers_streams_modify.c): allowed schemes
+ * persist, disallowed schemes are rejected with 400 on both POST and PUT. */
+void test_handle_post_stream_persists_detection_url(void) {
+    clear_db_streams();
+
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    static const char json_body[] =
+        "{\"name\":\"cam_durl_post\",\"url\":\"rtsp://localhost/stream\","
+        "\"detection_url\":\"rtsp://localhost/lowres\"}";
+    req.body     = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream(&req, &res);
+
+    /* POST persists the config to the DB before attempting to start the stream,
+     * so detection_url is observable regardless of startup success. */
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("cam_durl_post", &got));
+    TEST_ASSERT_EQUAL_STRING("rtsp://localhost/lowres", got.detection_url);
+
+    usleep(200000);
+    http_response_free(&res);
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
+void test_handle_post_stream_rejects_disallowed_detection_url(void) {
+    clear_db_streams();
+
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    /* file:// is a local-resource scheme and must be rejected. */
+    static const char json_body[] =
+        "{\"name\":\"cam_durl_bad\",\"url\":\"rtsp://localhost/stream\","
+        "\"detection_url\":\"file:///etc/passwd\"}";
+    req.body     = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(400, res.status_code);
+
+    /* Rejected before persisting: the stream must not have been created. */
+    stream_config_t got;
+    TEST_ASSERT_NOT_EQUAL(0, get_stream_config_by_name("cam_durl_bad", &got));
+
+    http_response_free(&res);
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
+void test_handle_put_stream_rejects_disallowed_detection_url(void) {
+    clear_db_streams();
+
+    stream_config_t s = make_test_stream("cam_durl_put");
+    add_stream_config(&s);
+
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+    add_stream(&s);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    safe_strcpy(req.path, "/api/streams/cam_durl_put", sizeof(req.path), 0);
+    static const char json_body[] = "{\"detection_url\":\"file:///etc/passwd\"}";
+    req.body     = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_put_stream(&req, &res);
+
+    /* PUT validates the scheme synchronously before queuing the async restart. */
+    TEST_ASSERT_EQUAL_INT(400, res.status_code);
+
+    http_response_free(&res);
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
 int main(void) {
     init_logger();
     load_default_config(&g_config);
@@ -416,6 +513,9 @@ int main(void) {
     RUN_TEST(test_handle_get_stream_by_name_includes_audio_voice_enhancement);
     RUN_TEST(test_handle_post_stream_persists_audio_voice_enhancement);
     RUN_TEST(test_handle_put_stream_parses_audio_voice_enhancement);
+    RUN_TEST(test_handle_post_stream_persists_detection_url);
+    RUN_TEST(test_handle_post_stream_rejects_disallowed_detection_url);
+    RUN_TEST(test_handle_put_stream_rejects_disallowed_detection_url);
     int result = UNITY_END();
 
     shutdown_database();

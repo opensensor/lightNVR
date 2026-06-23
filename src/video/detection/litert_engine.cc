@@ -61,7 +61,8 @@ extern "C" {
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #endif
 
-extern config_t g_config;
+// g_config is declared in core/config.h (included with C linkage above); a
+// separate declaration here would conflict on language linkage.
 
 namespace {
 

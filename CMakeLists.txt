@@ -10,9 +10,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(ENABLE_SOD "Enable SOD library for object detection" ON)
 option(SOD_DYNAMIC_LINK "Dynamically link SOD library instead of static linking" OFF)
 
-# In-process LiteRT (TFLite) detection engine. Default OFF — when ON, the
-# vendored LiteRT submodule at third_party/litert is built and linked, and
-# the litert_engine module is compiled.
+# In-process LiteRT (TFLite) detection engine. Default ON, but auto-disabled at
+# configure time if the third_party/litert submodule isn't initialized, so a
+# fresh checkout still builds. When ON (and present), the vendored LiteRT
+# submodule is built and linked, and the litert_engine module is compiled.
 option(ENABLE_LITERT "Enable in-process LiteRT (TFLite) detection engine" ON)
 option(LITERT_WITH_XNNPACK "Compile XNNPACK delegate into the LiteRT engine" ON)
 option(LITERT_WITH_GPU "Compile GPU (OpenCL/GLES) delegate into the LiteRT engine" OFF)
@@ -253,15 +254,18 @@ if(ENABLE_SOD)
     endif()
 endif()
 
-# Set up LiteRT (in-process TFLite engine) if enabled
+# Set up LiteRT (in-process TFLite engine) if enabled. Auto-disable it when the
+# submodule isn't initialized so a default configure still succeeds out-of-the-box.
 set(LITERT_ENGINE_SOURCES "")
+if(ENABLE_LITERT AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/litert/tflite/CMakeLists.txt")
+    message(WARNING
+        "ENABLE_LITERT is ON but third_party/litert is not initialized; "
+        "disabling the in-process LiteRT engine. Run "
+        "'git submodule update --init --recursive third_party/litert' to enable it.")
+    set(ENABLE_LITERT OFF)
+endif()
 if(ENABLE_LITERT)
     set(LITERT_SUBDIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/litert/tflite")
-    if(NOT EXISTS "${LITERT_SUBDIR}/CMakeLists.txt")
-        message(FATAL_ERROR
-            "ENABLE_LITERT=ON but ${LITERT_SUBDIR} is missing. "
-            "Run: git submodule update --init --recursive third_party/litert")
-    endif()
 
     # Forward delegate selections to the LiteRT subproject.
     set(TFLITE_ENABLE_XNNPACK ${LITERT_WITH_XNNPACK} CACHE BOOL "" FORCE)

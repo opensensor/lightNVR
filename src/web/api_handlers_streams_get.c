@@ -267,7 +267,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         // Surface the specific cause of an Error state (e.g. failed to load
         // a detection model) so the UI can show it in a tooltip.
         stream_state_manager_t *sm_err = get_stream_state_by_name(db_streams[i].name);
-        if (sm_err && sm_err->last_error_message[0] != '\0') {
+        if (sm_err && sm_err->last_error_message[0] != '\0' && strcmp(status, "Error") == 0) {
             cJSON_AddStringToObject(stream_obj, "error_message", sm_err->last_error_message);
         }
 
@@ -429,7 +429,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     // Surface the specific cause of an Error state (e.g. failed to load
     // a detection model) so the UI can show it in a tooltip.
     stream_state_manager_t *sm_err = get_stream_state_by_name(config.name);
-    if (sm_err && sm_err->last_error_message[0] != '\0') {
+    if (sm_err && sm_err->last_error_message[0] != '\0' && strcmp(status, "Error") == 0) {
         cJSON_AddStringToObject(stream_obj, "error_message", sm_err->last_error_message);
     }
 
@@ -589,7 +589,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
 
     // Surface the specific cause of an Error state.
     stream_state_manager_t *sm_err2 = get_stream_state_by_name(config.name);
-    if (sm_err2 && sm_err2->last_error_message[0] != '\0') {
+    if (sm_err2 && sm_err2->last_error_message[0] != '\0' && strcmp(status, "Error") == 0) {
         cJSON_AddStringToObject(stream_obj, "error_message", sm_err2->last_error_message);
     }
 

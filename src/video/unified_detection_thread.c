@@ -682,7 +682,7 @@ static void *detection_stream_thread_func(void *arg) {
         /* Refuse file://, concat:, subfile: and other local-resource demuxers.
          * detection_url is user-supplied; lock it to network protocols. */
         av_dict_set(&opts, "protocol_whitelist",
-                    "udp,rtp,rtsp,tcp,https,tls,http", 0);
+                    "udp,rtp,rtsp,rtsps,tcp,tls,https,http", 0);
 
         int ret = avformat_open_input(&fmt_ctx, ctx->detection_stream_url, NULL, &opts);
         av_dict_free(&opts);
