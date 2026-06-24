@@ -824,6 +824,14 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
                 "detection_url must use http, https, rtsp, or rtsps");
             return;
         }
+        if (strlen(detection_url_post->valuestring) >= sizeof(config.detection_url)) {
+            log_error("detection_url too long (%zu bytes, max %zu) for stream %s",
+                      strlen(detection_url_post->valuestring),
+                      sizeof(config.detection_url) - 1, config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 413, "detection_url exceeds size limit");
+            return;
+        }
         safe_strcpy(config.detection_url, detection_url_post->valuestring,
                 sizeof(config.detection_url), 0);
     } else {
@@ -1525,6 +1533,14 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             cJSON_Delete(stream_json);
             http_response_set_json_error(res, 400,
                 "detection_url must use http, https, rtsp, or rtsps");
+            return;
+        }
+        if (strlen(detection_url_put->valuestring) >= sizeof(config.detection_url)) {
+            log_error("detection_url too long (%zu bytes, max %zu) for stream %s",
+                      strlen(detection_url_put->valuestring),
+                      sizeof(config.detection_url) - 1, config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 413, "detection_url exceeds size limit");
             return;
         }
         if (strncmp(config.detection_url, detection_url_put->valuestring,

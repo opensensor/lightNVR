@@ -576,7 +576,7 @@ extern "C" int litert_engine_detect(litert_engine_t *engine,
     }
     double inference_ms = std::chrono::duration<double, std::milli>(
                               std::chrono::steady_clock::now() - t_start).count();
-    log_info("LiteRT: inference %.1f ms (%s)", inference_ms, e->canonical_path.c_str());
+    log_debug("LiteRT: inference %.1f ms (%s)", inference_ms, e->canonical_path.c_str());
 
     // Heuristic: if any box coordinate exceeds 1.5, assume pixel-space
     // (model_w/h). Otherwise treat as normalized 0..1 in model space.
