@@ -1,4 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
+
+# CMake 4.0 removed compat with cmake_minimum_required(VERSION < 3.5).
+# Third-party deps fetched via LiteRT's FetchContent (e.g. neon2sse) still
+# declare old versions; set the cache floor so they configure cleanly.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+endif()
+
 project(LightNVR VERSION 0.35.4 LANGUAGES C CXX)
 
 # Set C/C++ standards
