@@ -115,10 +115,27 @@ typedef struct {
     // When non-empty, registered with go2rtc as "{name}_sub" and used by the
     // frontend in grid view while the main URL is used for fullscreen/recording.
     char sub_stream_url[MAX_URL_LENGTH];
+
+    // Detection stream URL: optional secondary stream used exclusively for
+    // object detection (e.g. an MJPEG sub-stream).  When non-empty the UDT
+    // opens this URL in a dedicated background thread and runs the configured
+    // detection model against its frames; the main stream is used only for
+    // buffering and recording.  MJPEG is ideal here because every frame is a
+    // full keyframe, eliminating the large inter-frame gap that limits detection
+    // accuracy on the main H.264/H.265 RTSP stream.
+    char detection_url[MAX_URL_LENGTH];
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator
 #define RECORDING_SCHEDULE_TEXT_SIZE 512
+
+// In-process LiteRT (TFLite) detection engine — runtime knobs only.
+// Per-model state (model_path, labels) is configured per-stream, not here.
+typedef struct {
+    bool enabled;       // Master toggle (default: false)
+    int  num_threads;   // Interpreter::SetNumThreads, clamped 1..16 (default: 1)
+    char delegate[16];  // "xnnpack" | "gpu" | "none" (default: "xnnpack")
+} detection_engine_config_t;
 
 // Main configuration structure
 typedef struct {
@@ -161,6 +178,7 @@ typedef struct {
     int default_pre_detection_buffer;      // Default seconds to keep before detection (0-60)
     int default_post_detection_buffer;     // Default seconds to keep after detection (0-300)
     char default_buffer_strategy[32];      // Default buffer strategy: auto, go2rtc, hls_segment, memory_packet, mmap_hybrid
+    int detection_grace_period;            // Seconds after last detection before entering post-buffer (default: 2)
 
     // Database settings
     char db_path[MAX_PATH_LENGTH];
@@ -261,6 +279,10 @@ typedef struct {
     bool mqtt_ha_discovery;               // Enable HA MQTT auto-discovery (default: false)
     char mqtt_ha_discovery_prefix[128];   // HA discovery topic prefix (default: "homeassistant")
     int mqtt_ha_snapshot_interval;        // Snapshot publish interval in seconds (default: 30, 0=disabled)
+
+    // In-process LiteRT (TFLite) detection engine.
+    // Runtime knobs only; per-model state (path, labels) lives elsewhere.
+    detection_engine_config_t detection_engine;
 } config_t;
 
 /**
@@ -274,15 +296,6 @@ typedef struct {
  * @return 0 on success, non-zero on failure
  */
 int load_config(config_t *config);
-
-/**
- * Reload configuration from disk
- * This is used to refresh the global config after settings changes
- * 
- * @param config Pointer to config structure to fill
- * @return 0 on success, non-zero on failure
- */
-int reload_config(config_t *config);
 
 /**
  * Save configuration to specified file
@@ -299,6 +312,20 @@ int save_config(const config_t *config, const char *path);
  * @param config Pointer to config structure to fill with defaults
  */
 void load_default_config(config_t *config);
+
+/**
+ * Set the detection grace period, clamped to its valid range (0..60 s).
+ * Shared by the config-file loader and the settings API so the range lives
+ * in one place.
+ */
+void config_set_detection_grace_period(config_t *config, int seconds);
+
+/** Set the LiteRT interpreter thread count, clamped to 1..16. */
+void config_set_detection_engine_threads(config_t *config, int threads);
+
+/** Set the LiteRT delegate if it is one of "xnnpack"/"gpu"/"none"; returns
+ *  true if accepted, false (leaving the config unchanged) otherwise. */
+bool config_set_detection_engine_delegate(config_t *config, const char *delegate);
 
 /**
  * Validate and normalize configuration values

@@ -20,7 +20,11 @@
 
 #include "../../include/video/detection.h"
 #include "../../include/video/detection_model.h"
+#include "../../include/video/detection_model_internal.h"
 #include "../../include/video/sod_detection.h"
+#ifdef HAVE_LITERT
+#include "video/detection/litert_engine.h"
+#endif
 #include "../../include/video/sod_realnet.h"
 #include "../../include/video/motion_detection.h"
 #include "../../include/video/api_detection.h"
@@ -224,8 +228,25 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
         }
     }
     else if (strcmp(model_type, MODEL_TYPE_TFLITE) == 0) {
-        log_error("TFLite detection not implemented yet");
+#ifdef HAVE_LITERT
+        model_t *m = (model_t *)model;
+        if (channels != 3) {
+            log_error("LiteRT engine requires RGB24 input (channels=3), got %d", channels);
+            ret = -1;
+        } else if (!m->tflite.engine) {
+            log_error("LiteRT engine handle is NULL for model %s", m->path);
+            ret = -1;
+        } else {
+            ret = litert_engine_detect(m->tflite.engine, frame_data, width, height,
+                                       m->threshold, result);
+            if (ret != 0) {
+                log_error("LiteRT inference failed for %s", m->path);
+            }
+        }
+#else
+        log_error("LiteRT not compiled in (rebuild with -DENABLE_LITERT=ON)");
         ret = -1;
+#endif
     }
     else if (strcmp(model_type, MODEL_TYPE_API) == 0) {
         // For API models, the model_path contains the API URL
@@ -238,7 +259,9 @@ int detect_objects(detection_model_t model, const unsigned char *frame_data,
             // The stream name will be set by the caller when storing the detections
             // A negative threshold tells detect_objects_api to use the default (0.5)
             // recording_id of 0 means no recording linkage
-            ret = detect_objects_api(api_url, frame_data, width, height, channels, result, NULL, -1.0f, 0);
+            // Legacy stop-gap caller: no frame-arrival timestamp available
+            // here, so pass 0 to let the DB layer fall back to time(NULL).
+            ret = detect_objects_api(api_url, frame_data, width, height, channels, result, NULL, -1.0f, 0, 0);
         }
     }
     else {

@@ -974,6 +974,24 @@ export function StreamConfigModal({
                       </div>
 
                       <div>
+                        <label htmlFor="stream-detection-url" className="block text-sm font-medium mb-2">
+                          {t('streamsConfig.detectionUrl')}
+                        </label>
+                        <input
+                          type="text"
+                          id="stream-detection-url"
+                          name="detectionUrl"
+                          className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
+                          placeholder={t('streamsConfig.detectionUrlPlaceholder')}
+                          value={currentStream.detectionUrl || ''}
+                          onChange={onInputChange}
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {t('streamsConfig.detectionUrlHelp')}
+                        </p>
+                      </div>
+
+                      <div>
                         <label htmlFor="stream-detection-threshold" className="block text-sm font-medium mb-2">
                           {t('streamsConfig.detectionThreshold')}: <span className="text-primary font-semibold">{currentStream.detectionThreshold}%</span>
                         </label>

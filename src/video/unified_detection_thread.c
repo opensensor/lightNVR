@@ -53,6 +53,7 @@
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_recording.h"
 #include "video/streams.h"
+#include "video/stream_state.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_snapshot.h"
 #include "video/go2rtc/go2rtc_integration.h"
@@ -77,7 +78,8 @@
 // is configured via the application's stream/detection settings (i.e. when
 // the configured detection interval is missing or <= 0).
 #define DEFAULT_DETECTION_INTERVAL 5
-#define DETECTION_GRACE_PERIOD_SEC 2  // Seconds to wait after last detection before entering post-buffer
+/* DETECTION_GRACE_PERIOD_SEC is no longer a compile-time constant.
+ * Use g_config.detection_grace_period (configured via [detection] grace_period). */
 
 // Video/default FPS settings
 // Conservative low-end fallback for cameras that omit FPS in SDP.
@@ -104,10 +106,23 @@ static bool system_initialized = false;
 
 // Forward declarations
 static void *unified_detection_thread_func(void *arg);
+static void *detection_stream_thread_func(void *arg);
+static int   start_detection_stream_thread(unified_detection_ctx_t *ctx);
+static void  stop_detection_stream_thread(unified_detection_ctx_t *ctx);
+/* Detection layer — pure inference, no DB/state side effects */
+static bool  detect_on_decoded_frame(unified_detection_ctx_t *ctx,
+                                     AVFrame *frame, time_t now,
+                                     detection_result_t *result);
+static bool  run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
+                                    time_t frame_timestamp);
+/* Action layer */
+static void  report_detections(unified_detection_ctx_t *ctx,
+                                const detection_result_t *result, time_t now);
+static void  handle_recording_state(unified_detection_ctx_t *ctx,
+                                    bool detected, time_t now);
 static int connect_to_stream(unified_detection_ctx_t *ctx);
 static void disconnect_from_stream(unified_detection_ctx_t *ctx);
 static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt);
-static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt);
 static int udt_start_recording(unified_detection_ctx_t *ctx);
 static int udt_stop_recording(unified_detection_ctx_t *ctx);
 static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx);
@@ -347,6 +362,9 @@ void shutdown_unified_detection_system(void) {
                 stop_onvif_detection_thread(ctx);
             }
 
+            // Stop the detection stream thread (no-op if never started).
+            stop_detection_stream_thread(ctx);
+
             // Clean up resources
             if (ctx->packet_buffer) {
                 destroy_packet_buffer(ctx->packet_buffer);
@@ -361,9 +379,10 @@ void shutdown_unified_detection_system(void) {
                 ctx->mp4_writer = NULL;
             }
 
-            // Only destroy mutex if thread has stopped
+            // Only destroy mutexes if thread has stopped
             if (atomic_load(&ctx->state) == UDT_STATE_STOPPED) {
                 pthread_mutex_destroy(&ctx->mutex);
+                pthread_mutex_destroy(&ctx->detection_stream_result_mutex);
             } else {
                 log_warn("Skipping mutex destroy for %s - thread may still be running", ctx->stream_name);
             }
@@ -595,6 +614,283 @@ static void stop_onvif_detection_thread(unified_detection_ctx_t *ctx) {
     log_info("[%s] ONVIF detection thread joined", ctx->stream_name);
 }
 
+/* ============================================================
+ * Secondary detection stream thread
+ * ============================================================ */
+
+/* Sleep up to *delay_ms in 100 ms slices, checking the stop flag between
+ * slices, then exponentially back off *delay_ms (capped at MAX_RECONNECT_DELAY_MS).
+ * Mirrors the main UDT's reconnect cadence so a permanently bad detection_url
+ * doesn't hammer the upstream every 5 s. */
+static void detection_stream_backoff(unified_detection_ctx_t *ctx, int *delay_ms) {
+    int remaining = *delay_ms;
+    while (remaining > 0 && atomic_load(&ctx->detection_stream_thread_running)) {
+        int slice = remaining > 100 ? 100 : remaining;
+        av_usleep((unsigned)slice * 1000);
+        remaining -= slice;
+    }
+    *delay_ms *= 2;
+    if (*delay_ms > MAX_RECONNECT_DELAY_MS) *delay_ms = MAX_RECONNECT_DELAY_MS;
+}
+
+/* Interrupt callback for the detection stream's blocking FFmpeg I/O.
+ * Without it, av_read_frame()/avformat_open_input() can block indefinitely on
+ * a network read (stimeout only covers RTSP, not HTTP/MJPEG), so a stop request
+ * or shutdown would wedge pthread_join() until a watchdog times out. Returns 1
+ * to abort when the thread is asked to stop, the UDT is stopping, or the
+ * process is shutting down. */
+static int detection_stream_interrupt_cb(void *opaque) {
+    unified_detection_ctx_t *ctx = (unified_detection_ctx_t *)opaque;
+    if (!ctx) return 1;
+    if (!atomic_load(&ctx->detection_stream_thread_running) ||
+        !atomic_load(&ctx->running) ||
+        is_shutdown_initiated()) {
+        return 1;
+    }
+    return 0;
+}
+
+static void *detection_stream_thread_func(void *arg) {
+    unified_detection_ctx_t *ctx = (unified_detection_ctx_t *)arg;
+
+    log_info("[%s] Detection stream thread started (url=%s)",
+             ctx->stream_name, ctx->detection_stream_url);
+
+    int reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
+
+    while (atomic_load(&ctx->detection_stream_thread_running)) {
+
+        /* ---- open stream ---- */
+        /* Allocate the context up front so the interrupt callback is armed
+         * before avformat_open_input — making both the open and every later
+         * av_read_frame() abortable on stop/shutdown. */
+        AVFormatContext *fmt_ctx = avformat_alloc_context();
+        if (!fmt_ctx) {
+            log_warn("[%s] Detection stream thread: avformat_alloc_context failed",
+                     ctx->stream_name);
+            detection_stream_backoff(ctx, &reconnect_delay_ms);
+            continue;
+        }
+        fmt_ctx->interrupt_callback.callback = detection_stream_interrupt_cb;
+        fmt_ctx->interrupt_callback.opaque   = ctx;
+
+        AVDictionary *opts = NULL;
+        av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+        av_dict_set(&opts, "stimeout",        "5000000", 0);
+        av_dict_set(&opts, "analyzeduration", "2000000", 0);
+        av_dict_set(&opts, "probesize",       "2000000", 0);
+        /* Refuse file://, concat:, subfile: and other local-resource demuxers.
+         * detection_url is user-supplied; lock it to network protocols. */
+        av_dict_set(&opts, "protocol_whitelist",
+                    "udp,rtp,rtsp,rtsps,tcp,tls,https,http", 0);
+
+        int ret = avformat_open_input(&fmt_ctx, ctx->detection_stream_url, NULL, &opts);
+        av_dict_free(&opts);
+
+        if (!atomic_load(&ctx->detection_stream_thread_running)) {
+            /* Stop was requested during the open call (potentially several
+             * seconds); exit silently rather than logging a misleading
+             * "cannot open ...: Success" warning. */
+            if (fmt_ctx) avformat_close_input(&fmt_ctx);
+            break;
+        }
+        if (ret < 0) {
+            if (fmt_ctx) avformat_close_input(&fmt_ctx);
+            char errbuf[128];
+            av_strerror(ret, errbuf, sizeof(errbuf));
+            log_warn("[%s] Detection stream thread: cannot open %s: %s — retry in %d ms",
+                     ctx->stream_name, ctx->detection_stream_url, errbuf, reconnect_delay_ms);
+            detection_stream_backoff(ctx, &reconnect_delay_ms);
+            continue;
+        }
+
+        if (avformat_find_stream_info(fmt_ctx, NULL) < 0) {
+            log_warn("[%s] Detection stream thread: could not read stream info", ctx->stream_name);
+            avformat_close_input(&fmt_ctx);
+            detection_stream_backoff(ctx, &reconnect_delay_ms);
+            continue;
+        }
+
+        int video_idx = -1;
+        for (unsigned int i = 0; i < fmt_ctx->nb_streams; i++) {
+            if (fmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                video_idx = (int)i;
+                break;
+            }
+        }
+        if (video_idx < 0) {
+            log_warn("[%s] Detection stream thread: no video stream in %s",
+                     ctx->stream_name, ctx->detection_stream_url);
+            avformat_close_input(&fmt_ctx);
+            detection_stream_backoff(ctx, &reconnect_delay_ms);
+            continue;
+        }
+
+        const AVCodec *decoder =
+            avcodec_find_decoder(fmt_ctx->streams[video_idx]->codecpar->codec_id);
+        AVCodecContext *dec_ctx = decoder ? avcodec_alloc_context3(decoder) : NULL;
+        if (!dec_ctx) {
+            log_warn("[%s] Detection stream thread: no decoder available", ctx->stream_name);
+            avformat_close_input(&fmt_ctx);
+            detection_stream_backoff(ctx, &reconnect_delay_ms);
+            continue;
+        }
+        avcodec_parameters_to_context(dec_ctx, fmt_ctx->streams[video_idx]->codecpar);
+        if (avcodec_open2(dec_ctx, decoder, NULL) < 0) {
+            log_warn("[%s] Detection stream thread: failed to open decoder", ctx->stream_name);
+            avcodec_free_context(&dec_ctx);
+            avformat_close_input(&fmt_ctx);
+            detection_stream_backoff(ctx, &reconnect_delay_ms);
+            continue;
+        }
+
+        /* ---- read / produce loop ---- */
+        time_t last_check = 0;
+        AVPacket *pkt   = av_packet_alloc();
+        AVFrame  *frame = av_frame_alloc();
+        bool stream_ok  = (pkt != NULL && frame != NULL);
+        /* INTRA_ONLY is a codec-descriptor property, not a decoder capability
+         * (in the capabilities namespace bit 0 is DRAW_HORIZ_BAND). Use the
+         * descriptor so MJPEG and other all-keyframe codecs are recognized. */
+        const AVCodecDescriptor *codec_desc = avcodec_descriptor_get(dec_ctx->codec_id);
+        bool is_intra_only = codec_desc &&
+                             (codec_desc->props & AV_CODEC_PROP_INTRA_ONLY) != 0;
+
+        if (stream_ok) {
+            /* Allocations succeeded — only now signal to process_packet that it
+             * should suppress main-stream detection and consume from this thread.
+             * If pkt/frame failed we leave the flag clear so keyframe detection
+             * keeps running on the main stream. */
+            atomic_store(&ctx->detection_stream_connected, 1);
+            reconnect_delay_ms = BASE_RECONNECT_DELAY_MS;
+            log_info("[%s] Detection stream thread connected", ctx->stream_name);
+        } else {
+            log_warn("[%s] Detection stream thread: failed to allocate packet/frame",
+                     ctx->stream_name);
+        }
+
+        while (atomic_load(&ctx->detection_stream_thread_running) && stream_ok) {
+            int rd = av_read_frame(fmt_ctx, pkt);
+            if (rd < 0) {
+                log_warn("[%s] Detection stream thread: read error, reconnecting",
+                         ctx->stream_name);
+                stream_ok = false;
+                break;
+            }
+
+            if (pkt->stream_index != video_idx) {
+                av_packet_unref(pkt);
+                continue;
+            }
+
+            time_t now = time(NULL);
+            bool interval_elapsed = (now - last_check >= (time_t)ctx->detection_interval);
+
+            /* Intra-only (MJPEG): discard frames within the interval at zero decode cost.
+             * Predictive codecs (H.264/H.265): must feed every packet to keep the
+             * reference chain intact; the interval gate moves into the frame-drain loop. */
+            if (is_intra_only && !interval_elapsed) {
+                av_packet_unref(pkt);
+                continue;
+            }
+
+            if (avcodec_send_packet(dec_ctx, pkt) < 0) {
+                av_packet_unref(pkt);
+                continue;
+            }
+            av_packet_unref(pkt);
+
+            while (avcodec_receive_frame(dec_ctx, frame) == 0) {
+                now = time(NULL);
+                if (now - last_check >= (time_t)ctx->detection_interval) {
+                    last_check = now;
+
+                    /* Pure detection — no DB writes, no state changes here. */
+                    detection_result_t result;
+                    bool hit = detect_on_decoded_frame(ctx, frame, now, &result);
+
+                    if (hit) {
+                        /* Write result + its frame time to the shared slot, then
+                         * raise the flag. process_packet() reads flag + slot and
+                         * calls report_detections() + handle_recording_state().
+                         * Carrying the timestamp keeps detections.timestamp at
+                         * detection time rather than the consumer's later time —
+                         * matching the API path, which writes the DB here with
+                         * the same `now`. */
+                        pthread_mutex_lock(&ctx->detection_stream_result_mutex);
+                        ctx->detection_stream_pending = result;
+                        ctx->detection_stream_pending_ts = now;
+                        pthread_mutex_unlock(&ctx->detection_stream_result_mutex);
+                        atomic_store(&ctx->detection_stream_result, 1);
+                    }
+                }
+                av_frame_unref(frame);
+            }
+        }
+
+        if (pkt)   av_packet_free(&pkt);
+        if (frame) av_frame_free(&frame);
+        avcodec_free_context(&dec_ctx);
+        avformat_close_input(&fmt_ctx);
+
+        /* Clear connected flag and any pending result so the main loop falls
+         * back to main-stream detection immediately on the next keyframe. */
+        atomic_store(&ctx->detection_stream_connected, 0);
+        atomic_store(&ctx->detection_stream_result, 0);
+
+        if (atomic_load(&ctx->detection_stream_thread_running) && !stream_ok) {
+            log_info("[%s] Detection stream thread: reconnecting in %d ms",
+                     ctx->stream_name, reconnect_delay_ms);
+            detection_stream_backoff(ctx, &reconnect_delay_ms);
+        }
+    }
+
+    log_info("[%s] Detection stream thread exiting", ctx->stream_name);
+    return NULL;
+}
+
+static int start_detection_stream_thread(unified_detection_ctx_t *ctx) {
+    atomic_store(&ctx->detection_stream_thread_running, 1);
+    atomic_store(&ctx->detection_stream_connected, 0);
+    atomic_store(&ctx->detection_stream_result, 0);
+    memset(&ctx->detection_stream_pending, 0, sizeof(ctx->detection_stream_pending));
+    ctx->detection_stream_pending_ts = 0;
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+    int ret = pthread_create(&ctx->detection_stream_thread, &attr,
+                             detection_stream_thread_func, ctx);
+    pthread_attr_destroy(&attr);
+
+    if (ret != 0) {
+        log_error("[%s] Failed to create detection stream thread: %s",
+                  ctx->stream_name, strerror(ret));
+        atomic_store(&ctx->detection_stream_thread_running, 0);
+        return -1;
+    }
+
+    log_info("[%s] Detection stream thread created", ctx->stream_name);
+    return 0;
+}
+
+static void stop_detection_stream_thread(unified_detection_ctx_t *ctx) {
+    int expected = 1;
+    if (!atomic_compare_exchange_strong(&ctx->detection_stream_thread_running, &expected, 0))
+        return;
+
+    log_info("[%s] Requesting detection stream thread to stop", ctx->stream_name);
+
+    /* pthread_join blocks until the currently outstanding av_read_frame()
+     * (or avformat_open_input()) returns. stimeout=5000000 caps that at
+     * ~5 s for well-behaved demuxers; a half-open RTSP session may push the
+     * worst case higher. Acceptable because this path runs only during UDT
+     * teardown. The compare-exchange above guarantees only one caller joins. */
+    pthread_join(ctx->detection_stream_thread, NULL);
+    log_info("[%s] Detection stream thread joined", ctx->stream_name);
+}
+
 /**
  * Start unified detection recording for a stream
  */
@@ -723,9 +1019,17 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
         log_info("[%s] Built-in motion detection enabled (sensitivity=%.2f)", stream_name, sens);
     }
 
-    // Initialize mutex
+    // Initialize mutexes
     if (pthread_mutex_init(&ctx->mutex, NULL) != 0) {
         log_error("Failed to initialize mutex for unified detection context");
+        free(ctx);
+        pthread_mutex_unlock(&contexts_mutex);
+        return -1;
+    }
+
+    if (pthread_mutex_init(&ctx->detection_stream_result_mutex, NULL) != 0) {
+        log_error("Failed to initialize detection stream result mutex for %s", stream_name);
+        pthread_mutex_destroy(&ctx->mutex);
         free(ctx);
         pthread_mutex_unlock(&contexts_mutex);
         return -1;
@@ -735,6 +1039,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     ctx->packet_buffer = create_packet_buffer(stream_name, ctx->pre_buffer_seconds, BUFFER_MODE_MEMORY);
     if (!ctx->packet_buffer) {
         log_error("Failed to create pre-detection buffer for stream %s", stream_name);
+        pthread_mutex_destroy(&ctx->detection_stream_result_mutex);
         pthread_mutex_destroy(&ctx->mutex);
         free(ctx);
         pthread_mutex_unlock(&contexts_mutex);
@@ -751,6 +1056,13 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     atomic_store(&ctx->onvif_thread_running, 0);
     atomic_store(&ctx->onvif_motion_detected, 0);
     atomic_store(&ctx->onvif_motion_timestamp, 0LL);
+
+    // Initialize detection stream thread atomics and result slot
+    atomic_store(&ctx->detection_stream_thread_running, 0);
+    atomic_store(&ctx->detection_stream_connected, 0);
+    atomic_store(&ctx->detection_stream_result, 0);
+    memset(&ctx->detection_stream_pending, 0, sizeof(ctx->detection_stream_pending));
+    ctx->detection_stream_pending_ts = 0;
 
     // For ONVIF model: cache connection parameters and start the background
     // polling thread BEFORE the UDT starts reading packets.  This ensures a
@@ -778,6 +1090,21 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
         }
     }
 
+    // If a secondary detection URL is configured, cache it and start the detection stream thread.
+    if (config.detection_url[0] != '\0') {
+        safe_strcpy(ctx->detection_stream_url, config.detection_url,
+                    sizeof(ctx->detection_stream_url), 0);
+        if (start_detection_stream_thread(ctx) != 0) {
+            log_warn("[%s] Detection stream thread could not be started; "
+                     "falling back to keyframe-based detection on the main stream",
+                     stream_name);
+            /* Non-fatal: the UDT will run detection on the main stream instead. */
+        } else {
+            log_info("[%s] Detection stream thread started for url=%s",
+                     stream_name, ctx->detection_stream_url);
+        }
+    }
+
     // Store context in slot
     ctx->slot_idx = slot;
     detection_contexts[slot] = ctx;
@@ -793,11 +1120,13 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     if (result != 0) {
         log_error("Failed to create unified detection thread for %s: %s",
                   stream_name, strerror(result));
-        /* Stop the ONVIF background thread before freeing ctx to avoid
-         * use-after-free: the thread was started above but the UDT that
-         * would normally join it never ran. */
+        /* Stop background threads before freeing ctx to avoid use-after-free:
+         * the threads were started above but the UDT that would normally join
+         * them never ran. */
         stop_onvif_detection_thread(ctx);
+        stop_detection_stream_thread(ctx);
         destroy_packet_buffer(ctx->packet_buffer);
+        pthread_mutex_destroy(&ctx->detection_stream_result_mutex);
         pthread_mutex_destroy(&ctx->mutex);
         free(ctx);
         detection_contexts[slot] = NULL;
@@ -1251,7 +1580,10 @@ static void *unified_detection_thread_func(void *arg) {
     char stream_name[MAX_STREAM_NAME];
     safe_strcpy(stream_name, ctx->stream_name, sizeof(stream_name), 0);
 
-    log_set_thread_context("Detection", stream_name);
+    // Component only: each message already carries the stream name in its
+    // own "[%s]" prefix, so also putting it in the thread context would print
+    // it twice ([Detection] [stream] [stream] ...).
+    log_set_thread_context("Detection", NULL);
     log_info("[%s] Unified detection thread started", stream_name);
 
     // Silence libav's default stderr logging. Detection streams often
@@ -1288,7 +1620,6 @@ static void *unified_detection_thread_func(void *arg) {
         switch (state) {
             case UDT_STATE_INITIALIZING:
                 log_info("[%s] State: INITIALIZING", stream_name);
-                // TODO: Load detection model
                 state = UDT_STATE_CONNECTING;
                 break;
 
@@ -1482,6 +1813,9 @@ static void *unified_detection_thread_func(void *arg) {
         stop_onvif_detection_thread(ctx);
     }
 
+    // Stop the detection stream thread (no-op if never started).
+    stop_detection_stream_thread(ctx);
+
     // Disconnect from stream to free FFmpeg decoder_ctx and input_ctx
     // This handles the case where the thread exits the loop while still connected
     // (e.g., during shutdown while in BUFFERING/RECORDING state)
@@ -1509,6 +1843,7 @@ static void *unified_detection_thread_func(void *arg) {
                 if (ctx->packet_buffer) {
                     destroy_packet_buffer(ctx->packet_buffer);
                 }
+                pthread_mutex_destroy(&ctx->detection_stream_result_mutex);
                 pthread_mutex_destroy(&ctx->mutex);
                 free(ctx);
                 detection_contexts[i] = NULL;
@@ -1677,12 +2012,19 @@ stats_done:
             if (ctx->stream_is_live && is_keyframe) {
                 should_buffer = true;
             }
+        } else if (ctx->stream_is_live) {
+            // Once the stream is live the replay-lag check is no longer meaningful:
+            // wall-clock and the camera's PTS clock can drift arbitrarily over
+            // long uptime, and gating buffering on that drift would freeze the
+            // pre-buffer with stale packets indefinitely (the !add path skips
+            // packet_buffer_add_packet, which is also where time-based eviction
+            // runs). Any real stall is handled by MAX_PACKET_TIMEOUT_SEC →
+            // reconnect, which re-anchors first_video_pts on the next session.
+            should_buffer = true;
         } else {
-            // Determine replay lag.
-            // If PTS is valid use PTS-vs-wallclock for accuracy.
-            // If PTS is AV_NOPTS_VALUE (common with some go2rtc outputs)
-            // fall back to pure wall-clock: treat the stream as still
-            // replaying until 2*pre_buffer_seconds have elapsed since connect.
+            // Pre-live: gate buffering until go2rtc's replay window closes.
+            // If PTS is valid use PTS-vs-wallclock for accuracy; otherwise fall
+            // back to a pure wall-clock warmup of 2 × pre_buffer_seconds.
             double wall_elapsed = difftime(now, ctx->stream_connect_time);
             double replay_lag;
 
@@ -1691,32 +2033,23 @@ stats_done:
                 double pts_elapsed = (double)(pkt->pts - ctx->first_video_pts) * av_q2d(tb);
                 replay_lag = wall_elapsed - pts_elapsed;
             } else {
-                // No PTS available — conservative wall-clock warmup
                 double warmup = (double)(ctx->pre_buffer_seconds * 2);
                 replay_lag = (wall_elapsed < warmup) ? (warmup - wall_elapsed) : 0.0;
             }
 
             if (replay_lag <= (double)ctx->pre_buffer_seconds) {
-                if (!ctx->stream_is_live) {
-                    if (is_keyframe) {
-                        // First live keyframe — flush stale data and start buffering
-                        packet_buffer_clear(ctx->packet_buffer);
-                        ctx->stream_is_live = true;
-                        should_buffer = true;
-                        log_info("[%s] go2rtc replay ended, pre-buffer active (lag=%.1fs)",
-                                 ctx->stream_name, replay_lag);
-                    }
-                    // else: waiting for first live keyframe — skip
-                } else {
-                    should_buffer = true;
-                }
-            } else {
-                /* Rate-limit: only log on keyframes (~every 2 s) to avoid
-                 * flooding the log at full frame-rate during replay. */
                 if (is_keyframe) {
-                    log_debug("[%s] go2rtc replay in progress (lag=%.1fs), skipping pre-buffer",
-                              ctx->stream_name, replay_lag);
+                    // First live keyframe — flush stale replay data and go live.
+                    packet_buffer_clear(ctx->packet_buffer);
+                    ctx->stream_is_live = true;
+                    should_buffer = true;
+                    log_info("[%s] go2rtc replay ended, pre-buffer active (lag=%.1fs)",
+                             ctx->stream_name, replay_lag);
                 }
+                // else: waiting for first live keyframe — skip
+            } else if (is_keyframe) {
+                log_debug("[%s] go2rtc replay in progress (lag=%.1fs), skipping pre-buffer",
+                          ctx->stream_name, replay_lag);
             }
         }
     } else if (!is_video && ctx->stream_is_live) {
@@ -1730,6 +2063,46 @@ stats_done:
 
     // Record stream metrics
     metrics_record_frame(ctx->stream_name, pkt->size, is_video);
+
+    // Detection stream path: runs on EVERY packet, no keyframe requirement.
+    //
+    // The background thread already handles its own rate-limiting and decoding.
+    // flush_prebuffer_to_recording() finds the first keyframe in the pre-buffer
+    // itself (see flush_packet_callback), so the current packet does not need
+    // to be a keyframe.  Consuming the result on every packet rather than
+    // waiting for a keyframe reduces recording-start latency from up to one
+    // full GOP interval (2–4 s on typical cameras) to one packet interval (~40 ms).
+    //
+    // Consumed in every state, including POST_BUFFER, and *before* the
+    // post-buffer-expiry check below.  Skipping consumption during POST_BUFFER
+    // left fresh hits sitting in the slot: the POST_BUFFER → RECORDING
+    // keep-alive branch in handle_recording_state was unreachable, and the
+    // stale slot then fired on the next packet after BUFFERING, triggering a
+    // phantom detection-less recording.
+    if (atomic_load(&ctx->detection_stream_connected)) {
+        bool detected = false;
+        if (atomic_exchange(&ctx->detection_stream_result, 0)) {
+            detection_result_t result;
+            time_t result_ts;
+            pthread_mutex_lock(&ctx->detection_stream_result_mutex);
+            result = ctx->detection_stream_pending;
+            result_ts = ctx->detection_stream_pending_ts;
+            pthread_mutex_unlock(&ctx->detection_stream_result_mutex);
+            log_info("[%s] Detection stream result: %d detection(s)",
+                     ctx->stream_name, result.count);
+            /* Stamp the DB write with the producer's detection time (when the
+             * frame was actually analyzed), not this consumer's wall-clock —
+             * otherwise detections lag the video by the hand-off latency. */
+            report_detections(ctx, &result, result_ts > 0 ? result_ts : now);
+            detected = true;
+        }
+        // handle_recording_state drives the recording state machine, which is a
+        // "now" decision (grace/post-buffer), so it keeps the consumer's now.
+        handle_recording_state(ctx, detected, now);
+        // Re-read state: handle_recording_state may have transitioned
+        // BUFFERING → RECORDING or POST_BUFFER → RECORDING above.
+        current_state = (unified_detection_state_t)atomic_load(&ctx->state);
+    }
 
     // If recording, write packet to MP4
     if (current_state == UDT_STATE_RECORDING || current_state == UDT_STATE_POST_BUFFER) {
@@ -1844,102 +2217,29 @@ stats_done:
         current_state = (unified_detection_state_t)atomic_load(&ctx->state);
     }
 
-    // Run detection based on time interval (in seconds)
-    // We check on keyframes as a convenient trigger point, but the decision is time-based
-    // This ensures detection_interval is interpreted as seconds, not keyframe count
-    if (is_keyframe && current_state != UDT_STATE_POST_BUFFER) {
+    // Main-stream path: keyframe + time-gated.
+    //
+    // Decoding a non-keyframe packet in isolation is not possible without the
+    // preceding reference frames, so detection must wait for a keyframe.
+    // Only active when no detection stream is connected (fallback or unconfigured).
+    if (is_keyframe && current_state != UDT_STATE_POST_BUFFER &&
+        !atomic_load(&ctx->detection_stream_connected)) {
 
         time_t time_since_last_check = now - (time_t)atomic_load(&ctx->last_detection_check_time);
 
-        // Log periodically to show detection is running
         if (time_since_last_check > 0 && (atomic_fetch_add(&ctx->log_counter, 1) % 10) == 0) {
             log_debug("[%s] Time since last detection check: %ld/%d seconds, model=%s, state=%d",
                      ctx->stream_name, (long)time_since_last_check, ctx->detection_interval,
                      ctx->model_path, current_state);
         }
 
-        // Run detection if enough time has passed (detection_interval is in seconds)
         if (time_since_last_check >= ctx->detection_interval) {
             atomic_store(&ctx->last_detection_check_time, (long long)now);
-
             log_info("[%s] Running detection (interval=%ds, elapsed=%lds, model=%s)",
-                    ctx->stream_name, ctx->detection_interval, (long)time_since_last_check, ctx->model_path);
-
-            // Decode frame and run detection
-            bool detection_triggered = run_detection_on_frame(ctx, pkt);
-
-            // If detection triggered
-            if (detection_triggered) {
-                atomic_store(&ctx->last_detection_time, (long long)now);
-
-                pthread_mutex_lock(&ctx->mutex);
-                ctx->total_detections++;
-                pthread_mutex_unlock(&ctx->mutex);
-
-                // In annotation_only mode, we don't manage recording state - just store detections
-                // The continuous recording system handles the actual MP4 files
-                if (!ctx->annotation_only) {
-                    // If not already recording, start recording
-                    if (current_state == UDT_STATE_BUFFERING) {
-                        log_info("[%s] Detection triggered, starting recording", ctx->stream_name);
-
-                        // Start recording first, then flush pre-buffer
-                        if (udt_start_recording(ctx) == 0) {
-                            // Flush pre-buffer and correct DB start_time
-                            int pre_dur = 0;
-                            int pre_cnt = 0; size_t pre_mem = 0;
-                            if (ctx->packet_buffer)
-                                packet_buffer_get_stats(ctx->packet_buffer, &pre_cnt, &pre_mem, &pre_dur);
-
-                            flush_prebuffer_to_recording(ctx);
-                            atomic_store(&ctx->state, UDT_STATE_RECORDING);
-
-                            // Correct start_time in DB and writer to the actual first-packet time
-                            if (!ctx->mp4_writer->start_time_corrected && pre_dur > 0 &&
-                                ctx->current_recording_id > 0) {
-                                // Clamp pre_dur to the configured pre_buffer window.
-                                // go2rtc may deliver a ring-buffer of 200+ seconds; using
-                                // the raw value would push start_time so far back that
-                                // elapsed > max_duration immediately, stopping the recording.
-                                int clamped_pre = pre_dur > ctx->pre_buffer_seconds
-                                                  ? ctx->pre_buffer_seconds : pre_dur;
-                                time_t corrected = now - (time_t)clamped_pre;
-                                ctx->mp4_writer->creation_time = corrected;
-                                ctx->mp4_writer->start_time_corrected = true;
-                                update_recording_start_time(ctx->current_recording_id, corrected);
-                                log_info("[%s] Corrected recording start_time by -%ds (pre-buffer, clamped from %ds)",
-                                         ctx->stream_name, clamped_pre, pre_dur);
-                            }
-
-                            // Link any recent detections (that triggered this recording) to the new recording_id
-                            // Look back up to detection_interval + 2 seconds to catch the triggering detection
-                            time_t lookback = now - (ctx->detection_interval > 0 ? ctx->detection_interval + 2 : 7);
-                            int updated = update_detections_recording_id(ctx->stream_name,
-                                                                          ctx->current_recording_id,
-                                                                          lookback);
-                            if (updated > 0) {
-                                log_debug("[%s] Linked %d recent detections to recording ID %lu",
-                                         ctx->stream_name, updated, (unsigned long)ctx->current_recording_id);
-                            }
-                        }
-                    }
-                    // If in post-buffer, go back to recording
-                    else if (current_state == UDT_STATE_POST_BUFFER) {
-                        log_info("[%s] Detection during post-buffer, continuing recording", ctx->stream_name);
-                        atomic_store(&ctx->state, UDT_STATE_RECORDING);
-                    }
-                }
-            }
-            // No detection - check if we should enter post-buffer (only in detection-recording mode)
-            else if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
-                // Check if enough time has passed since last detection
-                if (now - (time_t)atomic_load(&ctx->last_detection_time) > DETECTION_GRACE_PERIOD_SEC) {  // grace period before post-buffer
-                    log_info("[%s] No detection, entering post-buffer (%d seconds)",
-                             ctx->stream_name, ctx->post_buffer_seconds);
-                    atomic_store(&ctx->post_buffer_end_time, (long long)(now + ctx->post_buffer_seconds));
-                    atomic_store(&ctx->state, UDT_STATE_POST_BUFFER);
-                }
-            }
+                    ctx->stream_name, ctx->detection_interval,
+                    (long)time_since_last_check, ctx->model_path);
+            bool detected = run_detection_on_frame(ctx, pkt, now);
+            handle_recording_state(ctx, detected, now);
         }
     }
 
@@ -1987,6 +2287,7 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
         log_error("[%s] Failed to create MP4 writer", ctx->stream_name);
         return -1;
     }
+    ctx->mp4_writer->pre_buffer_seconds = ctx->pre_buffer_seconds;
 
     // Configure audio recording based on stream settings
     if (ctx->record_audio && ctx->audio_stream_idx >= 0) {
@@ -2213,301 +2514,72 @@ static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx) {
  * @param pkt The video packet containing a keyframe (unused for API detection)
  * @return true if detection was triggered, false otherwise
  */
-static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) {
+static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
+                                   time_t frame_timestamp) {
     if (!ctx) return false;
 
-    detection_result_t result;
-    memset(&result, 0, sizeof(detection_result_t));
+    /* frame_timestamp reflects when the packet entered the pipeline
+     * (captured at the top of process_packet).  Reuse it for reporting,
+     * DB writes, and MQTT so detections.timestamp records frame time
+     * rather than inference-finished time. */
+    time_t now = frame_timestamp;
 
-    // Check if this is API-based detection
+    /* API detection: try the go2rtc snapshot shortcut first.
+     * The snapshot path handles zone filtering, DB storage, and MQTT
+     * internally so we only need to check the threshold on its result.
+     * If the snapshot is unavailable we fall through to the shared
+     * frame-decode path below. */
     if (is_api_detection(ctx->model_path)) {
-        // API detection - try go2rtc snapshot first (more efficient, no frame decoding needed)
         log_debug("[%s] Running API detection via snapshot", ctx->stream_name);
 
-        // Determine recording_id to link detections to
         uint64_t rec_id = 0;
         if (ctx->annotation_only) {
-            // In annotation_only mode, link detections to the continuous recording
             rec_id = get_current_recording_id_for_stream(ctx->stream_name);
         } else if (ctx->current_recording_id > 0) {
-            // For detection recordings, link to the current detection recording
             rec_id = ctx->current_recording_id;
         }
 
-        // The model_path contains either "api-detection" or an HTTP URL
-        // detect_objects_api_snapshot handles the "api-detection" special case
-        // by looking up g_config.api_detection_url
+        detection_result_t result;
+        memset(&result, 0, sizeof(result));
         int detect_ret = detect_objects_api_snapshot(ctx->model_path, ctx->stream_name,
-                                                     &result, ctx->detection_threshold, rec_id);
+                                                     &result, ctx->detection_threshold,
+                                                     rec_id, frame_timestamp);
 
-        if (detect_ret == DETECT_SNAPSHOT_UNAVAILABLE) {
-            // go2rtc snapshot failed - fall back to local frame decoding
-            log_info("[%s] go2rtc snapshot unavailable, falling back to local frame decode", ctx->stream_name);
-
-            // We need a packet and decoder to fall back
-            if (!pkt || !ctx->decoder_ctx) {
-                log_debug("[%s] Cannot fall back: no packet or decoder available", ctx->stream_name);
-                return false;
-            }
-
-            // Decode the packet to get a frame
-            int ret = avcodec_send_packet(ctx->decoder_ctx, pkt);
-            if (ret < 0) {
-                log_debug("[%s] Fallback decode failed: avcodec_send_packet error %d", ctx->stream_name, ret);
-                return false;
-            }
-
-            AVFrame *frame = av_frame_alloc();
-            if (!frame) {
-                log_debug("[%s] Fallback decode failed: could not allocate frame", ctx->stream_name);
-                return false;
-            }
-
-            ret = avcodec_receive_frame(ctx->decoder_ctx, frame);
-            if (ret < 0) {
-                av_frame_free(&frame);
-                log_debug("[%s] Fallback decode failed: avcodec_receive_frame error %d", ctx->stream_name, ret);
-                return false;
-            }
-
-            // Convert frame to RGB for API detection
-            int width = frame->width;
-            int height = frame->height;
-            int channels = 3;  // RGB
-
-            struct SwsContext *sws_ctx = sws_getContext(
-                width, height, frame->format,
-                width, height, AV_PIX_FMT_RGB24,
-                SWS_BILINEAR, NULL, NULL, NULL);
-
-            if (!sws_ctx) {
-                log_error("[%s] Fallback: failed to create sws context", ctx->stream_name);
-                av_frame_free(&frame);
-                return false;
-            }
-
-            size_t rgb_buffer_size = (size_t)width * height * channels;
-            uint8_t *rgb_buffer = malloc(rgb_buffer_size);
-            if (!rgb_buffer) {
-                log_error("[%s] Fallback: failed to allocate RGB buffer", ctx->stream_name);
-                sws_freeContext(sws_ctx);
-                av_frame_free(&frame);
-                return false;
-            }
-
-            uint8_t *rgb_data[4] = {rgb_buffer, NULL, NULL, NULL};
-            int rgb_linesize[4] = {width * channels, 0, 0, 0};
-
-            sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize,
-                      0, height, rgb_data, rgb_linesize);
-
-            sws_freeContext(sws_ctx);
-            av_frame_free(&frame);
-
-            // Get the actual API URL
-            const char *actual_api_url = get_actual_api_url(ctx->stream_name, ctx->model_path);
-            if (actual_api_url == NULL) {
-                free(rgb_buffer);
-                return false;
-            }
-
-            log_info("[%s] Fallback: sending %dx%d frame to API detection", ctx->stream_name, width, height);
-
-            // Call API detection with decoded frame (rec_id already computed above)
-            detect_ret = detect_objects_api(actual_api_url, rgb_buffer, width, height, channels,
-                                            &result, ctx->stream_name, ctx->detection_threshold, rec_id);
-
-            free(rgb_buffer);
-
+        if (detect_ret != DETECT_SNAPSHOT_UNAVAILABLE) {
             if (detect_ret != 0) {
-                log_warn("[%s] Fallback API detection failed with error %d", ctx->stream_name, detect_ret);
+                log_warn("[%s] API detection failed with error %d", ctx->stream_name, detect_ret);
                 return false;
             }
-
-            log_info("[%s] Fallback API detection successful: %d objects detected", ctx->stream_name, result.count);
-        } else if (detect_ret != 0) {
-            log_warn("[%s] API detection failed with error %d", ctx->stream_name, detect_ret);
-            return false;
-        }
-
-        // Note: detect_objects_api_snapshot already handles:
-        // - Filtering by zones
-        // - Storing in database
-        // - MQTT publishing
-
-        // Check if any detections meet the threshold and trigger recording
-        bool detection_triggered = false;
-        for (int i = 0; i < result.count; i++) {
-            if (result.detections[i].confidence >= ctx->detection_threshold) {
-                detection_triggered = true;
-                log_info("[%s] API Detection: %s (%.1f%%) at [%.2f, %.2f, %.2f, %.2f]",
-                         ctx->stream_name,
-                         result.detections[i].label,
-                         result.detections[i].confidence * 100.0f,
-                         result.detections[i].x,
-                         result.detections[i].y,
-                         result.detections[i].width,
-                         result.detections[i].height);
-            }
-        }
-
-        return detection_triggered;
-    }
-
-    // Built-in motion detection - requires frame decoding but no external model file
-    if (is_motion_detection_model(ctx->model_path)) {
-        if (!pkt || !ctx->decoder_ctx) return false;
-
-        // Decode the packet to get a frame
-        int ret = avcodec_send_packet(ctx->decoder_ctx, pkt);
-        if (ret < 0) {
-            return false;
-        }
-
-        AVFrame *motion_frame = av_frame_alloc();
-        if (!motion_frame) {
-            return false;
-        }
-
-        ret = avcodec_receive_frame(ctx->decoder_ctx, motion_frame);
-        if (ret < 0) {
-            av_frame_free(&motion_frame);
-            return false;
-        }
-
-        // Convert frame to RGB for motion detection
-        int mot_width = motion_frame->width;
-        int mot_height = motion_frame->height;
-        int mot_channels = 3;  // RGB
-
-        struct SwsContext *mot_sws_ctx = sws_getContext(
-            mot_width, mot_height, motion_frame->format,
-            mot_width, mot_height, AV_PIX_FMT_RGB24,
-            SWS_BILINEAR, NULL, NULL, NULL);
-
-        if (!mot_sws_ctx) {
-            log_error("[%s] Failed to create sws context for motion detection", ctx->stream_name);
-            av_frame_free(&motion_frame);
-            return false;
-        }
-
-        size_t mot_buffer_size = (size_t)mot_width * mot_height * mot_channels;
-        uint8_t *mot_rgb_buffer = malloc(mot_buffer_size);
-        if (!mot_rgb_buffer) {
-            log_error("[%s] Failed to allocate RGB buffer for motion detection", ctx->stream_name);
-            sws_freeContext(mot_sws_ctx);
-            av_frame_free(&motion_frame);
-            return false;
-        }
-
-        uint8_t *mot_rgb_data[4] = {mot_rgb_buffer, NULL, NULL, NULL};
-        int mot_rgb_linesize[4] = {mot_width * mot_channels, 0, 0, 0};
-
-        sws_scale(mot_sws_ctx, (const uint8_t * const *)motion_frame->data, motion_frame->linesize,
-                  0, mot_height, mot_rgb_data, mot_rgb_linesize);
-
-        sws_freeContext(mot_sws_ctx);
-        av_frame_free(&motion_frame);
-
-        // Run built-in motion detection
-        time_t mot_frame_time = time(NULL);
-        int mot_ret = detect_motion(ctx->stream_name, mot_rgb_buffer, mot_width, mot_height,
-                                    mot_channels, mot_frame_time, &result);
-
-        free(mot_rgb_buffer);
-
-        if (mot_ret != 0) {
-            log_warn("[%s] Motion detection failed with error %d", ctx->stream_name, mot_ret);
-            return false;
-        }
-
-        // Apply zone filtering to motion detections (consistent with ONVIF path)
-        if (result.count > 0) {
-            int zf_ret = filter_detections_by_zones(ctx->stream_name, &result);
-            if (zf_ret != 0) {
-                log_warn("[%s] Zone filtering failed for motion detections, keeping all",
-                         ctx->stream_name);
-            }
-        }
-
-        // Filter out detections below the threshold so they are not stored
-        // or displayed on the overlay.  Keep only those that meet the
-        // configured detection_threshold.
-        bool mot_triggered = false;
-        {
-            int kept = 0;
+            /* Snapshot succeeded — snapshot handles DB storage internally.
+             * Call report_detections for stats only (no-op for DB on API). */
+            report_detections(ctx, &result, now);
             for (int i = 0; i < result.count; i++) {
                 if (result.detections[i].confidence >= ctx->detection_threshold) {
-                    mot_triggered = true;
-                    log_info("[%s] Motion detected: %s (%.1f%%)",
+                    log_info("[%s] API Detection: %s (%.1f%%) at [%.2f, %.2f, %.2f, %.2f]",
                              ctx->stream_name,
                              result.detections[i].label,
-                             result.detections[i].confidence * 100.0f);
-                    if (kept != i) {
-                        result.detections[kept] = result.detections[i];
-                    }
-                    kept++;
-                } else {
-                    log_debug("[%s] Motion below threshold: %s (%.1f%% < %.1f%%)",
-                              ctx->stream_name,
-                              result.detections[i].label,
-                              result.detections[i].confidence * 100.0f,
-                              ctx->detection_threshold * 100.0f);
+                             result.detections[i].confidence * 100.0f,
+                             result.detections[i].x, result.detections[i].y,
+                             result.detections[i].width, result.detections[i].height);
+                    return true;
                 }
             }
-            result.count = kept;
+            return false;
         }
 
-        // Store detections in database if any passed the threshold
-        if (result.count > 0) {
-            time_t now = time(NULL);
-            uint64_t rec_id = 0;
-            if (ctx->annotation_only) {
-                rec_id = get_current_recording_id_for_stream(ctx->stream_name);
-            } else if (ctx->current_recording_id > 0) {
-                rec_id = ctx->current_recording_id;
-            }
-            if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
-                log_warn("[%s] Failed to store motion detections in database", ctx->stream_name);
-            }
-
-            // Keep MQTT/Home Assistant motion topics in sync with built-in
-            // motion detections. Other detection backends publish here via
-            // their own pipelines; built-in motion must do the same after
-            // threshold and zone filtering.
-            mqtt_publish_detection(ctx->stream_name, &result, now);
-            mqtt_set_motion_state(ctx->stream_name, &result);
-
-            pthread_mutex_lock(&ctx->mutex);
-            ctx->total_detections += result.count;
-            pthread_mutex_unlock(&ctx->mutex);
-        }
-
-        return mot_triggered;
+        log_info("[%s] go2rtc snapshot unavailable, falling back to frame decode",
+                 ctx->stream_name);
+        /* Fall through to frame-decode path below. */
     }
 
-    // ONVIF event-based detection — non-blocking atomic flag read
-    // -----------------------------------------------------------------------
-    // detect_motion_onvif() is NOT called here anymore.  A dedicated
-    // background thread (started alongside the UDT, see
-    // start_onvif_detection_thread) polls the camera continuously and writes
-    // its result into ctx->onvif_motion_detected.
-    //
-    // This keeps process_packet() / av_read_frame() completely unblocked:
-    //   • No CURL/SOAP round-trip in the UDT main loop.
-    //   • No PTS gaps in the MP4 caused by ONVIF blocking.
-    //   • No write i/o timeout on the go2rtc consumer connection.
-    //
-    // The ONVIF thread manages the flag value:
-    //   1 while the camera reports motion events; 0 when idle or on error.
-    // We read without clearing — the thread updates the flag each poll cycle.
-    //
-    // SOD and API detection paths are fully unaffected by this change.
-    // -----------------------------------------------------------------------
+    /* ONVIF: event-based — no frame needed, just read the async-thread flag.
+     *
+     * detect_motion_onvif() is NOT called here.  A dedicated background thread
+     * (start_onvif_detection_thread) polls the camera and writes the result
+     * into ctx->onvif_motion_detected, keeping av_read_frame() unblocked. */
     if (is_onvif_detection_model(ctx->model_path)) {
-        bool onvif_triggered = (atomic_load(&ctx->onvif_motion_detected) != 0);
-
-        if (onvif_triggered) {
+        bool triggered = (atomic_load(&ctx->onvif_motion_detected) != 0);
+        if (triggered) {
             pthread_mutex_lock(&ctx->mutex);
             ctx->total_detections++;
             pthread_mutex_unlock(&ctx->mutex);
@@ -2515,138 +2587,308 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt) 
                      ctx->stream_name,
                      (long long)atomic_load(&ctx->onvif_motion_timestamp));
         }
-        return onvif_triggered;
-
+        return triggered;
     }
 
-    // Embedded model detection - requires frame decoding
+    /* All other models (motion, SOD/TFLite, API snapshot fallback):
+     * decode packet → detect_on_decoded_frame → report_detections. */
     if (!pkt || !ctx->decoder_ctx) return false;
 
-    // Check if we have a detection model loaded
-    if (!ctx->model) {
-        // Try to load the model if we have a path
-        if (ctx->model_path[0] != '\0') {
+    if (avcodec_send_packet(ctx->decoder_ctx, pkt) < 0) return false;
+
+    AVFrame *frame = av_frame_alloc();
+    if (!frame) return false;
+
+    if (avcodec_receive_frame(ctx->decoder_ctx, frame) < 0) {
+        av_frame_free(&frame);
+        return false;
+    }
+
+    detection_result_t result2;
+    bool hit = detect_on_decoded_frame(ctx, frame, now, &result2);
+    av_frame_free(&frame);
+
+    if (hit) report_detections(ctx, &result2, now);
+    return hit;
+}
+/* ============================================================
+ * Detection layer — pure inference, no side effects
+ * ============================================================ */
+
+/**
+ * Run the configured model on a pre-decoded frame and return the surviving
+ * detections via *result.  Returns true when result->count > 0.
+ *
+ * Pure computation: zone + object + threshold filters are applied, but no DB
+ * writes, no recording-state changes, and no MQTT publishing happen here.
+ * Callers pass the result to report_detections() then handle_recording_state().
+ *
+ * Exception: API backends (detect_objects_api / detect_objects_api_snapshot)
+ * store results in the DB internally — this is their pre-existing design.
+ * report_detections() is therefore a no-op for API models.
+ *
+ * Handles: API (frame path), motion detection, SOD/TFLite embedded models.
+ * Does NOT handle ONVIF (event-based, no frame needed).
+ */
+/* Convert a decoded frame to a freshly malloc'd packed RGB24 buffer at the
+ * frame's own resolution (caller frees). Returns NULL on failure. */
+static uint8_t *frame_to_rgb24(const AVFrame *frame) {
+    struct SwsContext *sws_ctx = sws_getContext(
+        frame->width, frame->height, frame->format,
+        frame->width, frame->height, AV_PIX_FMT_RGB24,
+        SWS_BILINEAR, NULL, NULL, NULL);
+    if (!sws_ctx) return NULL;
+
+    uint8_t *rgb_buf = malloc((size_t)frame->width * frame->height * 3);
+    if (!rgb_buf) { sws_freeContext(sws_ctx); return NULL; }
+
+    uint8_t *rgb_data[4] = {rgb_buf, NULL, NULL, NULL};
+    int rgb_linesize[4]  = {frame->width * 3, 0, 0, 0};
+    sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize,
+              0, frame->height, rgb_data, rgb_linesize);
+    sws_freeContext(sws_ctx);
+    return rgb_buf;
+}
+
+static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
+                                    AVFrame *frame, time_t now,
+                                    detection_result_t *result) {
+    if (!ctx || !frame || !result) return false;
+
+    memset(result, 0, sizeof(*result));
+
+    int width  = frame->width;
+    int height = frame->height;
+
+    /* ---- model dispatch ---- */
+
+    if (is_api_detection(ctx->model_path)) {
+        /* API backends store in DB internally using rec_id for recording linking. */
+        uint64_t rec_id = ctx->annotation_only
+            ? get_current_recording_id_for_stream(ctx->stream_name)
+            : ctx->current_recording_id;
+
+        uint8_t *rgb_buf = frame_to_rgb24(frame);
+        if (!rgb_buf) return false;
+
+        const char *api_url = get_actual_api_url(ctx->stream_name, ctx->model_path);
+        int ret = api_url
+            ? detect_objects_api(api_url, rgb_buf, width, height, 3,
+                                 result, ctx->stream_name, ctx->detection_threshold,
+                                 rec_id, now)
+            : -1;
+        free(rgb_buf);
+
+        if (ret != 0) {
+            log_warn("[%s] API detection (frame path) failed with error %d",
+                     ctx->stream_name, ret);
+            return false;
+        }
+
+    } else if (is_motion_detection_model(ctx->model_path)) {
+        uint8_t *rgb_buf = frame_to_rgb24(frame);
+        if (!rgb_buf) return false;
+
+        int ret = detect_motion(ctx->stream_name, rgb_buf, width, height, 3, now, result);
+        free(rgb_buf);
+
+        if (ret != 0) {
+            log_warn("[%s] Motion detection failed with error %d", ctx->stream_name, ret);
+            return false;
+        }
+
+    } else {
+        /* Embedded model (SOD / TFLite / etc.). */
+        if (!ctx->model) {
+            if (ctx->model_path[0] == '\0') return false;
+            if (ctx->model_load_failed) {
+                /* One-shot hard error already reported; don't retry. */
+                return false;
+            }
             ctx->model = load_detection_model(ctx->model_path, ctx->detection_threshold);
             if (!ctx->model) {
-                log_warn("[%s] Failed to load detection model: %s", ctx->stream_name, ctx->model_path);
+                /* Hard error: drive the stream into STREAM_STATE_ERROR so the
+                 * UI surfaces the cause via streams.error_message. The specific
+                 * reason (missing file, unsupported dtype, etc.) was already
+                 * logged by load_detection_model / the engine. */
+                /* Scratch sized exactly for the prefix + longest possible
+                 * model_path (sizeof includes the null). handle_stream_error()
+                 * truncates to STREAM_ERROR_MESSAGE_MAX when persisting. */
+                static const char kPrefix[] = "Failed to load detection model: ";
+                char msg[sizeof kPrefix + MAX_PATH_LENGTH];
+                snprintf(msg, sizeof msg, "%s%s", kPrefix, ctx->model_path);
+                log_error("[%s] %s", ctx->stream_name, msg);
+                stream_state_manager_t *sm = get_stream_state_by_name(ctx->stream_name);
+                if (sm) {
+                    handle_stream_error(sm, STREAM_ERR_MODEL_LOAD, msg);
+                }
+                ctx->model_load_failed = true;
                 return false;
             }
             log_info("[%s] Loaded detection model: %s", ctx->stream_name, ctx->model_path);
-        } else {
+        }
+
+        uint8_t *rgb_buf = frame_to_rgb24(frame);
+        if (!rgb_buf) {
+            log_error("[%s] Failed to convert frame to RGB24", ctx->stream_name);
+            return false;
+        }
+
+        int ret = detect_objects(ctx->model, rgb_buf, width, height, 3, result);
+        free(rgb_buf);
+
+        if (ret != 0) {
+            log_warn("[%s] Embedded model detection failed with error %d",
+                     ctx->stream_name, ret);
             return false;
         }
     }
 
-    // Decode the packet to get a frame
-    int ret = avcodec_send_packet(ctx->decoder_ctx, pkt);
-    if (ret < 0) {
-        return false;
-    }
+    /* ---- post-processing: common to all model types ---- */
 
-    AVFrame *frame = av_frame_alloc();
-    if (!frame) {
-        return false;
-    }
+    if (result->count == 0) return false;
 
-    ret = avcodec_receive_frame(ctx->decoder_ctx, frame);
-    if (ret < 0) {
-        av_frame_free(&frame);
-        return false;
-    }
+    filter_detections_by_zones(ctx->stream_name, result);
+    filter_detections_by_stream_objects(ctx->stream_name, result);
 
-    // Convert frame to RGB for detection
-    int width = frame->width;
-    int height = frame->height;
-    int channels = 3;  // RGB
-
-    // Create software scaler for conversion
-    struct SwsContext *sws_ctx = sws_getContext(
-        width, height, frame->format,
-        width, height, AV_PIX_FMT_RGB24,
-        SWS_BILINEAR, NULL, NULL, NULL);
-
-    if (!sws_ctx) {
-        log_error("[%s] Failed to create sws context", ctx->stream_name);
-        av_frame_free(&frame);
-        return false;
-    }
-
-    // Allocate RGB buffer
-    size_t rgb_buffer_size = (size_t)width * height * channels;
-    uint8_t *rgb_buffer = malloc(rgb_buffer_size);
-    if (!rgb_buffer) {
-        log_error("[%s] Failed to allocate RGB buffer", ctx->stream_name);
-        sws_freeContext(sws_ctx);
-        av_frame_free(&frame);
-        return false;
-    }
-
-    // Convert frame to RGB
-    uint8_t *rgb_data[4] = {rgb_buffer, NULL, NULL, NULL};
-    int rgb_linesize[4] = {width * channels, 0, 0, 0};
-
-    sws_scale(sws_ctx, (const uint8_t * const *)frame->data, frame->linesize,
-              0, height, rgb_data, rgb_linesize);
-
-    sws_freeContext(sws_ctx);
-    av_frame_free(&frame);
-
-    // Run detection
-    int detect_ret = detect_objects(ctx->model, rgb_buffer, width, height, channels, &result);
-
-    free(rgb_buffer);
-
-    if (detect_ret != 0) {
-        log_warn("[%s] Detection failed with error %d", ctx->stream_name, detect_ret);
-        return false;
-    }
-
-    // Check if any detections meet the threshold
-    bool detection_triggered = false;
-    for (int i = 0; i < result.count; i++) {
-        if (result.detections[i].confidence >= ctx->detection_threshold) {
-            detection_triggered = true;
+    /* Compact in-place: discard detections below threshold. */
+    int kept = 0;
+    for (int i = 0; i < result->count; i++) {
+        if (result->detections[i].confidence >= ctx->detection_threshold) {
             log_info("[%s] Detection: %s (%.1f%%) at [%.2f, %.2f, %.2f, %.2f]",
                      ctx->stream_name,
-                     result.detections[i].label,
-                     result.detections[i].confidence * 100.0f,
-                     result.detections[i].x,
-                     result.detections[i].y,
-                     result.detections[i].width,
-                     result.detections[i].height);
+                     result->detections[i].label,
+                     result->detections[i].confidence * 100.0f,
+                     result->detections[i].x, result->detections[i].y,
+                     result->detections[i].width, result->detections[i].height);
+            if (kept != i) result->detections[kept] = result->detections[i];
+            kept++;
+        } else {
+            log_debug("[%s] Detection below threshold: %s (%.1f%% < %.1f%%)",
+                      ctx->stream_name,
+                      result->detections[i].label,
+                      result->detections[i].confidence * 100.0f,
+                      ctx->detection_threshold * 100.0f);
         }
     }
+    result->count = kept;
+    return result->count > 0;
+}
 
-    // Store detections in database if any were found
-    if (result.count > 0) {
-        time_t now = time(NULL);
+/* ============================================================
+ * Action layer
+ * ============================================================ */
 
-        // Link detections to the current recording
-        uint64_t rec_id = 0;
-        if (ctx->annotation_only) {
-            // In annotation_only mode, link detections to the continuous recording
-            rec_id = get_current_recording_id_for_stream(ctx->stream_name);
-            if (rec_id > 0) {
-                log_debug("[%s] Annotation mode: linking detections to recording ID %lu",
-                         ctx->stream_name, (unsigned long)rec_id);
-            } else {
-                log_debug("[%s] Annotation mode: no active recording to link detections to",
-                         ctx->stream_name);
-            }
-        } else if (ctx->current_recording_id > 0) {
-            // For detection recordings, link to the current detection recording
-            rec_id = ctx->current_recording_id;
-            log_debug("[%s] Detection mode: linking detections to recording ID %lu",
-                     ctx->stream_name, (unsigned long)rec_id);
-        }
+/**
+ * Store detection results in the database and update stream statistics.
+ *
+ * No-op for API models: detect_objects_api / detect_objects_api_snapshot
+ * already write to the DB internally.  For all other models (motion, SOD,
+ * TFLite) this is the single place where DB writes and stats happen.
+ */
+static void report_detections(unified_detection_ctx_t *ctx,
+                               const detection_result_t *result, time_t now) {
+    if (!ctx || !result || result->count == 0) return;
 
-        if (store_detections_in_db(ctx->stream_name, &result, now, rec_id) != 0) {
+    if (!is_api_detection(ctx->model_path)) {
+        uint64_t rec_id = ctx->annotation_only
+            ? get_current_recording_id_for_stream(ctx->stream_name)
+            : ctx->current_recording_id;
+
+        if (store_detections_in_db(ctx->stream_name, result, now, rec_id) != 0)
             log_warn("[%s] Failed to store detections in database", ctx->stream_name);
-        }
-        pthread_mutex_lock(&ctx->mutex);
-        ctx->total_detections += result.count;
-        pthread_mutex_unlock(&ctx->mutex);
+
+        // Keep MQTT/Home Assistant topics in sync for the local detection
+        // backends (motion, SOD, TFLite). API backends publish from inside
+        // detect_objects_api / *_snapshot, so they are excluded here.
+        mqtt_publish_detection(ctx->stream_name, result, now);
+        mqtt_set_motion_state(ctx->stream_name, result);
     }
 
-    return detection_triggered;
+    pthread_mutex_lock(&ctx->mutex);
+    ctx->total_detections += (uint64_t)result->count;
+    pthread_mutex_unlock(&ctx->mutex);
+}
+
+/**
+ * Drive the recording state machine based on whether detection fired this
+ * interval.  This is the single place where BUFFERING→RECORDING,
+ * RECORDING→POST_BUFFER, and POST_BUFFER→RECORDING transitions happen for
+ * the frame-based detection paths (main stream and detection stream).
+ *
+ * ONVIF and cross-stream motion triggers follow the external_motion_trigger
+ * path in process_packet and do not call this function.
+ */
+static void handle_recording_state(unified_detection_ctx_t *ctx,
+                                   bool detected, time_t now) {
+    if (!ctx) return;
+
+    unified_detection_state_t current_state =
+        (unified_detection_state_t)atomic_load(&ctx->state);
+
+    if (detected) {
+        atomic_store(&ctx->last_detection_time, (long long)now);
+
+        if (ctx->annotation_only) return;
+
+        if (current_state == UDT_STATE_BUFFERING) {
+            log_info("[%s] Detection triggered, starting recording", ctx->stream_name);
+
+            if (udt_start_recording(ctx) == 0) {
+                int pre_dur = 0, pre_cnt = 0;
+                size_t pre_mem = 0;
+                if (ctx->packet_buffer)
+                    packet_buffer_get_stats(ctx->packet_buffer, &pre_cnt, &pre_mem, &pre_dur);
+
+                flush_prebuffer_to_recording(ctx);
+                atomic_store(&ctx->state, UDT_STATE_RECORDING);
+
+                if (!ctx->mp4_writer->start_time_corrected && pre_dur > 0 &&
+                    ctx->current_recording_id > 0) {
+                    int clamped_pre = pre_dur > ctx->pre_buffer_seconds
+                                      ? ctx->pre_buffer_seconds : pre_dur;
+                    time_t corrected = now - (time_t)clamped_pre;
+                    ctx->mp4_writer->creation_time = corrected;
+                    ctx->mp4_writer->start_time_corrected = true;
+                    update_recording_start_time(ctx->current_recording_id, corrected);
+                    log_info("[%s] Corrected recording start_time by -%ds (pre-buffer, clamped from %ds)",
+                             ctx->stream_name, clamped_pre, pre_dur);
+                }
+
+                /* detection_interval is forced > 0 in start_unified_detection_thread
+                 * (zero / negative fall back to DEFAULT_DETECTION_INTERVAL), so the
+                 * lookback is always at least 1 s + grace_period. */
+                time_t lookback = now - (ctx->detection_interval + g_config.detection_grace_period);
+                int updated = update_detections_recording_id(
+                    ctx->stream_name, ctx->current_recording_id, lookback);
+                if (updated > 0)
+                    log_debug("[%s] Linked %d recent detections to recording ID %lu",
+                              ctx->stream_name, updated,
+                              (unsigned long)ctx->current_recording_id);
+            }
+
+        } else if (current_state == UDT_STATE_POST_BUFFER) {
+            log_info("[%s] Detection during post-buffer, continuing recording",
+                     ctx->stream_name);
+            atomic_store(&ctx->state, UDT_STATE_RECORDING);
+        }
+        /* UDT_STATE_RECORDING: last_detection_time already refreshed above. */
+
+    } else if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
+        time_t since_last = now - (time_t)atomic_load(&ctx->last_detection_time);
+        // Detection is only sampled once per detection_interval, so last_detection_time
+        // is inherently stale by up to one interval even while a scene stays active.
+        // The recording must therefore survive at least one full sampling gap before
+        // grace_period applies — otherwise (e.g. interval=5s, grace=2s) a continuous
+        // scene would drop to post-buffer between samples and fragment the clip.
+        // This mirrors the detection-linking lookback above.
+        time_t grace_window = (time_t)ctx->detection_interval + (time_t)g_config.detection_grace_period;
+        if (since_last > grace_window) {
+            log_info("[%s] No detection for %lds, entering post-buffer (%d seconds)",
+                     ctx->stream_name, (long)since_last, ctx->post_buffer_seconds);
+            atomic_store(&ctx->post_buffer_end_time,
+                         (long long)(now + ctx->post_buffer_seconds));
+            atomic_store(&ctx->state, UDT_STATE_POST_BUFFER);
+        }
+    }
 }

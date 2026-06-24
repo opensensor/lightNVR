@@ -153,10 +153,14 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
             continue;
         }
         
-        // Check if file is a supported model
-        bool supported = is_model_supported(full_path);
+        // Only expose files we can actually run. This hides sidecar files
+        // (e.g. a model's <basename>.labels.txt) and any other unsupported
+        // file so the model picker lists selectable models only.
+        if (!is_model_supported(full_path)) {
+            continue;
+        }
         const char *model_type = get_model_type(full_path);
-        
+
         // Create model object
         cJSON *model_obj = cJSON_CreateObject();
         if (!model_obj) {
@@ -169,7 +173,7 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
         cJSON_AddStringToObject(model_obj, "name", entry->d_name);
         cJSON_AddStringToObject(model_obj, "path", full_path);
         cJSON_AddStringToObject(model_obj, "type", model_type);
-        cJSON_AddBoolToObject(model_obj, "supported", supported);
+        cJSON_AddBoolToObject(model_obj, "supported", true);  // unsupported files are filtered out above
         
         // Add file size
         if (stat(full_path, &st) == 0) {

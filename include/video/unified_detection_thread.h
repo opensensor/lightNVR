@@ -24,6 +24,7 @@
 #include "core/config.h"
 #include "video/packet_buffer.h"
 #include "video/detection_model.h"
+#include "video/detection_result.h"
 #include "video/mp4_writer.h"
 #include "video/stream_manager.h"
 
@@ -79,7 +80,11 @@ typedef struct {
     // MP4 recording
     mp4_writer_t *mp4_writer;
     char current_recording_path[MAX_PATH_LENGTH];
-    uint64_t current_recording_id;
+    // Written by the main UDT thread (recording start/stop), read by the
+    // detection-stream producer thread for API recording_id linkage.
+    // _Atomic so those cross-thread reads/writes are race-free on all targets
+    // (notably 32-bit ARM, where a plain 64-bit access is not atomic).
+    _Atomic uint64_t current_recording_id;
     
     // Detection state
     atomic_llong last_detection_time;      // When last detection occurred (stored as atomic epoch seconds)
@@ -87,6 +92,9 @@ typedef struct {
     atomic_llong post_buffer_end_time;     // When post-buffer recording should end
     atomic_int log_counter;          // Counter for periodic logging; intentionally accessed without ctx->mutex,
                                      // but all accesses must use atomic operations, and exact accuracy is not critical.
+    bool model_load_failed;          // Set on first load_detection_model() failure to suppress
+                                     // per-frame retry/log spam. Once true, the stream has been
+                                     // driven into STREAM_STATE_ERROR via handle_stream_error().
     
     // Connection state
     atomic_int_fast64_t last_packet_time;
@@ -137,6 +145,40 @@ typedef struct {
     char onvif_url_cached[MAX_PATH_LENGTH]; // http://host[:port]
     char onvif_username_cached[64];
     char onvif_password_cached[64];
+
+    // -------------------------------------------------------------------------
+    // Secondary detection stream thread
+    // -------------------------------------------------------------------------
+    // When detection_url is non-empty a dedicated background thread (pure
+    // producer) opens that URL (any FFmpeg-readable source), decodes frames,
+    // and runs the configured detection model.  It is responsible ONLY for
+    // detection inference; all actions (DB storage, recording state) are
+    // handled by the UDT main loop (consumer).
+    //
+    // Producer → consumer protocol (single-slot, overwrite semantics):
+    //   1. Thread detects → writes result to detection_stream_pending (mutex)
+    //                     → sets detection_stream_result = 1 (atomic)
+    //   2. process_packet reads result via atomic_exchange(0) + mutex
+    //                     → calls report_detections + handle_recording_state
+    //
+    // detection_stream_connected is set to 1 only once the stream is
+    // successfully opened and decoding.  It is 0 while connecting or
+    // reconnecting.  process_packet uses this — not thread_running — as the
+    // guard to suppress main-stream detection, so fallback is automatic
+    // during any outage.
+    //
+    // Lifecycle mirrors the ONVIF thread:
+    //   • Created alongside the UDT in start_unified_detection_thread().
+    //   • Joined inside unified_detection_thread_func() before ctx is freed.
+    //   • Stopped during forced shutdown.
+    pthread_t         detection_stream_thread;
+    atomic_int        detection_stream_thread_running; // 1 = running, 0 = stop requested
+    atomic_int        detection_stream_connected;      // 1 = open & decoding, 0 = connecting/disconnected
+    atomic_int        detection_stream_result;         // 1 = pending result ready, 0 = none
+    detection_result_t detection_stream_pending;       // latest result; guarded by result_mutex
+    time_t            detection_stream_pending_ts;     // frame time of the pending result (producer's detect time); guarded by result_mutex
+    pthread_mutex_t   detection_stream_result_mutex;   // protects detection_stream_pending
+    char              detection_stream_url[MAX_URL_LENGTH]; // cached at thread-start
 
     // FFmpeg contexts (managed exclusively by the unified detection thread).
     // Concurrency / lifetime:

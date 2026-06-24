@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include "video/detection_result.h"
 
 // Model type for API-based detection
@@ -36,11 +37,16 @@ void shutdown_api_detection_system(void);
  * @param stream_name The name of the stream (for database storage)
  * @param threshold Confidence threshold for detection (0.0-1.0, use negative for default)
  * @param recording_id Recording ID to link detections to (0 for no link)
+ * @param frame_timestamp Wall-clock time when the frame entered the detection
+ *                       pipeline. Used as the DB/MQTT event timestamp so it
+ *                       reflects frame time rather than inference completion.
+ *                       Pass 0 to fall back to time(NULL) inside the DB layer.
  * @return 0 on success, non-zero on failure
  */
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
-                      const char *stream_name, float threshold, uint64_t recording_id);
+                      const char *stream_name, float threshold, uint64_t recording_id,
+                      time_t frame_timestamp);
 
 /**
  * @brief Determine whether API detection should fetch a go2rtc snapshot.
@@ -69,6 +75,7 @@ bool api_detection_should_use_go2rtc_snapshot(const unsigned char *frame_data,
  * @return 0 on success, -1 on general failure, -2 if go2rtc snapshot failed (caller should fall back)
  */
 int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
-                                detection_result_t *result, float threshold, uint64_t recording_id);
+                                detection_result_t *result, float threshold,
+                                uint64_t recording_id, time_t frame_timestamp);
 
 #endif /* LIGHTNVR_API_DETECTION_H */

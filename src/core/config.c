@@ -345,7 +345,13 @@ void load_default_config(config_t *config) {
     config->default_detection_threshold = 50;  // 50% confidence threshold
     config->default_pre_detection_buffer = 5;   // 5 seconds before detection
     config->default_post_detection_buffer = 10; // 10 seconds after detection
+    config->detection_grace_period = 2;         // 2 seconds grace before post-buffer
     safe_strcpy(config->default_buffer_strategy, "auto", 32, 0); // Auto-select buffer strategy
+
+    // In-process LiteRT detection engine defaults
+    config->detection_engine.enabled = false;
+    config->detection_engine.num_threads = 1;
+    safe_strcpy(config->detection_engine.delegate, "xnnpack", 16, 0);
 
     // Database settings
     safe_strcpy(config->db_path, "/var/lib/lightnvr/lightnvr.db", MAX_PATH_LENGTH, 0);
@@ -597,6 +603,29 @@ int validate_config(config_t *config) {
     return 0;
 }
 
+void config_set_detection_grace_period(config_t *config, int seconds) {
+    if (seconds < 0)  seconds = 0;
+    if (seconds > 60) seconds = 60;
+    config->detection_grace_period = seconds;
+}
+
+void config_set_detection_engine_threads(config_t *config, int threads) {
+    if (threads < 1)  threads = 1;
+    if (threads > 16) threads = 16;
+    config->detection_engine.num_threads = threads;
+}
+
+bool config_set_detection_engine_delegate(config_t *config, const char *delegate) {
+    if (!delegate ||
+        (strcmp(delegate, "xnnpack") != 0 && strcmp(delegate, "gpu") != 0 &&
+         strcmp(delegate, "none") != 0)) {
+        return false;
+    }
+    safe_strcpy(config->detection_engine.delegate, delegate,
+                sizeof(config->detection_engine.delegate), 0);
+    return true;
+}
+
 // Handler function for inih
 static int config_ini_handler(void* user, const char* section, const char* name, const char* value) {
     config_t* config = (config_t*)user;
@@ -688,6 +717,28 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             if (config->default_post_detection_buffer > 300) config->default_post_detection_buffer = 300;
         } else if (strcmp(name, "buffer_strategy") == 0) {
             safe_strcpy(config->default_buffer_strategy, value, sizeof(config->default_buffer_strategy), 0);
+        }
+    }
+    // In-process LiteRT (TFLite) detection engine settings
+    else if (strcmp(section, "detection_engine") == 0) {
+        if (strcmp(name, "enabled") == 0) {
+            config->detection_engine.enabled = (strcmp(value, "true") == 0 ||
+                                                 strcmp(value, "1") == 0 ||
+                                                 strcmp(value, "yes") == 0 ||
+                                                 strcmp(value, "on") == 0);
+        } else if (strcmp(name, "threads") == 0) {
+            config_set_detection_engine_threads(config, safe_atoi(value, 1));
+        } else if (strcmp(name, "delegate") == 0) {
+            if (!config_set_detection_engine_delegate(config, value)) {
+                log_warn("Unknown detection_engine.delegate '%s'; using xnnpack", value);
+                config_set_detection_engine_delegate(config, "xnnpack");
+            }
+        }
+    }
+    // General detection behaviour settings (apply to all detection backends)
+    else if (strcmp(section, "detection") == 0) {
+        if (strcmp(name, "grace_period") == 0) {
+            config_set_detection_grace_period(config, safe_atoi(value, 0));
         }
     }
     // Database settings
@@ -1280,91 +1331,6 @@ int load_config(config_t *config) {
     return 0;
 }
 
-/**
- * Reload configuration from disk
- * This is used to refresh the global config after settings changes
- * 
- * @param config Pointer to config structure to fill
- * @return 0 on success, non-zero on failure
- */
-int reload_config(config_t *config) {
-    if (!config) return -1;
-    
-    log_info("Reloading configuration from disk");
-    
-    // Save copies of the current config fields needed for comparison
-    int old_log_level = config->log_level;
-    int old_web_port = config->web_port;
-    char old_web_bind_ip[32];
-    safe_strcpy(old_web_bind_ip, config->web_bind_ip, sizeof(old_web_bind_ip), 0);
-    char old_storage_path[MAX_PATH_LENGTH];
-    safe_strcpy(old_storage_path, config->storage_path, sizeof(old_storage_path), 0);
-    char old_storage_path_hls[MAX_PATH_LENGTH];
-    safe_strcpy(old_storage_path_hls, config->storage_path_hls, sizeof(old_storage_path_hls), 0);
-    char old_models_path[MAX_PATH_LENGTH];
-    safe_strcpy(old_models_path, config->models_path, sizeof(old_models_path), 0);
-    uint64_t old_max_storage_size = config->max_storage_size;
-    int old_retention_days = config->retention_days;
-    
-    // Load the configuration
-    int result = load_config(config);
-    if (result != 0) {
-        log_error("Failed to reload configuration");
-        return result;
-    }
-    
-    // Log changes
-    if (old_log_level != config->log_level) {
-        log_info("Log level changed: %d -> %d", old_log_level, config->log_level);
-    }
-    
-    if (old_web_port != config->web_port) {
-        log_info("Web port changed: %d -> %d", old_web_port, config->web_port);
-        log_warn("Web port change requires restart to take effect");
-    }
-
-    if (strcmp(old_web_bind_ip, config->web_bind_ip) != 0) {
-        log_info("Web bind address changed: %s -> %s", old_web_bind_ip, config->web_bind_ip);
-        log_warn("Web bind address change requires restart to take effect");
-    }
-    
-    if (strcmp(old_storage_path, config->storage_path) != 0) {
-        log_info("Storage path changed: %s -> %s", old_storage_path, config->storage_path);
-    }
-    
-    // Log changes to storage_path_hls
-    if (old_storage_path_hls[0] == '\0' && config->storage_path_hls[0] != '\0') {
-        log_info("HLS storage path set: %s", config->storage_path_hls);
-    } else if (old_storage_path_hls[0] != '\0' && config->storage_path_hls[0] == '\0') {
-        log_info("HLS storage path cleared, will use storage_path");
-    } else if (old_storage_path_hls[0] != '\0' && config->storage_path_hls[0] != '\0' && 
-               strcmp(old_storage_path_hls, config->storage_path_hls) != 0) {
-        log_info("HLS storage path changed: %s -> %s", old_storage_path_hls, config->storage_path_hls);
-    }
-    
-    if (strcmp(old_models_path, config->models_path) != 0) {
-        log_info("Models path changed: %s -> %s", old_models_path, config->models_path);
-    }
-    
-    if (old_max_storage_size != config->max_storage_size) {
-        log_info("Max storage size changed: %lu -> %lu bytes", 
-                (unsigned long)old_max_storage_size, 
-                (unsigned long)config->max_storage_size);
-    }
-    
-    if (old_retention_days != config->retention_days) {
-        log_info("Retention days changed: %d -> %d", old_retention_days, config->retention_days);
-    }
-    
-    // Note: Do not shallow-copy the entire config struct into g_config, as this
-    // would copy dynamic pointers (e.g., streams) and can lead to dangling
-    // references or ownership confusion. Assume reload_config operates directly
-    // on the global configuration instance when called with &g_config.
-    
-    log_info("Configuration reloaded successfully");
-    return 0;
-}
-
 // Save configuration to file in INI format
 int save_config(const config_t *config, const char *path) {
     if (!config) {
@@ -1595,7 +1561,12 @@ int save_config(const config_t *config, const char *path) {
     // Write models settings
     fprintf(file, "[models]\n");
     fprintf(file, "path = %s\n\n", config->models_path);
-    
+
+    // Write general detection behaviour settings (apply to all backends)
+    fprintf(file, "[detection]\n");
+    fprintf(file, "grace_period = %d  ; Seconds after last detection before entering post-buffer (0-60, default: 2)\n\n",
+            config->detection_grace_period);
+
     // Write API detection settings
     fprintf(file, "[api_detection]\n");
     fprintf(file, "url = %s\n", config->api_detection_url);
@@ -1604,6 +1575,17 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "pre_detection_buffer = %d\n", config->default_pre_detection_buffer);
     fprintf(file, "post_detection_buffer = %d\n", config->default_post_detection_buffer);
     fprintf(file, "buffer_strategy = %s\n\n", config->default_buffer_strategy);
+
+    // Write in-process LiteRT detection engine settings
+    fprintf(file, "[detection_engine]\n");
+    fprintf(file, "; In-process TFLite/LiteRT inference. Streams using a .tflite model_path\n");
+    fprintf(file, "; will route through this engine. Per-model labels are read from a sidecar\n");
+    fprintf(file, "; <basename>.labels.txt next to the model.\n");
+    fprintf(file, "enabled = %s\n", config->detection_engine.enabled ? "true" : "false");
+    fprintf(file, "threads = %d  ; Interpreter threads (1-16, default: 1)\n",
+            config->detection_engine.num_threads);
+    fprintf(file, "delegate = %s  ; xnnpack | gpu | none (default: xnnpack; gpu requires -DLITERT_WITH_GPU=ON)\n\n",
+            config->detection_engine.delegate);
 
     // Write database settings
     fprintf(file, "[database]\n");

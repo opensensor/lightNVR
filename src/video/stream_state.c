@@ -715,6 +715,14 @@ int handle_stream_error(stream_state_manager_t *state, int error_code, const cha
     // Log the error
     log_error("Stream '%s' error: %s (code: %d)", state->name, error_message, error_code);
 
+    // Persist the human-readable cause for the streams API / UI tooltip.
+    if (error_message) {
+        snprintf(state->last_error_message, sizeof state->last_error_message,
+                 "%s", error_message);
+    } else {
+        state->last_error_message[0] = '\0';
+    }
+
     // Record error in telemetry metrics (classify by error code)
     {
         const char *error_type = "io";
@@ -724,15 +732,22 @@ int handle_stream_error(stream_state_manager_t *state, int error_code, const cha
             error_type = "protocol";
         } else if (error_code == -EIO) {
             error_type = "io";
+        } else if (error_code == STREAM_ERR_MODEL_LOAD) {
+            error_type = "model";
         }
         metrics_record_error(state->name, error_type);
     }
 
+    // Permanent application-level errors that should NOT trigger reconnect:
+    // they will keep failing on every retry until the operator fixes config.
+    bool permanent_error = (error_code == STREAM_ERR_MODEL_LOAD);
+
     // Check if we should attempt reconnection
     bool should_reconnect = false;
 
-    // Only attempt reconnection if the stream was active
-    if (state->state == STREAM_STATE_ACTIVE) {
+    // Only attempt reconnection if the stream was active AND the error is
+    // transport-level (not a permanent config-level failure).
+    if (state->state == STREAM_STATE_ACTIVE && !permanent_error) {
         should_reconnect = true;
 
         // Update state to reconnecting
@@ -746,7 +761,7 @@ int handle_stream_error(stream_state_manager_t *state, int error_code, const cha
         // Record reconnect in telemetry
         metrics_record_reconnect(state->name);
     } else {
-        // If not active, just set to error state
+        // If not active, or a permanent error, just set to error state.
         state->state = STREAM_STATE_ERROR;
     }
 

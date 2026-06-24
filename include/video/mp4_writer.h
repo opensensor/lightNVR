@@ -64,6 +64,11 @@ struct mp4_writer {
     // Shutdown coordination
     int shutdown_component_id; // ID assigned by the shutdown coordinator
 
+    // Pre-buffer duration carried in from the detection thread; used by the DTS
+    // gap detector in mp4_segment_recorder_write_packet() to set its threshold
+    // (3 × pre_buffer_seconds). 0 means "use fallback (60s)".
+    int pre_buffer_seconds;
+
     // Pending audio codec parameters set by udt_start_recording() before the first
     // packet arrives.  mp4_writer_initialize() consumes this to declare the audio
     // stream BEFORE avformat_write_header() is called — the only legal window for

@@ -250,6 +250,7 @@ export function StreamCard({
               color: 'white',
               opacity: stream.enabled ? 1 : 0.6
             }}
+            title={stream.error_message || undefined}
           >
             {statusLabel}
           </span>

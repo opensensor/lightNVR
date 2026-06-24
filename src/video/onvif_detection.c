@@ -653,6 +653,12 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         "  <MessageLimit>100</MessageLimit>\n"
         "</PullMessages>";
 
+    // Capture the event timestamp BEFORE the (potentially up-to-5-second)
+    // PullMessages roundtrip and the subsequent zone-filter step.  Storing
+    // this as the detection timestamp keeps detections.timestamp aligned with
+    // when the motion window started, not when inference + DB write finished.
+    time_t event_timestamp = time(NULL);
+
     // Send PullMessages directly to the subscription address (the full URL returned by
     // CreatePullPointSubscription per ONVIF spec).  Fall back to the legacy path-extraction
     // approach only when the stored address is not an absolute HTTP URL.
@@ -718,13 +724,12 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
             }
 
             // Store the detection in the database (no recording_id linkage for ONVIF)
-            time_t timestamp = time(NULL);
-            store_detections_in_db(stream_name, result, timestamp, 0);
+            store_detections_in_db(stream_name, result, event_timestamp, 0);
 
             // Publish to MQTT and trigger motion recording if detections remain after filtering
             if (result->count > 0) {
-                mqtt_publish_detection(stream_name, result, timestamp);
-                process_motion_event(stream_name, true, timestamp, false);
+                mqtt_publish_detection(stream_name, result, event_timestamp);
+                process_motion_event(stream_name, true, event_timestamp, false);
             }
         } else {
             log_warn("No stream name provided, skipping database storage");
@@ -735,7 +740,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
         // Notify motion recording that motion has ended
         if (stream_name && stream_name[0] != '\0') {
-            process_motion_event(stream_name, false, time(NULL), false);
+            process_motion_event(stream_name, false, event_timestamp, false);
         }
     }
 

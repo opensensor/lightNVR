@@ -368,7 +368,8 @@ void shutdown_api_detection_system(void) {
  */
 int detect_objects_api(const char *api_url, const unsigned char *frame_data,
                       int width, int height, int channels, detection_result_t *result,
-                      const char *stream_name, float threshold, uint64_t recording_id) {
+                      const char *stream_name, float threshold, uint64_t recording_id,
+                      time_t frame_timestamp) {
     // Check if we're in shutdown mode or if the stream has been stopped.
     if (is_shutdown_initiated()) {
         log_info("API Detection: System shutdown in progress, skipping detection");
@@ -715,7 +716,7 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
 
         filter_detections_by_stream_objects(stream_name, result);
 
-        time_t timestamp = time(NULL);
+        time_t timestamp = (frame_timestamp != 0) ? frame_timestamp : time(NULL);
         store_detections_in_db(stream_name, result, timestamp, recording_id);
 
         if (result->count > 0) {
@@ -753,7 +754,8 @@ cleanup:
  * Returns: 0 on success, -1 on general failure, -2 if go2rtc snapshot failed
  */
 int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
-                                detection_result_t *result, float threshold, uint64_t recording_id) {
+                                detection_result_t *result, float threshold,
+                                uint64_t recording_id, time_t frame_timestamp) {
     // Check if we're in shutdown mode
     if (is_shutdown_initiated()) {
         log_info("API Detection (snapshot): System shutdown in progress, skipping detection");
@@ -1080,7 +1082,7 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         // Filter detections by per-stream object include/exclude lists
         filter_detections_by_stream_objects(stream_name, result);
 
-        time_t timestamp = time(NULL);
+        time_t timestamp = (frame_timestamp != 0) ? frame_timestamp : time(NULL);
         store_detections_in_db(stream_name, result, timestamp, recording_id);
 
         // Publish to MQTT if enabled

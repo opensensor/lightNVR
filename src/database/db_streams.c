@@ -133,7 +133,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                 "onvif_username = ?, onvif_password = ?, onvif_profile = ?, onvif_port = ?, "
                                 "record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, "
                                 "privacy_mode = ?, motion_trigger_source = ?, go2rtc_source_override = ?, "
-                                "sub_stream_url = ?, audio_voice_enhancement = ? "
+                                "sub_stream_url = ?, audio_voice_enhancement = ?, "
+                                "detection_url = ? "
                                 "WHERE id = ?;";
 
         rc = sqlite3_prepare_v2(db, update_sql, -1, &stmt, NULL);
@@ -218,9 +219,10 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         sqlite3_bind_text(stmt, 46, stream->go2rtc_source_override, -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 47, stream->sub_stream_url, -1, SQLITE_STATIC);
         sqlite3_bind_int(stmt, 48, stream->audio_voice_enhancement ? 1 : 0);
+        sqlite3_bind_text(stmt, 49, stream->detection_url, -1, SQLITE_STATIC);
 
         // Bind ID parameter
-        sqlite3_bind_int64(stmt, 49, (sqlite3_int64)existing_id);
+        sqlite3_bind_int64(stmt, 50, (sqlite3_int64)existing_id);
 
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -269,8 +271,8 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
           "onvif_username, onvif_password, onvif_profile, onvif_port, "
           "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
-          "go2rtc_source_override, sub_stream_url, audio_voice_enhancement) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -355,6 +357,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 47, stream->go2rtc_source_override, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 48, stream->sub_stream_url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 49, stream->audio_voice_enhancement ? 1 : 0);
+    sqlite3_bind_text(stmt, 50, stream->detection_url, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -426,7 +429,8 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
                       "onvif_username = ?, onvif_password = ?, onvif_profile = ?, onvif_port = ?, "
                       "record_on_schedule = ?, recording_schedule = ?, tags = ?, admin_url = ?, privacy_mode = ?, "
                       "motion_trigger_source = ?, go2rtc_source_override = ?, "
-                      "sub_stream_url = ?, audio_voice_enhancement = ? "
+                      "sub_stream_url = ?, audio_voice_enhancement = ?, "
+                      "detection_url = ? "
                       "WHERE name = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -512,9 +516,10 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     sqlite3_bind_text(stmt, 47, stream->go2rtc_source_override, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 48, stream->sub_stream_url, -1, SQLITE_STATIC);
     sqlite3_bind_int(stmt, 49, stream->audio_voice_enhancement ? 1 : 0);
+    sqlite3_bind_text(stmt, 50, stream->detection_url, -1, SQLITE_STATIC);
 
     // Bind the WHERE clause parameter
-    sqlite3_bind_text(stmt, 50, name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 51, name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -787,7 +792,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
-        "go2rtc_source_override, sub_stream_url, audio_voice_enhancement "
+        "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -804,7 +809,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE, COL_ONVIF_PORT,
         COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_TAGS, COL_ADMIN_URL, COL_PRIVACY_MODE,
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
-        COL_AUDIO_VOICE_ENHANCEMENT
+        COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -984,6 +989,14 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         // Audio voice-enhancement opt-in (discussion #395)
         stream->audio_voice_enhancement = sqlite3_column_int(stmt, COL_AUDIO_VOICE_ENHANCEMENT) != 0;
 
+        // Secondary detection stream URL
+        const char *detection_url_val = (const char *)sqlite3_column_text(stmt, COL_DETECTION_URL);
+        if (detection_url_val) {
+            safe_strcpy(stream->detection_url, detection_url_val, sizeof(stream->detection_url), 0);
+        } else {
+            stream->detection_url[0] = '\0';
+        }
+
         result = 0;
     }
 
@@ -1036,7 +1049,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, "
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
-        "go2rtc_source_override, sub_stream_url, audio_voice_enhancement "
+        "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url "
         "FROM streams ORDER BY name;";
 
     // Column index constants (same as get_stream_config_by_name)
@@ -1053,7 +1066,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         COL_ONVIF_USERNAME, COL_ONVIF_PASSWORD, COL_ONVIF_PROFILE, COL_ONVIF_PORT,
         COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_TAGS, COL_ADMIN_URL, COL_PRIVACY_MODE,
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
-        COL_AUDIO_VOICE_ENHANCEMENT
+        COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1231,6 +1244,14 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
 
         // Audio voice-enhancement opt-in (discussion #395)
         s->audio_voice_enhancement = sqlite3_column_int(stmt, COL_AUDIO_VOICE_ENHANCEMENT) != 0;
+
+        // Secondary detection stream URL
+        const char *det_url = (const char *)sqlite3_column_text(stmt, COL_DETECTION_URL);
+        if (det_url) {
+            safe_strcpy(s->detection_url, det_url, sizeof(s->detection_url), 0);
+        } else {
+            s->detection_url[0] = '\0';
+        }
 
         count++;
     }

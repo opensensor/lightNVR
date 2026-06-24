@@ -239,6 +239,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddStringToObject(stream_obj, "motion_trigger_source", db_streams[i].motion_trigger_source);
         cJSON_AddStringToObject(stream_obj, "go2rtc_source_override", db_streams[i].go2rtc_source_override);
         cJSON_AddStringToObject(stream_obj, "sub_stream_url", db_streams[i].sub_stream_url);
+        cJSON_AddStringToObject(stream_obj, "detection_url", db_streams[i].detection_url);
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -262,6 +263,19 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
             }
         }
         cJSON_AddStringToObject(stream_obj, "status", status);
+
+        // Surface the specific cause of an Error state (e.g. failed to load
+        // a detection model) so the UI can show it in a tooltip.
+        stream_state_manager_t *sm_err = get_stream_state_by_name(db_streams[i].name);
+        if (sm_err && strcmp(status, "Error") == 0) {
+            char err_msg[STREAM_ERROR_MESSAGE_MAX];
+            pthread_mutex_lock(&sm_err->mutex);
+            safe_strcpy(err_msg, sm_err->last_error_message, sizeof(err_msg), 0);
+            pthread_mutex_unlock(&sm_err->mutex);
+            if (err_msg[0] != '\0') {
+                cJSON_AddStringToObject(stream_obj, "error_message", err_msg);
+            }
+        }
 
         // Add go2rtc HLS availability - tells frontend whether go2rtc is providing HLS for this stream
         cJSON_AddBoolToObject(stream_obj, "go2rtc_hls_available",
@@ -398,6 +412,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "motion_trigger_source", config.motion_trigger_source);
     cJSON_AddStringToObject(stream_obj, "go2rtc_source_override", config.go2rtc_source_override);
     cJSON_AddStringToObject(stream_obj, "sub_stream_url", config.sub_stream_url);
+    cJSON_AddStringToObject(stream_obj, "detection_url", config.detection_url);
 
     // Get stream status — resolve using UDT state so that go2rtc-managed
     // streams (which stay INACTIVE in the state manager) report accurately.
@@ -416,6 +431,13 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         default:                          status = "Unknown";      break;
     }
     cJSON_AddStringToObject(stream_obj, "status", status);
+
+    // Surface the specific cause of an Error state (e.g. failed to load
+    // a detection model) so the UI can show it in a tooltip.
+    stream_state_manager_t *sm_err = get_stream_state_by_name(config.name);
+    if (sm_err && sm_err->last_error_message[0] != '\0' && strcmp(status, "Error") == 0) {
+        cJSON_AddStringToObject(stream_obj, "error_message", sm_err->last_error_message);
+    }
 
     // Add go2rtc HLS availability - tells frontend whether go2rtc is providing HLS for this stream
     cJSON_AddBoolToObject(stream_obj, "go2rtc_hls_available",
@@ -551,6 +573,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "motion_trigger_source", config.motion_trigger_source);
     cJSON_AddStringToObject(stream_obj, "go2rtc_source_override", config.go2rtc_source_override);
     cJSON_AddStringToObject(stream_obj, "sub_stream_url", config.sub_stream_url);
+    cJSON_AddStringToObject(stream_obj, "detection_url", config.detection_url);
 
     // Status — resolve using UDT state for accurate reporting when go2rtc
     // manages the stream (state manager stays INACTIVE/STOPPED at startup).
@@ -569,6 +592,12 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         default:                          status = "Unknown";      break;
     }
     cJSON_AddStringToObject(stream_obj, "status", status);
+
+    // Surface the specific cause of an Error state.
+    stream_state_manager_t *sm_err2 = get_stream_state_by_name(config.name);
+    if (sm_err2 && sm_err2->last_error_message[0] != '\0' && strcmp(status, "Error") == 0) {
+        cJSON_AddStringToObject(stream_obj, "error_message", sm_err2->last_error_message);
+    }
 
     // Add go2rtc HLS availability - tells frontend whether go2rtc is providing HLS for this stream
     cJSON_AddBoolToObject(stream_obj, "go2rtc_hls_available",

@@ -464,6 +464,12 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "pre_detection_buffer", g_config.default_pre_detection_buffer);
     cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
     cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
+    cJSON_AddNumberToObject(settings, "detection_grace_period", g_config.detection_grace_period);
+
+    // In-process LiteRT detection engine settings
+    cJSON_AddBoolToObject(settings,   "detection_engine_enabled",  g_config.detection_engine.enabled);
+    cJSON_AddNumberToObject(settings, "detection_engine_threads",  g_config.detection_engine.num_threads);
+    cJSON_AddStringToObject(settings, "detection_engine_delegate", g_config.detection_engine.delegate);
 
     // Auth timeout
     cJSON_AddNumberToObject(settings, "auth_timeout_hours", g_config.auth_timeout_hours);
@@ -1066,6 +1072,14 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         log_info("Updated default_buffer_strategy: %s", g_config.default_buffer_strategy);
     }
 
+    // Detection grace period
+    cJSON *detection_grace_period = cJSON_GetObjectItem(settings, "detection_grace_period");
+    if (detection_grace_period && cJSON_IsNumber(detection_grace_period)) {
+        config_set_detection_grace_period(&g_config, detection_grace_period->valueint);
+        settings_changed = true;
+        log_info("Updated detection_grace_period: %d seconds", g_config.detection_grace_period);
+    }
+
     // API detection URL
     cJSON *api_detection_url = cJSON_GetObjectItem(settings, "api_detection_url");
     if (api_detection_url && cJSON_IsString(api_detection_url)) {
@@ -1080,6 +1094,30 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         safe_strcpy(g_config.api_detection_backend, api_detection_backend->valuestring, sizeof(g_config.api_detection_backend), 0);
         settings_changed = true;
         log_info("Updated api_detection_backend: %s", g_config.api_detection_backend);
+    }
+
+    // In-process LiteRT (TFLite) detection engine settings
+    cJSON *de_enabled = cJSON_GetObjectItem(settings, "detection_engine_enabled");
+    if (de_enabled && cJSON_IsBool(de_enabled)) {
+        g_config.detection_engine.enabled = cJSON_IsTrue(de_enabled);
+        settings_changed = true;
+        log_info("Updated detection_engine.enabled: %s",
+                 g_config.detection_engine.enabled ? "true" : "false");
+    }
+    cJSON *de_threads = cJSON_GetObjectItem(settings, "detection_engine_threads");
+    if (de_threads && cJSON_IsNumber(de_threads)) {
+        config_set_detection_engine_threads(&g_config, de_threads->valueint);
+        settings_changed = true;
+        log_info("Updated detection_engine.num_threads: %d", g_config.detection_engine.num_threads);
+    }
+    cJSON *de_delegate = cJSON_GetObjectItem(settings, "detection_engine_delegate");
+    if (de_delegate && cJSON_IsString(de_delegate)) {
+        if (config_set_detection_engine_delegate(&g_config, de_delegate->valuestring)) {
+            settings_changed = true;
+            log_info("Updated detection_engine.delegate: %s", g_config.detection_engine.delegate);
+        } else {
+            log_warn("Ignored unknown detection_engine_delegate '%s'", de_delegate->valuestring);
+        }
     }
 
     // go2rtc settings
@@ -1896,16 +1934,15 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
             
             log_info("Configuration saved successfully");
 
-            // Reload the configuration to ensure changes are applied
-            log_info("Reloading configuration after save");
-            if (reload_config(&g_config) != 0) {
-                log_warn("Failed to reload configuration after save, changes may not be applied until restart");
-            } else {
-                log_info("Configuration reloaded successfully");
-
-                // Verify the database path after reload
-                log_info("Database path after reload: %s", g_config.db_path);
-            }
+            // Do NOT re-read the config from disk here. Every setting above is
+            // already applied to g_config in place and persisted by
+            // save_config(), so reloading is redundant — and was dangerous: it
+            // ran load_default_config(), which free()s the global config.streams
+            // array on this libuv worker thread while the main thread is reading
+            // config.streams[...] (a use-after-free; ASan caught it in
+            // stop_detection_stream_reader). Settings that need more than an
+            // in-memory update (e.g. max_streams) already set restart_required
+            // and take effect on the next restart.
 
         } else {
             log_info("No settings changed");
