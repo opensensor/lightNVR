@@ -267,8 +267,14 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         // Surface the specific cause of an Error state (e.g. failed to load
         // a detection model) so the UI can show it in a tooltip.
         stream_state_manager_t *sm_err = get_stream_state_by_name(db_streams[i].name);
-        if (sm_err && sm_err->last_error_message[0] != '\0' && strcmp(status, "Error") == 0) {
-            cJSON_AddStringToObject(stream_obj, "error_message", sm_err->last_error_message);
+        if (sm_err && strcmp(status, "Error") == 0) {
+            char err_msg[STREAM_ERROR_MESSAGE_MAX];
+            pthread_mutex_lock(&sm_err->mutex);
+            safe_strcpy(err_msg, sm_err->last_error_message, sizeof(err_msg), 0);
+            pthread_mutex_unlock(&sm_err->mutex);
+            if (err_msg[0] != '\0') {
+                cJSON_AddStringToObject(stream_obj, "error_message", err_msg);
+            }
         }
 
         // Add go2rtc HLS availability - tells frontend whether go2rtc is providing HLS for this stream
