@@ -216,6 +216,7 @@ jobs:
             -DBUILD_TESTS=ON \
             -DENABLE_SOD=OFF \
             -DENABLE_GO2RTC=ON \
+            -DENABLE_LITERT=OFF \
             -DENABLE_MQTT=OFF \
             -DCMAKE_C_FLAGS="--coverage" \
             -DCMAKE_EXE_LINKER_FLAGS="--coverage"
@@ -332,6 +333,7 @@ jobs:
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
             -DENABLE_GO2RTC=ON \
+            -DENABLE_LITERT=OFF \
             -DGO2RTC_BINARY_PATH=$(pwd)/../go2rtc/go2rtc
           make -j$(nproc)
           echo "lightNVR built successfully"

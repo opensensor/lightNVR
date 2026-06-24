@@ -294,6 +294,18 @@ if(ENABLE_LITERT)
     endif()
 
     add_subdirectory(${LITERT_SUBDIR} EXCLUDE_FROM_ALL)
+
+    # GCC 15+ made attribute-after-declarator a hard error. XNNPACK generated
+    # kernels still use the old syntax; downgrade to a warning for those targets.
+    if(LITERT_WITH_XNNPACK AND CMAKE_C_COMPILER_ID STREQUAL "GNU" AND
+       CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "15.0")
+        foreach(_xnn_tgt IN ITEMS xnnpack-microkernels-prod xnnpack-microkernels-all xnnpack)
+            if(TARGET ${_xnn_tgt})
+                target_compile_options(${_xnn_tgt} PRIVATE -Wno-error=attributes)
+            endif()
+        endforeach()
+    endif()
+
     add_compile_definitions(HAVE_LITERT)
 
     if(LITERT_WITH_XNNPACK)
