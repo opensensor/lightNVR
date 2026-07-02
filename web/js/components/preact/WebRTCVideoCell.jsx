@@ -19,6 +19,7 @@ import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 import { useAutoRetry } from './useAutoRetry.js';
+import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -65,7 +66,6 @@ export function WebRTCVideoCell({
   streamId,
   useSubStream = false,
   onToggleFullscreen,
-  initDelay = 0,
   showLabels = true,
   showControls = true,
   globalShowDetections = true
@@ -137,6 +137,8 @@ export function WebRTCVideoCell({
   const analyserRef = useRef(null);
   const audioLevelIntervalRef = useRef(null);
   const disconnectRecoveryTimeoutRef = useRef(null);
+  // Track previous stream status so we can detect transitions to 'Running'
+  const prevStatusRef = useRef(stream.status);
 
   const applyAudioPlaybackState = useCallback((enabled) => {
     const videoElement = videoRef.current;
@@ -220,8 +222,12 @@ export function WebRTCVideoCell({
     // Store cleanup functions
     let connectionTimeout = null;
     let videoDataTimeout = null;
-    let initDelayTimeout = null;
     let go2rtcBaseUrl = null;
+
+    // Cell-scoped abort: cancels queued/in-flight gated requests on unmount
+    // or when this effect re-runs (retry, sub-stream switch).
+    abortControllerRef.current = new AbortController();
+    const cellAbortSignal = abortControllerRef.current.signal;
 
     // Async function to initialize WebRTC
     const initWebRTC = async () => {
@@ -696,42 +702,53 @@ export function WebRTCVideoCell({
       .then(() => {
         console.log(`Set local description for stream ${stream.name}, waiting for ICE gathering...`);
 
-        // Create a new AbortController for this request
-        abortControllerRef.current = new AbortController();
-
         console.log(`Sending offer directly to go2rtc for stream ${stream.name}`);
 
-        // Send the offer directly to go2rtc with retry logic for 404 responses.
-        // On slower devices, go2rtc may not have the stream ready yet when we
-        // first try to send the offer, resulting in a 404. We retry with
-        // exponential backoff to give it time.
+        // Send the offer to go2rtc through the shared connection gate. The
+        // gate bounds concurrent offers page-wide and enforces a per-attempt
+        // timeout — go2rtc holds this request open while it dials the camera's
+        // RTSP source, so an offline camera would otherwise pin one of the
+        // browser's per-host connections for tens of seconds.
+        //
+        // Retry on 404 (stream not ready) or 500 (server overloaded / race
+        // condition) with exponential backoff; the slot is released between
+        // attempts so other cameras aren't starved while we back off.
 
         const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
+        const offerGateOpts = {
+          priority: priorityForStreamStatus(stream.status),
+          signal: cellAbortSignal,
+        };
         const sendOfferWithRetry = async (attempt) => {
-          const response = await fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(effectiveName)}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/sdp',
-            },
-            body: pc.localDescription.sdp,
-          });
+          const response = await streamConnectionGate.run(
+            (signal) => fetch(`${go2rtcBaseUrl}/api/webrtc?src=${encodeURIComponent(effectiveName)}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/sdp',
+              },
+              body: pc.localDescription.sdp,
+              signal,
+            }),
+            offerGateOpts
+          );
 
           const bodyText = await response.text().catch(() => '');
 
           if (!response.ok) {
-            // Retry on 404 (stream not ready) or 500 (server overloaded / race condition) with exponential backoff
-            if ((response.status === 404 || response.status === 500) && attempt < maxOfferRetries) {
-              const delay = baseRetryDelayMs * Math.pow(2, attempt);
-              console.warn(`go2rtc returned ${response.status} for stream ${stream.name} (attempt ${attempt + 1}/${maxOfferRetries + 1}), retrying in ${delay}ms...`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              return sendOfferWithRetry(attempt + 1);
-            }
-            console.error(`go2rtc /api/webrtc error for stream ${stream.name}: status=${response.status}, body="${bodyText}"`);
             // Check whether the go2rtc error body indicates the camera source is
             // unreachable (e.g. "dial tcp <ip>:554: connect: no route to host").
             // These patterns come from go2rtc's streams/add_consumer pipeline and
             // are much more actionable than a generic "500 Internal Server Error".
+            // An unreachable source won't recover within the retry window, so
+            // fail fast and let the auto-retry backoff handle it.
             const isSourceUnreachable = /dial tcp|no route to host|connection refused|connect:/i.test(bodyText);
+            if (!isSourceUnreachable && (response.status === 404 || response.status === 500) && attempt < MAX_OFFER_RETRIES) {
+              const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt);
+              console.warn(`go2rtc returned ${response.status} for stream ${stream.name} (attempt ${attempt + 1}/${MAX_OFFER_RETRIES + 1}), retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              return sendOfferWithRetry(attempt + 1);
+            }
+            console.error(`go2rtc /api/webrtc error for stream ${stream.name}: status=${response.status}, body="${bodyText}"`);
             if (isSourceUnreachable) {
               throw new Error(t('live.cannotConnectToSource'));
             }
@@ -763,8 +780,16 @@ export function WebRTCVideoCell({
         console.log(`Set remote description for stream ${stream.name}, ICE state: ${pc.iceConnectionState}`);
       })
       .catch(error => {
+        // Component unmounted or attempt superseded — nothing to report
+        if (isGateAbort(error) || cellAbortSignal.aborted) {
+          clearTimeout(connectionTimeout);
+          return;
+        }
         console.error(`Error setting up WebRTC for stream ${stream.name}:`, error);
-        setError(error.message || t('live.failedToEstablishWebrtcConnection'));
+        setError(isGateTimeout(error)
+          ? t('live.cannotConnectToSource')
+          : (error.message || t('live.failedToEstablishWebrtcConnection')));
+        setIsLoading(false);
         clearTimeout(connectionTimeout);
       });
 
@@ -847,25 +872,15 @@ export function WebRTCVideoCell({
     
     }; // End of initWebRTC async function
 
-    // Stagger initialization to avoid overwhelming go2rtc with concurrent offers
-    if (initDelay > 0) {
-      initDelayTimeout = setTimeout(() => {
-        initDelayTimeout = null;
-        initWebRTC();
-      }, initDelay);
-    } else {
-      initWebRTC();
-    }
+    // Concurrency is bounded by the shared stream connection gate (the offer
+    // fetch is gated), so no per-cell stagger delay is needed here.
+    initWebRTC();
 
     // Cleanup function
     const cleanupWebRTCResources = () => {
       console.log(`Cleaning up WebRTC connection for stream ${stream.name}`);
 
       // Clear timeouts
-      if (initDelayTimeout) {
-        clearTimeout(initDelayTimeout);
-        initDelayTimeout = null;
-      }
       if (connectionTimeout) {
         clearTimeout(connectionTimeout);
         connectionTimeout = null;
@@ -930,7 +945,27 @@ export function WebRTCVideoCell({
     };
 
     return cleanupWebRTCResources;
-  }, [stream, retryCount, useSubStream, t, applyAudioPlaybackState]);
+    // Note: depend on stream?.name (not the stream object) so the periodic
+    // /api/streams status refetch doesn't tear down healthy connections when
+    // it produces new object identities every poll cycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream?.name, retryCount, useSubStream, t, applyAudioPlaybackState]);
+
+  // Auto-retry when stream status transitions back to 'Running' while the
+  // error overlay is visible (e.g. camera came back online after an outage).
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = stream.status;
+    if (error && stream.status === 'Running' && prev !== 'Running') {
+      console.log(`[WebRTC ${stream.name}] Status changed to Running — auto-retrying after error`);
+      reconnectAttemptsRef.current = 0;
+      connectionRefreshRequestedRef.current = false;
+      noDataReconnectAttemptsRef.current = 0;
+      setError(null);
+      setIsLoading(true);
+      setRetryCount(c => c + 1);
+    }
+  }, [stream.status, error]);
 
   /**
    * Refresh the stream's go2rtc registration

@@ -746,21 +746,16 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
           ) : (
             // Render video cells using MSEVideoCell (when go2rtc enabled) or HLSVideoCell (fallback)
             //
-            // Stagger strategy:
-            //   MSE (go2rtc WebSocket): 200ms per stream — short burst for WS negotiation
-            //   HLS via go2rtc:        no stagger — go2rtc is an HLS server built for many
-            //                          concurrent clients; staggering 68 streams over 40 s caused
-            //                          the go2rtc health-check cache to expire mid-initialization,
-            //                          producing false-negative availability results under load and
-            //                          triggering a stampede of HLS.js error-recovery re-registrations
-            //   HLS native (FFmpeg):   300ms per stream — avoids N simultaneous ffmpeg spawns
+            // Connection concurrency is bounded by the shared stream
+            // connection gate (see stream-connection-gate.js), which replaced
+            // the old fixed per-index stagger: at most N connection attempts
+            // run at once page-wide, each with a hard timeout. Healthy
+            // cameras connect as fast as slots free up (no artificial delay,
+            // so go2rtc's 5s HLS session keepalive isn't at risk), and
+            // offline cameras fail fast instead of pinning browser
+            // connections while go2rtc dials their unreachable RTSP source.
             streamsToShow.map((stream, index) => {
               const VideoCell = useMSE ? MSEVideoCell : HLSVideoCell;
-              const initDelay = useMSE
-                ? (index * 200)
-                : go2rtcAvailable
-                  ? 0               // go2rtc HLS: no stagger needed, go2rtc handles concurrency
-                  : (index * 300);  // native FFmpeg HLS: gentle stagger to avoid process-spawn burst
               // Global index in orderedStreams for drag-and-drop (pagination offset)
               const globalIndex = currentPage * maxStreams + index;
 
@@ -797,7 +792,6 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
                     useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && !!stream.sub_stream_url}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
-                    initDelay={initDelay}
                     showLabels={showLabels}
                     showControls={showControls}
                     globalShowDetections={showDetections}

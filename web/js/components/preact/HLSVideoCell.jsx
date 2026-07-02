@@ -18,6 +18,7 @@ import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 import { useAutoRetry } from './useAutoRetry.js';
+import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
 import Hls from 'hls.js';
 
 /**
@@ -26,7 +27,6 @@ import Hls from 'hls.js';
  * @param {Object} props.stream - Stream object
  * @param {Function} props.onToggleFullscreen - Fullscreen toggle handler
  * @param {string} props.streamId - Stream ID for stable reference
- * @param {number} props.initDelay - Delay in ms before initializing HLS (for staggered loading)
  * @returns {JSX.Element} HLSVideoCell component
  */
 export function HLSVideoCell({
@@ -34,7 +34,6 @@ export function HLSVideoCell({
   streamId,
   useSubStream = false,
   onToggleFullscreen,
-  initDelay = 0,
   showLabels = true,
   showControls = true,
   globalShowDetections = true
@@ -80,6 +79,7 @@ export function HLSVideoCell({
   const recoveringRef = useRef(false);   // True when we're in the middle of error recovery (prevents counter reset)
   const hlsUrlRef = useRef(null);        // Master manifest URL — stored for session-expiry recovery
   const prevStatusRef = useRef(stream.status); // Track previous stream status for transition detection
+  const cellAbortRef = useRef(null);     // Cancels a queued/in-flight gated preflight on unmount
 
   /**
    * Refresh the stream's go2rtc registration
@@ -123,7 +123,7 @@ export function HLSVideoCell({
       return;
     }
 
-    console.log(`[HLS ${stream.name}] useEffect triggered, videoRef:`, !!videoRef.current, 'retryCount:', retryCount, 'initDelay:', initDelay);
+    console.log(`[HLS ${stream.name}] useEffect triggered, videoRef:`, !!videoRef.current, 'retryCount:', retryCount);
 
     // Effective stream name for go2rtc source — use sub-stream in grid view
     const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
@@ -131,7 +131,6 @@ export function HLSVideoCell({
     // Track if component is still mounted - using ref for stable access in callbacks
     let isMounted = true;
     let initTimeout = null;
-    let delayTimeout = null;
 
     // Store event listener references for cleanup (native HLS case)
     let nativeLoadedHandler = null;
@@ -223,6 +222,51 @@ export function HLSVideoCell({
       // (go2rtc sessions expire after 5 s of inactivity; reloading the master
       // manifest creates a fresh session instead of retrying the stale one).
       hlsUrlRef.current = hlsStreamUrl;
+
+      // Preflight the manifest through the shared connection gate before
+      // spinning up a player. go2rtc holds this request open while it dials
+      // the camera's RTSP source, so an offline camera fails fast here
+      // (bounded by the gate timeout) instead of pinning one of the
+      // browser's per-host connections under hls.js retry loops. For native
+      // HLS this also bounds concurrent FFmpeg session spin-ups (replaces
+      // the old 300ms per-cell stagger). Transient failures fall through to
+      // hls.js, whose own retry policy handles them.
+      try {
+        const preflight = await streamConnectionGate.run(
+          (signal) => fetch(hlsStreamUrl, { signal }),
+          {
+            priority: priorityForStreamStatus(stream.status),
+            signal: cellAbortRef.current ? cellAbortRef.current.signal : undefined
+          }
+        );
+        if (!preflight.ok) {
+          const bodyText = await preflight.text().catch(() => '');
+          const isSourceUnreachable = /dial tcp|no route to host|connection refused|connect:/i.test(bodyText);
+          if (isSourceUnreachable) {
+            console.error(`[HLS ${stream.name}] Manifest preflight: source unreachable (${preflight.status}): ${bodyText}`);
+            if (isMounted) {
+              setError(t('live.cannotConnectToSource'));
+              setIsLoading(false);
+            }
+            return;
+          }
+          // Non-OK but not clearly offline (e.g. session race) — let hls.js retry
+          console.warn(`[HLS ${stream.name}] Manifest preflight returned ${preflight.status}, continuing to player`);
+        }
+      } catch (err) {
+        if (isGateAbort(err)) return; // unmounted / superseded
+        if (isGateTimeout(err)) {
+          console.warn(`[HLS ${stream.name}] Manifest preflight timed out — treating source as unreachable`);
+          if (isMounted) {
+            setError(t('live.cannotConnectToSource'));
+            setIsLoading(false);
+          }
+          return;
+        }
+        // Network-level failure — let hls.js surface it through its own path
+        console.warn(`[HLS ${stream.name}] Manifest preflight failed (${err.message}), continuing to player`);
+      }
+      if (!isMounted) return;
 
       // Check if HLS.js is supported
       if (Hls.isSupported()) {
@@ -450,24 +494,20 @@ export function HLSVideoCell({
       await initHls();
     };
 
-    // Apply staggered initialization delay to avoid overwhelming go2rtc
-    // Go2rtc has a 5-second HLS session keepalive, so staggering helps prevent session timeouts
-    if (initDelay > 0) {
-      console.log(`[HLS ${stream.name}] Waiting ${initDelay}ms before initialization...`);
-      delayTimeout = setTimeout(doInit, initDelay);
-    } else {
-      doInit();
-    }
+    // Connection concurrency is bounded by the shared stream connection gate
+    // (the manifest preflight is gated), so no per-cell stagger is needed.
+    cellAbortRef.current = new AbortController();
+    doInit();
 
     // Cleanup function
     return () => {
       console.log(`[HLS ${stream.name}] Cleaning up HLS player`);
       isMounted = false;
 
-      // Clear any pending delay timeout
-      if (delayTimeout) {
-        clearTimeout(delayTimeout);
-        delayTimeout = null;
+      // Cancel any queued/in-flight gated preflight
+      if (cellAbortRef.current) {
+        cellAbortRef.current.abort();
+        cellAbortRef.current = null;
       }
 
       // Clear any pending init timeout
@@ -500,7 +540,11 @@ export function HLSVideoCell({
         videoRef.current.load();
       }
     };
-  }, [stream, retryCount, initDelay, hlsMode, useSubStream, t]);
+    // Note: depend on stream?.name (not the stream object) so the periodic
+    // /api/streams status refetch doesn't tear down healthy players when it
+    // produces new object identities every poll cycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream?.name, retryCount, hlsMode, useSubStream, t]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).

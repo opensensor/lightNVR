@@ -188,7 +188,10 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     checkGo2rtc();
   }, []);
 
-  // Fetch streams using preact-query
+  // Fetch streams using preact-query, and periodically refresh so stream
+  // status (Running / Reconnecting / Stopped etc.) stays up-to-date — the
+  // video cells use status transitions to auto-retry when a camera that was
+  // offline comes back.
   const {
     data: streamsData,
     isLoading: isLoadingStreams,
@@ -200,6 +203,9 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
       timeout: 15000, // 15 second timeout
       retries: 2,     // Retry twice
       retryDelay: 1000 // 1 second between retries
+    },
+    {
+      refetchInterval: 30000 // Re-poll stream list (and status) every 30 s
     }
   );
 
@@ -728,11 +734,13 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
               <a href="streams.html" className="btn-primary">{t('live.configureStreams')}</a>
             </div>
           ) : (
-            // Render video cells with staggered initialization to avoid
-            // overwhelming go2rtc with concurrent WebRTC offers
+            // Render video cells. Connection concurrency is bounded by the
+            // shared stream connection gate (see stream-connection-gate.js),
+            // which replaced the old fixed per-index stagger: healthy cameras
+            // connect as fast as slots free up, and offline cameras fail fast
+            // instead of pinning browser connections.
             streamsToShow.map((stream, index) => {
               const globalIndex = currentPage * maxStreams + index;
-              const initDelay = index * 300; // 300ms stagger per stream
               return (
                 <div
                   key={stream.name}
@@ -765,7 +773,6 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
                     useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && !!stream.sub_stream_url}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
-                    initDelay={initDelay}
                     showLabels={showLabels}
                     showControls={showControls}
                     globalShowDetections={showDetections}
