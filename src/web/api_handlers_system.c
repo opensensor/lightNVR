@@ -236,7 +236,16 @@ static void add_versions_to_json(cJSON *info) {
     }
 
     char mbedtls_version[64] = {0};
+#if defined(MBEDTLS_VERSION_C)
+    // Runtime query reports the version of the library actually linked
     mbedtls_version_get_string_full(mbedtls_version);
+#elif defined(MBEDTLS_VERSION_STRING_FULL)
+    // MBEDTLS_VERSION_C may be disabled in trimmed builds (e.g. buildroot
+    // cross-compiles); fall back to the compile-time version string
+    safe_strcpy(mbedtls_version, MBEDTLS_VERSION_STRING_FULL, sizeof(mbedtls_version), 0);
+#else
+    safe_strcpy(mbedtls_version, "Unknown", sizeof(mbedtls_version), 0);
+#endif
     add_version_entry(items, "mbedTLS", "Library", mbedtls_version, NULL);
 
     add_version_entry(items, "libuv", "Library", uv_version_string(), NULL);
