@@ -331,20 +331,20 @@ For other issues, see the [General Troubleshooting Guide](docs/TROUBLESHOOTING.m
 
 #### Quick Start with Docker Compose (Recommended)
 
+No clone or build required — [`docker-compose.yml`](docker-compose.yml) pulls the published image:
+
 ```bash
-# Clone the repository
-git clone https://github.com/opensensor/lightNVR.git
-cd lightNVR
+# Download the compose file into an empty directory
+curl -LO https://raw.githubusercontent.com/opensensor/lightNVR/main/docker-compose.yml
 
-# Initialize submodules (required for go2rtc build)
-git submodule update --init --recursive
-
-# Start the container (first run will build the image)
+# Pull the image and start the container
 docker compose up -d
 
 # View logs
 docker compose logs -f
 ```
+
+To build the image from source instead, clone the repository, run `git submodule update --init --recursive`, and switch the `image:` line in `docker-compose.yml` to the commented-out `build:` block.
 
 The container will automatically:
 - Create default configuration files in `./config`

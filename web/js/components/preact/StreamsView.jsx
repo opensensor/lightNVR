@@ -1172,7 +1172,11 @@ export function StreamsView() {
       onSuccess: () => {
         setIsAddingStream(false);
         setShowCustomNameInput(false);
-        setOnvifModalVisible(false);
+        // Keep the discovery modal open with its device list intact so
+        // additional cameras can be added without re-running discovery;
+        // only reset the per-device selection.
+        setSelectedProfile(null);
+        setCustomStreamName('');
       },
       onError: () => {
         setIsAddingStream(false);

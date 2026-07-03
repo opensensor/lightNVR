@@ -18,15 +18,34 @@ This guide provides comprehensive information about deploying LightNVR using Doc
 
 ### Using Docker Compose (Recommended)
 
+No clone or build required — the compose file pulls the published image. Save the repository's [`docker-compose.yml`](../docker-compose.yml) into an empty directory (or create it from the example below):
+
+```yaml
+services:
+  lightnvr:
+    image: ghcr.io/opensensor/lightnvr:latest
+    container_name: lightnvr
+    restart: unless-stopped
+    ports:
+      - "8080:8080"     # Web UI
+      - "8554:8554"     # RTSP
+      - "8555:8555"     # WebRTC TCP
+      - "8555:8555/udp" # WebRTC UDP
+      - "1984:1984"     # go2rtc API
+    volumes:
+      # DO NOT mount /var/lib/lightnvr directly - it will overwrite web assets!
+      - ./config:/etc/lightnvr
+      - ./data:/var/lib/lightnvr/data
+    environment:
+      - TZ=UTC  # Change to your timezone (e.g., America/New_York)
+      # ONVIF discovery network for containers, e.g. 192.168.1.0/24
+      # - LIGHTNVR_ONVIF_NETWORK=192.168.1.0/24
+```
+
+Then start it:
+
 ```bash
-# Clone the repository
-git clone https://github.com/opensensor/lightNVR.git
-cd lightNVR
-
-# Initialize submodules (required for go2rtc build)
-git submodule update --init --recursive
-
-# Start the container (first run will build the image and pull the latest base layers)
+# Pull the image and start the container
 docker compose up -d
 
 # View logs
@@ -36,6 +55,8 @@ docker compose logs -f
 # http://localhost:8080
 # Default username: admin (password is auto-generated on first run - check logs)
 ```
+
+To build the image from source instead, clone the repository (with `git submodule update --init --recursive`) and switch the `image:` line in `docker-compose.yml` to the commented-out `build:` block — see [Building from Source](#building-from-source).
 
 ### Using Docker Run
 

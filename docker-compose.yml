@@ -1,8 +1,13 @@
 services:
   lightnvr:
-    build:
-      context: .
-      pull: true
+    # Published multi-arch image (amd64, arm64, armv7); pin a version tag
+    # (e.g. ghcr.io/opensensor/lightnvr:1.0) instead of latest if preferred
+    image: ghcr.io/opensensor/lightnvr:latest
+    # To build from source instead, comment out `image:` above, uncomment
+    # `build:` below, and run: git submodule update --init --recursive
+    # build:
+    #   context: .
+    #   pull: true
     container_name: lightnvr
     restart: unless-stopped
     ports:

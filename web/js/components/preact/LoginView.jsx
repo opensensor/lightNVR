@@ -52,6 +52,7 @@ export function LoginView() {
   const [trustedDeviceDays, setTrustedDeviceDays] = useState(30);
   const [rememberDevice, setRememberDevice] = useState(false);
   const abortControllerRef = useRef(null);
+  const staleSessionLogoutRef = useRef(null);
   const { t, locale } = useI18n();
 
   useEffect(() => {
@@ -61,9 +62,15 @@ export function LoginView() {
   // Clear any stale server-side session on login page load.
   // The session cookie is HttpOnly so JavaScript cannot clear it directly;
   // calling the logout endpoint lets the server expire it via Set-Cookie.
+  // The promise is kept so login submission can wait for it: the logout
+  // response carries "Set-Cookie: session=; Max-Age=0", and if it arrives
+  // after the login response it deletes the freshly issued session cookie,
+  // bouncing the user straight back to the login page.
   useEffect(() => {
-    fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
-      .catch(() => {});
+    staleSessionLogoutRef.current =
+      fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+        .catch(() => {})
+        .finally(() => { staleSessionLogoutRef.current = null; });
   }, []);
 
   // Fetch login config to determine if force MFA is enabled
@@ -143,6 +150,13 @@ export function LoginView() {
     setErrorMessage('');
 
     try {
+      // Wait for the stale-session logout fired on mount, so its
+      // cookie-clearing response cannot land after (and wipe out) the
+      // session cookie issued by this login.
+      if (staleSessionLogoutRef.current) {
+        await staleSessionLogoutRef.current;
+      }
+
       // Build login request body
       const loginBody = { username, password };
       if (forceMfaEnabled && forceMfaTotpCode) {
