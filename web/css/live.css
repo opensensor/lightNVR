@@ -188,29 +188,28 @@
 }
 
 /*
- * 1x1 single-stream mode on desktop: lock the whole live page to the viewport
- * height so the video, controls and chrome all fit without vertical scrolling.
- * The flex chain (body -> container -> main -> section) takes over sizing so
- * the video-container fills whatever space remains after header/footer instead
- * of relying on the static calc(100vh - 180px) fallback used for multi-cell
- * grids. Only desktop (>=1200px) — mobile/tablet keep their natural scroll.
+ * Desktop live view: lock the page to the viewport and let the grid consume
+ * the space left after the app header, live controls, pagination and footer.
+ * This keeps multi-camera grids from forcing a vertical scrollbar; cells scale
+ * down through the flex chain instead. Mobile/tablet keep natural page scroll.
  */
 @media (min-width: 1200px) {
-    body.live-single-stream,
-    body.live-single-stream > .container {
+    body.live-view-page,
+    body.live-view-page > .container {
         height: 100dvh;
         min-height: 0;
         overflow: hidden;
     }
 
-    body.live-single-stream #main-content {
+    body.live-view-page #main-content {
         display: flex;
         flex-direction: column;
+        flex: 1 1 auto;
         min-height: 0;
         overflow: hidden;
     }
 
-    #live-page.single-stream {
+    body.live-view-page #live-page:not(.fullscreen-mode) {
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
@@ -220,20 +219,24 @@
         overflow: hidden;
     }
 
-    #live-page.single-stream > .page-header {
+    body.live-view-page #live-page:not(.fullscreen-mode) > .page-header {
         flex: 0 0 auto;
         margin-bottom: 0.5rem;
         padding: 0.5rem 1rem;
     }
 
-    #live-page.single-stream > div:not(.page-header) {
+    body.live-view-page #live-page:not(.fullscreen-mode) > .live-grid-frame {
+        display: flex;
+        flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
         height: auto;
+        overflow: hidden;
     }
 
-    #live-page.single-stream .video-container {
-        height: 100%;
+    body.live-view-page #live-page:not(.fullscreen-mode) .video-container {
+        flex: 1 1 auto;
+        height: auto;
         min-height: 0;
     }
 }

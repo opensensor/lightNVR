@@ -147,10 +147,29 @@ test.describe('Live View Page @ui @liveview', () => {
       
       // Set desktop viewport
       await page.setViewportSize({ width: 1920, height: 1080 });
-      await liveView.goto();
+      await page.goto('/index.html?cols=2&rows=2', { waitUntil: 'domcontentloaded' });
       await sleep(2000);
       
       await expect(liveView.mainContent).toBeVisible();
+      await expect(page.locator('#video-grid')).toBeVisible();
+
+      const layoutMetrics = await page.evaluate(() => {
+        const scrollingElement = document.scrollingElement || document.documentElement;
+        const grid = document.getElementById('video-grid');
+        const footer = document.querySelector('footer');
+
+        return {
+          viewportHeight: window.innerHeight,
+          clientHeight: document.documentElement.clientHeight,
+          scrollHeight: scrollingElement.scrollHeight,
+          gridBottom: grid ? grid.getBoundingClientRect().bottom : null,
+          footerBottom: footer ? footer.getBoundingClientRect().bottom : null,
+        };
+      });
+
+      expect(layoutMetrics.scrollHeight).toBeLessThanOrEqual(layoutMetrics.clientHeight + 1);
+      expect(layoutMetrics.gridBottom ?? Infinity).toBeLessThanOrEqual(layoutMetrics.viewportHeight + 1);
+      expect(layoutMetrics.footerBottom ?? Infinity).toBeLessThanOrEqual(layoutMetrics.viewportHeight + 1);
       
       await page.screenshot({ path: 'test-results/liveview-desktop.png' });
     });
@@ -182,4 +201,3 @@ test.describe('Live View Page @ui @liveview', () => {
     });
   });
 });
-
