@@ -19,6 +19,9 @@ typedef struct {
  * PTZ capabilities
  */
 typedef struct {
+    bool queried;
+    bool has_pan_tilt;
+    bool has_zoom;
     bool has_continuous_move;
     bool has_absolute_move;
     bool has_relative_move;
@@ -108,6 +111,14 @@ int onvif_ptz_absolute_move(const char *ptz_url, const char *profile_token,
                             float pan, float tilt, float zoom);
 
 /**
+ * Absolute move with explicit axis selection.
+ */
+int onvif_ptz_absolute_move_axes(const char *ptz_url, const char *profile_token,
+                                 const char *username, const char *password,
+                                 bool has_pan_tilt, float pan, float tilt,
+                                 bool has_zoom, float zoom);
+
+/**
  * Relative move by specified amount
  * 
  * @param ptz_url PTZ service URL
@@ -122,6 +133,14 @@ int onvif_ptz_absolute_move(const char *ptz_url, const char *profile_token,
 int onvif_ptz_relative_move(const char *ptz_url, const char *profile_token,
                             const char *username, const char *password,
                             float pan_delta, float tilt_delta, float zoom_delta);
+
+/**
+ * Relative move with explicit axis selection.
+ */
+int onvif_ptz_relative_move_axes(const char *ptz_url, const char *profile_token,
+                                 const char *username, const char *password,
+                                 bool has_pan_tilt, float pan_delta, float tilt_delta,
+                                 bool has_zoom, float zoom_delta);
 
 /**
  * Go to home position
@@ -169,4 +188,3 @@ int onvif_ptz_set_preset(const char *ptz_url, const char *profile_token,
                          const char *preset_name, char *preset_token, size_t token_size);
 
 #endif /* ONVIF_PTZ_H */
-

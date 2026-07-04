@@ -29,6 +29,7 @@ typedef struct {
 typedef struct {
     char token[64];
     char name[64];
+    char video_source_token[64];
     char snapshot_uri[MAX_URL_LENGTH];
     char stream_uri[MAX_URL_LENGTH];
     int width;
@@ -118,6 +119,21 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
 int get_onvif_stream_url(const char *device_url, const char *username, 
                         const char *password, const char *profile_token, 
                         char *stream_url, size_t url_size);
+
+/**
+ * Get the ONVIF video source token associated with a media profile.
+ *
+ * @param device_url Device service URL
+ * @param username Username for authentication (can be NULL)
+ * @param password Password for authentication (can be NULL)
+ * @param profile_token Profile token to resolve; empty uses the first profile
+ * @param video_source_token Buffer to fill with the video source token
+ * @param token_size Size of the video_source_token buffer
+ * @return 0 on success, non-zero on failure
+ */
+int get_onvif_video_source_token(const char *device_url, const char *username,
+                                const char *password, const char *profile_token,
+                                char *video_source_token, size_t token_size);
 
 /**
  * Add discovered ONVIF device as a stream

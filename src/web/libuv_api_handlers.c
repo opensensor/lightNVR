@@ -18,6 +18,7 @@
 #include "web/api_handlers_system.h"
 #include "web/api_handlers_zones.h"
 #include "web/api_handlers_ptz.h"
+#include "web/api_handlers_imaging.h"
 #include "web/api_handlers_detection.h"
 #include "web/api_handlers_recordings_playback.h"
 #include "web/api_handlers_recordings_thumbnail.h"
@@ -103,6 +104,13 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/streams/#/ptz/set-home", "POST", handle_ptz_set_home);
     http_server_register_handler(server, "/api/streams/#/ptz/goto-preset", "POST", handle_ptz_goto_preset);
     http_server_register_handler(server, "/api/streams/#/ptz/preset", "PUT", handle_ptz_set_preset);
+
+    // ONVIF Imaging API
+    http_server_register_handler(server, "/api/streams/#/imaging/settings", "GET", handle_imaging_get_settings);
+    http_server_register_handler(server, "/api/streams/#/imaging/settings", "PUT", handle_imaging_put_settings);
+    http_server_register_handler(server, "/api/streams/#/imaging/options", "GET", handle_imaging_get_options);
+    http_server_register_handler(server, "/api/streams/#/daynight", "GET", handle_daynight_get);
+    http_server_register_handler(server, "/api/streams/#/daynight", "PUT", handle_daynight_put);
 
     // Stream CRUD (wildcards - must come after specific routes)
     http_server_register_handler(server, "/api/streams/#/full", "GET", handle_get_stream_full);

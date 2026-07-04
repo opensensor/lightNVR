@@ -48,18 +48,30 @@ static int get_ptz_stream_config(const char *stream_name, stream_config_t *confi
  *   - Credential stripping
  */
 static int build_ptz_url(const stream_config_t *config, char *ptz_url, size_t url_size) {
+    if (!config || !ptz_url || url_size == 0) {
+        return -1;
+    }
+
+    char device_url[MAX_URL_LENGTH];
     // codeql[cpp/non-https-url] - Local ONVIF cameras use HTTP; HTTPS only when rtsps:// detected
-    return url_build_onvif_service_url(config->url, config->onvif_port,
-                                       "/onvif/ptz_service", ptz_url, url_size);
+    if (url_build_onvif_service_url(config->url, config->onvif_port,
+                                    "/onvif/device_service",
+                                    device_url, sizeof(device_url)) != 0) {
+        return -1;
+    }
+
+    return onvif_ptz_get_service_url(device_url, config->onvif_username,
+                                     config->onvif_password, ptz_url, url_size);
 }
 
 /**
  * Helper to get profile token (use first profile or default)
  */
 static const char* get_profile_token(const stream_config_t *config) {
-    // For now, use a default profile token
-    // TODO: Store profile token in stream config or query from device
-    (void)config;  // Unused for now
+    if (config && config->onvif_profile[0] != '\0') {
+        return config->onvif_profile;
+    }
+
     return "Profile_1";
 }
 
@@ -217,15 +229,30 @@ void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
     }
 
     float pan = 0.0f, tilt = 0.0f, zoom = 0.0f;
+    bool has_pan = false, has_tilt = false, has_zoom = false;
     cJSON *pan_json = cJSON_GetObjectItem(body, "pan");
     cJSON *tilt_json = cJSON_GetObjectItem(body, "tilt");
     cJSON *zoom_json = cJSON_GetObjectItem(body, "zoom");
 
-    if (pan_json && cJSON_IsNumber(pan_json)) pan = (float)pan_json->valuedouble;
-    if (tilt_json && cJSON_IsNumber(tilt_json)) tilt = (float)tilt_json->valuedouble;
-    if (zoom_json && cJSON_IsNumber(zoom_json)) zoom = (float)zoom_json->valuedouble;
+    if (pan_json && cJSON_IsNumber(pan_json)) {
+        pan = (float)pan_json->valuedouble;
+        has_pan = true;
+    }
+    if (tilt_json && cJSON_IsNumber(tilt_json)) {
+        tilt = (float)tilt_json->valuedouble;
+        has_tilt = true;
+    }
+    if (zoom_json && cJSON_IsNumber(zoom_json)) {
+        zoom = (float)zoom_json->valuedouble;
+        has_zoom = true;
+    }
 
     cJSON_Delete(body);
+
+    if (!has_pan && !has_tilt && !has_zoom) {
+        http_response_set_json_error(res, 400, "At least one PTZ axis is required");
+        return;
+    }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
@@ -234,7 +261,9 @@ void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
     }
 
     const char *profile_token = get_profile_token(&config);
-    rc = onvif_ptz_absolute_move(ptz_url, profile_token, config.onvif_username, config.onvif_password, pan, tilt, zoom);
+    rc = onvif_ptz_absolute_move_axes(ptz_url, profile_token,
+                                      config.onvif_username, config.onvif_password,
+                                      has_pan || has_tilt, pan, tilt, has_zoom, zoom);
 
     if (rc != 0) {
         http_response_set_json_error(res, 500, "PTZ absolute move failed");
@@ -278,15 +307,30 @@ void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
     }
 
     float pan = 0.0f, tilt = 0.0f, zoom = 0.0f;
+    bool has_pan = false, has_tilt = false, has_zoom = false;
     cJSON *pan_json = cJSON_GetObjectItem(body, "pan");
     cJSON *tilt_json = cJSON_GetObjectItem(body, "tilt");
     cJSON *zoom_json = cJSON_GetObjectItem(body, "zoom");
 
-    if (pan_json && cJSON_IsNumber(pan_json)) pan = (float)pan_json->valuedouble;
-    if (tilt_json && cJSON_IsNumber(tilt_json)) tilt = (float)tilt_json->valuedouble;
-    if (zoom_json && cJSON_IsNumber(zoom_json)) zoom = (float)zoom_json->valuedouble;
+    if (pan_json && cJSON_IsNumber(pan_json)) {
+        pan = (float)pan_json->valuedouble;
+        has_pan = true;
+    }
+    if (tilt_json && cJSON_IsNumber(tilt_json)) {
+        tilt = (float)tilt_json->valuedouble;
+        has_tilt = true;
+    }
+    if (zoom_json && cJSON_IsNumber(zoom_json)) {
+        zoom = (float)zoom_json->valuedouble;
+        has_zoom = true;
+    }
 
     cJSON_Delete(body);
+
+    if (!has_pan && !has_tilt && !has_zoom) {
+        http_response_set_json_error(res, 400, "At least one PTZ axis is required");
+        return;
+    }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
@@ -295,7 +339,9 @@ void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
     }
 
     const char *profile_token = get_profile_token(&config);
-    rc = onvif_ptz_relative_move(ptz_url, profile_token, config.onvif_username, config.onvif_password, pan, tilt, zoom);
+    rc = onvif_ptz_relative_move_axes(ptz_url, profile_token,
+                                      config.onvif_username, config.onvif_password,
+                                      has_pan || has_tilt, pan, tilt, has_zoom, zoom);
 
     if (rc != 0) {
         http_response_set_json_error(res, 500, "PTZ relative move failed");
@@ -429,6 +475,10 @@ void handle_ptz_get_presets(const http_request_t *req, http_response_t *res) {
     const char *profile_token = get_profile_token(&config);
     onvif_ptz_preset_t presets[32];
     int count = onvif_ptz_get_presets(ptz_url, profile_token, config.onvif_username, config.onvif_password, presets, 32);
+    if (count < 0) {
+        http_response_set_json_error(res, 502, "Failed to get ONVIF PTZ presets");
+        return;
+    }
 
     cJSON *response = cJSON_CreateObject();
     cJSON *presets_array = cJSON_CreateArray();
@@ -601,10 +651,19 @@ void handle_ptz_capabilities(const http_request_t *req, http_response_t *res) {
 
     const char *profile_token = get_profile_token(&config);
     onvif_ptz_capabilities_t caps;
-    onvif_ptz_get_capabilities(ptz_url, profile_token, config.onvif_username, config.onvif_password, &caps);
+    rc = onvif_ptz_get_capabilities(ptz_url, profile_token,
+                                    config.onvif_username, config.onvif_password, &caps);
+    if (rc != 0) {
+        http_response_set_json_error(res, 502, "Failed to get ONVIF PTZ capabilities");
+        return;
+    }
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "ptz_enabled", config.ptz_enabled);
+    cJSON_AddBoolToObject(response, "onvif_queried", caps.queried);
+    cJSON_AddStringToObject(response, "ptz_service_url", ptz_url);
+    cJSON_AddBoolToObject(response, "has_pan_tilt", caps.has_pan_tilt);
+    cJSON_AddBoolToObject(response, "has_zoom", caps.has_zoom);
     cJSON_AddBoolToObject(response, "has_continuous_move", caps.has_continuous_move);
     cJSON_AddBoolToObject(response, "has_absolute_move", caps.has_absolute_move);
     cJSON_AddBoolToObject(response, "has_relative_move", caps.has_relative_move);

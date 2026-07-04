@@ -34,6 +34,24 @@ int get_onvif_stream_url(const char *device_url, const char *username,
                         char *stream_url, size_t url_size);
 
 /**
+ * Get the ONVIF video source token associated with a media profile.
+ *
+ * Imaging service calls require a VideoSourceToken, which is often different
+ * from the Media Profile token used by PTZ and stream URI calls.
+ *
+ * @param device_url Device service URL
+ * @param username Username for authentication (can be NULL)
+ * @param password Password for authentication (can be NULL)
+ * @param profile_token Profile token to resolve; empty uses the first profile
+ * @param video_source_token Buffer to fill with the video source token
+ * @param token_size Size of the video_source_token buffer
+ * @return 0 on success, non-zero on failure
+ */
+int get_onvif_video_source_token(const char *device_url, const char *username,
+                                 const char *password, const char *profile_token,
+                                 char *video_source_token, size_t token_size);
+
+/**
  * Add discovered ONVIF device as a stream
  * 
  * @param device_info Device information

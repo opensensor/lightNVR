@@ -1164,7 +1164,11 @@ export function StreamsView() {
       audio_voice_enhancement: false,
       backchannel_enabled: false,
       // Backend expects camelCase key 'isOnvif'
-      isOnvif: true
+      isOnvif: true,
+      onvif_username: onvifCredentials.username || '',
+      onvif_password: onvifCredentials.password || '',
+      onvif_profile: selectedProfile.token || '',
+      onvif_port: 0
     };
 
     // Use mutation to save stream

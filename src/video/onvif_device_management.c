@@ -213,6 +213,24 @@ static ezxml_t find_soap_body(ezxml_t xml) {
     return body;
 }
 
+static const char *xml_local_name(const char *name) {
+    const char *colon = name ? strchr(name, ':') : NULL;
+    return colon ? colon + 1 : name;
+}
+
+static ezxml_t find_child_local(ezxml_t parent, const char *name) {
+    if (!parent || !name) return NULL;
+
+    for (ezxml_t child = parent->child; child; child = child->sibling) {
+        const char *local = xml_local_name(child->name);
+        if (local && strcmp(local, name) == 0) {
+            return child;
+        }
+    }
+
+    return NULL;
+}
+
 // Find all elements with a specific name
 static void find_elements_by_name(ezxml_t root, const char *name, ezxml_t *results, int *count, int max_count) {
     if (!root || !name || !results || !count || max_count <= 0) return;
@@ -356,6 +374,13 @@ static char* get_media_service_url(const char *device_url, const char *username,
 int get_onvif_device_profiles(const char *device_url, const char *username, 
                              const char *password, onvif_profile_t *profiles, 
                              int max_profiles) {
+    if (!profiles || max_profiles <= 0) {
+        log_error("Invalid parameters for get_onvif_device_profiles");
+        return -1;
+    }
+
+    memset(profiles, 0, sizeof(onvif_profile_t) * (size_t)max_profiles);
+
     char *media_url = get_media_service_url(device_url, username, password);
     if (!media_url) {
         log_error("Couldn't get media service URL");
@@ -396,11 +421,18 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
     ezxml_t body = find_soap_body(xml);
     if (body) {
         ezxml_t get_profiles_response = find_child(body, "trt:GetProfilesResponse");
+        if (!get_profiles_response) {
+            get_profiles_response = find_child_local(body, "GetProfilesResponse");
+        }
+
         if (get_profiles_response) {
-            ezxml_t profile = find_child(get_profiles_response, "trt:Profiles");
-            while (profile && profile_count < max_profiles) {
-                profile_elements[profile_count++] = profile;
-                profile = profile->next;
+            for (ezxml_t profile = get_profiles_response->child;
+                 profile && profile_count < max_profiles;
+                 profile = profile->sibling) {
+                const char *local = xml_local_name(profile->name);
+                if (local && strcmp(local, "Profiles") == 0) {
+                    profile_elements[profile_count++] = profile;
+                }
             }
         }
     }
@@ -428,39 +460,81 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
         
         // Get profile name
         ezxml_t name = find_child(profile, "tt:Name");
+        if (!name) {
+            name = find_child_local(profile, "Name");
+        }
         if (name) {
             safe_strcpy(profiles[i].name, ezxml_txt(name), sizeof(profiles[i].name), 0);
+        }
+
+        ezxml_t video_source_config = find_child(profile, "tt:VideoSourceConfiguration");
+        if (!video_source_config) {
+            video_source_config = find_child_local(profile, "VideoSourceConfiguration");
+        }
+        if (video_source_config) {
+            ezxml_t source_token = find_child(video_source_config, "tt:SourceToken");
+            if (!source_token) {
+                source_token = find_child_local(video_source_config, "SourceToken");
+            }
+            if (source_token) {
+                safe_strcpy(profiles[i].video_source_token, ezxml_txt(source_token),
+                            sizeof(profiles[i].video_source_token), 0);
+            }
         }
         
         // Get video encoder configuration
         ezxml_t video_encoder = find_child(profile, "tt:VideoEncoderConfiguration");
+        if (!video_encoder) {
+            video_encoder = find_child_local(profile, "VideoEncoderConfiguration");
+        }
         if (video_encoder) {
             ezxml_t encoding = find_child(video_encoder, "tt:Encoding");
+            if (!encoding) {
+                encoding = find_child_local(video_encoder, "Encoding");
+            }
             if (encoding) {
                 safe_strcpy(profiles[i].encoding, ezxml_txt(encoding), sizeof(profiles[i].encoding), 0);
             }
             
             ezxml_t resolution = find_child(video_encoder, "tt:Resolution");
+            if (!resolution) {
+                resolution = find_child_local(video_encoder, "Resolution");
+            }
             if (resolution) {
                 ezxml_t width = find_child(resolution, "tt:Width");
+                if (!width) {
+                    width = find_child_local(resolution, "Width");
+                }
                 if (width) {
                     profiles[i].width = (int)strtol(ezxml_txt(width), NULL, 10);
                 }
 
                 ezxml_t height = find_child(resolution, "tt:Height");
+                if (!height) {
+                    height = find_child_local(resolution, "Height");
+                }
                 if (height) {
                     profiles[i].height = (int)strtol(ezxml_txt(height), NULL, 10);
                 }
             }
 
             ezxml_t rate_control = find_child(video_encoder, "tt:RateControl");
+            if (!rate_control) {
+                rate_control = find_child_local(video_encoder, "RateControl");
+            }
             if (rate_control) {
                 ezxml_t fps = find_child(rate_control, "tt:FrameRateLimit");
+                if (!fps) {
+                    fps = find_child_local(rate_control, "FrameRateLimit");
+                }
                 if (fps) {
                     profiles[i].fps = (int)strtol(ezxml_txt(fps), NULL, 10);
                 }
 
                 ezxml_t bitrate = find_child(rate_control, "tt:BitrateLimit");
+                if (!bitrate) {
+                    bitrate = find_child_local(rate_control, "BitrateLimit");
+                }
                 if (bitrate) {
                     profiles[i].bitrate = (int)strtol(ezxml_txt(bitrate), NULL, 10);
                 }
@@ -478,6 +552,53 @@ int get_onvif_device_profiles(const char *device_url, const char *username,
     free(media_url);
     
     return count;
+}
+
+int get_onvif_video_source_token(const char *device_url, const char *username,
+                                 const char *password, const char *profile_token,
+                                 char *video_source_token, size_t token_size) {
+    if (!device_url || !video_source_token || token_size == 0) {
+        return -1;
+    }
+
+    video_source_token[0] = '\0';
+
+    onvif_profile_t profiles[16];
+    int count = get_onvif_device_profiles(device_url, username, password, profiles, 16);
+    if (count <= 0) {
+        log_warn("Unable to resolve ONVIF video source token from profiles");
+        return -1;
+    }
+
+    const onvif_profile_t *selected = NULL;
+    if (profile_token && profile_token[0] != '\0') {
+        for (int i = 0; i < count; i++) {
+            if (strcmp(profiles[i].token, profile_token) == 0) {
+                selected = &profiles[i];
+                break;
+            }
+        }
+    }
+
+    if (!selected) {
+        selected = &profiles[0];
+    }
+
+    if (selected->video_source_token[0] != '\0') {
+        safe_strcpy(video_source_token, selected->video_source_token, token_size, 0);
+        return 0;
+    }
+
+    if (profile_token && profile_token[0] != '\0') {
+        log_warn("Profile %s did not include a VideoSourceConfiguration SourceToken; falling back to profile token",
+                 profile_token);
+        safe_strcpy(video_source_token, profile_token, token_size, 0);
+        return 0;
+    }
+
+    log_warn("ONVIF profile did not include a VideoSourceConfiguration SourceToken; falling back to VideoSourceToken");
+    safe_strcpy(video_source_token, "VideoSourceToken", token_size, 0);
+    return 0;
 }
 
 // Get ONVIF stream URL for a specific profile

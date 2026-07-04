@@ -865,6 +865,7 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
         // Extract username and password if provided
         cJSON *onvif_username = cJSON_GetObjectItem(stream_json, "onvif_username");
         cJSON *onvif_password = cJSON_GetObjectItem(stream_json, "onvif_password");
+        cJSON *onvif_profile = cJSON_GetObjectItem(stream_json, "onvif_profile");
 
         if (onvif_username && cJSON_IsString(onvif_username)) {
             safe_strcpy(config.onvif_username, onvif_username->valuestring, sizeof(config.onvif_username), 0);
@@ -872,6 +873,10 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
 
         if (onvif_password && cJSON_IsString(onvif_password)) {
             safe_strcpy(config.onvif_password, onvif_password->valuestring, sizeof(config.onvif_password), 0);
+        }
+
+        if (onvif_profile && cJSON_IsString(onvif_profile)) {
+            safe_strcpy(config.onvif_profile, onvif_profile->valuestring, sizeof(config.onvif_profile), 0);
         }
 
         normalize_stream_url_credentials(&config);
@@ -1600,8 +1605,10 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     // Save original credentials before any update so we can detect changes
     char original_onvif_username[sizeof(config.onvif_username)];
     char original_onvif_password[sizeof(config.onvif_password)];
+    char original_onvif_profile[sizeof(config.onvif_profile)];
     safe_strcpy(original_onvif_username, config.onvif_username, sizeof(original_onvif_username), 0);
     safe_strcpy(original_onvif_password, config.onvif_password, sizeof(original_onvif_password), 0);
+    safe_strcpy(original_onvif_profile, config.onvif_profile, sizeof(original_onvif_profile), 0);
 
     if (config.is_onvif) {
         log_info("Testing ONVIF capabilities for stream %s", config.name);
@@ -1610,6 +1617,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         // Extract username and password if provided
         cJSON *onvif_username = cJSON_GetObjectItem(stream_json, "onvif_username");
         cJSON *onvif_password = cJSON_GetObjectItem(stream_json, "onvif_password");
+        cJSON *onvif_profile = cJSON_GetObjectItem(stream_json, "onvif_profile");
 
         if (onvif_username && cJSON_IsString(onvif_username)) {
             safe_strcpy(config.onvif_username, onvif_username->valuestring, sizeof(config.onvif_username), 0);
@@ -1619,16 +1627,21 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
             safe_strcpy(config.onvif_password, onvif_password->valuestring, sizeof(config.onvif_password), 0);
         }
 
+        if (onvif_profile && cJSON_IsString(onvif_profile)) {
+            safe_strcpy(config.onvif_profile, onvif_profile->valuestring, sizeof(config.onvif_profile), 0);
+        }
+
         normalize_stream_url_credentials(&config);
 
         // Detect if credentials actually changed (after normalisation) and mark for restart + go2rtc reload
         if (strcmp(original_onvif_username, config.onvif_username) != 0 ||
-            strcmp(original_onvif_password, config.onvif_password) != 0) {
+            strcmp(original_onvif_password, config.onvif_password) != 0 ||
+            strcmp(original_onvif_profile, config.onvif_profile) != 0) {
             credentials_changed = true;
             config_changed = true;
             requires_restart = true;
             non_dynamic_config_changed = true;
-            log_info("ONVIF credentials changed for stream %s - restart and go2rtc reload required", config.name);
+            log_info("ONVIF credentials/profile changed for stream %s - restart and go2rtc reload required", config.name);
         }
 
         // Build ONVIF device URL, using onvif_port if specified
