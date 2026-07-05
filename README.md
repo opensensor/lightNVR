@@ -378,7 +378,7 @@ docker run -d \
   -v ./config:/etc/lightnvr \
   -v ./data:/var/lib/lightnvr/data \
   -e TZ=America/New_York \
-  matteius/lightnvr:latest
+  opensensor/lightnvr:latest
 ```
 
 #### Volume Mounts Explained
