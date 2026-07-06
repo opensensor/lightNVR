@@ -505,29 +505,103 @@ static char *extract_service_name(const char *subscription_address) {
     return service;
 }
 
-// Check for motion events in ONVIF response
+/* Topics that signal motion/person detection.  "MotionDetector" also covers
+ * "CellMotionDetector" (substring); "MotionAlarm" covers VideoSource/MotionAlarm. */
+static bool topic_is_motion(const char *topic_text) {
+    if (!topic_text) return false;
+    return strstr(topic_text, "MotionDetector") != NULL ||
+           strstr(topic_text, "VideoAnalytics/Motion") != NULL ||
+           strstr(topic_text, "MotionAlarm") != NULL ||
+           strstr(topic_text, "PeopleDetector") != NULL;
+}
+
+/* A property value counts as asserted only for boolean-true spellings. */
+static bool value_is_true(const char *value) {
+    if (!value) return false;
+    return strcasecmp(value, "true") == 0 || strcmp(value, "1") == 0;
+}
+
+/*
+ * Return true if any SimpleItem beneath `node` that sits inside a Data
+ * element has a truthy Value.  `in_data` tracks whether an ancestor was a
+ * Data element — Source/Key sections also carry SimpleItems, but their
+ * Values are configuration tokens (often literally "1"), not event state.
+ */
+static bool data_has_asserted_item(ezxml_t node, bool in_data) {
+    for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
+        bool inside = in_data || strcmp(local_name(c), "Data") == 0;
+        if (inside && strcmp(local_name(c), "SimpleItem") == 0 &&
+            value_is_true(ezxml_attr(c, "Value"))) {
+            return true;
+        }
+        if (data_has_asserted_item(c, inside)) return true;
+    }
+    return false;
+}
+
+/*
+ * Recursively walk the parsed response looking for NotificationMessage
+ * elements whose Topic is motion-related AND whose Data payload asserts the
+ * state (Value="true"/"1").
+ */
+static bool xml_has_active_motion(ezxml_t node) {
+    for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
+        if (strcmp(local_name(c), "NotificationMessage") == 0) {
+            ezxml_t topic = child_by_local_name(c, "Topic");
+            if (topic_is_motion(topic ? ezxml_txt(topic) : NULL) &&
+                data_has_asserted_item(c, false)) {
+                return true;
+            }
+        } else if (xml_has_active_motion(c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*
+ * Check for an ACTIVE motion event in a PullMessages response.
+ *
+ * Every WS-BaseNotification message names its topic and properties whether
+ * the state is asserted or not — a "motion ended" payload still contains
+ * <tt:SimpleItem Name="IsMotion" Value="false"/>.  The old substring checks
+ * (strstr "IsMotion" etc.) therefore flagged idle/ended messages as motion
+ * (issue #451).  Parse the XML and require Value="true"/"1" inside the Data
+ * section of a motion-topic NotificationMessage instead.
+ */
 static bool has_motion_event(const char *response) {
     if (!response) return false;
 
-    // Check for different motion event patterns.
-    // Standard ONVIF topics:
-    if (strstr(response, "RuleEngine/MotionDetector") ||
-        strstr(response, "VideoAnalytics/Motion") ||
-        strstr(response, "MotionAlarm")) {
-        return true;
+    /* Cheap pre-filter: skip XML parsing when the payload names no
+     * motion-related topic at all (the common empty-response case). */
+    if (!strstr(response, "Motion") && !strstr(response, "PeopleDetector") &&
+        !strstr(response, "IsPeople")) {
+        return false;
     }
 
-    // Tapo / TP-Link specific topics (e.g. C545D firmware):
-    //   tns1:RuleEngine/CellMotionDetector/Motion  (IsMotion: true/false)
-    //   tns1:RuleEngine/PeopleDetector/People      (IsPeople: true/false)
-    if (strstr(response, "CellMotionDetector") ||
-        strstr(response, "PeopleDetector") ||
-        strstr(response, "IsMotion") ||
-        strstr(response, "IsPeople")) {
-        return true;
+    /* ezxml_parse_str modifies the buffer in place; work on a copy since
+     * our parameter is const. */
+    char *copy = strdup(response);
+    if (!copy) return false;
+
+    ezxml_t xml = ezxml_parse_str(copy, strlen(copy));
+    if (!xml) {
+        /* Malformed XML from buggy firmware: fall back to substring matching,
+         * but at least require a truthy Value somewhere in the payload so a
+         * plain "motion ended" message doesn't trigger. */
+        log_debug("ONVIF Detection: failed to parse PullMessages response, using fallback heuristic");
+        bool fallback =
+            (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
+             strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
+        free(copy);
+        return fallback;
     }
 
-    return false;
+    bool motion = xml_has_active_motion(xml);
+
+    ezxml_free(xml);
+    free(copy);
+    return motion;
 }
 
 /**
