@@ -807,7 +807,6 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
 
             int cell_pixels = 0;
             int changed_pixels = 0;
-            int total_diff = 0;
 
             // Process each pixel in the cell - use sampling for better performance
             // Sample every other pixel in both dimensions
@@ -827,7 +826,6 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
                         // Pixel difference exceeds sensitivity threshold
                         if (diff > sensitivity_threshold) {
                             changed_pixels++;
-                            total_diff += diff;
                         }
                     }
 
@@ -835,9 +833,13 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
                 }
             }
 
-            // Calculate cell motion score
+            // Cell motion score = fraction of (sampled) pixels that changed
+            // significantly.  The previous diff-energy metric
+            // (total_diff / (cell_pixels * 255)) could not realistically
+            // exceed ~0.2 even for a person filling the cell, which made the
+            // UI confidence threshold useless (issue #448).
             float cell_score = (cell_pixels > 0)
-                ? (float)total_diff / (float)(cell_pixels * 255)
+                ? (float)changed_pixels / (float)cell_pixels
                 : 0.0f;
 
             // Store cell score
@@ -876,7 +878,6 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
 
             int cell_pixels = 0;
             int changed_pixels = 0;
-            int total_diff = 0;
 
             // Process each pixel in the cell
             for (int y = cell_start_y; y < cell_end_y; y++) {
@@ -895,7 +896,6 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
                         // Pixel difference exceeds sensitivity threshold
                         if (diff > (sensitivity * 255.0f)) {
                             changed_pixels++;
-                            total_diff += diff;
                         }
                     }
 
@@ -903,14 +903,11 @@ static float calculate_grid_motion(const unsigned char *curr_frame, const unsign
                 }
             }
 
-            // Calculate cell motion score
-            float cell_area = (cell_pixels > 0)
+            // Cell motion score = fraction of pixels that changed
+            // significantly (see embedded path above and issue #448).
+            float cell_score = (cell_pixels > 0)
                 ? (float)changed_pixels / (float)cell_pixels
                 : 0.0f;
-            float cell_score = (cell_pixels > 0)
-                ? (float)total_diff / (float)(cell_pixels * 255)
-                : 0.0f;
-            (void)cell_area; // suppress unused warning
 
             // Store cell score
             grid_scores[cell_idx] = cell_score;
@@ -1222,7 +1219,6 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
     } else {
         // Simple frame differencing (original approach with improvements)
         int changed_pixels = 0;
-        int total_diff = 0;
         #if EMBEDDED_DEVICE_OPTIMIZATION
         // pixel_count adjusted after sampling loop (1/4 of pixels processed)
         int pixel_count = 0;
@@ -1244,7 +1240,6 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
                     // Count pixels that changed more than the sensitivity threshold
                     if ((float)diff > (stream->sensitivity * 255.0f)) {
                         changed_pixels++;
-                        total_diff += diff;
                     }
                 }
             }
@@ -1268,15 +1263,16 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
                 // Count pixels that changed more than the sensitivity threshold
                 if (diff > (stream->sensitivity * 255.0f)) {
                     changed_pixels++;
-                    total_diff += diff;
                 }
             }
         }
         #endif
 
-        // Calculate motion metrics
+        // Calculate motion metrics; score = fraction of the frame that
+        // changed significantly (see issue #448 for why diff-energy was
+        // replaced with coverage)
         motion_area = (float)changed_pixels / (float)pixel_count;
-        motion_score = (float)total_diff / (float)(pixel_count * 255);
+        motion_score = motion_area;
 
         // Determine if motion is detected based on area threshold
         motion_detected = (motion_area >= stream->min_motion_area);
@@ -1315,8 +1311,12 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
             // ----------------------------------------------------------
             // Connected-component clustering of active grid cells.
             // Each connected region of cells with score > 0.01 becomes
-            // its own detection with a tight bounding box and the mean
-            // score of its constituent cells as the confidence value.
+            // its own detection with a tight bounding box.  Confidence is
+            // sqrt(peak cell coverage): the peak (not the mean) so edge
+            // cells the object barely clips don't dilute the value, and
+            // sqrt because half a cell's pixels changing is already
+            // near-certain motion — this maps typical real motion into
+            // the 40-100% range the UI threshold slider expects (#448).
             // ----------------------------------------------------------
             int gs = stream->grid_size;
             int total = gs * gs;
@@ -1375,7 +1375,7 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
 
             for (int c = 0; c < clamp; c++) {
                 int min_x = gs, min_y = gs, max_x = -1, max_y = -1;
-                float sum_score = 0.0f;
+                float peak_score = 0.0f;
                 int cell_count = 0;
 
                 for (int i = 0; i < total; i++) {
@@ -1387,14 +1387,16 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
                     if (cx > max_x) max_x = cx;
                     if (cy < min_y) min_y = cy;
                     if (cy > max_y) max_y = cy;
-                    sum_score += stream->grid_scores[i];
+                    if (stream->grid_scores[i] > peak_score)
+                        peak_score = stream->grid_scores[i];
                     cell_count++;
                 }
 
                 if (max_x < 0 || cell_count == 0)
                     continue;
 
-                float conf = sum_score / (float)cell_count;
+                float conf = sqrtf(peak_score);
+                if (conf > 1.0f) conf = 1.0f;
                 float bx = (float)min_x / (float)gs;
                 float by = (float)min_y / (float)gs;
                 float bw = (float)(max_x - min_x + 1) / (float)gs;
@@ -1413,10 +1415,14 @@ int detect_motion(const char *stream_name, const unsigned char *frame_data,
             log_info("Motion detected in stream %s: score=%.3f, area=%.2f%%, clusters=%d",
                     stream_name, motion_score, motion_area * 100.0f, result->count);
         } else {
-            // Non-grid path: single full-frame detection
+            // Non-grid path: single full-frame detection.  sqrt maps the
+            // changed-area fraction into a usable confidence range — an
+            // object covering 25% of the frame is near-certain motion.
+            float conf = sqrtf(motion_score);
+            if (conf > 1.0f) conf = 1.0f;
             result->count = 1;
             safe_strcpy(result->detections[0].label, MOTION_LABEL, MAX_LABEL_LENGTH, 0);
-            result->detections[0].confidence = motion_score;
+            result->detections[0].confidence = conf;
             result->detections[0].x = 0.0f;
             result->detections[0].y = 0.0f;
             result->detections[0].width = 1.0f;

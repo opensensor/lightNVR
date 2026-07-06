@@ -95,9 +95,9 @@
                                    // flag before the UDT reads it (must be > detection_interval, currently 10s)
 
 // Motion detection settings
-static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Fallback sensitivity if threshold is unset or out of range
+static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Per-pixel gray-level change (fraction of 255) required to count a pixel as changed
 static const float DEFAULT_MOTION_MIN_AREA_RATIO = 0.005f;  // Minimum fraction of frame area that must change to qualify as motion
-static const int   DEFAULT_MOTION_MIN_CONSECUTIVE_FRAMES = 3;  // Minimum consecutive frames of motion before triggering
+static const int   DEFAULT_MOTION_COOLDOWN_SECS = 3;  // Seconds between successive motion detections (configure_motion_detection cooldown_time)
 
 // Global array of unified detection contexts
 static unified_detection_ctx_t *detection_contexts[MAX_UNIFIED_DETECTION_THREADS] = {0};
@@ -1007,16 +1007,21 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     // If using built-in motion detection, enable the motion stream now so that
     // detect_motion() does not silently return 0 on every call.  New motion
     // streams are created with enabled=false, so we must flip the flag here.
-    // configure_motion_detection() uses threshold as sensitivity and clamps it
-    // to a valid range internally.
+    //
+    // Pixel-level sensitivity is deliberately NOT derived from the stream's
+    // detection threshold: the threshold is a confidence filter applied to
+    // detect_motion()'s results, whereas sensitivity is the per-pixel
+    // gray-level change (fraction of 255) required to count a pixel as
+    // changed.  Coupling them meant a 50% threshold demanded a 127-level
+    // pixel change, making detection nearly impossible (issue #448).
     if (is_motion_detection_model(model_path)) {
-        float sens = (threshold > 0.0f && threshold <= 1.0f) ? threshold : DEFAULT_MOTION_SENSITIVITY;
         configure_motion_detection(stream_name,
-                                   sens,
+                                   DEFAULT_MOTION_SENSITIVITY,
                                    DEFAULT_MOTION_MIN_AREA_RATIO,
-                                   DEFAULT_MOTION_MIN_CONSECUTIVE_FRAMES);
+                                   DEFAULT_MOTION_COOLDOWN_SECS);
         set_motion_detection_enabled(stream_name, true);
-        log_info("[%s] Built-in motion detection enabled (sensitivity=%.2f)", stream_name, sens);
+        log_info("[%s] Built-in motion detection enabled (sensitivity=%.2f, confidence threshold=%.0f%%)",
+                 stream_name, DEFAULT_MOTION_SENSITIVITY, threshold * 100.0f);
     }
 
     // Initialize mutexes
