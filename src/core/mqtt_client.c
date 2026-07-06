@@ -1305,7 +1305,14 @@ static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int
     }
 
     struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+        log_warn("MQTT: Failed to get clock time for %s timeout", op_name);
+        pthread_mutex_lock(&arg->mutex);
+        arg->timed_out = true;
+        pthread_mutex_unlock(&arg->mutex);
+        pthread_detach(thread);
+        return false;
+    }
     ts.tv_sec += timeout_sec;
 
     pthread_mutex_lock(&arg->mutex);
@@ -1336,9 +1343,11 @@ static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int
     // Use write() first to ensure we see the timeout even if logger is blocked
     char timeout_msg[128];
     int written = snprintf(timeout_msg, sizeof(timeout_msg), "[MQTT DEBUG] %s timed out after %d seconds\n", op_name, timeout_sec);
-    if (written > 0) {
+    if (written >= 0) {
         size_t msg_len = ((size_t)written < sizeof(timeout_msg)) ? (size_t)written : sizeof(timeout_msg) - 1;
-        (void)write(STDERR_FILENO, timeout_msg, msg_len);
+        if (msg_len > 0) {
+            (void)write(STDERR_FILENO, timeout_msg, msg_len);
+        }
     }
     log_warn("MQTT: %s timed out after %d seconds", op_name, timeout_sec);
     return false;
