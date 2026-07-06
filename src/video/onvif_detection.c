@@ -622,7 +622,7 @@ int init_onvif_detection_system(void) {
     if (initialized && curl_handle) {
         log_info("ONVIF detection system already initialized");
         pthread_mutex_unlock(&curl_mutex);
-        return 0;  // Already initialized and curl handle is valid
+        return 0;  // Already initialized and curl handle is present
     }
 
     // If we have a curl handle but initialized is false, clean it up first
