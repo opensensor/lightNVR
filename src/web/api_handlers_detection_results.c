@@ -12,7 +12,9 @@
 
 #include <cjson/cJSON.h>
 #include "web/api_handlers_detection.h"
+#include "web/api_handlers_detection_results.h"
 #include "web/api_handlers_common.h"
+#include "web/httpd_utils.h"
 #define LOG_COMPONENT "DetectionAPI"
 #include "core/logger.h"
 #include "core/config.h"
@@ -137,4 +139,89 @@ void debug_dump_detection_results(void) {
         log_debug("  No active detection results found");
     }
     free(streams);
+}
+
+/**
+ * Handle GET /api/snapshots/{stream}/{file}.jpg
+ *
+ * Serves detection event snapshots saved by mqtt_publish_detection() under
+ * {storage_path}/snapshots/.  The MQTT detection payload references these
+ * files via its snapshot_url field (issue #449).
+ */
+void handle_get_detection_snapshot(const http_request_t *req, http_response_t *res) {
+    if (!req || !res) {
+        return;
+    }
+
+    // Check authentication if enabled (same policy as recording thumbnails)
+    if (g_config.web_auth_enabled) {
+        user_t user;
+        if (g_config.demo_mode) {
+            if (!httpd_check_viewer_access(req, &user)) {
+                http_response_set_json_error(res, 401, "Unauthorized");
+                return;
+            }
+        } else {
+            if (!httpd_get_authenticated_user(req, &user)) {
+                http_response_set_json_error(res, 401, "Unauthorized");
+                return;
+            }
+        }
+    }
+
+    // Extract "{stream}/{file}.jpg"
+    char param_buf[512];
+    if (http_request_extract_path_param(req, "/api/snapshots/",
+                                        param_buf, sizeof(param_buf)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid request path");
+        return;
+    }
+
+    char *slash = strchr(param_buf, '/');
+    if (!slash || slash == param_buf || slash[1] == '\0') {
+        http_response_set_json_error(res, 400, "Expected /api/snapshots/{stream}/{file}.jpg");
+        return;
+    }
+    *slash = '\0';
+    const char *stream_part = param_buf;
+    const char *file_part = slash + 1;
+
+    // Both components must be plain filenames: no traversal, no separators,
+    // only characters sanitize_stream_name / the snapshot writer produce.
+    for (const char *p = stream_part; *p; p++) {
+        if (!isalnum((unsigned char)*p) && *p != '_' && *p != '-') {
+            http_response_set_json_error(res, 400, "Invalid stream name");
+            return;
+        }
+    }
+    size_t file_len = strlen(file_part);
+    if (file_len < 5 || strcmp(file_part + file_len - 4, ".jpg") != 0) {
+        http_response_set_json_error(res, 400, "Invalid snapshot filename");
+        return;
+    }
+    for (const char *p = file_part; *p; p++) {
+        if (!isalnum((unsigned char)*p) && *p != '_' && *p != '-' && *p != '.') {
+            http_response_set_json_error(res, 400, "Invalid snapshot filename");
+            return;
+        }
+    }
+    if (strstr(file_part, "..")) {
+        http_response_set_json_error(res, 400, "Invalid snapshot filename");
+        return;
+    }
+
+    char snapshot_path[MAX_PATH_LENGTH];
+    snprintf(snapshot_path, sizeof(snapshot_path), "%s/snapshots/%s/%s",
+             g_config.storage_path, stream_part, file_part);
+
+    struct stat st;
+    if (stat(snapshot_path, &st) != 0 || !S_ISREG(st.st_mode)) {
+        http_response_set_json_error(res, 404, "Snapshot not found");
+        return;
+    }
+
+    if (http_serve_file(req, res, snapshot_path, "image/jpeg",
+                        "Cache-Control: private, max-age=86400\r\n") != 0) {
+        http_response_set_json_error(res, 500, "Failed to serve snapshot");
+    }
 }

@@ -121,6 +121,9 @@ Detection events are published as JSON with the following structure:
   "timestamp": 1706745600,
   "timestamp_iso": "2024-02-01T12:00:00Z",
   "count": 2,
+  "snapshot_path": "/var/lib/lightnvr/recordings/snapshots/front_door/20240201_120000.jpg",
+  "snapshot_url": "/api/snapshots/front_door/20240201_120000.jpg",
+  "snapshot_topic": "lightnvr/detections/front_door/snapshot",
   "detections": [
     {
       "label": "person",
@@ -153,6 +156,9 @@ Detection events are published as JSON with the following structure:
 | `timestamp` | Unix timestamp (seconds since epoch) |
 | `timestamp_iso` | ISO 8601 formatted timestamp |
 | `count` | Number of detections in this event |
+| `snapshot_path` | Local filesystem path of the event snapshot (omitted if capture failed) |
+| `snapshot_url` | Relative URL to fetch the snapshot from the LightNVR web server (uses normal authentication) |
+| `snapshot_topic` | MQTT topic the raw JPEG was published to, just before this event |
 | `detections` | Array of detection objects |
 | `label` | Object class (person, car, dog, etc.) |
 | `confidence` | Detection confidence (0.0 to 1.0) |
@@ -160,6 +166,61 @@ Detection events are published as JSON with the following structure:
 | `width`, `height` | Normalized dimensions (0.0 to 1.0) |
 | `track_id` | Object tracking ID (if tracking enabled) |
 | `zone_id` | Detection zone name (if zones configured) |
+
+## Event Snapshots
+
+When a detection event is published, LightNVR also captures a JPEG snapshot of
+the stream (via go2rtc) and makes it available three ways:
+
+1. **MQTT binary topic** — the raw JPEG is published to
+   `{topic_prefix}/detections/{stream_name}/snapshot` immediately *before* the
+   JSON event, so the image is already available when your automation receives
+   the event. Ideal for Home Assistant MQTT cameras or Node-RED flows —
+   no HTTP calls or filesystem access needed.
+2. **Local file** — saved to `{storage_path}/snapshots/{stream_name}/` with a
+   timestamped filename; the absolute path is in the `snapshot_path` field.
+   Useful when your automation runs on the same host (e.g. a Telegram bot
+   script). The most recent 100 snapshots per stream are kept; older ones are
+   pruned automatically.
+3. **HTTP URL** — the `snapshot_url` field is a relative URL served by the
+   LightNVR web server (subject to the usual authentication). Combine it with
+   your server address, e.g. `http://nvr.local:8080/api/snapshots/front_door/20240201_120000.jpg`.
+
+If the snapshot cannot be captured (e.g. go2rtc is disabled or the stream is
+down), the JSON event is still published — the snapshot fields are simply
+omitted, so check for their presence before using them.
+
+**Home Assistant MQTT camera showing the latest event image:**
+
+```yaml
+mqtt:
+  camera:
+    - name: "Front Door Last Detection"
+      topic: "lightnvr/detections/front_door/snapshot"
+```
+
+**Telegram notification with image (Home Assistant automation):**
+
+```yaml
+automation:
+  - alias: "Person alert with photo"
+    trigger:
+      platform: mqtt
+      topic: "lightnvr/detections/front_door"
+    condition:
+      condition: template
+      value_template: >
+        {{ trigger.payload_json.detections | selectattr('label', 'eq', 'person') | list | count > 0 }}
+    action:
+      - service: notify.telegram
+        data:
+          message: "Person detected at the front door"
+          data:
+            photo:
+              - url: "http://nvr.local:8080{{ trigger.payload_json.snapshot_url }}"
+                username: "your_lightnvr_user"
+                password: "your_lightnvr_password"
+```
 
 ## Integration Examples
 

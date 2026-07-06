@@ -20,6 +20,7 @@
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_imaging.h"
 #include "web/api_handlers_detection.h"
+#include "web/api_handlers_detection_results.h"
 #include "web/api_handlers_recordings_playback.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "web/api_handlers_recordings.h"
@@ -144,6 +145,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     // Detection API
     http_server_register_handler(server, "/api/detection/results/#", "GET", handle_get_detection_results);
     http_server_register_handler(server, "/api/detection/models", "GET", handle_get_detection_models);
+    // Detection event snapshots (saved on MQTT publish, see issue #449)
+    http_server_register_handler(server, "/api/snapshots/#/#", "GET", handle_get_detection_snapshot);
 
     // Storage Management API
     http_server_register_handler(server, "/api/storage/health", "GET", handle_get_storage_health);

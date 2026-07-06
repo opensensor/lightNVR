@@ -20,6 +20,12 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
 void handle_get_detection_results(const http_request_t *request, http_response_t *response);
 
 /**
+ * Handle GET /api/snapshots/{stream}/{file}.jpg — serve a saved detection
+ * event snapshot (referenced by the MQTT payload's snapshot_url field)
+ */
+void handle_get_detection_snapshot(const http_request_t *request, http_response_t *response);
+
+/**
  * Register detection results API handlers
  */
 void register_detection_results_api_handlers(void);

@@ -8,6 +8,9 @@
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
+#include <dirent.h>
+#include <limits.h>
+#include <sys/stat.h>
 #include <mosquitto.h>
 #include <cjson/cJSON.h>
 
@@ -339,6 +342,110 @@ static void on_log(struct mosquitto *m, void *userdata, int level, const char *s
     }
 }
 
+// Cap on saved event snapshots per stream; oldest are pruned on each save.
+// Timestamped filenames sort lexicographically, so "oldest" == smallest name.
+#define MAX_DETECTION_SNAPSHOTS_PER_STREAM 100
+
+/**
+ * Prune oldest snapshots in a stream's snapshot directory so at most
+ * MAX_DETECTION_SNAPSHOTS_PER_STREAM files remain after the next save.
+ */
+static void prune_detection_snapshots(const char *dir_path) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        return;
+    }
+
+    // Two passes: count first, then delete the N oldest.  Directories are
+    // capped at ~100 entries so the rescan is cheap and avoids allocating
+    // a full file list.
+    int count = 0;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_name[0] != '.' && strstr(ent->d_name, ".jpg")) {
+            count++;
+        }
+    }
+
+    while (count >= MAX_DETECTION_SNAPSHOTS_PER_STREAM) {
+        rewinddir(dir);
+        char oldest[NAME_MAX + 1] = "";
+        while ((ent = readdir(dir)) != NULL) {
+            if (ent->d_name[0] == '.' || !strstr(ent->d_name, ".jpg")) {
+                continue;
+            }
+            if (oldest[0] == '\0' || strcmp(ent->d_name, oldest) < 0) {
+                safe_strcpy(oldest, ent->d_name, sizeof(oldest), 0);
+            }
+        }
+        if (oldest[0] == '\0') {
+            break;
+        }
+        char victim[MAX_PATH_LENGTH];
+        snprintf(victim, sizeof(victim), "%s/%s", dir_path, oldest);
+        if (unlink(victim) != 0) {
+            break;  // don't loop forever on an undeletable file
+        }
+        count--;
+    }
+
+    closedir(dir);
+}
+
+/**
+ * Save a detection event snapshot to
+ * {storage_path}/snapshots/{safe_stream}/{YYYYmmdd_HHMMSS}.jpg.
+ *
+ * On success fills out_path with the absolute file path and out_url with the
+ * relative URL served by the /api/snapshots endpoint.  Returns 0 on success.
+ */
+static int save_detection_snapshot(const char *safe_name, time_t timestamp,
+                                   const unsigned char *jpeg_data, size_t jpeg_size,
+                                   char *out_path, size_t out_path_size,
+                                   char *out_url, size_t out_url_size) {
+    if (!mqtt_config || mqtt_config->storage_path[0] == '\0') {
+        return -1;
+    }
+
+    char dir_path[MAX_PATH_LENGTH];
+    snprintf(dir_path, sizeof(dir_path), "%s/snapshots/%s",
+             mqtt_config->storage_path, safe_name);
+    if (ensure_dir(dir_path) != 0) {
+        log_error("MQTT: Failed to create snapshot directory %s", dir_path);
+        return -1;
+    }
+
+    prune_detection_snapshots(dir_path);
+
+    char ts_str[32];
+    struct tm tm_buf;
+    localtime_r(&timestamp, &tm_buf);
+    strftime(ts_str, sizeof(ts_str), "%Y%m%d_%H%M%S", &tm_buf);
+
+    char file_path[MAX_PATH_LENGTH];
+    snprintf(file_path, sizeof(file_path), "%s/%s.jpg", dir_path, ts_str);
+
+    // Write to a temp file first so a reader never sees a partial JPEG
+    char tmp_path[MAX_PATH_LENGTH];
+    snprintf(tmp_path, sizeof(tmp_path), "%s/.%s.jpg.tmp", dir_path, ts_str);
+    FILE *f = fopen(tmp_path, "wb");
+    if (!f) {
+        log_error("MQTT: Failed to open snapshot file %s: %s", tmp_path, strerror(errno));
+        return -1;
+    }
+    size_t written = fwrite(jpeg_data, 1, jpeg_size, f);
+    fclose(f);
+    if (written != jpeg_size || rename(tmp_path, file_path) != 0) {
+        log_error("MQTT: Failed to write snapshot %s", file_path);
+        unlink(tmp_path);
+        return -1;
+    }
+
+    snprintf(out_path, out_path_size, "%s", file_path);
+    snprintf(out_url, out_url_size, "/api/snapshots/%s/%s.jpg", safe_name, ts_str);
+    return 0;
+}
+
 /**
  * Publish a detection event to MQTT
  */
@@ -364,6 +471,35 @@ int mqtt_publish_detection(const char *stream_name, const detection_result_t *re
     snprintf(topic, sizeof(topic), "%s/detections/%s",
              mqtt_config->mqtt_topic_prefix, safe_name);
 
+    // Capture an event snapshot so automations can attach the image to
+    // notifications (issue #449).  The JPEG is published to a companion
+    // topic *before* the JSON event (so it's available when the event
+    // arrives) and saved to disk; the JSON payload then references it by
+    // local path, relative URL, and topic.  All of this is best-effort:
+    // if go2rtc is unavailable the event is simply published without
+    // snapshot fields.
+    char snapshot_path[MAX_PATH_LENGTH] = "";
+    char snapshot_url[MAX_PATH_LENGTH] = "";
+    char snapshot_topic[MAX_TOPIC_LENGTH] = "";
+    {
+        unsigned char *jpeg_data = NULL;
+        size_t jpeg_size = 0;
+        if (go2rtc_get_snapshot(stream_name, &jpeg_data, &jpeg_size) &&
+            jpeg_data && jpeg_size > 0) {
+            save_detection_snapshot(safe_name, timestamp, jpeg_data, jpeg_size,
+                                    snapshot_path, sizeof(snapshot_path),
+                                    snapshot_url, sizeof(snapshot_url));
+
+            snprintf(snapshot_topic, sizeof(snapshot_topic), "%s/detections/%s/snapshot",
+                     mqtt_config->mqtt_topic_prefix, safe_name);
+            if (mqtt_publish_binary(snapshot_topic, jpeg_data, jpeg_size,
+                                    mqtt_config->mqtt_retain) != 0) {
+                snapshot_topic[0] = '\0';  // don't advertise a topic we failed to publish
+            }
+        }
+        free(jpeg_data);
+    }
+
     // Build JSON payload
     cJSON *root = cJSON_CreateObject();
     if (!root) {
@@ -374,6 +510,16 @@ int mqtt_publish_detection(const char *stream_name, const detection_result_t *re
     cJSON_AddStringToObject(root, "stream", stream_name);
     cJSON_AddNumberToObject(root, "timestamp", (double)timestamp);
     cJSON_AddNumberToObject(root, "count", result->count);
+
+    if (snapshot_path[0] != '\0') {
+        cJSON_AddStringToObject(root, "snapshot_path", snapshot_path);
+    }
+    if (snapshot_url[0] != '\0') {
+        cJSON_AddStringToObject(root, "snapshot_url", snapshot_url);
+    }
+    if (snapshot_topic[0] != '\0') {
+        cJSON_AddStringToObject(root, "snapshot_topic", snapshot_topic);
+    }
 
     cJSON *detections = cJSON_CreateArray();
     if (!detections) {
