@@ -1221,11 +1221,14 @@ typedef enum {
     MQTT_OP_LIB_CLEANUP
 } mqtt_cleanup_op_t;
 
-// Thread argument structure - completion flag is heap-allocated and owned by worker thread
+// Thread argument structure for timeout-aware cleanup worker
 typedef struct {
     struct mosquitto *mosq;
     mqtt_cleanup_op_t op;
-    int *done_flag;  // Pointer to heap-allocated completion flag
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    bool done;
+    bool timed_out;
 } mqtt_cleanup_arg_t;
 
 /**
@@ -1234,7 +1237,6 @@ typedef struct {
 static void *mqtt_cleanup_thread(void *arg) {
     log_set_thread_context("MQTT", NULL);
     mqtt_cleanup_arg_t *cleanup_arg = (mqtt_cleanup_arg_t *)arg;
-    int *done_flag = cleanup_arg->done_flag;
 
     switch (cleanup_arg->op) {
         case MQTT_OP_LOOP_STOP:
@@ -1248,62 +1250,89 @@ static void *mqtt_cleanup_thread(void *arg) {
             break;
     }
 
-    // Signal completion and release heap-owned resources.
-    *done_flag = 1;
-    free(done_flag);
-    free(cleanup_arg);
+    pthread_mutex_lock(&cleanup_arg->mutex);
+    cleanup_arg->done = true;
+    pthread_cond_signal(&cleanup_arg->cond);
+    bool timed_out = cleanup_arg->timed_out;
+    pthread_mutex_unlock(&cleanup_arg->mutex);
+
+    // On timeout, caller detached and returned; worker owns cleanup.
+    if (timed_out) {
+        pthread_cond_destroy(&cleanup_arg->cond);
+        pthread_mutex_destroy(&cleanup_arg->mutex);
+        free(cleanup_arg);
+    }
 
     return NULL;
 }
 
 /**
  * Run a mosquitto cleanup operation with a timeout
- * Uses simple polling with usleep - portable across glibc and musl
+ * Uses a timed condition wait with a worker thread
  * Returns true if completed within timeout, false if timed out
  */
 static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int timeout_sec, const char *op_name) {
     pthread_t thread;
-    int *done_flag = (int *)calloc(1, sizeof(int));
     mqtt_cleanup_arg_t *arg = (mqtt_cleanup_arg_t *)calloc(1, sizeof(mqtt_cleanup_arg_t));
 
-    if (done_flag == NULL || arg == NULL) {
-        free(done_flag);
-        free(arg);
+    if (arg == NULL) {
         log_warn("MQTT: Failed to allocate resources for %s", op_name);
+        return false;
+    }
+
+    if (pthread_mutex_init(&arg->mutex, NULL) != 0) {
+        free(arg);
+        log_warn("MQTT: Failed to initialize synchronization objects for %s", op_name);
+        return false;
+    }
+    if (pthread_cond_init(&arg->cond, NULL) != 0) {
+        pthread_mutex_destroy(&arg->mutex);
+        free(arg);
+        log_warn("MQTT: Failed to initialize synchronization objects for %s", op_name);
         return false;
     }
 
     arg->mosq = m;
     arg->op = op;
-    arg->done_flag = done_flag;
 
     // Create thread to run the operation
     if (pthread_create(&thread, NULL, mqtt_cleanup_thread, arg) != 0) {
         log_warn("MQTT: Failed to create thread for %s", op_name);
-        free(done_flag);
+        pthread_cond_destroy(&arg->cond);
+        pthread_mutex_destroy(&arg->mutex);
         free(arg);
         return false;
     }
 
-    // Detach the thread so it cleans up automatically if we timeout
-    pthread_detach(thread);
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += timeout_sec;
 
-    // Poll for completion with 50ms intervals
-    int timeout_ms = timeout_sec * 1000;
-    int elapsed_ms = 0;
-    const int poll_interval_ms = 50;
+    pthread_mutex_lock(&arg->mutex);
+    int wait_rc = 0;
+    while (!arg->done && wait_rc != ETIMEDOUT) {
+        wait_rc = pthread_cond_timedwait(&arg->cond, &arg->mutex, &ts);
+    }
+    bool completed = arg->done;
+    if (!completed) {
+        arg->timed_out = true;
+    }
+    pthread_mutex_unlock(&arg->mutex);
 
-    while (elapsed_ms < timeout_ms) {
-        if (*done_flag) {
-            // Operation completed successfully
-            return true;
+    if (completed) {
+        // Operation completed successfully; caller reclaims resources.
+        if (pthread_join(thread, NULL) != 0) {
+            log_warn("MQTT: Failed to join thread for %s", op_name);
         }
-        usleep(poll_interval_ms * 1000);
-        elapsed_ms += poll_interval_ms;
+        pthread_cond_destroy(&arg->cond);
+        pthread_mutex_destroy(&arg->mutex);
+        free(arg);
+        return true;
     }
 
-    // Timeout - the thread is still running but we'll return anyway
-    // The thread will eventually complete (or process will exit)
+    // Timeout - detach so worker can finish and free its resources.
+    pthread_detach(thread);
+
     // Use write() first to ensure we see the timeout even if logger is blocked
     char timeout_msg[128];
     snprintf(timeout_msg, sizeof(timeout_msg), "[MQTT DEBUG] %s timed out after %d seconds\n", op_name, timeout_sec);
