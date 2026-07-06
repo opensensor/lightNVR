@@ -93,6 +93,9 @@
 #define ONVIF_MOTION_HOLD_SECS 15  // Seconds to hold onvif_motion_detected=1 after last confirmed motion event,
                                    // preventing a shared-subscription race where the sibling thread clears the
                                    // flag before the UDT reads it (must be > detection_interval, currently 10s)
+#define ONVIF_MIN_POLL_INTERVAL_MS 2000  // Minimum wall-clock spacing between PullMessages polls.  Cameras without
+                                         // proper long-polling support (XM/Xiongmai) answer an empty queue in
+                                         // milliseconds; without this floor the thread busy-loops (issue #450).
 
 // Motion detection settings
 static const float DEFAULT_MOTION_SENSITIVITY = 0.15f;  // Per-pixel gray-level change (fraction of 255) required to count a pixel as changed
@@ -452,9 +455,13 @@ static int find_empty_slot(void) {
  * CURL/SOAP round-trip.
  *
  * The PullMessages call inside detect_motion_onvif() blocks up to
- * CURLOPT_TIMEOUT (10 s) / PT5S while waiting for camera events.  That
- * natural blocking serves as the inter-poll sleep — no extra sleep() is
- * needed in the happy path.
+ * CURLOPT_TIMEOUT (10 s) / PT5S while waiting for camera events.  On
+ * spec-compliant cameras that natural blocking serves as the inter-poll
+ * sleep.  Many budget firmwares (XM/Xiongmai etc.) do not implement long
+ * polling, though: an empty event queue returns "no events" within a few
+ * milliseconds.  The loop therefore enforces a minimum wall-clock spacing
+ * between polls (ONVIF_MIN_POLL_INTERVAL_MS) instead of relying on the
+ * camera to block (issue #450).
  *
  * On ONVIF error the motion flag is cleared and we back off ~5 s before
  * retrying; the ONVIF subscription is renewed automatically inside
@@ -479,6 +486,9 @@ static void *onvif_detection_thread_func(void *arg) {
     while (atomic_load(&ctx->onvif_thread_running)) {
         detection_result_t result;
         memset(&result, 0, sizeof(result));
+
+        struct timespec poll_start;
+        clock_gettime(CLOCK_MONOTONIC, &poll_start);
 
         int ret = detect_motion_onvif(ctx->onvif_url_cached,
                                       ctx->onvif_username_cached,
@@ -542,6 +552,26 @@ static void *onvif_detection_thread_func(void *arg) {
                          "backing off 5 s before retry", ctx->stream_name, ret);
                 /* 50 × 100 ms = 5 s, checking stop flag on each iteration. */
                 for (int i = 0; i < 50 && atomic_load(&ctx->onvif_thread_running); i++) {
+                    av_usleep(100000);
+                }
+            } else {
+                /* ret==0, count==0: no events this window.  A spec-compliant
+                 * camera held the PullMessages connection for ~PT5S, so the
+                 * elapsed time already provides the poll spacing.  Cameras
+                 * without long-polling support (XM/Xiongmai) return in a few
+                 * milliseconds — without a floor this loop fires dozens of
+                 * HTTP requests per second per camera (issue #450).  Sleep
+                 * out the remainder of ONVIF_MIN_POLL_INTERVAL_MS, checking
+                 * the stop flag in 100 ms slices. */
+                struct timespec poll_end;
+                clock_gettime(CLOCK_MONOTONIC, &poll_end);
+                long elapsed_ms =
+                    (long)(poll_end.tv_sec - poll_start.tv_sec) * 1000L +
+                    (long)(poll_end.tv_nsec - poll_start.tv_nsec) / 1000000L;
+                long remaining_ms = ONVIF_MIN_POLL_INTERVAL_MS - elapsed_ms;
+                for (long slept = 0;
+                     slept < remaining_ms && atomic_load(&ctx->onvif_thread_running);
+                     slept += 100) {
                     av_usleep(100000);
                 }
             }

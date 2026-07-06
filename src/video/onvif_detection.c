@@ -95,10 +95,10 @@ static char *create_onvif_request(const char *username, const char *password,
     char *security_header = NULL;
 
     if (!has_credentials) {
-        log_info("Creating ONVIF request without authentication (no credentials provided)");
+        log_debug("Creating ONVIF request without authentication (no credentials provided)");
         security_header = strdup("");
     } else {
-        log_info("Creating ONVIF request with WS-Security authentication");
+        log_debug("Creating ONVIF request with WS-Security authentication");
         security_header = onvif_create_security_header(username, password);
         if (!security_header) {
             log_error("Failed to create WS-Security header");
@@ -161,7 +161,7 @@ static char *send_onvif_request_to_url(const char *full_url, const char *usernam
         return NULL;
     }
 
-    log_info("ONVIF Detection: Sending request to %s", full_url);
+    log_debug("ONVIF Detection: Sending request to %s", full_url);
 
     /* Use full_url as the WS-Addressing To, which is exactly what the request
      * is being POSTed to. */
@@ -391,7 +391,7 @@ static onvif_subscription_t *get_subscription(const char *url, const char *usern
             time(&now);
             
             if (subscriptions[i].active && now < subscriptions[i].expiration_time) {
-                log_info("Reusing existing ONVIF subscription for %s", url);
+                log_debug("Reusing existing ONVIF subscription for %s", url);
                 pthread_mutex_unlock(&subscription_mutex);
                 return &subscriptions[i];
             } else {
@@ -632,13 +632,13 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
     // Log credential status for debugging
     if (strlen(username) == 0 || strlen(password) == 0) {
-        log_info("ONVIF Detection: Using camera without authentication (empty credentials)");
+        log_debug("ONVIF Detection: Using camera without authentication (empty credentials)");
     } else {
-        log_info("ONVIF Detection: Using camera with authentication (username: %s)", username);
+        log_debug("ONVIF Detection: Using camera with authentication (username: %s)", username);
     }
 
-    log_info("ONVIF Detection: Starting detection with URL: %s", onvif_url);
-    log_info("ONVIF Detection: Stream name: %s", stream_name);
+    log_debug("ONVIF Detection: Starting detection with URL: %s", onvif_url);
+    log_debug("ONVIF Detection: Stream name: %s", stream_name);
 
     onvif_subscription_t *subscription = get_subscription(onvif_url, username, password);
     if (!subscription) {
@@ -665,7 +665,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
     char *response = NULL;
     if (strncmp(subscription->subscription_address, "http://", 7) == 0 ||
         strncmp(subscription->subscription_address, "https://", 8) == 0) {
-        log_info("ONVIF Detection: Sending PullMessages to %s", subscription->subscription_address);
+        log_debug("ONVIF Detection: Sending PullMessages to %s", subscription->subscription_address);
         response = send_onvif_request_to_url(subscription->subscription_address,
                                              subscription->username,
                                              subscription->password,
@@ -717,7 +717,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
         // Filter detections by zones before storing
         if (stream_name && stream_name[0] != '\0') {
-            log_info("ONVIF Detection: Filtering detections by zones for stream %s", stream_name);
+            log_debug("ONVIF Detection: Filtering detections by zones for stream %s", stream_name);
             int filter_ret = filter_detections_by_zones(stream_name, result);
             if (filter_ret != 0) {
                 log_warn("Failed to filter detections by zones, storing all detections");
@@ -735,7 +735,7 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
             log_warn("No stream name provided, skipping database storage");
         }
     } else {
-        log_info("ONVIF Detection: No motion detected for %s", stream_name);
+        log_debug("ONVIF Detection: No motion detected for %s", stream_name);
         result->count = 0;
 
         // Notify motion recording that motion has ended
