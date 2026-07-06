@@ -9,6 +9,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
+import { DayNightControl } from './DayNightControl.jsx';
 import { ConfirmDialog } from './UI.jsx';
 import { getGo2rtcBaseUrl, isGo2rtcAvailable, isGo2rtcEnabled, isForceNativeHls } from '../../utils/settings-utils.js';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
@@ -928,6 +929,8 @@ export function HLSVideoCell({
             </svg>
           </button>
         )}
+        {/* Day/Night mode control (ONVIF cameras only; renders nothing otherwise) */}
+        <DayNightControl stream={stream} />
         {/* Force refresh stream button */}
         {isPlaying && (
           <button

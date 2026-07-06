@@ -10,6 +10,7 @@ import { SnapshotButton } from './SnapshotManager.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
+import { DayNightControl } from './DayNightControl.jsx';
 import { getGo2rtcWebSocketUrl } from '../../utils/settings-utils.js';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import { forceNavigation } from '../../utils/navigation-utils.js';
@@ -909,6 +910,9 @@ export function MSEVideoCell({
               PTZ
             </button>
           )}
+
+          {/* Day/Night mode control (ONVIF cameras only; renders nothing otherwise) */}
+          <DayNightControl stream={stream} />
 
           <button
             type="button"
