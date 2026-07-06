@@ -1221,11 +1221,11 @@ typedef enum {
     MQTT_OP_LIB_CLEANUP
 } mqtt_cleanup_op_t;
 
-// Thread argument structure - uses a simple volatile flag for completion
+// Thread argument structure - completion flag is heap-allocated and owned by worker thread
 typedef struct {
     struct mosquitto *mosq;
     mqtt_cleanup_op_t op;
-    volatile int *done_flag;  // Pointer to completion flag
+    int *done_flag;  // Pointer to heap-allocated completion flag
 } mqtt_cleanup_arg_t;
 
 /**
@@ -1234,7 +1234,7 @@ typedef struct {
 static void *mqtt_cleanup_thread(void *arg) {
     log_set_thread_context("MQTT", NULL);
     mqtt_cleanup_arg_t *cleanup_arg = (mqtt_cleanup_arg_t *)arg;
-    volatile int *done_flag = cleanup_arg->done_flag;
+    int *done_flag = cleanup_arg->done_flag;
 
     switch (cleanup_arg->op) {
         case MQTT_OP_LOOP_STOP:
@@ -1248,10 +1248,10 @@ static void *mqtt_cleanup_thread(void *arg) {
             break;
     }
 
-    // Signal completion by setting the flag
-    // Note: cleanup_arg is on the stack of the caller and remains valid
-    // until the caller returns (after timeout or completion)
+    // Signal completion and release heap-owned resources.
     *done_flag = 1;
+    free(done_flag);
+    free(cleanup_arg);
 
     return NULL;
 }
@@ -1263,17 +1263,25 @@ static void *mqtt_cleanup_thread(void *arg) {
  */
 static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int timeout_sec, const char *op_name) {
     pthread_t thread;
-    volatile int done_flag = 0;
+    int *done_flag = (int *)calloc(1, sizeof(int));
+    mqtt_cleanup_arg_t *arg = (mqtt_cleanup_arg_t *)calloc(1, sizeof(mqtt_cleanup_arg_t));
 
-    // Argument structure on stack - valid for duration of this function
-    mqtt_cleanup_arg_t arg;
-    arg.mosq = m;
-    arg.op = op;
-    arg.done_flag = &done_flag;
+    if (done_flag == NULL || arg == NULL) {
+        free(done_flag);
+        free(arg);
+        log_warn("MQTT: Failed to allocate resources for %s", op_name);
+        return false;
+    }
+
+    arg->mosq = m;
+    arg->op = op;
+    arg->done_flag = done_flag;
 
     // Create thread to run the operation
-    if (pthread_create(&thread, NULL, mqtt_cleanup_thread, &arg) != 0) {
+    if (pthread_create(&thread, NULL, mqtt_cleanup_thread, arg) != 0) {
         log_warn("MQTT: Failed to create thread for %s", op_name);
+        free(done_flag);
+        free(arg);
         return false;
     }
 
@@ -1286,7 +1294,7 @@ static bool mqtt_run_with_timeout(struct mosquitto *m, mqtt_cleanup_op_t op, int
     const int poll_interval_ms = 50;
 
     while (elapsed_ms < timeout_ms) {
-        if (done_flag) {
+        if (*done_flag) {
             // Operation completed successfully
             return true;
         }
@@ -1493,4 +1501,3 @@ int mqtt_reinit(const config_t *config) {
 }
 
 #endif /* ENABLE_MQTT */
-

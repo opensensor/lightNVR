@@ -248,7 +248,11 @@ static char *send_onvif_request(const char *url, const char *username, const cha
 
     // Create full URL
     char full_url[512];
-    snprintf(full_url, sizeof(full_url), "%s/onvif/%s", url, service);
+    int written = snprintf(full_url, sizeof(full_url), "%s/onvif/%s", url, service);
+    if (written < 0 || (size_t)written >= sizeof(full_url)) {
+        log_error("ONVIF request URL too long or formatting failed");
+        return NULL;
+    }
 
     return send_onvif_request_to_url(full_url, username, password, request_body, action);
 }
@@ -265,14 +269,19 @@ static char *extract_subscription_address(const char *response) {
     };
 
     for (int i = 0; i < 3; i++) {
-        const char *start = strstr(response, patterns[(ptrdiff_t)i*2]);
-        const char *end = strstr(response, patterns[(ptrdiff_t)i*2+1]);
-        
-        if (start && end) {
-            start += strlen(patterns[(ptrdiff_t)i * 2]);
-            int length = (int)(end - start);
-            
-            return strndup(start, length);
+        const char *open_tag = patterns[(ptrdiff_t)i * 2];
+        const char *close_tag = patterns[(ptrdiff_t)i * 2 + 1];
+        const char *start = strstr(response, open_tag);
+
+        if (start) {
+            size_t open_tag_len = strlen(open_tag);
+            const char *content_start = start + open_tag_len;
+            const char *end = strstr(content_start, close_tag);
+
+            if (end) {
+                size_t length = (size_t)(end - content_start);
+                return strndup(content_start, length);
+            }
         }
     }
 
@@ -608,12 +617,13 @@ static bool has_motion_event(const char *response) {
  * Initialize the ONVIF detection system
  */
 int init_onvif_detection_system(void) {
+    pthread_mutex_lock(&curl_mutex);
+
     if (initialized && curl_handle) {
         log_info("ONVIF detection system already initialized");
+        pthread_mutex_unlock(&curl_mutex);
         return 0;  // Already initialized and curl handle is valid
     }
-
-    pthread_mutex_lock(&curl_mutex);
 
     // If we have a curl handle but initialized is false, clean it up first
     if (curl_handle) {
@@ -637,8 +647,6 @@ int init_onvif_detection_system(void) {
         return -1;
     }
 
-    pthread_mutex_unlock(&curl_mutex);
-
     // Initialize subscriptions
     pthread_mutex_lock(&subscription_mutex);
     subscription_count = 0;
@@ -646,6 +654,7 @@ int init_onvif_detection_system(void) {
     pthread_mutex_unlock(&subscription_mutex);
 
     initialized = true;
+    pthread_mutex_unlock(&curl_mutex);
     log_info("ONVIF detection system initialized successfully");
     return 0;
 }
@@ -654,22 +663,22 @@ int init_onvif_detection_system(void) {
  * Shutdown the ONVIF detection system
  */
 void shutdown_onvif_detection_system(void) {
+    pthread_mutex_lock(&curl_mutex);
     log_info("Shutting down ONVIF detection system (initialized: %s, curl_handle: %p)",
              initialized ? "yes" : "no", (void*)curl_handle);
 
     // Cleanup curl handle if it exists
-    pthread_mutex_lock(&curl_mutex);
     if (curl_handle) {
         log_info("Cleaning up curl handle");
         curl_easy_cleanup(curl_handle);
         curl_handle = NULL;
     }
-    pthread_mutex_unlock(&curl_mutex);
 
     // Note: Don't call curl_global_cleanup() here - it's managed centrally in curl_init.c
     // The global cleanup will happen at program shutdown
 
     initialized = false;
+    pthread_mutex_unlock(&curl_mutex);
     log_info("ONVIF detection system shutdown complete");
 }
 
@@ -763,13 +772,18 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
 
     if (!response) {
         log_error("Failed to pull messages from subscription");
-        
-        // If pulling messages fails, the subscription might be invalid
-        // Mark it as inactive so we'll create a new one next time
+
+        // If pulling messages fails, the subscription might be invalid.
+        // Re-lookup by URL while holding the mutex to avoid stale pointer use.
         pthread_mutex_lock(&subscription_mutex);
-        subscription->active = false;
+        for (int i = 0; i < subscription_count; i++) {
+            if (strcmp(subscriptions[i].camera_url, onvif_url) == 0) {
+                subscriptions[i].active = false;
+                break;
+            }
+        }
         pthread_mutex_unlock(&subscription_mutex);
-        
+
         return -1;
     }
 

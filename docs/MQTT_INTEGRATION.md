@@ -119,7 +119,6 @@ Detection events are published as JSON with the following structure:
 {
   "stream": "front_door",
   "timestamp": 1706745600,
-  "timestamp_iso": "2024-02-01T12:00:00Z",
   "count": 2,
   "snapshot_path": "/var/lib/lightnvr/recordings/snapshots/front_door/20240201_120000.jpg",
   "snapshot_url": "/api/snapshots/front_door/20240201_120000.jpg",
@@ -154,7 +153,6 @@ Detection events are published as JSON with the following structure:
 |-------|-------------|
 | `stream` | Name of the camera/stream |
 | `timestamp` | Unix timestamp (seconds since epoch) |
-| `timestamp_iso` | ISO 8601 formatted timestamp |
 | `count` | Number of detections in this event |
 | `snapshot_path` | Local filesystem path of the event snapshot (omitted if capture failed) |
 | `snapshot_url` | Relative URL to fetch the snapshot from the LightNVR web server (uses normal authentication) |
@@ -289,7 +287,7 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     data = json.loads(msg.payload)
     stream = data['stream']
-    timestamp = data['timestamp_iso']
+    timestamp = data['timestamp']
 
     for det in data['detections']:
         print(f"[{timestamp}] {stream}: {det['label']} ({det['confidence']:.0%})")
@@ -429,5 +427,4 @@ client_id = lightnvr-garage
 [mqtt]
 client_id = lightnvr-frontyard
 ```
-
 
