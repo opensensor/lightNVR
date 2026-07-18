@@ -22,6 +22,18 @@ function pressureBadge(level, t) {
   }
 }
 
+/**
+ * Format the projected-time-to-capacity-target value from the health API.
+ * seconds < 0 => unknown; 0 => already at/over target.
+ */
+function formatProjection(seconds, t) {
+  if (seconds == null || seconds < 0) return t('system.projectedUnknown');
+  if (seconds === 0) return t('system.projectedNow');
+  const days = seconds / 86400;
+  if (days >= 1) return t('system.projectedDays', { count: Math.round(days) });
+  return t('system.projectedHours', { count: Math.max(1, Math.round(seconds / 3600)) });
+}
+
 function formatTimeAgo(epochSeconds, t) {
   if (!epochSeconds) return t('common.never');
   const diff = Math.floor(nowMilliseconds() / 1000) - epochSeconds;
@@ -141,6 +153,26 @@ export function StorageHealth({ formatBytes }) {
           <span className="text-muted-foreground">{t('system.lastHeartbeat')}:</span>
           <span>{formatTimeAgo(health.last_check_time, t)}</span>
         </div>
+
+        {/* Capacity target + fill-rate projection */}
+        {health.capacity_target_free_pct > 0 && (
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">{t('system.capacityTarget')}:</span>
+            <span>{t('system.capacityTargetValue', { pct: health.capacity_target_free_pct })}</span>
+          </div>
+        )}
+        {health.fill_rate_bytes_per_day > 0 && (
+          <>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">{t('system.fillRate')}:</span>
+              <span>{t('system.fillRateValue', { value: formatBytes(health.fill_rate_bytes_per_day) })}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">{t('system.projectedToTarget')}:</span>
+              <span>{formatProjection(health.projected_seconds_to_target, t)}</span>
+            </div>
+          </>
+        )}
 
         {/* Cleanup trigger buttons */}
         {isElevated && (

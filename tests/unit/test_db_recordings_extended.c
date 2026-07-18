@@ -220,6 +220,50 @@ void test_set_recording_disk_pressure_eligible(void) {
     TEST_ASSERT_FALSE(got.disk_pressure_eligible);
 }
 
+/* Regression: a new UNPROTECTED recording must be inserted as
+ * disk_pressure_eligible even when the caller memset()s the struct to zero and
+ * never touches the field (as every real creation site does). If this defaults
+ * to 0, the emergency disk-pressure cleanup path has no candidates and the disk
+ * fills to 100% — the exact production incident this hardening addresses. */
+void test_add_recording_defaults_unprotected_to_pressure_eligible(void) {
+    time_t now = time(NULL);
+    recording_metadata_t m;
+    memset(&m, 0, sizeof(m));                 // Simulate the real creation sites.
+    safe_strcpy(m.stream_name, "cam_elig", sizeof(m.stream_name), 0);
+    safe_strcpy(m.file_path, "/rec/elig.mp4", sizeof(m.file_path), 0);
+    m.start_time = now;
+    m.is_complete = true;
+    m.protected = false;
+    m.disk_pressure_eligible = false;         // Left false, as memset would.
+
+    uint64_t id = add_recording_metadata(&m);
+    TEST_ASSERT_TRUE(id > 0);
+
+    recording_metadata_t got;
+    get_recording_metadata_by_id(id, &got);
+    TEST_ASSERT_TRUE(got.disk_pressure_eligible);
+}
+
+/* A protected recording must NOT become pressure-eligible on insert. */
+void test_add_recording_protected_is_not_pressure_eligible(void) {
+    time_t now = time(NULL);
+    recording_metadata_t m;
+    memset(&m, 0, sizeof(m));
+    safe_strcpy(m.stream_name, "cam_prot", sizeof(m.stream_name), 0);
+    safe_strcpy(m.file_path, "/rec/prot.mp4", sizeof(m.file_path), 0);
+    m.start_time = now;
+    m.is_complete = true;
+    m.protected = true;                        // Explicitly protected.
+    m.disk_pressure_eligible = false;
+
+    uint64_t id = add_recording_metadata(&m);
+    TEST_ASSERT_TRUE(id > 0);
+
+    recording_metadata_t got;
+    get_recording_metadata_by_id(id, &got);
+    TEST_ASSERT_FALSE(got.disk_pressure_eligible);
+}
+
 /* set_recording_retention_override */
 void test_set_recording_retention_override(void) {
     time_t now = time(NULL);
@@ -255,6 +299,8 @@ int main(void) {
     RUN_TEST(test_get_recording_metadata_paginated_supports_multi_value_detection_labels_and_tags);
     RUN_TEST(test_set_recording_retention_tier);
     RUN_TEST(test_set_recording_disk_pressure_eligible);
+    RUN_TEST(test_add_recording_defaults_unprotected_to_pressure_eligible);
+    RUN_TEST(test_add_recording_protected_is_not_pressure_eligible);
     RUN_TEST(test_set_recording_retention_override);
     RUN_TEST(test_get_stream_storage_bytes);
     int result = UNITY_END();

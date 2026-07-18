@@ -65,6 +65,34 @@ void handle_get_storage_health(const http_request_t *req, http_response_t *res) 
     cJSON_AddNumberToObject(root, "last_cleanup_deleted", health.last_cleanup_deleted);
     cJSON_AddNumberToObject(root, "last_cleanup_freed", (double)health.last_cleanup_freed);
 
+    // Capacity target the controller maintains (capacity-based retention).
+    cJSON_AddNumberToObject(root, "capacity_target_free_pct", g_config.storage_min_free_pct);
+
+    // Fill-rate projection: estimate recording throughput from the span and size
+    // of recordings currently on disk, then project how long until free space
+    // reaches the capacity target (i.e. when eviction begins). Purely advisory.
+    storage_stats_t stats;
+    double fill_rate_bytes_per_day = 0.0;
+    double projected_seconds_to_target = -1.0;  // -1 => unknown / not filling
+    if (get_storage_stats(&stats) == 0 &&
+        stats.newest_recording_time > stats.oldest_recording_time &&
+        stats.total_recording_bytes > 0) {
+        double span_sec = (double)(stats.newest_recording_time - stats.oldest_recording_time);
+        if (span_sec >= 1.0) {
+            double rate_bps = (double)stats.total_recording_bytes / span_sec;
+            fill_rate_bytes_per_day = rate_bps * 86400.0;
+
+            if (rate_bps > 0.0 && health.total_space_bytes > 0) {
+                double target_free = (double)health.total_space_bytes *
+                                     (double)g_config.storage_min_free_pct / 100.0;
+                double headroom = (double)health.free_space_bytes - target_free;
+                projected_seconds_to_target = headroom > 0.0 ? headroom / rate_bps : 0.0;
+            }
+        }
+    }
+    cJSON_AddNumberToObject(root, "fill_rate_bytes_per_day", fill_rate_bytes_per_day);
+    cJSON_AddNumberToObject(root, "projected_seconds_to_target", projected_seconds_to_target);
+
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
 

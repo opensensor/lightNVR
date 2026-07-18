@@ -113,9 +113,22 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
     const char *trigger_type = (metadata->trigger_type[0] != '\0') ? metadata->trigger_type : "scheduled";
     sqlite3_bind_text(stmt, 11, trigger_type, -1, SQLITE_STATIC);
 
-    // Bind retention tier and disk pressure eligibility
-    sqlite3_bind_int(stmt, 12, metadata->retention_tier);
-    sqlite3_bind_int(stmt, 13, metadata->disk_pressure_eligible ? 1 : 0);
+    // Bind retention tier and disk pressure eligibility.
+    //
+    // Central safety net: every creation site memset()s the metadata struct to
+    // zero, which historically inserted disk_pressure_eligible = 0. Because the
+    // emergency/disk-pressure cleanup query requires disk_pressure_eligible = 1,
+    // that silently disabled the last-resort eviction path and let the disk fill
+    // to 100%. Derive eligibility from protection status here so any caller
+    // (present or future) is safe: an unprotected recording is always eligible
+    // for disk-pressure eviction; protected recordings never are.
+    int retention_tier = metadata->retention_tier;
+    if (retention_tier < RETENTION_TIER_CRITICAL || retention_tier > RETENTION_TIER_EPHEMERAL) {
+        retention_tier = RETENTION_TIER_STANDARD;
+    }
+    sqlite3_bind_int(stmt, 12, retention_tier);
+    bool pressure_eligible = metadata->disk_pressure_eligible || !metadata->protected;
+    sqlite3_bind_int(stmt, 13, pressure_eligible ? 1 : 0);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -2056,6 +2069,94 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
     pthread_mutex_unlock(db_mutex);
 
     log_info("Found %d recordings eligible for disk pressure cleanup", count);
+    return count;
+}
+
+/**
+ * Get recordings still marked incomplete (is_complete = 0) whose start_time is
+ * older than older_than_seconds. These are recordings that were interrupted by
+ * an unclean shutdown/crash: the finalize path never ran. The caller inspects
+ * the on-disk file to either finalize or prune each one.
+ */
+int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_count,
+                                    int older_than_seconds) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int count = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    if (!recordings || max_count <= 0) {
+        log_error("Invalid parameters for get_stale_incomplete_recordings");
+        return -1;
+    }
+
+    time_t cutoff = time(NULL) - (time_t)(older_than_seconds > 0 ? older_than_seconds : 0);
+
+    pthread_mutex_lock(db_mutex);
+
+    const char *sql =
+        "SELECT id, stream_name, file_path, start_time, end_time, "
+        "size_bytes, width, height, fps, codec, is_complete, trigger_type "
+        "FROM recordings "
+        "WHERE is_complete = 0 AND start_time < ? "
+        "ORDER BY start_time ASC "
+        "LIMIT ?;";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare stale-incomplete query: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)cutoff);
+    sqlite3_bind_int(stmt, 2, max_count);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
+        recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
+
+        const char *sname = (const char *)sqlite3_column_text(stmt, 1);
+        if (sname) safe_strcpy(recordings[count].stream_name, sname, sizeof(recordings[count].stream_name), 0);
+        else recordings[count].stream_name[0] = '\0';
+
+        const char *fpath = (const char *)sqlite3_column_text(stmt, 2);
+        if (fpath) safe_strcpy(recordings[count].file_path, fpath, sizeof(recordings[count].file_path), 0);
+        else recordings[count].file_path[0] = '\0';
+
+        recordings[count].start_time = (time_t)sqlite3_column_int64(stmt, 3);
+        recordings[count].end_time = (sqlite3_column_type(stmt, 4) != SQLITE_NULL)
+            ? (time_t)sqlite3_column_int64(stmt, 4) : 0;
+        recordings[count].size_bytes = (uint64_t)sqlite3_column_int64(stmt, 5);
+        recordings[count].width = sqlite3_column_int(stmt, 6);
+        recordings[count].height = sqlite3_column_int(stmt, 7);
+        recordings[count].fps = sqlite3_column_int(stmt, 8);
+
+        const char *codec = (const char *)sqlite3_column_text(stmt, 9);
+        if (codec) safe_strcpy(recordings[count].codec, codec, sizeof(recordings[count].codec), 0);
+        else recordings[count].codec[0] = '\0';
+
+        recordings[count].is_complete = false;
+
+        const char *ttype = (const char *)sqlite3_column_text(stmt, 11);
+        if (ttype) safe_strcpy(recordings[count].trigger_type, ttype, sizeof(recordings[count].trigger_type), 0);
+        else safe_strcpy(recordings[count].trigger_type, "scheduled", sizeof(recordings[count].trigger_type), 0);
+
+        recordings[count].protected = false;
+        recordings[count].retention_override_days = -1;
+        recordings[count].retention_tier = RETENTION_TIER_STANDARD;
+        recordings[count].disk_pressure_eligible = true;
+
+        count++;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
     return count;
 }
 

@@ -81,6 +81,61 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
             />
           </div>
         </div>
+        <div data-setting-label={t('settings.minFreePct')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-min-free-pct" class="font-medium">{t('settings.minFreePct')}</label>
+          <div class="col-span-2">
+            <input
+              type="number"
+              id="setting-min-free-pct"
+              name="minFreePct"
+              min="0"
+              max="90"
+              class="p-2 border border-input rounded bg-background text-foreground w-full max-w-md disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.minFreePct}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            />
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.minFreePctHelp')}</span>
+          </div>
+        </div>
+        <div data-setting-label={t('settings.pressureThresholds')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-start mb-4">
+          <label class="font-medium">{t('settings.pressureThresholds')}</label>
+          <div class="col-span-2">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label class="flex flex-col text-sm gap-1">
+                <span>{t('settings.pressureWarningPct')}</span>
+                <input
+                  type="number" name="pressureWarningPct" min="0" max="100" step="0.5"
+                  class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={settings.pressureWarningPct}
+                  onChange={handleInputChange}
+                  disabled={!canModifySettings}
+                />
+              </label>
+              <label class="flex flex-col text-sm gap-1">
+                <span>{t('settings.pressureCriticalPct')}</span>
+                <input
+                  type="number" name="pressureCriticalPct" min="0" max="100" step="0.5"
+                  class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={settings.pressureCriticalPct}
+                  onChange={handleInputChange}
+                  disabled={!canModifySettings}
+                />
+              </label>
+              <label class="flex flex-col text-sm gap-1">
+                <span>{t('settings.pressureEmergencyPct')}</span>
+                <input
+                  type="number" name="pressureEmergencyPct" min="0" max="100" step="0.5"
+                  class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  value={settings.pressureEmergencyPct}
+                  onChange={handleInputChange}
+                  disabled={!canModifySettings}
+                />
+              </label>
+            </div>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.pressureThresholdsHelp')}</span>
+          </div>
+        </div>
         <div data-setting-label={t('settings.enableGridViewThumbnails')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-generate-thumbnails" class="font-medium">{t('settings.enableGridViewThumbnails')}</label>
           <div class="col-span-2">

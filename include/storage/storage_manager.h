@@ -244,6 +244,44 @@ disk_pressure_level_t get_disk_pressure_level(void);
 void trigger_storage_cleanup(bool force_aggressive);
 
 /**
+ * Emergency startup reclaim.
+ *
+ * If the recordings volume is critically low on free space, delete the oldest
+ * recording files directly from the filesystem (no database dependency) so the
+ * database can be opened/restored and the service can resume. This is the fix
+ * for the "full disk -> corrupt DB -> restore can't write -> crash loop" trap:
+ * call it BEFORE init_database(), using the loaded config (g_config is not yet
+ * populated at that point).
+ *
+ * Safe to call before the storage manager or database are initialized.
+ *
+ * @param recordings_root Path to the recordings root (config.storage_path)
+ * @param cfg             Loaded configuration (for thresholds); may be NULL
+ * @return bytes freed
+ */
+uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const config_t *cfg);
+
+/**
+ * Reconcile recordings left in an incomplete state by an unclean shutdown.
+ *
+ * For each is_complete=0 row older than a safety window: finalize it from the
+ * on-disk file if the file is present and non-empty, otherwise prune the stale
+ * row (and any empty leftover file). Recovers footage that was mid-write at
+ * shutdown and prevents phantom rows from accumulating. Call once at startup
+ * after the database and storage manager are initialized.
+ *
+ * @return number of rows reconciled (finalized + pruned)
+ */
+int storage_reconcile_incomplete_recordings(void);
+
+/**
+ * Whether the recorder should pause writing new segments due to disk pressure.
+ * Returns true at EMERGENCY pressure so recorders can apply backpressure instead
+ * of spinning on ENOSPC while the cleanup thread races to free space.
+ */
+bool storage_should_pause_recording(void);
+
+/**
  * Get human-readable string for a disk pressure level.
  *
  * Pure function: no I/O, no global state.  Static inline so tests can call

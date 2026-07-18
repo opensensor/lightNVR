@@ -106,6 +106,9 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     // RETENTION_TIER_CRITICAL (0) would use 3× multiplier but the zero
     // from memset would make them look critical AND hit the 0-multiplier bug.
     metadata.retention_tier = RETENTION_TIER_STANDARD;
+    // Eligible for disk-pressure eviction so the emergency cleanup path has
+    // candidates; protected recordings opt out later via the recordings API.
+    metadata.disk_pressure_eligible = true;
 
     safe_strcpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name), 0);
 

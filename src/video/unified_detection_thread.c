@@ -2404,6 +2404,12 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     metadata.end_time = 0;  // Will be set when recording stops
     metadata.size_bytes = 0;  // Will be set when recording stops
     metadata.is_complete = false;  // Will be set to true when recording stops
+    // Detection clips are the most valuable footage on a security system, so
+    // they get IMPORTANT tier (longer retention, evicted only after ephemeral
+    // and standard footage) but remain eligible for last-resort disk-pressure
+    // eviction. memset() would otherwise leave tier CRITICAL (0)/eligible 0.
+    metadata.retention_tier = RETENTION_TIER_IMPORTANT;
+    metadata.disk_pressure_eligible = true;
     safe_strcpy(metadata.trigger_type, "detection", sizeof(metadata.trigger_type), 0);
 
     ctx->current_recording_id = add_recording_metadata(&metadata);

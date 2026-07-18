@@ -642,6 +642,18 @@ static const char migration_0042_up[] =
 static const char migration_0042_down[] =
     "SELECT 1;";
 
+static const char migration_0043_up[] =
+    "-- Backfill disk_pressure_eligible on existing recordings.\n"
+    "-- A prior bug inserted every recording with disk_pressure_eligible = 0,\n"
+    "-- which left the emergency disk-pressure eviction path with no candidates\n"
+    "-- and allowed disks to fill to 100%. Eligibility is derived from the\n"
+    "-- protection flag: any unprotected recording may be evicted under pressure.\n"
+    "UPDATE recordings SET disk_pressure_eligible = 1 WHERE protected = 0;\n"
+    "UPDATE recordings SET disk_pressure_eligible = 0 WHERE protected = 1;";
+
+static const char migration_0043_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -937,8 +949,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0042_down,
         .is_embedded = true
     },
+    {
+        .version = "0043",
+        .description = "backfill_disk_pressure_eligible",
+        .sql_up = migration_0043_up,
+        .sql_down = migration_0043_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 42
+#define EMBEDDED_MIGRATIONS_COUNT 43
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

@@ -605,6 +605,11 @@ export function StreamsView() {
       retention_days: parseInt(currentStream.retentionDays, 10) || 0,
       detection_retention_days: parseInt(currentStream.detectionRetentionDays, 10) || 0,
       max_storage_mb: parseInt(currentStream.maxStorageMb, 10) || 0,
+      // Tiered retention weighting
+      tier_critical_multiplier: Number.isFinite(parseFloat(currentStream.tierCriticalMultiplier)) ? parseFloat(currentStream.tierCriticalMultiplier) : 3.0,
+      tier_important_multiplier: Number.isFinite(parseFloat(currentStream.tierImportantMultiplier)) ? parseFloat(currentStream.tierImportantMultiplier) : 2.0,
+      tier_ephemeral_multiplier: Number.isFinite(parseFloat(currentStream.tierEphemeralMultiplier)) ? parseFloat(currentStream.tierEphemeralMultiplier) : 0.25,
+      storage_priority: Math.min(10, Math.max(1, parseInt(currentStream.storagePriority, 10) || 5)),
       // Recording schedule
       record_on_schedule: !!currentStream.recordOnSchedule,
       recording_schedule: normalizeRecordingSchedule(
@@ -777,6 +782,10 @@ export function StreamsView() {
         retentionDays: stream.retention_days || 0,
         detectionRetentionDays: stream.detection_retention_days || 0,
         maxStorageMb: stream.max_storage_mb || 0,
+        tierCriticalMultiplier: stream.tier_critical_multiplier ?? 3.0,
+        tierImportantMultiplier: stream.tier_important_multiplier ?? 2.0,
+        tierEphemeralMultiplier: stream.tier_ephemeral_multiplier ?? 0.25,
+        storagePriority: stream.storage_priority ?? 5,
         // Recording schedule
         recordOnSchedule: stream.record_on_schedule || false,
         recordingSchedule: (Array.isArray(stream.recording_schedule) && stream.recording_schedule.length === 168)

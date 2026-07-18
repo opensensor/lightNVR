@@ -303,9 +303,17 @@ export function SettingsView() {
       syslogFacility: settingsData.syslog_facility || 'LOG_USER',
       storagePath: settingsData.storage_path || '',
       storagePathHls: settingsData.storage_path_hls || '',
-      maxStorage: settingsData.max_storage_size?.toString() || '',
+      // max_storage_size is stored in bytes; the UI field is in GB. Convert on
+      // load (0/unset => empty = unlimited).
+      maxStorage: settingsData.max_storage_size
+        ? String(Math.round(settingsData.max_storage_size / (1024 * 1024 * 1024)))
+        : '',
       retention: settingsData.retention_days?.toString() || '',
       autoDelete: settingsData.auto_delete_oldest || false,
+      minFreePct: (settingsData.storage_min_free_pct ?? 10).toString(),
+      pressureWarningPct: (settingsData.storage_pressure_warning_pct ?? 20).toString(),
+      pressureCriticalPct: (settingsData.storage_pressure_critical_pct ?? 10).toString(),
+      pressureEmergencyPct: (settingsData.storage_pressure_emergency_pct ?? 5).toString(),
       generateThumbnails: settingsData.generate_thumbnails !== false,
       thumbnailsPerRecording: settingsData.thumbnails_per_recording === 1 ? 1 : 3,
       dbPath: settingsData.db_path || '',
@@ -421,9 +429,14 @@ export function SettingsView() {
       syslog_facility: settings.syslogFacility,
       storage_path: settings.storagePath,
       storage_path_hls: settings.storagePathHls,
-      max_storage_size: parseInt(settings.maxStorage, 10),
+      // UI field is GB; API expects bytes. Empty/0 => unlimited.
+      max_storage_size: (parseInt(settings.maxStorage, 10) || 0) * 1024 * 1024 * 1024,
       retention_days: parseInt(settings.retention, 10),
       auto_delete_oldest: settings.autoDelete,
+      storage_min_free_pct: Number.isNaN(parseInt(settings.minFreePct, 10)) ? 10 : parseInt(settings.minFreePct, 10),
+      storage_pressure_warning_pct: parseFloat(settings.pressureWarningPct),
+      storage_pressure_critical_pct: parseFloat(settings.pressureCriticalPct),
+      storage_pressure_emergency_pct: parseFloat(settings.pressureEmergencyPct),
       generate_thumbnails: settings.generateThumbnails,
       thumbnails_per_recording: parseInt(settings.thumbnailsPerRecording, 10) === 1 ? 1 : 3,
       db_path: settings.dbPath,

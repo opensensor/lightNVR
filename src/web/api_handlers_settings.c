@@ -417,6 +417,10 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "max_storage_size", (double)g_config.max_storage_size);
     cJSON_AddNumberToObject(settings, "retention_days", g_config.retention_days);
     cJSON_AddBoolToObject(settings, "auto_delete_oldest", g_config.auto_delete_oldest);
+    cJSON_AddNumberToObject(settings, "storage_min_free_pct", g_config.storage_min_free_pct);
+    cJSON_AddNumberToObject(settings, "storage_pressure_warning_pct", g_config.storage_pressure_warning_pct);
+    cJSON_AddNumberToObject(settings, "storage_pressure_critical_pct", g_config.storage_pressure_critical_pct);
+    cJSON_AddNumberToObject(settings, "storage_pressure_emergency_pct", g_config.storage_pressure_emergency_pct);
     cJSON_AddBoolToObject(settings, "generate_thumbnails", g_config.generate_thumbnails);
     cJSON_AddNumberToObject(settings, "thumbnails_per_recording", g_config.thumbnails_per_recording);
     cJSON_AddNumberToObject(settings, "max_streams", g_config.max_streams);
@@ -910,6 +914,35 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.auto_delete_oldest = cJSON_IsTrue(auto_delete_oldest);
         settings_changed = true;
         log_info("Updated auto_delete_oldest: %s", g_config.auto_delete_oldest ? "true" : "false");
+    }
+
+    // Capacity-based retention: minimum free-space headroom to maintain (%)
+    cJSON *min_free_pct = cJSON_GetObjectItem(settings, "storage_min_free_pct");
+    if (min_free_pct && cJSON_IsNumber(min_free_pct)) {
+        int v = min_free_pct->valueint;
+        if (v < 0) v = 0;
+        if (v > 90) v = 90;
+        g_config.storage_min_free_pct = v;
+        settings_changed = true;
+        log_info("Updated storage_min_free_pct: %d", g_config.storage_min_free_pct);
+    }
+
+    // Disk-pressure thresholds (%). Only apply the trio if it stays well-ordered.
+    cJSON *warn = cJSON_GetObjectItem(settings, "storage_pressure_warning_pct");
+    cJSON *crit = cJSON_GetObjectItem(settings, "storage_pressure_critical_pct");
+    cJSON *emerg = cJSON_GetObjectItem(settings, "storage_pressure_emergency_pct");
+    if (warn && crit && emerg && cJSON_IsNumber(warn) && cJSON_IsNumber(crit) && cJSON_IsNumber(emerg)) {
+        double w = warn->valuedouble, c = crit->valuedouble, e = emerg->valuedouble;
+        if (e > 0.0 && c > e && w > c && w <= 100.0) {
+            g_config.storage_pressure_warning_pct = w;
+            g_config.storage_pressure_critical_pct = c;
+            g_config.storage_pressure_emergency_pct = e;
+            settings_changed = true;
+            log_info("Updated disk pressure thresholds: warning=%.1f critical=%.1f emergency=%.1f", w, c, e);
+        } else {
+            log_warn("Ignoring disk pressure thresholds (must satisfy 0 < emergency < critical < warning <= 100): "
+                     "warning=%.1f critical=%.1f emergency=%.1f", w, c, e);
+        }
     }
 
     // Generate thumbnails (grid view)

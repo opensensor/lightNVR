@@ -324,6 +324,13 @@ void load_default_config(config_t *config) {
     config->retention_days = 30;
     config->auto_delete_oldest = true;
 
+    // Capacity-based retention: keep 10% of the volume free by default so the
+    // disk is self-bounding even when retention_days exceeds what fits.
+    config->storage_min_free_pct = 10;
+    config->storage_pressure_warning_pct = 20.0;
+    config->storage_pressure_critical_pct = 10.0;
+    config->storage_pressure_emergency_pct = 5.0;
+
     // Thumbnail/grid view settings
     config->generate_thumbnails = true;
     config->thumbnails_per_recording = 3;
@@ -576,7 +583,28 @@ int validate_config(config_t *config) {
                  config->db_backup_retention_count);
         config->db_backup_retention_count = 0;
     }
-    
+
+    // Clamp capacity/pressure settings to sane ranges. min_free_pct must leave
+    // room to actually record; anything above ~90% would evict everything.
+    if (config->storage_min_free_pct < 0 || config->storage_min_free_pct > 90) {
+        log_warn("storage min_free_pct (%d) out of range [0,90]; clamping",
+                 config->storage_min_free_pct);
+        config->storage_min_free_pct = config->storage_min_free_pct < 0 ? 0 : 90;
+    }
+    if (config->storage_pressure_emergency_pct < 0.0 ||
+        config->storage_pressure_emergency_pct >= config->storage_pressure_critical_pct ||
+        config->storage_pressure_critical_pct >= config->storage_pressure_warning_pct ||
+        config->storage_pressure_warning_pct > 100.0) {
+        log_warn("storage pressure thresholds invalid (emergency=%.1f critical=%.1f warning=%.1f); "
+                 "resetting to defaults 5/10/20",
+                 config->storage_pressure_emergency_pct,
+                 config->storage_pressure_critical_pct,
+                 config->storage_pressure_warning_pct);
+        config->storage_pressure_emergency_pct = 5.0;
+        config->storage_pressure_critical_pct = 10.0;
+        config->storage_pressure_warning_pct = 20.0;
+    }
+
     if (strlen(config->web_root) == 0) {
         log_error("Web root path is required");
         return -1;
@@ -673,6 +701,14 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->retention_days = safe_atoi(value, 0);
         } else if (strcmp(name, "auto_delete_oldest") == 0) {
             config->auto_delete_oldest = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "min_free_pct") == 0) {
+            config->storage_min_free_pct = safe_atoi(value, 10);
+        } else if (strcmp(name, "pressure_warning_pct") == 0) {
+            config->storage_pressure_warning_pct = strtod(value, NULL);
+        } else if (strcmp(name, "pressure_critical_pct") == 0) {
+            config->storage_pressure_critical_pct = strtod(value, NULL);
+        } else if (strcmp(name, "pressure_emergency_pct") == 0) {
+            config->storage_pressure_emergency_pct = strtod(value, NULL);
         } else if (strcmp(name, "record_mp4_directly") == 0) {
             config->record_mp4_directly = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "mp4_path") == 0) {
@@ -1541,7 +1577,12 @@ int save_config(const config_t *config, const char *path) {
     
     fprintf(file, "max_size = %llu  ; 0 means unlimited, otherwise bytes\n", (unsigned long long)config->max_storage_size);
     fprintf(file, "retention_days = %d\n", config->retention_days);
-    fprintf(file, "auto_delete_oldest = %s\n\n", config->auto_delete_oldest ? "true" : "false");
+    fprintf(file, "auto_delete_oldest = %s\n", config->auto_delete_oldest ? "true" : "false");
+    fprintf(file, "min_free_pct = %d  ; keep at least this %% of the volume free (0 disables capacity cap)\n",
+            config->storage_min_free_pct);
+    fprintf(file, "pressure_warning_pct = %.1f\n", config->storage_pressure_warning_pct);
+    fprintf(file, "pressure_critical_pct = %.1f\n", config->storage_pressure_critical_pct);
+    fprintf(file, "pressure_emergency_pct = %.1f\n\n", config->storage_pressure_emergency_pct);
 
     // Write MP4 recording settings
     fprintf(file, "; New recording format options\n");

@@ -156,6 +156,17 @@ typedef struct {
     int retention_days;
     bool auto_delete_oldest;
 
+    // Capacity-based retention (bounds usage by disk size, not just by time).
+    // The cleanup thread keeps at least storage_min_free_pct of the volume free
+    // by evicting the oldest eligible recordings, regardless of retention_days.
+    // This makes the disk self-bounding: "keep as many days as physically fit."
+    int storage_min_free_pct;          // Target free-space headroom to maintain (default 10). 0 disables.
+    // Configurable disk-pressure thresholds (percent of free space remaining).
+    // Defaults mirror the historical hardcoded 20/10/5 values.
+    double storage_pressure_warning_pct;   // Enter WARNING below this % free (default 20)
+    double storage_pressure_critical_pct;  // Enter CRITICAL below this % free (default 10)
+    double storage_pressure_emergency_pct; // Enter EMERGENCY below this % free (default 5)
+
     // Thumbnail/grid view settings
     bool generate_thumbnails;        // Enable grid view with thumbnail previews on recordings page
     int thumbnails_per_recording;    // 1 = single mount-time thumb only (CPU-save, #364); 3 = start+middle+end with hover cycling

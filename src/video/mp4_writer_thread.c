@@ -38,6 +38,7 @@
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "storage/storage_manager_streams_cache.h"
+#include "storage/storage_manager.h"
 #include "telemetry/stream_metrics.h"
 
 
@@ -62,6 +63,11 @@ static void on_segment_started_cb(void *user_ctx) {
         metadata.end_time = 0;
         metadata.size_bytes = 0;
         metadata.is_complete = false;
+        // Continuous/scheduled segments are STANDARD tier and eligible for
+        // disk-pressure eviction. Without these, memset() would leave the row
+        // at tier CRITICAL (0) with disk_pressure_eligible = 0.
+        metadata.retention_tier = RETENTION_TIER_STANDARD;
+        metadata.disk_pressure_eligible = true;
         safe_strcpy(metadata.trigger_type, thread_ctx->writer->trigger_type, sizeof(metadata.trigger_type), 0);
 
         uint64_t recording_id = add_recording_metadata(&metadata);
@@ -377,6 +383,23 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 // Update rotation time
                 thread_ctx->writer->last_rotation_time = current_time;
             }
+        }
+
+        // Disk-pressure backpressure: at EMERGENCY pressure the volume is
+        // effectively full. Rather than open a new segment and spin on ENOSPC
+        // (retrying every 1-60s and leaving truncated partial files behind, which
+        // is how the disk corrupts the database), wake the storage controller to
+        // reclaim space and wait for recovery. Footage during this short window is
+        // unavoidably lost, but the alternative is a wedged, self-corrupting disk.
+        if (storage_should_pause_recording()) {
+            log_warn("Stream %s: disk at EMERGENCY pressure, pausing recording and requesting cleanup",
+                     stream_name);
+            trigger_storage_cleanup(true);
+            for (int w = 0; w < 30 && thread_ctx->running && !thread_ctx->shutdown_requested; w++) {
+                if (!storage_should_pause_recording()) break;
+                av_usleep(1000000);  // 1s between pressure re-checks
+            }
+            continue;  // Re-evaluate connection/rotation state before recording.
         }
 
         // Record a segment using the record_segment function

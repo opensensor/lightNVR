@@ -1162,6 +1162,67 @@ export function StreamConfigModal({
                       />
                       <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.maxStorageMbHelp')}</p>
                     </div>
+                    <div>
+                      <label htmlFor="tier-critical-multiplier" className="block text-sm font-medium mb-2">
+                        {t('streamsConfig.tierCriticalMultiplier')}
+                      </label>
+                      <input
+                        type="number"
+                        id="tier-critical-multiplier"
+                        name="tierCriticalMultiplier"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                        min="0"
+                        step="0.25"
+                        value={currentStream.tierCriticalMultiplier ?? 3.0}
+                        onChange={onInputChange}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="tier-important-multiplier" className="block text-sm font-medium mb-2">
+                        {t('streamsConfig.tierImportantMultiplier')}
+                      </label>
+                      <input
+                        type="number"
+                        id="tier-important-multiplier"
+                        name="tierImportantMultiplier"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                        min="0"
+                        step="0.25"
+                        value={currentStream.tierImportantMultiplier ?? 2.0}
+                        onChange={onInputChange}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="tier-ephemeral-multiplier" className="block text-sm font-medium mb-2">
+                        {t('streamsConfig.tierEphemeralMultiplier')}
+                      </label>
+                      <input
+                        type="number"
+                        id="tier-ephemeral-multiplier"
+                        name="tierEphemeralMultiplier"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                        min="0"
+                        step="0.25"
+                        value={currentStream.tierEphemeralMultiplier ?? 0.25}
+                        onChange={onInputChange}
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="storage-priority" className="block text-sm font-medium mb-2">
+                        {t('streamsConfig.storagePriority')}
+                      </label>
+                      <input
+                        type="number"
+                        id="storage-priority"
+                        name="storagePriority"
+                        className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                        min="1"
+                        max="10"
+                        value={currentStream.storagePriority ?? 5}
+                        onChange={onInputChange}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.tierMultipliersHelp')}</p>
+                    </div>
                   </div>
                 </div>
               </div>

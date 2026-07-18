@@ -13,6 +13,7 @@
 
 #include "storage/storage_manager.h"
 #include "storage/storage_manager_streams_cache.h"
+#include "database/db_core.h"
 #include "database/db_auth.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
@@ -704,6 +705,291 @@ static struct {
     .force_aggressive = false
 };
 
+// Maximum candidate files tracked per pass of the filesystem reclaimer.
+// Bounds memory: each candidate holds a full path, so keep this modest and
+// re-scan across passes to reach deeper backlogs.
+#define FS_RECLAIM_CANDIDATES 256
+// Hard cap on files deleted by a single filesystem reclaim invocation.
+#define FS_RECLAIM_MAX_DELETE 4000
+
+typedef struct {
+    time_t mtime;
+    uint64_t size;
+    char path[MAX_RECORDING_PATH_LENGTH];
+} reclaim_candidate_t;
+
+/**
+ * Classify a free-space percentage into a pressure level using the
+ * operator-configured thresholds (falling back to the compiled defaults).
+ *
+ * The pure evaluate_disk_pressure_level() in the header remains the canonical,
+ * test-friendly implementation; this wrapper simply lets deployments tune the
+ * bands without a recompile.
+ */
+static disk_pressure_level_t evaluate_disk_pressure_level_cfg(double free_pct) {
+    double emerg = g_config.storage_pressure_emergency_pct;
+    double crit  = g_config.storage_pressure_critical_pct;
+    double warn  = g_config.storage_pressure_warning_pct;
+
+    // Guard against an unconfigured/zeroed config: fall back to defaults.
+    if (!(emerg > 0.0 && crit > emerg && warn > crit)) {
+        return evaluate_disk_pressure_level(free_pct);
+    }
+
+    if (free_pct < emerg) return DISK_PRESSURE_EMERGENCY;
+    if (free_pct < crit)  return DISK_PRESSURE_CRITICAL;
+    if (free_pct < warn)  return DISK_PRESSURE_WARNING;
+    return DISK_PRESSURE_NORMAL;
+}
+
+/**
+ * Current free space as a fraction of total (0-100), or -1.0 on error.
+ */
+static double current_free_pct(uint64_t *free_bytes_out, uint64_t *total_bytes_out) {
+    struct statvfs fs;
+    if (statvfs(storage_manager.storage_path, &fs) != 0) {
+        return -1.0;
+    }
+    uint64_t total = (uint64_t)fs.f_blocks * fs.f_frsize;
+    uint64_t avail = (uint64_t)fs.f_bavail * fs.f_frsize;
+    if (free_bytes_out)  *free_bytes_out = avail;
+    if (total_bytes_out) *total_bytes_out = total;
+    return total > 0 ? ((double)avail / (double)total) * 100.0 : 0.0;
+}
+
+/**
+ * Consider one recording file for inclusion in the "oldest N" candidate set.
+ * Keeps the candidate array holding the N oldest files seen so far, tracking
+ * the newest (worst) entry so it can be evicted when a genuinely older file
+ * appears. O(N) per file, O(N) memory — safe for very large recording trees.
+ */
+static void reclaim_consider(reclaim_candidate_t *cand, int *count, int *worst_idx,
+                             const char *path, time_t mtime, uint64_t size) {
+    if (*count < FS_RECLAIM_CANDIDATES) {
+        int i = (*count)++;
+        cand[i].mtime = mtime;
+        cand[i].size = size;
+        safe_strcpy(cand[i].path, path, sizeof(cand[i].path), 0);
+        if (*worst_idx < 0 || mtime > cand[*worst_idx].mtime) {
+            *worst_idx = i;
+        }
+        return;
+    }
+    // Full: replace the newest candidate only if this file is older than it.
+    if (*worst_idx >= 0 && mtime < cand[*worst_idx].mtime) {
+        cand[*worst_idx].mtime = mtime;
+        cand[*worst_idx].size = size;
+        safe_strcpy(cand[*worst_idx].path, path, sizeof(cand[*worst_idx].path), 0);
+        // Recompute the worst (newest) entry.
+        int w = 0;
+        for (int i = 1; i < *count; i++) {
+            if (cand[i].mtime > cand[w].mtime) w = i;
+        }
+        *worst_idx = w;
+    }
+}
+
+/**
+ * Scan the mp4 recordings tree and collect the oldest recording files.
+ * Purely filesystem-driven — no database dependency — so it works even when
+ * the DB is corrupt, unopenable, or the disk is 100% full.
+ *
+ * @return number of candidates collected (already sorted oldest-first)
+ */
+static int reclaim_scan_oldest(reclaim_candidate_t *cand) {
+    int count = 0;
+    int worst_idx = -1;
+
+    char mp4_root[MAX_PATH_LENGTH];
+    snprintf(mp4_root, sizeof(mp4_root), "%s/%s", storage_manager.storage_path, MP4_SUBDIR);
+
+    DIR *root = opendir(mp4_root);
+    if (!root) {
+        // Fall back to scanning the storage root directly.
+        root = opendir(storage_manager.storage_path);
+        if (!root) return 0;
+        safe_strcpy(mp4_root, storage_manager.storage_path, sizeof(mp4_root), 0);
+    }
+
+    const struct dirent *stream_entry;
+    while ((stream_entry = readdir(root)) != NULL) {
+        if (stream_entry->d_name[0] == '.') continue;
+
+        char stream_dir[MAX_RECORDING_PATH_LENGTH];
+        snprintf(stream_dir, sizeof(stream_dir), "%s/%s", mp4_root, stream_entry->d_name);
+
+        struct stat sd;
+        if (stat(stream_dir, &sd) != 0 || !S_ISDIR(sd.st_mode)) continue;
+
+        DIR *sdir = opendir(stream_dir);
+        if (!sdir) continue;
+
+        const struct dirent *rec;
+        while ((rec = readdir(sdir)) != NULL) {
+            if (rec->d_name[0] == '.') continue;
+            // Only consider .mp4 recording files.
+            size_t nlen = strlen(rec->d_name);
+            if (nlen < 4 || strcmp(rec->d_name + nlen - 4, ".mp4") != 0) continue;
+
+            char fpath[MAX_RECORDING_PATH_LENGTH];
+            snprintf(fpath, sizeof(fpath), "%s/%s", stream_dir, rec->d_name);
+
+            struct stat st;
+            if (stat(fpath, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+
+            reclaim_consider(cand, &count, &worst_idx, fpath,
+                             st.st_mtime, (uint64_t)st.st_size);
+        }
+        closedir(sdir);
+    }
+    closedir(root);
+
+    // Insertion-sort the (small) candidate set oldest-first.
+    for (int i = 1; i < count; i++) {
+        reclaim_candidate_t key = cand[i];
+        int j = i - 1;
+        while (j >= 0 && cand[j].mtime > key.mtime) {
+            cand[j + 1] = cand[j];
+            j--;
+        }
+        cand[j + 1] = key;
+    }
+    return count;
+}
+
+/**
+ * Last-resort, filesystem-driven space reclaimer.
+ *
+ * Deletes the oldest recording files on disk (and their DB rows/thumbnails when
+ * the database is available) until free space reaches target_free_bytes or the
+ * delete cap is hit. Unlike every other cleanup path this does NOT depend on the
+ * database being healthy, so it is the safety net that prevents a full disk from
+ * wedging the whole system.
+ *
+ * @return bytes freed
+ */
+static uint64_t filesystem_reclaim_to_target(uint64_t target_free_bytes, int max_delete) {
+    if (max_delete <= 0 || max_delete > FS_RECLAIM_MAX_DELETE) {
+        max_delete = FS_RECLAIM_MAX_DELETE;
+    }
+
+    reclaim_candidate_t *cand = calloc(FS_RECLAIM_CANDIDATES, sizeof(reclaim_candidate_t));
+    if (!cand) {
+        log_error("Filesystem reclaim: failed to allocate candidate buffer");
+        return 0;
+    }
+
+    uint64_t total_freed = 0;
+    int deleted = 0;
+    bool db_up = (get_db_handle() != NULL);
+
+    for (int pass = 0; pass < (FS_RECLAIM_MAX_DELETE / FS_RECLAIM_CANDIDATES) + 1; pass++) {
+        uint64_t free_bytes = 0;
+        double free_pct = current_free_pct(&free_bytes, NULL);
+        if (free_pct >= 0.0 && free_bytes >= target_free_bytes) {
+            break;  // Target reached.
+        }
+
+        int n = reclaim_scan_oldest(cand);
+        if (n == 0) break;  // Nothing left to delete.
+
+        for (int i = 0; i < n && deleted < max_delete; i++) {
+            // Prefer to delete through the DB so metadata/thumbnails stay
+            // consistent; fall back to a raw unlink when the DB is unavailable.
+            uint64_t freed_bytes = 0;
+            bool handled = false;
+
+            if (db_up) {
+                recording_metadata_t meta;
+                if (get_recording_metadata_by_path(cand[i].path, &meta) == 0) {
+                    if (meta.protected) {
+                        continue;  // Never delete protected recordings.
+                    }
+                    if (delete_recording_file_and_metadata(&meta, "Filesystem reclaim", &freed_bytes)) {
+                        if (freed_bytes == 0) freed_bytes = cand[i].size;
+                        handled = true;
+                    }
+                }
+            }
+
+            if (!handled) {
+                if (unlink(cand[i].path) == 0) {
+                    freed_bytes = cand[i].size;
+                    handled = true;
+                } else if (errno == ENOENT) {
+                    handled = true;  // Already gone.
+                } else {
+                    log_warn("Filesystem reclaim: failed to unlink %s: %s",
+                             cand[i].path, strerror(errno));
+                }
+            }
+
+            if (handled) {
+                total_freed += freed_bytes;
+                deleted++;
+
+                // Re-check free space every few deletions so we stop promptly.
+                if ((deleted % 16) == 0) {
+                    uint64_t fb = 0;
+                    if (current_free_pct(&fb, NULL) >= 0.0 && fb >= target_free_bytes) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (deleted >= max_delete) break;
+        // If this pass didn't fill the candidate buffer, we've seen every file.
+        if (n < FS_RECLAIM_CANDIDATES) break;
+    }
+
+    free(cand);
+    log_warn("Filesystem reclaim: deleted %d files, freed %llu MB (db_available=%s)",
+             deleted, (unsigned long long)(total_freed / (1024ULL * 1024ULL)),
+             db_up ? "yes" : "no");
+    return total_freed;
+}
+
+/**
+ * Free-space target (in bytes) the emergency paths aim to restore: enough to
+ * climb back above the critical band with a little headroom, but at least the
+ * configured capacity reserve. Returns 0 if the target is already met.
+ */
+static uint64_t emergency_target_free_bytes(uint64_t total_bytes, uint64_t free_bytes) {
+    double target_pct = g_config.storage_pressure_critical_pct + 2.0;
+    if ((double)g_config.storage_min_free_pct > target_pct) {
+        target_pct = (double)g_config.storage_min_free_pct;
+    }
+    if (target_pct <= 0.0) target_pct = 7.0;   // Safe floor.
+    if (target_pct > 50.0) target_pct = 50.0;  // Never over-delete.
+
+    uint64_t target = (uint64_t)((double)total_bytes * target_pct / 100.0);
+    return free_bytes >= target ? 0 : target;
+}
+
+/**
+ * Invoke the filesystem reclaimer to pull free space back above the critical
+ * band. Used as the last resort when the DB-driven emergency deletion cannot
+ * relieve pressure (no eligible rows, or the DB itself is unavailable/corrupt).
+ *
+ * @return bytes freed
+ */
+static uint64_t emergency_filesystem_fallback(const char *reason) {
+    uint64_t free_bytes = 0, total_bytes = 0;
+    if (current_free_pct(&free_bytes, &total_bytes) < 0.0) {
+        return 0;
+    }
+    uint64_t target = emergency_target_free_bytes(total_bytes, free_bytes);
+    if (target == 0) {
+        return 0;  // Already have enough headroom.
+    }
+    log_warn("Emergency filesystem fallback (%s): free=%llu MB, target=%llu MB",
+             reason ? reason : "",
+             (unsigned long long)(free_bytes / (1024ULL * 1024ULL)),
+             (unsigned long long)(target / (1024ULL * 1024ULL)));
+    return filesystem_reclaim_to_target(target, FS_RECLAIM_MAX_DELETE);
+}
+
 
 // ---- Heartbeat Cycle: Disk Pressure Detection ----
 
@@ -725,8 +1011,8 @@ static void heartbeat_check_disk_pressure(void) {
     uint64_t used  = total > avail ? total - avail : 0;
     double free_pct = total > 0 ? ((double)avail / (double)total) * 100.0 : 0.0;
 
-    // Determine pressure level (pure function defined in storage_manager.h)
-    disk_pressure_level_t new_level = evaluate_disk_pressure_level(free_pct);
+    // Determine pressure level using operator-configurable thresholds.
+    disk_pressure_level_t new_level = evaluate_disk_pressure_level_cfg(free_pct);
 
     // Update health state under mutex
     pthread_mutex_lock(&unified_ctrl.mutex);
@@ -793,8 +1079,17 @@ static void emergency_cleanup(bool aggressive) {
 
     int count = get_recordings_for_pressure_cleanup(recordings, max_to_delete);
     if (count <= 0) {
-        log_info("Emergency cleanup: no eligible recordings to delete");
+        // The database path found nothing to delete (no eligible rows, or the
+        // DB is unavailable/corrupt). Fall back to the filesystem reclaimer so a
+        // full disk can still be relieved — this is the last line of defense.
+        log_warn("Emergency cleanup: no eligible DB recordings (count=%d), using filesystem fallback", count);
         free(recordings);
+        uint64_t fb_freed = emergency_filesystem_fallback("no eligible DB rows");
+        pthread_mutex_lock(&unified_ctrl.mutex);
+        unified_ctrl.health.last_cleanup_freed = fb_freed;
+        unified_ctrl.health.last_cleanup_time = time(NULL);
+        pthread_mutex_unlock(&unified_ctrl.mutex);
+        heartbeat_check_disk_pressure();
         return;
     }
 
@@ -838,6 +1133,96 @@ static void emergency_cleanup(bool aggressive) {
 
     // Re-check pressure after cleanup
     heartbeat_check_disk_pressure();
+
+    // If DB-driven deletion could not relieve emergency pressure (e.g. the
+    // remaining eligible rows point at files already gone, or writes are
+    // outrunning us), reclaim directly from the filesystem as a last resort.
+    if (get_disk_pressure_level() >= DISK_PRESSURE_EMERGENCY) {
+        uint64_t fb_freed = emergency_filesystem_fallback("pressure persisted after DB cleanup");
+        if (fb_freed > 0) {
+            pthread_mutex_lock(&unified_ctrl.mutex);
+            unified_ctrl.health.last_cleanup_freed = freed + fb_freed;
+            pthread_mutex_unlock(&unified_ctrl.mutex);
+            heartbeat_check_disk_pressure();
+        }
+    }
+}
+
+// ---- Capacity Enforcement: bound usage by disk size, not just by time ----
+
+/**
+ * Enforce the configured free-space target (storage_min_free_pct).
+ *
+ * This is the capacity-based retention policy that makes the disk self-bounding:
+ * regardless of how long retention_days is, it keeps at least min_free_pct of the
+ * volume free by evicting the oldest eligible recordings (ephemeral/standard tiers
+ * first, protected never). It runs every standard cycle, proactively — well before
+ * the reactive disk-pressure bands — so a correctly sized retention window is never
+ * required for the disk to stay healthy. Falls back to the filesystem reclaimer if
+ * the DB cannot relieve the shortfall.
+ */
+static void capacity_enforce_cycle(void) {
+    int min_free = g_config.storage_min_free_pct;
+    if (min_free <= 0) {
+        return;  // Capacity cap disabled by operator.
+    }
+
+    uint64_t free_bytes = 0, total_bytes = 0;
+    double free_pct = current_free_pct(&free_bytes, &total_bytes);
+    if (free_pct < 0.0 || total_bytes == 0) {
+        return;
+    }
+    if (free_pct >= (double)min_free) {
+        return;  // Enough headroom already.
+    }
+
+    uint64_t target_free = (uint64_t)((double)total_bytes * (double)min_free / 100.0);
+    log_info("Capacity enforcement: %.1f%% free is below %d%% target, evicting oldest eligible recordings",
+             free_pct, min_free);
+
+    int total_deleted = 0;
+    uint64_t total_freed = 0;
+
+    recording_metadata_t *batch = calloc(MAX_RECORDINGS_PER_STREAM, sizeof(recording_metadata_t));
+    if (batch) {
+        int count;
+        do {
+            if (!unified_ctrl.running) break;
+
+            uint64_t fb = 0;
+            if (current_free_pct(&fb, NULL) >= 0.0 && fb >= target_free) break;
+
+            count = get_recordings_for_pressure_cleanup(batch, MAX_RECORDINGS_PER_STREAM);
+            for (int i = 0; i < count && unified_ctrl.running; i++) {
+                uint64_t freed_bytes = 0;
+                if (delete_recording_file_and_metadata(&batch[i], "Capacity enforcement", &freed_bytes)) {
+                    total_freed += freed_bytes;
+                    total_deleted++;
+                }
+                if ((total_deleted % 32) == 0) {
+                    uint64_t fb2 = 0;
+                    if (current_free_pct(&fb2, NULL) >= 0.0 && fb2 >= target_free) {
+                        count = 0;  // Reached target; stop the outer loop.
+                        break;
+                    }
+                }
+            }
+        } while (count == MAX_RECORDINGS_PER_STREAM);
+        free(batch);
+    }
+
+    // If DB-driven eviction still left us short (unavailable DB, untracked files),
+    // reclaim directly from the filesystem.
+    uint64_t fb = 0;
+    if (current_free_pct(&fb, NULL) >= 0.0 && fb < target_free) {
+        total_freed += filesystem_reclaim_to_target(target_free, FS_RECLAIM_MAX_DELETE);
+    }
+
+    heartbeat_check_disk_pressure();
+    if (total_deleted > 0 || total_freed > 0) {
+        log_info("Capacity enforcement complete: deleted %d recordings, freed %llu MB",
+                 total_deleted, (unsigned long long)(total_freed / (1024ULL * 1024ULL)));
+    }
 }
 
 // ---- Standard Cleanup Cycle (15min) ----
@@ -927,6 +1312,11 @@ static void standard_cleanup_cycle(void) {
         log_info("Standard cleanup: tiered retention deleted %d recordings, freed %llu MB",
                  tier_deleted, (unsigned long long)(tier_freed / (1024ULL * 1024ULL)));
     }
+
+    // 2b. Capacity enforcement: keep the disk under the configured free-space
+    // target regardless of retention_days. This is what makes the volume
+    // self-bounding for institutional deployments.
+    capacity_enforce_cycle();
 
     // 3. Refresh storage cache
     if (force_refresh_cache() == 0) {
@@ -1029,6 +1419,16 @@ static void* unified_storage_controller_func(void *arg) {
 
     // Initial heartbeat to establish baseline pressure
     heartbeat_check_disk_pressure();
+
+    // Reconcile recordings interrupted by an unclean shutdown (finalize survivors,
+    // prune phantom rows). Done once on startup, off the main init path.
+    storage_reconcile_incomplete_recordings();
+
+    // If we started already under capacity pressure, enforce the target now
+    // rather than waiting for the first standard cycle (up to 15 minutes).
+    if (unified_ctrl.running) {
+        capacity_enforce_cycle();
+    }
 
     while (unified_ctrl.running) {
         // Sleep until next heartbeat or signal
@@ -1205,4 +1605,105 @@ void trigger_storage_cleanup(bool force_aggressive) {
     pthread_mutex_unlock(&unified_ctrl.mutex);
     log_info("Triggered immediate storage cleanup (aggressive=%s)",
              force_aggressive ? "true" : "false");
+}
+
+// Whether recorders should pause new writes due to disk pressure.
+bool storage_should_pause_recording(void) {
+    return get_disk_pressure_level() >= DISK_PRESSURE_EMERGENCY;
+}
+
+// Emergency startup reclaim — safe to call before the DB/storage manager exist.
+uint64_t storage_startup_reclaim_if_full(const char *recordings_root, const config_t *cfg) {
+    if (!recordings_root || recordings_root[0] == '\0') {
+        return 0;
+    }
+    // Point the reclaimer at the recordings root so its scan can find files.
+    safe_strcpy(storage_manager.storage_path, recordings_root,
+                sizeof(storage_manager.storage_path), 0);
+
+    uint64_t free_bytes = 0, total_bytes = 0;
+    double free_pct = current_free_pct(&free_bytes, &total_bytes);
+    if (free_pct < 0.0 || total_bytes == 0) {
+        return 0;  // Can't stat — nothing safe to do here.
+    }
+
+    double emerg = (cfg && cfg->storage_pressure_emergency_pct > 0.0)
+                       ? cfg->storage_pressure_emergency_pct : 5.0;
+    if (free_pct >= emerg) {
+        return 0;  // Not critically low; leave recordings alone on normal boots.
+    }
+
+    int min_free = (cfg && cfg->storage_min_free_pct > 0) ? cfg->storage_min_free_pct : 10;
+    double target_pct = (double)min_free;
+    if (target_pct < emerg + 2.0) target_pct = emerg + 2.0;
+    if (target_pct > 50.0) target_pct = 50.0;
+
+    uint64_t target = (uint64_t)((double)total_bytes * target_pct / 100.0);
+    log_warn("Startup: recordings volume only %.1f%% free (%llu MB) — reclaiming to %.0f%% "
+             "before database init to avoid a full-disk crash loop",
+             free_pct, (unsigned long long)(free_bytes / (1024ULL * 1024ULL)), target_pct);
+
+    return filesystem_reclaim_to_target(target, FS_RECLAIM_MAX_DELETE);
+}
+
+// Reconcile recordings interrupted by an unclean shutdown (is_complete = 0).
+int storage_reconcile_incomplete_recordings(void) {
+    // Only touch rows old enough to be certain they are not actively recording.
+    const int STALE_WINDOW_SEC = 3600;         // 1 hour
+    const int RECONCILE_BATCH   = 500;
+
+    if (get_db_handle() == NULL) {
+        return 0;
+    }
+
+    recording_metadata_t *batch = calloc(RECONCILE_BATCH, sizeof(recording_metadata_t));
+    if (!batch) {
+        log_error("Reconcile: failed to allocate batch buffer");
+        return 0;
+    }
+
+    int reconciled = 0;
+    int finalized = 0;
+    int pruned = 0;
+    int count;
+
+    do {
+        count = get_stale_incomplete_recordings(batch, RECONCILE_BATCH, STALE_WINDOW_SEC);
+        if (count <= 0) break;
+
+        for (int i = 0; i < count; i++) {
+            struct stat st;
+            bool have_file = (batch[i].file_path[0] != '\0' &&
+                              stat(batch[i].file_path, &st) == 0 && S_ISREG(st.st_mode));
+
+            if (have_file && st.st_size > 0) {
+                // Footage survived — finalize it so it appears in listings.
+                time_t end_time = batch[i].end_time > 0 ? batch[i].end_time : st.st_mtime;
+                if (update_recording_metadata(batch[i].id, end_time,
+                                              (uint64_t)st.st_size, true) == 0) {
+                    finalized++;
+                    reconciled++;
+                }
+            } else {
+                // No usable file (missing or empty): drop the phantom row and
+                // any zero-byte leftover so it stops wasting an inode.
+                if (have_file && st.st_size == 0) {
+                    unlink(batch[i].file_path);
+                }
+                delete_recording_thumbnails(batch[i].id);
+                if (delete_recording_metadata(batch[i].id) == 0) {
+                    pruned++;
+                    reconciled++;
+                }
+            }
+        }
+    } while (count == RECONCILE_BATCH);
+
+    free(batch);
+
+    if (reconciled > 0) {
+        log_info("Reconciled %d incomplete recordings on startup (%d finalized, %d pruned)",
+                 reconciled, finalized, pruned);
+    }
+    return reconciled;
 }

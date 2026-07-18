@@ -271,6 +271,19 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
                                         int max_count);
 
 /**
+ * Get recordings still marked incomplete (is_complete = 0) and older than
+ * older_than_seconds — i.e. recordings interrupted by an unclean shutdown.
+ * The caller inspects the on-disk file to finalize or prune each one.
+ *
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @param older_than_seconds Only return rows whose start_time is older than this
+ * @return Number of recordings found, or -1 on error
+ */
+int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_count,
+                                    int older_than_seconds);
+
+/**
  * Get total storage bytes used by a stream from the database
  *
  * @param stream_name Stream name (NULL for all streams)
