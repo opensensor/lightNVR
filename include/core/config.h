@@ -124,6 +124,7 @@ typedef struct {
     // full keyframe, eliminating the large inter-frame gap that limits detection
     // accuracy on the main H.264/H.265 RTSP stream.
     char detection_url[MAX_URL_LENGTH];
+    char publish_url[MAX_URL_LENGTH];        // RTMP/RTMPS restream (publish) destination, e.g. YouTube Live ingest URL
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator

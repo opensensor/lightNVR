@@ -654,6 +654,12 @@ static const char migration_0043_up[] =
 static const char migration_0043_down[] =
     "SELECT 1;";
 
+static const char migration_0044_up[] =
+    "ALTER TABLE streams ADD COLUMN publish_url TEXT DEFAULT '';";
+
+static const char migration_0044_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -956,8 +962,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0043_down,
         .is_embedded = true
     },
+    {
+        .version = "0044",
+        .description = "add_stream_publish_url",
+        .sql_up = migration_0044_up,
+        .sql_down = migration_0044_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 43
+#define EMBEDDED_MIGRATIONS_COUNT 44
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

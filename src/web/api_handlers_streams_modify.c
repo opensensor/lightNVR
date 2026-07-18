@@ -62,6 +62,7 @@ typedef struct {
     bool credentials_changed;                  // Whether ONVIF credentials changed
     bool go2rtc_override_changed;              // Whether go2rtc_source_override changed
     bool sub_stream_changed;                   // Whether sub_stream_url changed
+    bool publish_changed;                      // Whether publish_url (RTMP restream) changed
 } put_stream_task_t;
 
 static void format_stream_capacity_error(char *buf, size_t buf_size,
@@ -383,6 +384,19 @@ static void put_stream_worker(put_stream_task_t *task) {
             usleep(500000);
         }
 
+        // If the RTMP publish (restream) URL changed, regenerate go2rtc.yaml (which
+        // carries the publish: block) and restart go2rtc so it starts/stops the
+        // RTMP push. Skip if an override restart already happened above.
+        if (task->publish_changed && !task->go2rtc_override_changed) {
+            log_info("Publish URL changed for stream %s, restarting go2rtc to apply restream config", task->config.name);
+            if (go2rtc_integration_restart_process()) {
+                log_info("Successfully restarted go2rtc after publish URL change for stream %s", task->config.name);
+            } else {
+                log_error("Failed to restart go2rtc after publish URL change for stream %s", task->config.name);
+            }
+            usleep(500000);
+        }
+
         // If sub-stream URL changed, register or unregister the {name}_sub stream
         if (task->sub_stream_changed && !task->go2rtc_override_changed) {
             char sub_name[MAX_STREAM_NAME + 8];
@@ -450,6 +464,14 @@ static bool is_allowed_detection_url(const char *u) {
         if (strncasecmp(u, prefixes[i], strlen(prefixes[i])) == 0) return true;
     }
     return false;
+}
+
+/* publish_url is the restream (publish) destination handed to go2rtc's RTMP
+ * publisher. Restrict to the RTMP family so it can't be abused to write to
+ * arbitrary local URLs. An empty string means "no restreaming". */
+static bool is_allowed_publish_url(const char *u) {
+    if (!u || u[0] == '\0') return true;
+    return strncasecmp(u, "rtmp://", 7) == 0 || strncasecmp(u, "rtmps://", 8) == 0;
 }
 
 /**
@@ -836,6 +858,28 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
                 sizeof(config.detection_url), 0);
     } else {
         config.detection_url[0] = '\0';
+    }
+
+    // RTMP/RTMPS publish (restream) destination, e.g. YouTube Live ingest URL.
+    cJSON *publish_url_post = cJSON_GetObjectItem(stream_json, "publish_url");
+    if (publish_url_post && cJSON_IsString(publish_url_post)) {
+        const char *pub = publish_url_post->valuestring;
+        if (pub[0] != '\0' && !is_allowed_publish_url(pub)) {
+            log_error("Rejected publish_url with disallowed scheme for stream %s", config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400, "publish_url must use rtmp or rtmps");
+            return;
+        }
+        if (strlen(pub) >= sizeof(config.publish_url)) {
+            log_error("publish_url too long (%zu bytes, max %zu) for stream %s",
+                      strlen(pub), sizeof(config.publish_url) - 1, config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 413, "publish_url exceeds size limit");
+            return;
+        }
+        safe_strcpy(config.publish_url, pub, sizeof(config.publish_url), 0);
+    } else {
+        config.publish_url[0] = '\0';
     }
 
     // Check if isOnvif flag is set in the request
@@ -1567,6 +1611,42 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         }
     }
 
+    // RTMP/RTMPS publish (restream) destination. Changes require regenerating
+    // go2rtc.yaml (which carries the publish: block) and restarting go2rtc.
+    bool publish_changed = false;
+    cJSON *publish_url_put = cJSON_GetObjectItem(stream_json, "publish_url");
+    if (publish_url_put && cJSON_IsString(publish_url_put)) {
+        const char *pub = publish_url_put->valuestring;
+        if (pub[0] != '\0' && !is_allowed_publish_url(pub)) {
+            log_error("Rejected publish_url with disallowed scheme for stream %s", config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400, "publish_url must use rtmp or rtmps");
+            return;
+        }
+        if (strlen(pub) >= sizeof(config.publish_url)) {
+            log_error("publish_url too long (%zu bytes, max %zu) for stream %s",
+                      strlen(pub), sizeof(config.publish_url) - 1, config.name);
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 413, "publish_url exceeds size limit");
+            return;
+        }
+        if (strncmp(config.publish_url, pub, sizeof(config.publish_url) - 1) != 0) {
+            safe_strcpy(config.publish_url, pub, sizeof(config.publish_url), 0);
+            publish_changed = true;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+            log_info("Publish (restream) URL changed for stream %s", config.name);
+        }
+    } else if (publish_url_put && cJSON_IsNull(publish_url_put)) {
+        if (config.publish_url[0] != '\0') {
+            config.publish_url[0] = '\0';
+            publish_changed = true;
+            config_changed = true;
+            non_dynamic_config_changed = true;
+            log_info("Publish (restream) URL cleared for stream %s", config.name);
+        }
+    }
+
     // Update is_onvif flag based on request or URL
     bool original_is_onvif = config.is_onvif;
 
@@ -1828,6 +1908,7 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     task->credentials_changed = credentials_changed;
     task->go2rtc_override_changed = go2rtc_override_changed;
     task->sub_stream_changed = sub_stream_changed;
+    task->publish_changed = publish_changed;
 
     log_info("Detection settings before update - Model: %s, Threshold: %.2f, Interval: %d, Pre-buffer: %d, Post-buffer: %d",
              config.detection_model, config.detection_threshold, config.detection_interval,

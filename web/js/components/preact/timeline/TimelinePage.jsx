@@ -526,6 +526,105 @@ export function TimelinePage() {
     };
   }, [segments.length]);
 
+  // Touch pinch-to-zoom and two-finger pan for mobile/tablet (issue #453).
+  // Single-finger touches are left alone so they still drive segment seeking
+  // (the browser synthesises mouse events consumed by TimelineSegments). Only
+  // two-finger gestures are intercepted, which also stops the browser from
+  // pinch-zooming the whole page over the timeline.
+  useEffect(() => {
+    const container = timelineContainerRef.current;
+    if (!container) {
+      return undefined;
+    }
+
+    let pinchActive = false;
+    let lastDistance = 0;
+    let lastMidX = 0;
+
+    const distanceAndMid = (touches) => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return {
+        distance: Math.hypot(dx, dy),
+        midX: (touches[0].clientX + touches[1].clientX) / 2
+      };
+    };
+
+    const handleTouchStart = (event) => {
+      if (event.touches.length === 2) {
+        const { distance, midX } = distanceAndMid(event.touches);
+        pinchActive = true;
+        lastDistance = distance;
+        lastMidX = midX;
+        event.preventDefault();
+      }
+    };
+
+    const handleTouchMove = (event) => {
+      if (!pinchActive || event.touches.length !== 2) {
+        return;
+      }
+      event.preventDefault();
+
+      const startHour = timelineState.timelineStartHour ?? 0;
+      const endHour = timelineState.timelineEndHour ?? getTimelineDayLengthHours(timelineState.selectedDate);
+      const currentRange = endHour - startHour;
+      const rect = container.getBoundingClientRect();
+      if (currentRange <= 0 || rect.width <= 0) {
+        return;
+      }
+
+      const { distance, midX } = distanceAndMid(event.touches);
+      const dayLength = getTimelineDayLengthHours(timelineState.selectedDate);
+
+      // Zoom: fingers apart (distance grows) → zoom in (range shrinks).
+      let nextStart = startHour;
+      let nextEnd = endHour;
+      if (lastDistance > 0 && Math.abs(distance - lastDistance) > 1) {
+        const zoomFactor = lastDistance / distance;
+        const pointerRatio = Math.min(Math.max((midX - rect.left) / rect.width, 0), 1);
+        const anchorHour = startHour + (pointerRatio * currentRange);
+        const zoomed = zoomTimelineRange(nextStart, nextEnd, zoomFactor, anchorHour, dayLength);
+        nextStart = zoomed.startHour;
+        nextEnd = zoomed.endHour;
+      }
+
+      // Pan: follow the midpoint's horizontal movement between fingers.
+      const midDelta = midX - lastMidX;
+      if (Math.abs(midDelta) > 0.5) {
+        const range = nextEnd - nextStart;
+        const deltaHours = -(midDelta / rect.width) * range;
+        const panned = panTimelineRange(nextStart, nextEnd, deltaHours, dayLength);
+        nextStart = panned.startHour;
+        nextEnd = panned.endHour;
+      }
+
+      lastDistance = distance;
+      lastMidX = midX;
+      timelineState.setState({
+        timelineStartHour: nextStart,
+        timelineEndHour: nextEnd
+      });
+    };
+
+    const endPinch = (event) => {
+      if (event.touches.length < 2) {
+        pinchActive = false;
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', endPinch);
+    container.addEventListener('touchcancel', endPinch);
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', endPinch);
+      container.removeEventListener('touchcancel', endPinch);
+    };
+  }, [segments.length]);
+
   const idsAvailableDates = useMemo(() => (
     idsMode ? getAvailableDatesForSegments(idsTimelineSegments) : []
   ), [idsMode, idsTimelineSegments]);

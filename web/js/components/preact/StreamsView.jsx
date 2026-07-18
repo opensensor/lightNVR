@@ -121,7 +121,8 @@ export function StreamsView() {
     motion: false,
     ptz: false,
     advanced: false,
-    go2rtcOverride: false
+    go2rtcOverride: false,
+    restream: false
   });
 
   const toggleSection = (section) => {
@@ -253,6 +254,7 @@ export function StreamsView() {
     // events trigger recording on this stream (e.g., PTZ slaved to fixed wide lens)
     motionTriggerSource: '',
     go2rtcSourceOverride: '',
+    publishUrl: '',
     subStreamUrl: '',
     detectionUrl: ''
   });
@@ -622,6 +624,7 @@ export function StreamsView() {
       motion_trigger_source: currentStream.motionTriggerSource || '',
       // go2rtc source override
       go2rtc_source_override: currentStream.go2rtcSourceOverride || '',
+      publish_url: currentStream.publishUrl || '',
       // Sub-stream URL
       sub_stream_url: currentStream.subStreamUrl || '',
       // Secondary stream used only for detection (e.g. MJPEG sub-stream)
@@ -715,6 +718,7 @@ export function StreamsView() {
       tags: '',
       motionTriggerSource: '',
       go2rtcSourceOverride: '',
+    publishUrl: '',
       subStreamUrl: '',
       detectionUrl: ''
     });
@@ -796,6 +800,7 @@ export function StreamsView() {
         // Cross-stream motion trigger source
         motionTriggerSource: stream.motion_trigger_source || '',
         go2rtcSourceOverride: stream.go2rtc_source_override || '',
+        publishUrl: stream.publish_url || '',
         subStreamUrl: stream.sub_stream_url || '',
         detectionUrl: stream.detection_url || ''
       });
@@ -871,6 +876,7 @@ export function StreamsView() {
         // Cross-stream motion trigger source
         motionTriggerSource: stream.motion_trigger_source || '',
         go2rtcSourceOverride: stream.go2rtc_source_override || '',
+        publishUrl: stream.publish_url || '',
         subStreamUrl: stream.sub_stream_url || '',
         detectionUrl: stream.detection_url || ''
       });

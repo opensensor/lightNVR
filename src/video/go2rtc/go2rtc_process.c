@@ -429,6 +429,7 @@ static int    g_fast_death_history_idx = 0;
 
 // Forward declarations for helpers defined later in this file.
 static int write_stream_overrides(FILE *fp);
+static int write_publish_config(FILE *fp);
 
 // Callback function for libcurl to discard response data
 static size_t discard_response_data(void *ptr, size_t size, size_t nmemb, void *userdata) {
@@ -1152,6 +1153,11 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
         fprintf(config_file, "  # Streams will be added dynamically via API\n");
     }
 
+    // Publish (restream) section — emit a `publish:` block for streams configured
+    // with an RTMP/RTMPS destination (e.g. YouTube Live). go2rtc pushes the named
+    // stream to the URL(s). See issue #455.
+    write_publish_config(config_file);
+
     // NOTE: As of the T2 refactor, the global go2rtc config override from
     // `system_settings.go2rtc_config_override` is NO LONGER appended to this
     // file. Appending it caused duplicate top-level YAML keys (issue #394).
@@ -1242,6 +1248,56 @@ static int write_stream_overrides(FILE *fp) {
             }
         }
 
+        written++;
+    }
+
+    free(streams);
+    return written;
+}
+
+/**
+ * @brief Write a go2rtc `publish:` block for streams with a restream URL set.
+ *
+ * Emits, at YAML column 0:
+ *   publish:
+ *     "StreamName":
+ *       - rtmp://.../key
+ *
+ * go2rtc then pushes the named stream to the RTMP/RTMPS destination (YouTube,
+ * Telegram, etc.). Only enabled streams with a non-empty publish_url are
+ * included. Writes nothing (not even the `publish:` key) when none are set, to
+ * avoid an empty mapping. See issue #455.
+ *
+ * @param fp Open writable FILE *.
+ * @return Number of publish entries written (>= 0).
+ */
+static int write_publish_config(FILE *fp) {
+    if (!fp) return 0;
+    if (get_db_handle() == NULL) return 0;
+
+    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
+    if (!streams) return 0;
+
+    int count = get_all_stream_configs(streams, ms);
+    int written = 0;
+
+    for (int i = 0; i < count; i++) {
+        if (!streams[i].enabled) continue;
+        if (streams[i].publish_url[0] == '\0') continue;
+
+        if (written == 0) {
+            fprintf(fp, "\npublish:\n");
+        }
+
+        char escaped_name[MAX_STREAM_NAME * 2];
+        yaml_escape_string(streams[i].name, escaped_name, sizeof(escaped_name));
+
+        // Emit as a list so multiple destinations could be supported later.
+        // The URL is written as a plain scalar (RTMP URLs contain no YAML
+        // special characters that require quoting).
+        fprintf(fp, "  \"%s\":\n", escaped_name);
+        fprintf(fp, "    - %s\n", streams[i].publish_url);
         written++;
     }
 

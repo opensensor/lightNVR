@@ -1492,6 +1492,31 @@ export function StreamConfigModal({
               </div>
             </AccordionSection>
 
+            {/* Restream / Publish (RTMP to YouTube etc.) Section */}
+            <AccordionSection
+              title={t('streamsConfig.restream')}
+              isExpanded={expandedSections.restream}
+              onToggle={() => onToggleSection('restream')}
+            >
+              <div>
+                <label htmlFor="publish-url" className="block text-sm font-medium mb-2">
+                  {t('streamsConfig.publishUrl')}
+                </label>
+                <input
+                  type="text"
+                  id="publish-url"
+                  name="publishUrl"
+                  className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground font-mono text-sm"
+                  placeholder="rtmp://a.rtmp.youtube.com/live2/xxxx-xxxx-xxxx-xxxx-xxxx"
+                  value={currentStream.publishUrl || ''}
+                  onChange={onInputChange}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('streamsConfig.publishUrlHelp')}
+                </p>
+              </div>
+            </AccordionSection>
+
           </form>
         </div>
 
