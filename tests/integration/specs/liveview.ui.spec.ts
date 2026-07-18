@@ -52,14 +52,20 @@ test.describe('Live View Page @ui @liveview', () => {
 
   test.describe('Video Streaming', () => {
     test('should show a stream-starting placeholder while tiles initialize', async ({ page }) => {
-      await page.route('**/api/webrtc?*', async route => {
+      // Hold every stream-media request open for a few seconds so each tile
+      // stays in its loading state long enough to assert the placeholder.
+      // The default Live View tile is HLS, and when go2rtc is enabled (as in
+      // CI) the manifest is fetched from go2rtc's `/api/stream.m3u8` endpoint —
+      // NOT lightNVR's native `/hls/...` path — so that pattern must be stalled
+      // too, otherwise the manifest resolves in milliseconds and the
+      // placeholder disappears before this assertion can observe it.
+      const stallThenAbort = async route => {
         await new Promise(resolve => setTimeout(resolve, 2000));
         await route.abort();
-      });
-      await page.route('**/hls/**', async route => {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await route.abort();
-      });
+      };
+      await page.route('**/api/webrtc?*', stallThenAbort);
+      await page.route('**/hls/**', stallThenAbort);
+      await page.route('**/api/stream.m3u8*', stallThenAbort);
 
       const liveView = new LiveViewPage(page);
       await Promise.all([
