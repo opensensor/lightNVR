@@ -105,6 +105,25 @@ bool go2rtc_api_get_application_info(int *rtsp_port,
                                      char *revision, size_t revision_size);
 
 /**
+ * @brief Start publishing (restreaming) a go2rtc stream to an RTMP/RTMPS URL
+ *
+ * Issues `POST /api/streams?src=<stream_id>&dst=<destination>` so go2rtc pushes
+ * the named stream to an external ingest endpoint (e.g. YouTube Live). Unlike
+ * the static `publish:` block in go2rtc.yaml — which go2rtc only evaluates once,
+ * ~1s after startup, and silently skips for any stream that isn't already in its
+ * map — this works for streams registered dynamically via the API, because the
+ * stream exists by the time this call is made. See issue #455.
+ *
+ * Must be (re-)issued after every (re-)registration: re-registering a stream
+ * replaces go2rtc's Stream object, which tears down any existing publisher.
+ *
+ * @param stream_id   Name of the already-registered go2rtc stream to publish
+ * @param destination RTMP/RTMPS destination URL
+ * @return true if go2rtc accepted the publish request, false otherwise
+ */
+bool go2rtc_api_publish_stream(const char *stream_id, const char *destination);
+
+/**
  * @brief Preload a stream in go2rtc to keep it active
  *
  * This keeps a persistent video-only consumer connected to the stream,

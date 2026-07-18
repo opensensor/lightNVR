@@ -392,6 +392,84 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
     return success;
 }
 
+bool go2rtc_api_publish_stream(const char *stream_id, const char *destination) {
+    if (!g_initialized) {
+        log_error("go2rtc API client not initialized");
+        return false;
+    }
+
+    if (!stream_id || !destination || destination[0] == '\0') {
+        log_error("Invalid parameters for go2rtc_api_publish_stream");
+        return false;
+    }
+
+    CURL *curl;
+    CURLcode res;
+    // A URL-encoded RTMP destination (MAX_URL_LENGTH) plus an encoded stream
+    // name (MAX_STREAM_NAME) can each expand ~3x, well past URL_BUFFER_SIZE.
+    // Size the request URL to hold both fully so the RTMP key is never
+    // silently truncated (which would break publishing in a hard-to-trace way).
+    char url[MAX_STREAM_NAME * 3 + URL_BUFFER_SIZE * 3 + 128];
+    bool success = false;
+
+    curl = curl_easy_init();
+    if (!curl) {
+        log_error("Failed to initialize CURL");
+        return false;
+    }
+
+    // Per-request response buffer (no global mutex needed)
+    response_buffer_t resp = { .size = 0 };
+    resp.buffer[0] = '\0';
+
+    // Encode both the stream name (?src=) and the destination URL (?dst=).
+    // The destination is an RTMP/RTMPS URL that routinely contains characters
+    // ('?', '&', '=', '/') that would otherwise corrupt the query string.
+    char encoded_stream_id[MAX_STREAM_NAME * 3];
+    simple_url_escape(stream_id, encoded_stream_id, MAX_STREAM_NAME * 3);
+
+    char encoded_dst[URL_BUFFER_SIZE * 3];
+    simple_url_escape(destination, encoded_dst, URL_BUFFER_SIZE * 3);
+
+    // POST /api/streams?src=<name>&dst=<rtmp-url> -> stream.Publish(dst) in go2rtc.
+    snprintf(url, sizeof(url), "http://%s:%d" GO2RTC_BASE_PATH "/api/streams?src=%s&dst=%s", // codeql[cpp/non-https-url] - localhost-only internal API
+             g_api_host, g_api_port, encoded_stream_id, encoded_dst);
+
+    // Log the stream name only — the destination URL embeds the stream key.
+    log_info("Publishing (restreaming) go2rtc stream %s to configured RTMP destination", stream_id);
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
+
+    res = curl_easy_perform(curl);
+
+    if (res != CURLE_OK) {
+        log_error("CURL publish request failed for stream %s: %s", stream_id, curl_easy_strerror(res));
+    } else {
+        long http_code = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+        if (http_code == 200) {
+            log_info("go2rtc accepted publish request for stream %s", stream_id);
+            success = true;
+        } else {
+            // 404 => the stream is not registered yet; 400 => go2rtc rejected the
+            // destination (e.g. unsupported scheme). Surface the status either way.
+            log_error("go2rtc rejected publish request for stream %s (status %ld): %s",
+                      stream_id, http_code, resp.buffer);
+        }
+    }
+
+    curl_easy_cleanup(curl);
+
+    return success;
+}
+
 bool go2rtc_api_stream_exists(const char *stream_id) {
     if (!g_initialized) {
         log_error("go2rtc API client not initialized");
