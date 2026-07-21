@@ -73,9 +73,11 @@
     box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
 }
 
-/* Segments with detection */
+/* Segments with detection — themed "success" green (issue #454): a detection is a
+ * period of interest, not an error, and this token is defined for both light and
+ * dark themes so it tracks the user's selected colour scheme. */
 .timeline-segment.has-detection {
-    background-color: hsl(var(--destructive));
+    background-color: hsl(var(--success));
 }
 
 /* Timeline cursor — container is invisible; child elements draw the line + thumb */
