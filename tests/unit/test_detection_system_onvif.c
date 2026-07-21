@@ -21,10 +21,11 @@ typedef struct {
     int connections;
     bool stop;
     pthread_t thread;
+    const char *pull_body;  // Optional PullMessages response body (NULL → empty)
 } fake_onvif_server_t;
 
 static void send_xml_response(int client_fd, const char *body) {
-    char response[1024];
+    char response[4096];
     int len = snprintf(response, sizeof(response),
                        "HTTP/1.1 200 OK\r\nContent-Type: application/soap+xml\r\n"
                        "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
@@ -65,7 +66,10 @@ static void send_xml_response(int client_fd, const char *body) {
                      server->port);
             send_xml_response(client_fd, body);
         } else {
-            send_xml_response(client_fd, "<Envelope><Body><PullMessagesResponse/></Body></Envelope>");
+            send_xml_response(client_fd,
+                server->pull_body
+                    ? server->pull_body
+                    : "<Envelope><Body><PullMessagesResponse/></Body></Envelope>");
         }
 
         close(client_fd);
@@ -128,10 +132,43 @@ void test_init_detection_system_initializes_onvif_detection(void) {
     TEST_ASSERT_EQUAL_INT(0, result.count);
 }
 
+// A Dahua-style SMD Plus smart-detection event carrying ObjectType=Human must
+// be surfaced as a "person" detection rather than a generic "motion" (#456).
+void test_onvif_smart_detection_reports_object_class(void) {
+    fake_onvif_server_t server;
+    TEST_ASSERT_EQUAL_INT(0, start_fake_onvif_server(&server));
+    server.pull_body =
+        "<Envelope><Body><PullMessagesResponse><NotificationMessage>"
+        "<Topic>tns1:RuleEngine/SmartMotionDetection/Motion</Topic>"
+        "<Message><Message><Source>"
+        "<SimpleItem Name=\"VideoSourceToken\" Value=\"000\"/></Source>"
+        "<Data>"
+        "<SimpleItem Name=\"IsMotion\" Value=\"true\"/>"
+        "<SimpleItem Name=\"ObjectType\" Value=\"Human\"/>"
+        "</Data></Message></Message>"
+        "</NotificationMessage></PullMessagesResponse></Body></Envelope>";
+
+    TEST_ASSERT_EQUAL_INT(0, init_detection_system());
+
+    char url[64];
+    snprintf(url, sizeof(url), "http://127.0.0.1:%d", server.port);
+
+    detection_result_t result;
+    memset(&result, 0, sizeof(result));
+    // Empty stream name keeps the call side-effect-free (no DB/MQTT/zone steps)
+    // while still exercising the full parse + classify path.
+    TEST_ASSERT_EQUAL_INT(0, detect_motion_onvif(url, "", "", &result, ""));
+
+    stop_fake_onvif_server(&server);
+    TEST_ASSERT_EQUAL_INT(1, result.count);
+    TEST_ASSERT_EQUAL_STRING("person", result.detections[0].label);
+}
+
 int main(void) {
     init_logger();
     UNITY_BEGIN();
     RUN_TEST(test_init_detection_system_initializes_onvif_detection);
+    RUN_TEST(test_onvif_smart_detection_reports_object_class);
     int result = UNITY_END();
     shutdown_logger();
     return result;

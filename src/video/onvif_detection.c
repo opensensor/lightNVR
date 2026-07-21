@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>   /* strncasecmp / strcasecmp for case-insensitive class matching */
 #include <stdbool.h>
 #include <errno.h>
 #include <unistd.h>
@@ -515,13 +516,100 @@ static char *extract_service_name(const char *subscription_address) {
 }
 
 /* Topics that signal motion/person detection.  "MotionDetector" also covers
- * "CellMotionDetector" (substring); "MotionAlarm" covers VideoSource/MotionAlarm. */
+ * "CellMotionDetector" (substring); "MotionAlarm" covers VideoSource/MotionAlarm.
+ *
+ * The second group covers "smart" object-classified detectors (Dahua SMD Plus,
+ * ONVIF Profile M, Hikvision smart events, IVS rules).  These carry the object
+ * class — Human / Vehicle / Face — in the topic path and/or an ObjectType
+ * SimpleItem, which classify_message() extracts so the MQTT/DB label reflects
+ * the real class instead of a generic "motion" (discussion #456). */
 static bool topic_is_motion(const char *topic_text) {
     if (!topic_text) return false;
     return strstr(topic_text, "MotionDetector") != NULL ||
            strstr(topic_text, "VideoAnalytics/Motion") != NULL ||
            strstr(topic_text, "MotionAlarm") != NULL ||
-           strstr(topic_text, "PeopleDetector") != NULL;
+           strstr(topic_text, "PeopleDetector") != NULL ||
+           strstr(topic_text, "SmartMotion")   != NULL ||
+           strstr(topic_text, "ObjectDetect")  != NULL ||
+           strstr(topic_text, "HumanDetect")   != NULL ||
+           strstr(topic_text, "FaceDetect")    != NULL ||
+           strstr(topic_text, "VehicleDetect") != NULL ||
+           strstr(topic_text, "PeopleDetect")  != NULL ||
+           strstr(topic_text, "CrossLineDetector")   != NULL ||
+           strstr(topic_text, "CrossRegionDetector") != NULL ||
+           strstr(topic_text, "IntrusionDetector")   != NULL ||
+           strstr(topic_text, "FieldDetector")       != NULL ||
+           strstr(topic_text, "LineDetector")        != NULL;
+}
+
+/* Case-insensitive substring test (strcasestr is GNU-only, avoid it). */
+static bool ci_contains(const char *hay, const char *needle) {
+    if (!hay || !needle) return false;
+    size_t nl = strlen(needle);
+    if (nl == 0) return false;
+    for (; *hay; hay++) {
+        if (strncasecmp(hay, needle, nl) == 0) return true;
+    }
+    return false;
+}
+
+/* Map a raw camera object-class token (from an ObjectType SimpleItem or a
+ * topic path) to a normalized detection label consistent with the object
+ * detectors ("person", "car", …).  Returns NULL when the token names no
+ * recognized class so the caller can fall back to the generic "motion". */
+static const char *normalize_object_class(const char *raw) {
+    if (!raw || !raw[0]) return NULL;
+    if (ci_contains(raw, "human") || ci_contains(raw, "people") ||
+        ci_contains(raw, "person") || ci_contains(raw, "pedestrian")) {
+        return "person";
+    }
+    /* Check non-motorized before vehicle so "NonMotor" isn't caught by "motor". */
+    if (ci_contains(raw, "nonmotor") || ci_contains(raw, "bicycle") ||
+        ci_contains(raw, "bike") || ci_contains(raw, "cycle")) {
+        return "bicycle";
+    }
+    if (ci_contains(raw, "vehicle") || ci_contains(raw, "car")) {
+        return "vehicle";
+    }
+    if (ci_contains(raw, "face")) {
+        return "face";
+    }
+    if (ci_contains(raw, "animal") || ci_contains(raw, "dog") ||
+        ci_contains(raw, "cat") || ci_contains(raw, "pet")) {
+        return "animal";
+    }
+    return NULL;
+}
+
+/* Recursively search a NotificationMessage for a SimpleItem that names an
+ * object class inside a Data element, returning the normalized class (or NULL).
+ * Values that don't name a recognized class are skipped so a real ObjectType
+ * later in the payload still wins. */
+static const char *find_object_class(ezxml_t node, bool in_data) {
+    for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
+        bool inside = in_data || strcmp(local_name(c), "Data") == 0;
+        if (inside && strcmp(local_name(c), "SimpleItem") == 0) {
+            const char *name = ezxml_attr(c, "Name");
+            if (name && (strcasecmp(name, "ObjectType") == 0 ||
+                         strcasecmp(name, "ObjectClass") == 0 ||
+                         strcasecmp(name, "Type") == 0)) {
+                const char *cls = normalize_object_class(ezxml_attr(c, "Value"));
+                if (cls) return cls;
+            }
+        }
+        const char *deep = find_object_class(c, inside);
+        if (deep) return deep;
+    }
+    return NULL;
+}
+
+/* Best label for an asserted NotificationMessage: prefer an ObjectType class,
+ * then a class named in the topic path, else the generic "motion". */
+static const char *classify_message(ezxml_t msg, const char *topic_text) {
+    const char *cls = find_object_class(msg, false);
+    if (cls) return cls;
+    cls = normalize_object_class(topic_text);
+    return cls ? cls : "motion";
 }
 
 /* A property value counts as asserted only for boolean-true spellings. */
@@ -551,21 +639,33 @@ static bool data_has_asserted_item(ezxml_t node, bool in_data) {
 /*
  * Recursively walk the parsed response looking for NotificationMessage
  * elements whose Topic is motion-related AND whose Data payload asserts the
- * state (Value="true"/"1").
+ * state (Value="true"/"1").  Returns true if any such event is present and
+ * fills `label` (size `label_sz`) with the best class found: a specific object
+ * class (person, vehicle, …) is preferred over the generic "motion" fallback,
+ * so a camera that emits both a plain motion event and a Human event is
+ * reported as "person".
  */
-static bool xml_has_active_motion(ezxml_t node) {
+static bool xml_find_active_motion(ezxml_t node, char *label, size_t label_sz) {
+    bool any = false;
     for (ezxml_t c = node ? node->child : NULL; c; c = c->ordered) {
         if (strcmp(local_name(c), "NotificationMessage") == 0) {
             ezxml_t topic = child_by_local_name(c, "Topic");
-            if (topic_is_motion(topic ? ezxml_txt(topic) : NULL) &&
-                data_has_asserted_item(c, false)) {
-                return true;
+            const char *topic_text = topic ? ezxml_txt(topic) : NULL;
+            if (topic_is_motion(topic_text) && data_has_asserted_item(c, false)) {
+                any = true;
+                const char *cls = classify_message(c, topic_text);
+                bool have_specific = label[0] != '\0' && strcmp(label, "motion") != 0;
+                if (cls && strcmp(cls, "motion") != 0) {
+                    if (!have_specific) safe_strcpy(label, cls, label_sz, 0);
+                } else if (label[0] == '\0') {
+                    safe_strcpy(label, "motion", label_sz, 0);
+                }
             }
-        } else if (xml_has_active_motion(c)) {
-            return true;
+        } else if (xml_find_active_motion(c, label, label_sz)) {
+            any = true;
         }
     }
-    return false;
+    return any;
 }
 
 /*
@@ -578,13 +678,17 @@ static bool xml_has_active_motion(ezxml_t node) {
  * (issue #451).  Parse the XML and require Value="true"/"1" inside the Data
  * section of a motion-topic NotificationMessage instead.
  */
-static bool has_motion_event(const char *response) {
+static bool has_motion_event(const char *response, char *label, size_t label_sz) {
+    if (label && label_sz > 0) label[0] = '\0';
     if (!response) return false;
 
     /* Cheap pre-filter: skip XML parsing when the payload names no
-     * motion-related topic at all (the common empty-response case). */
+     * motion-related topic at all (the common empty-response case).  "Detect"
+     * and "ObjectType" cover the smart-detector topics (HumanDetect,
+     * VehicleDetect, ObjectDetect, …) added for discussion #456. */
     if (!strstr(response, "Motion") && !strstr(response, "PeopleDetector") &&
-        !strstr(response, "IsPeople")) {
+        !strstr(response, "IsPeople") && !strstr(response, "Detect") &&
+        !strstr(response, "ObjectType")) {
         return false;
     }
 
@@ -602,11 +706,12 @@ static bool has_motion_event(const char *response) {
         bool fallback =
             (strstr(response, "Value=\"true\"") || strstr(response, "Value='true'") ||
              strstr(response, "Value=\"1\"")    || strstr(response, "Value='1'"));
+        if (fallback && label && label_sz > 0) safe_strcpy(label, "motion", label_sz, 0);
         free(copy);
         return fallback;
     }
 
-    bool motion = xml_has_active_motion(xml);
+    bool motion = xml_find_active_motion(xml, label, label_sz);
 
     ezxml_free(xml);
     free(copy);
@@ -787,16 +892,19 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
         return -1;
     }
 
-    // Check for motion events
-    bool motion_detected = has_motion_event(response);
+    // Check for motion events, capturing the object class (person/vehicle/…)
+    // when the camera reports a smart detection rather than plain motion.
+    char event_label[MAX_LABEL_LENGTH] = {0};
+    bool motion_detected = has_motion_event(response, event_label, sizeof(event_label));
     free(response);
 
     if (motion_detected) {
-        log_info("ONVIF Detection: Motion detected for %s", stream_name);
+        if (event_label[0] == '\0') safe_strcpy(event_label, "motion", sizeof(event_label), 0);
+        log_info("ONVIF Detection: %s detected for %s", event_label, stream_name);
 
         // Create a single detection that covers the whole frame
         result->count = 1;
-        safe_strcpy(result->detections[0].label, "motion", MAX_LABEL_LENGTH, 0);
+        safe_strcpy(result->detections[0].label, event_label, MAX_LABEL_LENGTH, 0);
         result->detections[0].confidence = 1.0f;
         result->detections[0].x = 0.0f;
         result->detections[0].y = 0.0f;

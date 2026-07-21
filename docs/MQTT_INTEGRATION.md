@@ -165,6 +165,35 @@ Detection events are published as JSON with the following structure:
 | `track_id` | Object tracking ID (if tracking enabled) |
 | `zone_id` | Detection zone name (if zones configured) |
 
+### Detection labels
+
+For built-in detection (motion, SOD, TFLite, API models) the `label` is the
+detected object class from that model (`person`, `car`, `dog`, …).
+
+For **ONVIF event-based detection**, the label reflects the camera's own event:
+
+- Plain motion events publish `"label": "motion"`.
+- Cameras that emit *smart* / object-classified events — e.g. Dahua SMD Plus,
+  ONVIF Profile M, Hikvision smart events, and IVS rules — are mapped to a
+  normalized class so the payload carries the real object type instead of a
+  generic `motion`:
+
+  | Camera event / ObjectType | Published `label` |
+  |---------------------------|-------------------|
+  | Human / People / Person / Pedestrian | `person` |
+  | Vehicle / Car | `vehicle` |
+  | NonMotor / Bicycle / Bike | `bicycle` |
+  | Face | `face` |
+  | Animal / Dog / Cat / Pet | `animal` |
+
+  The class is taken from the event's `ObjectType` property when present, or
+  otherwise inferred from the ONVIF topic (e.g. `.../HumanDetect`). Events whose
+  class LightNVR doesn't recognize fall back to `"label": "motion"`.
+
+  Home Assistant automations can therefore filter camera-side smart detections
+  exactly like model detections, e.g.
+  `selectattr('label', 'eq', 'person')`.
+
 ## Event Snapshots
 
 When a detection event is published, LightNVR also captures a JPEG snapshot of
