@@ -18,7 +18,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { USERS, login, sleep } from '../fixtures/test-fixtures';
+import { USERS, login } from '../fixtures/test-fixtures';
 
 test.describe('Sub-stream swap on per-cell fullscreen @ui @liveview', () => {
   const STREAMS = [

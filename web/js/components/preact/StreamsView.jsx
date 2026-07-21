@@ -434,16 +434,6 @@ export function StreamsView() {
     }
   });
 
-  const handleToggleStreamEnabled = (stream) => {
-    if (stream.enabled) {
-      if (window.confirm(t('live.disableStreamConfirm'))) {
-        disableStreamMutation.mutate({ streamId: stream.name });
-      }
-    } else {
-      enableStreamMutation.mutate(stream.name);
-    }
-  };
-
   // Promise-returning variants used by <StreamCard> → <AsyncButton>.
   // AsyncButton handles the destructive-confirm UX itself (via its
   // `confirmText` prop), so these do NOT call `window.confirm`.
