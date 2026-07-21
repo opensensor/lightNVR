@@ -215,6 +215,12 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
 
 ### Installation
 
+> **🏠 Running Home Assistant?** Install LightNVR straight from the add-on store —
+> no Docker or command line needed. Add the repository
+> **[opensensor/lightnvr-hassio-addons](https://github.com/opensensor/lightnvr-hassio-addons)**
+> under **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, then install
+> **LightNVR**. See that repo's README for one-click setup.
+
 1. **Build from source**:
    ```bash
    # Clone the repository
