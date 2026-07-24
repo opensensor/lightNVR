@@ -219,6 +219,22 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
         }
     }
 
+    // RTMP/YouTube restream (#455): probe whether this stream has a publish
+    // destination configured. YouTube (and most RTMP ingests) require an H.264
+    // video track AND an AAC audio track; video-only publishes are rejected. The
+    // AAC ffmpeg sub-source below is otherwise added only when record_audio is set,
+    // so a published stream with local audio-recording disabled — or a camera whose
+    // audio is G.711/PCM/Opus — would present no AAC track and go2rtc's FLV/RTMP
+    // consumer would fail with "codecs not matched" and silently retry forever.
+    // Force the AAC source on whenever a publish destination exists so the restream
+    // always has H.264+AAC available (the H.264 fallback source is already added for
+    // any non-h264 codec further below). We reuse this probe for the publish call
+    // after registration instead of re-reading the config.
+    stream_config_t pub_cfg;
+    memset(&pub_cfg, 0, sizeof(pub_cfg));
+    bool publish_enabled = (get_stream_config_by_name(stream_id, &pub_cfg) == 0 &&
+                            pub_cfg.publish_url[0] != '\0');
+
     // Use a static buffer for the modified URL to avoid memory allocation issues
     char modified_url[URL_BUFFER_SIZE];
     safe_strcpy(modified_url, stream_url, URL_BUFFER_SIZE, 0);
@@ -318,7 +334,9 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     sources[num_sources++] = modified_url;
 
     char ffmpeg_audio_source[URL_BUFFER_SIZE];
-    if (record_audio && !suppress_audio) {
+    // Publishing forces the AAC source on (see publish_enabled probe above), even
+    // when record_audio is off, so the RTMP restream always has an AAC track.
+    if ((record_audio || publish_enabled) && !suppress_audio) {
         // Emit AAC (for MP4 recording + MPEG-TS HLS) and OPUS (for WebRTC)
         // from one ffmpeg process — go2rtc cannot transcode AAC->OPUS itself,
         // so the OPUS track is what actually makes audio audible in the
@@ -399,15 +417,10 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     //
     // publish_url lives on the main stream config only; the "<name>_sub" lookup
     // for sub-streams simply won't match a row, so sub-streams never publish.
-    if (result) {
-        stream_config_t pub_cfg;
-        memset(&pub_cfg, 0, sizeof(pub_cfg));
-        if (get_stream_config_by_name(stream_id, &pub_cfg) == 0 &&
-            pub_cfg.publish_url[0] != '\0') {
-            if (!go2rtc_api_publish_stream(stream_id, pub_cfg.publish_url)) {
-                log_warn("Failed to start RTMP restream for %s; will retry on next registration",
-                         stream_id);
-            }
+    if (result && publish_enabled) {
+        if (!go2rtc_api_publish_stream(stream_id, pub_cfg.publish_url)) {
+            log_warn("Failed to start RTMP restream for %s; will retry on next registration",
+                     stream_id);
         }
     }
 
