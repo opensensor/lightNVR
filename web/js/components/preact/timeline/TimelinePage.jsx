@@ -1222,10 +1222,31 @@ export function TimelinePage() {
           <TimelineSegments segments={segments} />
           <TimelineCursor />
 
-          {/* Inline hint */}
-          <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
+          {/* Inline hint — hidden on small screens where it would overlap and
+              obscure the (already compressed) timeline segments (#453). The same
+              guidance is available in the collapsible "How to use" help panel. */}
+          <div className="hidden sm:block absolute bottom-1 right-2 text-[10px] text-muted-foreground bg-card/75 px-1.5 py-0.5 rounded">
             {t('timeline.inlineHint')}
           </div>
+        </div>
+
+        {/* Legend — explains the segment colours so users know what the green
+            (detection) bars mean without hunting through the help panel (#454). */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block w-3 h-3 rounded-sm"
+              style={{ backgroundColor: 'hsl(var(--primary))' }}
+            />
+            {t('timeline.legend.recording')}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="inline-block w-3 h-3 rounded-sm"
+              style={{ backgroundColor: 'hsl(var(--success))' }}
+            />
+            {t('timeline.legend.detection')}
+          </span>
         </div>
       </>
     );

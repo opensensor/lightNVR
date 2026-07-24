@@ -75,9 +75,29 @@
 
 /* Segments with detection — themed "success" green (issue #454): a detection is a
  * period of interest, not an error, and this token is defined for both light and
- * dark themes so it tracks the user's selected colour scheme. */
+ * dark themes so it tracks the user's selected colour scheme.
+ * The inset ring is a non-colour cue so detection periods stay distinguishable
+ * for colour-blind users and in high-contrast/greyscale rendering. */
 .timeline-segment.has-detection {
     background-color: hsl(var(--success));
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
+}
+
+.timeline-segment.has-detection:hover {
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.7),
+                0 1px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* Mobile/webkit browsers overlay a large native centre "play" button on the
+ * video surface. LightNVR drives playback from its own timeline controls, so
+ * this native overlay does nothing useful and appears broken (issue #453).
+ * Hide just the overlay play button; the native control bar (play/pause, seek,
+ * volume) stays available. */
+.timeline-player-container video::-webkit-media-controls-overlay-play-button {
+    display: none !important;
+}
+.timeline-player-container video::-webkit-media-controls-start-playback-button {
+    display: none !important;
 }
 
 /* Timeline cursor — container is invisible; child elements draw the line + thumb */

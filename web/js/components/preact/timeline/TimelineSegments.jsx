@@ -11,6 +11,7 @@ import {
   getClippedSegmentHourRange
 } from './timelineUtils.js';
 import { formatLocalTime } from '../../../utils/date-utils.js';
+import { useI18n } from '../../../i18n.js';
 
 /**
  * TimelineSegments component
@@ -19,6 +20,7 @@ import { formatLocalTime } from '../../../utils/date-utils.js';
  * @returns {JSX.Element} TimelineSegments component
  */
 export function TimelineSegments({ segments: propSegments }) {
+  const { t } = useI18n();
   // Local state
   const [segments, setSegments] = useState(propSegments || []);
   const [startHour, setStartHour] = useState(0);
@@ -245,7 +247,7 @@ export function TimelineSegments({ segments: propSegments }) {
             left: `${leftPct}%`,
             width: `${Math.max(widthPct, 0.15)}%`,   // min width so tiny segments stay visible
           }}
-          title={`${t0} – ${t1}  (${durLabel})`}
+          title={`${t0} – ${t1}  (${durLabel})${seg.has_detection ? `  • ${t('timeline.detectionEvent')}` : ''}`}
         />
       );
     });
