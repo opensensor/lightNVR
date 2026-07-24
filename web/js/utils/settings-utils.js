@@ -120,6 +120,37 @@ export async function getGo2rtcWebSocketUrl() {
   return `ws://${window.location.hostname}:${port}/go2rtc`;
 }
 
+// Default browser-side WebRTC live-view timeouts (milliseconds). These mirror
+// the server defaults in include/core/config.h and are used when /api/settings
+// does not supply values (older server, fetch failure).
+const DEFAULT_WEBRTC_CONNECTION_TIMEOUT_MS = 30000;
+const DEFAULT_WEBRTC_ICE_RECOVERY_TIMEOUT_MS = 5000;
+
+/**
+ * Get the WebRTC live-view timeouts (in milliseconds) from server settings.
+ * Lets Docker/stock-image users tune connection timeouts via lightnvr.ini,
+ * env vars, or the settings API without rebuilding the web bundle.
+ * @returns {Promise<{connectionMs: number, iceRecoveryMs: number}>}
+ */
+export async function getWebRTCTimeouts() {
+  try {
+    const settings = await getSettings();
+    const connectionMs = Number(settings.webrtc_connection_timeout_ms);
+    const iceRecoveryMs = Number(settings.webrtc_ice_recovery_timeout_ms);
+    return {
+      connectionMs: Number.isFinite(connectionMs) && connectionMs >= 1000
+        ? connectionMs : DEFAULT_WEBRTC_CONNECTION_TIMEOUT_MS,
+      iceRecoveryMs: Number.isFinite(iceRecoveryMs) && iceRecoveryMs >= 0
+        ? iceRecoveryMs : DEFAULT_WEBRTC_ICE_RECOVERY_TIMEOUT_MS
+    };
+  } catch (err) {
+    return {
+      connectionMs: DEFAULT_WEBRTC_CONNECTION_TIMEOUT_MS,
+      iceRecoveryMs: DEFAULT_WEBRTC_ICE_RECOVERY_TIMEOUT_MS
+    };
+  }
+}
+
 /**
  * Get default settings (used as fallback)
  * @returns {Object} - Default settings object
@@ -133,7 +164,9 @@ function getDefaultSettings() {
     mse_disabled: false,
     web_port: 8080,
     web_bind_ip: "0.0.0.0",
-    web_auth_enabled: true // Default to auth enabled for safety
+    web_auth_enabled: true, // Default to auth enabled for safety
+    webrtc_connection_timeout_ms: DEFAULT_WEBRTC_CONNECTION_TIMEOUT_MS,
+    webrtc_ice_recovery_timeout_ms: DEFAULT_WEBRTC_ICE_RECOVERY_TIMEOUT_MS
   };
 }
 

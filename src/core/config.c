@@ -107,6 +107,8 @@ static const env_config_mapping_t env_config_mappings[] = {
     {"GO2RTC_EXTERNAL_IP",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_external_ip),       64,  "",   0, false},
     {"GO2RTC_ICE_SERVERS",     CONFIG_TYPE_STRING, CONFIG_OFFSET(go2rtc_ice_servers),       512, "",   0, false},
     {"GO2RTC_WEBRTC_LISTEN_PORT", CONFIG_TYPE_INT, CONFIG_OFFSET(go2rtc_webrtc_listen_port), 0,  NULL, 8555, false},
+    {"WEBRTC_CONNECTION_TIMEOUT_MS", CONFIG_TYPE_INT, CONFIG_OFFSET(webrtc_connection_timeout_ms),   0, NULL, 30000, false},
+    {"WEBRTC_ICE_RECOVERY_TIMEOUT_MS", CONFIG_TYPE_INT, CONFIG_OFFSET(webrtc_ice_recovery_timeout_ms), 0, NULL, 5000, false},
 
     // Web server settings
     {"WEB_PORT",           CONFIG_TYPE_INT,    CONFIG_OFFSET(web_port),           0,   NULL, 8080, false},
@@ -437,6 +439,10 @@ void load_default_config(config_t *config) {
     safe_strcpy(config->go2rtc_stun_server, "stun.l.google.com:19302", sizeof(config->go2rtc_stun_server), 0);
     config->go2rtc_external_ip[0] = '\0';  // Empty by default (auto-detect)
     config->go2rtc_ice_servers[0] = '\0';  // Empty by default (use STUN server)
+
+    // Browser-side WebRTC live-view timeouts (see include/core/config.h)
+    config->webrtc_connection_timeout_ms = 30000;  // 30s overall connect timeout
+    config->webrtc_ice_recovery_timeout_ms = 5000; // 5s grace after ICE disconnect
 
     // TURN server settings for WebRTC relay (exposed to browser)
     config->turn_enabled = false;  // Disabled by default
@@ -934,6 +940,16 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             safe_strcpy(config->go2rtc_external_ip, value, sizeof(config->go2rtc_external_ip), 0);
         } else if (strcmp(name, "ice_servers") == 0) {
             safe_strcpy(config->go2rtc_ice_servers, value, sizeof(config->go2rtc_ice_servers), 0);
+        } else if (strcmp(name, "webrtc_connection_timeout_ms") == 0) {
+            config->webrtc_connection_timeout_ms = safe_atoi(value, 30000);
+            if (config->webrtc_connection_timeout_ms < 1000) {
+                config->webrtc_connection_timeout_ms = 1000;  // Minimum 1s
+            }
+        } else if (strcmp(name, "webrtc_ice_recovery_timeout_ms") == 0) {
+            config->webrtc_ice_recovery_timeout_ms = safe_atoi(value, 5000);
+            if (config->webrtc_ice_recovery_timeout_ms < 0) {
+                config->webrtc_ice_recovery_timeout_ms = 0;
+            }
         } else if (strcmp(name, "force_native_hls") == 0) {
             config->go2rtc_force_native_hls = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "proxy_max_inflight") == 0) {
@@ -1695,6 +1711,8 @@ int save_config(const config_t *config, const char *path) {
     if (config->go2rtc_ice_servers[0] != '\0') {
         fprintf(file, "ice_servers = %s\n", config->go2rtc_ice_servers);
     }
+    fprintf(file, "webrtc_connection_timeout_ms = %d\n", config->webrtc_connection_timeout_ms);
+    fprintf(file, "webrtc_ice_recovery_timeout_ms = %d\n", config->webrtc_ice_recovery_timeout_ms);
     fprintf(file, "force_native_hls = %s\n", config->go2rtc_force_native_hls ? "true" : "false");
     fprintf(file, "proxy_max_inflight = %d\n", config->go2rtc_proxy_max_inflight);
     // TURN server settings

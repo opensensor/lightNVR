@@ -268,6 +268,11 @@ typedef struct {
     char go2rtc_external_ip[64];          // Optional: External IP for NAT (empty = auto-detect)
     char go2rtc_ice_servers[512];         // Optional: Custom ICE servers (comma-separated)
 
+    // Browser-side WebRTC live-view timeouts (milliseconds). Exposed to the web
+    // client via /api/settings so Docker users can tune them without rebuilding.
+    int webrtc_connection_timeout_ms;     // Overall connect timeout before "Connection timeout" (default: 30000)
+    int webrtc_ice_recovery_timeout_ms;   // Grace window after ICE disconnect before "connection lost" (default: 5000)
+
     // TURN server settings for WebRTC relay (exposed to browser)
     bool turn_enabled;                    // Enable TURN relay (default: false)
     char turn_server_url[256];            // TURN server URL (e.g., turn:turn.example.com:3478)

@@ -12,7 +12,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
 import { DayNightControl } from './DayNightControl.jsx';
 import { ConfirmDialog } from './UI.jsx';
-import { getGo2rtcBaseUrl } from '../../utils/settings-utils.js';
+import { getGo2rtcBaseUrl, getWebRTCTimeouts } from '../../utils/settings-utils.js';
 import { formatFilenameTimestamp } from '../../utils/date-utils.js';
 import { forceNavigation } from '../../utils/navigation-utils.js';
 import { formatUtils } from './recordings/formatUtils.js';
@@ -225,6 +225,13 @@ export function WebRTCVideoCell({
     let videoDataTimeout = null;
     let go2rtcBaseUrl = null;
 
+    // Server-configurable WebRTC timeouts (ms). Populated in initWebRTC from
+    // /api/settings; seeded with the previous hardcoded defaults so behaviour is
+    // unchanged when the server does not supply values. Lets Docker users tune
+    // these via lightnvr.ini / env / settings API without rebuilding the bundle.
+    let webrtcConnectionTimeoutMs = 30000;
+    let webrtcIceRecoveryTimeoutMs = 5000;
+
     // Cell-scoped abort: cancels queued/in-flight gated requests on unmount
     // or when this effect re-runs (retry, sub-stream switch).
     abortControllerRef.current = new AbortController();
@@ -239,6 +246,15 @@ export function WebRTCVideoCell({
       } catch (err) {
         console.warn('Failed to get go2rtc URL from settings, using default:', err);
         go2rtcBaseUrl = `${window.location.origin}/go2rtc`;
+      }
+
+      // Load server-configurable connection timeouts (falls back to defaults)
+      try {
+        const timeouts = await getWebRTCTimeouts();
+        webrtcConnectionTimeoutMs = timeouts.connectionMs;
+        webrtcIceRecoveryTimeoutMs = timeouts.iceRecoveryMs;
+      } catch (err) {
+        console.warn('Failed to load WebRTC timeouts, using defaults:', err);
       }
 
       // Fetch ICE server configuration from API (includes TURN if configured)
@@ -617,7 +633,7 @@ export function WebRTCVideoCell({
           } else if (peerConnectionRef.current) {
             console.log(`WebRTC ICE connection recovered for stream ${stream.name}, current state: ${peerConnectionRef.current.iceConnectionState}`);
           }
-        }, 5000); // Wait 5 seconds to see if connection recovers
+        }, webrtcIceRecoveryTimeoutMs); // Grace window to see if connection recovers (configurable)
       } else if (pc.iceConnectionState === 'closed') {
         // Stop monitoring when closed
         if (connectionMonitorRef.current) {
@@ -687,7 +703,7 @@ export function WebRTCVideoCell({
         setError(t('live.connectionTimeoutCheckNetwork'));
         setIsLoading(false);
       }
-    }, 30000); // 30 second timeout
+    }, webrtcConnectionTimeoutMs); // Overall connect timeout (configurable via settings)
 
     // Create and send offer
     pc.createOffer()

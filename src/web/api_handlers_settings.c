@@ -499,6 +499,8 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(settings, "go2rtc_stun_server", g_config.go2rtc_stun_server);
     cJSON_AddStringToObject(settings, "go2rtc_external_ip", g_config.go2rtc_external_ip);
     cJSON_AddStringToObject(settings, "go2rtc_ice_servers", g_config.go2rtc_ice_servers);
+    cJSON_AddNumberToObject(settings, "webrtc_connection_timeout_ms", g_config.webrtc_connection_timeout_ms);
+    cJSON_AddNumberToObject(settings, "webrtc_ice_recovery_timeout_ms", g_config.webrtc_ice_recovery_timeout_ms);
     cJSON_AddBoolToObject(settings, "go2rtc_force_native_hls", g_config.go2rtc_force_native_hls);
 
     // go2rtc global config override (stored in system_settings table).
@@ -1211,6 +1213,24 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         g_config.go2rtc_webrtc_listen_port = go2rtc_webrtc_listen_port->valueint;
         settings_changed = true;
         log_info("Updated go2rtc_webrtc_listen_port: %d", g_config.go2rtc_webrtc_listen_port);
+    }
+
+    cJSON *webrtc_connection_timeout_ms = cJSON_GetObjectItem(settings, "webrtc_connection_timeout_ms");
+    if (webrtc_connection_timeout_ms && cJSON_IsNumber(webrtc_connection_timeout_ms)) {
+        int v = webrtc_connection_timeout_ms->valueint;
+        if (v < 1000) v = 1000;  // Minimum 1s to avoid unusable UI
+        g_config.webrtc_connection_timeout_ms = v;
+        settings_changed = true;
+        log_info("Updated webrtc_connection_timeout_ms: %d", g_config.webrtc_connection_timeout_ms);
+    }
+
+    cJSON *webrtc_ice_recovery_timeout_ms = cJSON_GetObjectItem(settings, "webrtc_ice_recovery_timeout_ms");
+    if (webrtc_ice_recovery_timeout_ms && cJSON_IsNumber(webrtc_ice_recovery_timeout_ms)) {
+        int v = webrtc_ice_recovery_timeout_ms->valueint;
+        if (v < 0) v = 0;
+        g_config.webrtc_ice_recovery_timeout_ms = v;
+        settings_changed = true;
+        log_info("Updated webrtc_ice_recovery_timeout_ms: %d", g_config.webrtc_ice_recovery_timeout_ms);
     }
 
     cJSON *go2rtc_stun_enabled = cJSON_GetObjectItem(settings, "go2rtc_stun_enabled");

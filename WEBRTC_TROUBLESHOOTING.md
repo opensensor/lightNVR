@@ -261,6 +261,12 @@ external_ip = YOUR.EXTERNAL.IP.ADDRESS
 3. Check if go2rtc is running: `ps aux | grep go2rtc`
 4. Review go2rtc logs for errors
 5. Try local network first before external access
+6. On slow/high-latency links, raise the timeout without rebuilding: set
+   `webrtc_connection_timeout_ms` (and `webrtc_ice_recovery_timeout_ms`) in the
+   `[go2rtc]` section of `lightnvr.ini`, or the `WEBRTC_CONNECTION_TIMEOUT_MS` /
+   `WEBRTC_ICE_RECOVERY_TIMEOUT_MS` environment variables, then restart. These are
+   read by the web client from `/api/settings`, so the stock Docker image honours
+   them — no source edit of `WebRTCVideoCell.jsx` required.
 
 ### Issue: IPv6 addresses causing problems
 

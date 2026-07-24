@@ -171,6 +171,20 @@ If you still experience issues:
 
 If you experience frequent video timeouts in the live stream:
 
+**WebRTC live view ("Connection timeout. Check network/firewall settings." or "WebRTC connection lost. Please retry.")** — these timeouts are runtime-configurable and **do not require a rebuild** (works with the stock Docker image). Set them in `lightnvr.ini` under the `[go2rtc]` section, or via environment variables, then restart LightNVR:
+
+```ini
+[go2rtc]
+; Overall time to establish the WebRTC connection before giving up (default 30000, min 1000)
+webrtc_connection_timeout_ms = 45000
+; Grace window after an ICE disconnect before showing "connection lost" (default 5000)
+webrtc_ice_recovery_timeout_ms = 8000
+```
+
+Environment-variable equivalents (useful for Docker): `WEBRTC_CONNECTION_TIMEOUT_MS` and `WEBRTC_ICE_RECOVERY_TIMEOUT_MS`. The web client reads these from `/api/settings`, so a plain container restart applies them.
+
+**HLS live view** — the following buffer/timeout tuning currently still requires a source rebuild:
+
 1. **Adjust HLS.js buffer settings** in `web/js/components/preact/HLSVideoCell.jsx`:
    ```javascript
    const hls = new Hls({
