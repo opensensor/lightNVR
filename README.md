@@ -243,10 +243,10 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
    git submodule update --init --recursive
 
    # Build web assets (requires Node.js >= 20 -- see prerequisites above).
-   # Use this script rather than a manual `cd web && npm install && npm run
-   # build`: it also runs scripts/extract_version.js first, which generates
-   # web/js/version.js from CMakeLists.txt. Skipping that step fails the Vite
-   # build with "Could not resolve '../../version.js'" in Header.jsx.
+   # Use this script rather than running: cd web && npm install && npm run build
+   # It also runs scripts/extract_version.js first, which generates web/js/version.js
+   # from CMakeLists.txt. Skipping that step fails the Vite build with:
+   # "Could not resolve '../../version.js'" in Header.jsx.
    ./scripts/build_web_vite.sh
 
    # Build the software
