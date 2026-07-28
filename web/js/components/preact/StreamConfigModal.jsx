@@ -874,7 +874,19 @@ export function StreamConfigModal({
                               {t('streamsConfig.customApiModel')}
                             </option>
                             {detectionModels.map(model => (
-                              <option key={model.id} value={model.id}>{model.name}</option>
+                              /* Models this build cannot run are listed but not
+                                 selectable, with the reason inline — silently
+                                 omitting them made an installed model look
+                                 missing. */
+                              <option
+                                key={model.id}
+                                value={model.id}
+                                disabled={model.supported === false}
+                                title={model.unsupported_reason || undefined}
+                              >
+                                {model.name}
+                                {model.supported === false ? ` — ${t('streamsConfig.modelNotSupportedByBuild')}` : ''}
+                              </option>
                             ))}
                           </select>
                           <button

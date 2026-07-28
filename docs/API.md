@@ -309,9 +309,31 @@ for cameras whose ONVIF event stream is unreliable or missing — the caller
 motion event and the target stream's detection-based recording pipeline
 (pre-buffer → recording → post-buffer) handles the rest.
 
-The target stream must have `detection_based_recording` enabled; otherwise the
-unified detection thread is not running and there is nothing for the trigger
-to drive (409 Conflict).
+The trigger has two halves, and they are independent:
+
+- **Starting a recording** requires `detection_based_recording` on the target
+  stream — that is the pipeline the trigger drives. Without it there is no
+  unified detection thread to arm, and the response reports
+  `recording_triggered: false`.
+- **Annotating the event** (`label` / `objects` / `tags`) always happens. A
+  stream on 24/7 recording has nothing to trigger but still gets the detection
+  written to the database, published over MQTT, and drawn on the timeline.
+
+**Choosing the stream configuration:**
+
+There are two sensible setups, depending on whether you want the trigger to
+start recordings or just annotate them:
+
+| Goal | `detection_based_recording` | `detection_model` |
+|------|------------------------------|-------------------|
+| The API event starts and stops the recording | enabled | leave **empty** |
+| 24/7 recording, API events only mark the timeline | disabled | n/a |
+
+For the first row, leave the detection model unset: the unified detection
+thread runs and responds to external triggers, but performs no local inference,
+so nothing is spent on a model whose output you are not using. Picking a model
+here means LightNVR *also* runs that detector on the stream, which is only what
+you want if you intend to combine local detection with external events.
 
 **Authentication:** See [Authentication](#authentication). For automation use
 a dedicated `USER_ROLE_API` user and its `api_key`; `USER_ROLE_VIEWER` is
@@ -324,6 +346,45 @@ rejected with 403.
 | `stream`      | string  | yes      | Stream name, as shown in the streams list.              |
 | `action`      | string  | yes      | One of `start`, `stop`, `pulse`.                        |
 | `duration_ms` | integer | no       | Only valid with `pulse`. Default 2000, max 600000 (10m).|
+| `label`       | string  | no       | Single object class for the event, e.g. `person`.       |
+| `objects`     | array   | no       | Several classes at once. See below.                     |
+| `confidence`  | number  | no       | 0–1, default 1.0. Applies to `label` and to `objects` entries without their own. |
+| `tags`        | array   | no       | Strings applied to the stream's currently-open recording. Max 16. |
+
+**Reporting what was seen (`label` / `objects`):**
+
+Object classes turn a bare "something moved" into the same shape as a model
+detection, so they appear on the timeline, in the detections API, and in the
+MQTT payload where Home Assistant can filter them
+(`selectattr('label','eq','person')`) exactly like ONVIF smart events and
+model output. Use the same label vocabulary the detectors use (`person`,
+`vehicle`, `bicycle`, `face`, `animal`, `motion`).
+
+`objects` accepts bare strings or per-entry confidences — forward detector
+output verbatim, or keep it terse:
+
+```json
+{"stream":"Front Door","action":"pulse","objects":["person","vehicle"]}
+```
+```json
+{"stream":"Front Door","action":"pulse",
+ "objects":[{"label":"person","confidence":0.91},{"label":"vehicle","confidence":0.64}]}
+```
+
+Detections are recorded on the leading edge only (`start` and `pulse`); a
+`stop` reports nothing new about what was seen. They cover the whole frame,
+since an external trigger carries no bounding box, and they are passed through
+the stream's zone filter just like model detections — a detection filtered out
+by zones is not stored, so `detections_stored` may be lower than what you sent.
+At most 20 objects are recorded per event; extras are ignored.
+
+**Tags:**
+
+`tags` are applied to the recording that is currently open for the stream. On a
+24/7 stream that is the segment the event falls inside. With detection-based
+recording no segment is open at the instant the trigger arrives, so the tags are
+not applied and `tags_applied` comes back `0` — tag those recordings via
+[`PUT /api/recordings/{id}/tags`](#recordings) once the recording exists.
 
 **Actions:**
 
@@ -344,17 +405,40 @@ rejected with 403.
   "success": true,
   "stream": "Front Door",
   "action": "pulse",
-  "duration_ms": 5000
+  "duration_ms": 5000,
+  "recording_triggered": true,
+  "detections_stored": 2,
+  "tags_applied": 0
+}
+```
+
+When the stream has no detection-based recording, the event is still recorded
+and a `warning` is included:
+
+```json
+{
+  "success": true,
+  "stream": "Driveway",
+  "action": "pulse",
+  "duration_ms": 5000,
+  "recording_triggered": false,
+  "detections_stored": 1,
+  "tags_applied": 2,
+  "warning": "Stream does not have detection-based recording enabled; the event was recorded but no recording was triggered"
 }
 ```
 
 **Errors:**
 
-- `400` — missing/invalid JSON, missing `stream`/`action`, bad `duration_ms`.
+- `400` — missing/invalid JSON, missing `stream`/`action`, bad `duration_ms`,
+  malformed `label`/`objects`/`confidence`/`tags`.
 - `401` — auth enabled and caller is not authenticated.
 - `403` — caller is `USER_ROLE_VIEWER`.
 - `404` — `stream` does not match a configured stream.
-- `409` — stream does not have `detection_based_recording` enabled.
+
+> **Changed in 0.36.5:** a stream without `detection_based_recording` no longer
+> returns `409`. The request is accepted and `recording_triggered: false` is
+> reported instead, so 24/7-recording streams can annotate their timeline.
 
 **Examples:**
 
@@ -382,9 +466,20 @@ rest_command:
     payload: '{"stream":"{{ stream }}","action":"pulse","duration_ms":{{ duration | default(5000) }}}'
 ```
 
+Annotated event from an external detector (what lands on the timeline):
+```bash
+curl -X POST http://lightnvr:8080/api/motion/trigger \
+  -H "X-API-Key: <key>" -H "Content-Type: application/json" \
+  -d '{"stream":"Driveway","action":"pulse","duration_ms":10000,
+       "objects":[{"label":"person","confidence":0.93}],
+       "tags":["frigate","front-gate"]}'
+```
+
 Cross-stream linking (`motion_trigger_source` in stream config) is honoured:
 an API-driven motion event on one stream will also drive recording on any
-stream that lists it as a trigger source, same as an ONVIF-driven event.
+stream that lists it as a trigger source, same as an ONVIF-driven event. This
+happens regardless of whether the source stream itself has detection-based
+recording enabled.
 
 ### Recordings
 

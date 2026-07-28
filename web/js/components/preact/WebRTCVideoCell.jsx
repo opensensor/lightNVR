@@ -20,6 +20,7 @@ import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 import { useAutoRetry } from './useAutoRetry.js';
+import { useVideoZoom } from './useVideoZoom.js';
 import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
 import 'webrtc-adapter';
 
@@ -58,6 +59,9 @@ const CONNECTION_QUALITY_THRESHOLDS = {
  * WebRTCVideoCell component
  * @param {Object} props - Component props
  * @param {Object} props.stream - Stream object
+ * @param {boolean} props.useSubStream - Render the camera's sub-stream instead of the main stream
+ * @param {boolean} props.fullscreenUpgraded - This cell would normally use the sub-stream but has
+ *   been upgraded to the main stream because it is fullscreen. Enables the bandwidth fallback (#468).
  * @param {Function} props.onToggleFullscreen - Fullscreen toggle handler
  * @param {string} props.streamId - Stream ID for stable reference
  * @returns {JSX.Element} WebRTCVideoCell component
@@ -66,6 +70,7 @@ export function WebRTCVideoCell({
   stream,
   streamId,
   useSubStream = false,
+  fullscreenUpgraded = false,
   onToggleFullscreen,
   showLabels = true,
   showControls = true,
@@ -99,6 +104,18 @@ export function WebRTCVideoCell({
   const [retryCount, setRetryCount] = useState(0); // Used to trigger WebRTC re-initialization
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
 
+  // Sub-stream fallback (#468). Entering fullscreen flips the `useSubStream`
+  // prop to false so the cell upgrades to the full-resolution main stream. On a
+  // LAN that is exactly what you want, but over a remote/proxied link the main
+  // stream's bitrate can exceed the available bandwidth: ICE connects, packets
+  // are lost wholesale, and no frames ever decode. Reconnecting to the *same*
+  // main stream can never fix that, so when the no-data watchdog trips while we
+  // are only on the main stream because of fullscreen, drop back to the
+  // sub-stream instead of burning reconnect attempts on a link that cannot
+  // carry it.
+  const [subStreamFallback, setSubStreamFallback] = useState(false);
+  const effectiveUseSubStream = useSubStream || subStreamFallback;
+
   // Backchannel (two-way audio) state
   const [isTalking, setIsTalking] = useState(false);
   const [microphoneError, setMicrophoneError] = useState(null);
@@ -119,6 +136,9 @@ export function WebRTCVideoCell({
   // Detection overlay visibility state (per-camera toggle, constrained by global toggle)
   const [localShowDetections, setLocalShowDetections] = useState(true);
   const showDetections = globalShowDetections && localShowDetections;
+
+  // Digital zoom: scroll to zoom, drag to pan, pinch on touch (#465).
+  const zoom = useVideoZoom();
 
   // Refs
   const videoRef = useRef(null);
@@ -208,6 +228,22 @@ export function WebRTCVideoCell({
       });
     }
   }, [applyAudioPlaybackState, stream?.name, t]);
+
+  // Clear the sub-stream fallback whenever the cell is no longer being forced
+  // onto the main stream (i.e. it left fullscreen and the grid asked for the
+  // sub-stream again) or the cell is pointed at a different camera. Both cases
+  // already leave `effectiveUseSubStream` true, so clearing the flag here does
+  // not itself trigger a reconnect — it just re-arms the fallback for the next
+  // fullscreen attempt.
+  useEffect(() => {
+    if (useSubStream && subStreamFallback) {
+      setSubStreamFallback(false);
+    }
+  }, [useSubStream, subStreamFallback]);
+
+  useEffect(() => {
+    setSubStreamFallback(false);
+  }, [stream?.name]);
 
   // Initialize WebRTC connection when component mounts
   useEffect(() => {
@@ -416,6 +452,29 @@ export function WebRTCVideoCell({
               // Uses a dedicated counter (noDataReconnectAttemptsRef) so that
               // the ICE-connected reset of reconnectAttemptsRef doesn't
               // inadvertently allow infinite no-data retries.
+              //
+              // Before spending a reconnect attempt, check whether we are only
+              // on the main stream because this cell is fullscreen (#468). If a
+              // sub-stream exists, ICE is connected and no frames are arriving,
+              // the most likely cause is that the link cannot carry the main
+              // stream's bitrate — reconnecting to the same source would fail
+              // the same way, so step down to the sub-stream instead.
+              if (
+                videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
+                (iceState === 'connected' || iceState === 'completed') &&
+                fullscreenUpgraded &&
+                !effectiveUseSubStream
+              ) {
+                console.log(
+                  `Falling back to sub-stream for fullscreen cell ${stream.name}: ICE connected but ` +
+                  `no video data after ${videoDataCheckCount * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s ` +
+                  `(main stream bitrate likely exceeds available bandwidth)`
+                );
+                showStatusMessage(t('live.fullscreenSubStreamFallback', { stream: stream.name }), 'warning', 5000);
+                setSubStreamFallback(true);
+                return; // Stop check chain; the effect re-runs against the sub-stream
+              }
+
               if (
                 videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
                 (iceState === 'connected' || iceState === 'completed') &&
@@ -731,7 +790,7 @@ export function WebRTCVideoCell({
         // condition) with exponential backoff; the slot is released between
         // attempts so other cameras aren't starved while we back off.
 
-        const effectiveName = useSubStream ? `${stream.name}_sub` : stream.name;
+        const effectiveName = effectiveUseSubStream ? `${stream.name}_sub` : stream.name;
         const offerGateOpts = {
           priority: priorityForStreamStatus(stream.status),
           signal: cellAbortSignal,
@@ -966,7 +1025,7 @@ export function WebRTCVideoCell({
     // /api/streams status refetch doesn't tear down healthy connections when
     // it produces new object identities every poll cycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream?.name, retryCount, useSubStream, t, applyAudioPlaybackState]);
+  }, [stream?.name, retryCount, effectiveUseSubStream, t, applyAudioPlaybackState]);
 
   // Auto-retry when stream status transitions back to 'Running' while the
   // error overlay is visible (e.g. camera came back online after an outage).
@@ -1280,12 +1339,21 @@ export function WebRTCVideoCell({
       className="video-cell"
       data-stream-name={stream.name}
       data-stream-id={streamId}
-      data-sub-stream={useSubStream ? 'true' : 'false'}
-      ref={cellRef}
+      data-sub-stream={effectiveUseSubStream ? 'true' : 'false'}
+      data-zoom-scale={zoom.isZoomed ? zoom.scale.toFixed(2) : undefined}
+      ref={(el) => {
+        // The cell is already `position: relative; overflow: hidden`, which is
+        // exactly what the zoom viewport needs, so it doubles as the zoom
+        // container. Overlays are siblings of the <video>, so only the video
+        // is transformed — labels and controls stay put and stay legible.
+        cellRef.current = el;
+        zoom.containerRef.current = el;
+      }}
       style={{
         position: 'relative',
         pointerEvents: 'auto',
-        zIndex: 1
+        zIndex: 1,
+        cursor: zoom.isZoomed ? 'move' : undefined
       }}
     >
       {/* Video element */}
@@ -1297,11 +1365,20 @@ export function WebRTCVideoCell({
         muted={!audioEnabled}
         disablePictureInPicture
         playsInline
-        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          transform: zoom.transform,
+          transformOrigin: 'center center'
+        }}
       />
 
-      {/* Detection overlay component */}
-      {stream.detection_based_recording && stream.detection_model && showDetections && (
+      {/* Detection overlay component.
+          Hidden while zoomed: the canvas is sized to the cell, not to the
+          transformed video, so its boxes would sit somewhere other than the
+          objects they describe. */}
+      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}
@@ -1309,6 +1386,33 @@ export function WebRTCVideoCell({
           enabled={isPlaying}
           detectionModel={stream.detection_model}
         />
+      )}
+
+      {/* Digital zoom level + reset. Only present while zoomed, so it costs
+          nothing in the normal case and is the obvious way back to 1×. */}
+      {zoom.isZoomed && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); zoom.reset(); }}
+          title={t('live.resetZoom')}
+          aria-label={t('live.resetZoom')}
+          style={{
+            position: 'absolute',
+            bottom: '10px',
+            right: '10px',
+            padding: '4px 8px',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            fontSize: '12px',
+            lineHeight: 1.2,
+            cursor: 'pointer',
+            zIndex: 4
+          }}
+        >
+          {zoom.scale.toFixed(1)}× ✕
+        </button>
       )}
 
       {/* Stream name overlay with connection quality indicator */}

@@ -19,6 +19,7 @@ import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 import { useAutoRetry } from './useAutoRetry.js';
+import { useVideoZoom } from './useVideoZoom.js';
 import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
 import Hls from 'hls.js';
 
@@ -70,6 +71,9 @@ export function HLSVideoCell({
   // Detection overlay visibility state (per-camera toggle, constrained by global toggle)
   const [localShowDetections, setLocalShowDetections] = useState(true);
   const showDetections = globalShowDetections && localShowDetections;
+
+  // Digital zoom: scroll to zoom, drag to pan, pinch on touch (#465).
+  const zoom = useVideoZoom();
 
   // Refs
   const videoRef = useRef(null);
@@ -674,11 +678,19 @@ export function HLSVideoCell({
       data-stream-name={stream.name}
       data-stream-id={streamId}
       data-sub-stream={useSubStream ? 'true' : 'false'}
-      ref={cellRef}
+      data-zoom-scale={zoom.isZoomed ? zoom.scale.toFixed(2) : undefined}
+      ref={(el) => {
+        // The cell is already `position: relative; overflow: hidden`, so it
+        // doubles as the zoom viewport; only the <video> is transformed, and
+        // the overlays beside it stay put.
+        cellRef.current = el;
+        zoom.containerRef.current = el;
+      }}
       style={{
         position: 'relative',
         pointerEvents: 'auto',
-        zIndex: 1
+        zIndex: 1,
+        cursor: zoom.isZoomed ? 'move' : undefined
       }}
     >
       {/* Video element */}
@@ -689,11 +701,19 @@ export function HLSVideoCell({
         autoPlay
         muted
         playsInline
-        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          transform: zoom.transform,
+          transformOrigin: 'center center'
+        }}
       />
 
-      {/* Detection overlay component */}
-      {stream.detection_based_recording && stream.detection_model && showDetections && (
+      {/* Detection overlay component.
+          Hidden while zoomed — the canvas is sized to the cell, not to the
+          transformed video, so its boxes would no longer line up. */}
+      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}
@@ -701,6 +721,32 @@ export function HLSVideoCell({
           enabled={isPlaying}
           detectionModel={stream.detection_model}
         />
+      )}
+
+      {/* Digital zoom level + reset (#465). */}
+      {zoom.isZoomed && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); zoom.reset(); }}
+          title={t('live.resetZoom')}
+          aria-label={t('live.resetZoom')}
+          style={{
+            position: 'absolute',
+            bottom: '10px',
+            right: '10px',
+            padding: '4px 8px',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            fontSize: '12px',
+            lineHeight: 1.2,
+            cursor: 'pointer',
+            zIndex: 4
+          }}
+        >
+          {zoom.scale.toFixed(1)}× ✕
+        </button>
       )}
 
       {/* Stream name overlay */}

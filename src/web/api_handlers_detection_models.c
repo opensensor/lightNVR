@@ -57,7 +57,18 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
     
     // Add models array to response
     cJSON_AddItemToObject(response, "models", models_array);
-    
+
+    // Report which inference engines this binary was compiled with. Without
+    // this the UI cannot tell "no models installed" apart from "models are
+    // installed but this build can't run them", which is exactly the confusion
+    // a source build without `git submodule update --init` produces.
+#ifdef HAVE_LITERT
+    cJSON_AddBoolToObject(response, "litert_available", true);
+#else
+    cJSON_AddBoolToObject(response, "litert_available", false);
+#endif
+    cJSON_AddBoolToObject(response, "sod_available", is_sod_available());
+
     // Initialize model count
     int model_count = 0;
 
@@ -153,13 +164,26 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
             continue;
         }
         
-        // Only expose files we can actually run. This hides sidecar files
-        // (e.g. a model's <basename>.labels.txt) and any other unsupported
-        // file so the model picker lists selectable models only.
-        if (!is_model_supported(full_path)) {
+        bool supported = is_model_supported(full_path);
+
+        // Sidecar and junk files (a model's <basename>.labels.txt, a README, a
+        // half-finished download) are not models at all — keep hiding those so
+        // the picker stays clean. A recognized model file this build simply
+        // cannot run is different: dropping it silently makes an installed
+        // model look missing, so list it and say why it is unusable.
+        //
+        // Recognition is by extension rather than get_model_type(), which folds
+        // "this build can't run it" into the type by returning "unknown" — the
+        // very distinction being drawn here.
+        const char *ext = strrchr(entry->d_name, '.');
+        bool is_tflite = ext && strcasecmp(ext, ".tflite") == 0;
+        bool is_sod = ext && strcasecmp(ext, ".sod") == 0;
+        if (!supported && !is_tflite && !is_sod) {
             continue;
         }
-        const char *model_type = get_model_type(full_path);
+
+        const char *model_type = supported ? get_model_type(full_path)
+                                           : (is_tflite ? MODEL_TYPE_TFLITE : MODEL_TYPE_SOD);
 
         // Create model object
         cJSON *model_obj = cJSON_CreateObject();
@@ -167,13 +191,20 @@ void handle_get_detection_models(const http_request_t *req, http_response_t *res
             log_error("Failed to create model JSON object");
             continue;
         }
-        
+
         // Add model properties (id = full_path so the backend can locate the file)
         cJSON_AddStringToObject(model_obj, "id", full_path);
         cJSON_AddStringToObject(model_obj, "name", entry->d_name);
         cJSON_AddStringToObject(model_obj, "path", full_path);
         cJSON_AddStringToObject(model_obj, "type", model_type);
-        cJSON_AddBoolToObject(model_obj, "supported", true);  // unsupported files are filtered out above
+        cJSON_AddBoolToObject(model_obj, "supported", supported);
+        if (!supported) {
+            cJSON_AddStringToObject(model_obj, "unsupported_reason",
+                is_tflite
+                    ? "This build has no in-process LiteRT engine "
+                      "(rebuild with -DENABLE_LITERT=ON and the third_party/litert submodule initialized)"
+                    : "This build has no SOD support (rebuild with -DENABLE_SOD=ON)");
+        }
         
         // Add file size
         if (stat(full_path, &st) == 0) {

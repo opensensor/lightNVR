@@ -183,6 +183,7 @@ add_layer3_test(test_audio_voice_enhancement)
 add_layer3_test(test_timestamp_manager)
 add_layer3_test(test_api_handlers_system)
 add_layer1_test(test_external_motion_trigger)    # Layer 1: external_motion_trigger state-machine (PR #356)
+add_layer2_test(test_motion_trigger_parse)       # Layer 2: motion trigger body parsing (#466)
 add_layer3_test(test_cross_stream_motion_trigger)
 
 message(STATUS "Building Unity unit tests (Layer 1 + Layer 2 + Layer 3)")

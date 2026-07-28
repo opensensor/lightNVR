@@ -15,7 +15,9 @@ void test_url_apply_credentials_injects_credentials(void) {
 void test_url_apply_credentials_replaces_existing_credentials(void) {
     char url[256];
     TEST_ASSERT_EQUAL_INT(0, url_apply_credentials("rtsp://old:creds@camera/live", "new@user", "p:ss", url, sizeof(url)));
-    TEST_ASSERT_EQUAL_STRING("rtsp://new%40user:p%3ass@camera/live", url);
+    /* Uppercase hex digits: RFC 3986 §2.1 says producers should normalize to
+     * uppercase, which url_apply_credentials has done since 650c2987. */
+    TEST_ASSERT_EQUAL_STRING("rtsp://new%40user:p%3Ass@camera/live", url);
 }
 
 void test_url_apply_credentials_preserves_fragment_suffix(void) {

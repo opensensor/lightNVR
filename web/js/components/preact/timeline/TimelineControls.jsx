@@ -272,6 +272,7 @@ export function TimelineControls() {
       <div className="flex items-center gap-1.5">
         <button
           id="play-button"
+          type="button"
           data-keyboard-nav-preserve
           className={`w-7 h-7 rounded-full flex items-center justify-center focus:outline-none transition-colors shadow-sm ${
             isPlaying
@@ -377,6 +378,7 @@ export function TimelineControls() {
 
       <div className="flex items-center gap-1">
         <button
+          type="button"
           data-keyboard-nav-preserve
           className="px-2 h-6 rounded text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={fitToSegments}
@@ -386,6 +388,7 @@ export function TimelineControls() {
         </button>
         <button
           id="zoom-out-button"
+          type="button"
           data-keyboard-nav-preserve
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomOut}
@@ -398,6 +401,7 @@ export function TimelineControls() {
         </button>
         <button
           id="zoom-in-button"
+          type="button"
           data-keyboard-nav-preserve
           className="w-6 h-6 rounded bg-secondary text-secondary-foreground hover:bg-secondary/80 flex items-center justify-center focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
           onClick={zoomIn}

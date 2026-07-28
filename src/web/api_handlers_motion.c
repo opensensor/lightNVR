@@ -10,10 +10,17 @@
  *   - authenticates the caller via httpd_get_authenticated_user() (for example:
  *     X-API-Key, Bearer token, session cookie, or HTTP Basic auth)
  *   - rejects USER_ROLE_VIEWER
- *   - validates the target stream exists and has detection-based recording on
+ *   - validates the target stream exists
+ *   - records any caller-supplied object classes as detections so the event is
+ *     visible on the timeline and over MQTT (#466)
  *   - sets the UDT external_motion_trigger atomic for the target stream
  *   - propagates the event to any cross-stream-linked peers
  *   - for "pulse", schedules a deferred motion-ended via a detached worker
+ *
+ * Streams without detection-based recording are accepted rather than rejected:
+ * a 24/7-recording stream has no UDT to arm, but the caller still wants the
+ * event annotated onto the continuous recording it already has (#466). The
+ * response reports recording_triggered=false in that case.
  */
 
 #include <stdio.h>
@@ -35,13 +42,23 @@
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
 
+#include "core/mqtt_client.h"
 #include "database/db_auth.h"
+#include "database/db_detections.h"
+#include "database/db_recording_tags.h"
+#include "video/detection_result.h"
+#include "video/mp4_recording.h"
 #include "video/stream_manager.h"
 #include "video/cross_stream_motion_trigger.h"
 #include "video/unified_detection_thread.h"
+#include "video/zone_filter.h"
 
 #define MOTION_PULSE_DEFAULT_MS 2000
 #define MOTION_PULSE_MAX_MS     600000   /* 10 minutes; matches UDT sanity bound */
+
+/* Caller-supplied object classes are asserted facts, not model output, so they
+ * default to full confidence unless the caller says otherwise. */
+#define MOTION_DEFAULT_CONFIDENCE 1.0f
 
 typedef enum {
     MOTION_ACTION_START,
@@ -109,6 +126,9 @@ typedef struct {
      * 0 is the reserved sentinel meaning "generation tracking disabled":
      * the worker will fire the stop unconditionally in that case. */
     uint64_t generation;
+    /* False when the stream has no detection-based recording: there is no UDT
+     * to notify, so the worker only does the cross-stream fan-out. */
+    bool     trigger_recording;
 } motion_pulse_task_t;
 
 /* Fire motion-start, sleep for duration_ms, fire motion-stop — but only if no
@@ -142,7 +162,9 @@ static void *motion_pulse_worker(void *arg) {
 
     if (still_current) {
         time_t now = time(NULL);
-        unified_detection_notify_motion(task->stream_name, false);
+        if (task->trigger_recording) {
+            unified_detection_notify_motion(task->stream_name, false);
+        }
         process_motion_event(task->stream_name, false, now, false);
         log_info("Pulse ended for stream '%s' after %d ms",
                  task->stream_name, task->duration_ms);
@@ -161,6 +183,134 @@ static int parse_action(const char *s, motion_action_t *out) {
     if (strcmp(s, "stop")  == 0) { *out = MOTION_ACTION_STOP;  return 0; }
     if (strcmp(s, "pulse") == 0) { *out = MOTION_ACTION_PULSE; return 0; }
     return -1;
+}
+
+/* Validate an optional confidence value. Returns 0 and writes *out on success,
+ * -1 if the field is present but not a number in [0,1]. A missing field leaves
+ * *out untouched so the caller's default survives. */
+static int parse_confidence(const cJSON *j, float *out) {
+    if (!j) return 0;
+    if (!cJSON_IsNumber(j)) return -1;
+    double v = j->valuedouble;
+    if (v < 0.0 || v > 1.0) return -1;
+    *out = (float)v;
+    return 0;
+}
+
+/* Append one externally reported object to `result`.
+ *
+ * An external trigger carries no spatial information, so the detection covers
+ * the whole frame — the same convention the ONVIF event path uses when a camera
+ * reports a smart-detection class without a bounding box. Returns -1 if the
+ * label is empty or the result is full. */
+static int append_detection(detection_result_t *result, const char *label, float confidence) {
+    if (!result || !label || label[0] == '\0') return -1;
+    if (result->count >= MAX_DETECTIONS) return -1;
+
+    detection_t *d = &result->detections[result->count];
+    safe_strcpy(d->label, label, MAX_LABEL_LENGTH, 0);
+    d->confidence = confidence;
+    d->x = 0.0f;
+    d->y = 0.0f;
+    d->width = 1.0f;
+    d->height = 1.0f;
+    result->count++;
+    return 0;
+}
+
+/* Parse the optional `label`, `confidence` and `objects` fields into `result`.
+ *
+ * `objects` accepts either bare strings (["person","vehicle"]) or objects with
+ * a per-entry confidence ([{"label":"person","confidence":0.82}]), so callers
+ * can forward detector output verbatim or keep it terse.
+ *
+ * Returns 0 on success. On a malformed field returns -1 and writes a caller-
+ * facing message into `err` (never NULL-terminated short of `err_sz`). */
+int motion_trigger_parse_objects(const cJSON *body, detection_result_t *result,
+                                 char *err, size_t err_sz) {
+    float default_confidence = MOTION_DEFAULT_CONFIDENCE;
+    const cJSON *j_conf = cJSON_GetObjectItemCaseSensitive(body, "confidence");
+    if (parse_confidence(j_conf, &default_confidence) != 0) {
+        safe_strcpy(err, "Field 'confidence' must be a number between 0 and 1", err_sz, 0);
+        return -1;
+    }
+
+    const cJSON *j_label = cJSON_GetObjectItemCaseSensitive(body, "label");
+    if (j_label) {
+        if (!cJSON_IsString(j_label) || j_label->valuestring[0] == '\0') {
+            safe_strcpy(err, "Field 'label' must be a non-empty string", err_sz, 0);
+            return -1;
+        }
+        append_detection(result, j_label->valuestring, default_confidence);
+    }
+
+    const cJSON *j_objects = cJSON_GetObjectItemCaseSensitive(body, "objects");
+    if (!j_objects) return 0;
+    if (!cJSON_IsArray(j_objects)) {
+        safe_strcpy(err, "Field 'objects' must be an array", err_sz, 0);
+        return -1;
+    }
+
+    const cJSON *entry = NULL;
+    cJSON_ArrayForEach(entry, j_objects) {
+        const char *label = NULL;
+        float confidence = default_confidence;
+
+        if (cJSON_IsString(entry)) {
+            label = entry->valuestring;
+        } else if (cJSON_IsObject(entry)) {
+            const cJSON *j_entry_label = cJSON_GetObjectItemCaseSensitive(entry, "label");
+            if (!cJSON_IsString(j_entry_label)) {
+                safe_strcpy(err, "Each 'objects' entry must be a string or an object with a 'label' string", err_sz, 0);
+                return -1;
+            }
+            label = j_entry_label->valuestring;
+            if (parse_confidence(cJSON_GetObjectItemCaseSensitive(entry, "confidence"),
+                                 &confidence) != 0) {
+                safe_strcpy(err, "Each 'objects' entry 'confidence' must be a number between 0 and 1", err_sz, 0);
+                return -1;
+            }
+        } else {
+            safe_strcpy(err, "Each 'objects' entry must be a string or an object with a 'label' string", err_sz, 0);
+            return -1;
+        }
+
+        if (!label || label[0] == '\0') {
+            safe_strcpy(err, "Each 'objects' entry must have a non-empty label", err_sz, 0);
+            return -1;
+        }
+        /* Silently ignore anything past MAX_DETECTIONS rather than failing the
+         * whole trigger — the motion event still matters more than the tail of
+         * an over-long object list. The count is reported in the response. */
+        append_detection(result, label, confidence);
+    }
+
+    return 0;
+}
+
+/* Parse the optional `tags` array of strings into a fixed-size buffer.
+ * Returns the tag count on success, -1 on a malformed field. */
+int motion_trigger_parse_tags(const cJSON *body, char tags[][MAX_TAG_LENGTH],
+                              char *err, size_t err_sz) {
+    const cJSON *j_tags = cJSON_GetObjectItemCaseSensitive(body, "tags");
+    if (!j_tags) return 0;
+    if (!cJSON_IsArray(j_tags)) {
+        safe_strcpy(err, "Field 'tags' must be an array of strings", err_sz, 0);
+        return -1;
+    }
+
+    int count = 0;
+    const cJSON *entry = NULL;
+    cJSON_ArrayForEach(entry, j_tags) {
+        if (!cJSON_IsString(entry) || entry->valuestring[0] == '\0') {
+            safe_strcpy(err, "Each 'tags' entry must be a non-empty string", err_sz, 0);
+            return -1;
+        }
+        if (count >= MOTION_MAX_TAGS) break;
+        safe_strcpy(tags[count], entry->valuestring, MAX_TAG_LENGTH, 0);
+        count++;
+    }
+    return count;
 }
 
 void handle_post_motion_trigger(const http_request_t *req, http_response_t *res) {
@@ -244,6 +394,29 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
         duration_ms = d;
     }
 
+    /* ---- Optional detection metadata (#466) ------------------------------ */
+    /* Object classes and tags let an external detector (a camera's own smart
+     * events, Frigate, a HA automation) say *what* it saw, not just that
+     * something moved, so the event lands on the timeline and in MQTT with the
+     * same shape as a model detection. */
+    detection_result_t detections;
+    memset(&detections, 0, sizeof(detections));
+    char tags[MOTION_MAX_TAGS][MAX_TAG_LENGTH];
+    char parse_err[160] = {0};
+
+    if (motion_trigger_parse_objects(body, &detections, parse_err, sizeof(parse_err)) != 0) {
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 400, parse_err);
+        return;
+    }
+
+    int tag_count = motion_trigger_parse_tags(body, tags, parse_err, sizeof(parse_err));
+    if (tag_count < 0) {
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 400, parse_err);
+        return;
+    }
+
     char stream_name[MAX_STREAM_NAME];
     safe_strcpy(stream_name, j_stream->valuestring, sizeof(stream_name), 0);
     cJSON_Delete(body);
@@ -262,13 +435,16 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
         return;
     }
 
-    if (!cfg.detection_based_recording) {
-        /* The UDT is not running for this stream, so the trigger would land
-         * in the void. 409 Conflict surfaces the misconfiguration instead of
-         * silently succeeding. */
-        http_response_set_json_error(res, 409,
-            "Stream does not have detection-based recording enabled");
-        return;
+    /* A stream without detection-based recording has no UDT to arm, so the
+     * recording-trigger half of this request cannot do anything. That used to
+     * be a 409, which also blocked the annotation half — leaving 24/7-recording
+     * users with no way to put an external event on their timeline (#466).
+     * Accept the request, do everything that *is* possible (detections, tags,
+     * MQTT, cross-stream fan-out), and report what was skipped. */
+    bool can_trigger_recording = cfg.detection_based_recording;
+    if (!can_trigger_recording) {
+        log_info("Stream '%s' has no detection-based recording; recording trigger skipped "
+                 "(detections/tags still recorded)", stream_name);
     }
 
     /* ---- Dispatch -------------------------------------------------------- */
@@ -282,7 +458,49 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     uint64_t new_gen = pulse_gen_increment(stream_name);
     pthread_mutex_unlock(&g_pulse_gen_mutex);
 
-    unified_detection_notify_motion(stream_name, active);
+    /* Record the reported objects before arming motion so a detection-triggered
+     * recording can pick them up via the existing update_detections_recording_id
+     * linkage. Only meaningful on the leading edge — a "stop" reports nothing
+     * new about what was seen. */
+    int stored_detections = 0;
+    if (active && detections.count > 0) {
+        /* Honour zone filtering so an external trigger respects the same zone
+         * configuration a model detection would. */
+        if (filter_detections_by_zones(stream_name, &detections) != 0) {
+            log_warn("Failed to filter detections by zones for '%s'; storing all", stream_name);
+        }
+        if (detections.count > 0) {
+            if (store_detections_in_db(stream_name, &detections, now, 0) == 0) {
+                stored_detections = detections.count;
+            } else {
+                log_warn("Failed to store external detections for stream '%s'", stream_name);
+            }
+            mqtt_publish_detection(stream_name, &detections, now);
+        }
+    }
+
+    /* Tags attach to whatever recording is currently open for the stream. With
+     * 24/7 recording that is the segment the event falls inside — the case this
+     * exists for. With detection-based recording no segment is open yet at this
+     * instant, so tag_count is reported as applied=0 rather than guessed at. */
+    int tags_applied = 0;
+    if (active && tag_count > 0) {
+        uint64_t recording_id = get_current_recording_id_for_stream(stream_name);
+        if (recording_id != 0) {
+            for (int i = 0; i < tag_count; i++) {
+                if (db_recording_tag_add(recording_id, tags[i]) == 0) {
+                    tags_applied++;
+                }
+            }
+        } else {
+            log_info("No active recording for stream '%s'; %d tag(s) not applied",
+                     stream_name, tag_count);
+        }
+    }
+
+    if (can_trigger_recording) {
+        unified_detection_notify_motion(stream_name, active);
+    }
     process_motion_event(stream_name, active, now, false);
 
     const char *action_str =
@@ -294,14 +512,17 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
         if (!task) {
             /* We already armed motion-start; unwind so the stream doesn't
              * sit in RECORDING until external_motion_trigger is reset. */
-            unified_detection_notify_motion(stream_name, false);
+            if (can_trigger_recording) {
+                unified_detection_notify_motion(stream_name, false);
+            }
             process_motion_event(stream_name, false, now, false);
             http_response_set_json_error(res, 500, "Out of memory");
             return;
         }
         safe_strcpy(task->stream_name, stream_name, sizeof(task->stream_name), 0);
-        task->duration_ms = duration_ms;
-        task->generation  = new_gen;
+        task->duration_ms       = duration_ms;
+        task->generation        = new_gen;
+        task->trigger_recording = can_trigger_recording;
 
         pthread_t tid;
         pthread_attr_t attr;
@@ -311,7 +532,9 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
         pthread_attr_destroy(&attr);
 
         if (rc != 0) {
-            unified_detection_notify_motion(stream_name, false);
+            if (can_trigger_recording) {
+                unified_detection_notify_motion(stream_name, false);
+            }
             process_motion_event(stream_name, false, now, false);
             free(task);
             http_response_set_json_error(res, 500,
@@ -334,6 +557,17 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     cJSON_AddStringToObject(resp, "action", action_str);
     if (action == MOTION_ACTION_PULSE) {
         cJSON_AddNumberToObject(resp, "duration_ms", duration_ms);
+    }
+    /* Report what actually happened so callers can tell an annotated event on a
+     * 24/7 stream from one that also started a detection-based recording, and
+     * can see when zone filtering or a missing open recording dropped work. */
+    cJSON_AddBoolToObject(resp, "recording_triggered", can_trigger_recording);
+    cJSON_AddNumberToObject(resp, "detections_stored", stored_detections);
+    cJSON_AddNumberToObject(resp, "tags_applied", tags_applied);
+    if (!can_trigger_recording) {
+        cJSON_AddStringToObject(resp, "warning",
+            "Stream does not have detection-based recording enabled; "
+            "the event was recorded but no recording was triggered");
     }
 
     char *json_str = cJSON_PrintUnformatted(resp);

@@ -38,6 +38,26 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
   // after a page navigation, so we surface this clear call-to-action instead.
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(autoFullscreen);
 
+  // Whether the primary pointer is coarse (finger/stylus). The click guard
+  // below exists to suppress Firefox's *mouse* click-to-play on the video
+  // surface; on a touch screen it only gets in the way, swallowing taps on the
+  // large centred play button that mobile browsers draw over the video and
+  // making the native controls look broken (#453).
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const query = window.matchMedia('(pointer: coarse)');
+    const update = () => setIsCoarsePointer(query.matches);
+    update();
+    // Safari <14 only has the deprecated addListener/removeListener pair.
+    if (typeof query.addEventListener === 'function') {
+      query.addEventListener('change', update);
+      return () => query.removeEventListener('change', update);
+    }
+    query.addListener(update);
+    return () => query.removeListener(update);
+  }, []);
+
   // Refs
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -890,19 +910,34 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
               propagate to the document so the fine-mode keyboard-nav handler
               works normally.  Double-click forwards to the fullscreen toggle
               since the video's own ondblclick is shadowed by this guard.
-              The guard stops just above the native controls bar (~40 px) so
-              play/pause, seek, and volume controls remain accessible. */}
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: '40px',
-              zIndex: 1,
-            }}
-            onDblClick={() => handleToggleFullscreen()}
-          />
+
+              The guard must stop above the native controls bar so play/pause,
+              seek, and volume stay clickable.  A flat 40 px reserve was too
+              small (#463): Firefox scales its controls up for larger videos, so
+              on a 16/9 player a few hundred pixels tall the play button sits
+              ~70 px above the bottom edge and ended up underneath the guard —
+              the button appeared dead while the seek bar below it still worked.
+              Reserve a proportional band with a sensible floor instead.  Being
+              generous here is cheap: clicks that land below the guard toggle
+              native play/pause, and handlePlay/handlePause already sync that
+              back into timelineState.
+
+              Skipped entirely on touch devices: there is no mouse click-to-play
+              to suppress there, and the guard would swallow taps on the big
+              centred play button mobile browsers draw over the video (#453). */}
+          {!isCoarsePointer && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 'max(64px, 20%)',
+                zIndex: 1,
+              }}
+              onDblClick={() => handleToggleFullscreen()}
+            />
+          )}
 
           {/* Detection overlay canvas */}
           {detectionOverlayEnabled && (
