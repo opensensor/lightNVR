@@ -11,7 +11,7 @@ describe('Streams Page', () => {
   
   beforeAll(async () => {
     // Create the WebDriver
-    driver = await createDriver('chrome', false);
+    driver = await createDriver();
     
     // Create the page object
     streamsPage = new StreamsPage(driver);

@@ -11,7 +11,7 @@ describe('Login Page', () => {
   
   beforeAll(async () => {
     // Create the WebDriver
-    driver = await createDriver('chrome', false);
+    driver = await createDriver();
     
     // Create the page object
     loginPage = new LoginPage(driver);

@@ -9,7 +9,7 @@
     "build:maps": "BUILD_SOURCEMAPS=true vite build",
     "preview": "vite preview",
     "test": "jest --config=jest.config.cjs",
-    "test:e2e": "jest tests/e2e --config=jest.config.cjs --runInBand"
+    "test:e2e": "jest --config=jest.e2e.config.cjs --runInBand"
   },
   "author": "",
   "license": "ISC",
@@ -37,9 +37,7 @@
     "@vitejs/plugin-legacy": "^8.1.0",
     "autoprefixer": "^10.5.2",
     "babel-jest": "^30.4.1",
-    "chromedriver": "^150.0.0",
     "esbuild": "^0.28.1",
-    "geckodriver": "^6.1.0",
     "jest": "^30.4.2",
     "postcss": "^8.5.16",
     "postcss-import": "^16.1.1",

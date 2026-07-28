@@ -21,36 +21,26 @@ fi
 echo "Installing dependencies..."
 npm install
 
-# Check if Chrome is installed
+# Check if Chrome is installed. The driver itself needs no version check:
+# Selenium Manager downloads one matching whatever browser is installed.
 if ! command -v google-chrome &> /dev/null && ! command -v google-chrome-stable &> /dev/null; then
     echo "Warning: Chrome does not appear to be installed. Tests may fail."
 else
-    # Check Chrome version
-    CHROME_VERSION=$(google-chrome --version | grep -oP '(?<=Chrome )[0-9]+')
+    CHROME_VERSION=$(google-chrome --version 2>/dev/null | grep -oP '(?<=Chrome )[0-9.]+')
     echo "Detected Chrome version: $CHROME_VERSION"
-    
-    # Check package.json for ChromeDriver version
-    CHROMEDRIVER_VERSION=$(grep -oP '(?<="chromedriver": "\^)[0-9]+' package.json 2>/dev/null)
-    echo "Configured ChromeDriver version: $CHROMEDRIVER_VERSION"
-    
-    # Compare versions
-    if [ "$CHROME_VERSION" != "$CHROMEDRIVER_VERSION" ]; then
-        echo "Warning: Chrome version ($CHROME_VERSION) does not match ChromeDriver version ($CHROMEDRIVER_VERSION)"
-        echo "This may cause tests to fail. Consider updating the ChromeDriver version in package.json."
-    else
-        echo "Chrome and ChromeDriver versions match. Good to go!"
-    fi
+    echo "Selenium Manager will fetch a matching driver automatically."
 fi
 
 # Create screenshots directory if it doesn't exist
 mkdir -p tests/screenshots
 
 # Check if the application server is running
-echo "Checking if the application server is running..."
-if curl -s http://localhost:8080 > /dev/null; then
+BASE_URL="${E2E_BASE_URL:-http://localhost:8080}"
+echo "Checking if the application server is running at $BASE_URL..."
+if curl -s "$BASE_URL" > /dev/null; then
     echo "Application server is running. Proceeding with tests."
 else
-    echo "Warning: Application server does not appear to be running at http://localhost:8080"
+    echo "Warning: Application server does not appear to be running at $BASE_URL"
     echo "Tests that require server connectivity may fail."
     echo "Please start the application server in another terminal with 'npm start' before running tests."
     

@@ -2,7 +2,7 @@
  * Navigation E2E tests
  */
 const { By, until } = require('selenium-webdriver');
-const { createDriver, takeScreenshot, login } = require('../utils/test-utils');
+const { createDriver, takeScreenshot, login, url } = require('../utils/test-utils');
 const NavigationMenu = require('../pages/NavigationMenu');
 
 describe('Navigation', () => {
@@ -11,7 +11,7 @@ describe('Navigation', () => {
   
   beforeAll(async () => {
     // Create the WebDriver
-    driver = await createDriver('chrome', false);
+    driver = await createDriver();
     
     // Create the navigation menu page object
     navMenu = new NavigationMenu(driver);
@@ -44,7 +44,7 @@ describe('Navigation', () => {
       
       try {
         // Navigate to the index page
-        await driver.get('http://localhost:8080/index.html');
+        await driver.get(url('/index.html'));
         
         // Wait for the page to load with a shorter timeout
         await driver.wait(until.elementLocated(By.id('main-content')), 5000);

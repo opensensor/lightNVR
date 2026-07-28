@@ -6,43 +6,74 @@ const chrome = require('selenium-webdriver/chrome');
 const firefox = require('selenium-webdriver/firefox');
 
 /**
+ * Base URL of the LightNVR server under test.
+ * @returns {string} The base URL, without a trailing slash
+ */
+function baseUrl() {
+  return (process.env.E2E_BASE_URL || 'http://localhost:8080').replace(/\/+$/, '');
+}
+
+/**
+ * Build an absolute URL for a path on the server under test
+ * @param {string} path - Path such as '/login.html'
+ * @returns {string} The absolute URL
+ */
+function url(path) {
+  return `${baseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+/**
  * Create a WebDriver instance for the specified browser
- * @param {string} browserName - The browser to use ('chrome' or 'firefox')
- * @param {boolean} headless - Whether to run in headless mode
+ *
+ * The driver binary is resolved by Selenium Manager, which downloads a build
+ * matching the locally installed browser. Do not pin a chromedriver/geckodriver
+ * npm package: it lands on PATH and overrides this, breaking whenever the
+ * browser and the pin drift apart.
+ *
+ * @param {string} [browserName] - The browser to use ('chrome' or 'firefox');
+ *   defaults to $E2E_BROWSER, else 'chrome'
+ * @param {boolean} [headless] - Whether to run headless; defaults to true
+ *   unless $E2E_HEADLESS is 'false'
  * @returns {WebDriver} The WebDriver instance
  */
-async function createDriver(browserName = 'chrome', headless = false) {
+async function createDriver(browserName, headless) {
+  const browser = (browserName || process.env.E2E_BROWSER || 'chrome').toLowerCase();
+  const runHeadless = headless === undefined
+    ? process.env.E2E_HEADLESS !== 'false'
+    : headless;
+
   let driver;
-  
-  if (browserName.toLowerCase() === 'chrome') {
+
+  if (browser === 'chrome') {
     const options = new chrome.Options();
-    
-    if (headless) {
-      options.headless();
+
+    if (runHeadless) {
+      // `options.headless()` was removed in selenium-webdriver 4.x.
+      options.addArguments('--headless=new', '--no-sandbox', '--disable-dev-shm-usage');
     }
-    
+
     driver = await new Builder()
       .forBrowser('chrome')
       .setChromeOptions(options)
       .build();
-  } else if (browserName.toLowerCase() === 'firefox') {
+  } else if (browser === 'firefox') {
     const options = new firefox.Options();
-    
-    if (headless) {
-      options.headless();
+
+    if (runHeadless) {
+      options.addArguments('-headless');
     }
-    
+
     driver = await new Builder()
       .forBrowser('firefox')
       .setFirefoxOptions(options)
       .build();
   } else {
-    throw new Error(`Unsupported browser: ${browserName}`);
+    throw new Error(`Unsupported browser: ${browser}`);
   }
-  
+
   // Set implicit wait time
   await driver.manage().setTimeouts({ implicit: 5000 });
-  
+
   return driver;
 }
 
@@ -84,7 +115,7 @@ function sleep(ms) {
 async function login(driver, username = 'admin', password = 'admin') {
   try {
     // Navigate to the login page
-    await driver.get('http://localhost:8080/login.html');
+    await driver.get(url('/login.html'));
     
     // Wait for the login form to load
     await driver.wait(until.elementLocated(By.css('#username')), 10000);
@@ -117,6 +148,8 @@ async function login(driver, username = 'admin', password = 'admin') {
 }
 
 module.exports = {
+  baseUrl,
+  url,
   createDriver,
   takeScreenshot,
   sleep,

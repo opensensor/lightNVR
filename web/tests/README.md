@@ -29,6 +29,7 @@ Current page objects:
 
 The `utils` directory contains helper functions for common test operations:
 - `createDriver()` - Creates a WebDriver instance for Chrome or Firefox
+- `url()` / `baseUrl()` - Builds URLs against the server under test
 - `takeScreenshot()` - Captures screenshots during test execution
 - `sleep()` - Waits for a specified amount of time
 
@@ -38,8 +39,10 @@ Before running the tests, make sure you have the following installed:
 
 1. Node.js and npm
 2. Chrome and/or Firefox browsers
-3. ChromeDriver and/or GeckoDriver (for Selenium)
-4. Application running with authentication (username: `admin`, password: `admin`)
+3. Application running with authentication (username: `admin`, password: `admin`)
+
+No WebDriver download is needed: Selenium Manager (bundled with
+`selenium-webdriver`) fetches a driver matching your installed browser.
 
 ## Running Tests Locally
 
@@ -53,12 +56,14 @@ This guide includes:
 
 ## Headless Mode
 
-By default, tests run with the browser visible. To run in headless mode (without a visible browser window), modify the test file to enable headless mode:
+Tests run headless by default. To watch the browser, set `E2E_HEADLESS=false`:
 
-```javascript
-// In the test file
-driver = await createDriver('chrome', true); // Set second parameter to true for headless mode
+```bash
+E2E_HEADLESS=false npm run test:e2e
 ```
+
+See [RUNNING_TESTS_LOCALLY.md](./RUNNING_TESTS_LOCALLY.md) for the full list of
+environment variables (`E2E_BASE_URL`, `E2E_BROWSER`, `E2E_HEADLESS`).
 
 ## Screenshots
 

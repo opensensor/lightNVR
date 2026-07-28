@@ -1,6 +1,8 @@
 /**
  * Page Object for the Login page
  */
+const { url } = require('../utils/test-utils');
+
 class LoginPage {
   constructor(driver) {
     this.driver = driver;
@@ -17,7 +19,7 @@ class LoginPage {
    * Navigate to the login page
    */
   async navigate() {
-    await this.driver.get('http://localhost:8080/login.html');
+    await this.driver.get(url('/login.html'));
   }
 
   /**

@@ -1,6 +1,8 @@
 /**
  * Page Object for the Streams page
  */
+const { url } = require('../utils/test-utils');
+
 class StreamsPage {
   constructor(driver) {
     this.driver = driver;
@@ -40,7 +42,7 @@ class StreamsPage {
    * Navigate to the streams page
    */
   async navigate() {
-    await this.driver.get('http://localhost:8080/streams.html');
+    await this.driver.get(url('/streams.html'));
   }
 
   /**
