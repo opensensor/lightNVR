@@ -90,7 +90,9 @@ jobs:
             test_stream_manager \
             test_stream_state \
             test_packet_buffer \
-            test_timestamp_manager
+            test_timestamp_manager \
+            test_motion_trigger_parse \
+            test_url_utils
           echo "Unity test binaries built:"
           ls -la bin/test_*
 
