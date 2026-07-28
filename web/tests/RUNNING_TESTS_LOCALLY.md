@@ -36,7 +36,7 @@ Before running the tests, ensure you have the following installed:
 
 1. **Install dependencies**:
    ```bash
-   cd /path/to/nvr_soft/web
+   cd /path/to/lightNVR/web
    npm install
    ```
 
@@ -51,7 +51,7 @@ Before running the tests, ensure you have the following installed:
 We've provided a convenience script that handles dependency installation and test execution:
 
 ```bash
-cd /path/to/nvr_soft/web/tests
+cd /path/to/lightNVR/web/tests
 chmod +x install-and-run.sh  # Make sure the script is executable
 ./install-and-run.sh
 ```
@@ -61,7 +61,7 @@ chmod +x install-and-run.sh  # Make sure the script is executable
 1. **Start your application server**:
    ```bash
    # Navigate to the web directory
-   cd /path/to/nvr_soft/web
+   cd /path/to/lightNVR/web
    
    # Start the development server
    npm start
@@ -70,7 +70,7 @@ chmod +x install-and-run.sh  # Make sure the script is executable
 2. **In a separate terminal, run the tests**:
    ```bash
    # Navigate to the web directory
-   cd /path/to/nvr_soft/web
+   cd /path/to/lightNVR/web
    
    # Run all E2E tests
    npm run test:e2e
@@ -102,7 +102,7 @@ E2E_HEADLESS=false E2E_BASE_URL=http://nvr.local:8080 npm run test:e2e
 
 1. **Console output**: Test results will be displayed in the terminal
 
-2. **Screenshots**: During test execution, screenshots are saved to the `web/tests/screenshots` directory
+2. **Screenshots**: During test execution, screenshots are saved to the `web/screenshots` directory (gitignored)
    - These are useful for debugging test failures
    - Each test captures screenshots at key points in the test flow
 
@@ -162,11 +162,11 @@ ls node_modules/.bin/chromedriver   # should not exist
 - Ensure your application server is running before starting the tests
   ```bash
   # In one terminal, start the application
-  cd /path/to/nvr_soft/web
+  cd /path/to/lightNVR/web
   npm start
   
   # In another terminal, run the tests
-  cd /path/to/nvr_soft/web
+  cd /path/to/lightNVR/web
   npm run test:e2e
   ```
 - Verify it's running on the expected port (8080)
@@ -218,17 +218,17 @@ E2E_BROWSER=firefox npm run test:e2e
 
 ### Adjusting Timeouts
 
-If tests are failing due to timeout issues:
+The E2E suite already allows 60s per test (`testTimeout` in
+`jest.e2e.config.cjs`). To change it globally, edit that value; to raise it for
+a single test:
 
 ```javascript
-// In web/tests/setup.js
-jest.setTimeout(60000); // Increase to 60 seconds
-
-// Or in individual test files
 test('my slow test', async () => {
   // ...
-}, 60000); // Timeout for this specific test
+}, 120000); // Timeout for this specific test
 ```
+
+`web/tests/setup.cjs` also calls `jest.setTimeout()` and applies to both suites.
 
 ### Running Tests in Parallel
 

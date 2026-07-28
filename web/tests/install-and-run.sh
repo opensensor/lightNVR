@@ -31,8 +31,10 @@ else
     echo "Selenium Manager will fetch a matching driver automatically."
 fi
 
-# Create screenshots directory if it doesn't exist
-mkdir -p tests/screenshots
+# Create screenshots directory if it doesn't exist.
+# Specs pass paths like 'screenshots/foo.png', resolved from jest's cwd (web/),
+# so this must be web/screenshots -- which is also what .gitignore covers.
+mkdir -p screenshots
 
 # Check if the application server is running
 BASE_URL="${E2E_BASE_URL:-http://localhost:8080}"

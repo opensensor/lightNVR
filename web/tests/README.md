@@ -8,13 +8,23 @@ The tests are organized as follows:
 
 ```
 tests/
+├── *.spec.js             # Unit tests -- run by `npm test`
 ├── e2e/                  # End-to-end tests with Selenium
 │   ├── pages/            # Page objects
 │   ├── specs/            # Test specifications
 │   └── utils/            # Test utilities
-├── unit/                 # Unit tests (if needed)
-└── setup.js              # Test setup
+└── setup.cjs             # Test setup (both suites)
 ```
+
+The two suites run separately:
+
+| Command | Config | Scope |
+| --- | --- | --- |
+| `npm test` | `jest.config.cjs` | Unit tests only; no browser or server needed |
+| `npm run test:e2e` | `jest.e2e.config.cjs` | Selenium E2E; needs a browser and a running LightNVR server |
+
+E2E is excluded from `npm test` on purpose — those specs drive a real browser
+against a live server, so they cannot pass in a plain checkout.
 
 ## Page Objects
 
@@ -67,7 +77,8 @@ environment variables (`E2E_BASE_URL`, `E2E_BROWSER`, `E2E_HEADLESS`).
 
 ## Screenshots
 
-Screenshots are saved to the `screenshots` directory during test execution. This is useful for debugging test failures.
+Screenshots are saved to `web/screenshots` during test execution (gitignored).
+This is useful for debugging test failures.
 
 ## Adding New Tests
 
