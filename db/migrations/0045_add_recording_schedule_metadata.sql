@@ -9,4 +9,6 @@ ALTER TABLE streams ADD COLUMN detection_recording_schedule TEXT DEFAULT NULL;
 
 -- migrate:down
 
-SELECT 1;
+ALTER TABLE recordings DROP COLUMN schedule_restricted;
+ALTER TABLE streams DROP COLUMN detection_record_on_schedule;
+ALTER TABLE streams DROP COLUMN detection_recording_schedule;
