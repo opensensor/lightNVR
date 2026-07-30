@@ -502,6 +502,7 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   return (
     <section
       id="live-page"
+      data-testid="webrtc-view"
       className={`page ${isFullscreen ? 'fullscreen-mode' : ''} ${isSingleStream && !isFullscreen ? 'single-stream' : ''}`}
     >
       {/* Include the SnapshotManager component */}

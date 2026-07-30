@@ -27,7 +27,7 @@ export class LiveViewPage extends BasePage {
   }
 
   get fullscreenButton(): Locator {
-    return this.page.locator('button').filter({ hasText: /fullscreen/i }).first();
+    return this.page.locator('#fullscreen-btn').first();
   }
 
   get layoutSelector(): Locator {
@@ -135,4 +135,3 @@ export class LiveViewPage extends BasePage {
     return await this.page.locator('[data-testid="hls-view"], .hls-view').isVisible();
   }
 }
-

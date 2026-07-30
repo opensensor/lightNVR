@@ -97,6 +97,7 @@ test.describe('Live View Page @ui @liveview', () => {
       await sleep(5000);
       
       const status = await liveView.getVideoStatus();
+      expect(status.total).toBeGreaterThan(0);
       console.log(`Video status: ${status.playing}/${status.total} playing`);
       
       // Log the result (may not have playing videos in test environment)
@@ -113,6 +114,7 @@ test.describe('Live View Page @ui @liveview', () => {
       const isHLS = await liveView.isHLSView();
       
       console.log(`View type - WebRTC: ${isWebRTC}, HLS: ${isHLS}`);
+      expect(isWebRTC || isHLS).toBeTruthy();
       
       await page.screenshot({ path: 'test-results/liveview-view-type.png' });
     });
@@ -140,8 +142,13 @@ test.describe('Live View Page @ui @liveview', () => {
       
       await sleep(2000);
       
-      const hasFullscreen = await liveView.fullscreenButton.isVisible();
-      console.log(`Has fullscreen button: ${hasFullscreen}`);
+      await expect(liveView.fullscreenButton).toBeVisible();
+      await liveView.fullscreenButton.click();
+      await expect(page.locator('#live-page')).toHaveClass(/fullscreen-mode/);
+      await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden');
+
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#live-page')).not.toHaveClass(/fullscreen-mode/);
       
       await page.screenshot({ path: 'test-results/liveview-fullscreen.png' });
     });
