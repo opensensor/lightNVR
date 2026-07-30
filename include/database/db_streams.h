@@ -10,8 +10,8 @@
  * Used for per-stream recording retention policies
  */
 typedef struct {
-    int retention_days;              // Regular recordings retention (0 = unlimited)
-    int detection_retention_days;    // Detection recordings retention (0 = unlimited)
+    int retention_days;              // -1 = global, 0 = unlimited, >0 = days
+    int detection_retention_days;    // -1 = global, 0 = unlimited, >0 = days
     uint64_t max_storage_mb;         // Storage quota in MB (0 = unlimited)
 } stream_retention_config_t;
 

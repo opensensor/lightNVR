@@ -259,8 +259,8 @@ int add_cached_stream_storage_usage_to_json(cJSON *json_obj, int force_refresh) 
             cJSON_AddNumberToObject(stream_obj, "count", stream_info[i].recording_count);
 
             // Look up per-stream retention config from global config
-            int retention_days = 0;
-            int detection_retention_days = 0;
+            int retention_days = -1;
+            int detection_retention_days = -1;
             int max_storage_mb = 0;
             for (int j = 0; j < g_config.max_streams; j++) {
                 if (g_config.streams[j].name[0] != '\0' &&
@@ -408,4 +408,3 @@ int update_stream_storage_cache_remove_recording(const char *stream_name, uint64
               stream_name);
     return 0;
 }
-

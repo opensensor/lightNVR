@@ -35,6 +35,7 @@
 #include "web/api_handlers_recording_tags.h"
 #include "web/api_handlers_metrics.h"
 #include "web/api_handlers_motion.h"
+#include "web/api_handlers_recording_control.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -82,6 +83,11 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/streams/test", "POST", handle_test_stream);
 
     // Stream-specific routes (must come before /api/streams/# wildcard)
+    http_server_register_handler(server, "/api/streams/#/recording", "GET",
+                                 handle_get_stream_recording);
+    http_server_register_handler(server, "/api/streams/#/recording", "POST",
+                                 handle_post_stream_recording);
+
     // Detection Zones API
     http_server_register_handler(server, "/api/streams/#/zones", "GET", handle_get_zones);
     http_server_register_handler(server, "/api/streams/#/zones", "POST", handle_post_zones);

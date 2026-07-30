@@ -17,8 +17,8 @@ int get_stream_storage_usage(const char *stream_name, uint64_t *size_bytes);
 
 // Structure
 typedef struct {
-    int retention_days;              // Regular recordings retention
-    int detection_retention_days;    // Detection recordings retention
+    int retention_days;              // -1 global, 0 unlimited, >0 days
+    int detection_retention_days;    // -1 global, 0 unlimited, >0 days
     uint64_t max_storage_mb;        // Storage quota (0 = unlimited)
 } stream_retention_config_t;
 ```
@@ -228,7 +228,8 @@ WHERE stream_name = ?
   "max_storage_mb": 0
 }
 ```
-Note: retention_days = 0 means unlimited retention
+`-1` inherits the live global setting, `0` means unlimited retention, and a
+positive number sets a per-stream day limit. New streams default to `-1`.
 
 ## Error Codes
 
@@ -239,4 +240,3 @@ Note: retention_days = 0 means unlimited retention
 | 403 | Permission denied |
 | 404 | Recording/Stream not found |
 | 500 | Internal server error |
-

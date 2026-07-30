@@ -233,6 +233,17 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
             }
             cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_i);
         }
+        cJSON_AddBoolToObject(stream_obj, "detection_record_on_schedule",
+                              db_streams[i].detection_record_on_schedule);
+        cJSON *detection_schedule_arr_i = cJSON_CreateArray();
+        if (detection_schedule_arr_i) {
+            for (int j = 0; j < 168; j++) {
+                cJSON_AddItemToArray(detection_schedule_arr_i,
+                    cJSON_CreateBool(db_streams[i].detection_recording_schedule[j] != 0));
+            }
+            cJSON_AddItemToObject(stream_obj, "detection_recording_schedule",
+                                  detection_schedule_arr_i);
+        }
         cJSON_AddStringToObject(stream_obj, "tags", db_streams[i].tags);
         cJSON_AddStringToObject(stream_obj, "admin_url", db_streams[i].admin_url);
         cJSON_AddBoolToObject(stream_obj, "privacy_mode", db_streams[i].privacy_mode);
@@ -407,6 +418,17 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_get);
     }
+    cJSON_AddBoolToObject(stream_obj, "detection_record_on_schedule",
+                          config.detection_record_on_schedule);
+    cJSON *detection_schedule_arr_get = cJSON_CreateArray();
+    if (detection_schedule_arr_get) {
+        for (int j = 0; j < 168; j++) {
+            cJSON_AddItemToArray(detection_schedule_arr_get,
+                cJSON_CreateBool(config.detection_recording_schedule[j] != 0));
+        }
+        cJSON_AddItemToObject(stream_obj, "detection_recording_schedule",
+                              detection_schedule_arr_get);
+    }
     cJSON_AddStringToObject(stream_obj, "tags", config.tags);
     cJSON_AddStringToObject(stream_obj, "admin_url", config.admin_url);
     cJSON_AddBoolToObject(stream_obj, "privacy_mode", config.privacy_mode);
@@ -575,6 +597,17 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         }
         cJSON_AddItemToObject(stream_obj, "recording_schedule", schedule_arr_full);
     }
+    cJSON_AddBoolToObject(stream_obj, "detection_record_on_schedule",
+                          config.detection_record_on_schedule);
+    cJSON *detection_schedule_arr_full = cJSON_CreateArray();
+    if (detection_schedule_arr_full) {
+        for (int j = 0; j < 168; j++) {
+            cJSON_AddItemToArray(detection_schedule_arr_full,
+                cJSON_CreateBool(config.detection_recording_schedule[j] != 0));
+        }
+        cJSON_AddItemToObject(stream_obj, "detection_recording_schedule",
+                              detection_schedule_arr_full);
+    }
     cJSON_AddStringToObject(stream_obj, "tags", config.tags);
     cJSON_AddStringToObject(stream_obj, "admin_url", config.admin_url);
     cJSON_AddBoolToObject(stream_obj, "privacy_mode", config.privacy_mode);
@@ -638,4 +671,3 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     free(json_str);
     cJSON_Delete(response);
 }
-

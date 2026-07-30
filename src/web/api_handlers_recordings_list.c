@@ -439,6 +439,12 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         cJSON_AddStringToObject(recording, "size", size_str);
         cJSON_AddStringToObject(recording, "capture_method",
                                 recordings[i].trigger_type[0] ? recordings[i].trigger_type : "scheduled");
+        if (recordings[i].schedule_restricted < 0) {
+            cJSON_AddNullToObject(recording, "schedule_restricted");
+        } else {
+            cJSON_AddBoolToObject(recording, "schedule_restricted",
+                                  recordings[i].schedule_restricted != 0);
+        }
 
         // Check if recording has detections and get detection labels summary
         bool has_detection_flag = (strcmp(recordings[i].trigger_type, "detection") == 0);
@@ -522,4 +528,3 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
     log_debug("Successfully handled GET /api/recordings request");
 }
-

@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';
+import { ManualRecordingButton } from './ManualRecordingButton.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
@@ -690,7 +691,8 @@ export function HLSVideoCell({
         position: 'relative',
         pointerEvents: 'auto',
         zIndex: 1,
-        cursor: zoom.isZoomed ? 'move' : undefined
+        cursor: zoom.isZoomed ? 'move' : undefined,
+        touchAction: zoom.touchAction
       }}
     >
       {/* Video element */}
@@ -821,6 +823,7 @@ export function HLSVideoCell({
           borderRadius: '4px'
         }}
       >
+        <ManualRecordingButton streamName={stream.name} />
         <div
           style={{
             backgroundColor: 'transparent',

@@ -120,6 +120,12 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(recording_obj, "size", size_str);
     cJSON_AddStringToObject(recording_obj, "capture_method",
                             recording.trigger_type[0] ? recording.trigger_type : "scheduled");
+    if (recording.schedule_restricted < 0) {
+        cJSON_AddNullToObject(recording_obj, "schedule_restricted");
+    } else {
+        cJSON_AddBoolToObject(recording_obj, "schedule_restricted",
+                              recording.schedule_restricted != 0);
+    }
 
     // Check if recording has detections and get detection labels summary
     bool has_detection_flag = (strcmp(recording.trigger_type, "detection") == 0);
@@ -774,4 +780,3 @@ void handle_batch_delete_progress(const http_request_t *req, http_response_t *re
     free(json_str);
     cJSON_Delete(response);
 }
-

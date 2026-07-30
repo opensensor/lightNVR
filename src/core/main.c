@@ -723,6 +723,7 @@ int main(int argc, char *argv[]) {
         log_error("Failed to initialize storage manager");
         goto cleanup;
     }
+    set_retention_days(config.retention_days);
     log_info("Storage manager initialized");
 
     // Start recording sync thread to ensure database file sizes are accurate
@@ -998,7 +999,8 @@ int main(int argc, char *argv[]) {
     // are still connecting.
     for (int i = 0; i < g_config.max_streams; i++) {
         if (config.streams[i].name[0] != '\0' && config.streams[i].enabled &&
-            config.streams[i].detection_based_recording && config.streams[i].detection_model[0] != '\0') {
+            config.streams[i].detection_based_recording &&
+            is_detection_recording_scheduled(&config.streams[i])) {
 
             // Determine the model path - handle API-based/built-in detection vs file-based models
             char model_path[MAX_PATH_LENGTH];
@@ -1008,7 +1010,12 @@ int main(int argc, char *argv[]) {
                                (strncmp(config.streams[i].detection_model, "http://", 7) == 0) ||
                                (strncmp(config.streams[i].detection_model, "https://", 8) == 0);
 
-            if (is_api_based) {
+            if (config.streams[i].detection_model[0] == '\0') {
+                model_path[0] = '\0';
+                log_info("No local detection model configured for stream %s; "
+                         "external triggers remain available",
+                         config.streams[i].name);
+            } else if (is_api_based) {
                 // For API-based or built-in detection (motion, onvif), use the model string as-is
                 safe_strcpy(model_path, config.streams[i].detection_model, MAX_PATH_LENGTH, 0);
                 log_info("Using built-in/API detection for stream %s: %s",
@@ -1773,7 +1780,10 @@ static void check_and_ensure_services(void) {
             }
         }
         // Handle detection-based recording - MOVED TO END OF SETUP
-        if (current_config->streams[i].name[0] != '\0' && current_config->streams[i].enabled && current_config->streams[i].detection_based_recording) {
+        if (current_config->streams[i].name[0] != '\0' &&
+            current_config->streams[i].enabled &&
+            current_config->streams[i].detection_based_recording &&
+            is_detection_recording_scheduled(&current_config->streams[i])) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = current_config->streams[i].record;
             log_info("Ensuring detection-based recording is active for stream: %s (annotation_only=%s)",

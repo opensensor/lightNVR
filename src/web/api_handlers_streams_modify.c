@@ -243,7 +243,8 @@ static void put_stream_worker(put_stream_task_t *task) {
     }
     // If detection was disabled and now enabled, start the detection thread
     else if (!detection_was_enabled && detection_now_enabled) {
-        if (task->config.detection_model[0] != '\0' && task->config.enabled) {
+        if (task->config.enabled &&
+            is_detection_recording_scheduled(&task->config)) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = task->config.record;
             log_info("Detection enabled for stream %s, starting unified detection thread with model %s (annotation_only=%s)",
@@ -266,7 +267,8 @@ static void put_stream_worker(put_stream_task_t *task) {
                 log_info("Successfully started unified detection thread for stream %s", task->config.name);
             }
         } else {
-            log_warn("Detection enabled for stream %s but no model specified or stream disabled", task->config.name);
+            log_info("Detection enabled for stream %s but inactive due to stream state or schedule",
+                     task->config.name);
         }
     }
     // If detection settings changed but detection was already enabled, restart the thread
@@ -277,7 +279,8 @@ static void put_stream_worker(put_stream_task_t *task) {
             log_warn("Failed to stop existing unified detection thread for stream %s", task->config.name);
         }
 
-        if (task->config.detection_model[0] != '\0' && task->config.enabled) {
+        if (task->config.enabled &&
+            is_detection_recording_scheduled(&task->config)) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = task->config.record;
             if (start_unified_detection_thread(task->config.name,
@@ -550,6 +553,11 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     config.post_detection_buffer = 5;
     config.protocol = STREAM_PROTOCOL_TCP;
     config.record_audio = true; // Default to true for new streams
+    config.retention_days = -1;
+    config.detection_retention_days = -1;
+    memset(config.recording_schedule, 1, sizeof(config.recording_schedule));
+    memset(config.detection_recording_schedule, 1,
+           sizeof(config.detection_recording_schedule));
 
     // Override with provided values
     cJSON *enabled = cJSON_GetObjectItem(stream_json, "enabled");
@@ -663,11 +671,23 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     // Parse retention policy settings
     cJSON *retention_days = cJSON_GetObjectItem(stream_json, "retention_days");
     if (retention_days && cJSON_IsNumber(retention_days)) {
+        if (retention_days->valueint < -1 || retention_days->valueint > 365) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400, "retention_days must be between -1 and 365");
+            return;
+        }
         config.retention_days = retention_days->valueint;
     }
 
     cJSON *detection_retention_days = cJSON_GetObjectItem(stream_json, "detection_retention_days");
     if (detection_retention_days && cJSON_IsNumber(detection_retention_days)) {
+        if (detection_retention_days->valueint < -1 ||
+            detection_retention_days->valueint > 365) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400,
+                "detection_retention_days must be between -1 and 365");
+            return;
+        }
         config.detection_retention_days = detection_retention_days->valueint;
     }
 
@@ -740,9 +760,23 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
                 config.recording_schedule[j] = (item && cJSON_IsTrue(item)) ? 1 : 0;
             }
         }
-    } else {
-        // Default: all hours enabled
-        memset(config.recording_schedule, 1, sizeof(config.recording_schedule));
+    }
+
+    cJSON *detection_record_on_schedule =
+        cJSON_GetObjectItem(stream_json, "detection_record_on_schedule");
+    if (detection_record_on_schedule && cJSON_IsBool(detection_record_on_schedule)) {
+        config.detection_record_on_schedule =
+            cJSON_IsTrue(detection_record_on_schedule);
+    }
+    cJSON *detection_recording_schedule =
+        cJSON_GetObjectItem(stream_json, "detection_recording_schedule");
+    if (detection_recording_schedule && cJSON_IsArray(detection_recording_schedule) &&
+        cJSON_GetArraySize(detection_recording_schedule) == 168) {
+        for (int j = 0; j < 168; j++) {
+            cJSON *item = cJSON_GetArrayItem(detection_recording_schedule, j);
+            config.detection_recording_schedule[j] =
+                (item && cJSON_IsTrue(item)) ? 1 : 0;
+        }
     }
 
     // Parse tags setting (comma-separated list, e.g. "outdoor,critical,entrance")
@@ -1007,8 +1041,9 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
             // Continue anyway, stream is created
         }
 
-        // Start detection thread if detection is enabled and we have a model
-        if (config.detection_based_recording && config.detection_model[0] != '\0') {
+        // Start detection when enabled and currently permitted by its schedule.
+        if (config.detection_based_recording &&
+            is_detection_recording_scheduled(&config)) {
             // If continuous recording is also enabled, run detection in annotation-only mode
             bool annotation_only = config.record;
             log_info("Detection enabled for new stream %s, starting unified detection thread with model %s (annotation_only=%s)",
@@ -1294,6 +1329,12 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     cJSON *retention_days = cJSON_GetObjectItem(stream_json, "retention_days");
     if (retention_days && cJSON_IsNumber(retention_days)) {
         int new_retention = retention_days->valueint;
+        if (new_retention < -1 || new_retention > 365) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400,
+                "retention_days must be between -1 and 365");
+            return;
+        }
         if (config.retention_days != new_retention) {
             config.retention_days = new_retention;
             config_changed = true;
@@ -1305,6 +1346,12 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     cJSON *detection_retention_days = cJSON_GetObjectItem(stream_json, "detection_retention_days");
     if (detection_retention_days && cJSON_IsNumber(detection_retention_days)) {
         int new_detection_retention = detection_retention_days->valueint;
+        if (new_detection_retention < -1 || new_detection_retention > 365) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400,
+                "detection_retention_days must be between -1 and 365");
+            return;
+        }
         if (config.detection_retention_days != new_detection_retention) {
             config.detection_retention_days = new_detection_retention;
             config_changed = true;
@@ -1447,6 +1494,38 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
                 config_changed = true;
                 log_info("Recording schedule updated for stream %s", config.name);
             }
+        }
+    }
+
+    cJSON *detection_record_on_schedule =
+        cJSON_GetObjectItem(stream_json, "detection_record_on_schedule");
+    if (detection_record_on_schedule && cJSON_IsBool(detection_record_on_schedule)) {
+        bool new_value = cJSON_IsTrue(detection_record_on_schedule);
+        if (config.detection_record_on_schedule != new_value) {
+            config.detection_record_on_schedule = new_value;
+            config_changed = true;
+            log_info("Detection recording schedule mode changed to %s for stream %s",
+                     new_value ? "enabled" : "disabled", config.name);
+        }
+    }
+
+    cJSON *detection_recording_schedule =
+        cJSON_GetObjectItem(stream_json, "detection_recording_schedule");
+    if (detection_recording_schedule &&
+        cJSON_IsArray(detection_recording_schedule) &&
+        cJSON_GetArraySize(detection_recording_schedule) == 168) {
+        bool changed = false;
+        for (int j = 0; j < 168; j++) {
+            cJSON *item = cJSON_GetArrayItem(detection_recording_schedule, j);
+            uint8_t new_value = (item && cJSON_IsTrue(item)) ? 1 : 0;
+            if (config.detection_recording_schedule[j] != new_value) {
+                config.detection_recording_schedule[j] = new_value;
+                changed = true;
+            }
+        }
+        if (changed) {
+            config_changed = true;
+            log_info("Detection recording schedule updated for stream %s", config.name);
         }
     }
 
@@ -1788,7 +1867,8 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
                             }
 
                             // If detection is enabled for this stream, start the unified detection thread
-                            if (stream_config.detection_based_recording && stream_config.detection_model[0] != '\0') {
+                            if (stream_config.detection_based_recording &&
+                                is_detection_recording_scheduled(&stream_config)) {
                                 // If continuous recording is also enabled, run detection in annotation-only mode
                                 bool annotation_only = stream_config.record;
                                 log_info("Starting unified detection thread for enabled stream %s (annotation_only=%s)",
@@ -2189,7 +2269,8 @@ static void refresh_stream_worker(refresh_stream_task_t *task) {
         stream_handle_t stream = get_stream_by_name(task->stream_name);
         stream_config_t config;
         if (stream && get_stream_config(stream, &config) == 0) {
-            if (config.detection_based_recording && config.detection_model[0] != '\0') {
+            if (config.detection_based_recording &&
+                is_detection_recording_scheduled(&config)) {
                 log_info("Restarting unified detection thread for stream: %s", task->stream_name);
 
                 // Stop existing detection thread if running

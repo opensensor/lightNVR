@@ -30,6 +30,13 @@ typedef struct {
     char trigger_type[16];     // Type of trigger ('scheduled', 'detection', 'motion', 'manual')
 } mp4_recording_ctx_t;
 
+typedef struct {
+    bool active;
+    bool initializing;
+    char trigger_type[16];
+    uint64_t recording_id;
+} recording_runtime_info_t;
+
 /**
  * Initialize MP4 recording backend
  * 
@@ -121,6 +128,14 @@ mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name);
  * @return Recording ID (>0) if a continuous recording is active, 0 if not recording
  */
 uint64_t get_current_recording_id_for_stream(const char *stream_name);
+
+/**
+ * Copy the current recording state without exposing a mutable writer pointer.
+ *
+ * @return 0 when a recording context exists, 1 when idle, -1 on bad input
+ */
+int get_mp4_recording_runtime_info(const char *stream_name,
+                                   recording_runtime_info_t *info);
 
 /**
  * Register an MP4 writer for a stream

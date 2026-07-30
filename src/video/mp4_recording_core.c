@@ -92,6 +92,36 @@ static void cleanup_dead_recording(mp4_recording_ctx_t *ctx, const char *stream_
     }
 }
 
+int get_mp4_recording_runtime_info(const char *stream_name,
+                                   recording_runtime_info_t *info) {
+    if (!stream_name || !info) {
+        return -1;
+    }
+
+    memset(info, 0, sizeof(*info));
+    pthread_mutex_lock(&recording_contexts_mutex);
+    for (int i = 0; i < g_config.max_streams; i++) {
+        mp4_recording_ctx_t *ctx = recording_contexts[i];
+        if (!ctx || strcmp(ctx->config.name, stream_name) != 0) {
+            continue;
+        }
+
+        info->initializing = ctx->running && ctx->mp4_writer == NULL;
+        info->active = ctx->running && ctx->mp4_writer != NULL &&
+                       mp4_writer_is_recording(ctx->mp4_writer);
+        safe_strcpy(info->trigger_type,
+                    ctx->trigger_type[0] ? ctx->trigger_type : "scheduled",
+                    sizeof(info->trigger_type), 0);
+        if (ctx->mp4_writer) {
+            info->recording_id = ctx->mp4_writer->current_recording_id;
+        }
+        pthread_mutex_unlock(&recording_contexts_mutex);
+        return (info->active || info->initializing) ? 0 : 1;
+    }
+    pthread_mutex_unlock(&recording_contexts_mutex);
+    return 1;
+}
+
 /**
  * MP4 recording thread function for a single stream
  *
@@ -187,6 +217,9 @@ static void *mp4_recording_thread(void *arg) {
     if (ctx->trigger_type[0] != '\0') {
         safe_strcpy(ctx->mp4_writer->trigger_type, ctx->trigger_type, sizeof(ctx->mp4_writer->trigger_type), 0);
     }
+    ctx->mp4_writer->schedule_restricted =
+        strcmp(ctx->mp4_writer->trigger_type, "scheduled") == 0 &&
+        ctx->config.record_on_schedule;
 
     log_info("Created MP4 writer for %s at %s (trigger_type: %s)", stream_name, ctx->output_path, ctx->mp4_writer->trigger_type);
 

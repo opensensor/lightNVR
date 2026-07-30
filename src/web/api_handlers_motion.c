@@ -441,10 +441,16 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
      * users with no way to put an external event on their timeline (#466).
      * Accept the request, do everything that *is* possible (detections, tags,
      * MQTT, cross-stream fan-out), and report what was skipped. */
-    bool can_trigger_recording = cfg.detection_based_recording;
-    if (!can_trigger_recording) {
+    bool schedule_allows_trigger = is_detection_recording_scheduled(&cfg);
+    bool can_trigger_recording =
+        cfg.detection_based_recording && schedule_allows_trigger;
+    if (!cfg.detection_based_recording) {
         log_info("Stream '%s' has no detection-based recording; recording trigger skipped "
                  "(detections/tags still recorded)", stream_name);
+    } else if (!schedule_allows_trigger) {
+        log_info("Stream '%s' is outside its detection recording schedule; "
+                 "recording trigger skipped (detections/tags still recorded)",
+                 stream_name);
     }
 
     /* ---- Dispatch -------------------------------------------------------- */
@@ -463,6 +469,8 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
      * linkage. Only meaningful on the leading edge — a "stop" reports nothing
      * new about what was seen. */
     int stored_detections = 0;
+    uint64_t current_recording_id =
+        get_current_recording_id_for_stream(stream_name);
     if (active && detections.count > 0) {
         /* Honour zone filtering so an external trigger respects the same zone
          * configuration a model detection would. */
@@ -470,7 +478,8 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             log_warn("Failed to filter detections by zones for '%s'; storing all", stream_name);
         }
         if (detections.count > 0) {
-            if (store_detections_in_db(stream_name, &detections, now, 0) == 0) {
+            if (store_detections_in_db(stream_name, &detections, now,
+                                       current_recording_id) == 0) {
                 stored_detections = detections.count;
             } else {
                 log_warn("Failed to store external detections for stream '%s'", stream_name);
@@ -485,10 +494,9 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
      * instant, so tag_count is reported as applied=0 rather than guessed at. */
     int tags_applied = 0;
     if (active && tag_count > 0) {
-        uint64_t recording_id = get_current_recording_id_for_stream(stream_name);
-        if (recording_id != 0) {
+        if (current_recording_id != 0) {
             for (int i = 0; i < tag_count; i++) {
-                if (db_recording_tag_add(recording_id, tags[i]) == 0) {
+                if (db_recording_tag_add(current_recording_id, tags[i]) == 0) {
                     tags_applied++;
                 }
             }
@@ -564,10 +572,14 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     cJSON_AddBoolToObject(resp, "recording_triggered", can_trigger_recording);
     cJSON_AddNumberToObject(resp, "detections_stored", stored_detections);
     cJSON_AddNumberToObject(resp, "tags_applied", tags_applied);
-    if (!can_trigger_recording) {
+    if (!cfg.detection_based_recording) {
         cJSON_AddStringToObject(resp, "warning",
             "Stream does not have detection-based recording enabled; "
             "the event was recorded but no recording was triggered");
+    } else if (!schedule_allows_trigger) {
+        cJSON_AddStringToObject(resp, "warning",
+            "The event was recorded, but no recording was triggered because "
+            "the stream is outside its detection recording schedule");
     }
 
     char *json_str = cJSON_PrintUnformatted(resp);

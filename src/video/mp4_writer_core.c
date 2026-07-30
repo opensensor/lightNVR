@@ -58,6 +58,7 @@ mp4_writer_t *mp4_writer_create(const char *output_path, const char *stream_name
     writer->has_audio = 1;         // Initialize to 1 to enable audio by default
     writer->current_recording_id = 0; // Initialize to 0 to indicate no recording ID yet
     safe_strcpy(writer->trigger_type, "scheduled", sizeof(writer->trigger_type), 0); // Default to scheduled
+    writer->schedule_restricted = 0;
 
     // Initialize audio state
     writer->audio.stream_idx = -1; // Initialize to -1 to indicate no audio stream
@@ -285,4 +286,3 @@ void mp4_writer_close(mp4_writer_t *writer) {
 
     log_info("MP4 writer closed and resources freed");
 }
-

@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';
+import { ManualRecordingButton } from './ManualRecordingButton.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
@@ -19,6 +20,7 @@ import { useI18n } from '../../i18n.js';
 import { useQueryClient } from '../../query-client.js';
 import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 import { useAutoRetry } from './useAutoRetry.js';
+import { useVideoZoom } from './useVideoZoom.js';
 import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
 
 /**
@@ -66,6 +68,7 @@ export function MSEVideoCell({
   // Detection overlay visibility state (per-camera toggle, constrained by global toggle)
   const [localShowDetections, setLocalShowDetections] = useState(true);
   const showDetections = globalShowDetections && localShowDetections;
+  const zoom = useVideoZoom();
 
   // Refs
   const videoRef = useRef(null);
@@ -658,11 +661,17 @@ export function MSEVideoCell({
       data-stream-name={stream.name}
       data-stream-id={streamId}
       data-sub-stream={useSubStream ? 'true' : 'false'}
-      ref={cellRef}
+      data-zoom-scale={zoom.isZoomed ? zoom.scale.toFixed(2) : undefined}
+      ref={(el) => {
+        cellRef.current = el;
+        zoom.containerRef.current = el;
+      }}
       style={{
         position: 'relative',
         pointerEvents: 'auto',
-        zIndex: 1
+        zIndex: 1,
+        cursor: zoom.isZoomed ? 'move' : undefined,
+        touchAction: zoom.touchAction
       }}
     >
       {/* Video element */}
@@ -673,11 +682,17 @@ export function MSEVideoCell({
         autoPlay
         muted
         playsInline
-        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          transform: zoom.transform,
+          transformOrigin: 'center center'
+        }}
       />
 
       {/* Detection overlay component */}
-      {stream.detection_based_recording && stream.detection_model && showDetections && (
+      {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && (
         <DetectionOverlay
           ref={detectionOverlayRef}
           streamName={stream.name}
@@ -685,6 +700,29 @@ export function MSEVideoCell({
           enabled={isPlaying}
           detectionModel={stream.detection_model}
         />
+      )}
+
+      {zoom.isZoomed && (
+        <button
+          type="button"
+          onClick={(event) => { event.stopPropagation(); zoom.reset(); }}
+          title={t('live.resetZoom')}
+          aria-label={t('live.resetZoom')}
+          style={{
+            position: 'absolute',
+            top: '42px',
+            right: '10px',
+            padding: '4px 8px',
+            color: 'white',
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            border: 'none',
+            borderRadius: '4px',
+            zIndex: 12,
+            cursor: 'pointer'
+          }}
+        >
+          {zoom.scale.toFixed(1)}×
+        </button>
       )}
 
       {/* Stream name label */}
@@ -827,6 +865,7 @@ export function MSEVideoCell({
             zIndex: 10
           }}
         >
+          <ManualRecordingButton streamName={stream.name} />
           {/* Snapshot button */}
           <SnapshotButton streamId={streamId} streamName={stream.name} onSnapshot={handleSnapshot} />
 
@@ -1062,4 +1101,3 @@ export function MSEVideoCell({
     </div>
   );
 }
-

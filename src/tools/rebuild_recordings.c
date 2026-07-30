@@ -311,6 +311,7 @@ static bool add_recording_to_db(const recording_file_info_t *info) {
     
     // Fill in metadata
     memset(&metadata, 0, sizeof(recording_metadata_t));
+    metadata.schedule_restricted = -1;
     safe_strcpy(metadata.stream_name, info->stream_name, sizeof(metadata.stream_name), 0);
     safe_strcpy(metadata.file_path, info->path, sizeof(metadata.file_path), 0);
     metadata.start_time = info->start_time;

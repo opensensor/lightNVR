@@ -165,7 +165,19 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
     };
 
     const handlePointerDown = (event) => {
+      // Never turn a press on an overlay control into a pan — the live-view
+      // tiles put snapshot/PTZ/fullscreen buttons on top of the video.
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('button, a, input, select, textarea, label, [role="button"]')) {
+        return;
+      }
+
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      try {
+        container.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is unavailable on a few older embedded browsers.
+      }
 
       if (pointers.size === 2) {
         panStateRef.current = null;
@@ -173,13 +185,6 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
           startDistance: pinchDistance(),
           startScale: scaleRef.current,
         };
-        return;
-      }
-
-      // Never turn a press on an overlay control into a pan — the live-view
-      // tiles put snapshot/PTZ/fullscreen buttons on top of the video.
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest('button, a, input, select, textarea, label, [role="button"]')) {
         return;
       }
 
@@ -226,6 +231,13 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
 
     const endPointer = (event) => {
       pointers.delete(event.pointerId);
+      try {
+        if (container.hasPointerCapture(event.pointerId)) {
+          container.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // The pointer may already have been released by the browser.
+      }
       if (pointers.size < 2) pinchStateRef.current = null;
       if (panStateRef.current && panStateRef.current.pointerId === event.pointerId) {
         panStateRef.current = null;
@@ -236,14 +248,12 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
     container.addEventListener('pointermove', handlePointerMove, { passive: false });
     container.addEventListener('pointerup', endPointer);
     container.addEventListener('pointercancel', endPointer);
-    container.addEventListener('pointerleave', endPointer);
 
     return () => {
       container.removeEventListener('pointerdown', handlePointerDown);
       container.removeEventListener('pointermove', handlePointerMove);
       container.removeEventListener('pointerup', endPointer);
       container.removeEventListener('pointercancel', endPointer);
-      container.removeEventListener('pointerleave', endPointer);
       pointers.clear();
       panStateRef.current = null;
       pinchStateRef.current = null;
@@ -282,6 +292,7 @@ export function useVideoZoom({ enabled = true, maxScale = MAX_ZOOM_SCALE } = {})
     offset,
     isZoomed,
     transform,
+    touchAction: isZoomed ? 'none' : 'pan-y',
     reset,
     zoomBy,
     zoomAtPoint,

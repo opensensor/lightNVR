@@ -60,8 +60,8 @@ typedef struct {
     bool backchannel_enabled; // Whether two-way audio is enabled for this stream
 
     // Per-stream retention policy settings
-    int retention_days;              // Regular recordings retention (0 = use global)
-    int detection_retention_days;    // Detection recordings retention (0 = use global)
+    int retention_days;              // -1 = use global, 0 = unlimited, >0 = days
+    int detection_retention_days;    // -1 = use global, 0 = unlimited, >0 = days
     int max_storage_mb;              // Storage quota in MB (0 = unlimited)
 
     // Tiered retention multipliers (applied to base retention_days)
@@ -80,6 +80,8 @@ typedef struct {
     // Recording schedule configuration
     bool record_on_schedule;         // When true, only record during scheduled hours
     uint8_t recording_schedule[168]; // 7 days x 24 hours: [day*24+hour] = 1 to record, 0 to skip
+    bool detection_record_on_schedule;         // Gate detection-triggered recordings independently
+    uint8_t detection_recording_schedule[168]; // 7 days x 24 hours; defaults to all enabled
 
     // Camera tags (comma-separated, e.g. "outdoor,critical,entrance")
     // Replaces the former single group_name field — supports multi-label filtering and RBAC

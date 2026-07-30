@@ -232,11 +232,12 @@ static bool check_stream_data_flow(const char *stream_name) {
     int api_port_val = go2rtc_stream_get_api_port();
     if (api_port_val == 0) api_port_val = 1984;
 
-    // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_name[MAX_STREAM_NAME * 3];
-    simple_url_escape(stream_name, encoded_name, MAX_STREAM_NAME * 3);
-
-    snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams?src=%s", api_port_val, encoded_name);
+    // Fetch the complete map. go2rtc's filtered ?src response is a single
+    // stream object on some releases and a keyed map on others; treating it as
+    // a map caused healthy streams to be logged as missing and repeatedly
+    // reloaded (#457).
+    snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams",
+             api_port_val);
 
     char *response = NULL;
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -273,7 +274,13 @@ static bool check_stream_data_flow(const char *stream_name) {
 
     // Find the stream in the response
     // go2rtc returns: { "stream_name": { "producers": [...], "consumers": [...] } }
-    cJSON *stream_obj = cJSON_GetObjectItem(root, stream_name);
+    cJSON *stream_obj = cJSON_GetObjectItemCaseSensitive(root, stream_name);
+    // Tolerate a single-stream object too, for compatibility with proxies that
+    // still rewrite the endpoint into a filtered request.
+    if (!stream_obj && (cJSON_HasObjectItem(root, "producers") ||
+                        cJSON_HasObjectItem(root, "consumers"))) {
+        stream_obj = root;
+    }
     if (!stream_obj) {
         cJSON_Delete(root);
         log_debug("Stream %s not found in go2rtc response", stream_name);
@@ -1149,9 +1156,14 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
 }
 
 int go2rtc_integration_start_recording(const char *stream_name) {
+    return go2rtc_integration_start_recording_with_trigger(stream_name, "scheduled");
+}
+
+int go2rtc_integration_start_recording_with_trigger(const char *stream_name,
+                                                    const char *trigger_type) {
     if (!g_initialized) {
         log_info("go2rtc integration not initialized, using direct MP4 recording for %s", stream_name);
-        return start_mp4_recording(stream_name);
+        return start_mp4_recording_with_trigger(stream_name, trigger_type);
     }
 
     if (!stream_name) {
@@ -1192,7 +1204,7 @@ int go2rtc_integration_start_recording(const char *stream_name) {
         // runtime.  If go2rtc fails, the thread falls back to the original
         // camera URL — critical for legacy cameras that work with direct
         // connections but not through go2rtc's proxy.
-        int result = start_mp4_recording(stream_name);
+        int result = start_mp4_recording_with_trigger(stream_name, trigger_type);
         if (result == 0) {
             log_info("Started MP4 recording for stream %s using go2rtc's RTSP output", stream_name);
         }
@@ -1201,7 +1213,7 @@ int go2rtc_integration_start_recording(const char *stream_name) {
     } else {
         // Fall back to default recording
         log_info("Using default recording for stream %s", stream_name);
-        return start_mp4_recording(stream_name);
+        return start_mp4_recording_with_trigger(stream_name, trigger_type);
     }
 }
 

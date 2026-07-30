@@ -98,11 +98,24 @@ void handle_put_stream_retention(const http_request_t *req, http_response_t *res
     // Update with provided values
     cJSON *retention_days = cJSON_GetObjectItem(json, "retention_days");
     if (retention_days && cJSON_IsNumber(retention_days)) {
+        if (retention_days->valueint < -1 || retention_days->valueint > 365) {
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 400,
+                "retention_days must be between -1 and 365");
+            return;
+        }
         config.retention_days = retention_days->valueint;
     }
 
     cJSON *detection_retention_days = cJSON_GetObjectItem(json, "detection_retention_days");
     if (detection_retention_days && cJSON_IsNumber(detection_retention_days)) {
+        if (detection_retention_days->valueint < -1 ||
+            detection_retention_days->valueint > 365) {
+            cJSON_Delete(json);
+            http_response_set_json_error(res, 400,
+                "detection_retention_days must be between -1 and 365");
+            return;
+        }
         config.detection_retention_days = detection_retention_days->valueint;
     }
 

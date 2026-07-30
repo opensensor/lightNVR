@@ -31,6 +31,7 @@
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/hls/hls_api.h"
 #include "core/mqtt_client.h"
+#include "storage/storage_manager.h"
 #include "utils/yaml_validate.h"
 
 /**
@@ -905,7 +906,14 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     // Retention days
     cJSON *retention_days = cJSON_GetObjectItem(settings, "retention_days");
     if (retention_days && cJSON_IsNumber(retention_days)) {
+        if (retention_days->valueint < 0 || retention_days->valueint > 365) {
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "retention_days must be between 0 and 365");
+            return;
+        }
         g_config.retention_days = retention_days->valueint;
+        set_retention_days(g_config.retention_days);
         settings_changed = true;
         log_info("Updated retention_days: %d", g_config.retention_days);
     }

@@ -34,8 +34,8 @@ export function StreamStorage({ systemInfo, formatBytes }) {
   const totalStreamStoragePercent = totalDiskSpace ?
     (totalStreamStorage / totalDiskSpace * 100).toFixed(1) : 0;
 
-  // Resolve effective retention: 0 means use global default
-  const globalRetentionDays = systemInfo.global_retention_days || 30;
+  // Resolve tri-state retention: -1 inherits global, 0 is unlimited.
+  const globalRetentionDays = systemInfo.global_retention_days ?? 30;
 
   // Calculate the percentage of each stream relative to the total stream storage
   const streamStorageData = systemInfo.streamStorage.map(stream => ({
@@ -43,11 +43,10 @@ export function StreamStorage({ systemInfo, formatBytes }) {
     size: stream.size,
     count: stream.count,
     slicePercent: totalStreamStorage ? (stream.size / totalStreamStorage * 100).toFixed(1) : 0,
-    retentionDays: stream.retention_days || 0,
-    detectionRetentionDays: stream.detection_retention_days || 0,
+    retentionDays: stream.retention_days ?? -1,
+    detectionRetentionDays: stream.detection_retention_days ?? -1,
     maxStorageMb: stream.max_storage_mb || 0,
-    // Effective retention: per-stream value if set, otherwise global
-    effectiveRetentionDays: stream.retention_days > 0 ? stream.retention_days : globalRetentionDays,
+    effectiveRetentionDays: stream.retention_days < 0 ? globalRetentionDays : stream.retention_days,
   }));
 
   // Sort streams by size (largest first)
@@ -116,9 +115,11 @@ export function StreamStorage({ systemInfo, formatBytes }) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
               {streamStorageData.map((stream, index) => {
                 const color = getStreamColor(index);
-                const retentionLabel = stream.retentionDays > 0
-                  ? `${stream.retentionDays}d`
-                  : t('system.retentionGlobalDays', { days: globalRetentionDays });
+                const retentionLabel = stream.retentionDays < 0
+                  ? globalRetentionDays === 0
+                    ? 'Unlimited (global)'
+                    : t('system.retentionGlobalDays', { days: globalRetentionDays })
+                  : stream.retentionDays === 0 ? 'Unlimited' : `${stream.retentionDays}d`;
                 const quotaLabel = stream.maxStorageMb > 0
                   ? t('system.quotaMbLimit', { mb: stream.maxStorageMb })
                   : t('system.noQuota');

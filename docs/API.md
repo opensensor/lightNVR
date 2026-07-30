@@ -110,7 +110,10 @@ Returns a list of all configured streams.
       "ptz_enabled": false,
       "backchannel_enabled": false,
       "buffer_strategy": "auto",
-      "retention_days": 30,
+      "retention_days": -1,
+      "detection_retention_days": -1,
+      "record_on_schedule": false,
+      "detection_record_on_schedule": false,
       "status": "connected"
     }
   ]
@@ -132,6 +135,28 @@ GET /api/streams/{name}/full
 ```
 
 Returns complete stream information including all configuration fields.
+
+Per-stream retention values are tri-state: `-1` inherits the current global
+retention value, `0` is unlimited, and a positive value is a day override.
+Continuous and detection-triggered recording have independent weekly schedule
+toggles and 168-element Sunday-through-Saturday hour grids.
+
+#### Manual Recording Control
+
+```
+GET /api/streams/{name}/recording
+POST /api/streams/{name}/recording
+```
+
+`GET` returns `idle`, `starting`, or `recording`, along with the active
+`capture_method`, recording ID, and whether the caller may use manual control.
+It is available to viewers who may access the stream.
+
+`POST` accepts `{"action":"start"}` or `{"action":"stop"}`. `ADMIN`, `USER`,
+and `API` roles may call it; `VIEWER` is read-only. Manual start returns `409`
+if continuous, detection, or another manual recording is active. Manual stop
+returns `409` unless the active recording was itself started manually, so it
+never interrupts scheduled or detection capture.
 
 #### Add Stream
 
@@ -490,6 +515,12 @@ GET /api/recordings
 ```
 
 Returns a list of recordings. Supports query parameters for filtering by stream name, date range, and pagination.
+
+The existing `capture_method` values remain `scheduled`, `detection`, `motion`,
+or `manual`. Responses also include `schedule_restricted`: `true` when the
+capture mode was gated by a weekly schedule, `false` when it was unrestricted,
+and `null` for recordings created before that metadata existed. Timeline
+segment responses expose the same nullable field.
 
 #### Get Recording
 

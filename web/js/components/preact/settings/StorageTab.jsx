@@ -55,16 +55,20 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
         </div>
         <div data-setting-label={t('settings.retentionDays')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-retention" class="font-medium">{t('settings.retentionDays')}</label>
-          <input
-            type="number"
-            id="setting-retention"
-            name="retention"
-            min="1"
-            class="col-span-2 p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
-            value={settings.retention}
-            onChange={handleInputChange}
-            disabled={!canModifySettings}
-          />
+          <div class="col-span-2">
+            <input
+              type="number"
+              id="setting-retention"
+              name="retention"
+              min="0"
+              max="365"
+              class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.retention}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            />
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.zeroUnlimited')}</span>
+          </div>
         </div>
         <div data-setting-label={t('settings.autoDeleteOldest')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-auto-delete" class="font-medium">{t('settings.autoDeleteOldest')}</label>

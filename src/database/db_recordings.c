@@ -79,8 +79,8 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
 
     const char *sql = "INSERT INTO recordings (stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-                      "retention_tier, disk_pressure_eligible) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                      "retention_tier, disk_pressure_eligible, schedule_restricted) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -129,6 +129,11 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
     sqlite3_bind_int(stmt, 12, retention_tier);
     bool pressure_eligible = metadata->disk_pressure_eligible || !metadata->protected;
     sqlite3_bind_int(stmt, 13, pressure_eligible ? 1 : 0);
+    if (metadata->schedule_restricted < 0) {
+        sqlite3_bind_null(stmt, 14);
+    } else {
+        sqlite3_bind_int(stmt, 14, metadata->schedule_restricted ? 1 : 0);
+    }
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -270,7 +275,8 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
 
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-                      "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+                      "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
+                      "schedule_restricted "
                       "FROM recordings WHERE id = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -344,6 +350,8 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
             ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
         metadata->disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
             ? (sqlite3_column_int(stmt, 15) != 0) : true;
+        metadata->schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 16) != 0) : -1;
 
         result = 0; // Success
     }
@@ -378,7 +386,8 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
 
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-                      "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+                      "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
+                      "schedule_restricted "
                       "FROM recordings WHERE file_path = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -448,6 +457,8 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
             ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
         metadata->disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
             ? (sqlite3_column_int(stmt, 15) != 0) : true;
+        metadata->schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 16) != 0) : -1;
 
         result = 0; // Success
     }
@@ -485,7 +496,8 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     char sql[1024];
     snprintf(sql, sizeof(sql), "SELECT id, stream_name, file_path, start_time, end_time, "
                  "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-                 "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+                 "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
+                 "schedule_restricted "
                  "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL"); // Only complete recordings with end_time set
 
     if (start_time > 0) {
@@ -590,6 +602,8 @@ int get_recording_metadata(time_t start_time, time_t end_time,
                 ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
             metadata[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
                 ? (sqlite3_column_int(stmt, 15) != 0) : true;
+            metadata[count].schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
+                ? (sqlite3_column_int(stmt, 16) != 0) : -1;
 
             count++;
         }
@@ -876,7 +890,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     snprintf(sql, sizeof(sql),
             "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
             "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
-            "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible "
+            "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible, "
+            "r.schedule_restricted "
             "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection == 1) {
@@ -1104,6 +1119,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                 ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
             metadata[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
                 ? (sqlite3_column_int(stmt, 15) != 0) : true;
+            metadata[count].schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
+                ? (sqlite3_column_int(stmt, 16) != 0) : -1;
 
             count++;
         }
@@ -1864,7 +1881,8 @@ int get_recordings_for_tiered_retention(const char *stream_name,
     if (stream_name) {
         sql = "SELECT id, stream_name, file_path, start_time, end_time, "
               "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-              "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+              "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
+              "schedule_restricted "
               "FROM recordings "
               "WHERE stream_name = ? "
               "AND protected = 0 "
@@ -1882,7 +1900,8 @@ int get_recordings_for_tiered_retention(const char *stream_name,
     } else {
         sql = "SELECT id, stream_name, file_path, start_time, end_time, "
               "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-              "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+              "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
+              "schedule_restricted "
               "FROM recordings "
               "WHERE protected = 0 "
               "AND is_complete = 1 "
@@ -1957,6 +1976,8 @@ int get_recordings_for_tiered_retention(const char *stream_name,
             ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
         recordings[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
             ? (sqlite3_column_int(stmt, 15) != 0) : true;
+        recordings[count].schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 16) != 0) : -1;
 
         count++;
     }
@@ -1999,7 +2020,8 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
     const char *sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-        "protected, retention_override_days, retention_tier, disk_pressure_eligible "
+        "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
+        "schedule_restricted "
         "FROM recordings "
         "WHERE protected = 0 "
         "AND disk_pressure_eligible = 1 "
@@ -2061,6 +2083,8 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
             ? sqlite3_column_int(stmt, 14) : RETENTION_TIER_STANDARD;
         recordings[count].disk_pressure_eligible = (sqlite3_column_type(stmt, 15) != SQLITE_NULL)
             ? (sqlite3_column_int(stmt, 15) != 0) : true;
+        recordings[count].schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
+            ? (sqlite3_column_int(stmt, 16) != 0) : -1;
 
         count++;
     }
@@ -2151,6 +2175,7 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
         recordings[count].retention_override_days = -1;
         recordings[count].retention_tier = RETENTION_TIER_STANDARD;
         recordings[count].disk_pressure_eligible = true;
+        recordings[count].schedule_restricted = -1;
 
         count++;
     }

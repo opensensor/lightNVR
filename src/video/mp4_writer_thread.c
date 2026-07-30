@@ -68,6 +68,7 @@ static void on_segment_started_cb(void *user_ctx) {
         // at tier CRITICAL (0) with disk_pressure_eligible = 0.
         metadata.retention_tier = RETENTION_TIER_STANDARD;
         metadata.disk_pressure_eligible = true;
+        metadata.schedule_restricted = thread_ctx->writer->schedule_restricted;
         safe_strcpy(metadata.trigger_type, thread_ctx->writer->trigger_type, sizeof(metadata.trigger_type), 0);
 
         uint64_t recording_id = add_recording_metadata(&metadata);

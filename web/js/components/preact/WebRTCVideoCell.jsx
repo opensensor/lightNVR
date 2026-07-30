@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { DetectionOverlay, drawDetectionsOnCanvas } from './DetectionOverlay.jsx';
 import { SnapshotButton } from './SnapshotManager.jsx';
+import { ManualRecordingButton } from './ManualRecordingButton.jsx';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { PTZControls } from './PTZControls.jsx';
@@ -29,8 +30,8 @@ import 'webrtc-adapter';
 // Configuration for detecting lack of incoming video data.
 // MAX_VIDEO_DATA_CHECKS × VIDEO_DATA_CHECK_INTERVAL_MS defines the total
 // time we will wait for video frames before surfacing an error.
-const MAX_VIDEO_DATA_CHECKS = 6; // 6 checks × 15,000 ms (15s) interval = 90s total
-const VIDEO_DATA_CHECK_INTERVAL_MS = 15000; // 15 seconds between checks
+const MAX_VIDEO_DATA_CHECKS = 12; // 12 checks × 5,000 ms = 60s total
+const VIDEO_DATA_CHECK_INTERVAL_MS = 5000; // check quickly enough for a 10s fallback
 const MIN_NO_DATA_CHECKS_BEFORE_RETRY = 2;
 const MAX_NO_DATA_RECONNECT_ATTEMPTS = 3;
 const MAX_OFFER_RETRIES = 4;
@@ -444,7 +445,7 @@ export function WebRTCVideoCell({
                 });
               }
 
-              // After 30 s with ICE connected but no video data, auto-retry
+              // After 10 s with ICE connected but no video data, auto-retry
               // the entire WebRTC connection.  This recovers from go2rtc RTSP
               // source issues (camera offline, stale state, etc.) without
               // requiring the user to click Retry manually.  Mirrors the
@@ -1353,7 +1354,8 @@ export function WebRTCVideoCell({
         position: 'relative',
         pointerEvents: 'auto',
         zIndex: 1,
-        cursor: zoom.isZoomed ? 'move' : undefined
+        cursor: zoom.isZoomed ? 'move' : undefined,
+        touchAction: zoom.touchAction
       }}
     >
       {/* Video element */}
@@ -1498,6 +1500,7 @@ export function WebRTCVideoCell({
           borderRadius: '4px'
         }}
       >
+        <ManualRecordingButton streamName={stream.name} />
         <div
           style={{
             backgroundColor: 'transparent',

@@ -660,6 +660,14 @@ static const char migration_0044_up[] =
 static const char migration_0044_down[] =
     "SELECT 1;";
 
+static const char migration_0045_up[] =
+    "ALTER TABLE recordings ADD COLUMN schedule_restricted INTEGER DEFAULT NULL;\n"
+    "ALTER TABLE streams ADD COLUMN detection_record_on_schedule INTEGER NOT NULL DEFAULT 0;\n"
+    "ALTER TABLE streams ADD COLUMN detection_recording_schedule TEXT DEFAULT NULL;";
+
+static const char migration_0045_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -969,8 +977,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0044_down,
         .is_embedded = true
     },
+    {
+        .version = "0045",
+        .description = "add_recording_schedule_metadata_and_detection_schedule",
+        .sql_up = migration_0045_up,
+        .sql_down = migration_0045_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 44
+#define EMBEDDED_MIGRATIONS_COUNT 45
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

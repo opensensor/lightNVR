@@ -25,6 +25,7 @@ typedef struct {
     int retention_override_days;  // Custom retention period override (-1 = use stream default)
     int retention_tier;     // 0=Critical, 1=Important, 2=Standard, 3=Ephemeral
     bool disk_pressure_eligible;  // If true, recording can be deleted under disk pressure
+    int schedule_restricted; // -1 = unknown/legacy, 0 = unrestricted, 1 = schedule-gated
 } recording_metadata_t;
 
 // Retention tier constants

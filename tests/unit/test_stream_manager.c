@@ -193,6 +193,34 @@ void test_get_active_stream_count(void) {
     shutdown_stream_manager();
 }
 
+void test_independent_recording_schedules_use_current_hour(void) {
+    stream_config_t cfg = make_config("scheduled");
+    cfg.record_on_schedule = true;
+    cfg.detection_record_on_schedule = true;
+    memset(cfg.recording_schedule, 0, sizeof(cfg.recording_schedule));
+    memset(cfg.detection_recording_schedule, 0,
+           sizeof(cfg.detection_recording_schedule));
+
+    time_t now = time(NULL);
+    struct tm tm_info;
+    localtime_r(&now, &tm_info);
+    int index = tm_info.tm_wday * 24 + tm_info.tm_hour;
+    cfg.recording_schedule[index] = 1;
+
+    TEST_ASSERT_TRUE(is_recording_scheduled(&cfg));
+    TEST_ASSERT_FALSE(is_detection_recording_scheduled(&cfg));
+
+    cfg.recording_schedule[index] = 0;
+    cfg.detection_recording_schedule[index] = 1;
+    TEST_ASSERT_FALSE(is_recording_scheduled(&cfg));
+    TEST_ASSERT_TRUE(is_detection_recording_scheduled(&cfg));
+
+    cfg.record_on_schedule = false;
+    cfg.detection_record_on_schedule = false;
+    TEST_ASSERT_TRUE(is_recording_scheduled(&cfg));
+    TEST_ASSERT_TRUE(is_detection_recording_scheduled(&cfg));
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_init_shutdown_lifecycle);
@@ -208,6 +236,6 @@ int main(void) {
     RUN_TEST(test_set_stream_priority);
     RUN_TEST(test_set_stream_recording);
     RUN_TEST(test_get_active_stream_count);
+    RUN_TEST(test_independent_recording_schedules_use_current_hour);
     return UNITY_END();
 }
-

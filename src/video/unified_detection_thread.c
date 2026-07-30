@@ -129,6 +129,8 @@ static int process_packet(unified_detection_ctx_t *ctx, AVPacket *pkt);
 static int udt_start_recording(unified_detection_ctx_t *ctx);
 static int udt_stop_recording(unified_detection_ctx_t *ctx);
 static int flush_prebuffer_to_recording(unified_detection_ctx_t *ctx);
+static uint64_t detection_link_recording_id(unified_detection_ctx_t *ctx);
+static bool should_annotate_continuous(unified_detection_ctx_t *ctx);
 // ONVIF async detection thread helpers (defined before start_unified_detection_thread)
 static void *onvif_detection_thread_func(void *arg);
 static int   start_onvif_detection_thread(unified_detection_ctx_t *ctx);
@@ -169,6 +171,22 @@ static void udt_update_stream_video_params(unified_detection_ctx_t *ctx,
                                            const char *det_codec,
                                            bool fps_is_provisional);
 static const char* state_to_string(unified_detection_state_t state);
+
+static uint64_t detection_link_recording_id(unified_detection_ctx_t *ctx) {
+    if (!ctx) {
+        return 0;
+    }
+    uint64_t detection_id = atomic_load(&ctx->current_recording_id);
+    if (detection_id != 0) {
+        return detection_id;
+    }
+    return get_current_recording_id_for_stream(ctx->stream_name);
+}
+
+static bool should_annotate_continuous(unified_detection_ctx_t *ctx) {
+    return ctx && atomic_load(&ctx->current_recording_id) == 0 &&
+           get_current_recording_id_for_stream(ctx->stream_name) != 0;
+}
 
 /**
  * FFmpeg interrupt callback to allow cancellation of blocking operations
@@ -1004,7 +1022,9 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     atomic_store(&ctx->last_detection_check_time, (long long)time(NULL));
 
     if (annotation_only) {
-        log_info("[%s] Detection running in annotation-only mode (no separate MP4 files)", stream_name);
+        log_info("[%s] Detection will annotate continuous recordings and create "
+                 "detection clips while continuous recording is inactive",
+                 stream_name);
     }
 
     // Get RTSP URL from go2rtc
@@ -1222,6 +1242,17 @@ bool is_unified_detection_running(const char *stream_name) {
     pthread_mutex_unlock(&contexts_mutex);
 
     return running;
+}
+
+uint64_t get_unified_detection_recording_id(const char *stream_name) {
+    if (!stream_name) {
+        return 0;
+    }
+    pthread_mutex_lock(&contexts_mutex);
+    unified_detection_ctx_t *ctx = find_context_by_name(stream_name);
+    uint64_t recording_id = ctx ? atomic_load(&ctx->current_recording_id) : 0;
+    pthread_mutex_unlock(&contexts_mutex);
+    return recording_id;
 }
 
 /**
@@ -2199,8 +2230,11 @@ stats_done:
             log_info("[%s] External motion trigger (active) received", ctx->stream_name);
             atomic_store(&ctx->last_detection_time, (long long)now);
 
-            if (!ctx->annotation_only) {
-                if (current_state == UDT_STATE_BUFFERING) {
+            if (current_state == UDT_STATE_BUFFERING) {
+                if (should_annotate_continuous(ctx)) {
+                    log_debug("[%s] External trigger linked to active continuous recording",
+                              ctx->stream_name);
+                } else {
                     log_info("[%s] External trigger starting recording", ctx->stream_name);
                     if (udt_start_recording(ctx) == 0) {
                         // Flush pre-buffer and correct DB start_time to reflect actual start
@@ -2229,18 +2263,20 @@ stats_done:
                                      ctx->stream_name, clamped_pre, pre_dur);
                         }
                     }
-                } else if (current_state == UDT_STATE_POST_BUFFER) {
-                    // Motion keep-alive during post-buffer: extend recording back to RECORDING.
-                    // Previously unreachable due to the state guard — now correctly handled.
-                    log_info("[%s] External trigger during post-buffer, continuing recording", ctx->stream_name);
-                    atomic_store(&ctx->state, UDT_STATE_RECORDING);
                 }
-                // If already RECORDING: just refresh last_detection_time (already done above)
+            } else if (current_state == UDT_STATE_POST_BUFFER &&
+                       atomic_load(&ctx->current_recording_id) != 0) {
+                // Motion keep-alive during post-buffer: extend recording back to RECORDING.
+                // Previously unreachable due to the state guard — now correctly handled.
+                log_info("[%s] External trigger during post-buffer, continuing recording", ctx->stream_name);
+                atomic_store(&ctx->state, UDT_STATE_RECORDING);
             }
+            // If already RECORDING: just refresh last_detection_time (already done above)
         } else if (ext_trigger == 2) {
             // Motion ended: if recording, enter post-buffer
             log_info("[%s] External motion trigger (ended) received", ctx->stream_name);
-            if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
+            if (atomic_load(&ctx->current_recording_id) != 0 &&
+                current_state == UDT_STATE_RECORDING) {
                 log_info("[%s] External trigger ending recording, entering post-buffer (%ds)",
                          ctx->stream_name, ctx->post_buffer_seconds);
                 atomic_store(&ctx->post_buffer_end_time, (long long)(now + ctx->post_buffer_seconds));
@@ -2283,17 +2319,10 @@ stats_done:
 
 /**
  * Start recording - create MP4 writer
- * In annotation_only mode, this is a no-op - detections are stored but no separate MP4 is created
+ * A caller only reaches this function when no continuous recording is active.
  */
 static int udt_start_recording(unified_detection_ctx_t *ctx) {
     if (!ctx) return -1;
-
-    // In annotation-only mode, skip MP4 creation
-    // Detections will be stored and linked to the continuous recording instead
-    if (ctx->annotation_only) {
-        log_debug("[%s] Annotation-only mode: skipping MP4 creation for detection", ctx->stream_name);
-        return 0;
-    }
 
     // Ensure output directory exists
     struct stat st = {0};
@@ -2391,6 +2420,11 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
 
     // Set trigger type to detection
     safe_strcpy(ctx->mp4_writer->trigger_type, "detection", sizeof(ctx->mp4_writer->trigger_type), 0);
+    stream_config_t stream_config = {0};
+    if (get_stream_config_by_name(ctx->stream_name, &stream_config) == 0) {
+        ctx->mp4_writer->schedule_restricted =
+            stream_config.detection_record_on_schedule ? 1 : 0;
+    }
 
     // Store recording start time
     ctx->mp4_writer->creation_time = now;
@@ -2410,6 +2444,7 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     // eviction. memset() would otherwise leave tier CRITICAL (0)/eligible 0.
     metadata.retention_tier = RETENTION_TIER_IMPORTANT;
     metadata.disk_pressure_eligible = true;
+    metadata.schedule_restricted = ctx->mp4_writer->schedule_restricted;
     safe_strcpy(metadata.trigger_type, "detection", sizeof(metadata.trigger_type), 0);
 
     ctx->current_recording_id = add_recording_metadata(&metadata);
@@ -2432,23 +2467,21 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
 
 /**
  * Stop recording - close MP4 writer and update database
- * In annotation_only mode, this is a no-op since no MP4 was created
+ * No-op when no separate detection MP4 was created.
  */
 static int udt_stop_recording(unified_detection_ctx_t *ctx) {
     if (!ctx) return -1;
 
-    // In annotation-only mode, no MP4 was created, so nothing to stop
-    if (ctx->annotation_only) {
-        log_debug("[%s] Annotation-only mode: no MP4 to stop", ctx->stream_name);
+    if (!ctx->mp4_writer) {
+        log_debug("[%s] No detection MP4 to stop", ctx->stream_name);
         return 0;
     }
-
-    if (!ctx->mp4_writer) return -1;
 
     log_info("[%s] Stopping detection recording: %s", ctx->stream_name, ctx->current_recording_path);
 
     time_t end_time = time(NULL);
     time_t start_time = ctx->mp4_writer->creation_time;
+    int schedule_restricted = ctx->mp4_writer->schedule_restricted;
     int duration = (int)(end_time - start_time);
 
     // Get file size before closing
@@ -2487,6 +2520,7 @@ static int udt_stop_recording(unified_detection_ctx_t *ctx) {
         metadata.end_time = end_time;
         metadata.size_bytes = file_size;
         metadata.is_complete = true;
+        metadata.schedule_restricted = schedule_restricted;
         safe_strcpy(metadata.trigger_type, "detection", sizeof(metadata.trigger_type), 0);
 
         uint64_t recording_id = add_recording_metadata(&metadata);
@@ -2573,12 +2607,7 @@ static bool run_detection_on_frame(unified_detection_ctx_t *ctx, AVPacket *pkt,
     if (is_api_detection(ctx->model_path)) {
         log_debug("[%s] Running API detection via snapshot", ctx->stream_name);
 
-        uint64_t rec_id = 0;
-        if (ctx->annotation_only) {
-            rec_id = get_current_recording_id_for_stream(ctx->stream_name);
-        } else if (ctx->current_recording_id > 0) {
-            rec_id = ctx->current_recording_id;
-        }
+        uint64_t rec_id = detection_link_recording_id(ctx);
 
         detection_result_t result;
         memset(&result, 0, sizeof(result));
@@ -2705,9 +2734,7 @@ static bool detect_on_decoded_frame(unified_detection_ctx_t *ctx,
 
     if (is_api_detection(ctx->model_path)) {
         /* API backends store in DB internally using rec_id for recording linking. */
-        uint64_t rec_id = ctx->annotation_only
-            ? get_current_recording_id_for_stream(ctx->stream_name)
-            : ctx->current_recording_id;
+        uint64_t rec_id = detection_link_recording_id(ctx);
 
         uint8_t *rgb_buf = frame_to_rgb24(frame);
         if (!rgb_buf) return false;
@@ -2832,9 +2859,7 @@ static void report_detections(unified_detection_ctx_t *ctx,
     if (!ctx || !result || result->count == 0) return;
 
     if (!is_api_detection(ctx->model_path)) {
-        uint64_t rec_id = ctx->annotation_only
-            ? get_current_recording_id_for_stream(ctx->stream_name)
-            : ctx->current_recording_id;
+        uint64_t rec_id = detection_link_recording_id(ctx);
 
         if (store_detections_in_db(ctx->stream_name, result, now, rec_id) != 0)
             log_warn("[%s] Failed to store detections in database", ctx->stream_name);
@@ -2870,7 +2895,10 @@ static void handle_recording_state(unified_detection_ctx_t *ctx,
     if (detected) {
         atomic_store(&ctx->last_detection_time, (long long)now);
 
-        if (ctx->annotation_only) return;
+        if (current_state == UDT_STATE_BUFFERING &&
+            should_annotate_continuous(ctx)) {
+            return;
+        }
 
         if (current_state == UDT_STATE_BUFFERING) {
             log_info("[%s] Detection triggered, starting recording", ctx->stream_name);
@@ -2915,7 +2943,8 @@ static void handle_recording_state(unified_detection_ctx_t *ctx,
         }
         /* UDT_STATE_RECORDING: last_detection_time already refreshed above. */
 
-    } else if (!ctx->annotation_only && current_state == UDT_STATE_RECORDING) {
+    } else if (atomic_load(&ctx->current_recording_id) != 0 &&
+               current_state == UDT_STATE_RECORDING) {
         time_t since_last = now - (time_t)atomic_load(&ctx->last_detection_time);
         // Detection is only sampled once per detection_interval, so last_detection_time
         // is inherently stale by up to one interval even while a scene stays active.

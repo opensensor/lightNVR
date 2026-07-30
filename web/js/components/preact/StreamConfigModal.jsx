@@ -777,6 +777,42 @@ export function StreamConfigModal({
                         </p>
                       </div>
                     </label>
+                    {currentStream.detectionEnabled && (
+                      <div className="px-3 pb-3 ml-7 space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-primary/10 transition-colors group w-fit">
+                          <input
+                            type="checkbox"
+                            id="stream-detection-record-on-schedule"
+                            name="detectionRecordOnSchedule"
+                            className="h-3.5 w-3.5 rounded border-input"
+                            style={primaryAccentStyle}
+                            checked={currentStream.detectionRecordOnSchedule || false}
+                            onChange={onInputChange}
+                          />
+                          <span className="text-xs font-semibold">
+                            📅 {t('streamsConfig.onASchedule')}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            — restrict detection-triggered clips independently
+                          </span>
+                        </label>
+                        {currentStream.detectionRecordOnSchedule && (
+                          <div className="rounded-xl border border-primary/25 bg-background p-3 shadow-sm">
+                            <p className="text-xs text-muted-foreground mb-3">
+                              External events are still annotated outside these hours, but they will not start a detection clip.
+                            </p>
+                            <RecordingScheduleGrid
+                              schedule={currentStream.detectionRecordingSchedule?.length === HOURS_PER_WEEK
+                                ? currentStream.detectionRecordingSchedule
+                                : Array(HOURS_PER_WEEK).fill(true)}
+                              onChange={(schedule) => onInputChange({
+                                target: { name: 'detectionRecordingSchedule', value: schedule }
+                              })}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Show info box based on recording mode selection */}
@@ -1135,12 +1171,13 @@ export function StreamConfigModal({
                         id="retention-days"
                         name="retentionDays"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                        min="0"
+                        min="-1"
                         max="365"
-                        value={currentStream.retentionDays || 0}
+                        value={currentStream.retentionDays ?? -1}
                         onChange={onInputChange}
                       />
                       <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.retentionDaysHelp')}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">-1 = inherit the global setting</p>
                     </div>
                     <div>
                       <label htmlFor="detection-retention-days" className="block text-sm font-medium mb-2">
@@ -1151,12 +1188,13 @@ export function StreamConfigModal({
                         id="detection-retention-days"
                         name="detectionRetentionDays"
                         className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
-                        min="0"
+                        min="-1"
                         max="365"
-                        value={currentStream.detectionRetentionDays || 0}
+                        value={currentStream.detectionRetentionDays ?? -1}
                         onChange={onInputChange}
                       />
                       <p className="mt-1 text-xs text-muted-foreground">{t('streamsConfig.detectionRetentionDaysHelp')}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">-1 = inherit the global setting</p>
                     </div>
                     <div>
                       <label htmlFor="max-storage-mb" className="block text-sm font-medium mb-2">
@@ -1573,4 +1611,3 @@ export function StreamConfigModal({
     </>
   );
 }
-

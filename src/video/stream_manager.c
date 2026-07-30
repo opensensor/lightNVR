@@ -110,6 +110,21 @@ bool is_recording_scheduled(const stream_config_t *config) {
     return config->recording_schedule[index] != 0;
 }
 
+bool is_detection_recording_scheduled(const stream_config_t *config) {
+    if (!config || !config->detection_record_on_schedule) {
+        return true;
+    }
+
+    time_t now = time(NULL);
+    struct tm tm_info;
+    localtime_r(&now, &tm_info);
+    int index = tm_info.tm_wday * 24 + tm_info.tm_hour;
+    if (index < 0 || index >= 168) {
+        return true;
+    }
+    return config->detection_recording_schedule[index] != 0;
+}
+
 /**
  * Background thread that enforces recording schedules.
  * Wakes every 60 seconds, iterates running streams with record_on_schedule=true,
@@ -145,11 +160,9 @@ static void *schedule_monitor_func(void *arg) {
         int count = get_all_stream_configs(db_streams, streams_capacity > 0 ? streams_capacity : 32);
 
         for (int i = 0; i < count; i++) {
-            /* Skip streams that don't need schedule management */
+            /* Skip streams that cannot need schedule management. */
             if (db_streams[i].name[0] == '\0' ||
-                !db_streams[i].enabled ||
-                !db_streams[i].record ||
-                !db_streams[i].record_on_schedule) {
+                !db_streams[i].enabled) {
                 continue;
             }
 
@@ -161,24 +174,54 @@ static void *schedule_monitor_func(void *arg) {
              * attempt the start/stop and let the underlying functions
              * fail gracefully when the stream isn't actually up. */
 
-            bool should_record = is_recording_scheduled(&db_streams[i]);
-            bool is_recording  = (get_mp4_writer_for_stream(db_streams[i].name) != NULL);
+            if (db_streams[i].record && db_streams[i].record_on_schedule) {
+                bool should_record = is_recording_scheduled(&db_streams[i]);
+                recording_runtime_info_t runtime_info = {0};
+                bool is_recording =
+                    get_mp4_recording_runtime_info(db_streams[i].name,
+                                                   &runtime_info) == 0;
 
-            if (should_record && !is_recording) {
-                log_info("Schedule: starting recording for stream '%s'", db_streams[i].name);
-                #ifdef USE_GO2RTC
-                go2rtc_integration_start_recording(db_streams[i].name);
-                #else
-                start_mp4_recording_with_trigger(db_streams[i].name, "scheduled");
-                #endif
-            } else if (!should_record && is_recording) {
-                log_info("Schedule: stopping recording for stream '%s'", db_streams[i].name);
-                #ifdef USE_GO2RTC
-                go2rtc_integration_stop_recording(db_streams[i].name);
-                #else
-                stop_mp4_recording(db_streams[i].name);
-                #endif
-                stop_recording(db_streams[i].name);
+                if (should_record && !is_recording) {
+                    log_info("Schedule: starting recording for stream '%s'", db_streams[i].name);
+                    #ifdef USE_GO2RTC
+                    go2rtc_integration_start_recording(db_streams[i].name);
+                    #else
+                    start_mp4_recording_with_trigger(db_streams[i].name, "scheduled");
+                    #endif
+                } else if (!should_record && is_recording &&
+                           strcmp(runtime_info.trigger_type, "scheduled") == 0) {
+                    log_info("Schedule: stopping recording for stream '%s'", db_streams[i].name);
+                    #ifdef USE_GO2RTC
+                    go2rtc_integration_stop_recording(db_streams[i].name);
+                    #else
+                    stop_mp4_recording(db_streams[i].name);
+                    #endif
+                    stop_recording(db_streams[i].name);
+                }
+            }
+
+            if (db_streams[i].detection_based_recording &&
+                db_streams[i].detection_record_on_schedule) {
+                bool should_detect =
+                    is_detection_recording_scheduled(&db_streams[i]);
+                bool is_detecting =
+                    is_unified_detection_running(db_streams[i].name);
+                if (should_detect && !is_detecting) {
+                    bool annotation_only = db_streams[i].record;
+                    log_info("Detection schedule: starting detection for stream '%s'",
+                             db_streams[i].name);
+                    start_unified_detection_thread(
+                        db_streams[i].name,
+                        db_streams[i].detection_model,
+                        db_streams[i].detection_threshold,
+                        db_streams[i].pre_detection_buffer,
+                        db_streams[i].post_detection_buffer,
+                        annotation_only);
+                } else if (!should_detect && is_detecting) {
+                    log_info("Detection schedule: stopping detection for stream '%s'",
+                             db_streams[i].name);
+                    stop_unified_detection_thread(db_streams[i].name);
+                }
             }
         }
         free(db_streams);
@@ -497,7 +540,7 @@ int set_stream_detection_recording(stream_handle_t stream, bool enabled, const c
         }
     }
     // If detection was disabled and is now being enabled, start the detection thread
-    else if (now_enabled && config_copy.detection_model[0] != '\0') {
+    else if (now_enabled && is_detection_recording_scheduled(&config_copy)) {
         // If continuous recording is also enabled, run detection in annotation-only mode
         bool annotation_only = config_copy.record;
         log_info("Detection enabled for stream %s, starting unified detection thread with model %s (annotation_only=%s)",

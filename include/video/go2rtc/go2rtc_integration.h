@@ -26,6 +26,10 @@ bool go2rtc_integration_init(void);
  */
 int go2rtc_integration_start_recording(const char *stream_name);
 
+/** Start a recording while preserving the requested capture-method token. */
+int go2rtc_integration_start_recording_with_trigger(const char *stream_name,
+                                                    const char *trigger_type);
+
 /**
  * @brief Stop recording a stream
  *

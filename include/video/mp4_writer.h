@@ -53,6 +53,7 @@ struct mp4_writer {
 
     // Recording trigger type
     char trigger_type[16];    // 'scheduled', 'detection', 'motion', 'manual'
+    int schedule_restricted;  // Whether this recording mode is weekly-schedule gated
 
     // Set to true once update_recording_start_time() has been called after the
     // pre-event buffer was flushed.  Prevents a second correction on rotation.

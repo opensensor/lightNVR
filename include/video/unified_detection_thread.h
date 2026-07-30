@@ -248,8 +248,9 @@ void shutdown_unified_detection_system(void);
  * @param threshold Detection confidence threshold (0.0-1.0)
  * @param pre_buffer_seconds Seconds of pre-detection buffer
  * @param post_buffer_seconds Seconds of post-detection recording
- * @param annotation_only If true, detection runs but does NOT create separate MP4 files.
- *                        Detections are stored in DB and linked to the continuous recording.
+ * @param annotation_only Indicates that continuous recording is configured.
+ *                        Any active continuous/manual recording is annotated
+ *                        instead of creating a duplicate detection clip.
  * @return 0 on success, -1 on error
  */
 int start_unified_detection_thread(const char *stream_name, const char *model_path,
@@ -271,6 +272,9 @@ int stop_unified_detection_thread(const char *stream_name);
  * @return true if running, false otherwise
  */
 bool is_unified_detection_running(const char *stream_name);
+
+/** Return the active detection clip ID, or 0 when no clip is being written. */
+uint64_t get_unified_detection_recording_id(const char *stream_name);
 
 /**
  * Get the current state of a unified detection thread
@@ -344,4 +348,3 @@ int get_unified_detection_stats(const char *stream_name,
 void unified_detection_notify_motion(const char *stream_name, bool motion_active);
 
 #endif /* UNIFIED_DETECTION_THREAD_H */
-

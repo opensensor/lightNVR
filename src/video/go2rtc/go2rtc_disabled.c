@@ -105,6 +105,9 @@ void go2rtc_snapshot_cleanup_thread(void) {}
 
 bool go2rtc_integration_init(void) { return false; }
 int go2rtc_integration_start_recording(const char *stream_name) { return start_mp4_recording(stream_name); }
+int go2rtc_integration_start_recording_with_trigger(const char *stream_name, const char *trigger_type) {
+    return start_mp4_recording_with_trigger(stream_name, trigger_type);
+}
 int go2rtc_integration_stop_recording(const char *stream_name) { return stop_mp4_recording(stream_name); }
 int go2rtc_integration_start_hls(const char *stream_name) { return start_hls_stream(stream_name); }
 int go2rtc_integration_stop_hls(const char *stream_name) { return stop_hls_stream(stream_name); }

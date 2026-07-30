@@ -243,4 +243,10 @@ int get_stream_manager_memory_usage(uint64_t *used_memory, uint64_t *peak_memory
  */
 bool is_recording_scheduled(const stream_config_t *config);
 
+/**
+ * Check whether detection-triggered recording is allowed by its independent
+ * weekly schedule. Returns true when the schedule toggle is disabled.
+ */
+bool is_detection_recording_scheduled(const stream_config_t *config);
+
 #endif // LIGHTNVR_STREAM_MANAGER_H

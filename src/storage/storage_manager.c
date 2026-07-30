@@ -39,7 +39,6 @@
 // Default retention period (in days) when no global or stream-specific value is configured
 #define DEFAULT_RETENTION_DAYS 30
 // Multiplier for detection retention default (detection = N * regular retention)
-#define DETECTION_RETENTION_MULTIPLIER 3
 // Orphan safety parameters
 #define ORPHAN_SAFETY_THRESHOLD 0.5
 #define MIN_RECORDINGS_FOR_THRESHOLD 10
@@ -355,12 +354,21 @@ int apply_retention_policy(void) {
         // Get stream-specific retention config
         if (get_stream_retention_config(stream_name, &config) != 0) {
             log_warn("Failed to get retention config for stream %s, using defaults", stream_name);
-            config.retention_days = storage_manager.retention_days > 0 ? storage_manager.retention_days : DEFAULT_RETENTION_DAYS;
-            config.detection_retention_days = config.retention_days * DETECTION_RETENTION_MULTIPLIER; // Default: 3x regular retention
+            config.retention_days = storage_manager.retention_days;
+            config.detection_retention_days = config.retention_days;
             config.max_storage_mb = 0; // No quota
         }
 
-        log_debug("Stream %s: retention=%d days, detection_retention=%d days, max_storage=%lu MB",
+        // Tri-state per-stream retention: -1 inherits the live global value,
+        // 0 is explicitly unlimited, and positive values override in days.
+        if (config.retention_days < 0) {
+            config.retention_days = storage_manager.retention_days;
+        }
+        if (config.detection_retention_days < 0) {
+            config.detection_retention_days = storage_manager.retention_days;
+        }
+
+        log_debug("Stream %s: effective retention=%d days, detection_retention=%d days, max_storage=%lu MB",
                   stream_name, config.retention_days, config.detection_retention_days,
                   (unsigned long)config.max_storage_mb);
 
@@ -1265,8 +1273,16 @@ static void standard_cleanup_cycle(void) {
                 continue;
             }
 
-            int base_retention = sconfig.retention_days > 0 ? sconfig.retention_days : storage_manager.retention_days;
-            if (base_retention <= 0) base_retention = 30;
+            int base_retention = sconfig.retention_days < 0
+                ? storage_manager.retention_days
+                : sconfig.retention_days;
+            if (base_retention == 0) {
+                // An explicit unlimited policy must also disable tier expiry.
+                continue;
+            }
+            if (base_retention < 0) {
+                base_retention = DEFAULT_RETENTION_DAYS;
+            }
 
             // Build tier multipliers array: [critical, important, standard, ephemeral]
             // Guard against 0.0 values (streams created before migration or via old API)

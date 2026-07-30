@@ -75,6 +75,28 @@ void test_add_and_get_by_id(void) {
     TEST_ASSERT_EQUAL_STRING("cam1", got.stream_name);
 }
 
+void test_schedule_restricted_round_trip_and_legacy_null(void) {
+    time_t now = time(NULL);
+    recording_metadata_t scheduled = make_rec(
+        "cam_schedule", "/rec/schedule.mp4", now);
+    scheduled.schedule_restricted = 1;
+    uint64_t id = add_recording_metadata(&scheduled);
+    TEST_ASSERT_TRUE(id > 0);
+
+    recording_metadata_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &got));
+    TEST_ASSERT_EQUAL_INT(1, got.schedule_restricted);
+
+    char sql[256];
+    snprintf(sql, sizeof(sql),
+             "UPDATE recordings SET schedule_restricted = NULL WHERE id = %llu;",
+             (unsigned long long)id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+        sqlite3_exec(get_db_handle(), sql, NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &got));
+    TEST_ASSERT_EQUAL_INT(-1, got.schedule_restricted);
+}
+
 /* update_recording_metadata */
 void test_update_recording_metadata(void) {
     time_t now = time(NULL);
@@ -290,6 +312,7 @@ int main(void) {
     }
     UNITY_BEGIN();
     RUN_TEST(test_add_and_get_by_id);
+    RUN_TEST(test_schedule_restricted_round_trip_and_legacy_null);
     RUN_TEST(test_update_recording_metadata);
     RUN_TEST(test_get_recording_metadata_stream_filter);
     RUN_TEST(test_get_recording_metadata_by_path);
@@ -308,4 +331,3 @@ int main(void) {
     unlink(TEST_DB_PATH);
     return result;
 }
-

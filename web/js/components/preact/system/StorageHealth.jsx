@@ -179,7 +179,7 @@ export function StorageHealth({ formatBytes }) {
           <div className="text-xs p-2 rounded"
                style={{ backgroundColor: badge.bg, color: badge.text }}>
             {t('system.diskPressureWarningPrefix', { level: badge.label })}{' '}
-            <a href="settings.html" style={{ color: badge.text, textDecoration: 'underline' }}>{t('system.adjustRetentionSettings')}</a>.
+            <a href="settings.html#storage" style={{ color: badge.text, textDecoration: 'underline' }}>{t('system.adjustRetentionSettings')}</a>.
           </div>
         )}
         <div className="pt-2 flex gap-2 flex-wrap">
@@ -211,4 +211,3 @@ export function StorageHealth({ formatBytes }) {
     </div>
   );
 }
-

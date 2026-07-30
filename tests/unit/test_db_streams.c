@@ -200,6 +200,36 @@ void test_stream_retention_config_round_trip(void) {
     TEST_ASSERT_EQUAL_INT(30, cfg_out.detection_retention_days);
 }
 
+void test_stream_retention_tri_state_round_trip(void) {
+    stream_config_t s = make_stream("cam_ret_tri", true);
+    s.retention_days = -1;
+    s.detection_retention_days = 0;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&s));
+
+    stream_retention_config_t cfg;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_retention_config("cam_ret_tri", &cfg));
+    TEST_ASSERT_EQUAL_INT(-1, cfg.retention_days);
+    TEST_ASSERT_EQUAL_INT(0, cfg.detection_retention_days);
+}
+
+void test_detection_recording_schedule_round_trip(void) {
+    stream_config_t s = make_stream("cam_det_sched", true);
+    s.detection_record_on_schedule = true;
+    memset(s.detection_recording_schedule, 0,
+           sizeof(s.detection_recording_schedule));
+    s.detection_recording_schedule[5] = 1;
+    s.detection_recording_schedule[167] = 1;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0,
+        get_stream_config_by_name("cam_det_sched", &got));
+    TEST_ASSERT_TRUE(got.detection_record_on_schedule);
+    TEST_ASSERT_EQUAL_UINT8(1, got.detection_recording_schedule[5]);
+    TEST_ASSERT_EQUAL_UINT8(0, got.detection_recording_schedule[6]);
+    TEST_ASSERT_EQUAL_UINT8(1, got.detection_recording_schedule[167]);
+}
+
 /* ================================================================
  * get_all_stream_names
  * ================================================================ */
@@ -521,6 +551,8 @@ int main(void) {
     RUN_TEST(test_get_all_stream_configs_returns_multiple);
     RUN_TEST(test_get_enabled_stream_count);
     RUN_TEST(test_stream_retention_config_round_trip);
+    RUN_TEST(test_stream_retention_tri_state_round_trip);
+    RUN_TEST(test_detection_recording_schedule_round_trip);
     RUN_TEST(test_get_all_stream_names);
     RUN_TEST(test_repair_onvif_embedded_credentials_migration_normalizes_legacy_rows);
     RUN_TEST(test_motion_trigger_source_defaults_empty);
@@ -546,4 +578,3 @@ int main(void) {
     unlink(TEST_DB_PATH);
     return result;
 }
-

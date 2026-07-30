@@ -82,7 +82,12 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
         "r.size_bytes, "
         "CASE WHEN r.trigger_type = 'detection' THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id) THEN 1 "
-        "     ELSE 0 END AS has_detection "
+        "     WHEN EXISTS (SELECT 1 FROM detections d "
+        "                  WHERE d.stream_name = r.stream_name "
+        "                    AND d.timestamp >= r.start_time "
+        "                    AND d.timestamp <= r.end_time) THEN 1 "
+        "     ELSE 0 END AS has_detection, "
+        "r.schedule_restricted "
         "FROM recordings r "
         "WHERE r.is_complete = 1 "
         "  AND r.end_time IS NOT NULL "
@@ -119,6 +124,9 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
         segments[count].end_time    = (time_t)sqlite3_column_int64(stmt, 4);
         segments[count].size_bytes  = (uint64_t)sqlite3_column_int64(stmt, 5);
         segments[count].has_detection = sqlite3_column_int(stmt, 6) != 0;
+        segments[count].schedule_restricted =
+            (sqlite3_column_type(stmt, 7) != SQLITE_NULL)
+                ? (sqlite3_column_int(stmt, 7) != 0) : -1;
 
         count++;
     }
@@ -335,6 +343,12 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         cJSON_AddNumberToObject(segment, "duration", duration);
         cJSON_AddStringToObject(segment, "size", size_str);
         cJSON_AddBoolToObject(segment, "has_detection", segments[i].has_detection);
+        if (segments[i].schedule_restricted < 0) {
+            cJSON_AddNullToObject(segment, "schedule_restricted");
+        } else {
+            cJSON_AddBoolToObject(segment, "schedule_restricted",
+                                  segments[i].schedule_restricted != 0);
+        }
         
         // Add Unix timestamps for easier frontend processing
         // Add timestamps adjusted for local timezone
@@ -730,6 +744,10 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         bool has_det = false;
         if (rec.trigger_type[0] != '\0' && strcmp(rec.trigger_type, "detection") == 0) {
             has_det = true;
+        } else if (has_detections_in_time_range(rec.stream_name,
+                                               rec.start_time,
+                                               rec.end_time) > 0) {
+            has_det = true;
         }
 
         /* Track overall time range */
@@ -767,6 +785,12 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
         cJSON_AddNumberToObject(segment, "duration", duration);
         cJSON_AddStringToObject(segment, "size", size_str);
         cJSON_AddBoolToObject(segment, "has_detection", has_det);
+        if (rec.schedule_restricted < 0) {
+            cJSON_AddNullToObject(segment, "schedule_restricted");
+        } else {
+            cJSON_AddBoolToObject(segment, "schedule_restricted",
+                                  rec.schedule_restricted != 0);
+        }
         cJSON_AddNumberToObject(segment, "start_timestamp", (double)rec.start_time);
         cJSON_AddNumberToObject(segment, "end_timestamp", (double)rec.end_time);
         cJSON_AddNumberToObject(segment, "local_start_timestamp", (double)rec.start_time);
