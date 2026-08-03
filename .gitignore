@@ -48,6 +48,7 @@ CMakeFiles/
 cmake_install.cmake
 Makefile
 *.cmake
+!cmake/toolchains/*.cmake
 !CMakeLists.txt
 
 # IDE files
