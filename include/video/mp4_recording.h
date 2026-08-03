@@ -27,7 +27,7 @@ typedef struct {
     pthread_t thread;          // Recording thread
     char output_path[MAX_PATH_LENGTH]; // Path to the output MP4 file
     mp4_writer_t *mp4_writer;  // MP4 writer instance
-    char trigger_type[16];     // Type of trigger ('scheduled', 'detection', 'motion', 'manual')
+    char trigger_type[16];     // Type of trigger ('continuous', 'scheduled', 'detection', 'motion', 'manual')
 } mp4_recording_ctx_t;
 
 typedef struct {
@@ -82,7 +82,7 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url);
  * and marks the recording with the specified trigger type.
  *
  * @param stream_name Name of the stream to record
- * @param trigger_type Type of trigger ('scheduled', 'detection', 'motion', 'manual')
+ * @param trigger_type Type of trigger ('continuous', 'scheduled', 'detection', 'motion', 'manual')
  * @return 0 on success, non-zero on failure
  */
 int start_mp4_recording_with_trigger(const char *stream_name, const char *trigger_type);
@@ -95,7 +95,7 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
  *
  * @param stream_name Name of the stream to record
  * @param url URL to use for recording
- * @param trigger_type Type of trigger ('scheduled', 'detection', 'motion', 'manual')
+ * @param trigger_type Type of trigger ('continuous', 'scheduled', 'detection', 'motion', 'manual')
  * @return 0 on success, non-zero on failure
  */
 int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char *url, const char *trigger_type);

@@ -14,6 +14,7 @@
 #include "database/db_streams.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/mp4_recording.h"
+#include "video/stream_manager.h"
 #include "video/unified_detection_thread.h"
 #include "web/api_handlers_recording_control.h"
 #include "web/httpd_utils.h"
@@ -58,7 +59,8 @@ static bool check_stream_access(const http_request_t *req,
 static void add_runtime_json(cJSON *json, const char *stream_name,
                              const recording_runtime_info_t *info,
                              uint64_t detection_id,
-                             bool manual_control_allowed) {
+                             bool manual_control_allowed,
+                             const char *manual_control_reason) {
     bool active = info->active || info->initializing || detection_id != 0;
     const char *state = info->initializing ? "starting"
         : active ? "recording" : "idle";
@@ -81,6 +83,12 @@ static void add_runtime_json(cJSON *json, const char *stream_name,
     }
     cJSON_AddBoolToObject(json, "manual_control_allowed",
                           manual_control_allowed);
+    if (manual_control_reason) {
+        cJSON_AddStringToObject(json, "manual_control_reason",
+                                manual_control_reason);
+    } else {
+        cJSON_AddNullToObject(json, "manual_control_reason");
+    }
 }
 
 void handle_get_stream_recording(const http_request_t *req,
@@ -107,13 +115,19 @@ void handle_get_stream_recording(const http_request_t *req,
         get_unified_detection_recording_id(stream_name);
     bool may_write = !g_config.web_auth_enabled ||
                      user.role != USER_ROLE_VIEWER;
+    bool continuous_expected =
+        config.record && is_recording_scheduled(&config);
+    const char *manual_control_reason = !may_write ? "read_only"
+        : continuous_expected ? "continuous_recording" : NULL;
 
     cJSON *json = cJSON_CreateObject();
     if (!json) {
         http_response_set_json_error(res, 500, "Failed to create response");
         return;
     }
-    add_runtime_json(json, stream_name, &info, detection_id, may_write);
+    add_runtime_json(json, stream_name, &info, detection_id,
+                     may_write && !continuous_expected,
+                     manual_control_reason);
     char *body = cJSON_PrintUnformatted(json);
     cJSON_Delete(json);
     if (!body) {
@@ -153,13 +167,26 @@ void handle_post_stream_recording(const http_request_t *req,
         return;
     }
 
+    bool starting = strcmp(action->valuestring, "start") == 0;
+    if (starting) {
+        /* Reject from configuration immediately.  A newly enabled continuous
+         * recorder may spend several seconds creating its writer, during which
+         * runtime state alone still looks idle (#473). */
+        if (config.record && is_recording_scheduled(&config)) {
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 409,
+                "Continuous recording is configured for this stream");
+            return;
+        }
+    }
+
     recording_runtime_info_t info = {0};
     int runtime_rc = get_mp4_recording_runtime_info(stream_name, &info);
     uint64_t detection_id =
         get_unified_detection_recording_id(stream_name);
     int result;
     int status;
-    if (strcmp(action->valuestring, "start") == 0) {
+    if (starting) {
         if (runtime_rc == 0 || detection_id != 0) {
             cJSON_Delete(body);
             http_response_set_json_error(res, 409,

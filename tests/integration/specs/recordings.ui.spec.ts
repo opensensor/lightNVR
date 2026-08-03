@@ -155,7 +155,7 @@ test.describe('Recordings Page @ui @recordings', () => {
         {
           id: 101,
           stream: 'cam1',
-          capture_method: 'scheduled',
+          capture_method: 'continuous',
           tags: ['urgent'],
           detection_labels: [{ label: 'person', count: 1 }]
         },
@@ -226,7 +226,7 @@ test.describe('Recordings Page @ui @recordings', () => {
       await recordingsPage.filterByStream('cam2');
       await recordingsPage.addDetectionLabel('person');
       await recordingsPage.addDetectionLabel('car');
-      await recordingsPage.addCaptureMethod('scheduled');
+      await recordingsPage.addCaptureMethod('continuous');
       await recordingsPage.addCaptureMethod('manual');
       await recordingsPage.addTag('urgent');
       await recordingsPage.addTag('review');
@@ -245,7 +245,7 @@ test.describe('Recordings Page @ui @recordings', () => {
         const params = new URL(`http://localhost/${search}`).searchParams;
         return params.get('stream') === 'cam1,cam2' &&
           params.get('detection_label') === 'person,car' &&
-          params.get('capture_method') === 'scheduled,manual' &&
+          params.get('capture_method') === 'continuous,manual' &&
           params.get('tag') === 'urgent,review';
       })).toBe(true);
 
@@ -263,7 +263,7 @@ test.describe('Recordings Page @ui @recordings', () => {
         const params = new URL(`http://localhost/${search}`).searchParams;
         return params.get('stream') === 'cam2' &&
           params.get('detection_label') === 'person,car' &&
-          params.get('capture_method') === 'scheduled,manual' &&
+          params.get('capture_method') === 'continuous,manual' &&
           params.get('tag') === 'urgent,review';
       })).toBe(true);
 
@@ -280,7 +280,7 @@ test.describe('Recordings Page @ui @recordings', () => {
         const params = new URL(`http://localhost/${search}`).searchParams;
         return params.get('stream') === 'cam2' &&
           params.get('detection_label') === 'car' &&
-          params.get('capture_method') === 'scheduled,manual' &&
+          params.get('capture_method') === 'continuous,manual' &&
           params.get('tag') === 'urgent,review';
       })).toBe(true);
     });
@@ -610,4 +610,3 @@ test.describe('Recordings Page @ui @recordings', () => {
     });
   });
 });
-

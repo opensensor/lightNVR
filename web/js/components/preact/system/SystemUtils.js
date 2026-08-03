@@ -29,10 +29,13 @@ export function formatBytes(bytes, decimals = 1) {
  * @returns {string} Formatted uptime string
  */
 export function formatUptime(seconds) {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
+  const safeSeconds = Number.isFinite(Number(seconds))
+    ? Math.max(0, Number(seconds))
+    : 0;
+  const days = Math.floor(safeSeconds / 86400);
+  const hours = Math.floor((safeSeconds % 86400) / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const secs = Math.floor(safeSeconds % 60);
   
   let result = '';
   if (days > 0) result += `${days}d `;

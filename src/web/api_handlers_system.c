@@ -33,6 +33,7 @@
 #include <libswresample/swresample.h>
 
 #include "web/api_handlers.h"
+#include "web/api_handlers_health.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
 #define LOG_COMPONENT "SystemAPI"
@@ -870,75 +871,10 @@ void handle_get_system_info(const http_request_t *req, http_response_t *res) {
         cJSON_AddItemToObject(info, "systemMemory", system_memory);
     }
 
-    // Get uptime of the LightNVR process
-    // Use /proc/self/stat to get process start time
-    FILE *stat_file = fopen("/proc/self/stat", "r");
-    if (stat_file) {
-        unsigned long long starttime = 0;
-        bool stat_ok = false;
-
-        // /proc/self/stat format: pid (comm) state ppid pgrp session tty_nr tpgid
-        //   flags minflt cminflt majflt cmajflt utime stime cutime cstime
-        //   priority nice num_threads itrealvalue starttime ...
-        // comm may contain spaces but is always enclosed in '( )'.
-        // Find the last ')' to handle that correctly.
-        char stat_line[1024] = {0};
-        if (fgets(stat_line, sizeof(stat_line), stat_file)) {
-            char *paren_end = strrchr(stat_line, ')');
-            if (paren_end) {
-                char *p = paren_end + 1;
-                // Skip the state field (single non-space char after whitespace)
-                while (*p == ' ') p++;
-                if (*p && *p != '\n') p++; // skip state
-                // Parse fields after state; starttime is the 19th (index 18):
-                // ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt
-                // utime stime cutime cstime priority nice num_threads itrealvalue starttime
-                for (int i = 0; i < 19; i++) {
-                    while (*p == ' ') p++;
-                    if (!*p || *p == '\n') break;
-                    char *ep;
-                    unsigned long long val = strtoull(p, &ep, 10);
-                    if (ep == p) break;
-                    if (i == 18) { starttime = val; stat_ok = true; }
-                    p = ep;
-                }
-            }
-        }
-        fclose(stat_file);
-
-        // Get system uptime
-        FILE *uptime_file = fopen("/proc/uptime", "r");
-        double system_uptime = 0;
-        if (uptime_file) {
-            char uptime_buf[64] = {0};
-            if (fgets(uptime_buf, sizeof(uptime_buf), uptime_file)) {
-                char *ep;
-                system_uptime = strtod(uptime_buf, &ep);
-                if (ep == uptime_buf) system_uptime = 0;
-            }
-            fclose(uptime_file);
-        }
-
-        // Calculate process uptime in seconds only when starttime was read
-        // starttime is in clock ticks since system boot
-        // Convert to seconds by dividing by sysconf(_SC_CLK_TCK)
-        if (stat_ok) {
-            long clock_ticks = sysconf(_SC_CLK_TCK);
-            double process_uptime = system_uptime - ((double)starttime / (double)clock_ticks);
-
-            // Add process uptime to info
-            cJSON_AddNumberToObject(info, "uptime", process_uptime);
-        } else {
-            // Fallback to system uptime if stat fields couldn't be read
-            cJSON_AddNumberToObject(info, "uptime", system_uptime);
-        }
-    } else {
-        // Fallback to system uptime if process uptime can't be determined
-        struct sysinfo sys_info;
-        if (sysinfo(&sys_info) == 0) {
-            cJSON_AddNumberToObject(info, "uptime", (double)sys_info.uptime);
-        }
-    }
+    /* Use the same startup timestamp as /api/health. Linux time namespaces can
+     * expose /proc/uptime and /proc/self/stat with different offsets, which
+     * previously produced values such as -34s in containers (#475). */
+    cJSON_AddNumberToObject(info, "uptime", get_process_uptime_seconds());
 
     // Get disk information for the configured storage path
     struct statvfs disk_info;

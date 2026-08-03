@@ -8,9 +8,13 @@ import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
 
 const CAPTURE_METHOD_TRANSLATIONS = {
-  scheduled: {
+  continuous: {
     key: 'recordings.captureMethod.continuous',
     fallback: 'Continuous'
+  },
+  scheduled: {
+    key: 'streams.scheduled',
+    fallback: 'Scheduled'
   },
   detection: {
     key: 'recordings.captureMethod.detection',

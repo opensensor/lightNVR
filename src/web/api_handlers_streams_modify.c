@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <time.h>
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
@@ -2229,16 +2230,119 @@ typedef struct {
     char stream_name[MAX_STREAM_NAME];  // Decoded stream name
 } refresh_stream_task_t;
 
+#define STREAM_REFRESH_COOLDOWN_SECONDS 30
+
+typedef struct {
+    bool used;
+    bool in_progress;
+    char stream_name[MAX_STREAM_NAME];
+    struct timespec last_started;
+} refresh_stream_guard_t;
+
+static refresh_stream_guard_t refresh_stream_guards[MAX_STREAMS];
+static pthread_mutex_t refresh_stream_guards_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* A player retry is cheap, but this endpoint restarts shared source state.
+ * Coalesce duplicate requests so several browser cells cannot continuously
+ * disrupt one another on a multi-view dashboard (#457). */
+static bool reserve_stream_refresh(const char *stream_name,
+                                   int *retry_after_seconds) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        now.tv_sec = time(NULL);
+        now.tv_nsec = 0;
+    }
+    if (retry_after_seconds) {
+        *retry_after_seconds = 0;
+    }
+
+    pthread_mutex_lock(&refresh_stream_guards_mutex);
+    int free_slot = -1;
+    int reusable_slot = -1;
+    time_t oldest_start = now.tv_sec;
+
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        refresh_stream_guard_t *guard = &refresh_stream_guards[i];
+        if (!guard->used) {
+            if (free_slot < 0) free_slot = i;
+            continue;
+        }
+        if (strcmp(guard->stream_name, stream_name) == 0) {
+            time_t elapsed = now.tv_sec - guard->last_started.tv_sec;
+            if (elapsed < 0) {
+                guard->last_started = now;
+                elapsed = 0;
+            }
+            if (guard->in_progress || elapsed < STREAM_REFRESH_COOLDOWN_SECONDS) {
+                if (retry_after_seconds) {
+                    *retry_after_seconds = guard->in_progress
+                        ? 1
+                        : STREAM_REFRESH_COOLDOWN_SECONDS - (int)elapsed;
+                }
+                pthread_mutex_unlock(&refresh_stream_guards_mutex);
+                return false;
+            }
+            guard->in_progress = true;
+            guard->last_started = now;
+            pthread_mutex_unlock(&refresh_stream_guards_mutex);
+            return true;
+        }
+        if (!guard->in_progress && guard->last_started.tv_sec <= oldest_start) {
+            oldest_start = guard->last_started.tv_sec;
+            reusable_slot = i;
+        }
+    }
+
+    int slot = free_slot >= 0 ? free_slot : reusable_slot;
+    if (slot < 0) {
+        if (retry_after_seconds) *retry_after_seconds = 1;
+        pthread_mutex_unlock(&refresh_stream_guards_mutex);
+        return false;
+    }
+
+    refresh_stream_guard_t *guard = &refresh_stream_guards[slot];
+    memset(guard, 0, sizeof(*guard));
+    guard->used = true;
+    guard->in_progress = true;
+    guard->last_started = now;
+    safe_strcpy(guard->stream_name, stream_name, sizeof(guard->stream_name), 0);
+    pthread_mutex_unlock(&refresh_stream_guards_mutex);
+    return true;
+}
+
+static void finish_stream_refresh(const char *stream_name, bool discard) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        now.tv_sec = time(NULL);
+        now.tv_nsec = 0;
+    }
+    pthread_mutex_lock(&refresh_stream_guards_mutex);
+    for (int i = 0; i < MAX_STREAMS; i++) {
+        refresh_stream_guard_t *guard = &refresh_stream_guards[i];
+        if (guard->used && strcmp(guard->stream_name, stream_name) == 0) {
+            if (discard) {
+                memset(guard, 0, sizeof(*guard));
+            } else {
+                guard->in_progress = false;
+                guard->last_started = now;
+            }
+            break;
+        }
+    }
+    pthread_mutex_unlock(&refresh_stream_guards_mutex);
+}
+
 /**
  * @brief Worker function for stream refresh
  *
  * This function performs the actual go2rtc reload and detection thread
  * restart in a background thread so the event loop is not blocked.
  */
-static void refresh_stream_worker(refresh_stream_task_t *task) {
+static void *refresh_stream_worker(void *arg) {
+    refresh_stream_task_t *task = arg;
     if (!task) {
         log_error("Invalid refresh stream task");
-        return;
+        return NULL;
     }
 
     log_set_thread_context("StreamAPI", task->stream_name);
@@ -2249,8 +2353,9 @@ static void refresh_stream_worker(refresh_stream_task_t *task) {
         log_info("go2rtc integration not initialized, attempting full start");
         if (!go2rtc_integration_full_start()) {
             log_error("Failed to start go2rtc integration for stream refresh: %s", task->stream_name);
+            finish_stream_refresh(task->stream_name, false);
             free(task);
-            return;
+            return NULL;
         }
         log_info("go2rtc integration started successfully");
     }
@@ -2299,7 +2404,9 @@ static void refresh_stream_worker(refresh_stream_task_t *task) {
         log_error("Failed to refresh go2rtc registration for stream: %s", task->stream_name);
     }
 
+    finish_stream_refresh(task->stream_name, false);
     free(task);
+    return NULL;
 }
 
 /**
@@ -2342,10 +2449,35 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
         return;
     }
 
+    int retry_after_seconds = 0;
+    if (!reserve_stream_refresh(stream_name, &retry_after_seconds)) {
+        cJSON *response = cJSON_CreateObject();
+        if (!response) {
+            http_response_set_json_error(res, 500, "Failed to create response JSON");
+            return;
+        }
+        cJSON_AddBoolToObject(response, "success", true);
+        cJSON_AddBoolToObject(response, "coalesced", true);
+        cJSON_AddStringToObject(response, "message",
+                                "A recent stream refresh is already active or cooling down");
+        cJSON_AddStringToObject(response, "stream", stream_name);
+        cJSON_AddNumberToObject(response, "retry_after_seconds", retry_after_seconds);
+        char *json_str = cJSON_PrintUnformatted(response);
+        cJSON_Delete(response);
+        if (!json_str) {
+            http_response_set_json_error(res, 500, "Failed to convert response JSON");
+            return;
+        }
+        http_response_set_json(res, 202, json_str);
+        free(json_str);
+        return;
+    }
+
     // Allocate task for worker thread
     refresh_stream_task_t *task = calloc(1, sizeof(refresh_stream_task_t));
     if (!task) {
         log_error("Failed to allocate refresh stream task");
+        finish_stream_refresh(stream_name, true);
         http_response_set_json_error(res, 500, "Internal server error");
         return;
     }
@@ -2356,6 +2488,7 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
     if (!response) {
         log_error("Failed to create response JSON object");
         free(task);
+        finish_stream_refresh(stream_name, true);
         http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
@@ -2370,12 +2503,10 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
     if (!json_str) {
         log_error("Failed to convert response JSON to string");
         free(task);
+        finish_stream_refresh(stream_name, true);
         http_response_set_json_error(res, 500, "Failed to convert response JSON");
         return;
     }
-
-    http_response_set_json(res, 202, json_str);
-    free(json_str);
 
     // Spawn background thread to perform the actual refresh work
     // This prevents blocking the web server event loop
@@ -2384,13 +2515,19 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
-    if (pthread_create(&thread_id, &attr, (void *(*)(void *))refresh_stream_worker, task) != 0) {
+    if (pthread_create(&thread_id, &attr, refresh_stream_worker, task) != 0) {
         log_error("Failed to create worker thread for stream refresh");
         free(task);
-        // Response already sent, just log the error
+        finish_stream_refresh(stream_name, true);
+        free(json_str);
+        pthread_attr_destroy(&attr);
+        http_response_set_json_error(res, 500, "Failed to start stream refresh");
+        return;
     } else {
         log_info("Stream refresh task started in worker thread for: %s", stream_name);
     }
 
     pthread_attr_destroy(&attr);
+    http_response_set_json(res, 202, json_str);
+    free(json_str);
 }

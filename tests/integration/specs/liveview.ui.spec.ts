@@ -121,6 +121,32 @@ test.describe('Live View Page @ui @liveview', () => {
   });
 
   test.describe('Stream Interaction', () => {
+    test('aligns manual recording and snapshot controls (#474)', async ({ page }) => {
+      const liveView = new LiveViewPage(page);
+      await liveView.goto();
+
+      const manual = page.locator('.manual-recording-btn').first();
+      const snapshot = page.locator('.snapshot-btn').first();
+      await expect(manual).toBeVisible();
+      await expect(snapshot).toBeVisible();
+
+      const [manualBox, snapshotBox] = await Promise.all([
+        manual.boundingBox(),
+        snapshot.boundingBox(),
+      ]);
+      expect(manualBox).not.toBeNull();
+      expect(snapshotBox).not.toBeNull();
+      expect(manualBox!.width).toBe(snapshotBox!.width);
+      expect(manualBox!.height).toBe(snapshotBox!.height);
+      expect(Math.abs(manualBox!.y - snapshotBox!.y)).toBeLessThanOrEqual(1);
+
+      const backgrounds = await Promise.all([
+        manual.evaluate(element => getComputedStyle(element).backgroundColor),
+        snapshot.evaluate(element => getComputedStyle(element).backgroundColor),
+      ]);
+      expect(backgrounds).toEqual(['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
+    });
+
     test('should be able to click on stream containers', async ({ page }) => {
       const liveView = new LiveViewPage(page);
       await liveView.goto();

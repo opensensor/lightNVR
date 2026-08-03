@@ -664,7 +664,9 @@ int start_mp4_recording(const char *stream_name) {
     memset(ctx, 0, sizeof(mp4_recording_ctx_t));
     memcpy(&ctx->config, &config, sizeof(stream_config_t));
     ctx->running = 1;
-    safe_strcpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type), 0);
+    safe_strcpy(ctx->trigger_type,
+                config.record_on_schedule ? "scheduled" : "continuous",
+                sizeof(ctx->trigger_type), 0);
 
     // Create output paths
     const config_t *global_config = get_streaming_config();
@@ -834,7 +836,9 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     safe_strcpy(ctx->config.url, url, MAX_PATH_LENGTH, 0);
 
     ctx->running = 1;
-    safe_strcpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type), 0);
+    safe_strcpy(ctx->trigger_type,
+                config.record_on_schedule ? "scheduled" : "continuous",
+                sizeof(ctx->trigger_type), 0);
 
     // Create output paths
     const config_t *global_config = get_streaming_config();
@@ -1037,7 +1041,12 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
         cleanup_dead_recording(dead_ctx, stream_name);
     }
 
-    log_info("Using standalone recording thread for stream %s with trigger_type: %s", stream_name, trigger_type);
+    const char *effective_trigger_type =
+        (trigger_type && trigger_type[0] != '\0')
+            ? trigger_type
+            : (config.record_on_schedule ? "scheduled" : "continuous");
+    log_info("Using standalone recording thread for stream %s with trigger_type: %s",
+             stream_name, effective_trigger_type);
 
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
@@ -1069,11 +1078,8 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     ctx->running = 1;
 
     // Set trigger type
-    if (trigger_type) {
-        safe_strcpy(ctx->trigger_type, trigger_type, sizeof(ctx->trigger_type), 0);
-    } else {
-        safe_strcpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type), 0);
-    }
+    safe_strcpy(ctx->trigger_type, effective_trigger_type,
+                sizeof(ctx->trigger_type), 0);
 
     // Create output paths
     const config_t *global_config = get_streaming_config();
@@ -1127,7 +1133,8 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     recording_contexts[slot] = ctx;
     pthread_mutex_unlock(&recording_contexts_mutex);
 
-    log_info("Started MP4 recording for %s in slot %d with trigger_type: %s", stream_name, slot, trigger_type);
+    log_info("Started MP4 recording for %s in slot %d with trigger_type: %s",
+             stream_name, slot, effective_trigger_type);
 
     return 0;
 }
@@ -1191,8 +1198,12 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
         cleanup_dead_recording(dead_ctx, stream_name);
     }
 
+    const char *effective_trigger_type =
+        (trigger_type && trigger_type[0] != '\0')
+            ? trigger_type
+            : (config.record_on_schedule ? "scheduled" : "continuous");
     log_info("Using standalone recording thread for stream %s with trigger_type: %s",
-             stream_name, trigger_type);
+             stream_name, effective_trigger_type);
 
     // Find empty slot (under lock)
     pthread_mutex_lock(&recording_contexts_mutex);
@@ -1224,11 +1235,8 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     ctx->running = 1;
 
     // Set trigger type
-    if (trigger_type) {
-        safe_strcpy(ctx->trigger_type, trigger_type, sizeof(ctx->trigger_type), 0);
-    } else {
-        safe_strcpy(ctx->trigger_type, "scheduled", sizeof(ctx->trigger_type), 0);
-    }
+    safe_strcpy(ctx->trigger_type, effective_trigger_type,
+                sizeof(ctx->trigger_type), 0);
 
     // Create output paths
     const config_t *global_config = get_streaming_config();
@@ -1283,7 +1291,7 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     pthread_mutex_unlock(&recording_contexts_mutex);
 
     log_info("Started MP4 recording for %s in slot %d with trigger_type: %s",
-             stream_name, slot, trigger_type);
+             stream_name, slot, effective_trigger_type);
 
     return 0;
 }

@@ -69,7 +69,8 @@ static int parse_selected_streams(const char *csv,
  * - has_detection: Filter by detection status (0 or 1)
  * - detection_label: Filter by specific detection object label(s), comma-separated
  * - tag: Filter by recording tag(s), comma-separated
- * - capture_method: Filter by capture method(s), comma-separated (scheduled, detection, motion, manual)
+ * - capture_method: Filter by capture method(s), comma-separated
+ *   (continuous, scheduled, detection, motion, manual)
  */
 void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Check if shutdown is in progress
@@ -438,7 +439,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(recording, "duration", duration);
         cJSON_AddStringToObject(recording, "size", size_str);
         cJSON_AddStringToObject(recording, "capture_method",
-                                recordings[i].trigger_type[0] ? recordings[i].trigger_type : "scheduled");
+                                recording_capture_method(&recordings[i]));
         if (recordings[i].schedule_restricted < 0) {
             cJSON_AddNullToObject(recording, "schedule_restricted");
         } else {

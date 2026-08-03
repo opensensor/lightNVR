@@ -156,7 +156,7 @@ It is available to viewers who may access the stream.
 and `API` roles may call it; `VIEWER` is read-only. Manual start returns `409`
 if continuous, detection, or another manual recording is active. Manual stop
 returns `409` unless the active recording was itself started manually, so it
-never interrupts scheduled or detection capture.
+never interrupts continuous, scheduled, or detection capture.
 
 #### Add Stream
 
@@ -196,7 +196,9 @@ Tests connectivity to a stream URL.
 POST /api/streams/{name}/refresh
 ```
 
-Forces a stream reconnection.
+Forces a shared source reconnection. Duplicate requests for the same stream are
+coalesced while a refresh is active and for a 30-second cooldown afterward;
+coalesced requests return `202` with `coalesced: true`.
 
 ### Stream Retention
 
@@ -516,11 +518,14 @@ GET /api/recordings
 
 Returns a list of recordings. Supports query parameters for filtering by stream name, date range, and pagination.
 
-The existing `capture_method` values remain `scheduled`, `detection`, `motion`,
-or `manual`. Responses also include `schedule_restricted`: `true` when the
-capture mode was gated by a weekly schedule, `false` when it was unrestricted,
-and `null` for recordings created before that metadata existed. Timeline
-segment responses expose the same nullable field.
+`capture_method` is `continuous` for always-on recording, `scheduled` when
+continuous capture is gated by a weekly schedule, or `detection`, `motion`, or
+`manual` for triggered capture. Responses also include `schedule_restricted`:
+`true` when the capture mode was gated by a weekly schedule, `false` when it was
+unrestricted, and `null` for recordings created before that metadata existed.
+Legacy rows stored as `scheduled` are reported as `continuous` only when their
+metadata proves they were unrestricted. Timeline segment responses expose the
+same nullable field.
 
 #### Get Recording
 

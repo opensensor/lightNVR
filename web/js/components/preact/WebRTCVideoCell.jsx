@@ -23,6 +23,7 @@ import { createPlayerTelemetry } from '../../utils/player-telemetry.js';
 import { useAutoRetry } from './useAutoRetry.js';
 import { useVideoZoom } from './useVideoZoom.js';
 import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbort } from '../../utils/stream-connection-gate.js';
+import { shouldFallbackFullscreenToSubStream } from './liveStreamPolicy.js';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -31,7 +32,7 @@ import 'webrtc-adapter';
 // MAX_VIDEO_DATA_CHECKS × VIDEO_DATA_CHECK_INTERVAL_MS defines the total
 // time we will wait for video frames before surfacing an error.
 const MAX_VIDEO_DATA_CHECKS = 12; // 12 checks × 5,000 ms = 60s total
-const VIDEO_DATA_CHECK_INTERVAL_MS = 5000; // check quickly enough for a 10s fallback
+const VIDEO_DATA_CHECK_INTERVAL_MS = 5000; // fail a fullscreen main-stream upgrade fast
 const MIN_NO_DATA_CHECKS_BEFORE_RETRY = 2;
 const MAX_NO_DATA_RECONNECT_ATTEMPTS = 3;
 const MAX_OFFER_RETRIES = 4;
@@ -445,11 +446,8 @@ export function WebRTCVideoCell({
                 });
               }
 
-              // After 10 s with ICE connected but no video data, auto-retry
-              // the entire WebRTC connection.  This recovers from go2rtc RTSP
-              // source issues (camera offline, stale state, etc.) without
-              // requiring the user to click Retry manually.  Mirrors the
-              // existing ICE-failure auto-retry at oniceconnectionstatechange.
+              // With ICE connected but no video data, retry this player's
+              // WebRTC connection without restarting the shared source.
               // Uses a dedicated counter (noDataReconnectAttemptsRef) so that
               // the ICE-connected reset of reconnectAttemptsRef doesn't
               // inadvertently allow infinite no-data retries.
@@ -461,10 +459,12 @@ export function WebRTCVideoCell({
               // stream's bitrate — reconnecting to the same source would fail
               // the same way, so step down to the sub-stream instead.
               if (
-                videoDataCheckCount >= MIN_NO_DATA_CHECKS_BEFORE_RETRY &&
                 (iceState === 'connected' || iceState === 'completed') &&
-                fullscreenUpgraded &&
-                !effectiveUseSubStream
+                shouldFallbackFullscreenToSubStream({
+                  fullscreenUpgraded,
+                  effectiveUseSubStream,
+                  noVideoCheckCount: videoDataCheckCount,
+                })
               ) {
                 console.log(
                   `Falling back to sub-stream for fullscreen cell ${stream.name}: ICE connected but ` +
@@ -485,20 +485,11 @@ export function WebRTCVideoCell({
                 connectionRefreshRequestedRef.current = true;
                 noDataReconnectAttemptsRef.current++;
                 console.log(
-                  `Auto-reconnecting stream ${stream.name}: ICE connected but no video data ` +
+                  `Retrying local WebRTC player for stream ${stream.name}: ICE connected but no video data ` +
                   `after ${videoDataCheckCount * VIDEO_DATA_CHECK_INTERVAL_MS / 1000}s ` +
                   `(attempt ${noDataReconnectAttemptsRef.current}/${MAX_NO_DATA_RECONNECT_ATTEMPTS})`
                 );
-                (async () => {
-                  try {
-                    await refreshStreamRegistration();
-                    // Give go2rtc time to fully re-register the RTSP source
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                  } catch (err) {
-                    console.error(`Error refreshing stream ${stream.name} during auto-reconnect:`, err);
-                  }
-                  setRetryCount(prev => prev + 1);
-                })();
+                setRetryCount(prev => prev + 1);
                 return; // Stop check chain; the retry useEffect run starts fresh
               }
 
@@ -630,36 +621,14 @@ export function WebRTCVideoCell({
           connectionMonitorRef.current = null;
         }
 
-        // Auto-refresh and retry if we haven't already for this connection attempt
+        // Retry only this player. Restarting the shared go2rtc source from an
+        // automatic client retry disrupts every viewer and can create a
+        // refresh feedback loop on multi-view dashboards (#457).
         if (!connectionRefreshRequestedRef.current && reconnectAttemptsRef.current < 3) {
           connectionRefreshRequestedRef.current = true;
           reconnectAttemptsRef.current++;
-          console.log(`Auto-refreshing go2rtc registration for stream ${stream.name} (attempt ${reconnectAttemptsRef.current}/3)`);
-
-          // Trigger a refresh and retry automatically
-          (async () => {
-            try {
-              const response = await fetch(`/api/streams/${encodeURIComponent(stream.name)}/refresh`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-              });
-              if (response.ok) {
-                console.log(`Successfully refreshed go2rtc registration for ${stream.name}, retrying connection...`);
-                // Delay to allow go2rtc to fully process the refresh (longer for slow devices)
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                // Trigger a retry by incrementing retryCount
-                setRetryCount(prev => prev + 1);
-                return;
-              } else {
-                console.warn(`Failed to refresh stream ${stream.name}: ${response.status}`);
-              }
-            } catch (err) {
-              console.error(`Error refreshing stream ${stream.name}:`, err);
-            }
-            // If refresh failed, show the error
-            setError(t('live.webrtcIceConnectionFailed'));
-            setIsLoading(false);
-          })();
+          console.log(`Retrying local WebRTC player for stream ${stream.name} (attempt ${reconnectAttemptsRef.current}/3)`);
+          setRetryCount(prev => prev + 1);
         } else {
           setError(t('live.webrtcIceConnectionFailed'));
           setIsLoading(false);
@@ -936,6 +905,19 @@ export function WebRTCVideoCell({
             console.log(`Stats: loss=${lossPercentage.toFixed(2)}%, rtt=${(currentRtt * 1000).toFixed(0)}ms, jitter=${(jitter * 1000).toFixed(0)}ms`);
             setConnectionQuality(quality);
           }
+
+          if (shouldFallbackFullscreenToSubStream({
+            fullscreenUpgraded,
+            effectiveUseSubStream,
+            connectionQuality: quality,
+          })) {
+            console.log(
+              `Falling back to sub-stream for fullscreen cell ${stream.name}: ` +
+              `main-stream WebRTC quality is ${quality}`
+            );
+            showStatusMessage(t('live.fullscreenSubStreamFallback', { stream: stream.name }), 'warning', 5000);
+            setSubStreamFallback(true);
+          }
         }).catch(err => {
           console.warn(`Error getting WebRTC stats for stream ${stream.name}:`, err);
         });
@@ -1079,8 +1061,9 @@ export function WebRTCVideoCell({
     }
   };
 
-  // Handle retry button click
-  const handleRetry = async () => {
+  // Retry only this browser player. Shared-source refresh is reserved for the
+  // explicitly labelled force-refresh control (#457).
+  const handleRetry = () => {
     console.log(`Retry requested for stream ${stream?.name}`);
 
     // Clean up existing connection
@@ -1106,15 +1089,14 @@ export function WebRTCVideoCell({
     connectionRefreshRequestedRef.current = false;
     noDataReconnectAttemptsRef.current = 0;
 
-    // Refresh the stream's go2rtc registration before retrying
-    // This helps recover from stale go2rtc state that causes WebRTC failures
-    await refreshStreamRegistration();
-
-    // Delay to allow go2rtc to fully re-register the stream (longer for slow devices)
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
     // Increment retry count to trigger useEffect re-run
     setRetryCount(prev => prev + 1);
+  };
+
+  const handleForceRefresh = async () => {
+    await refreshStreamRegistration();
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    handleRetry();
   };
 
   // Auto-retry while the error overlay is visible — recovers unattended
@@ -1501,19 +1483,10 @@ export function WebRTCVideoCell({
         }}
       >
         <ManualRecordingButton streamName={stream.name} />
-        <div
-          style={{
-            backgroundColor: 'transparent',
-            padding: '5px',
-            borderRadius: '4px'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          <SnapshotButton
-            streamId={streamId}
-            streamName={stream.name}
-            onSnapshot={() => {
+        <SnapshotButton
+          streamId={streamId}
+          streamName={stream.name}
+          onSnapshot={() => {
               if (!videoRef.current) return;
 
               const videoElement = videoRef.current;
@@ -1567,9 +1540,8 @@ export function WebRTCVideoCell({
 
                 showStatusMessage(t('live.snapshotSaved', { fileName }), 'success', 2000);
               }, 'image/jpeg', 0.95);
-            }}
-          />
-        </div>
+          }}
+        />
         {/* Pause for privacy button */}
         <button
           type="button"
@@ -1773,7 +1745,7 @@ export function WebRTCVideoCell({
           <button
             className="force-refresh-btn"
             title={t('live.forceRefreshStream')}
-            onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleRetry()}
+            onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleForceRefresh()}
             style={{
               backgroundColor: 'transparent',
               border: 'none',
@@ -1975,7 +1947,7 @@ export function WebRTCVideoCell({
       <ConfirmDialog
         isOpen={showRefreshConfirm}
         onClose={() => setShowRefreshConfirm(false)}
-        onConfirm={handleRetry}
+        onConfirm={handleForceRefresh}
         title={t('live.forceRefreshStream')}
         message={t('live.forceRefreshWarning')}
         confirmLabel={t('common.refresh')}

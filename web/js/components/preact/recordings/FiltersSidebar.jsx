@@ -77,7 +77,7 @@ const DEFAULT_SECTIONS = {
   display: false
 };
 
-const CAPTURE_METHOD_OPTIONS = ['scheduled', 'detection', 'motion', 'manual'];
+const CAPTURE_METHOD_OPTIONS = ['continuous', 'scheduled', 'detection', 'motion', 'manual'];
 
 const getCountBadge = (values) => (values.length > 0 ? `${values.length} selected` : null);
 

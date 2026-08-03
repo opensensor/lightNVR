@@ -23,6 +23,7 @@
 #include "database/db_core.h"
 #include "database/db_streams.h"
 #include "web/api_handlers.h"
+#include "web/api_handlers_recording_control.h"
 #include "web/api_handlers_system.h"
 #include "web/request_response.h"
 #include "video/stream_manager.h"
@@ -111,6 +112,9 @@ void test_handle_get_system_info_includes_versions_summary(void) {
     TEST_ASSERT_NOT_NULL(find_version_item(items, "libuv"));
     TEST_ASSERT_NOT_NULL(find_version_item(items, "llhttp"));
     TEST_ASSERT_NOT_NULL(find_version_item(items, "libavformat"));
+    cJSON *uptime = cJSON_GetObjectItemCaseSensitive(root, "uptime");
+    TEST_ASSERT_TRUE(cJSON_IsNumber(uptime));
+    TEST_ASSERT_TRUE(uptime->valuedouble >= 0.0);
 
     cJSON_Delete(root);
     http_response_free(&res);
@@ -483,6 +487,35 @@ void test_handle_put_stream_rejects_disallowed_detection_url(void) {
     clear_db_streams();
 }
 
+void test_manual_start_rejects_continuous_config_before_runtime_starts(void) {
+    clear_db_streams();
+
+    stream_config_t stream = make_test_stream("cam_continuous");
+    stream.record = true;
+    stream.record_on_schedule = false;
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&stream));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/streams/cam_continuous/recording",
+                sizeof(req.path), 0);
+    static const char json_body[] = "{\"action\":\"start\"}";
+    req.body = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream_recording(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(409, res.status_code);
+    TEST_ASSERT_NOT_NULL(res.body);
+    TEST_ASSERT_NOT_NULL(strstr((const char *)res.body,
+                                "Continuous recording is configured"));
+
+    http_response_free(&res);
+    clear_db_streams();
+}
+
 int main(void) {
     init_logger();
     load_default_config(&g_config);
@@ -516,6 +549,7 @@ int main(void) {
     RUN_TEST(test_handle_post_stream_persists_detection_url);
     RUN_TEST(test_handle_post_stream_rejects_disallowed_detection_url);
     RUN_TEST(test_handle_put_stream_rejects_disallowed_detection_url);
+    RUN_TEST(test_manual_start_rejects_continuous_config_before_runtime_starts);
     int result = UNITY_END();
 
     shutdown_database();

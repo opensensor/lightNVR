@@ -6,8 +6,7 @@
  * Behavior:
  *   - When `error` becomes truthy, schedule `onRetry()` to fire after a
  *     backoff delay + a small per-camera jitter.  The jitter desyncs
- *     simultaneous retries across a grid of cells so we don't slam the
- *     refresh API with N parallel calls at exactly the same instant.
+ *     simultaneous local player retries across a grid of cells.
  *   - The delay escalates with consecutive failures (5s, 10s, 20s, 40s,
  *     capped at 60s) so a persistently offline camera settles into a slow
  *     poll instead of hammering go2rtc — and hogging shared connection-gate

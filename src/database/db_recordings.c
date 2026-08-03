@@ -742,7 +742,11 @@ int get_recording_count(time_t start_time, time_t end_time,
     }
 
     if (capture_method_count > 0) {
-        safe_strcat(sql, " AND COALESCE(r.trigger_type, 'scheduled') IN (", sizeof(sql));
+        safe_strcat(sql,
+                    " AND CASE WHEN COALESCE(r.trigger_type, 'scheduled') = 'scheduled'"
+                    " AND r.schedule_restricted = 0 THEN 'continuous'"
+                    " ELSE COALESCE(r.trigger_type, 'scheduled') END IN (",
+                    sizeof(sql));
         for (int i = 0; i < capture_method_count; i++) {
             if (i > 0) safe_strcat(sql, ",", sizeof(sql));
             safe_strcat(sql, "?", sizeof(sql));
@@ -981,7 +985,11 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     }
 
     if (capture_method_count > 0) {
-        safe_strcat(sql, " AND COALESCE(r.trigger_type, 'scheduled') IN (", sizeof(sql));
+        safe_strcat(sql,
+                    " AND CASE WHEN COALESCE(r.trigger_type, 'scheduled') = 'scheduled'"
+                    " AND r.schedule_restricted = 0 THEN 'continuous'"
+                    " ELSE COALESCE(r.trigger_type, 'scheduled') END IN (",
+                    sizeof(sql));
         for (int i = 0; i < capture_method_count; i++) {
             if (i > 0) safe_strcat(sql, ",", sizeof(sql));
             safe_strcat(sql, "?", sizeof(sql));

@@ -39,6 +39,7 @@ static recording_metadata_t make_rec(const char *stream, const char *path, time_
     m.retention_override_days = -1;
     m.retention_tier = RETENTION_TIER_STANDARD;
     m.disk_pressure_eligible = true;
+    m.schedule_restricted = 1;
     return m;
 }
 
@@ -95,6 +96,23 @@ void test_schedule_restricted_round_trip_and_legacy_null(void) {
         sqlite3_exec(get_db_handle(), sql, NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(0, get_recording_metadata_by_id(id, &got));
     TEST_ASSERT_EQUAL_INT(-1, got.schedule_restricted);
+}
+
+void test_capture_method_distinguishes_continuous_scheduled_and_legacy(void) {
+    recording_metadata_t recording = make_rec("cam", "/rec/method.mp4", time(NULL));
+
+    recording.schedule_restricted = 0;
+    TEST_ASSERT_EQUAL_STRING("continuous", recording_capture_method(&recording));
+
+    recording.schedule_restricted = 1;
+    TEST_ASSERT_EQUAL_STRING("scheduled", recording_capture_method(&recording));
+
+    recording.schedule_restricted = -1;
+    TEST_ASSERT_EQUAL_STRING("scheduled", recording_capture_method(&recording));
+
+    safe_strcpy(recording.trigger_type, "continuous",
+                sizeof(recording.trigger_type), 0);
+    TEST_ASSERT_EQUAL_STRING("continuous", recording_capture_method(&recording));
 }
 
 /* update_recording_metadata */
@@ -168,6 +186,32 @@ void test_get_recording_count_supports_multi_value_stream_tag_and_capture_filter
     int cnt = get_recording_count(0, 0, "cam1,cam3", 0, NULL, -1, NULL, 0,
                                   "important,urgent", "scheduled,manual");
     TEST_ASSERT_EQUAL_INT(2, cnt);
+}
+
+void test_capture_filters_distinguish_continuous_from_scheduled(void) {
+    time_t now = time(NULL);
+    recording_metadata_t continuous = make_rec(
+        "always_on", "/rec/continuous.mp4", now);
+    continuous.schedule_restricted = 0;
+    recording_metadata_t scheduled = make_rec(
+        "scheduled", "/rec/scheduled.mp4", now + 60);
+
+    TEST_ASSERT_TRUE(add_recording_metadata(&continuous) > 0);
+    TEST_ASSERT_TRUE(add_recording_metadata(&scheduled) > 0);
+
+    TEST_ASSERT_EQUAL_INT(1,
+        get_recording_count(0, 0, NULL, 0, NULL, -1, NULL, 0,
+                            NULL, "continuous"));
+    TEST_ASSERT_EQUAL_INT(1,
+        get_recording_count(0, 0, NULL, 0, NULL, -1, NULL, 0,
+                            NULL, "scheduled"));
+
+    recording_metadata_t out[2];
+    int count = get_recording_metadata_paginated(
+        0, 0, NULL, 0, NULL, -1, "id", "asc", out, 2, 0,
+        NULL, 0, NULL, "continuous");
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING("always_on", out[0].stream_name);
 }
 
 /* get_recording_metadata_paginated */
@@ -313,11 +357,13 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_add_and_get_by_id);
     RUN_TEST(test_schedule_restricted_round_trip_and_legacy_null);
+    RUN_TEST(test_capture_method_distinguishes_continuous_scheduled_and_legacy);
     RUN_TEST(test_update_recording_metadata);
     RUN_TEST(test_get_recording_metadata_stream_filter);
     RUN_TEST(test_get_recording_metadata_by_path);
     RUN_TEST(test_get_recording_count);
     RUN_TEST(test_get_recording_count_supports_multi_value_stream_tag_and_capture_filters);
+    RUN_TEST(test_capture_filters_distinguish_continuous_from_scheduled);
     RUN_TEST(test_get_recording_metadata_paginated);
     RUN_TEST(test_get_recording_metadata_paginated_supports_multi_value_detection_labels_and_tags);
     RUN_TEST(test_set_recording_retention_tier);

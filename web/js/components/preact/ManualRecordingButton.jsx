@@ -26,7 +26,9 @@ export function ManualRecordingButton({ streamName }) {
   const isOtherRecording = status?.recording_active && !isManual;
   const disabled = busy || !status?.manual_control_allowed || isOtherRecording;
   const title = !status?.manual_control_allowed
-    ? 'Manual recording requires operator access'
+    ? status?.manual_control_reason === 'continuous_recording'
+      ? 'Manual recording is unavailable while continuous recording is enabled'
+      : 'Manual recording requires operator access'
     : isOtherRecording
       ? `${status.capture_method || 'Another'} recording is active`
       : isManual ? 'Stop manual recording' : 'Start manual recording';
@@ -68,16 +70,16 @@ export function ManualRecordingButton({ streamName }) {
       disabled={disabled}
       onClick={toggle}
       style={{
-        width: '34px',
-        height: '34px',
-        padding: 0,
+        width: '36px',
+        height: '36px',
+        padding: '5px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         border: 'none',
         borderRadius: '4px',
         color: 'white',
-        backgroundColor: isManual ? 'rgba(220, 38, 38, 0.9)' : 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: isManual ? 'rgba(220, 38, 38, 0.9)' : 'transparent',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.55 : 1
       }}

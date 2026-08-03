@@ -206,6 +206,26 @@ export function SnapshotButton({ streamId, streamName, onSnapshot }) {
       data-id={streamId}
       data-name={streamName}
       onClick={handleClick}
+      style={{
+        width: '36px',
+        height: '36px',
+        padding: '5px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+        border: 'none',
+        borderRadius: '4px',
+        color: 'white',
+        cursor: 'pointer',
+        transition: 'background-color 0.2s ease'
+      }}
+      onMouseOver={(event) => {
+        event.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+      }}
+      onMouseOut={(event) => {
+        event.currentTarget.style.backgroundColor = 'transparent';
+      }}
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"

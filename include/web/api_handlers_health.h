@@ -47,6 +47,14 @@ int get_failed_health_checks(void);
 void reset_health_metrics(void);
 
 /**
+ * @brief Return LightNVR process uptime in seconds.
+ *
+ * Uses the startup timestamp shared with the health endpoint and clamps wall
+ * clock adjustments so callers never receive a negative duration.
+ */
+double get_process_uptime_seconds(void);
+
+/**
  * @brief Check if the server needs to be restarted
  *
  * @return true if server needs restart, false otherwise

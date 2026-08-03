@@ -119,7 +119,7 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(recording_obj, "duration", duration);
     cJSON_AddStringToObject(recording_obj, "size", size_str);
     cJSON_AddStringToObject(recording_obj, "capture_method",
-                            recording.trigger_type[0] ? recording.trigger_type : "scheduled");
+                            recording_capture_method(&recording));
     if (recording.schedule_restricted < 0) {
         cJSON_AddNullToObject(recording_obj, "schedule_restricted");
     } else {

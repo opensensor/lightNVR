@@ -70,6 +70,14 @@ static pthread_t g_web_server_thread_id = 0;
 static bool g_web_server_thread_id_set = false;
 static pthread_mutex_t g_web_server_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+double get_process_uptime_seconds(void) {
+    if (g_start_time <= 0) {
+        return 0;
+    }
+    double uptime = difftime(time(NULL), g_start_time);
+    return uptime > 0 ? uptime : 0;
+}
+
 // Curl response buffer
 struct MemoryStruct {
     char *memory;
@@ -186,7 +194,7 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
 
     // Backward-compatible fields
     cJSON_AddBoolToObject(health, "healthy", true);
-    cJSON_AddNumberToObject(health, "uptime", difftime(time(NULL), g_start_time));
+    cJSON_AddNumberToObject(health, "uptime", get_process_uptime_seconds());
     cJSON_AddNumberToObject(health, "totalRequests", g_total_requests);
     cJSON_AddNumberToObject(health, "failedRequests", g_failed_requests);
 

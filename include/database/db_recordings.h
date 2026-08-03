@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 #include <time.h>
 
 #include "core/config.h"
@@ -20,13 +21,33 @@ typedef struct {
     int fps;
     char codec[16];
     bool is_complete;
-    char trigger_type[16];  // 'scheduled', 'detection', 'motion', 'manual'
+    char trigger_type[16];  // 'continuous', 'scheduled', 'detection', 'motion', 'manual'
     bool protected;         // If true, recording is protected from automatic deletion
     int retention_override_days;  // Custom retention period override (-1 = use stream default)
     int retention_tier;     // 0=Critical, 1=Important, 2=Standard, 3=Ephemeral
     bool disk_pressure_eligible;  // If true, recording can be deleted under disk pressure
     int schedule_restricted; // -1 = unknown/legacy, 0 = unrestricted, 1 = schedule-gated
 } recording_metadata_t;
+
+/**
+ * Return the public capture-method value for a recording.
+ *
+ * Older releases stored all always-on and schedule-gated recordings as
+ * "scheduled". Once schedule_restricted metadata became available we can
+ * report known-unrestricted legacy rows accurately without rewriting history.
+ * Rows whose schedule metadata is unknown remain "scheduled".
+ */
+static inline const char *recording_capture_method(
+    const recording_metadata_t *recording) {
+    if (!recording || recording->trigger_type[0] == '\0') {
+        return "scheduled";
+    }
+    if (strcmp(recording->trigger_type, "scheduled") == 0 &&
+        recording->schedule_restricted == 0) {
+        return "continuous";
+    }
+    return recording->trigger_type;
+}
 
 // Retention tier constants
 #define RETENTION_TIER_CRITICAL   0

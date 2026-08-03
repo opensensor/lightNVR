@@ -568,8 +568,9 @@ export function HLSVideoCell({
     }
   }, [stream.status, error]);
 
-  // Handle retry button click
-  const handleRetry = async () => {
+  // Retry only this browser player. Shared-source refresh is reserved for the
+  // explicitly labelled force-refresh control (#457).
+  const handleRetry = () => {
     console.log(`Retry requested for stream ${stream?.name}`);
 
     // Clean up existing player
@@ -591,15 +592,14 @@ export function HLSVideoCell({
     setIsLoading(true);
     setIsPlaying(false);
 
-    // Refresh the stream's go2rtc registration before retrying
-    // This helps recover from stale go2rtc state that causes HLS failures
-    await refreshStreamRegistration();
-
-    // Small delay to allow go2rtc to re-register the stream
-    await new Promise(resolve => setTimeout(resolve, 500));
-
     // Increment retry count to trigger useEffect re-run
     setRetryCount(prev => prev + 1);
+  };
+
+  const handleForceRefresh = async () => {
+    await refreshStreamRegistration();
+    await new Promise(resolve => setTimeout(resolve, 500));
+    handleRetry();
   };
 
   // Auto-retry while the error overlay is visible — see WebRTCVideoCell for rationale.
@@ -824,22 +824,10 @@ export function HLSVideoCell({
         }}
       >
         <ManualRecordingButton streamName={stream.name} />
-        <div
-          style={{
-            backgroundColor: 'transparent',
-            border: 'none',
-            padding: '5px',
-            borderRadius: '4px',
-            color: 'white',
-            cursor: 'pointer'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-        >
-          <SnapshotButton
-            streamId={streamId}
-            streamName={stream.name}
-            onSnapshot={() => {
+        <SnapshotButton
+          streamId={streamId}
+          streamName={stream.name}
+          onSnapshot={() => {
               if (!videoRef.current) return;
 
               const videoElement = videoRef.current;
@@ -893,9 +881,8 @@ export function HLSVideoCell({
 
                 showStatusMessage(t('live.snapshotSaved', { fileName }), 'success', 2000);
               }, 'image/jpeg', 0.95);
-            }}
-          />
-        </div>
+          }}
+        />
         {/* Pause for privacy button */}
         <button
           type="button"
@@ -985,7 +972,7 @@ export function HLSVideoCell({
           <button
             className="force-refresh-btn"
             title={t('live.forceRefreshStream')}
-            onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleRetry()}
+            onClick={() => stream?.record ? setShowRefreshConfirm(true) : handleForceRefresh()}
             style={{
               backgroundColor: 'transparent',
               border: 'none',
@@ -1197,7 +1184,7 @@ export function HLSVideoCell({
       <ConfirmDialog
         isOpen={showRefreshConfirm}
         onClose={() => setShowRefreshConfirm(false)}
-        onConfirm={handleRetry}
+        onConfirm={handleForceRefresh}
         title={t('live.forceRefreshStream')}
         message={t('live.forceRefreshWarning')}
         confirmLabel={t('common.refresh')}

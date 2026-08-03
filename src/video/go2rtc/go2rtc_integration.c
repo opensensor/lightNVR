@@ -1156,7 +1156,9 @@ static bool ensure_go2rtc_ready_for_stream(const char *stream_name) {
 }
 
 int go2rtc_integration_start_recording(const char *stream_name) {
-    return go2rtc_integration_start_recording_with_trigger(stream_name, "scheduled");
+    /* A NULL trigger lets the recording core derive continuous vs scheduled
+     * from the current stream configuration. */
+    return go2rtc_integration_start_recording_with_trigger(stream_name, NULL);
 }
 
 int go2rtc_integration_start_recording_with_trigger(const char *stream_name,
