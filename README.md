@@ -229,9 +229,10 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
      22.04 ship FFmpeg 5.x/6.x, which is too old — build FFmpeg from source or
      use a newer distro release (Debian 13 / Ubuntu 24.04+ ship a compatible
      version).
-   - **Node.js ≥ 20** for the web build. Debian 12's packaged `nodejs` is 18.x
-     — install a newer version via [NodeSource](https://github.com/nodesource/distributions)
-     or [nvm](https://github.com/nvm-sh/nvm) if `node --version` is below 20.
+   - **Node.js ≥ 24.11 and < 25** for the web build. Use the pinned version in
+     `.nvmrc`; distribution packages may be older, so install Node 24 via
+     [NodeSource](https://github.com/nodesource/distributions) or
+     [nvm](https://github.com/nvm-sh/nvm) when needed.
    - **`libsqlite3-dev`** (not pulled in automatically by any of the above).
 
    ```bash
@@ -242,7 +243,7 @@ Powerful object detection using modern ONNX and TFLite models with zone-aware fi
    # Initialize submodules (required for go2rtc)
    git submodule update --init --recursive
 
-   # Build web assets (requires Node.js >= 20 -- see prerequisites above).
+   # Build web assets (requires Node.js >= 24.11 and < 25 -- see above).
    # Use this script rather than running: cd web && npm install && npm run build
    # It also runs scripts/extract_version.js first, which generates web/js/version.js
    # from CMakeLists.txt. Skipping that step fails the Vite build with:

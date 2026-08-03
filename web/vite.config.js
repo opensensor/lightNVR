@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 import { resolve, basename, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import legacy from '@vitejs/plugin-legacy';
-import preact from '@preact/preset-vite';
+import prefresh from '@prefresh/vite';
 import viteCompression from 'vite-plugin-compression';
 import themeInjectPlugin from './vite-plugin-theme-inject.js';
 import * as fsPromises from 'fs/promises';
@@ -87,6 +87,15 @@ const removeUseClientDirective = () => {
 };
 
 export default defineConfig({
+  // Vite 8 uses Oxc for JSX transforms. Target Preact directly so the build
+  // no longer depends on the Babel 7-only @preact/preset-vite package.
+  oxc: {
+    jsx: {
+      runtime: 'automatic',
+      importSource: 'preact',
+    },
+  },
+
   // Base public path when served in production
   base: './',
 
@@ -153,8 +162,8 @@ export default defineConfig({
 
   // Configure plugins
   plugins: [
-    // Preact plugin to handle JSX
-    preact(),
+    // Preserve Preact Fast Refresh while Vite/Oxc handles JSX compilation.
+    prefresh(),
     // Custom plugin to remove "use client" directives
     removeUseClientDirective(),
     // Theme injection plugin - reads COLOR_THEMES from theme-init.js and injects into HTML

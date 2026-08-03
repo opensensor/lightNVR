@@ -113,10 +113,9 @@ sudo systemctl restart lightnvr
 # Navigate to LightNVR source directory
 cd /path/to/lightnvr
 
-# Install Node.js and npm if not already installed
-# On Debian/Ubuntu:
-sudo apt-get update
-sudo apt-get install -y nodejs npm
+# Install the Node.js version pinned by the repository (requires nvm)
+nvm install
+nvm use
 
 # Build web assets
 cd web
@@ -364,4 +363,3 @@ To avoid web interface issues in future installations:
 
 3. **Keep backups**:
    The install_web_assets.sh script automatically creates backups before overwriting files.
-

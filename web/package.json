@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "LightNVR Web Interface",
   "type": "module",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
   "scripts": {
     "start": "vite",
     "build": "vite build",
@@ -28,8 +31,9 @@
     "webrtc-adapter": "^9.0.6"
   },
   "devDependencies": {
-    "@babel/preset-env": "^7.29.7",
-    "@preact/preset-vite": "^2.10.6",
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "@prefresh/vite": "^3.0.1",
     "@vitejs/plugin-legacy": "^8.2.2",
     "autoprefixer": "^10.5.4",
     "babel-jest": "^30.4.1",

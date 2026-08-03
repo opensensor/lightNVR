@@ -145,7 +145,10 @@ cJSON * get_json_logs_tail(int max_verbosity, const char *last_timestamp, int ma
         cJSON *json_lvl = cJSON_CreateStringReference(level);
 
         cJSON_AddStringToObject(log_entry, "timestamp", timestamp[0] ? timestamp : "Unknown");
-        cJSON_AddItemReferenceToObject(log_entry, "level", json_lvl);
+        // json_lvl is already a reference node. Attach that node directly so
+        // the parent owns and frees it; AddItemReferenceToObject would create
+        // a second node and leak the original one for every log entry.
+        cJSON_AddItemToObject(log_entry, "level", json_lvl);
         cJSON_AddStringToObject(log_entry, "message", message);
 
         cJSON_AddItemToArray(logs_array, log_entry);

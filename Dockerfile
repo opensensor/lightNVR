@@ -4,6 +4,7 @@ ARG SQLITE_YEAR=2026
 ARG SQLITE_AUTOCONF_VERSION=3520000
 ARG LIBUV_VERSION=1.52.1
 ARG LLHTTP_VERSION=9.3.1
+ARG NODE_MAJOR=24
 ARG DEB_BUILD=false
 
 FROM debian:${DEBIAN_SUITE}-slim AS builder
@@ -13,28 +14,36 @@ ARG SQLITE_YEAR
 ARG SQLITE_AUTOCONF_VERSION
 ARG LIBUV_VERSION
 ARG LLHTTP_VERSION
+ARG NODE_MAJOR
 ARG DEB_BUILD
 
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies including Node.js and FFmpeg dev libraries
-# sid ships Go 1.26+/Node 22.x/FFmpeg 8.x; trixie ships Go 1.24+/Node 20.x/FFmpeg 7.x
+# Install build dependencies including Node.js and FFmpeg dev libraries.
+# Node.js comes from NodeSource so every Debian suite uses the Node 24 LTS
+# baseline required by the Babel 8 web test toolchain.
+# sid ships Go 1.26+/FFmpeg 8.x; trixie ships Go 1.24+/FFmpeg 7.x.
 #
 # Pre-install systemd-standalone-sysusers to satisfy the sysusers virtual
 # dependency without pulling in the full systemd package.  The full systemd
 # postinst crashes under QEMU ARM emulation (SIGSEGV in systemd 260.x),
 # breaking all cross-architecture builds.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends systemd-standalone-sysusers && \
+    apt-get install -y --no-install-recommends \
+      systemd-standalone-sysusers curl ca-certificates gpg && \
+    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" \
+      -o /tmp/nodesource_setup.sh && \
+    bash /tmp/nodesource_setup.sh && \
+    rm /tmp/nodesource_setup.sh && \
     apt-get install -y \
     git cmake build-essential pkg-config file \
     libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
     libcurl4-openssl-dev \
-    libmbedtls-dev curl wget ca-certificates gpg libcjson-dev \
+    libmbedtls-dev wget libcjson-dev \
     libmosquitto-dev \
     libyaml-dev \
-    nodejs npm \
+    nodejs \
     golang-go && \
     # Verify installation
     node --version && \
