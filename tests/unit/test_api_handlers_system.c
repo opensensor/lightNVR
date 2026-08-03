@@ -140,6 +140,35 @@ void test_handle_get_system_info_includes_empty_stream_storage_array(void) {
     http_response_free(&res);
 }
 
+void test_get_json_logs_tail_owns_level_reference_nodes(void) {
+    char log_path[MAX_PATH_LENGTH + sizeof("/system.log")];
+    snprintf(log_path, sizeof(log_path), "%s/system.log", g_tmp_root);
+
+    FILE *log_file = fopen(log_path, "w");
+    TEST_ASSERT_NOT_NULL(log_file);
+    fputs("[2026-08-03 12:00:00.000] [INFO] first message\n", log_file);
+    fputs("[2026-08-03 12:00:01.000] [WARN] second message\n", log_file);
+    fputs("[2026-08-03 12:00:02.000] [ERROR] third message\n", log_file);
+    fclose(log_file);
+
+    safe_strcpy(g_config.log_file, log_path, sizeof(g_config.log_file), 0);
+
+    cJSON *logs = get_json_logs_tail(LOG_LEVEL_DEBUG, NULL, 10);
+    TEST_ASSERT_NOT_NULL(logs);
+    TEST_ASSERT_EQUAL_INT(3, cJSON_GetArraySize(logs));
+
+    cJSON *entry = cJSON_GetArrayItem(logs, 0);
+    cJSON *level = cJSON_GetObjectItemCaseSensitive(entry, "level");
+    TEST_ASSERT_TRUE(cJSON_IsString(level));
+    TEST_ASSERT_EQUAL_STRING("INFO", level->valuestring);
+
+    /* LeakSanitizer verifies that deleting the array also releases each
+     * cJSON string-reference node owned by its log entry. */
+    cJSON_Delete(logs);
+    g_config.log_file[0] = '\0';
+    unlink(log_path);
+}
+
 /* ================================================================
  * handle_get_streams — motion_trigger_source field present in JSON
  * ================================================================ */
@@ -540,6 +569,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_handle_get_system_info_includes_versions_summary);
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
+    RUN_TEST(test_get_json_logs_tail_owns_level_reference_nodes);
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);
     RUN_TEST(test_handle_put_stream_parses_motion_trigger_source);
     RUN_TEST(test_handle_get_streams_includes_audio_voice_enhancement);

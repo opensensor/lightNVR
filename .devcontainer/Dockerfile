@@ -1,11 +1,13 @@
 FROM ubuntu:24.04
 
+ARG NODE_MAJOR=24
+
 # Avoid interactive prompts during package install
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Node.js 20.x from NodeSource repository (required for selenium-webdriver and other packages)
+# Install the Node 24 LTS baseline required by Babel 8 and the web toolchain.
 RUN apt-get update && apt-get install -y curl ca-certificates gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && apt-get install -y nodejs
 
 # Install required packages

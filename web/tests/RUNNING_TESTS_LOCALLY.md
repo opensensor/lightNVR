@@ -6,7 +6,7 @@ This guide provides detailed instructions for running the Selenium-based automat
 
 Before running the tests, ensure you have the following installed:
 
-1. **Node.js and npm**: Required to run JavaScript-based tests
+1. **Node.js 24.11+ (24.x) and npm**: Required to run JavaScript-based tests
    - Download from [nodejs.org](https://nodejs.org/)
    - Verify installation with `node -v` and `npm -v`
 

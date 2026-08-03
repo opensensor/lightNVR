@@ -2,6 +2,9 @@
   "name": "lightnvr",
   "version": "1.0.0",
   "description": "LightNVR Integration Tests",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
   "scripts": {
     "test": "npx playwright test",
     "test:api": "npx playwright test --grep @api",

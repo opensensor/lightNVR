@@ -308,14 +308,21 @@ jobs:
             curl \
             jq \
             golang-go \
-            nodejs \
-            npm \
             procps
 
       - name: Checkout
         uses: actions/checkout@v6
         with:
           submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
 
       - name: Build go2rtc from source
         run: |
@@ -491,4 +498,3 @@ jobs:
 
           # Clean up test artifacts
           rm -rf /tmp/lightnvr-test
-
