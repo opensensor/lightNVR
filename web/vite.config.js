@@ -87,17 +87,6 @@ const removeUseClientDirective = () => {
 };
 
 export default defineConfig({
-  // Configure esbuild to handle "use client" directives
-  esbuild: {
-    supported: {
-      'top-level-await': true, // Enable top level await
-    },
-    legalComments: 'none', // Remove all legal comments
-    // Ignore specific warnings
-    logOverride: {
-      'module-level-directive': 'silent', // Silence module level directive warnings
-    },
-  },
   // Base public path when served in production
   base: './',
 
