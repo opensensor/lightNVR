@@ -132,10 +132,17 @@ bool go2rtc_get_snapshot(const char *stream_name, unsigned char **jpeg_data, siz
 
     // Format the URL for the go2rtc snapshot API
     // go2rtc runs on port 1984 and provides snapshots at: /api/frame.jpeg?src={stream_name}
-    // We add cache=30s to allow go2rtc to return a cached frame if the stream is temporarily
-    // unavailable (e.g., video doorbell in sleep mode). This prevents timeouts when the
-    // producer is reconnecting, as long as a frame was captured within the last 30 seconds.
-    snprintf(url, sizeof(url), "http://localhost:1984" GO2RTC_BASE_PATH "/api/frame.jpeg?src=%s&cache=30s", encoded_name);
+    // cache= lets go2rtc hand back a recently captured frame rather than waiting on the
+    // producer, so a temporarily unavailable stream (e.g. a video doorbell in sleep mode)
+    // does not stall the caller while it reconnects.
+    //
+    // It must stay at or below the detection interval. Within the cache window go2rtc
+    // returns byte-identical data, so a window of N seconds makes every detection in it
+    // run on one frozen frame and delays a newly arrived object by up to N seconds. This
+    // was 30s, which silently defeated any detection_interval shorter than 30s. 1s matches
+    // the shortest interval lightNVR can express (both detection gates compare whole
+    // seconds), so it preserves the reconnect tolerance without freezing detection.
+    snprintf(url, sizeof(url), "http://localhost:1984" GO2RTC_BASE_PATH "/api/frame.jpeg?src=%s&cache=1s", encoded_name);
 
     log_debug("Fetching snapshot from go2rtc: %s", url);
     
