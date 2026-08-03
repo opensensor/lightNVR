@@ -14,8 +14,8 @@
     "test:load:heavy": "node --experimental-strip-types tests/load/index.ts -n 1000 -c 50"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
-    "playwright": "^1.60.0",
-    "sharp": "^0.35.0"
+    "@playwright/test": "^1.62.1",
+    "playwright": "^1.62.1",
+    "sharp": "^0.35.3"
   }
 }
