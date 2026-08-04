@@ -7,7 +7,7 @@ ARG LLHTTP_VERSION=9.3.1
 ARG NODE_MAJOR=24
 ARG DEB_BUILD=false
 
-FROM debian:${DEBIAN_SUITE}-slim AS builder
+FROM --platform=$BUILDPLATFORM debian:${DEBIAN_SUITE}-slim AS builder
 
 ARG DEBIAN_SUITE
 ARG SQLITE_YEAR
@@ -16,35 +16,57 @@ ARG LIBUV_VERSION
 ARG LLHTTP_VERSION
 ARG NODE_MAJOR
 ARG DEB_BUILD
+ARG BUILDARCH
+ARG TARGETARCH
+ARG TARGETVARIANT
 
 # Set non-interactive mode
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies including Node.js and FFmpeg dev libraries.
+# Install build dependencies including Node.js and target FFmpeg dev libraries.
 # Node.js comes from NodeSource so every Debian suite uses the Node 24 LTS
 # baseline required by the Babel 8 web test toolchain.
 # sid ships Go 1.26+/FFmpeg 8.x; trixie ships Go 1.24+/FFmpeg 7.x.
+#
+# ARMv7 is cross-compiled on the x86_64 runner. Compiling LiteRT/XNNPACK under
+# QEMU accounted for nearly three hours of each release; Debian multiarch gives
+# the native compiler the same armhf headers and libraries without emulation.
 #
 # Pre-install systemd-standalone-sysusers to satisfy the sysusers virtual
 # dependency without pulling in the full systemd package.  The full systemd
 # postinst crashes under QEMU ARM emulation (SIGSEGV in systemd 260.x),
 # breaking all cross-architecture builds.
-RUN apt-get update && \
+RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      test "$BUILDARCH" = "amd64" || { \
+        echo "linux/arm/v7 cross-compilation requires an amd64 builder"; exit 1; \
+      }; \
+      dpkg --add-architecture armhf; \
+    elif [ "$TARGETARCH" != "$BUILDARCH" ]; then \
+      echo "Unsupported cross-build: $BUILDARCH -> $TARGETARCH/$TARGETVARIANT"; \
+      exit 1; \
+    fi && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
       systemd-standalone-sysusers curl ca-certificates gpg && \
     curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" \
       -o /tmp/nodesource_setup.sh && \
     bash /tmp/nodesource_setup.sh && \
     rm /tmp/nodesource_setup.sh && \
-    apt-get install -y \
-    git cmake build-essential pkg-config file \
-    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libcurl4-openssl-dev \
-    libmbedtls-dev wget libcjson-dev \
-    libmosquitto-dev \
-    libyaml-dev \
-    nodejs \
-    golang-go && \
+    apt-get install -y --no-install-recommends \
+      git cmake build-essential pkg-config file wget nodejs golang-go && \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      apt-get install -y --no-install-recommends \
+        gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+        libavcodec-dev:armhf libavformat-dev:armhf \
+        libavutil-dev:armhf libswscale-dev:armhf \
+        libcurl4-openssl-dev:armhf libmbedtls-dev:armhf \
+        libcjson-dev:armhf libmosquitto-dev:armhf libyaml-dev:armhf; \
+    else \
+      apt-get install -y --no-install-recommends \
+        libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
+        libcurl4-openssl-dev libmbedtls-dev libcjson-dev \
+        libmosquitto-dev libyaml-dev; \
+    fi && \
     # Verify installation
     node --version && \
     npm --version && \
@@ -55,16 +77,23 @@ RUN apt-get update && \
 # This ensures the binary links against system SONAMEs so that libuv, libsqlite3,
 # and libllhttp can be proper package dependencies instead of bundled libraries.
 RUN if [ "$DEB_BUILD" = "true" ]; then \
+      if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+        TARGET_DEB_ARCH=armhf; \
+        LIBDIR=/usr/lib/arm-linux-gnueabihf; \
+      else \
+        TARGET_DEB_ARCH=""; \
+        case "$TARGETARCH" in \
+          amd64) LIBDIR=/usr/lib/x86_64-linux-gnu ;; \
+          arm64) LIBDIR=/usr/lib/aarch64-linux-gnu ;; \
+          *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
+        esac; \
+      fi && \
       apt-get update && apt-get install -y --no-install-recommends \
-        libuv1-dev libsqlite3-dev libllhttp-dev sqlite3 && \
+        "libuv1-dev${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" \
+        "libsqlite3-dev${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" \
+        "libllhttp-dev${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" \
+        "sqlite3${TARGET_DEB_ARCH:+:$TARGET_DEB_ARCH}" && \
       rm -rf /var/lib/apt/lists/* && \
-      ARCH=$(uname -m) && \
-      case $ARCH in \
-          x86_64) LIBDIR="/usr/lib/x86_64-linux-gnu" ;; \
-          aarch64) LIBDIR="/usr/lib/aarch64-linux-gnu" ;; \
-          armv7l) LIBDIR="/usr/lib/arm-linux-gnueabihf" ;; \
-          *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
-      esac && \
       cp -a ${LIBDIR}/libuv.so* /usr/lib/ && \
       cp -a ${LIBDIR}/libsqlite3.so* /usr/lib/ && \
       cp -a ${LIBDIR}/libllhttp.so* /usr/lib/; \
@@ -76,10 +105,19 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
     wget -q "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
     tar -xzf "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" && \
     cd "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}" && \
-    ./configure --prefix=/usr --disable-static && \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      CONFIGURE_TARGET="--host=arm-linux-gnueabihf"; \
+    else \
+      CONFIGURE_TARGET=""; \
+    fi && \
+    ./configure $CONFIGURE_TARGET --prefix=/usr --libdir=/usr/lib --disable-static && \
     make -j"$(nproc)" && \
     make install && \
-    sqlite3 --version; \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      file /usr/bin/sqlite3 | grep -q "ARM"; \
+    else \
+      sqlite3 --version; \
+    fi; \
     fi
 
 # Build upstream libuv (skipped for .deb builds which use system libuv)
@@ -88,17 +126,15 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
     wget -q "https://github.com/libuv/libuv/archive/refs/tags/v${LIBUV_VERSION}.tar.gz" -O libuv.tar.gz && \
     tar -xzf libuv.tar.gz && \
     cd "libuv-${LIBUV_VERSION}" && \
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/usr && \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      UV_CROSS_ARGS="-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=armv7 -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++"; \
+    else \
+      UV_CROSS_ARGS=""; \
+    fi && \
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+      -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib $UV_CROSS_ARGS && \
     cmake --build build -j"$(nproc)" && \
     cmake --install build && \
-    ARCH=$(uname -m) && \
-    case $ARCH in \
-        x86_64) LIBUV_DIR="/usr/lib/x86_64-linux-gnu" ;; \
-        aarch64) LIBUV_DIR="/usr/lib/aarch64-linux-gnu" ;; \
-        armv7l) LIBUV_DIR="/usr/lib/arm-linux-gnueabihf" ;; \
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
-    esac && \
-    cp -a "$LIBUV_DIR"/libuv.so* /usr/lib/ && \
     pkg-config --modversion libuv; \
     fi
 
@@ -109,10 +145,15 @@ RUN if [ "$DEB_BUILD" != "true" ]; then \
     wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/src/llhttp.c" -O /tmp/llhttp/src/llhttp.c && \
     wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/src/api.c" -O /tmp/llhttp/src/api.c && \
     wget -q "https://raw.githubusercontent.com/nodejs/llhttp/release/src/http.c" -O /tmp/llhttp/src/http.c && \
-    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/llhttp.c -o /tmp/llhttp/llhttp.o && \
-    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/api.c -o /tmp/llhttp/api.o && \
-    cc -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/http.c -o /tmp/llhttp/http.o && \
-    cc -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp/llhttp.o /tmp/llhttp/api.o /tmp/llhttp/http.o && \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      TARGET_CC=arm-linux-gnueabihf-gcc; \
+    else \
+      TARGET_CC=cc; \
+    fi && \
+    "$TARGET_CC" -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/llhttp.c -o /tmp/llhttp/llhttp.o && \
+    "$TARGET_CC" -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/api.c -o /tmp/llhttp/api.o && \
+    "$TARGET_CC" -fPIC -I/tmp/llhttp/include -c /tmp/llhttp/src/http.c -o /tmp/llhttp/http.o && \
+    "$TARGET_CC" -shared -Wl,-soname,libllhttp.so.9 -o /usr/lib/libllhttp.so.${LLHTTP_VERSION} /tmp/llhttp/llhttp.o /tmp/llhttp/api.o /tmp/llhttp/http.o && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so.9 && \
     ln -sf /usr/lib/libllhttp.so.${LLHTTP_VERSION} /usr/lib/libllhttp.so && \
     install -m 644 /tmp/llhttp/include/llhttp.h /usr/include/llhttp.h && \
@@ -129,20 +170,34 @@ RUN mkdir -p /opt/external && \
     cd /opt/external && \
     git clone https://github.com/benhoyt/inih.git
 
+# LiteRT requires a build-host flatc binary while cross-compiling. Build the
+# exact FlatBuffers revision selected by LiteRT, in a layer that changes only
+# when its CMake dependency definitions change.
+COPY third_party/litert/tflite/tools/cmake /tmp/tflite-cmake
+RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      cmake -S /tmp/tflite-cmake/native_tools/flatbuffers \
+        -B /tmp/flatc-build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/host-tools && \
+      cmake --build /tmp/flatc-build -j"$(nproc)" && \
+      test -x /opt/host-tools/bin/flatc && \
+      /opt/host-tools/bin/flatc --version; \
+    fi
+
 # Copy current directory contents into container
 WORKDIR /opt
 COPY . .
+ARG GIT_COMMIT
 
 # Create pkg-config files for MbedTLS with architecture-specific paths
 RUN mkdir -p /usr/lib/pkgconfig && \
-    ARCH=$(uname -m) && \
-    MBEDTLS_VERSION=$(dpkg-query -W -f='${Version}' libmbedtls-dev | cut -d- -f1) && \
-    case $ARCH in \
-        x86_64) LIB_DIR="/usr/lib/x86_64-linux-gnu" ;; \
-        aarch64) LIB_DIR="/usr/lib/aarch64-linux-gnu" ;; \
-        armv7l) LIB_DIR="/usr/lib/arm-linux-gnueabihf" ;; \
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    case "$TARGETARCH/$TARGETVARIANT" in \
+        amd64/) LIB_DIR="/usr/lib/x86_64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
+        arm64/) LIB_DIR="/usr/lib/aarch64-linux-gnu"; MBEDTLS_PACKAGE=libmbedtls-dev ;; \
+        arm/v7) LIB_DIR="/usr/lib/arm-linux-gnueabihf"; MBEDTLS_PACKAGE=libmbedtls-dev:armhf ;; \
+        *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
     esac && \
+    MBEDTLS_VERSION=$(dpkg-query -W -f='${Version}' "$MBEDTLS_PACKAGE" | cut -d- -f1) && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedtls\nDescription: MbedTLS Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedtls\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedtls.pc && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedcrypto\nDescription: MbedTLS Crypto Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedcrypto\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedcrypto.pc && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
@@ -154,7 +209,14 @@ RUN mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Build go2rtc from local submodule (already copied by COPY . .)
     cd /opt/go2rtc && \
     GOTOOLCHAIN=auto go mod tidy && \
-    GOTOOLCHAIN=auto CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
+    case "$TARGETARCH/$TARGETVARIANT" in \
+      amd64/) GOARCH=amd64; GOARM= ;; \
+      arm64/) GOARCH=arm64; GOARM= ;; \
+      arm/v7) GOARCH=arm; GOARM=7 ;; \
+      *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
+    esac && \
+    GOTOOLCHAIN=auto CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" GOARM="$GOARM" \
+      go build -ldflags "-s -w" -trimpath -o /bin/go2rtc . && \
     chmod +x /bin/go2rtc && \
     # Create basic configuration file
     echo "# go2rtc configuration file" > /etc/lightnvr/go2rtc/go2rtc.yaml && \
@@ -179,7 +241,7 @@ RUN if grep -q "systemctl" scripts/install.sh; then \
     fi
 
 # Generate version.js before building web assets (it is not checked into git)
-RUN ./scripts/extract_version.sh
+RUN LIGHTNVR_GIT_COMMIT="$GIT_COMMIT" ./scripts/extract_version.sh
 
 # Build web assets using Vite
 RUN echo "Building web assets..." && \
@@ -201,17 +263,41 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
     # Clean any existing build files
     rm -rf build/ && \
     # Determine architecture-specific pkgconfig path
-    ARCH=$(uname -m) && \
-    case $ARCH in \
-        x86_64) PKG_CONFIG_ARCH_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig" ;; \
-        aarch64) PKG_CONFIG_ARCH_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" ;; \
-        armv7l) PKG_CONFIG_ARCH_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" ;; \
-        *) echo "Unsupported architecture: $ARCH"; exit 1 ;; \
+    case "$TARGETARCH/$TARGETVARIANT" in \
+        amd64/) PKG_CONFIG_ARCH_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig"; TOOLCHAIN_FILE="" ;; \
+        arm64/) PKG_CONFIG_ARCH_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig"; TOOLCHAIN_FILE="" ;; \
+        arm/v7) PKG_CONFIG_ARCH_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig"; \
+                TOOLCHAIN_FILE="/opt/cmake/toolchains/armv7-linux-gnueabihf.cmake" ;; \
+        *) echo "Unsupported target architecture: $TARGETARCH/$TARGETVARIANT"; exit 1 ;; \
     esac && \
+    # Cross-installing armhf packages does not run the target ldconfig, so
+    # recreate the SONAME link that libmosquitto needs for the final link.
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      PICOHTTP_LIB=$(find /usr/lib/arm-linux-gnueabihf -maxdepth 1 \
+        -name 'libpicohttpparser.so.1.*' -print -quit) && \
+      if [ -n "$PICOHTTP_LIB" ]; then \
+        ln -sf "$(basename "$PICOHTTP_LIB")" \
+          /usr/lib/arm-linux-gnueabihf/libpicohttpparser.so.1; \
+      fi; \
+    fi && \
     # Build the application with go2rtc and SOD dynamic linking
+    LIGHTNVR_GIT_COMMIT="$GIT_COMMIT" \
+    CMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
     PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
-    ./scripts/build.sh --release --with-sod --sod-dynamic --with-go2rtc --go2rtc-binary=/bin/go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --go2rtc-api-port=1984 && \
-    ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd
+    PKG_CONFIG_LIBDIR=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:/usr/share/pkgconfig \
+    ./scripts/build.sh --release --without-tests --with-sod --sod-dynamic --with-go2rtc --go2rtc-binary=/bin/go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --go2rtc-api-port=1984 && \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd --without-ldconfig; \
+    else \
+      ./scripts/install.sh --prefix=/ --with-go2rtc --go2rtc-config-dir=/etc/lightnvr/go2rtc --without-systemd; \
+    fi
+
+# Fail the build if a cross-compiler silently produced host binaries.
+RUN file /bin/lightnvr /bin/go2rtc && \
+    if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      file /bin/lightnvr | grep -q "ELF 32-bit.*ARM" && \
+      file /bin/go2rtc | grep -q "ELF 32-bit.*ARM"; \
+    fi
 
 # Stage 2: Minimal runtime image
 FROM debian:${DEBIAN_SUITE}-slim AS runtime

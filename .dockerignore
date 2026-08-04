@@ -1,0 +1,20 @@
+# Release workflows inject github.sha through the GIT_COMMIT build argument.
+.git
+.github
+.devcontainer
+
+build
+build-*
+cmake-build-*
+**/CMakeFiles
+**/CMakeCache.txt
+**/cmake_install.cmake
+
+**/node_modules
+web/dist
+playwright-report
+test-results
+
+*.deb
+*.docx
+homeassistant

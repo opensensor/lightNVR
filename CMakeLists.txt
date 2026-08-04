@@ -728,15 +728,27 @@ endif()
 
 # Obtain git short commit hash for version stamping
 set(GIT_COMMIT "unknown")
-find_package(Git QUIET)
-if(GIT_FOUND)
-    execute_process(
-        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_COMMIT
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
+if(DEFINED ENV{LIGHTNVR_GIT_COMMIT} AND NOT "$ENV{LIGHTNVR_GIT_COMMIT}" STREQUAL "")
+    set(GIT_COMMIT_INPUT "$ENV{LIGHTNVR_GIT_COMMIT}")
+    string(LENGTH "${GIT_COMMIT_INPUT}" GIT_COMMIT_LENGTH)
+    if(NOT GIT_COMMIT_INPUT MATCHES "^[0-9a-fA-F]+$" OR
+       GIT_COMMIT_LENGTH LESS 7 OR GIT_COMMIT_LENGTH GREATER 40)
+        message(FATAL_ERROR
+            "Invalid LIGHTNVR_GIT_COMMIT: expected a 7-40 character hexadecimal commit")
+    endif()
+    string(SUBSTRING "${GIT_COMMIT_INPUT}" 0 7 GIT_COMMIT)
+    string(TOLOWER "${GIT_COMMIT}" GIT_COMMIT)
+else()
+    find_package(Git QUIET)
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            OUTPUT_VARIABLE GIT_COMMIT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+    endif()
 endif()
 
 # Build date in ISO-8601

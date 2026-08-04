@@ -64,8 +64,17 @@ fi
 
 echo "Extracted version: $VERSION"
 
-# Extract git short commit hash
-GIT_COMMIT=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# Prefer an explicit source revision when the build context excludes .git.
+if [ -n "${LIGHTNVR_GIT_COMMIT:-}" ]; then
+    if [[ ! "$LIGHTNVR_GIT_COMMIT" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+        echo "Invalid LIGHTNVR_GIT_COMMIT: expected a 7-40 character hexadecimal commit"
+        exit 1
+    fi
+    GIT_COMMIT="${LIGHTNVR_GIT_COMMIT:0:7}"
+    GIT_COMMIT="${GIT_COMMIT,,}"
+else
+    GIT_COMMIT=$(cd "$PROJECT_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+fi
 echo "Git commit: $GIT_COMMIT"
 
 # Create output directory if it doesn't exist

@@ -99,8 +99,13 @@ When you push a tag, GitHub Actions automatically:
 
 1. **Builds Docker images** for multiple architectures:
    - linux/amd64
-   - linux/arm64
-   - linux/arm/v7
+   - linux/arm64 on a native GitHub-hosted ARM64 runner
+   - linux/arm/v7, cross-compiled on x86_64 (QEMU is used only to assemble the
+     target runtime layer)
+
+   Each platform also imports and updates a platform-specific BuildKit cache in
+   GHCR. This avoids rebuilding unchanged package and dependency layers between
+   releases.
 
 2. **Builds web assets** during the Docker build:
    - Installs Node.js 24.x LTS

@@ -120,17 +120,25 @@ function main() {
     const version = versionMatch[1];
     console.log(`Extracted version: ${version}`);
 
-    // Extract git short commit hash
+    // Prefer an explicit source revision when the build context excludes .git.
     let gitCommit = 'unknown';
-    try {
-      const { execSync } = require('child_process');
-      gitCommit = execSync('git rev-parse --short HEAD', {
-        cwd: projectRoot,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-    } catch {
-      console.warn('Could not determine git commit hash');
+    const commitOverride = process.env.LIGHTNVR_GIT_COMMIT;
+    if (commitOverride) {
+      if (!/^[0-9a-f]{7,40}$/i.test(commitOverride)) {
+        throw new Error('Invalid LIGHTNVR_GIT_COMMIT: expected a 7-40 character hexadecimal commit');
+      }
+      gitCommit = commitOverride.slice(0, 7).toLowerCase();
+    } else {
+      try {
+        const { execSync } = require('child_process');
+        gitCommit = execSync('git rev-parse --short HEAD', {
+          cwd: projectRoot,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+      } catch {
+        console.warn('Could not determine git commit hash');
+      }
     }
     console.log(`Git commit: ${gitCommit}`);
 
