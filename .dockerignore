@@ -1,3 +1,4 @@
+# Release workflows inject github.sha through the GIT_COMMIT build argument.
 .git
 .github
 .devcontainer

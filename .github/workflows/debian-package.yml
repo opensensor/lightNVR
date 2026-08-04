@@ -76,6 +76,7 @@ jobs:
           build-args: |
             DEBIAN_SUITE=${{ matrix.debian_suite }}
             DEB_BUILD=true
+            GIT_COMMIT=${{ github.sha }}
 
       - name: Extract files and create .deb package
         run: |
@@ -333,4 +334,3 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

@@ -187,6 +187,7 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
 # Copy current directory contents into container
 WORKDIR /opt
 COPY . .
+ARG GIT_COMMIT
 
 # Create pkg-config files for MbedTLS with architecture-specific paths
 RUN mkdir -p /usr/lib/pkgconfig && \
@@ -240,7 +241,7 @@ RUN if grep -q "systemctl" scripts/install.sh; then \
     fi
 
 # Generate version.js before building web assets (it is not checked into git)
-RUN ./scripts/extract_version.sh
+RUN LIGHTNVR_GIT_COMMIT="$GIT_COMMIT" ./scripts/extract_version.sh
 
 # Build web assets using Vite
 RUN echo "Building web assets..." && \
@@ -280,6 +281,7 @@ RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lig
       fi; \
     fi && \
     # Build the application with go2rtc and SOD dynamic linking
+    LIGHTNVR_GIT_COMMIT="$GIT_COMMIT" \
     CMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
     PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:$PKG_CONFIG_PATH \
     PKG_CONFIG_LIBDIR=/usr/lib/pkgconfig:$PKG_CONFIG_ARCH_PATH:/usr/share/pkgconfig \
