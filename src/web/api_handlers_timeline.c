@@ -84,8 +84,8 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
         "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id) THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d "
         "                  WHERE d.stream_name = r.stream_name "
-        "                    AND d.timestamp >= r.start_time "
-        "                    AND d.timestamp <= r.end_time) THEN 1 "
+        "                    AND d.timestamp <= r.end_time "
+        "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
         "     ELSE 0 END AS has_detection, "
         "r.schedule_restricted "
         "FROM recordings r "
@@ -275,6 +275,35 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
     
     // Add segments array to response
     cJSON_AddItemToObject(response, "segments", segments_array);
+
+    /* External API motion has explicit start/stop boundaries. Return those
+     * separately so the UI can draw the actual event instead of coloring its
+     * entire enclosing recording segment (#483). */
+    cJSON *intervals_array = cJSON_CreateArray();
+    if (intervals_array) {
+        cJSON_AddItemToObject(response, "detection_intervals", intervals_array);
+        detection_interval_t *intervals = calloc(MAX_TIMELINE_SEGMENTS,
+                                                  sizeof(*intervals));
+        int interval_count = intervals
+            ? get_external_motion_detection_intervals(
+                  stream_name, start_time, end_time, intervals,
+                  MAX_TIMELINE_SEGMENTS)
+            : -1;
+        if (interval_count > 0) {
+            for (int i = 0; i < interval_count; i++) {
+                cJSON *interval = cJSON_CreateObject();
+                if (!interval) continue;
+                cJSON_AddNumberToObject(interval, "start_timestamp",
+                                        (double)intervals[i].start_time);
+                cJSON_AddNumberToObject(interval, "end_timestamp",
+                                        (double)intervals[i].end_time);
+                cJSON_AddItemToArray(intervals_array, interval);
+            }
+        }
+        cJSON_AddNumberToObject(response, "detection_interval_count",
+                                interval_count > 0 ? interval_count : 0);
+        free(intervals);
+    }
     
     // Add metadata
     cJSON_AddStringToObject(response, "stream", stream_name);

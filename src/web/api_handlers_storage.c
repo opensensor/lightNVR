@@ -17,6 +17,7 @@
 #define LOG_COMPONENT "StorageAPI"
 #include "core/logger.h"
 #include "database/db_auth.h"
+#include "database/db_recordings.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/storage/health
@@ -68,18 +69,34 @@ void handle_get_storage_health(const http_request_t *req, http_response_t *res) 
     // Capacity target the controller maintains (capacity-based retention).
     cJSON_AddNumberToObject(root, "capacity_target_free_pct", g_config.storage_min_free_pct);
 
-    // Fill-rate projection: estimate recording throughput from the span and size
-    // of recordings currently on disk, then project how long until free space
-    // reaches the capacity target (i.e. when eviction begins). Purely advisory.
-    storage_stats_t stats;
+    // Fill-rate projection: use completed recordings from the rolling last
+    // 24 hours. Dividing every file currently retained by the full age of the
+    // archive badly understates the rate after a user switches from sparse
+    // motion clips to continuous recording (#484).
     double fill_rate_bytes_per_day = 0.0;
     double projected_seconds_to_target = -1.0;  // -1 => unknown / not filling
-    if (get_storage_stats(&stats) == 0 &&
-        stats.newest_recording_time > stats.oldest_recording_time &&
-        stats.total_recording_bytes > 0) {
-        double span_sec = (double)(stats.newest_recording_time - stats.oldest_recording_time);
-        if (span_sec >= 1.0) {
-            double rate_bps = (double)stats.total_recording_bytes / span_sec;
+    time_t now = time(NULL);
+    const time_t rate_window_seconds = 24 * 60 * 60;
+    uint64_t recent_bytes = 0;
+    uint64_t recent_count = 0;
+    time_t oldest_recent_start = 0;
+    time_t newest_recent_end = 0;
+    if (get_recent_recording_storage_stats(now - rate_window_seconds,
+                                           &recent_bytes,
+                                           &oldest_recent_start,
+                                           &newest_recent_end,
+                                           &recent_count) == 0 &&
+        recent_count > 0 && recent_bytes > 0 && oldest_recent_start > 0) {
+        time_t observed_start = oldest_recent_start;
+        if (observed_start < now - rate_window_seconds) {
+            observed_start = now - rate_window_seconds;
+        }
+        double span_sec = difftime(now, observed_start);
+        /* Avoid publishing a wildly unstable projection from only a few
+         * seconds of data while still reporting a useful rate after the first
+         * completed segment. */
+        if (span_sec >= 60.0) {
+            double rate_bps = (double)recent_bytes / span_sec;
             fill_rate_bytes_per_day = rate_bps * 86400.0;
 
             if (rate_bps > 0.0 && health.total_space_bytes > 0) {
@@ -167,4 +184,3 @@ void handle_post_storage_cleanup(const http_request_t *req, http_response_t *res
     http_response_set_json(res, 200, json_str);
     free(json_str);
 }
-

@@ -237,6 +237,7 @@ export function TimelinePage() {
   const [selectedStream, setSelectedStream] = useState(urlParams.stream);
   const [selectedDate, setSelectedDate] = useState(urlParams.date);
   const [segments, setSegments] = useState([]);
+  const [detectionIntervals, setDetectionIntervals] = useState([]);
   const [idsLoading, setIdsLoading] = useState(idsMode);
   const [idsSegmentInfo, setIdsSegmentInfo] = useState(null);  // metadata from IDs endpoint
   const [idsTimelineSegments, setIdsTimelineSegments] = useState([]);
@@ -1012,6 +1013,7 @@ export function TimelinePage() {
       console.error('TimelinePage: Error loading timeline data:', timelineError.message);
       showStatusMessage('Error loading timeline data: ' + timelineError.message, 'error');
       setSegments([]);
+      setDetectionIntervals([]);
       return;
     }
 
@@ -1019,6 +1021,7 @@ export function TimelinePage() {
     processedDataRef.current = timelineData;
 
     const timelineSegments = timelineData.segments || [];
+    setDetectionIntervals(timelineData.detection_intervals || []);
 
     if (timelineSegments.length === 0) {
       loadSegmentsIntoTimeline([], selectedDate);
@@ -1043,6 +1046,7 @@ export function TimelinePage() {
         if (!response.ok) return;
         const data = await response.json();
         const polledSegments = data.segments || [];
+        setDetectionIntervals(data.detection_intervals || []);
 
         const currentSegs = timelineState.timelineSegments || [];
         const currentIds = new Set(currentSegs.map(s => String(s.id)));
@@ -1219,7 +1223,7 @@ export function TimelinePage() {
           ref={timelineContainerRef}
         >
           <TimelineRuler />
-          <TimelineSegments segments={segments} />
+          <TimelineSegments segments={segments} detectionIntervals={detectionIntervals} />
           <TimelineCursor />
 
           {/* Inline hint — hidden on small screens where it would overlap and

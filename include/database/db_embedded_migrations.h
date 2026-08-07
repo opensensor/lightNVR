@@ -668,6 +668,16 @@ static const char migration_0045_up[] =
 static const char migration_0045_down[] =
     "SELECT 1;";
 
+static const char migration_0046_up[] =
+    "ALTER TABLE detections ADD COLUMN source TEXT NOT NULL DEFAULT '';\n"
+    "ALTER TABLE detections ADD COLUMN event_end_time INTEGER DEFAULT NULL;\n"
+    "UPDATE detections SET event_end_time = timestamp WHERE source = '';\n"
+    "CREATE INDEX IF NOT EXISTS idx_detections_external_interval "
+    "ON detections(stream_name, source, timestamp, event_end_time);";
+
+static const char migration_0046_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -984,8 +994,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0045_down,
         .is_embedded = true
     },
+    {
+        .version = "0046",
+        .description = "add_detection_event_intervals",
+        .sql_up = migration_0046_up,
+        .sql_down = migration_0046_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 45
+#define EMBEDDED_MIGRATIONS_COUNT 46
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

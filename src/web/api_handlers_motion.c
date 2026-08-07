@@ -162,6 +162,7 @@ static void *motion_pulse_worker(void *arg) {
 
     if (still_current) {
         time_t now = time(NULL);
+        close_external_motion_detections(task->stream_name, now);
         if (task->trigger_recording) {
             unified_detection_notify_motion(task->stream_name, false);
         }
@@ -471,21 +472,44 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     int stored_detections = 0;
     uint64_t current_recording_id =
         get_current_recording_id_for_stream(stream_name);
-    if (active && detections.count > 0) {
+    if (active) {
+        /* A new leading edge supersedes an unclosed prior session. This keeps
+         * repeated Home Assistant "start" messages from leaving overlapping
+         * open intervals. */
+        close_external_motion_detections(stream_name, now);
+
+        bool caller_supplied_objects = detections.count > 0;
         /* Honour zone filtering so an external trigger respects the same zone
          * configuration a model detection would. */
-        if (filter_detections_by_zones(stream_name, &detections) != 0) {
+        if (detections.count > 0 &&
+            filter_detections_by_zones(stream_name, &detections) != 0) {
             log_warn("Failed to filter detections by zones for '%s'; storing all", stream_name);
         }
+
+        /* A plain motion start still needs a persisted interval for accurate
+         * timeline highlighting. Use a zero-area generic motion detection;
+         * callers that supplied objects but had every object excluded by zone
+         * filtering remain excluded. */
+        if (!caller_supplied_objects) {
+            detections.count = 1;
+            safe_strcpy(detections.detections[0].label, "motion",
+                        sizeof(detections.detections[0].label), 0);
+            detections.detections[0].confidence = 1.0f;
+            detections.detections[0].track_id = -1;
+        }
         if (detections.count > 0) {
-            if (store_detections_in_db(stream_name, &detections, now,
-                                       current_recording_id) == 0) {
+            if (store_external_motion_detections(stream_name, &detections, now,
+                                                 current_recording_id) == 0) {
                 stored_detections = detections.count;
             } else {
                 log_warn("Failed to store external detections for stream '%s'", stream_name);
             }
-            mqtt_publish_detection(stream_name, &detections, now);
+            if (caller_supplied_objects) {
+                mqtt_publish_detection(stream_name, &detections, now);
+            }
         }
+    } else {
+        close_external_motion_detections(stream_name, now);
     }
 
     /* Tags attach to whatever recording is currently open for the stream. With
@@ -523,6 +547,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             if (can_trigger_recording) {
                 unified_detection_notify_motion(stream_name, false);
             }
+            close_external_motion_detections(stream_name, now);
             process_motion_event(stream_name, false, now, false);
             http_response_set_json_error(res, 500, "Out of memory");
             return;
@@ -543,6 +568,7 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
             if (can_trigger_recording) {
                 unified_detection_notify_motion(stream_name, false);
             }
+            close_external_motion_detections(stream_name, now);
             process_motion_event(stream_name, false, now, false);
             free(task);
             http_response_set_json_error(res, 500,

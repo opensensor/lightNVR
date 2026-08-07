@@ -25,6 +25,7 @@
 #include "video/detection_stream.h"
 #include "video/unified_detection_thread.h"
 #include "database/database_manager.h"
+#include "database/db_auth.h"
 #include "video/hls/hls_directory.h"
 #include "video/hls/hls_api.h"
 #include "video/onvif_device_management.h"
@@ -33,6 +34,31 @@
 #include "video/go2rtc/go2rtc_api.h"
 #include "video/mp4_recording.h"
 #include "utils/yaml_validate.h"
+
+static bool check_stream_write_access(const http_request_t *req,
+                                      http_response_t *res,
+                                      const stream_config_t *config) {
+    if (!g_config.web_auth_enabled) {
+        return true;
+    }
+
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    if (!httpd_get_authenticated_user(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return false;
+    }
+    if (user.role == USER_ROLE_VIEWER) {
+        http_response_set_json_error(res, 403,
+                                     "Viewer role cannot modify streams");
+        return false;
+    }
+    if (config && !db_auth_stream_allowed_for_user(&user, config->tags)) {
+        http_response_set_json_error(res, 403, "Stream access denied");
+        return false;
+    }
+    return true;
+}
 
 
 /**
@@ -483,6 +509,10 @@ static bool is_allowed_publish_url(const char *u) {
  */
 void handle_post_stream(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/streams request");
+
+    if (!check_stream_write_access(req, res, NULL)) {
+        return;
+    }
 
     // Parse JSON from request body
     cJSON *stream_json = httpd_parse_json_body(req);
@@ -1131,6 +1161,9 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
     if (get_stream_config(stream, &config) != 0) {
         log_error("Failed to get stream configuration for: %s", stream_id);
         http_response_set_json_error(res, 500, "Failed to get stream configuration");
+        return;
+    }
+    if (!check_stream_write_access(req, res, &config)) {
         return;
     }
 
@@ -2164,6 +2197,15 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
     if (!stream) {
         log_error("Stream not found: %s", stream_id);
         http_response_set_json_error(res, 404, "Stream not found");
+        return;
+    }
+
+    stream_config_t config;
+    if (get_stream_config(stream, &config) != 0) {
+        http_response_set_json_error(res, 500, "Failed to get stream configuration");
+        return;
+    }
+    if (!check_stream_write_access(req, res, &config)) {
         return;
     }
 

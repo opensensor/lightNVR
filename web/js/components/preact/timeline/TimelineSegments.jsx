@@ -17,12 +17,14 @@ import { useI18n } from '../../../i18n.js';
  * TimelineSegments component
  * @param {Object} props Component props
  * @param {Array} props.segments Array of timeline segments
+ * @param {Array} props.detectionIntervals Exact external-motion ranges
  * @returns {JSX.Element} TimelineSegments component
  */
-export function TimelineSegments({ segments: propSegments }) {
+export function TimelineSegments({ segments: propSegments, detectionIntervals: propIntervals = [] }) {
   const { t } = useI18n();
   // Local state
   const [segments, setSegments] = useState(propSegments || []);
+  const [detectionIntervals, setDetectionIntervals] = useState(propIntervals || []);
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
   const currentSegmentIndexRef = useRef(-1);
@@ -33,6 +35,10 @@ export function TimelineSegments({ segments: propSegments }) {
       setSegments(propSegments);
     }
   }, [propSegments]);
+
+  useEffect(() => {
+    setDetectionIntervals(Array.isArray(propIntervals) ? propIntervals : []);
+  }, [propIntervals]);
 
   // Refs
   const containerRef = useRef(null);
@@ -85,7 +91,8 @@ export function TimelineSegments({ segments: propSegments }) {
         target === container ||
         (isElementTarget &&
           (target.classList.contains('timeline-clickable-area') ||
-            target.classList.contains('timeline-segment')))
+            target.classList.contains('timeline-segment') ||
+            target.classList.contains('timeline-detection-interval')))
       ) {
         // Remember whether we were playing so we can resume after the seek.
         wasPlayingAtDragStartRef.current = !!timelineState.isPlaying;
@@ -239,15 +246,43 @@ export function TimelineSegments({ segments: propSegments }) {
           ? `${Math.floor(dur / 60)}m ${dur % 60}s`
           : `${dur}s`;
 
+      const hasExactInterval = detectionIntervals.some(interval =>
+        interval.start_timestamp <= seg.end_timestamp &&
+        interval.end_timestamp >= seg.start_timestamp
+      );
+
       rendered.push(
         <div
           key={`seg-${i}`}
-          className={`timeline-segment ${seg.has_detection ? 'has-detection' : ''}`}
+          className={`timeline-segment ${seg.has_detection && !hasExactInterval ? 'has-detection' : ''}`}
           style={{
             left: `${leftPct}%`,
             width: `${Math.max(widthPct, 0.15)}%`,   // min width so tiny segments stay visible
           }}
           title={`${t0} – ${t1}  (${durLabel})${seg.has_detection ? `  • ${t('timeline.detectionEvent')}` : ''}`}
+        />
+      );
+    });
+
+    detectionIntervals.forEach((interval, i) => {
+      const visibleRange = getClippedSegmentHourRange(interval, timelineState.selectedDate);
+      if (!visibleRange) return;
+      const vStart = Math.max(visibleRange.startHour, startHour);
+      const vEnd = Math.min(visibleRange.endHour, endHour);
+      if (vEnd < startHour || vStart > endHour) return;
+      const leftPct = ((vStart - startHour) / hourRange) * 100;
+      const widthPct = ((vEnd - vStart) / hourRange) * 100;
+      const t0 = formatLocalTime(interval.start_timestamp);
+      const t1 = formatLocalTime(interval.end_timestamp);
+      rendered.push(
+        <div
+          key={`detection-interval-${i}`}
+          className="timeline-detection-interval"
+          style={{
+            left: `${leftPct}%`,
+            width: `${Math.max(widthPct, 0.15)}%`
+          }}
+          title={`${t0} – ${t1} • ${t('timeline.detectionEvent')}`}
         />
       );
     });

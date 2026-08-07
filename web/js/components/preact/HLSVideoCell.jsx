@@ -58,6 +58,7 @@ export function HLSVideoCell({
   const [showPrivacyConfirm, setShowPrivacyConfirm] = useState(false);
   const [privacyActive, setPrivacyActive] = useState(!!stream.privacy_mode);
   const [isTogglingEnabled, setIsTogglingEnabled] = useState(false);
+  const canControlPrivacy = stream.can_control_privacy !== false;
 
   // HLS source state: 'go2rtc' (go2rtc's dynamic HLS), 'native' (lightNVR FFmpeg-based HLS), or 'failed'
   // Default to native lightNVR HLS (reliable, always running when streaming enabled)
@@ -884,7 +885,7 @@ export function HLSVideoCell({
           }}
         />
         {/* Pause for privacy button */}
-        <button
+        {canControlPrivacy && <button
           type="button"
           title={t('live.pauseForPrivacy')}
           onClick={() => setShowPrivacyConfirm(true)}
@@ -907,7 +908,7 @@ export function HLSVideoCell({
             <path d="M18.36 6.64A9 9 0 1 1 5.64 17.36"/>
             <line x1="12" y1="2" x2="12" y2="12"/>
           </svg>
-        </button>
+        </button>}
         {/* Detection overlay toggle button */}
         {stream.detection_based_recording && stream.detection_model && isPlaying && (
           <button
@@ -1191,7 +1192,7 @@ export function HLSVideoCell({
       />
 
       {/* Inline pause-for-privacy confirmation overlay */}
-      {showPrivacyConfirm && (
+      {canControlPrivacy && showPrivacyConfirm && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 20,
@@ -1241,7 +1242,7 @@ export function HLSVideoCell({
             <line x1="1" y1="1" x2="23" y2="23"/>
           </svg>
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '14px' }}>{t('live.streamPausedForPrivacy')}</p>
-          <button
+          {canControlPrivacy && <button
             onClick={handleResumeFromPrivacy}
             disabled={isTogglingEnabled}
             style={{
@@ -1250,7 +1251,7 @@ export function HLSVideoCell({
             }}
           >
             {t('live.resumeStream')}
-          </button>
+          </button>}
         </div>
       )}
 

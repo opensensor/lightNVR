@@ -661,7 +661,8 @@ int get_recording_count(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type = 'detection'"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))",
+                    " AND d.timestamp <= r.end_time"
+                    " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time))",
                     sizeof(sql));
         log_debug("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
     } else if (has_detection == -1) {
@@ -669,7 +670,8 @@ int get_recording_count(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type != 'detection' OR r.trigger_type IS NULL)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)",
+                    " AND d.timestamp <= r.end_time"
+                    " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time)",
                     sizeof(sql));
         log_debug("Adding no-detection filter (no trigger_type AND no linked detections)");
     }
@@ -682,9 +684,9 @@ int get_recording_count(time_t start_time, time_t end_time,
             if (i > 0) safe_strcat(sql, " OR ", sizeof(sql));
             safe_strcat(sql, "d.label LIKE ?", sizeof(sql));
         }
-        safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
-                    " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
-                    " AND d.timestamp <= r.end_time AND (",
+        safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d"
+                    " WHERE d.stream_name = r.stream_name AND d.timestamp <= r.end_time"
+                    " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time AND (",
                     sizeof(sql));
         for (int i = 0; i < detection_label_count; i++) {
             if (i > 0) safe_strcat(sql, " OR ", sizeof(sql));
@@ -904,7 +906,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type = 'detection'"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time))",
+                    " AND d.timestamp <= r.end_time"
+                    " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time))",
                     sizeof(sql));
         log_info("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
     } else if (has_detection == -1) {
@@ -912,7 +915,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type != 'detection' OR r.trigger_type IS NULL)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)",
+                    " AND d.timestamp <= r.end_time"
+                    " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time)",
                     sizeof(sql));
         log_info("Adding no-detection filter (no trigger_type AND no linked detections)");
     }
@@ -925,9 +929,9 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             if (i > 0) safe_strcat(sql, " OR ", sizeof(sql));
             safe_strcat(sql, "d.label LIKE ?", sizeof(sql));
         }
-        safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id IS NULL"
-                    " AND d.stream_name = r.stream_name AND d.timestamp >= r.start_time"
-                    " AND d.timestamp <= r.end_time AND (",
+        safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d"
+                    " WHERE d.stream_name = r.stream_name AND d.timestamp <= r.end_time"
+                    " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time AND (",
                     sizeof(sql));
         for (int i = 0; i < detection_label_count; i++) {
             if (i > 0) safe_strcat(sql, " OR ", sizeof(sql));
@@ -2237,6 +2241,60 @@ int64_t get_stream_storage_bytes(const char *stream_name) {
     pthread_mutex_unlock(db_mutex);
 
     return total_bytes;
+}
+
+int get_recent_recording_storage_stats(time_t since_time,
+                                       uint64_t *total_bytes,
+                                       time_t *oldest_start_time,
+                                       time_t *newest_end_time,
+                                       uint64_t *recording_count) {
+    if (!total_bytes || !oldest_start_time || !newest_end_time ||
+        !recording_count) {
+        return -1;
+    }
+
+    *total_bytes = 0;
+    *oldest_start_time = 0;
+    *newest_end_time = 0;
+    *recording_count = 0;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+    const char *sql =
+        "SELECT COALESCE(SUM(size_bytes), 0), "
+        "       COALESCE(MIN(start_time), 0), "
+        "       COALESCE(MAX(end_time), 0), COUNT(*) "
+        "FROM recordings "
+        "WHERE is_complete = 1 AND end_time IS NOT NULL "
+        "  AND end_time >= ? AND size_bytes > 0;";
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare recent storage stats query: %s",
+                  sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)since_time);
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_ROW) {
+        *total_bytes = (uint64_t)sqlite3_column_int64(stmt, 0);
+        *oldest_start_time = (time_t)sqlite3_column_int64(stmt, 1);
+        *newest_end_time = (time_t)sqlite3_column_int64(stmt, 2);
+        *recording_count = (uint64_t)sqlite3_column_int64(stmt, 3);
+        rc = SQLITE_OK;
+    }
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+    return rc == SQLITE_OK ? 0 : -1;
 }
 
 /**

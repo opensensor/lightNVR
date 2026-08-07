@@ -18,6 +18,27 @@
 int store_detections_in_db(const char *stream_name, const detection_result_t *result,
                            time_t timestamp, uint64_t recording_id);
 
+/** Store detections as one open external-motion interval. */
+int store_external_motion_detections(const char *stream_name,
+                                     const detection_result_t *result,
+                                     time_t timestamp,
+                                     uint64_t recording_id);
+
+/** Close every currently-open external-motion interval for a stream. */
+int close_external_motion_detections(const char *stream_name, time_t end_time);
+
+typedef struct {
+    time_t start_time;
+    time_t end_time;
+} detection_interval_t;
+
+/** Return distinct external-motion intervals overlapping a time range. */
+int get_external_motion_detection_intervals(const char *stream_name,
+                                            time_t start_time,
+                                            time_t end_time,
+                                            detection_interval_t *intervals,
+                                            int max_intervals);
+
 /**
  * Get detection results from the database with time range filtering
  * 
@@ -44,6 +65,15 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
  */
 int get_detection_timestamps(const char *stream_name, const detection_result_t *result, time_t *timestamps,
                            uint64_t max_age, time_t start_time, time_t end_time);
+
+/** Get start/end timestamps matching get_detections_from_db_time_range order. */
+int get_detection_time_ranges(const char *stream_name,
+                              const detection_result_t *result,
+                              time_t *timestamps,
+                              time_t *end_timestamps,
+                              uint64_t max_age,
+                              time_t start_time,
+                              time_t end_time);
 
 /**
  * Get detection results from the database

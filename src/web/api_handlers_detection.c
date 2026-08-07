@@ -97,10 +97,14 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
     
     // Also get the timestamps for each detection
     time_t timestamps[MAX_DETECTIONS];
+    time_t end_timestamps[MAX_DETECTIONS];
     memset(timestamps, 0, sizeof(timestamps));
+    memset(end_timestamps, 0, sizeof(end_timestamps));
     
-    // Get timestamps for the detections
-    get_detection_timestamps(stream_name, &result, timestamps, max_age, start_time, end_time);
+    // Get persisted event ranges. Ordinary model detections have identical
+    // start/end values; external motion start/stop events may span segments.
+    get_detection_time_ranges(stream_name, &result, timestamps, end_timestamps,
+                              max_age, start_time, end_time);
     
     if (count < 0) {
         log_error("Failed to get detections from database for stream: %s", stream_name);
@@ -183,6 +187,7 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
         cJSON_AddNumberToObject(detection, "width", result.detections[i].width);
         cJSON_AddNumberToObject(detection, "height", result.detections[i].height);
         cJSON_AddNumberToObject(detection, "timestamp", (double)timestamps[i]);
+        cJSON_AddNumberToObject(detection, "end_timestamp", (double)end_timestamps[i]);
         
         cJSON_AddItemToArray(detections_array, detection);
     }

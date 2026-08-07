@@ -153,6 +153,50 @@ void test_store_max_detections(void) {
     TEST_ASSERT_EQUAL_INT(0, rc);
 }
 
+void test_external_motion_interval_spans_later_recording_segment(void) {
+    time_t now = time(NULL);
+    detection_result_t r = make_result("person", 1.0f);
+    TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
+        "cam_interval", &r, now - 120, 0));
+
+    detection_interval_t active_intervals[4];
+    int active_count = get_external_motion_detection_intervals(
+        "cam_interval", now - 60, now, active_intervals, 4);
+    TEST_ASSERT_EQUAL_INT(1, active_count);
+    TEST_ASSERT_TRUE(active_intervals[0].end_time >= now);
+
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(
+        "cam_interval", now - 10));
+
+    /* The detection began before this segment but remained active inside it. */
+    TEST_ASSERT_EQUAL_INT(1, has_detections_in_time_range(
+        "cam_interval", now - 60, now));
+
+    detection_result_t out;
+    TEST_ASSERT_EQUAL_INT(1, get_detections_from_db_time_range(
+        "cam_interval", &out, 0, now - 60, now));
+    TEST_ASSERT_EQUAL_STRING("person", out.detections[0].label);
+
+    detection_label_summary_t labels[4];
+    TEST_ASSERT_EQUAL_INT(1, get_detection_labels_summary(
+        "cam_interval", now - 60, now, labels, 4));
+    TEST_ASSERT_EQUAL_STRING("person", labels[0].label);
+
+    time_t starts[MAX_DETECTIONS] = {0};
+    time_t ends[MAX_DETECTIONS] = {0};
+    TEST_ASSERT_EQUAL_INT(0, get_detection_time_ranges(
+        "cam_interval", &out, starts, ends, 0, now - 60, now));
+    TEST_ASSERT_EQUAL_INT64(now - 120, starts[0]);
+    TEST_ASSERT_EQUAL_INT64(now - 10, ends[0]);
+
+    detection_interval_t intervals[4];
+    int count = get_external_motion_detection_intervals(
+        "cam_interval", now - 60, now, intervals, 4);
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_INT64(now - 120, intervals[0].start_time);
+    TEST_ASSERT_EQUAL_INT64(now - 10, intervals[0].end_time);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -168,9 +212,9 @@ int main(void) {
     RUN_TEST(test_get_detection_labels_summary);
     RUN_TEST(test_update_detections_recording_id);
     RUN_TEST(test_store_max_detections);
+    RUN_TEST(test_external_motion_interval_spans_later_recording_segment);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
     return result;
 }
-

@@ -21,6 +21,7 @@
 #include "core/path_utils.h"
 #include "utils/strings.h"
 #include "database/db_core.h"
+#include "database/db_auth.h"
 #include "database/db_streams.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_recording_control.h"
@@ -79,6 +80,23 @@ static stream_config_t make_test_stream(const char *name) {
     s.storage_priority = 5;
     safe_strcpy(s.detection_object_filter, "none", sizeof(s.detection_object_filter), 0);
     return s;
+}
+
+static int64_t add_api_key_user(http_request_t *req, const char *username,
+                                user_role_t role) {
+    int64_t user_id = 0;
+    char api_key[64] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(username, "password123", NULL,
+                                                 role, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(user_id, api_key,
+                                                      sizeof(api_key)));
+    TEST_ASSERT_LESS_THAN_INT(MAX_HEADERS, req->num_headers);
+    safe_strcpy(req->headers[req->num_headers].name, "X-API-Key",
+                sizeof(req->headers[req->num_headers].name), 0);
+    safe_strcpy(req->headers[req->num_headers].value, api_key,
+                sizeof(req->headers[req->num_headers].value), 0);
+    req->num_headers++;
+    return user_id;
 }
 
 void setUp(void) {
@@ -203,6 +221,92 @@ void test_handle_get_streams_includes_motion_trigger_source(void) {
 
     cJSON_Delete(root);
     http_response_free(&res);
+    clear_db_streams();
+}
+
+void test_viewer_stream_response_redacts_credentials(void) {
+    clear_db_streams();
+
+    stream_config_t s = make_test_stream("viewer_cam");
+    safe_strcpy(s.url, "rtsp://camera-user:url-secret@localhost/stream",
+                sizeof(s.url), 0);
+    s.is_onvif = true;
+    safe_strcpy(s.onvif_username, "camera-user", sizeof(s.onvif_username), 0);
+    safe_strcpy(s.onvif_password, "onvif-secret", sizeof(s.onvif_password), 0);
+    safe_strcpy(s.sub_stream_url, "rtsp://camera-user:sub-secret@localhost/sub",
+                sizeof(s.sub_stream_url), 0);
+    safe_strcpy(s.go2rtc_source_override, "rtsp://camera-user:override-secret@localhost/raw",
+                sizeof(s.go2rtc_source_override), 0);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    int64_t viewer_id = add_api_key_user(&req, "backlog_viewer_get",
+                                         USER_ROLE_VIEWER);
+    g_config.web_auth_enabled = true;
+
+    handle_get_streams(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *root = parse_response_json(&res);
+    cJSON *stream = cJSON_GetArrayItem(root, 0);
+    TEST_ASSERT_EQUAL_STRING("", cJSON_GetObjectItemCaseSensitive(
+        stream, "onvif_username")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("", cJSON_GetObjectItemCaseSensitive(
+        stream, "onvif_password")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("", cJSON_GetObjectItemCaseSensitive(
+        stream, "sub_stream_url")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("", cJSON_GetObjectItemCaseSensitive(
+        stream, "go2rtc_source_override")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        stream, "has_sub_stream")));
+    TEST_ASSERT_TRUE(cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(
+        stream, "can_control_privacy")));
+    const char *safe_url = cJSON_GetObjectItemCaseSensitive(stream, "url")->valuestring;
+    TEST_ASSERT_NULL(strstr(safe_url, "url-secret"));
+
+    cJSON_Delete(root);
+    http_response_free(&res);
+    g_config.web_auth_enabled = false;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_delete_user(viewer_id));
+    clear_db_streams();
+}
+
+void test_viewer_cannot_enable_stream_privacy_mode(void) {
+    clear_db_streams();
+
+    stream_config_t s = make_test_stream("viewer_privacy_cam");
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+    add_stream(&s);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/streams/viewer_privacy_cam", sizeof(req.path), 0);
+    static const char json_body[] = "{\"set_privacy_mode\":true}";
+    req.body = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+    int64_t viewer_id = add_api_key_user(&req, "backlog_viewer_put",
+                                         USER_ROLE_VIEWER);
+    g_config.web_auth_enabled = true;
+
+    handle_put_stream(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(403, res.status_code);
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("viewer_privacy_cam", &got));
+    TEST_ASSERT_FALSE(got.privacy_mode);
+
+    http_response_free(&res);
+    g_config.web_auth_enabled = false;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_delete_user(viewer_id));
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
     clear_db_streams();
 }
 
@@ -571,6 +675,8 @@ int main(void) {
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
     RUN_TEST(test_get_json_logs_tail_owns_level_reference_nodes);
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);
+    RUN_TEST(test_viewer_stream_response_redacts_credentials);
+    RUN_TEST(test_viewer_cannot_enable_stream_privacy_mode);
     RUN_TEST(test_handle_put_stream_parses_motion_trigger_source);
     RUN_TEST(test_handle_get_streams_includes_audio_voice_enhancement);
     RUN_TEST(test_handle_get_stream_by_name_includes_audio_voice_enhancement);

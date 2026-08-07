@@ -348,6 +348,32 @@ void test_get_stream_storage_bytes(void) {
     TEST_ASSERT_GREATER_THAN(0, bytes);
 }
 
+void test_recent_recording_storage_stats_excludes_stale_archive(void) {
+    time_t now = time(NULL);
+    recording_metadata_t stale = make_rec("cam_rate", "/rec/rate-old.mp4",
+                                          now - 3 * 86400);
+    stale.size_bytes = 50 * 1024 * 1024;
+    TEST_ASSERT_TRUE(add_recording_metadata(&stale) > 0);
+
+    recording_metadata_t recent1 = make_rec("cam_rate", "/rec/rate-1.mp4",
+                                            now - 1800);
+    recent1.size_bytes = 10 * 1024 * 1024;
+    TEST_ASSERT_TRUE(add_recording_metadata(&recent1) > 0);
+    recording_metadata_t recent2 = make_rec("cam_rate", "/rec/rate-2.mp4",
+                                            now - 900);
+    recent2.size_bytes = 12 * 1024 * 1024;
+    TEST_ASSERT_TRUE(add_recording_metadata(&recent2) > 0);
+
+    uint64_t bytes = 0, count = 0;
+    time_t oldest = 0, newest = 0;
+    TEST_ASSERT_EQUAL_INT(0, get_recent_recording_storage_stats(
+        now - 86400, &bytes, &oldest, &newest, &count));
+    TEST_ASSERT_EQUAL_UINT64(22ULL * 1024ULL * 1024ULL, bytes);
+    TEST_ASSERT_EQUAL_UINT64(2, count);
+    TEST_ASSERT_EQUAL_INT64(recent1.start_time, oldest);
+    TEST_ASSERT_EQUAL_INT64(recent2.end_time, newest);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -372,6 +398,7 @@ int main(void) {
     RUN_TEST(test_add_recording_protected_is_not_pressure_eligible);
     RUN_TEST(test_set_recording_retention_override);
     RUN_TEST(test_get_stream_storage_bytes);
+    RUN_TEST(test_recent_recording_storage_stats_excludes_stale_archive);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

@@ -789,7 +789,7 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
                   )}
                   <VideoCell
                     stream={stream}
-                    useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && !!stream.sub_stream_url}
+                    useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
                     showLabels={showLabels}

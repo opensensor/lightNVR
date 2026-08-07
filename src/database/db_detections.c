@@ -25,8 +25,12 @@
  * @param recording_id Recording ID to link detections to (0 for no link)
  * @return 0 on success, non-zero on failure
  */
-int store_detections_in_db(const char *stream_name, const detection_result_t *result,
-                           time_t timestamp, uint64_t recording_id) {
+static int store_detections_with_source(const char *stream_name,
+                                        const detection_result_t *result,
+                                        time_t timestamp,
+                                        uint64_t recording_id,
+                                        const char *source,
+                                        bool open_interval) {
     int rc;
     sqlite3_stmt *stmt;
     
@@ -79,8 +83,8 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
         return -1;
     }
     
-    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height, track_id, zone_id, recording_id) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height, track_id, zone_id, recording_id, source, event_end_time) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -109,6 +113,12 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
             sqlite3_bind_int64(stmt, 11, (sqlite3_int64)recording_id);
         } else {
             sqlite3_bind_null(stmt, 11);
+        }
+        sqlite3_bind_text(stmt, 12, source ? source : "", -1, SQLITE_STATIC);
+        if (open_interval) {
+            sqlite3_bind_null(stmt, 13);
+        } else {
+            sqlite3_bind_int64(stmt, 13, (sqlite3_int64)timestamp);
         }
         
         // Execute statement
@@ -161,6 +171,89 @@ int store_detections_in_db(const char *stream_name, const detection_result_t *re
     return 0;
 }
 
+int store_detections_in_db(const char *stream_name,
+                           const detection_result_t *result,
+                           time_t timestamp,
+                           uint64_t recording_id) {
+    return store_detections_with_source(stream_name, result, timestamp,
+                                        recording_id, "", false);
+}
+
+int store_external_motion_detections(const char *stream_name,
+                                     const detection_result_t *result,
+                                     time_t timestamp,
+                                     uint64_t recording_id) {
+    return store_detections_with_source(stream_name, result, timestamp,
+                                        recording_id, "external_motion", true);
+}
+
+int close_external_motion_detections(const char *stream_name, time_t end_time) {
+    if (!stream_name || stream_name[0] == '\0') return -1;
+    if (end_time == 0) end_time = time(NULL);
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    if (!db) return -1;
+
+    pthread_mutex_lock(db_mutex);
+    const char *sql =
+        "UPDATE detections SET event_end_time = "
+        "CASE WHEN ? < timestamp THEN timestamp ELSE ? END "
+        "WHERE stream_name = ? AND source = 'external_motion' "
+        "AND event_end_time IS NULL;";
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+        sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_STATIC);
+        rc = sqlite3_step(stmt);
+    }
+    int changed = rc == SQLITE_DONE ? sqlite3_changes(db) : -1;
+    if (stmt) sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+    return changed;
+}
+
+int get_external_motion_detection_intervals(const char *stream_name,
+                                            time_t start_time,
+                                            time_t end_time,
+                                            detection_interval_t *intervals,
+                                            int max_intervals) {
+    if (!stream_name || !intervals || max_intervals <= 0) return -1;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    if (!db) return -1;
+
+    pthread_mutex_lock(db_mutex);
+    const char *sql =
+        "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) "
+        "FROM detections WHERE stream_name = ? "
+        "AND source = 'external_motion' AND timestamp <= ? "
+        "AND COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= ? "
+        "GROUP BY timestamp, event_end_time ORDER BY timestamp ASC LIMIT ?;";
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
+    sqlite3_bind_int(stmt, 4, max_intervals);
+
+    int count = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && count < max_intervals) {
+        intervals[count].start_time = (time_t)sqlite3_column_int64(stmt, 0);
+        intervals[count].end_time = (time_t)sqlite3_column_int64(stmt, 1);
+        count++;
+    }
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+    return count;
+}
+
 /**
  * Get detection results from the database
  * 
@@ -205,7 +298,8 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         snprintf(sql, sizeof(sql),
                 "SELECT label, confidence, x, y, width, height "
                 "FROM detections "
-                "WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? "
+                "WHERE stream_name = ? AND timestamp <= ? "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
                 "ORDER BY timestamp DESC "
                 "LIMIT ?;");
         
@@ -218,8 +312,8 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
-        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
         sqlite3_bind_int(stmt, 4, MAX_DETECTIONS);
     } else if (start_time > 0) {
         // Start time filter only
@@ -229,7 +323,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         snprintf(sql, sizeof(sql), 
                 "SELECT label, confidence, x, y, width, height "
                 "FROM detections "
-                "WHERE stream_name = ? AND timestamp >= ? "
+                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
                 "ORDER BY timestamp DESC "
                 "LIMIT ?;");
         
@@ -279,7 +373,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         snprintf(sql, sizeof(sql),
                 "SELECT label, confidence, x, y, width, height "
                 "FROM detections "
-                "WHERE stream_name = ? AND timestamp >= ? "
+                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
                 "ORDER BY timestamp DESC "
                 "LIMIT ?;");
 
@@ -365,8 +459,13 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
  * @param end_time End time filter (0 for no filter)
  * @return 0 on success, non-zero on failure
  */
-int get_detection_timestamps(const char *stream_name, const detection_result_t *result, time_t *timestamps,
-                           uint64_t max_age, time_t start_time, time_t end_time) {
+int get_detection_time_ranges(const char *stream_name,
+                              const detection_result_t *result,
+                              time_t *timestamps,
+                              time_t *end_timestamps,
+                              uint64_t max_age,
+                              time_t start_time,
+                              time_t end_time) {
     int rc;
     sqlite3_stmt *stmt;
     
@@ -390,10 +489,11 @@ int get_detection_timestamps(const char *stream_name, const detection_result_t *
     
     if (start_time > 0 && end_time > 0) {
         // Time range filter
-        snprintf(sql, sizeof(sql), 
-                "SELECT timestamp, label, confidence, x, y, width, height "
+        snprintf(sql, sizeof(sql),
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
                 "FROM detections "
-                "WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? "
+                "WHERE stream_name = ? AND timestamp <= ? "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
                 "ORDER BY timestamp DESC "
                 "LIMIT ?;");
         
@@ -406,15 +506,15 @@ int get_detection_timestamps(const char *stream_name, const detection_result_t *
 
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
-        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
         sqlite3_bind_int(stmt, 4, MAX_DETECTIONS);
     } else if (start_time > 0) {
         // Start time filter only
-        snprintf(sql, sizeof(sql), 
-                "SELECT timestamp, label, confidence, x, y, width, height "
+        snprintf(sql, sizeof(sql),
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
                 "FROM detections "
-                "WHERE stream_name = ? AND timestamp >= ? "
+                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
                 "ORDER BY timestamp DESC "
                 "LIMIT ?;");
         
@@ -431,8 +531,8 @@ int get_detection_timestamps(const char *stream_name, const detection_result_t *
         sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
     } else if (end_time > 0) {
         // End time filter only
-        snprintf(sql, sizeof(sql), 
-                "SELECT timestamp, label, confidence, x, y, width, height "
+        snprintf(sql, sizeof(sql),
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
                 "FROM detections "
                 "WHERE stream_name = ? AND timestamp <= ? "
                 "ORDER BY timestamp DESC "
@@ -455,10 +555,10 @@ int get_detection_timestamps(const char *stream_name, const detection_result_t *
         time_t cutoff_time = time(NULL) - (time_t)max_age;
         
         // First get the latest timestamp
-        snprintf(sql, sizeof(sql), 
-                "SELECT timestamp, label, confidence, x, y, width, height "
+        snprintf(sql, sizeof(sql),
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
                 "FROM detections "
-                "WHERE stream_name = ? AND timestamp >= ? "
+                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
                 "ORDER BY timestamp DESC "
                 "LIMIT ?;");
         
@@ -475,8 +575,8 @@ int get_detection_timestamps(const char *stream_name, const detection_result_t *
         sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
     } else {
         // No filters, just get the latest detections
-        snprintf(sql, sizeof(sql), 
-                "SELECT timestamp, label, confidence, x, y, width, height "
+        snprintf(sql, sizeof(sql),
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
                 "FROM detections "
                 "WHERE stream_name = ? "
                 "ORDER BY timestamp DESC "
@@ -502,6 +602,9 @@ int get_detection_timestamps(const char *stream_name, const detection_result_t *
         // Get timestamp and assign directly by index
         // The queries return results in the same order, so index matching works
         timestamps[count] = (time_t)sqlite3_column_int64(stmt, 0);
+        if (end_timestamps) {
+            end_timestamps[count] = (time_t)sqlite3_column_int64(stmt, 1);
+        }
         count++;
     }
 
@@ -509,6 +612,16 @@ int get_detection_timestamps(const char *stream_name, const detection_result_t *
     pthread_mutex_unlock(db_mutex);
 
     return 0;
+}
+
+int get_detection_timestamps(const char *stream_name,
+                             const detection_result_t *result,
+                             time_t *timestamps,
+                             uint64_t max_age,
+                             time_t start_time,
+                             time_t end_time) {
+    return get_detection_time_ranges(stream_name, result, timestamps, NULL,
+                                     max_age, start_time, end_time);
 }
 
 /**
@@ -556,7 +669,10 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
     pthread_mutex_lock(db_mutex);
 
     // Use EXISTS for efficiency - stops at first match
-    const char *sql = "SELECT EXISTS(SELECT 1 FROM detections WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? LIMIT 1);";
+    const char *sql =
+        "SELECT EXISTS(SELECT 1 FROM detections WHERE stream_name = ? "
+        "AND timestamp <= ? "
+        "AND COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= ? LIMIT 1);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -566,8 +682,8 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
     }
 
     sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
-    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
 
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
@@ -607,7 +723,11 @@ int delete_old_detections(uint64_t max_age) {
     
     pthread_mutex_lock(db_mutex);
     
-    const char *sql = "DELETE FROM detections WHERE timestamp < ?;";
+    const char *sql =
+        "DELETE FROM detections WHERE "
+        "CASE WHEN source = 'external_motion' AND event_end_time IS NULL "
+        "THEN CAST(strftime('%s','now') AS INTEGER) "
+        "ELSE COALESCE(event_end_time, timestamp) END < ?;";
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -680,7 +800,10 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
     const char *sql =
         "SELECT label, COUNT(*) as cnt "
         "FROM detections "
-        "WHERE stream_name = ? AND timestamp >= ? AND timestamp <= ? "
+        "WHERE stream_name = ? AND timestamp <= ? "
+        "AND (CASE WHEN source = 'external_motion' AND event_end_time IS NULL "
+        "THEN CAST(strftime('%s','now') AS INTEGER) "
+        "ELSE COALESCE(event_end_time, timestamp) END) >= ? "
         "GROUP BY label "
         "ORDER BY cnt DESC "
         "LIMIT ?;";
@@ -694,8 +817,8 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
 
     // Bind parameters
     sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
-    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
     sqlite3_bind_int(stmt, 4, max_labels);
 
     // Execute query and fetch results

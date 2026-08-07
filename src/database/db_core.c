@@ -799,6 +799,23 @@ int init_database(const char *db_path) {
         return -1;
     }
 
+    /* An external motion interval cannot remain active across a process
+     * restart: the in-memory trigger state is gone. Close any interrupted
+     * interval at its start rather than letting it overlap every future
+     * recording forever. The columns are guaranteed by migration 0046. */
+    rc = sqlite3_exec(db,
+        "UPDATE detections SET event_end_time = timestamp "
+        "WHERE source = 'external_motion' AND event_end_time IS NULL;",
+        NULL, NULL, &err_msg);
+    if (rc != SQLITE_OK) {
+        log_warn("Failed to close interrupted external motion intervals: %s",
+                 err_msg ? err_msg : sqlite3_errmsg(db));
+        if (err_msg) {
+            sqlite3_free(err_msg);
+            err_msg = NULL;
+        }
+    }
+
     log_info("Database initialized successfully");
 
     // Create an initial backup if this is a new database

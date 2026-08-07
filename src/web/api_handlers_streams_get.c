@@ -54,7 +54,8 @@ static stream_status_t resolve_effective_stream_status(stream_status_t raw_statu
 static void get_stream_api_credentials(const stream_config_t *config,
                                        char *safe_url, size_t safe_url_size,
                                        char *onvif_username, size_t onvif_username_size,
-                                       char *onvif_password, size_t onvif_password_size) {
+                                       char *onvif_password, size_t onvif_password_size,
+                                       bool expose_sensitive_config) {
     char extracted_username[128] = {0};
     char extracted_password[128] = {0};
     bool use_separate_credentials;
@@ -71,11 +72,8 @@ static void get_stream_api_credentials(const stream_config_t *config,
     use_separate_credentials = config->is_onvif ||
                               config->onvif_username[0] != '\0' ||
                               config->onvif_password[0] != '\0';
-    if (!use_separate_credentials) {
-        return;
-    }
-
-    if ((onvif_username[0] == '\0' || onvif_password[0] == '\0') &&
+    if (use_separate_credentials &&
+        (onvif_username[0] == '\0' || onvif_password[0] == '\0') &&
         url_extract_credentials(config->url,
                                 extracted_username, sizeof(extracted_username),
                                 extracted_password, sizeof(extracted_password)) == 0) {
@@ -87,9 +85,52 @@ static void get_stream_api_credentials(const stream_config_t *config,
         }
     }
 
-    if (url_strip_credentials(config->url, safe_url, safe_url_size) != 0) {
-        safe_strcpy(safe_url, config->url, safe_url_size, 0);
+    if (use_separate_credentials || !expose_sensitive_config) {
+        if (url_strip_credentials(config->url, safe_url, safe_url_size) != 0) {
+            /* A viewer must never receive a URL that may contain credentials.
+             * Elevated users retain the legacy value so stream editing does
+             * not lose unsupported/custom URL formats. */
+            safe_strcpy(safe_url, expose_sensitive_config ? config->url : "",
+                        safe_url_size, 0);
+        }
     }
+
+    if (!expose_sensitive_config) {
+        onvif_username[0] = '\0';
+        onvif_password[0] = '\0';
+    }
+}
+
+static bool stream_user_can_modify(bool have_auth_user, const user_t *user) {
+    if (!g_config.web_auth_enabled) {
+        return true;
+    }
+    return have_auth_user && user && user->role != USER_ROLE_VIEWER;
+}
+
+static bool authenticate_stream_request(const http_request_t *req,
+                                        http_response_t *res,
+                                        user_t *user) {
+    memset(user, 0, sizeof(*user));
+    if (!g_config.web_auth_enabled) {
+        return true;
+    }
+    if (!httpd_check_viewer_access(req, user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return false;
+    }
+    return true;
+}
+
+static bool check_stream_tag_access(const user_t *user,
+                                    const stream_config_t *config,
+                                    http_response_t *res) {
+    if (g_config.web_auth_enabled && user->has_tag_restriction &&
+        !db_auth_stream_allowed_for_user(user, config->tags)) {
+        http_response_set_json_error(res, 403, "Stream access denied");
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -125,6 +166,9 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
 			have_auth_user = true;
 		}
 	}
+
+    const bool expose_sensitive_config =
+        stream_user_can_modify(have_auth_user, &auth_user);
 
     // Get all stream configurations from database (heap-allocated)
     stream_config_t *db_streams = calloc(g_config.max_streams, sizeof(stream_config_t));
@@ -175,7 +219,8 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         char api_onvif_password[sizeof(db_streams[i].onvif_password)];
         get_stream_api_credentials(&db_streams[i], safe_url, sizeof(safe_url),
                                    api_onvif_username, sizeof(api_onvif_username),
-                                   api_onvif_password, sizeof(api_onvif_password));
+                                   api_onvif_password, sizeof(api_onvif_password),
+                                   expose_sensitive_config);
 
         // Add stream properties
         cJSON_AddStringToObject(stream_obj, "name", db_streams[i].name);
@@ -245,13 +290,21 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
                                   detection_schedule_arr_i);
         }
         cJSON_AddStringToObject(stream_obj, "tags", db_streams[i].tags);
-        cJSON_AddStringToObject(stream_obj, "admin_url", db_streams[i].admin_url);
+        cJSON_AddStringToObject(stream_obj, "admin_url",
+                                expose_sensitive_config ? db_streams[i].admin_url : "");
         cJSON_AddBoolToObject(stream_obj, "privacy_mode", db_streams[i].privacy_mode);
+        cJSON_AddBoolToObject(stream_obj, "can_control_privacy", expose_sensitive_config);
         cJSON_AddStringToObject(stream_obj, "motion_trigger_source", db_streams[i].motion_trigger_source);
-        cJSON_AddStringToObject(stream_obj, "go2rtc_source_override", db_streams[i].go2rtc_source_override);
-        cJSON_AddStringToObject(stream_obj, "sub_stream_url", db_streams[i].sub_stream_url);
-        cJSON_AddStringToObject(stream_obj, "detection_url", db_streams[i].detection_url);
-        cJSON_AddStringToObject(stream_obj, "publish_url", db_streams[i].publish_url);
+        cJSON_AddStringToObject(stream_obj, "go2rtc_source_override",
+                                expose_sensitive_config ? db_streams[i].go2rtc_source_override : "");
+        cJSON_AddStringToObject(stream_obj, "sub_stream_url",
+                                expose_sensitive_config ? db_streams[i].sub_stream_url : "");
+        cJSON_AddBoolToObject(stream_obj, "has_sub_stream",
+                              db_streams[i].sub_stream_url[0] != '\0');
+        cJSON_AddStringToObject(stream_obj, "detection_url",
+                                expose_sensitive_config ? db_streams[i].detection_url : "");
+        cJSON_AddStringToObject(stream_obj, "publish_url",
+                                expose_sensitive_config ? db_streams[i].publish_url : "");
 
         // Get stream status
         stream_handle_t stream = get_stream_by_name(db_streams[i].name);
@@ -321,6 +374,11 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
  * @brief Backend-agnostic handler for GET /api/streams/:id
  */
 void handle_get_stream(const http_request_t *req, http_response_t *res) {
+    user_t auth_user;
+    if (!authenticate_stream_request(req, res, &auth_user)) {
+        return;
+    }
+
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
     if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
@@ -346,6 +404,11 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 500, "Failed to get stream configuration");
         return;
     }
+    if (!check_stream_tag_access(&auth_user, &config, res)) {
+        return;
+    }
+    const bool expose_sensitive_config =
+        stream_user_can_modify(true, &auth_user);
 
     // Create JSON object
     cJSON *stream_obj = cJSON_CreateObject();
@@ -360,7 +423,8 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     char api_onvif_password[sizeof(config.onvif_password)];
     get_stream_api_credentials(&config, safe_url, sizeof(safe_url),
                                api_onvif_username, sizeof(api_onvif_username),
-                               api_onvif_password, sizeof(api_onvif_password));
+                               api_onvif_password, sizeof(api_onvif_password),
+                               expose_sensitive_config);
 
     // Add stream properties
     cJSON_AddStringToObject(stream_obj, "name", config.name);
@@ -430,13 +494,21 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
                               detection_schedule_arr_get);
     }
     cJSON_AddStringToObject(stream_obj, "tags", config.tags);
-    cJSON_AddStringToObject(stream_obj, "admin_url", config.admin_url);
+    cJSON_AddStringToObject(stream_obj, "admin_url",
+                            expose_sensitive_config ? config.admin_url : "");
     cJSON_AddBoolToObject(stream_obj, "privacy_mode", config.privacy_mode);
+    cJSON_AddBoolToObject(stream_obj, "can_control_privacy", expose_sensitive_config);
     cJSON_AddStringToObject(stream_obj, "motion_trigger_source", config.motion_trigger_source);
-    cJSON_AddStringToObject(stream_obj, "go2rtc_source_override", config.go2rtc_source_override);
-    cJSON_AddStringToObject(stream_obj, "sub_stream_url", config.sub_stream_url);
-    cJSON_AddStringToObject(stream_obj, "detection_url", config.detection_url);
-    cJSON_AddStringToObject(stream_obj, "publish_url", config.publish_url);
+    cJSON_AddStringToObject(stream_obj, "go2rtc_source_override",
+                            expose_sensitive_config ? config.go2rtc_source_override : "");
+    cJSON_AddStringToObject(stream_obj, "sub_stream_url",
+                            expose_sensitive_config ? config.sub_stream_url : "");
+    cJSON_AddBoolToObject(stream_obj, "has_sub_stream",
+                          config.sub_stream_url[0] != '\0');
+    cJSON_AddStringToObject(stream_obj, "detection_url",
+                            expose_sensitive_config ? config.detection_url : "");
+    cJSON_AddStringToObject(stream_obj, "publish_url",
+                            expose_sensitive_config ? config.publish_url : "");
 
     // Get stream status — resolve using UDT state so that go2rtc-managed
     // streams (which stay INACTIVE in the state manager) report accurately.
@@ -497,6 +569,11 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
  * Returns both stream config and motion recording config in one response
  */
 void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
+    user_t auth_user;
+    if (!authenticate_stream_request(req, res, &auth_user)) {
+        return;
+    }
+
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
     if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
@@ -529,6 +606,11 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 500, "Failed to get stream configuration");
         return;
     }
+    if (!check_stream_tag_access(&auth_user, &config, res)) {
+        return;
+    }
+    const bool expose_sensitive_config =
+        stream_user_can_modify(true, &auth_user);
 
     // Build stream JSON object (same as handle_get_stream)
     cJSON *stream_obj = cJSON_CreateObject();
@@ -543,7 +625,8 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     char api_onvif_password_full[sizeof(config.onvif_password)];
     get_stream_api_credentials(&config, safe_url_full, sizeof(safe_url_full),
                                api_onvif_username_full, sizeof(api_onvif_username_full),
-                               api_onvif_password_full, sizeof(api_onvif_password_full));
+                               api_onvif_password_full, sizeof(api_onvif_password_full),
+                               expose_sensitive_config);
 
     cJSON_AddStringToObject(stream_obj, "name", config.name);
     cJSON_AddStringToObject(stream_obj, "url", safe_url_full);
@@ -609,13 +692,21 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
                               detection_schedule_arr_full);
     }
     cJSON_AddStringToObject(stream_obj, "tags", config.tags);
-    cJSON_AddStringToObject(stream_obj, "admin_url", config.admin_url);
+    cJSON_AddStringToObject(stream_obj, "admin_url",
+                            expose_sensitive_config ? config.admin_url : "");
     cJSON_AddBoolToObject(stream_obj, "privacy_mode", config.privacy_mode);
+    cJSON_AddBoolToObject(stream_obj, "can_control_privacy", expose_sensitive_config);
     cJSON_AddStringToObject(stream_obj, "motion_trigger_source", config.motion_trigger_source);
-    cJSON_AddStringToObject(stream_obj, "go2rtc_source_override", config.go2rtc_source_override);
-    cJSON_AddStringToObject(stream_obj, "sub_stream_url", config.sub_stream_url);
-    cJSON_AddStringToObject(stream_obj, "detection_url", config.detection_url);
-    cJSON_AddStringToObject(stream_obj, "publish_url", config.publish_url);
+    cJSON_AddStringToObject(stream_obj, "go2rtc_source_override",
+                            expose_sensitive_config ? config.go2rtc_source_override : "");
+    cJSON_AddStringToObject(stream_obj, "sub_stream_url",
+                            expose_sensitive_config ? config.sub_stream_url : "");
+    cJSON_AddBoolToObject(stream_obj, "has_sub_stream",
+                          config.sub_stream_url[0] != '\0');
+    cJSON_AddStringToObject(stream_obj, "detection_url",
+                            expose_sensitive_config ? config.detection_url : "");
+    cJSON_AddStringToObject(stream_obj, "publish_url",
+                            expose_sensitive_config ? config.publish_url : "");
 
     // Status — resolve using UDT state for accurate reporting when go2rtc
     // manages the stream (state manager stays INACTIVE/STOPPED at startup).

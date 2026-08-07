@@ -687,9 +687,15 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
 
     // Filter detections within a 2-second window of current time
     const timeWindow = DETECTION_TIME_WINDOW_SECONDS;
-    const visibleDetections = detections.filter(d =>
-      d.timestamp && Math.abs(d.timestamp - currentTimestamp) <= timeWindow
-    );
+    const visibleDetections = detections.filter(d => {
+      if (!d.timestamp) return false;
+      const eventEnd = d.end_timestamp || d.timestamp;
+      if (eventEnd > d.timestamp) {
+        return currentTimestamp >= d.timestamp - timeWindow &&
+          currentTimestamp <= eventEnd + timeWindow;
+      }
+      return Math.abs(d.timestamp - currentTimestamp) <= timeWindow;
+    });
 
     const scale = Math.max(1, Math.min(drawWidth, drawHeight) / DETECTION_SCALE_BASE);
 

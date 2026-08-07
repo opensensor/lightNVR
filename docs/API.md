@@ -59,11 +59,9 @@ summary of the intended access model:
 | `API`    | yes      | yes       | no             |
 | `VIEWER` | yes      | typically no | no          |
 
-Write authorization is endpoint-specific. Some write endpoints (including
-[`POST /api/motion/trigger`](#trigger-motion-event)) may reject `VIEWER` with
-`403`, but callers should rely on each endpoint's documented or implemented
-access checks rather than assuming all write endpoints enforce the same role
-restriction.
+Write authorization is endpoint-specific. Stream creation, updates (including
+privacy mode), and deletion reject `VIEWER` with `403`, as does
+[`POST /api/motion/trigger`](#trigger-motion-event).
 
 ## API Endpoints
 
@@ -76,6 +74,14 @@ GET /api/streams
 ```
 
 Returns a list of all configured streams.
+
+When authentication is enabled, `VIEWER` responses contain the operational
+fields needed by live view but redact camera credentials and administrative
+connection settings (`onvif_username`, `onvif_password`, `admin_url`,
+`sub_stream_url`, `detection_url`, `publish_url`, and source overrides). URL
+credentials are stripped from `url`. `has_sub_stream` preserves the boolean
+capability without revealing that URL, and `can_control_privacy` tells clients
+whether to show privacy controls.
 
 **Response:**
 ```json
@@ -114,7 +120,9 @@ Returns a list of all configured streams.
       "detection_retention_days": -1,
       "record_on_schedule": false,
       "detection_record_on_schedule": false,
-      "status": "connected"
+      "status": "connected",
+      "has_sub_stream": false,
+      "can_control_privacy": true
     }
   ]
 }
@@ -399,11 +407,15 @@ output verbatim, or keep it terse:
 ```
 
 Detections are recorded on the leading edge only (`start` and `pulse`); a
-`stop` reports nothing new about what was seen. They cover the whole frame,
-since an external trigger carries no bounding box, and they are passed through
-the stream's zone filter just like model detections — a detection filtered out
-by zones is not stored, so `detections_stored` may be lower than what you sent.
-At most 20 objects are recorded per event; extras are ignored.
+`stop` closes the persisted event interval and reports nothing new about what
+was seen. The interval spans every recording segment between those edges and
+is drawn at its exact start/stop time on the timeline. A trigger without
+`label` or `objects` is stored as a generic `motion` event. Supplied objects
+cover the whole frame, since an external trigger carries no bounding box, and
+are passed through the stream's zone filter just like model detections — a
+detection filtered out by zones is not stored, so `detections_stored` may be
+lower than what you sent. At most 20 objects are recorded per event; extras are
+ignored.
 
 **Tags:**
 
@@ -525,7 +537,9 @@ continuous capture is gated by a weekly schedule, or `detection`, `motion`, or
 unrestricted, and `null` for recordings created before that metadata existed.
 Legacy rows stored as `scheduled` are reported as `continuous` only when their
 metadata proves they were unrestricted. Timeline segment responses expose the
-same nullable field.
+same nullable field. Timeline responses also include `detection_intervals`, an
+array of exact external-motion `start_timestamp`/`end_timestamp` ranges for
+the requested window.
 
 #### Get Recording
 
@@ -972,6 +986,10 @@ GET /api/detection/results/{stream_name}
 ```
 
 Returns recent detection results for a stream.
+
+Each result includes `timestamp` and `end_timestamp`. They are equal for
+instantaneous model detections; external motion events use the persisted
+start/stop interval.
 
 #### List Detection Models
 

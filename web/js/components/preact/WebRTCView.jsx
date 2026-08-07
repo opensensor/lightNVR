@@ -770,8 +770,8 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
                   )}
                   <WebRTCVideoCell
                     stream={stream}
-                    useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && !!stream.sub_stream_url}
-                    fullscreenUpgraded={!isSingleStream && fullscreenCellStream === stream.name && !!stream.sub_stream_url}
+                    useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
+                    fullscreenUpgraded={!isSingleStream && fullscreenCellStream === stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
                     showLabels={showLabels}

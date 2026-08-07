@@ -314,6 +314,27 @@ int get_stale_incomplete_recordings(recording_metadata_t *recordings, int max_co
 int64_t get_stream_storage_bytes(const char *stream_name);
 
 /**
+ * Aggregate completed recording bytes in a recent time window.
+ *
+ * Selection is based on end_time so a recording that began just before the
+ * window and consumed space inside it is included. oldest_start_time may be
+ * earlier than since_time and lets callers measure the full duration covered
+ * by the selected bytes.
+ *
+ * @param since_time Include recordings ending at or after this timestamp
+ * @param total_bytes Receives SUM(size_bytes)
+ * @param oldest_start_time Receives MIN(start_time), or 0 when empty
+ * @param newest_end_time Receives MAX(end_time), or 0 when empty
+ * @param recording_count Receives the number of selected recordings
+ * @return 0 on success, non-zero on failure
+ */
+int get_recent_recording_storage_stats(time_t since_time,
+                                       uint64_t *total_bytes,
+                                       time_t *oldest_start_time,
+                                       time_t *newest_end_time,
+                                       uint64_t *recording_count);
+
+/**
  * Set retention tier for a recording
  *
  * @param id Recording ID
