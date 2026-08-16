@@ -114,6 +114,11 @@ static time_t g_last_restart_time = 0;
 static int g_consecutive_api_failures = 0;
 static time_t g_restart_history[PROCESS_MAX_RESTARTS_PER_WINDOW];
 static int g_restart_history_index = 0;
+/* Stream updates are processed asynchronously and more than one update can
+ * require a process restart at the same time.  Serializing the full stop/start
+ * sequence prevents one update from killing the child that another update has
+ * just started, leaving a zombie PID and no listening go2rtc service. */
+static pthread_mutex_t g_restart_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // ============================================================================
 // Stuck Stream Detection Functions
@@ -718,7 +723,7 @@ static bool can_restart_go2rtc(void) {
 /**
  * @brief Restart the go2rtc process
  */
-static bool restart_go2rtc_process(void) {
+static bool restart_go2rtc_process_locked(void) {
     log_warn("Attempting to restart managed go2rtc process");
 
     log_info("Stopping go2rtc process...");
@@ -791,6 +796,13 @@ static bool restart_go2rtc_process(void) {
     log_info("go2rtc restart completed (total restarts: %d)", g_restart_count);
 
     return true;
+}
+
+static bool restart_go2rtc_process(void) {
+    pthread_mutex_lock(&g_restart_mutex);
+    bool restarted = restart_go2rtc_process_locked();
+    pthread_mutex_unlock(&g_restart_mutex);
+    return restarted;
 }
 
 bool go2rtc_integration_restart_process(void) {
