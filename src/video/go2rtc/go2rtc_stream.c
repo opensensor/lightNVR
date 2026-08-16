@@ -268,10 +268,12 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
 
         char fragment_params[256] = {0};
         int offset = 0;
+        bool udp_transport = strstr(modified_url, "#transport=udp") != NULL;
 
         if (strstr(modified_url, "#transport=") == NULL) {
             if (protocol == STREAM_PROTOCOL_UDP) {
                 offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#transport=udp");
+                udp_transport = true;
                 log_info("Adding UDP transport parameter for stream");
             } else {
                 offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#transport=tcp");
@@ -279,7 +281,15 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
             }
         }
 
-        offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#timeout=30");
+        /* With UDP, RTP arrives on separate sockets while the RTSP control
+         * connection is normally quiet until the server's keepalive interval.
+         * A fixed 30-second read timeout can therefore expire before go2rtc's
+         * keepalive (55 seconds for a 60-second session) and reconnect an
+         * otherwise healthy stream every 30 seconds. TCP-interleaved RTP keeps
+         * the control socket active, so retain the shorter fault timeout there. */
+        if (!udp_transport) {
+            offset += snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#timeout=30");
+        }
 
         if (backchannel_enabled) {
             snprintf(fragment_params + offset, sizeof(fragment_params) - offset, "#backchannel=1");
