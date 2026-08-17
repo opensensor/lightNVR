@@ -4,6 +4,9 @@ This guide provides comprehensive information about deploying LightNVR using Doc
 
 > **On Windows?** Everything here applies, but the host setup has its own pitfalls.
 > Start with [Running LightNVR on Windows with Podman + WSL2](WINDOWS_PODMAN.md).
+>
+> **On Home Assistant OS or Supervised?** Use the add-on instead — it handles networking,
+> storage, and backups for you. See [LightNVR on Home Assistant](HOME_ASSISTANT.md).
 
 ## Table of Contents
 

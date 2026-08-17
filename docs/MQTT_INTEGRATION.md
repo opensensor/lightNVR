@@ -253,6 +253,10 @@ automation:
 
 ### Home Assistant
 
+> Running Home Assistant OS or Supervised? LightNVR is also available as an add-on —
+> see [LightNVR on Home Assistant](HOME_ASSISTANT.md). The MQTT setup below is the same
+> either way.
+
 Add the following to your `configuration.yaml`:
 
 ```yaml

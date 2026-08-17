@@ -483,6 +483,7 @@ The configuration files will persist across container restarts and updates.
 - [Build Instructions](docs/BUILD.md)
 - [Configuration Guide](docs/CONFIGURATION.md)
 - [Docker Deployment](docs/DOCKER.md)
+- [Home Assistant Add-on](docs/HOME_ASSISTANT.md)
 - [Windows (Podman + WSL2)](docs/WINDOWS_PODMAN.md)
 - [Reverse Proxy & HTTPS](docs/REVERSE_PROXY.md)
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md)

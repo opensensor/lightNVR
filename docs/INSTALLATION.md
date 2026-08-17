@@ -15,6 +15,7 @@ This document provides detailed instructions for installing LightNVR on various 
    - [Arch Linux](#arch-linux)
    - [Ingenic A1](#ingenic-a1)
    - [Raspberry Pi](#raspberry-pi)
+   - [Home Assistant](#home-assistant)
    - [Windows](#windows)
 4. [Post-Installation Setup](#post-installation-setup)
 5. [Upgrading](#upgrading)
@@ -372,6 +373,18 @@ git submodule update --init --recursive
 # Install
 sudo ./scripts/install.sh
 ```
+
+### Home Assistant
+
+On Home Assistant OS or Supervised, install LightNVR from the Add-on Store by adding the
+repository `https://github.com/opensensor/lightnvr-hassio-addons`.
+
+See **[LightNVR on Home Assistant](HOME_ASSISTANT.md)** for the walkthrough and for the
+ways the add-on differs from a plain Docker deployment — it serves the web UI on port 7800,
+uses host networking, and keeps recordings out of your Home Assistant backups.
+
+Home Assistant Container and Core installs have no add-on store; use [DOCKER.md](DOCKER.md)
+there.
 
 ### Windows
 
