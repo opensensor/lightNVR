@@ -33,6 +33,8 @@
 // Dummy URL for soft-deleted streams
 #define DUMMY_URL "rtsp://dummy.url/stream"
 
+static char g_scan_root[MAX_PATH_LENGTH];
+
 // Structure to hold recording file information
 typedef struct {
     char path[MAX_PATH_LENGTH];
@@ -198,15 +200,17 @@ static bool extract_recording_info(const char *file_path, recording_file_info_t 
     memset(info, 0, sizeof(recording_file_info_t));
     safe_strcpy(info->path, file_path, MAX_PATH_LENGTH, 0);
     
-    // Extract stream name from path
-    // Assuming path format: /storage_path/mp4/stream_name/recording.mp4
-    const char *mp4_pos = strstr(file_path, "/mp4/");
-    if (!mp4_pos) {
+    // The first directory beneath the selected recording root is the stream.
+    // This works for both the default <storage>/mp4 root and a custom direct
+    // MP4 root, with optional date directories below the stream.
+    size_t root_len = strlen(g_scan_root);
+    if (root_len == 0 || strncmp(file_path, g_scan_root, root_len) != 0 ||
+        file_path[root_len] != '/') {
         log_error("Invalid recording path format: %s", file_path);
         return false;
     }
-    
-    const char *stream_name_start = mp4_pos + 5; // Skip "/mp4/"
+
+    const char *stream_name_start = file_path + root_len + 1;
     const char *stream_name_end = strchr(stream_name_start, '/');
     if (!stream_name_end) {
         log_error("Invalid recording path format: %s", file_path);
@@ -485,7 +489,7 @@ static bool scan_directory(const char *base_dir, int *processed_count, int *adde
         snprintf(path, sizeof(path), "%s/%s", base_dir, entry->d_name);
         
         // Get file/directory info
-        if (stat(path, &st) != 0) {
+        if (lstat(path, &st) != 0) {
             log_error("Failed to stat file: %s (error: %s)", path, strerror(errno));
             continue;
         }
@@ -493,7 +497,9 @@ static bool scan_directory(const char *base_dir, int *processed_count, int *adde
         // Process subdirectories
         if (S_ISDIR(st.st_mode)) {
             printf("Scanning subdirectory: %s\n", path);
-            process_directory(path, processed_count, added_count);
+            if (!scan_directory(path, processed_count, added_count)) {
+                log_warn("Failed to scan nested recording directory: %s", path);
+            }
         }
     }
     
@@ -530,8 +536,13 @@ int main(int argc, const char *argv[]) {
     
     printf("Using storage path: %s\n", storage_path);
     
-    // Construct MP4 directory path
-    snprintf(mp4_path, sizeof(mp4_path), "%s/mp4", storage_path);
+    // Construct MP4 directory path. Respect the configured direct-recording
+    // root when no command-line storage override was supplied.
+    if (argc <= 1 && config.record_mp4_directly && config.mp4_storage_path[0] != '\0') {
+        safe_strcpy(mp4_path, config.mp4_storage_path, sizeof(mp4_path), 0);
+    } else {
+        snprintf(mp4_path, sizeof(mp4_path), "%s/mp4", storage_path);
+    }
     
     // Initialize database with the path from config
     const char *db_path = config.db_path;
@@ -545,6 +556,8 @@ int main(int argc, const char *argv[]) {
     init_schema_cache();
 
     printf("Scanning for recordings in %s\n", mp4_path);
+
+    safe_strcpy(g_scan_root, mp4_path, sizeof(g_scan_root), 0);
     
     // Scan the MP4 directory
     if (!scan_directory(mp4_path, &processed_count, &added_count)) {

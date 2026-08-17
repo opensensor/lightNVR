@@ -26,6 +26,7 @@
 #include "video/stream_manager.h"
 #include "video/streams.h"
 #include "video/mp4_recording.h"
+#include "video/recording_path.h"
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
@@ -424,6 +425,7 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "storage_pressure_emergency_pct", g_config.storage_pressure_emergency_pct);
     cJSON_AddBoolToObject(settings, "generate_thumbnails", g_config.generate_thumbnails);
     cJSON_AddNumberToObject(settings, "thumbnails_per_recording", g_config.thumbnails_per_recording);
+    cJSON_AddStringToObject(settings, "mp4_directory_format", g_config.mp4_directory_format);
     cJSON_AddNumberToObject(settings, "max_streams", g_config.max_streams);
     cJSON_AddNumberToObject(settings, "max_streams_ceiling", MAX_STREAMS);
     cJSON_AddStringToObject(settings, "log_file", g_config.log_file);
@@ -893,6 +895,22 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         settings_changed = true;
         log_info("Updated storage_path_hls: %s",
                  hls_path_val[0] ? hls_path_val : "(cleared, will use storage_path)");
+    }
+
+    // Safe, preset-only MP4 recording directory layout.
+    cJSON *mp4_directory_format = cJSON_GetObjectItem(settings, "mp4_directory_format");
+    if (mp4_directory_format && cJSON_IsString(mp4_directory_format)) {
+        if (!mp4_directory_format_is_valid(mp4_directory_format->valuestring)) {
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "mp4_directory_format must be flat, year_month, or year_month_day");
+            return;
+        }
+        safe_strcpy(g_config.mp4_directory_format,
+                    mp4_directory_format->valuestring,
+                    sizeof(g_config.mp4_directory_format), 0);
+        settings_changed = true;
+        log_info("Updated mp4_directory_format: %s", g_config.mp4_directory_format);
     }
     
     // Max storage size

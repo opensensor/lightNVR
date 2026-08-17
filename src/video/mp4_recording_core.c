@@ -36,6 +36,7 @@
 #include "video/mp4_writer.h"
 #include "video/mp4_recording.h"
 #include "video/mp4_recording_internal.h"
+#include "video/recording_path.h"
 #include "video/mp4_writer_thread.h"
 #include "video/mp4_segment_recorder.h"
 #include "video/stream_packet_processor.h"
@@ -728,9 +729,14 @@ int start_mp4_recording(const char *stream_name) {
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
-    // Full path for the MP4 file
-    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
-             mp4_dir, timestamp_str);
+    // Build the configured flat/month/day path. Existing flat recordings stay
+    // valid because playback uses the full path stored in the database.
+    if (prepare_mp4_recording_path(global_config, stream_name, now,
+                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
+        log_error("Failed to prepare MP4 output path for %s", stream_name);
+        free(ctx);
+        return -1;
+    }
 
     // Start recording thread and store context under the mutex
     pthread_mutex_lock(&recording_contexts_mutex);
@@ -900,9 +906,12 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
-    // Full path for the MP4 file
-    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
-             mp4_dir, timestamp_str);
+    if (prepare_mp4_recording_path(global_config, stream_name, now,
+                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
+        log_error("Failed to prepare MP4 output path for %s", stream_name);
+        free(ctx);
+        return -1;
+    }
 
     // Start recording thread and store context under the mutex
     pthread_mutex_lock(&recording_contexts_mutex);
@@ -1118,9 +1127,12 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
-    // Full path for the MP4 file
-    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
-             mp4_dir, timestamp_str);
+    if (prepare_mp4_recording_path(global_config, stream_name, now,
+                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
+        log_error("Failed to prepare MP4 output path for %s", stream_name);
+        free(ctx);
+        return -1;
+    }
 
     // Start recording thread and store context under the mutex
     pthread_mutex_lock(&recording_contexts_mutex);
@@ -1275,9 +1287,12 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
         log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
     }
 
-    // Full path for the MP4 file
-    snprintf(ctx->output_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
-             mp4_dir, timestamp_str);
+    if (prepare_mp4_recording_path(global_config, stream_name, now,
+                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
+        log_error("Failed to prepare MP4 output path for %s", stream_name);
+        free(ctx);
+        return -1;
+    }
 
     // Start recording thread and store context under the mutex
     pthread_mutex_lock(&recording_contexts_mutex);

@@ -28,18 +28,30 @@
 #include <libavutil/time.h>
 
 #include "core/logger.h"
+#include "core/config.h"
 #include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_writer_thread.h"
 #include "video/mp4_segment_recorder.h"
+#include "video/recording_path.h"
+#include "video/streams.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "storage/storage_manager_streams_cache.h"
 #include "storage/storage_manager.h"
 #include "telemetry/stream_metrics.h"
+
+static void update_writer_directory_from_path(mp4_writer_t *writer,
+                                              const char *path) {
+    safe_strcpy(writer->output_dir, path, sizeof(writer->output_dir), 0);
+    char *last_slash = strrchr(writer->output_dir, '/');
+    if (last_slash) {
+        *last_slash = '\0';
+    }
+}
 
 
 // Callback invoked by record_segment when the first keyframe is detected
@@ -312,16 +324,15 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 log_info("Time to create new segment for stream %s (elapsed time: %ld seconds, segment duration: %d seconds)",
                          stream_name, (long)elapsed_time, segment_duration);
 
-                // Create timestamp for new MP4 filename
-                char timestamp_str[32];
-                struct tm tm_buf;
-                const struct tm *tm_info = localtime_r(&current_time, &tm_buf);
-                strftime(timestamp_str, sizeof(timestamp_str), "%Y%m%d_%H%M%S", tm_info);
-
-                // Create new output path
+                // Re-evaluate the configured directory for every segment so a
+                // long-running stream rolls into the correct month/day.
                 char new_path[MAX_PATH_LENGTH];
-                snprintf(new_path, MAX_PATH_LENGTH, "%s/recording_%s.mp4",
-                         thread_ctx->writer->output_dir, timestamp_str);
+                if (prepare_mp4_recording_path(get_streaming_config(), stream_name,
+                                               current_time, new_path,
+                                               sizeof(new_path)) != 0) {
+                    log_error("Failed to prepare rotated MP4 path for %s", stream_name);
+                    continue;
+                }
 
                 // Get the current output path before closing
                 char current_path[MAX_PATH_LENGTH];
@@ -366,6 +377,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
 
                 // Update the output path
                 safe_strcpy(thread_ctx->writer->output_path, new_path, MAX_PATH_LENGTH, 0);
+                update_writer_directory_from_path(thread_ctx->writer, new_path);
 
                 // Reset current recording ID; new ID will be assigned on first keyframe of next segment
                 thread_ctx->writer->current_recording_id = 0;
@@ -558,16 +570,17 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             // for every attempt after the first partial (261-byte) file is written.
             if (thread_ctx->writer && thread_ctx->writer->output_dir[0] != '\0') {
                 time_t retry_ts = time(NULL);
-                struct tm retry_tm_buf;
-                const struct tm *retry_tm = localtime_r(&retry_ts, &retry_tm_buf);
-                if (retry_tm) {
-                    char retry_ts_str[32];
-                    strftime(retry_ts_str, sizeof(retry_ts_str), "%Y%m%d_%H%M%S", retry_tm);
-                    snprintf(thread_ctx->writer->output_path, MAX_PATH_LENGTH,
-                             "%s/recording_%s.mp4",
-                             thread_ctx->writer->output_dir, retry_ts_str);
+                char retry_path[MAX_PATH_LENGTH];
+                if (prepare_mp4_recording_path(get_streaming_config(), stream_name,
+                                               retry_ts, retry_path,
+                                               sizeof(retry_path)) == 0) {
+                    safe_strcpy(thread_ctx->writer->output_path, retry_path,
+                                sizeof(thread_ctx->writer->output_path), 0);
+                    update_writer_directory_from_path(thread_ctx->writer, retry_path);
                     log_debug("Updated output path for retry attempt: %s",
                               thread_ctx->writer->output_path);
+                } else {
+                    log_error("Failed to prepare retry MP4 path for %s", stream_name);
                 }
             }
 

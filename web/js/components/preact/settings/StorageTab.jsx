@@ -37,6 +37,24 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
             <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.hlsStoragePathHelp')}</span>
           </div>
         </div>
+        <div data-setting-label={t('settings.recordingDirectoryFormat')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-mp4-directory-format" class="font-medium">{t('settings.recordingDirectoryFormat')}</label>
+          <div class="col-span-2">
+            <select
+              id="setting-mp4-directory-format"
+              name="mp4DirectoryFormat"
+              class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.mp4DirectoryFormat}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            >
+              <option value="flat">{t('settings.recordingDirectoryFlat')}</option>
+              <option value="year_month">{t('settings.recordingDirectoryMonth')}</option>
+              <option value="year_month_day">{t('settings.recordingDirectoryDay')}</option>
+            </select>
+            <span class="hint text-sm text-muted-foreground block mt-1">{t('settings.recordingDirectoryFormatHelp')}</span>
+          </div>
+        </div>
         <div data-setting-label={t('settings.maxStorageGb')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
           <label for="setting-max-storage" class="font-medium">{t('settings.maxStorageGb')}</label>
           <div class="col-span-2">

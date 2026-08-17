@@ -254,6 +254,11 @@ void test_default_config_mp4_segment_duration(void) {
     TEST_ASSERT_EQUAL_INT(900, cfg.mp4_segment_duration);
 }
 
+void test_default_config_mp4_directory_format(void) {
+    load_default_config(&cfg);
+    TEST_ASSERT_EQUAL_STRING("year_month_day", cfg.mp4_directory_format);
+}
+
 void test_default_config_stream_defaults(void) {
     load_default_config(&cfg);
     TEST_ASSERT_TRUE(cfg.max_streams > 0);
@@ -358,6 +363,7 @@ void test_save_config_accepts_hidden_ini_dotfile(void) {
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_interval_minutes = 15"));
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "backup_retention_count = 8"));
         TEST_ASSERT_NOT_NULL(strstr(file_buffer, "post_backup_script = /usr/local/bin/post-backup"));
+        TEST_ASSERT_NOT_NULL(strstr(file_buffer, "mp4_directory_format = year_month_day"));
         fclose(saved);
     }
 
@@ -396,7 +402,8 @@ void test_env_integer_whitespace_handling(void) {
             "log_file = %s\n\n"
             "[storage]\n"
             "path = %s\n"
-            "path_hls = %s\n\n"
+            "path_hls = %s\n"
+            "mp4_directory_format = year_month\n\n"
             "[models]\n"
             "path = %s\n\n"
             "[database]\n"
@@ -426,6 +433,7 @@ void test_env_integer_whitespace_handling(void) {
     TEST_ASSERT_EQUAL_INT(45, cfg.db_backup_interval_minutes);
     TEST_ASSERT_EQUAL_INT(12, cfg.db_backup_retention_count);
     TEST_ASSERT_EQUAL_STRING("/usr/local/bin/backup-hook", cfg.db_post_backup_script);
+    TEST_ASSERT_EQUAL_STRING("year_month", cfg.mp4_directory_format);
 
     /* Leading whitespace should be ignored. */
     TEST_ASSERT_EQUAL_INT(0, setenv("LIGHTNVR_WEB_PORT", "   9099", 1));
@@ -500,6 +508,7 @@ int main(void) {
     RUN_TEST(test_default_config_mqtt_disabled);
     RUN_TEST(test_default_config_mqtt_port);
     RUN_TEST(test_default_config_mp4_segment_duration);
+    RUN_TEST(test_default_config_mp4_directory_format);
     RUN_TEST(test_default_config_stream_defaults);
     RUN_TEST(test_default_config_auth_timeout);
     RUN_TEST(test_default_config_web_compression_enabled);
@@ -518,4 +527,3 @@ int main(void) {
     shutdown_logger();
     return result;
 }
-

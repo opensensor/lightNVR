@@ -797,6 +797,41 @@ static void reclaim_consider(reclaim_candidate_t *cand, int *count, int *worst_i
     }
 }
 
+static void reclaim_scan_tree(const char *directory, int depth,
+                              reclaim_candidate_t *cand, int *count,
+                              int *worst_idx) {
+    if (!directory || depth > 16) return;
+
+    DIR *dir = opendir(directory);
+    if (!dir) return;
+
+    const struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+
+        char path[MAX_RECORDING_PATH_LENGTH];
+        int written = snprintf(path, sizeof(path), "%s/%s", directory,
+                               entry->d_name);
+        if (written < 0 || written >= (int)sizeof(path)) continue;
+
+        struct stat st;
+        if (lstat(path, &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            reclaim_scan_tree(path, depth + 1, cand, count, worst_idx);
+            continue;
+        }
+        if (!S_ISREG(st.st_mode)) continue;
+
+        size_t name_len = strlen(entry->d_name);
+        if (name_len < 4 || strcmp(entry->d_name + name_len - 4, ".mp4") != 0) {
+            continue;
+        }
+        reclaim_consider(cand, count, worst_idx, path, st.st_mtime,
+                         (uint64_t)st.st_size);
+    }
+    closedir(dir);
+}
+
 /**
  * Scan the mp4 recordings tree and collect the oldest recording files.
  * Purely filesystem-driven — no database dependency — so it works even when
@@ -814,43 +849,11 @@ static int reclaim_scan_oldest(reclaim_candidate_t *cand) {
     DIR *root = opendir(mp4_root);
     if (!root) {
         // Fall back to scanning the storage root directly.
-        root = opendir(storage_manager.storage_path);
-        if (!root) return 0;
         safe_strcpy(mp4_root, storage_manager.storage_path, sizeof(mp4_root), 0);
+    } else {
+        closedir(root);
     }
-
-    const struct dirent *stream_entry;
-    while ((stream_entry = readdir(root)) != NULL) {
-        if (stream_entry->d_name[0] == '.') continue;
-
-        char stream_dir[MAX_RECORDING_PATH_LENGTH];
-        snprintf(stream_dir, sizeof(stream_dir), "%s/%s", mp4_root, stream_entry->d_name);
-
-        struct stat sd;
-        if (stat(stream_dir, &sd) != 0 || !S_ISDIR(sd.st_mode)) continue;
-
-        DIR *sdir = opendir(stream_dir);
-        if (!sdir) continue;
-
-        const struct dirent *rec;
-        while ((rec = readdir(sdir)) != NULL) {
-            if (rec->d_name[0] == '.') continue;
-            // Only consider .mp4 recording files.
-            size_t nlen = strlen(rec->d_name);
-            if (nlen < 4 || strcmp(rec->d_name + nlen - 4, ".mp4") != 0) continue;
-
-            char fpath[MAX_RECORDING_PATH_LENGTH];
-            snprintf(fpath, sizeof(fpath), "%s/%s", stream_dir, rec->d_name);
-
-            struct stat st;
-            if (stat(fpath, &st) != 0 || !S_ISREG(st.st_mode)) continue;
-
-            reclaim_consider(cand, &count, &worst_idx, fpath,
-                             st.st_mtime, (uint64_t)st.st_size);
-        }
-        closedir(sdir);
-    }
-    closedir(root);
+    reclaim_scan_tree(mp4_root, 0, cand, &count, &worst_idx);
 
     // Insertion-sort the (small) candidate set oldest-first.
     for (int i = 1; i < count; i++) {

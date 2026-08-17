@@ -80,6 +80,7 @@ retention_days = 30
 auto_delete_oldest = true
 record_mp4_directly = false
 mp4_path = /var/lib/lightnvr/data/recordings/mp4
+mp4_directory_format = year_month_day
 mp4_segment_duration = 900
 mp4_retention_days = 30
 
@@ -382,4 +383,3 @@ PID=$!
 
 # Wait for the process
 wait $PID
-

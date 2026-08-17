@@ -303,6 +303,7 @@ export function SettingsView() {
       syslogFacility: settingsData.syslog_facility || 'LOG_USER',
       storagePath: settingsData.storage_path || '',
       storagePathHls: settingsData.storage_path_hls || '',
+      mp4DirectoryFormat: settingsData.mp4_directory_format || 'year_month_day',
       // max_storage_size is stored in bytes; the UI field is in GB. Convert on
       // load (0/unset => empty = unlimited).
       maxStorage: settingsData.max_storage_size
@@ -429,6 +430,7 @@ export function SettingsView() {
       syslog_facility: settings.syslogFacility,
       storage_path: settings.storagePath,
       storage_path_hls: settings.storagePathHls,
+      mp4_directory_format: settings.mp4DirectoryFormat,
       // UI field is GB; API expects bytes. Empty/0 => unlimited.
       max_storage_size: (parseInt(settings.maxStorage, 10) || 0) * 1024 * 1024 * 1024,
       retention_days: parseInt(settings.retention, 10),

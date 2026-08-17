@@ -740,6 +740,9 @@ GET /api/settings
 
 Returns system configuration settings.
 
+The storage fields include `mp4_directory_format`, one of `flat`,
+`year_month`, or `year_month_day`.
+
 #### Update Settings
 
 ```
@@ -747,6 +750,9 @@ POST /api/settings
 ```
 
 Updates system configuration settings.
+
+`mp4_directory_format` accepts only the three safe presets returned by the
+GET endpoint; arbitrary `strftime` templates are rejected with HTTP 400.
 
 ### Health
 

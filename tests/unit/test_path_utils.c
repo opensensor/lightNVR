@@ -18,6 +18,7 @@
 
 #include "unity.h"
 #include "core/path_utils.h"
+#include "video/recording_path.h"
 
 void setUp(void)    {}
 void tearDown(void) {}
@@ -161,6 +162,59 @@ void test_sanitize_two_names_that_would_collide(void) {
     TEST_ASSERT_EQUAL_STRING(out_a, out_b);
 }
 
+void test_recording_directory_presets(void) {
+    config_t config;
+    memset(&config, 0, sizeof(config));
+    strcpy(config.storage_path, "/recordings");
+
+    struct tm local_time = {
+        .tm_year = 2026 - 1900,
+        .tm_mon = 8 - 1,
+        .tm_mday = 16,
+        .tm_hour = 12,
+        .tm_isdst = -1,
+    };
+    time_t timestamp = mktime(&local_time);
+    char path[MAX_PATH_LENGTH];
+
+    strcpy(config.mp4_directory_format, MP4_DIRECTORY_FORMAT_FLAT);
+    TEST_ASSERT_EQUAL_INT(0, build_mp4_recording_directory(
+        &config, "Front Door", timestamp, path, sizeof(path)));
+    TEST_ASSERT_EQUAL_STRING("/recordings/mp4/Front_Door", path);
+
+    strcpy(config.mp4_directory_format, MP4_DIRECTORY_FORMAT_YEAR_MONTH);
+    TEST_ASSERT_EQUAL_INT(0, build_mp4_recording_directory(
+        &config, "Front Door", timestamp, path, sizeof(path)));
+    TEST_ASSERT_EQUAL_STRING("/recordings/mp4/Front_Door/2026/08", path);
+
+    strcpy(config.mp4_directory_format, MP4_DIRECTORY_FORMAT_YEAR_MONTH_DAY);
+    TEST_ASSERT_EQUAL_INT(0, build_mp4_recording_directory(
+        &config, "Front Door", timestamp, path, sizeof(path)));
+    TEST_ASSERT_EQUAL_STRING("/recordings/mp4/Front_Door/2026/08/16", path);
+}
+
+void test_recording_directory_uses_direct_mp4_root(void) {
+    config_t config;
+    memset(&config, 0, sizeof(config));
+    config.record_mp4_directly = true;
+    strcpy(config.mp4_storage_path, "/mnt/camera-archive");
+    strcpy(config.mp4_directory_format, MP4_DIRECTORY_FORMAT_FLAT);
+    char path[MAX_PATH_LENGTH];
+
+    TEST_ASSERT_EQUAL_INT(0, build_mp4_recording_directory(
+        &config, "cam1", time(NULL), path, sizeof(path)));
+    TEST_ASSERT_EQUAL_STRING("/mnt/camera-archive/cam1", path);
+}
+
+void test_recording_directory_format_rejects_templates(void) {
+    TEST_ASSERT_TRUE(mp4_directory_format_is_valid("flat"));
+    TEST_ASSERT_TRUE(mp4_directory_format_is_valid("year_month"));
+    TEST_ASSERT_TRUE(mp4_directory_format_is_valid("year_month_day"));
+    TEST_ASSERT_FALSE(mp4_directory_format_is_valid("%Y/%m/%d"));
+    TEST_ASSERT_FALSE(mp4_directory_format_is_valid("../archive"));
+    TEST_ASSERT_FALSE(mp4_directory_format_is_valid(NULL));
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -196,6 +250,9 @@ int main(void) {
     RUN_TEST(test_sanitize_maps_space_to_underscore);
     RUN_TEST(test_sanitize_preserves_valid_names);
     RUN_TEST(test_sanitize_two_names_that_would_collide);
+    RUN_TEST(test_recording_directory_presets);
+    RUN_TEST(test_recording_directory_uses_direct_mp4_root);
+    RUN_TEST(test_recording_directory_format_rejects_templates);
 
     return UNITY_END();
 }

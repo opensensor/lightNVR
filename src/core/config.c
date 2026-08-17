@@ -340,6 +340,8 @@ void load_default_config(config_t *config) {
     // MP4 recording settings
     config->record_mp4_directly = false;
     safe_strcpy(config->mp4_storage_path, "/var/lib/lightnvr/recordings/mp4", sizeof(config->mp4_storage_path), 0);
+    safe_strcpy(config->mp4_directory_format, "year_month_day",
+                sizeof(config->mp4_directory_format), 0);
     config->mp4_segment_duration = 900; // 15 minutes
     config->mp4_retention_days = 30;
 
@@ -719,6 +721,14 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->record_mp4_directly = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "mp4_path") == 0) {
             safe_strcpy(config->mp4_storage_path, value, sizeof(config->mp4_storage_path), 0);
+        } else if (strcmp(name, "mp4_directory_format") == 0) {
+            if (strcmp(value, "flat") == 0 || strcmp(value, "year_month") == 0 ||
+                strcmp(value, "year_month_day") == 0) {
+                safe_strcpy(config->mp4_directory_format, value,
+                            sizeof(config->mp4_directory_format), 0);
+            } else {
+                log_warn("Ignoring invalid mp4_directory_format '%s'", value);
+            }
         } else if (strcmp(name, "mp4_segment_duration") == 0) {
             config->mp4_segment_duration = safe_atoi(value, 0);
         } else if (strcmp(name, "mp4_retention_days") == 0) {
@@ -1606,6 +1616,8 @@ int save_config(const config_t *config, const char *path) {
     if (config->mp4_storage_path[0] != '\0') {
         fprintf(file, "mp4_path = %s\n", config->mp4_storage_path);
     }
+    fprintf(file, "mp4_directory_format = %s  ; flat, year_month, or year_month_day\n",
+            config->mp4_directory_format);
     fprintf(file, "mp4_segment_duration = %d\n", config->mp4_segment_duration);
     fprintf(file, "mp4_retention_days = %d\n\n", config->mp4_retention_days);
 

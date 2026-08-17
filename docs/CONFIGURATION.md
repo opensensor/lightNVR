@@ -48,6 +48,7 @@ auto_delete_oldest = true
 ; New recording format options
 record_mp4_directly = false
 mp4_path = /var/lib/lightnvr/data/recordings/mp4
+mp4_directory_format = year_month_day
 mp4_segment_duration = 900
 mp4_retention_days = 30
 
@@ -194,6 +195,7 @@ retention_days = 30
 auto_delete_oldest = true
 record_mp4_directly = false
 mp4_path = /var/lib/lightnvr/data/recordings/mp4
+mp4_directory_format = year_month_day
 mp4_segment_duration = 900
 mp4_retention_days = 30
 ```
@@ -204,6 +206,7 @@ mp4_retention_days = 30
 - `auto_delete_oldest`: Whether to automatically delete the oldest recordings when storage is full
 - `record_mp4_directly`: Enable direct MP4 recording (instead of HLS-to-MP4 conversion)
 - `mp4_path`: Directory for direct MP4 recordings
+- `mp4_directory_format`: Recording folder layout: `flat`, `year_month` (`YYYY/MM`), or `year_month_day` (`YYYY/MM/DD`, default)
 - `mp4_segment_duration`: Duration of each MP4 segment in seconds
 - `mp4_retention_days`: Number of days to keep MP4 recordings
 

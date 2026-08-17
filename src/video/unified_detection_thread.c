@@ -52,6 +52,7 @@
 #include "video/mp4_writer.h"
 #include "video/mp4_writer_internal.h"
 #include "video/mp4_recording.h"
+#include "video/recording_path.h"
 #include "video/streams.h"
 #include "video/stream_state.h"
 #include "video/go2rtc/go2rtc_stream.h"
@@ -1040,13 +1041,10 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
 
     // Set output directory
     if (global_cfg) {
-        // Make sure we're using a valid path.
-        char stream_path[MAX_STREAM_NAME];
-        sanitize_stream_name(stream_name, stream_path, MAX_STREAM_NAME);
-
-        snprintf(ctx->output_dir, sizeof(ctx->output_dir), "%s/%s",
-                 global_cfg->storage_path, stream_path);
-        if (ensure_dir(ctx->output_dir)) {
+        if (build_mp4_recording_directory(global_cfg, stream_name, time(NULL),
+                                          ctx->output_dir,
+                                          sizeof(ctx->output_dir)) != 0 ||
+            mkdir_recursive(ctx->output_dir) != 0) {
             log_error("Failed to create output directory %s: %s", ctx->output_dir, strerror(errno));
             free(ctx);
             pthread_mutex_unlock(&contexts_mutex);
@@ -2324,17 +2322,24 @@ stats_done:
 static int udt_start_recording(unified_detection_ctx_t *ctx) {
     if (!ctx) return -1;
 
+    time_t now = time(NULL);
+    if (build_mp4_recording_directory(get_streaming_config(), ctx->stream_name,
+                                      now, ctx->output_dir,
+                                      sizeof(ctx->output_dir)) != 0) {
+        log_error("[%s] Failed to build output directory", ctx->stream_name);
+        return -1;
+    }
+
     // Ensure output directory exists
     struct stat st = {0};
     if (stat(ctx->output_dir, &st) == -1) {
-        if (ensure_dir(ctx->output_dir)) {
+        if (mkdir_recursive(ctx->output_dir) != 0) {
             log_error("[%s] Failed to create output directory: %s", ctx->stream_name, ctx->output_dir);
             return -1;
         }
     }
 
     // Generate output filename with timestamp
-    time_t now = time(NULL);
     struct tm tm_buf;
     const struct tm *tm_info = localtime_r(&now, &tm_buf);
     char timestamp[32];
