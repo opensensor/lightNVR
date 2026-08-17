@@ -61,7 +61,8 @@ bind_ip = 0.0.0.0
 root = /var/lib/lightnvr/www
 auth_enabled = true
 username = admin
-; Password is auto-generated on first run - check logs for the generated password
+; Only read when the admin account is first created. Set it before the first start to
+; avoid the default admin/admin ever being valid; afterwards manage users in the web UI.
 ; password =
 auth_timeout_hours = 24  ; Session timeout in hours (default: 24)
 ; trusted_proxy_cidrs = 127.0.0.1/32,::1/128  ; Only trust X-Forwarded-For from these reverse proxies
@@ -228,7 +229,7 @@ bind_ip = 0.0.0.0
 root = /var/lib/lightnvr/www
 auth_enabled = true
 username = admin
-; password is auto-generated on first run
+; password = ; only read when the admin account is first created
 auth_timeout_hours = 24
 ; trusted_proxy_cidrs = 127.0.0.1/32,::1/128
 web_thread_pool_size = 8
@@ -239,10 +240,22 @@ web_thread_pool_size = 8
 - `root`: Directory containing web interface files
 - `auth_enabled`: Whether to enable authentication for the web interface
 - `username`: Username for web interface authentication
-- `password`: Password for web interface authentication (auto-generated on first run if not set)
+- `password`: Password used **only** when the admin account is first created. If unset, the account is created as `admin` / `admin` — see the warning below. Once the account exists this setting is ignored; passwords live in the database and are changed from **Settings → Users**.
 - `auth_timeout_hours`: Session timeout in hours (default: 24)
 - `trusted_proxy_cidrs`: Comma- or newline-separated list of IPv4/IPv6 CIDRs allowed to set `X-Forwarded-For` / `X-Real-IP` headers. Required when running behind a reverse proxy (nginx, Caddy, Traefik, Kubernetes ingress) — without it, the audit log, login allow-list, and rate limiter all see every request as coming from the proxy itself. See [Reverse Proxy & HTTPS](REVERSE_PROXY.md).
 - `web_thread_pool_size`: Number of worker threads for the web server (default: 8)
+
+> ⚠️ **Default credentials are `admin` / `admin`.** Combined with the default
+> `bind_ip = 0.0.0.0`, anyone who can reach port 8080 can reach your cameras and
+> recordings until you change the password. Either set `password` before the very first
+> start, or log in and change it under **Settings → Users** immediately.
+>
+> There is no password-reset flag. If you lose the admin password, stop LightNVR, delete
+> the account row, and restart — it is recreated by the same first-run rules:
+>
+> ```bash
+> sqlite3 /var/lib/lightnvr/data/database/lightnvr.db "DELETE FROM users WHERE username = 'admin';"
+> ```
 
 ### Stream Settings
 

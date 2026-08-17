@@ -2,6 +2,9 @@
 
 This guide provides comprehensive information about deploying LightNVR using Docker.
 
+> **On Windows?** Everything here applies, but the host setup has its own pitfalls.
+> Start with [Running LightNVR on Windows with Podman + WSL2](WINDOWS_PODMAN.md).
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -53,7 +56,7 @@ docker compose logs -f
 
 # Access the web UI
 # http://localhost:8080
-# Default username: admin (password is auto-generated on first run - check logs)
+# Default credentials: admin / admin - change immediately, see First Run Experience
 ```
 
 To build the image from source instead, clone the repository (with `git submodule update --init --recursive`) and switch the `image:` line in `docker-compose.yml` to the commented-out `build:` block — see [Building from Source](#building-from-source).
@@ -322,7 +325,14 @@ On first container start, the entrypoint script automatically:
 - **Username:** `admin`
 - **Password:** `admin`
 
-⚠️ **Change these immediately after first login!**
+⚠️ **Change these immediately after first login.** The web server binds `0.0.0.0` inside
+the container, so once you publish port 8080 these credentials are the only thing in front
+of your cameras and recordings. Change the password under **Settings → Users**.
+
+To avoid the default ever being valid, set `password` in the `[web]` section of
+`config/lightnvr.ini` *before* the first start — the admin account is then created with
+that password instead. The setting is only read when the account is created; afterwards
+users are managed from the **Users** page.
 
 ## WebRTC Configuration
 

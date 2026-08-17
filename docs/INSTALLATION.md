@@ -15,6 +15,7 @@ This document provides detailed instructions for installing LightNVR on various 
    - [Arch Linux](#arch-linux)
    - [Ingenic A1](#ingenic-a1)
    - [Raspberry Pi](#raspberry-pi)
+   - [Windows](#windows)
 4. [Post-Installation Setup](#post-installation-setup)
 5. [Upgrading](#upgrading)
 6. [Uninstallation](#uninstallation)
@@ -119,7 +120,7 @@ docker compose restart
 ##### 1. Pull the Docker Image
 
 ```bash
-docker pull lightnvr/lightnvr:latest
+docker pull ghcr.io/opensensor/lightnvr:latest
 ```
 
 ##### 2. Create Directories for Persistent Storage
@@ -141,7 +142,7 @@ docker run -d \
   -p 1984:1984 \
   -v /path/to/config:/etc/lightnvr \
   -v /path/to/data:/var/lib/lightnvr/data \
-  lightnvr/lightnvr:latest
+  ghcr.io/opensensor/lightnvr:latest
 ```
 
 ##### 4. Create a Configuration File
@@ -372,6 +373,18 @@ git submodule update --init --recursive
 sudo ./scripts/install.sh
 ```
 
+### Windows
+
+LightNVR is Linux software; there is no native Windows build and none is planned. On
+Windows you run the published Linux container.
+
+See **[Running LightNVR on Windows with Podman + WSL2](WINDOWS_PODMAN.md)** for the full
+walkthrough, including the Windows-specific parts that are easy to get wrong: reaching the
+web UI from other devices on your LAN, why the database must not live on a `C:\` path, and
+what it takes to keep a recorder running through sleep and reboots.
+
+Docker Desktop works too, and [DOCKER.md](DOCKER.md) applies unchanged if you prefer it.
+
 ## Post-Installation Setup
 
 After installing LightNVR, follow these steps to complete the setup:
@@ -462,7 +475,7 @@ docker compose up -d
 
 ```bash
 # Pull the latest image
-docker pull lightnvr/lightnvr:latest
+docker pull ghcr.io/opensensor/lightnvr:latest
 
 # Stop and remove the container
 docker stop lightnvr
@@ -476,7 +489,7 @@ docker run -d \
   -p 1984:1984 \
   -v /path/to/config:/etc/lightnvr \
   -v /path/to/data:/var/lib/lightnvr/data \
-  lightnvr/lightnvr:latest
+  ghcr.io/opensensor/lightnvr:latest
 ```
 
 **Note:** Your data is preserved in the volumes, so upgrading will not affect your database or recordings.
@@ -530,7 +543,7 @@ docker stop lightnvr
 docker rm lightnvr
 
 # Remove the image
-docker rmi lightnvr/lightnvr:latest
+docker rmi ghcr.io/opensensor/lightnvr:latest
 
 # Remove volumes (optional - this will delete all data)
 rm -rf /path/to/config

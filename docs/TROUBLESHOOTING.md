@@ -325,24 +325,28 @@ If you can't access the web interface:
 
 If you're having trouble with authentication:
 
-1. Reset the username and password in the configuration file:
+Users are stored in the database, not the config file. Editing `password` in
+`lightnvr.ini` has no effect on an account that already exists — that setting is read only
+when the admin account is first created.
+
+1. Stop the service:
    ```bash
-   sudo nano /etc/lightnvr/lightnvr.ini
+   sudo systemctl stop lightnvr
    ```
 
-   Update these lines in the `[web]` section:
-   ```ini
-   [web]
-   auth_enabled = true
-   username = admin
-   ; Remove or comment out the password line to have it auto-generated on next restart
-   ; password =
+2. Delete the admin account row:
+   ```bash
+   sqlite3 /var/lib/lightnvr/data/database/lightnvr.db \
+     "DELETE FROM users WHERE username = 'admin';"
    ```
 
-2. Restart the service:
+3. Restart. The account is recreated by the same rules as a first run — with the
+   `[web] password` from `lightnvr.ini` if one is set, otherwise as `admin` / `admin`:
    ```bash
-   sudo systemctl restart lightnvr
+   sudo systemctl start lightnvr
    ```
+
+4. Log back in and set a real password under **Settings → Users**.
 
 ## Performance Optimization
 

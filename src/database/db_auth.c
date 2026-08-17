@@ -517,8 +517,9 @@ int db_auth_init(void) {
     // Create the default admin user
     // If a password is set in the config file, use it; otherwise use "admin"
     const char *initial_password = NULL;
+    bool used_config_password = (g_config.web_password[0] != '\0');
 
-    if (g_config.web_password[0] != '\0') {
+    if (used_config_password) {
         initial_password = g_config.web_password;
         log_info("Creating default admin user with password from config file");
     } else {
@@ -532,11 +533,19 @@ int db_auth_init(void) {
         return -1;
     }
 
+    // Report the credential that is actually valid.  Announcing "admin" when the
+    // operator supplied their own password sends them chasing a login that does
+    // not work, and prints a password they never chose into the log.
     log_info("********************************************************");
     log_info("***    Default admin user created successfully       ***");
     log_info("***    Username: admin                               ***");
-    log_info("***    Password: admin                               ***");
-    log_info("***    PLEASE CHANGE THIS PASSWORD IMMEDIATELY!      ***");
+    if (used_config_password) {
+        log_info("***    Password: (from config file)                  ***");
+        log_info("***    Manage users from Settings -> Users           ***");
+    } else {
+        log_info("***    Password: admin                               ***");
+        log_info("***    PLEASE CHANGE THIS PASSWORD IMMEDIATELY!      ***");
+    }
     log_info("********************************************************");
 
     return 0;
