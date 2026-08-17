@@ -52,6 +52,30 @@ This will:
 
 **Note:** This does NOT commit the changes. You'll need to commit them manually.
 
+### Documentation checkpoint
+
+Before cutting a release, confirm the documentation still describes what the code does.
+This is not a general "review the docs" ask — it is a specific check against the changes
+going into this release.
+
+**If a change in this release altered any of the following, the documentation change ships
+with it, not later:**
+
+| Changed | Check |
+|---|---|
+| A default value | `docs/CONFIGURATION.md`, and the sample in `config/lightnvr.ini` |
+| A port | `docs/DOCKER.md`, `README.md`, `docs/HOME_ASSISTANT.md`, `docker-compose.yml` |
+| A path (config, data, web root, models) | `docs/DOCKER.md`, `docs/INSTALLATION.md`, `docs/TROUBLESHOOTING*.md` |
+| Credentials or auth behavior | `README.md` first-login section, `docs/CONFIGURATION.md`, `docs/DOCKER.md` |
+| An environment variable | `docs/DOCKER.md` environment table — including *removing* one that no longer does anything |
+| A CLI flag, or a `scripts/*.sh` option | Every code block that uses it |
+| Where images are published | `README.md`, `docs/INSTALLATION.md`, `docs/DOCKER.md` |
+
+The failure mode this exists to prevent is documentation that quietly becomes false: it
+does not break a build, no test catches it, and the first person to notice is a user who
+followed it and got a different result. Every item in that table is there because it
+happened.
+
 ### 2. Creating a Release
 
 The recommended way to create a release is using the automated script:

@@ -560,7 +560,24 @@ services:
 
 ## Migration from Previous Versions
 
-If you're upgrading from an older version that mounted `/var/lib/lightnvr` directly, see [DOCKER_MIGRATION_GUIDE.md](../DOCKER_MIGRATION_GUIDE.md) for detailed migration instructions.
+If you're upgrading from an older version that mounted `/var/lib/lightnvr` directly, change
+the mount to `/var/lib/lightnvr/data` and move your existing content down one level:
+
+```bash
+docker compose down
+
+# Your old volume held database/, recordings/ and models/ at its root, alongside
+# the web assets. Only the first three should persist.
+mkdir -p ./data
+mv ./old-volume/database ./old-volume/recordings ./old-volume/models ./data/ 2>/dev/null
+
+# Then point the volume at the data subdirectory:
+#   - ./data:/var/lib/lightnvr/data
+docker compose up -d
+```
+
+Mounting `/var/lib/lightnvr` itself hides the web assets baked into the image, and the
+container will refuse to start with a "Web assets not found" error.
 
 ## Building from Source
 

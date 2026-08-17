@@ -281,7 +281,7 @@ int motion_buffer_set_adaptive_size(motion_buffer_t *buffer, bool enabled);
 
 ## See Also
 
-- [ONVIF Motion Recording](ONVIF_MOTION_RECORDING.md)
-- [ONVIF Detection](ONVIF_DETECTION.md)
-- [Product Requirements Document](../PRD-onivf-motion-detect.md)
+- [ONVIF Detection](ONVIF_DETECTION.md) — camera-side motion events that trigger recording
+- [Zone Configuration](ZONE_CONFIGURATION.md) — restricting detection to areas of interest
+- [Configuration](CONFIGURATION.md) — storage and retention settings
 

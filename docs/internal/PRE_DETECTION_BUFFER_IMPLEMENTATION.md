@@ -66,6 +66,6 @@ typedef struct {
 
 ## Related Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Overall system architecture and recording modes
-- [SOD_INTEGRATION.md](SOD_INTEGRATION.md) - SOD object detection integration
-- [ONVIF_MOTION_RECORDING.md](ONVIF_MOTION_RECORDING.md) - ONVIF motion detection
+- [ARCHITECTURE.md](../ARCHITECTURE.md) - Overall system architecture and recording modes
+- [SOD_INTEGRATION.md](../SOD_INTEGRATION.md) - SOD object detection integration
+- [ONVIF_DETECTION.md](../ONVIF_DETECTION.md) - ONVIF motion detection

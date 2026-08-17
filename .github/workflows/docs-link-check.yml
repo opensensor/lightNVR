@@ -1,0 +1,102 @@
+name: Documentation Links
+
+# Documentation that points at files which do not exist is a recurring failure mode
+# (see #492): nothing builds it, no test covers it, and the first person to notice is a
+# user following a dead link. This checks the two classes of breakage we can catch
+# mechanically - relative links to missing files, and referenced repo paths that are gone.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.md'
+      - '.github/workflows/docs-link-check.yml'
+  pull_request:
+    paths:
+      - '**/*.md'
+      - '.github/workflows/docs-link-check.yml'
+  workflow_dispatch:
+
+jobs:
+  links:
+    name: Check relative links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check relative markdown links resolve
+        run: |
+          set -uo pipefail
+          fail=0
+
+          # Every markdown file except vendored trees.
+          mapfile -t files < <(git ls-files '*.md' \
+            | grep -v -E '^(node_modules|third_party|go2rtc|web/node_modules)/')
+
+          for f in "${files[@]}"; do
+            dir=$(dirname "$f")
+
+            # Extract link targets: [text](target). Skip external, anchors, mailto,
+            # and template placeholders like <version>.
+            grep -oE '\]\([^)]+\)' "$f" 2>/dev/null \
+              | sed -E 's/^\]\(//; s/\)$//' \
+              | while read -r target; do
+                  case "$target" in
+                    http://*|https://*|mailto:*|'#'*|'') continue ;;
+                    *'<'*|*'>'*|*'$'*|*'{'*) continue ;;
+                  esac
+
+                  # Strip any anchor fragment; we only verify the file exists.
+                  path="${target%%#*}"
+                  [ -z "$path" ] && continue
+
+                  if [ "${path#/}" != "$path" ]; then
+                    resolved=".${path}"          # repo-absolute
+                  else
+                    resolved="$dir/$path"        # relative to the file
+                  fi
+
+                  if [ ! -e "$resolved" ]; then
+                    # Annotate on stdout so GitHub surfaces it on the file, and mark
+                    # failure via the file - the while loop is a subshell, so a
+                    # variable assignment here would not survive.
+                    echo "::error file=$f::broken link -> $target"
+                  fi
+                done
+          done | tee /tmp/link-results
+
+          if grep -q '::error' /tmp/link-results; then
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then
+            echo
+            echo "Broken relative links found. Each is annotated above with its source file."
+            exit 1
+          fi
+          echo "All relative markdown links resolve."
+
+      - name: Check referenced scripts and config files exist
+        run: |
+          set -uo pipefail
+          fail=0
+
+          # Paths the docs tell users to run or edit. If a script is renamed or deleted,
+          # the instruction becomes a dead end.
+          mapfile -t refs < <(git ls-files '*.md' \
+            | grep -v -E '^(node_modules|third_party|go2rtc|web/node_modules)/' \
+            | xargs grep -ohE '(scripts/[a-zA-Z0-9_.-]+\.sh|config/[a-zA-Z0-9_.-]+\.ini)' \
+            | sort -u)
+
+          for ref in "${refs[@]:-}"; do
+            [ -z "$ref" ] && continue
+            if [ ! -e "$ref" ]; then
+              echo "::error::documentation references '$ref', which does not exist in the repository"
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All referenced scripts and config files exist."

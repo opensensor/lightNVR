@@ -179,7 +179,7 @@ Key files:
 - `src/video/buffer_strategy_mmap.c`: Memory-mapped buffer strategy
 - `src/database/db_detections.c`: Detection storage with optional recording_id linkage
 
-See [SOD_INTEGRATION.md](SOD_INTEGRATION.md) and [ONVIF_MOTION_RECORDING.md](ONVIF_MOTION_RECORDING.md) for details.
+See [SOD_INTEGRATION.md](SOD_INTEGRATION.md) and [ONVIF_DETECTION.md](ONVIF_DETECTION.md) for details.
 
 ### Storage Subsystem
 

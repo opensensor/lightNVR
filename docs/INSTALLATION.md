@@ -333,22 +333,31 @@ cd lightnvr
 # Initialize submodules (required for go2rtc)
 git submodule update --init --recursive
 
-# Build using the cross-compilation script
-./scripts/build-ingenic.sh
+# Cross-compile by pointing the build at a CMake toolchain file
+CMAKE_TOOLCHAIN_FILE=/path/to/your/mips-ingenic.cmake ./scripts/build.sh --release
 ```
+
+`scripts/build.sh` passes `CMAKE_TOOLCHAIN_FILE` straight through to CMake, which is how
+all cross-compilation is driven. The repository ships
+`cmake/toolchains/armv7-linux-gnueabihf.cmake` as a working example; **there is no MIPS
+toolchain file in-repo**, so for Ingenic you supply one pointing at the toolchain you
+extracted above.
+
+The binary lands at `build/Release/bin/lightnvr`.
 
 #### 4. Deploy to Ingenic A1 Device
 
 ```bash
 # Copy the binary and configuration files to the device
-scp build/Ingenic/bin/lightnvr root@ingenic-device:/usr/local/bin/
+scp build/Release/bin/lightnvr root@ingenic-device:/usr/local/bin/
 scp config/lightnvr.ini root@ingenic-device:/etc/lightnvr/lightnvr.ini
 
 # Create necessary directories on the device
-ssh root@ingenic-device "mkdir -p /var/lib/lightnvr/recordings /var/lib/lightnvr/www /var/log/lightnvr"
+ssh root@ingenic-device "mkdir -p /var/lib/lightnvr/data/recordings /var/lib/lightnvr/www /var/log/lightnvr"
 
-# Copy web interface files
-scp -r web/* root@ingenic-device:/var/lib/lightnvr/www/
+# Copy the *built* web interface (web/ holds sources; web/dist/ is what gets served)
+cd web && npm ci && npm run build && cd ..
+scp -r web/dist/* root@ingenic-device:/var/lib/lightnvr/www/
 ```
 
 ### Raspberry Pi

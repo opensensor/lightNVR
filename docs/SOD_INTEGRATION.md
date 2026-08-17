@@ -139,7 +139,7 @@ TensorFlow Lite models require the TensorFlow Lite library to be available.
 
 LightNVR now includes a unified detection interface that supports both RealNet and CNN model architectures. This allows you to use either model type with the same API, making it easy to switch between models based on your requirements.
 
-For more information, see [SOD Unified Detection](SOD_UNIFIED_DETECTION.md).
+For more information, see [SOD Unified Detection](internal/SOD_UNIFIED_DETECTION.md).
 
 ### Test Programs
 

@@ -14,4 +14,10 @@ Each PRD is self-contained: problem, goals, requirements, phasing, acceptance, r
 | [UXD 02 — Live View Ergonomics](UXD_02_LiveViewErgonomics.md) | Per-stream playback transport, unified grid placement, mobile gestures, badge clarity | [#326](https://github.com/opensensor/lightNVR/issues/326), [#397](https://github.com/opensensor/lightNVR/issues/397), [#399](https://github.com/opensensor/lightNVR/issues/399) |
 | [UXD 03 — Recordings & Timeline UX](UXD_03_RecordingsAndTimeline.md) | Scrub continuity, ruler set-diff sync, refresh affordances, mobile timeline gestures | [#331](https://github.com/opensensor/lightNVR/issues/331), [#399](https://github.com/opensensor/lightNVR/issues/399) |
 
+### Features
+
+| PRD | Topic |
+| --- | --- |
+| [Recording Retention Policies](PRD_Recording_Retention_Policies.md) | Per-stream retention and deletion policies (implemented — see [the summary](../internal/SUMMARY_Recording_Retention.md) and [the API quick reference](../QUICKREF_Retention_API.md)) |
+
 The three UXD PRDs share a primitive — an `<AsyncButton>` / `useAsyncAction` hook — defined in PRD 01 and consumed by 02 and 03.  Land 01 P0 first.

@@ -481,6 +481,9 @@ The configuration files will persist across container restarts and updates.
 
 ## Documentation
 
+**📖 [Full documentation index](docs/README.md)** — grouped by task, with a
+getting-started path from install to first recording.
+
 ### Getting Started
 - [Installation Guide](docs/INSTALLATION.md)
 - [Build Instructions](docs/BUILD.md)
@@ -504,8 +507,9 @@ The configuration files will persist across container restarts and updates.
 ### Architecture & Development
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [Frontend Architecture](docs/FRONTEND.md)
-- [State Management](docs/STATE_MANAGEMENT.md)
 - [Release Process](docs/RELEASE_PROCESS.md)
+- [Product requirement documents](docs/prd/)
+- [Internal design notes](docs/internal/) — historical writeups, not current guidance
 
 ## Project Structure
 
