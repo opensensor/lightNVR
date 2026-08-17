@@ -1,5 +1,7 @@
 # Docker Deployment Guide
 
+*Verified against LightNVR 0.37.x.*
+
 This guide provides comprehensive information about deploying LightNVR using Docker.
 
 > **On Windows?** Everything here applies, but the host setup has its own pitfalls.

@@ -207,6 +207,13 @@ git add -A && git commit -m "Your changes"
 git stash
 ```
 
+> **Known inconsistency — tag prefix.** `scripts/release.sh` creates annotated tags as
+> `v$VERSION` (`scripts/release.sh:172`), but every release since `0.17` is tagged
+> *without* the prefix — `0.37.2`, not `v0.37.2`. The publish workflow triggers on
+> `'*.*.*'`, which matches either, so both work; but the script and current practice
+> disagree, and the commands below assume the script's form. Reconcile before relying on
+> either.
+
 ### "Tag vX.Y.Z already exists"
 
 The version tag already exists. Either:

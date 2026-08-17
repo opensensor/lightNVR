@@ -18,6 +18,8 @@ will need them.
    listens on all interfaces — see the warning in [CONFIGURATION.md](CONFIGURATION.md#web-server-settings).
 3. **Add a camera.** Use ONVIF discovery if your cameras support it
    ([ONVIF_DETECTION.md](ONVIF_DETECTION.md)); otherwise add the RTSP URL by hand.
+   [CAMERAS.md](CAMERAS.md) covers what LightNVR needs from a camera and how to find its
+   RTSP URL reliably.
 4. **Confirm it is recording,** then set a retention policy before your disk fills —
    [CONFIGURATION.md](CONFIGURATION.md) covers storage and retention settings.
 5. **Optional: turn on detection.** [ZONE_CONFIGURATION.md](ZONE_CONFIGURATION.md) for
@@ -63,6 +65,7 @@ covers a blank or broken web UI specifically.
 |---|---|
 | [API.md](API.md) | The REST API |
 | [MQTT_INTEGRATION.md](MQTT_INTEGRATION.md) | Publishing detection events, with Home Assistant examples |
+| [CAMERAS.md](CAMERAS.md) | Camera compatibility, finding RTSP URLs, vendor interop notes |
 | [ONVIF_DETECTION.md](ONVIF_DETECTION.md) | ONVIF discovery and camera-side motion events |
 | [GO2RTC_INTEGRATION.md](GO2RTC_INTEGRATION.md) | How LightNVR drives go2rtc |
 | [SOD_INTEGRATION.md](SOD_INTEGRATION.md) | Embedded detection with SOD |

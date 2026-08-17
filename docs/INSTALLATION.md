@@ -1,5 +1,7 @@
 # LightNVR Installation Guide
 
+*Verified against LightNVR 0.37.x.*
+
 This document provides detailed instructions for installing LightNVR on various platforms.
 
 ## Table of Contents
@@ -15,6 +17,7 @@ This document provides detailed instructions for installing LightNVR on various 
    - [Arch Linux](#arch-linux)
    - [Ingenic A1](#ingenic-a1)
    - [Raspberry Pi](#raspberry-pi)
+   - [NAS (Synology, QNAP, unRAID, TrueNAS)](#nas-synology-qnap-unraid-truenas)
    - [Home Assistant](#home-assistant)
    - [Windows](#windows)
 4. [Post-Installation Setup](#post-installation-setup)
@@ -195,19 +198,27 @@ Pre-built packages are available from GitHub Releases.
 
 #### Downloading from GitHub Releases
 
-1. Visit the [LightNVR Releases page](https://github.com/opensensor/lightNVR/releases)
-2. Download the appropriate package for your platform:
-   - `.deb` packages for Debian/Ubuntu
-   - `.tar.gz` archives for other Linux distributions
+Visit the [LightNVR Releases page](https://github.com/opensensor/lightNVR/releases) and
+download the package matching **both** your architecture and your Debian suite. Assets are
+named `lightnvr_<version>_<suite>_<arch>.deb`, for example:
+
+```
+lightnvr_0.37.2_trixie_arm64.deb    # Debian 13 / Raspberry Pi OS (trixie), 64-bit
+lightnvr_0.37.2_sid_amd64.deb       # Debian unstable, x86-64
+lightnvr_0.37.2_trixie_armhf.deb    # 32-bit ARM
+```
+
+The suite matters: the packages link against that release's system libraries, so a `sid`
+package on a `trixie` system will fail to satisfy its dependencies.
 
 #### Debian/Ubuntu
 
 ```bash
-# Download the latest .deb package from GitHub Releases
-wget https://github.com/opensensor/lightNVR/releases/latest/download/lightnvr_<version>_<arch>.deb
+# Substitute the version, suite and architecture you need
+wget https://github.com/opensensor/lightNVR/releases/download/0.37.2/lightnvr_0.37.2_trixie_arm64.deb
 
 # Install the package
-sudo dpkg -i lightnvr_<version>_<arch>.deb
+sudo dpkg -i lightnvr_0.37.2_trixie_arm64.deb
 
 # Install any missing dependencies
 sudo apt-get install -f
@@ -215,18 +226,8 @@ sudo apt-get install -f
 
 #### Other Distributions
 
-For other distributions, download the tarball and install manually:
-
-```bash
-# Download and extract
-wget https://github.com/opensensor/lightNVR/releases/latest/download/lightnvr-<version>-linux-<arch>.tar.gz
-tar -xzf lightnvr-<version>-linux-<arch>.tar.gz
-
-# Install (adjust paths as needed)
-sudo cp lightnvr /usr/local/bin/
-sudo mkdir -p /etc/lightnvr
-sudo cp lightnvr.ini.default /etc/lightnvr/lightnvr.ini
-```
+Only `.deb` packages are published. On non-Debian systems, use
+[the container](DOCKER.md) or [build from source](#building-from-source).
 
 ## Platform-Specific Instructions
 
@@ -362,9 +363,48 @@ scp -r web/dist/* root@ingenic-device:/var/lib/lightnvr/www/
 
 ### Raspberry Pi
 
-Raspberry Pi installation is similar to Debian/Ubuntu. Pre-built `.deb` packages for `arm64` and `armhf` are available on the [Releases](https://github.com/opensensor/lightNVR/releases) page for both Debian trixie (stable) and sid. To build from source instead:
+Raspberry Pi is a Debian system, so everything in the [Debian/Ubuntu](#debianubuntu)
+section applies. In order of least to most effort:
 
-#### 1. Install Dependencies
+1. **Container** — `ghcr.io/opensensor/lightnvr` publishes `arm64` and `arm/v7`. See
+   [DOCKER.md](DOCKER.md). This is the path most Pi users want.
+2. **`.deb` package** — prebuilt for `arm64` and `armhf` on the
+   [Releases](https://github.com/opensensor/lightNVR/releases) page, for both Debian
+   trixie (stable) and sid. Match the package to your OS release, not just the
+   architecture.
+3. **From source** — below. Worth it if you are developing, or on an OS release we do not
+   package for.
+
+#### Before you start: do not record to the SD card
+
+This is the mistake that kills Pi NVR builds. Continuous video writing will wear out a
+microSD card, and when it fails it usually takes the SQLite database with it. Put
+recordings — and ideally the whole data directory — on a USB SSD or HDD:
+
+```ini
+[storage]
+path = /mnt/ssd/lightnvr/recordings
+
+[database]
+path = /mnt/ssd/lightnvr/database/lightnvr.db
+```
+
+Make sure the drive is mounted at boot (an `/etc/fstab` entry, not a desktop automount)
+before pointing LightNVR at it, or the service will start against an empty mount point.
+
+#### Which Pi?
+
+A Pi 4 or 5 with 2 GB or more handles several streams comfortably. A Pi Zero or a
+first-generation model will struggle with anything beyond one low-resolution stream. Object
+detection wants 1 GB of headroom on top of whatever your streams use — see
+[Memory in practice](#memory-in-practice).
+
+Prefer a 64-bit OS. `arm/v7` builds exist, but 32-bit ARM is the least-tested target and
+Home Assistant has already dropped it.
+
+#### Building from source
+
+##### Install dependencies
 
 ```bash
 sudo apt-get update
@@ -387,7 +427,7 @@ sudo apt-get install -y \
 
 **Note**: `libuv1-dev` is required for the HTTP server. `libmbedtls-dev` is **required** for ONVIF support and authentication system (cryptographic functions).
 
-#### 2. Build and Install
+##### Build and install
 
 ```bash
 # Clone the repository
@@ -403,6 +443,39 @@ git submodule update --init --recursive
 # Install
 sudo ./scripts/install.sh
 ```
+
+### NAS (Synology, QNAP, unRAID, TrueNAS)
+
+A NAS is a natural home for an NVR — it already has the disks. All of these run Docker
+under their own branding (Synology **Container Manager**, QNAP **Container Station**,
+unRAID **Docker** tab, TrueNAS SCALE **Apps**), so [DOCKER.md](DOCKER.md) is the reference
+and their own documentation covers the click-path for adding a container.
+
+Four things are LightNVR-specific and are what people actually get wrong:
+
+**Do not put the database on a network share.** Recordings on a share are fine; the SQLite
+database is not. NFS and SMB do not implement the file locking SQLite expects, and the
+result is corruption rather than an error message. Keep `[database] path` on local storage
+— the same volume the container runs from — and point only `[storage] path` at the big
+array. This applies to the NAS's own shares mounted back into the container, not just
+remote ones.
+
+**Bridge networking breaks ONVIF discovery.** WS-Discovery is multicast and will not cross
+the default bridge. Either set `LIGHTNVR_ONVIF_NETWORK` to your camera subnet in CIDR form
+(the unicast sweep works through NAT), or give the container host/macvlan networking, which
+most NAS UIs expose. Host networking also makes WebRTC live view work without extra port
+mapping.
+
+**Check the UID the container runs as.** These platforms often run containers as a
+non-root user of their choosing. The data directory must be writable by whatever that is,
+or LightNVR will start and then fail to record.
+
+**Mind the spin-down.** If the array parks its disks, continuous recording will keep waking
+them, and event-triggered recording will lose the first seconds to spin-up latency. Either
+disable spin-down for the recording volume or accept the trade.
+
+Ports and volumes are identical to any other Docker deployment: map `/etc/lightnvr` and
+`/var/lib/lightnvr/data`, never `/var/lib/lightnvr` itself.
 
 ### Home Assistant
 

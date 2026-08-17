@@ -1,5 +1,7 @@
 # Running LightNVR on Windows with Podman + WSL2
 
+*Verified against LightNVR 0.37.x.*
+
 LightNVR is Linux software. There is no native Windows build and none is planned — on
 Windows you run the published Linux container. This guide uses **Podman** with the
 **WSL2** backend, which is the lightest way to do that: no background desktop service,

@@ -1,5 +1,7 @@
 # LightNVR on Home Assistant
 
+*Verified against LightNVR 0.37.x.*
+
 If you run Home Assistant OS or Supervised, LightNVR is available as an add-on. You get it
 from the Add-on Store, it starts with the rest of your system, its config and database ride
 along in your Home Assistant backups, and its detections can drive automations.
