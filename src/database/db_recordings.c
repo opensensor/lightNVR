@@ -661,7 +661,10 @@ int get_recording_count(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type = 'detection'"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp <= r.end_time"
+                    " AND d.source != 'external_motion'"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.source = 'external_motion' AND d.timestamp <= r.end_time"
                     " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time))",
                     sizeof(sql));
         log_debug("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
@@ -670,7 +673,10 @@ int get_recording_count(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type != 'detection' OR r.trigger_type IS NULL)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp <= r.end_time"
+                    " AND d.source != 'external_motion'"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)"
+                    " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.source = 'external_motion' AND d.timestamp <= r.end_time"
                     " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time)",
                     sizeof(sql));
         log_debug("Adding no-detection filter (no trigger_type AND no linked detections)");
@@ -685,7 +691,16 @@ int get_recording_count(time_t start_time, time_t end_time,
             safe_strcat(sql, "d.label LIKE ?", sizeof(sql));
         }
         safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d"
-                    " WHERE d.stream_name = r.stream_name AND d.timestamp <= r.end_time"
+                    " WHERE d.stream_name = r.stream_name AND d.source != 'external_motion'"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time AND (",
+                    sizeof(sql));
+        for (int i = 0; i < detection_label_count; i++) {
+            if (i > 0) safe_strcat(sql, " OR ", sizeof(sql));
+            safe_strcat(sql, "d.label LIKE ?", sizeof(sql));
+        }
+        safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d"
+                    " WHERE d.stream_name = r.stream_name AND d.source = 'external_motion'"
+                    " AND d.timestamp <= r.end_time"
                     " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time AND (",
                     sizeof(sql));
         for (int i = 0; i < detection_label_count; i++) {
@@ -772,6 +787,11 @@ int get_recording_count(time_t start_time, time_t end_time,
     int param_index = 1;
 
     if (detection_label_count > 0) {
+        for (int i = 0; i < detection_label_count; i++) {
+            char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
+            snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);
+            sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+        }
         for (int i = 0; i < detection_label_count; i++) {
             char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
             snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);
@@ -906,7 +926,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type = 'detection'"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp <= r.end_time"
+                    " AND d.source != 'external_motion'"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)"
+                    " OR EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.source = 'external_motion' AND d.timestamp <= r.end_time"
                     " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time))",
                     sizeof(sql));
         log_info("Adding detection filter (trigger_type OR recording_id OR timestamp range)");
@@ -915,7 +938,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         safe_strcat(sql, " AND (r.trigger_type != 'detection' OR r.trigger_type IS NULL)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id)"
                     " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
-                    " AND d.timestamp <= r.end_time"
+                    " AND d.source != 'external_motion'"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time)"
+                    " AND NOT EXISTS (SELECT 1 FROM detections d WHERE d.stream_name = r.stream_name"
+                    " AND d.source = 'external_motion' AND d.timestamp <= r.end_time"
                     " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time)",
                     sizeof(sql));
         log_info("Adding no-detection filter (no trigger_type AND no linked detections)");
@@ -930,7 +956,16 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             safe_strcat(sql, "d.label LIKE ?", sizeof(sql));
         }
         safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d"
-                    " WHERE d.stream_name = r.stream_name AND d.timestamp <= r.end_time"
+                    " WHERE d.stream_name = r.stream_name AND d.source != 'external_motion'"
+                    " AND d.timestamp >= r.start_time AND d.timestamp <= r.end_time AND (",
+                    sizeof(sql));
+        for (int i = 0; i < detection_label_count; i++) {
+            if (i > 0) safe_strcat(sql, " OR ", sizeof(sql));
+            safe_strcat(sql, "d.label LIKE ?", sizeof(sql));
+        }
+        safe_strcat(sql, ")) OR EXISTS (SELECT 1 FROM detections d"
+                    " WHERE d.stream_name = r.stream_name AND d.source = 'external_motion'"
+                    " AND d.timestamp <= r.end_time"
                     " AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time AND (",
                     sizeof(sql));
         for (int i = 0; i < detection_label_count; i++) {
@@ -1027,6 +1062,11 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
     int param_index = 1;
 
     if (detection_label_count > 0) {
+        for (int i = 0; i < detection_label_count; i++) {
+            char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
+            snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);
+            sqlite3_bind_text(stmt, param_index++, label_pattern, -1, SQLITE_TRANSIENT);
+        }
         for (int i = 0; i < detection_label_count; i++) {
             char label_pattern[MAX_MULTI_FILTER_VALUE_LEN + 2];
             snprintf(label_pattern, sizeof(label_pattern), "%%%s%%", detection_label_filters[i]);

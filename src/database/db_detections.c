@@ -288,7 +288,7 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
     pthread_mutex_lock(db_mutex);
     
     // Build query based on filters
-    char sql[512];
+    char sql[2048];
     
     if (start_time > 0 && end_time > 0) {
         // Time range filter
@@ -296,36 +296,16 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
                 stream_name, (long long)start_time, (long long)end_time, MAX_DETECTIONS);
 
         snprintf(sql, sizeof(sql),
-                "SELECT label, confidence, x, y, width, height "
-                "FROM detections "
-                "WHERE stream_name = ? AND timestamp <= ? "
-                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?;");
-        
-        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-        if (rc != SQLITE_OK) {
-            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
-            pthread_mutex_unlock(db_mutex);
-            return -1;
-        }
-        
-        // Bind parameters
-        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
-        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
-        sqlite3_bind_int(stmt, 4, MAX_DETECTIONS);
-    } else if (start_time > 0) {
-        // Start time filter only
-        log_debug("Getting detections for stream %s from %lld",
-                stream_name, (long long)start_time);
-        
-        snprintf(sql, sizeof(sql), 
-                "SELECT label, confidence, x, y, width, height "
-                "FROM detections "
-                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?;");
+                "SELECT label, confidence, x, y, width, height FROM ("
+                "SELECT label, confidence, x, y, width, height, timestamp "
+                "FROM detections WHERE stream_name = ? "
+                "AND source != 'external_motion' AND timestamp >= ? AND timestamp <= ? "
+                "UNION ALL "
+                "SELECT label, confidence, x, y, width, height, timestamp "
+                "FROM detections WHERE stream_name = ? "
+                "AND source = 'external_motion' AND timestamp <= ? "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ?"
+                ") ORDER BY timestamp DESC LIMIT ?;");
         
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
@@ -337,7 +317,41 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
-        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+        sqlite3_bind_text(stmt, 4, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 5, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(stmt, 6, (sqlite3_int64)start_time);
+        sqlite3_bind_int(stmt, 7, MAX_DETECTIONS);
+    } else if (start_time > 0) {
+        // Start time filter only
+        log_debug("Getting detections for stream %s from %lld",
+                stream_name, (long long)start_time);
+        
+        snprintf(sql, sizeof(sql),
+                "SELECT label, confidence, x, y, width, height FROM ("
+                "SELECT label, confidence, x, y, width, height, timestamp "
+                "FROM detections WHERE stream_name = ? "
+                "AND source != 'external_motion' AND timestamp >= ? "
+                "UNION ALL "
+                "SELECT label, confidence, x, y, width, height, timestamp "
+                "FROM detections WHERE stream_name = ? "
+                "AND source = 'external_motion' "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ?"
+                ") ORDER BY timestamp DESC LIMIT ?;");
+        
+        rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        
+        // Bind parameters
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+        sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)start_time);
+        sqlite3_bind_int(stmt, 5, MAX_DETECTIONS);
     } else if (end_time > 0) {
         // End time filter only
         log_debug("Getting detections for stream %s until %lld",
@@ -371,11 +385,16 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
 
         // Get all detections within the time window (not just the latest timestamp)
         snprintf(sql, sizeof(sql),
-                "SELECT label, confidence, x, y, width, height "
-                "FROM detections "
-                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?;");
+                "SELECT label, confidence, x, y, width, height FROM ("
+                "SELECT label, confidence, x, y, width, height, timestamp "
+                "FROM detections WHERE stream_name = ? "
+                "AND source != 'external_motion' AND timestamp >= ? "
+                "UNION ALL "
+                "SELECT label, confidence, x, y, width, height, timestamp "
+                "FROM detections WHERE stream_name = ? "
+                "AND source = 'external_motion' "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ?"
+                ") ORDER BY timestamp DESC LIMIT ?;");
 
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
@@ -387,7 +406,9 @@ int get_detections_from_db_time_range(const char *stream_name, detection_result_
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)cutoff_time);
-        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+        sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)cutoff_time);
+        sqlite3_bind_int(stmt, 5, MAX_DETECTIONS);
     } else {
         // No filters, just get the latest detections
         log_debug("Getting latest detections for stream %s (no time filters)", stream_name);
@@ -485,17 +506,23 @@ int get_detection_time_ranges(const char *stream_name,
     pthread_mutex_lock(db_mutex);
     
     // Build query based on filters
-    char sql[512];
+    char sql[2048];
     
     if (start_time > 0 && end_time > 0) {
         // Time range filter
         snprintf(sql, sizeof(sql),
-                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
-                "FROM detections "
-                "WHERE stream_name = ? AND timestamp <= ? "
-                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?;");
+                "SELECT timestamp, interval_end, label, confidence, x, y, width, height FROM ("
+                "SELECT timestamp, COALESCE(event_end_time, timestamp) AS interval_end, "
+                "label, confidence, x, y, width, height "
+                "FROM detections WHERE stream_name = ? "
+                "AND source != 'external_motion' AND timestamp >= ? AND timestamp <= ? "
+                "UNION ALL "
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) AS interval_end, "
+                "label, confidence, x, y, width, height "
+                "FROM detections WHERE stream_name = ? "
+                "AND source = 'external_motion' AND timestamp <= ? "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ?"
+                ") ORDER BY timestamp DESC LIMIT ?;");
         
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
@@ -506,17 +533,27 @@ int get_detection_time_ranges(const char *stream_name,
 
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
-        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
-        sqlite3_bind_int(stmt, 4, MAX_DETECTIONS);
+        sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+        sqlite3_bind_text(stmt, 4, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 5, (sqlite3_int64)end_time);
+        sqlite3_bind_int64(stmt, 6, (sqlite3_int64)start_time);
+        sqlite3_bind_int(stmt, 7, MAX_DETECTIONS);
     } else if (start_time > 0) {
         // Start time filter only
         snprintf(sql, sizeof(sql),
-                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
-                "FROM detections "
-                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?;");
+                "SELECT timestamp, interval_end, label, confidence, x, y, width, height FROM ("
+                "SELECT timestamp, COALESCE(event_end_time, timestamp) AS interval_end, "
+                "label, confidence, x, y, width, height "
+                "FROM detections WHERE stream_name = ? "
+                "AND source != 'external_motion' AND timestamp >= ? "
+                "UNION ALL "
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) AS interval_end, "
+                "label, confidence, x, y, width, height "
+                "FROM detections WHERE stream_name = ? "
+                "AND source = 'external_motion' "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ?"
+                ") ORDER BY timestamp DESC LIMIT ?;");
         
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
@@ -528,7 +565,9 @@ int get_detection_time_ranges(const char *stream_name,
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
-        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+        sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)start_time);
+        sqlite3_bind_int(stmt, 5, MAX_DETECTIONS);
     } else if (end_time > 0) {
         // End time filter only
         snprintf(sql, sizeof(sql),
@@ -556,11 +595,18 @@ int get_detection_time_ranges(const char *stream_name,
         
         // First get the latest timestamp
         snprintf(sql, sizeof(sql),
-                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)), label, confidence, x, y, width, height "
-                "FROM detections "
-                "WHERE stream_name = ? AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ? "
-                "ORDER BY timestamp DESC "
-                "LIMIT ?;");
+                "SELECT timestamp, interval_end, label, confidence, x, y, width, height FROM ("
+                "SELECT timestamp, COALESCE(event_end_time, timestamp) AS interval_end, "
+                "label, confidence, x, y, width, height "
+                "FROM detections WHERE stream_name = ? "
+                "AND source != 'external_motion' AND timestamp >= ? "
+                "UNION ALL "
+                "SELECT timestamp, COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) AS interval_end, "
+                "label, confidence, x, y, width, height "
+                "FROM detections WHERE stream_name = ? "
+                "AND source = 'external_motion' "
+                "AND COALESCE(event_end_time, CAST(strftime('%%s','now') AS INTEGER)) >= ?"
+                ") ORDER BY timestamp DESC LIMIT ?;");
         
         rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
@@ -572,7 +618,9 @@ int get_detection_time_ranges(const char *stream_name,
         // Bind parameters
         sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
         sqlite3_bind_int64(stmt, 2, (sqlite3_int64)cutoff_time);
-        sqlite3_bind_int(stmt, 3, MAX_DETECTIONS);
+        sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_STATIC);
+        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)cutoff_time);
+        sqlite3_bind_int(stmt, 5, MAX_DETECTIONS);
     } else {
         // No filters, just get the latest detections
         snprintf(sql, sizeof(sql),
@@ -668,11 +716,16 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
 
     pthread_mutex_lock(db_mutex);
 
-    // Use EXISTS for efficiency - stops at first match
+    // Keep point detections and true intervals in separate EXISTS clauses so
+    // SQLite can apply both timestamp bounds to the large point-detection set.
     const char *sql =
-        "SELECT EXISTS(SELECT 1 FROM detections WHERE stream_name = ? "
-        "AND timestamp <= ? "
-        "AND COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= ? LIMIT 1);";
+        "SELECT ("
+        "EXISTS(SELECT 1 FROM detections WHERE stream_name = ? "
+        "AND source != 'external_motion' AND timestamp >= ? AND timestamp <= ? LIMIT 1) "
+        "OR EXISTS(SELECT 1 FROM detections WHERE stream_name = ? "
+        "AND source = 'external_motion' AND timestamp <= ? "
+        "AND COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= ? LIMIT 1)"
+        ");";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -682,8 +735,11 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
     }
 
     sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
-    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+    sqlite3_bind_text(stmt, 4, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 6, (sqlite3_int64)start_time);
 
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
@@ -796,16 +852,21 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
 
     pthread_mutex_lock(db_mutex);
 
-    // Query to get unique labels with counts, sorted by count descending
+    // Aggregate point detections and true intervals independently. A single
+    // overlap predicate prevents SQLite from using the lower timestamp bound
+    // for millions of ordinary point detections.
     const char *sql =
-        "SELECT label, COUNT(*) as cnt "
-        "FROM detections "
-        "WHERE stream_name = ? AND timestamp <= ? "
-        "AND (CASE WHEN source = 'external_motion' AND event_end_time IS NULL "
-        "THEN CAST(strftime('%s','now') AS INTEGER) "
-        "ELSE COALESCE(event_end_time, timestamp) END) >= ? "
-        "GROUP BY label "
-        "ORDER BY cnt DESC "
+        "SELECT label, SUM(cnt) AS cnt FROM ("
+        "SELECT label, COUNT(*) AS cnt FROM detections "
+        "WHERE stream_name = ? AND source != 'external_motion' "
+        "AND timestamp >= ? AND timestamp <= ? GROUP BY label "
+        "UNION ALL "
+        "SELECT label, COUNT(*) AS cnt FROM detections "
+        "WHERE stream_name = ? AND source = 'external_motion' "
+        "AND timestamp <= ? "
+        "AND COALESCE(event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= ? "
+        "GROUP BY label"
+        ") GROUP BY label ORDER BY cnt DESC "
         "LIMIT ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -817,9 +878,12 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
 
     // Bind parameters
     sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
-    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
-    sqlite3_bind_int(stmt, 4, max_labels);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)start_time);
+    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)end_time);
+    sqlite3_bind_text(stmt, 4, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)end_time);
+    sqlite3_bind_int64(stmt, 6, (sqlite3_int64)start_time);
+    sqlite3_bind_int(stmt, 7, max_labels);
 
     // Execute query and fetch results
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW && count < max_labels) {

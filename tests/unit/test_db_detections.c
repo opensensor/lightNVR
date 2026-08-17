@@ -42,6 +42,17 @@ static void clear_detections(void) {
     sqlite3_exec(get_db_handle(), "DELETE FROM detections;", NULL, NULL, NULL);
 }
 
+typedef struct {
+    int calls;
+    int abort_after;
+} query_progress_t;
+
+static int abort_runaway_query(void *context) {
+    query_progress_t *progress = (query_progress_t *)context;
+    progress->calls++;
+    return progress->calls > progress->abort_after;
+}
+
 void setUp(void)    { clear_detections(); }
 void tearDown(void) {}
 
@@ -197,6 +208,62 @@ void test_external_motion_interval_spans_later_recording_segment(void) {
     TEST_ASSERT_EQUAL_INT64(now - 10, intervals[0].end_time);
 }
 
+/* Regression for #491: point-detection lookups must seek to the beginning of
+ * the requested range instead of scanning the stream's entire history. */
+void test_recent_detection_queries_do_not_scan_full_stream_history(void) {
+    sqlite3 *db = get_db_handle();
+    time_t now = time(NULL);
+    sqlite3_stmt *stmt = NULL;
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+        sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(db,
+        "INSERT INTO detections "
+        "(stream_name, timestamp, label, confidence, source, event_end_time) "
+        "VALUES ('cam_large', ?, 'old', 0.5, '', ?);",
+        -1, &stmt, NULL));
+
+    for (int i = 0; i < 20000; i++) {
+        sqlite3_int64 timestamp = (sqlite3_int64)(now - 100000 - i);
+        sqlite3_bind_int64(stmt, 1, timestamp);
+        sqlite3_bind_int64(stmt, 2, timestamp);
+        TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+    }
+    sqlite3_finalize(stmt);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+        sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL));
+
+    detection_result_t recent = make_result("person", 0.9f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "cam_large", &recent, now - 5, 0));
+
+    query_progress_t progress = {.calls = 0, .abort_after = 200};
+    sqlite3_progress_handler(db, 100, abort_runaway_query, &progress);
+
+    detection_label_summary_t labels[4];
+    int label_count = get_detection_labels_summary(
+        "cam_large", now - 30, now, labels, 4);
+
+    sqlite3_progress_handler(db, 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(1, label_count);
+    TEST_ASSERT_EQUAL_STRING("person", labels[0].label);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(progress.abort_after, progress.calls);
+
+    progress.calls = 0;
+    sqlite3_progress_handler(db, 100, abort_runaway_query, &progress);
+
+    detection_result_t out;
+    int detection_count = get_detections_from_db(
+        "cam_large", &out, 30);
+
+    sqlite3_progress_handler(db, 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(1, detection_count);
+    TEST_ASSERT_EQUAL_STRING("person", out.detections[0].label);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(progress.abort_after, progress.calls);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -213,6 +280,7 @@ int main(void) {
     RUN_TEST(test_update_detections_recording_id);
     RUN_TEST(test_store_max_detections);
     RUN_TEST(test_external_motion_interval_spans_later_recording_segment);
+    RUN_TEST(test_recent_detection_queries_do_not_scan_full_stream_history);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

@@ -262,6 +262,39 @@ void test_get_recording_metadata_paginated_supports_multi_value_detection_labels
     TEST_ASSERT_EQUAL_STRING("cam2", out[1].stream_name);
 }
 
+void test_recording_filters_match_unlinked_points_and_spanning_intervals(void) {
+    time_t now = time(NULL);
+
+    recording_metadata_t point_recording = make_rec(
+        "cam_point", "/rec/unlinked-point.mp4", now - 60);
+    recording_metadata_t interval_recording = make_rec(
+        "cam_interval", "/rec/spanning-interval.mp4", now - 60);
+    TEST_ASSERT_TRUE(add_recording_metadata(&point_recording) > 0);
+    TEST_ASSERT_TRUE(add_recording_metadata(&interval_recording) > 0);
+
+    detection_result_t point = make_detection_result("person");
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "cam_point", &point, now - 30, 0));
+
+    detection_result_t interval = make_detection_result("vehicle");
+    TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
+        "cam_interval", &interval, now - 120, 0));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(
+        "cam_interval", now - 10));
+
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(
+        0, 0, "cam_point", 1, "person", -1, NULL, 0, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(1, get_recording_count(
+        0, 0, "cam_interval", 1, "vehicle", -1, NULL, 0, NULL, NULL));
+
+    recording_metadata_t out[2];
+    int count = get_recording_metadata_paginated(
+        0, 0, "cam_interval", 1, "vehicle", -1,
+        "start_time", "desc", out, 2, 0, NULL, 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING("cam_interval", out[0].stream_name);
+}
+
 /* set_recording_retention_tier */
 void test_set_recording_retention_tier(void) {
     time_t now = time(NULL);
@@ -392,6 +425,7 @@ int main(void) {
     RUN_TEST(test_capture_filters_distinguish_continuous_from_scheduled);
     RUN_TEST(test_get_recording_metadata_paginated);
     RUN_TEST(test_get_recording_metadata_paginated_supports_multi_value_detection_labels_and_tags);
+    RUN_TEST(test_recording_filters_match_unlinked_points_and_spanning_intervals);
     RUN_TEST(test_set_recording_retention_tier);
     RUN_TEST(test_set_recording_disk_pressure_eligible);
     RUN_TEST(test_add_recording_defaults_unprotected_to_pressure_eligible);
