@@ -55,12 +55,27 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
     apt-get install -y --no-install-recommends \
       git cmake build-essential pkg-config file wget nodejs golang-go && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
+      GCC_MAJOR="$(gcc -dumpfullversion -dumpversion | cut -d. -f1)" && \
       apt-get install -y --no-install-recommends \
-        gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+        clang:amd64 binutils-arm-linux-gnueabihf:amd64 \
+        "libstdc++-${GCC_MAJOR}-dev:armhf" \
         libavcodec-dev:armhf libavformat-dev:armhf \
         libavutil-dev:armhf libswscale-dev:armhf \
         libcurl4-openssl-dev:armhf libmbedtls-dev:armhf \
-        libcjson-dev:armhf libmosquitto-dev:armhf libyaml-dev:armhf; \
+        libcjson-dev:armhf libmosquitto-dev:armhf libyaml-dev:armhf && \
+      # Debian sid may satisfy the GCC cross-compiler meta-package with an
+      # armhf compiler binary when the native and cross package versions are
+      # temporarily out of sync.  Native Clang infers its target from these
+      # GNU-compatible command names and uses Debian's armhf multiarch sysroot.
+      ln -sf /usr/bin/clang /usr/local/bin/arm-linux-gnueabihf-gcc && \
+      ln -sf /usr/bin/clang++ /usr/local/bin/arm-linux-gnueabihf-g++ && \
+      file -L /usr/local/bin/arm-linux-gnueabihf-gcc | grep -q 'x86-64' && \
+      test "$(arm-linux-gnueabihf-gcc -print-target-triple)" = \
+        arm-unknown-linux-gnueabihf && \
+      printf '#include <iostream>\nint main() { std::cout << 42; }\n' | \
+        arm-linux-gnueabihf-g++ -x c++ -o /tmp/armv7-toolchain-check - && \
+      file /tmp/armv7-toolchain-check | grep -q 'ELF 32-bit.*ARM' && \
+      rm /tmp/armv7-toolchain-check; \
     else \
       apt-get install -y --no-install-recommends \
         libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
@@ -203,7 +218,7 @@ RUN mkdir -p /usr/lib/pkgconfig && \
     echo "prefix=/usr\nexec_prefix=\${prefix}\nlibdir=$LIB_DIR\nincludedir=\${prefix}/include\n\nName: mbedx509\nDescription: MbedTLS X509 Library\nVersion: $MBEDTLS_VERSION\nLibs: -L\${libdir} -lmbedx509\nCflags: -I\${includedir}" > /usr/lib/pkgconfig/mbedx509.pc && \
     chmod 644 /usr/lib/pkgconfig/mbedtls.pc /usr/lib/pkgconfig/mbedcrypto.pc /usr/lib/pkgconfig/mbedx509.pc
 
-# Build go2rtc from local submodule (AlexxIT/go2rtc v1.9.14)
+# Build go2rtc from the opensensor/go2rtc dev submodule, including AlexxIT/dev.
 # Go 1.26 is installed from Debian sid packages
 RUN mkdir -p /bin /etc/lightnvr/go2rtc && \
     # Build go2rtc from local submodule (already copied by COPY . .)

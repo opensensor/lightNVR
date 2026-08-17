@@ -6,9 +6,17 @@ set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++)
 set(CMAKE_ASM_COMPILER arm-linux-gnueabihf-gcc)
 
 # Match the linux/arm/v7 image contract. LiteRT and XNNPACK both require NEON
-# and an explicit IEEE fp16 format when cross-compiling their ARMv7 kernels.
+# and IEEE fp16 semantics when cross-compiling their ARMv7 kernels. GCC needs
+# an explicit format flag; Clang uses the IEEE format and rejects that option.
 set(_LIGHTNVR_ARMV7_FLAGS
-    "-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard -mfp16-format=ieee")
+    "-march=armv7-a -mfpu=neon-vfpv4 -mfloat-abi=hard")
+execute_process(
+    COMMAND "${CMAKE_C_COMPILER}" --version
+    OUTPUT_VARIABLE _LIGHTNVR_ARMV7_COMPILER_VERSION
+    ERROR_QUIET)
+if(NOT _LIGHTNVR_ARMV7_COMPILER_VERSION MATCHES "[Cc]lang")
+    string(APPEND _LIGHTNVR_ARMV7_FLAGS " -mfp16-format=ieee")
+endif()
 set(CMAKE_C_FLAGS_INIT "${_LIGHTNVR_ARMV7_FLAGS}")
 set(CMAKE_CXX_FLAGS_INIT "${_LIGHTNVR_ARMV7_FLAGS}")
 
