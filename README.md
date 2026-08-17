@@ -447,15 +447,18 @@ The container uses two volume mounts for persistence:
 
 - `TZ` - Timezone (default: UTC)
 - `GO2RTC_CONFIG_PERSIST` - Persist go2rtc config across restarts (default: true)
-- `LIGHTNVR_AUTO_INIT` - Auto-initialize config files (default: true)
+- `LIGHTNVR_ONVIF_NETWORK` - Camera network to scan for ONVIF discovery, in CIDR form
+
+See [Docker Deployment](docs/DOCKER.md#environment-variables) for the full list.
 
 #### First Run
 
 On first run, the container will:
 1. Create default configuration files in `/etc/lightnvr`
-2. Copy web assets to `/var/lib/lightnvr/web`
+2. Verify the web assets baked into the image at `/var/lib/lightnvr/www`
 3. Initialize the database in `/var/lib/lightnvr/data/database`
-4. Set up go2rtc with WebRTC/STUN configuration
+4. Seed detection models into `/var/lib/lightnvr/data/models`
+5. Set up go2rtc with WebRTC/STUN configuration
 
 The go2rtc configuration includes STUN servers for WebRTC NAT traversal, so WebRTC streaming should work out-of-the-box in most network environments.
 

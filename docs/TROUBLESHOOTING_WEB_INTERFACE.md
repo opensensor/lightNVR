@@ -56,18 +56,29 @@ If you installed LightNVR directly on your system (not using Docker), use the fo
 
 #### Quick Diagnosis
 
-Run the diagnostic script:
+Work through these checks in order — the first one that fails is your problem:
+
 ```bash
-sudo bash scripts/diagnose_web_issue.sh
+# 1. Is the service running?
+systemctl status lightnvr
+
+# 2. Where does it think the web root is?
+grep '^root' /etc/lightnvr/lightnvr.ini
+
+# 3. Does that directory exist and contain the entry point?
+ls -la /var/lib/lightnvr/www/index.html
+
+# 4. Are the hashed asset bundles there too?
+ls /var/lib/lightnvr/www/assets/ | head
+
+# 5. What did it say on startup?
+sudo journalctl -u lightnvr -n 50 --no-pager
 ```
 
-This will check:
-- Service status
-- Configuration file
-- Web root directory existence
-- Critical web files
-- Assets directory
-- Recent logs
+A missing `index.html` in step 3 means the assets were never installed — continue to the
+fix below. If everything above passes but the page is still blank, the problem is in the
+browser rather than on disk; skip to
+[JavaScript Errors in Browser Console](#issue-javascript-errors-in-browser-console).
 
 #### Quick Fix
 

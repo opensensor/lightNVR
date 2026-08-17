@@ -26,10 +26,31 @@ This document provides detailed instructions for installing LightNVR on various 
 Before installing LightNVR, ensure your system meets the following requirements:
 
 - **Processor**: Any Linux-compatible processor (ARM, x86, MIPS, etc.)
-- **Memory**: unknown what the minimum is
-- **Storage**: Any storage device accessible by the OS
+- **Memory**: 256 MB minimum; 1 GB or more if you enable object detection — see below
+- **Storage**: Any storage device accessible by the OS, sized for your retention policy
 - **Network**: Ethernet or WiFi connection
 - **OS**: Linux with kernel 4.4 or newer
+
+#### Memory in practice
+
+LightNVR is built for memory-constrained hardware, so the floor is low, but "minimum" and
+"enough for your setup" are different numbers.
+
+| Deployment | Memory |
+|---|---|
+| Container, started, no streams configured | ~75 MB measured (LightNVR ~33 MB, go2rtc ~16 MB) |
+| A few streams, recording only, no detection | 256 MB is workable |
+| Object detection enabled | 1 GB or more — models are held in memory |
+| Many streams, or detection across several streams | 2 GB and up |
+
+The idle figure is measured from the published `amd64` image on first start with no
+cameras. Everything above it scales with what you actually run: each stream costs buffers
+(`[memory] buffer_size`, 1024 KB per stream by default) plus whatever the decoder needs for
+that resolution, and object detection adds the model's working set on top.
+
+If you are sizing a box rather than checking a floor: recording alone is cheap and mostly
+I/O-bound, while detection is what will decide your RAM. A swap file is supported and
+helps small devices survive spikes, but do not plan to run detection out of swap.
 
 ## Installation Methods
 
@@ -538,7 +559,7 @@ sudo rm -rf /var/log/lightnvr
 cd lightNVR
 
 # Stop and remove the container
-docker-compose down
+docker compose down
 
 # Remove the image
 docker rmi lightnvr

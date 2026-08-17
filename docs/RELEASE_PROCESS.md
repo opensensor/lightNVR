@@ -111,7 +111,7 @@ When you push a tag, GitHub Actions automatically:
    - Installs Node.js 24.x LTS
    - Runs `npm ci --ignore-scripts` from the committed lockfile
    - Runs `npm run build` to build with Vite
-   - Copies built assets to `/usr/share/lightnvr/web-template/`
+   - Copies built assets to `/var/lib/lightnvr/www/` in the runtime image
 
 3. **Publishes images** to GitHub Container Registry:
    - `ghcr.io/opensensor/lightnvr:latest` (for main branch)
