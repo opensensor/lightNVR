@@ -20,6 +20,7 @@
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_api.h"
 #include "video/go2rtc/go2rtc_integration.h"
+#include "video/go2rtc/go2rtc_lifecycle.h"
 #include "video/go2rtc/dns_cleanup.h"
 #include "core/config.h"
 #include "core/logger.h"
@@ -173,10 +174,10 @@ static bool go2rtc_sanitize_rtsp_fragments(char *url, size_t url_size, const cha
     return suppress_audio;
 }
 
-bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
-                           const char *username, const char *password,
-                           bool backchannel_enabled, stream_protocol_t protocol,
-                           bool record_audio, const char *codec) {
+static bool go2rtc_stream_register_locked(const char *stream_id, const char *stream_url,
+                                          const char *username, const char *password,
+                                          bool backchannel_enabled, stream_protocol_t protocol,
+                                          bool record_audio, const char *codec) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
         return false;
@@ -437,7 +438,26 @@ bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
     return result;
 }
 
-bool go2rtc_stream_unregister(const char *stream_id) {
+bool go2rtc_stream_register(const char *stream_id, const char *stream_url,
+                            const char *username, const char *password,
+                            bool backchannel_enabled, stream_protocol_t protocol,
+                            bool record_audio, const char *codec) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_RECONFIGURE, false, true,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle to register %s",
+                  stream_id ? stream_id : "<null>");
+        return false;
+    }
+
+    bool result = go2rtc_stream_register_locked(
+        stream_id, stream_url, username, password, backchannel_enabled,
+        protocol, record_audio, codec);
+    go2rtc_lifecycle_end(&guard, result);
+    return result;
+}
+
+static bool go2rtc_stream_unregister_locked(const char *stream_id) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
         return false;
@@ -463,6 +483,20 @@ bool go2rtc_stream_unregister(const char *stream_id) {
         log_error("Failed to unregister stream from go2rtc: %s", stream_id);
     }
 
+    return result;
+}
+
+bool go2rtc_stream_unregister(const char *stream_id) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_RECONFIGURE, false, true,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle to unregister %s",
+                  stream_id ? stream_id : "<null>");
+        return false;
+    }
+
+    bool result = go2rtc_stream_unregister_locked(stream_id);
+    go2rtc_lifecycle_end(&guard, result);
     return result;
 }
 
@@ -900,9 +934,14 @@ int go2rtc_stream_get_api_port(void) {
     return g_api_port;
 }
 
-bool go2rtc_stream_start_service(void) {
+static bool go2rtc_stream_start_service_locked(void) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
+        return false;
+    }
+
+    if (!g_config.go2rtc_enabled) {
+        log_info("go2rtc service start suppressed because go2rtc is disabled");
         return false;
     }
 
@@ -1106,19 +1145,35 @@ bool go2rtc_stream_start_service(void) {
     return result;
 }
 
+bool go2rtc_stream_start_service(void) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_PROCESS_START, true, false,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle for service start");
+        return false;
+    }
+    if (guard.coalesced) {
+        return guard.result;
+    }
+
+    bool result = go2rtc_stream_start_service_locked();
+    go2rtc_lifecycle_end(&guard, result);
+    return result;
+}
+
 bool go2rtc_stream_stop_service(void) {
     if (!g_initialized) {
         log_error("go2rtc stream integration not initialized");
         return false;
     }
 
-    // Stop all go2rtc processes, even if we didn't start them
+    // Stop only the verified process managed by this LightNVR instance.
     bool result = go2rtc_process_stop();
 
     if (result) {
-        log_info("All go2rtc processes stopped successfully");
+        log_info("Managed go2rtc process stopped successfully");
     } else {
-        log_warn("Some go2rtc processes may still be running");
+        log_warn("Managed go2rtc process may still be running");
     }
 
     return result;

@@ -541,6 +541,7 @@ if(ENABLE_GO2RTC)
     message(STATUS "go2rtc API port: ${GO2RTC_API_PORT}")
 else()
     list(APPEND GO2RTC_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/video/go2rtc/go2rtc_lifecycle.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/video/go2rtc/go2rtc_disabled.c"
     )
 endif()

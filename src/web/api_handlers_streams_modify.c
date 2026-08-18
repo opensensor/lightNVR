@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
+#include <stdint.h>
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
@@ -32,6 +33,7 @@
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
 #include "video/go2rtc/go2rtc_api.h"
+#include "video/go2rtc/go2rtc_lifecycle.h"
 #include "video/mp4_recording.h"
 #include "utils/yaml_validate.h"
 
@@ -2270,6 +2272,7 @@ void handle_delete_stream(const http_request_t *req, http_response_t *res) {
  */
 typedef struct {
     char stream_name[MAX_STREAM_NAME];  // Decoded stream name
+    uint64_t restart_generation;
 } refresh_stream_task_t;
 
 #define STREAM_REFRESH_COOLDOWN_SECONDS 30
@@ -2402,8 +2405,27 @@ static void *refresh_stream_worker(void *arg) {
         log_info("go2rtc integration started successfully");
     }
 
-    // Reload the stream with go2rtc
-    bool success = go2rtc_integration_reload_stream(task->stream_name);
+    // Serialize refresh reconfiguration with the shared process lifecycle. If
+    // a global restart completed while this task was queued/waiting, that
+    // restart already regenerated YAML and re-registered every stream, so the
+    // refresh is coalesced instead of disturbing the newly serving instance.
+    go2rtc_lifecycle_guard_t lifecycle_guard;
+    bool lifecycle_entered = go2rtc_lifecycle_begin(
+        GO2RTC_LIFECYCLE_RECONFIGURE, false, true, &lifecycle_guard);
+    bool success = false;
+    if (!lifecycle_entered) {
+        log_error("Failed to enter go2rtc lifecycle for stream refresh: %s",
+                  task->stream_name);
+    } else if (lifecycle_guard.restart_generation != task->restart_generation) {
+        log_info("Coalesced refresh for %s with completed global go2rtc restart",
+                 task->stream_name);
+        success = true;
+    } else {
+        success = go2rtc_integration_reload_stream(task->stream_name);
+    }
+    if (lifecycle_entered) {
+        go2rtc_lifecycle_end(&lifecycle_guard, success);
+    }
 
     if (success) {
         log_info("Successfully refreshed go2rtc registration for stream: %s", task->stream_name);
@@ -2524,6 +2546,7 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
         return;
     }
     safe_strcpy(task->stream_name, stream_name, MAX_STREAM_NAME, 0);
+    task->restart_generation = go2rtc_lifecycle_restart_generation();
 
     // Send immediate 202 Accepted response
     cJSON *response = cJSON_CreateObject();

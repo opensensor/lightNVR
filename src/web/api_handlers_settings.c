@@ -30,6 +30,7 @@
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_stream.h"
 #include "video/go2rtc/go2rtc_integration.h"
+#include "video/go2rtc/go2rtc_lifecycle.h"
 #include "video/hls/hls_api.h"
 #include "core/mqtt_client.h"
 #include "storage/storage_manager.h"
@@ -115,6 +116,16 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
         // go2rtc is being DISABLED — stop health monitor, stop go2rtc, start native HLS
         log_info("go2rtc settings worker: disabling go2rtc...");
 
+        go2rtc_lifecycle_guard_t lifecycle_guard;
+        bool lifecycle_entered = go2rtc_lifecycle_begin(
+            GO2RTC_LIFECYCLE_CLEANUP, false, true, &lifecycle_guard);
+        if (!lifecycle_entered) {
+            log_error("go2rtc settings worker: failed to enter lifecycle for disable");
+            free(all_streams);
+            free(task);
+            return;
+        }
+
         // Stop the health monitor first so it doesn't restart go2rtc
         go2rtc_integration_cleanup();
 
@@ -148,6 +159,10 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
         // Without this, the stream module remains "initialized" with potentially
         // stale state, and go2rtc_integration_full_start() skips the init step.
         go2rtc_stream_cleanup();
+
+        if (lifecycle_entered) {
+            go2rtc_lifecycle_end(&lifecycle_guard, true);
+        }
 
         // Restart MP4 recordings with direct camera URLs (go2rtc is now disabled)
         for (int i = 0; i < stream_count; i++) {
@@ -192,16 +207,10 @@ static void go2rtc_settings_worker(go2rtc_settings_task_t *task) {
             }
         }
 
-        // Stop go2rtc if already running
-        if (go2rtc_process_is_running()) {
-            if (!go2rtc_process_stop()) {
-                log_warn("Failed to stop go2rtc process cleanly, continuing anyway");
-            }
-            sleep(2);
-        }
-
-        // Full go2rtc startup: init, start, register streams
-        if (!go2rtc_integration_full_start()) {
+        // One serialized reconfigure operation handles both the already-running
+        // and freshly-enabled cases. This keeps stop/start atomic with respect
+        // to refresh workers and the health monitor.
+        if (!go2rtc_integration_restart_process()) {
             log_error("Failed to start go2rtc integration");
 
             // go2rtc failed to start — restart recordings with direct URLs as fallback

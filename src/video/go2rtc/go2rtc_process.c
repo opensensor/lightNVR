@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <sys/prctl.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
@@ -21,6 +20,7 @@
 
 #include "video/go2rtc/go2rtc_process.h"
 #include "video/go2rtc/go2rtc_api.h"
+#include "video/go2rtc/go2rtc_lifecycle.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/path_utils.h"
@@ -56,56 +56,6 @@ static char *yaml_escape_string(const char *src, char *dst, size_t dst_size) {
 extern config_t g_config;
 
 /* ── Shell-free process/network helpers ─────────────────────────────────── */
-
-/**
- * @brief Scan /proc for processes whose cmdline contains @p pattern.
- *
- * Replaces: popen("ps | grep ... | awk '{print $1}'")
- *           popen("pgrep -f '<pattern>'")
- *
- * @param pattern    Substring to search for in each process's cmdline
- * @param pids       Output array to receive matching PIDs
- * @param max_pids   Capacity of @p pids
- * @return Number of PIDs written into @p pids
- */
-static int scan_proc_for_cmdline(const char *pattern, pid_t *pids, int max_pids) {
-    int found = 0;
-    pid_t self = getpid();
-
-    DIR *proc_dir = opendir("/proc");
-    if (!proc_dir) return 0;
-
-    const struct dirent *entry;
-    while ((entry = readdir(proc_dir)) != NULL && found < max_pids) {
-        // Only numeric directory names are processes
-        const char *d = entry->d_name;
-        if (*d < '1' || *d > '9') continue;
-        char *ep;
-        pid_t pid = (pid_t)strtol(d, &ep, 10);
-        if (*ep != '\0' || pid <= 0 || pid == self) continue;
-
-        char cmdline_path[64];
-        snprintf(cmdline_path, sizeof(cmdline_path), "/proc/%d/cmdline", pid);
-        FILE *f = fopen(cmdline_path, "r");
-        if (!f) continue;
-
-        char cmdline[1024] = {0};
-        size_t bytes = fread(cmdline, 1, sizeof(cmdline) - 1, f);
-        fclose(f);
-
-        // cmdline fields are NUL-separated — replace with spaces for strstr
-        for (size_t i = 0; i < bytes; i++) {
-            if (cmdline[i] == '\0') cmdline[i] = ' ';
-        }
-
-        if (strstr(cmdline, pattern)) {
-            pids[found++] = pid;
-        }
-    }
-
-    closedir(proc_dir);
-    return found;
-}
 
 /**
  * @brief Return true when @p path_or_name has basename exactly @p expected_name.
@@ -264,6 +214,105 @@ static bool check_tcp_port_open(int port) {
 }
 
 /**
+ * @brief Check that a particular process owns a listening TCP port.
+ *
+ * A port-only readiness check can succeed against the wrong process during a
+ * failed concurrent launch. Match LISTEN socket inodes from /proc/net/tcp{,6}
+ * against /proc/<pid>/fd so only the child actually serving the API is tracked.
+ */
+static bool process_owns_tcp_listen_port(pid_t pid, int port) {
+    if (pid <= 0 || port <= 0 || port > 65535) {
+        return false;
+    }
+
+    unsigned long listen_inodes[64];
+    int inode_count = 0;
+    const char *tcp_files[] = {"/proc/net/tcp", "/proc/net/tcp6", NULL};
+
+    for (int i = 0; tcp_files[i] && inode_count < 64; i++) {
+        FILE *fp = fopen(tcp_files[i], "r");
+        if (!fp) continue;
+
+        char line[512];
+        if (!fgets(line, sizeof(line), fp)) {
+            fclose(fp);
+            continue;
+        }
+        while (fgets(line, sizeof(line), fp) && inode_count < 64) {
+            char local[80] = {0};
+            char remote[80] = {0};
+            char state[8] = {0};
+            unsigned long inode = 0;
+            int matched = sscanf(line,
+                                 " %*d: %79s %79s %7s %*s %*s %*s %*u %*u %lu",
+                                 local, remote, state, &inode);
+            if (matched != 4 || strcmp(state, "0A") != 0 || inode == 0) {
+                continue;
+            }
+
+            char *colon = strrchr(local, ':');
+            if (!colon) continue;
+            char *end = NULL;
+            long local_port = strtol(colon + 1, &end, 16);
+            if (!end || *end != '\0' || local_port != port) continue;
+            listen_inodes[inode_count++] = inode;
+        }
+        fclose(fp);
+    }
+
+    if (inode_count == 0) {
+        return false;
+    }
+
+    char fd_dir_path[64];
+    snprintf(fd_dir_path, sizeof(fd_dir_path), "/proc/%d/fd", pid);
+    DIR *fd_dir = opendir(fd_dir_path);
+    if (!fd_dir) {
+        return false;
+    }
+
+    bool owns_port = false;
+    const struct dirent *entry;
+    while (!owns_port && (entry = readdir(fd_dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+
+        char fd_path[PATH_MAX];
+        char target[128];
+        int n = snprintf(fd_path, sizeof(fd_path), "%s/%s",
+                         fd_dir_path, entry->d_name);
+        if (n <= 0 || n >= (int)sizeof(fd_path)) continue;
+        ssize_t target_len = readlink(fd_path, target, sizeof(target) - 1);
+        if (target_len <= 0) continue;
+        target[target_len] = '\0';
+
+        unsigned long inode = 0;
+        if (sscanf(target, "socket:[%lu]", &inode) != 1) continue;
+        for (int i = 0; i < inode_count; i++) {
+            if (listen_inodes[i] == inode) {
+                owns_port = true;
+                break;
+            }
+        }
+    }
+
+    closedir(fd_dir);
+    return owns_port;
+}
+
+static bool find_go2rtc_serving_pid(int api_port, pid_t *serving_pid) {
+    pid_t pids[64];
+    int count = scan_proc_for_argv0_basename("go2rtc", pids, 64);
+    for (int i = 0; i < count; i++) {
+        if (process_owns_tcp_listen_port(pids[i], api_port)) {
+            if (serving_pid) *serving_pid = pids[i];
+            return true;
+        }
+    }
+    if (serving_pid) *serving_pid = -1;
+    return false;
+}
+
+/**
  * @brief Search PATH for an executable named @p name and write its full path
  *        into @p out. Writes an empty string if not found.
  *
@@ -294,104 +343,6 @@ static void find_binary_in_path(const char *name, char *out, size_t out_size) {
     out[0] = '\0';
 }
 
-/**
- * @brief Read /proc/<pid>/comm and check whether it exactly matches @p name.
- *
- * Replaces: system("ps -p <pid> -o comm= | grep -q <name>")
- *
- * @return true if /proc/<pid>/comm exactly matches @p name
- */
-static bool proc_comm_equals(pid_t pid, const char *name) {
-    char path[64];
-    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
-    FILE *fp = fopen(path, "r");
-    if (!fp) return false;
-    char comm[256] = {0};
-    bool ok = (fgets(comm, sizeof(comm), fp) != NULL);
-    fclose(fp);
-
-    if (!ok) {
-        return false;
-    }
-
-    comm[strcspn(comm, "\n")] = '\0'; // NOLINT(clang-analyzer-security.ArrayBound)
-    return strcmp(comm, name) == 0;
-}
-
-/**
- * @brief fd-based recursive helper for recursive_remove().
- *
- * All stat/unlink/rmdir operations are performed relative to an open directory
- * file descriptor, eliminating the TOCTOU window that exists when using full
- * path strings (CWE-367).
- *
- * @param parent_dfd  Open O_RDONLY|O_DIRECTORY fd for the parent directory.
- * @param name        Name of the entry inside parent_dfd to remove.
- */
-static void recursive_remove_at(int parent_dfd, const char *name) {
-    if (parent_dfd < 0) return;
-    struct stat st;
-    if (fstatat(parent_dfd, name, &st, AT_SYMLINK_NOFOLLOW) != 0) return;
-
-    if (!S_ISDIR(st.st_mode)) {
-        /* Plain file or symlink – unlink relative to the parent fd. */
-        unlinkat(parent_dfd, name, 0);
-        return;
-    }
-
-    /* Open the subdirectory relative to the parent fd (never follow symlinks). */
-    int dfd = openat(parent_dfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-    if (dfd < 0) return;
-
-    DIR *d = fdopendir(dfd); /* fdopendir takes ownership of dfd */
-    if (!d) {
-        close(dfd);
-        return;
-    }
-
-    const struct dirent *entry;
-    while ((entry = readdir(d)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
-        recursive_remove_at(dirfd(d), entry->d_name);
-    }
-    closedir(d); /* also closes dfd */
-
-    unlinkat(parent_dfd, name, AT_REMOVEDIR);
-}
-
-/**
- * @brief Recursively remove a directory and all its contents without a shell.
- *
- * Replaces: system("rm -rf <path>")
- */
-static void recursive_remove(const char *path) {
-    char parent[PATH_MAX];
-    safe_strcpy(parent, path, sizeof(parent), 0);
-
-    const char *name;
-    int parent_fd;
-    char *sep = strrchr(parent, '/');
-
-    if (sep && sep != parent) {
-        /* e.g. "/dev/shm/logs/go2rtc"  →  parent="/dev/shm/logs", name="go2rtc" */
-        *sep = '\0';
-        name = sep + 1;
-        parent_fd = open(parent, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
-    } else if (sep == parent) {
-        /* path is "/foo" – parent is the filesystem root */
-        name = path + 1;
-        parent_fd = open("/", O_RDONLY | O_DIRECTORY);
-    } else {
-        /* Relative path with no slash – parent is cwd */
-        name = path;
-        parent_fd = open(".", O_RDONLY | O_DIRECTORY);
-    }
-
-    if (parent_fd < 0) return;
-    recursive_remove_at(parent_fd, name);
-    close(parent_fd);
-}
-
 // Process management variables
 static char *g_binary_path = NULL;
 static char *g_config_dir = NULL;
@@ -399,10 +350,33 @@ static char *g_config_path = NULL;
 static char *g_override_path = NULL;
 static char *g_override_quarantined_path = NULL;
 static pid_t g_process_pid = -1;
+static unsigned long long g_process_start_ticks = 0;
 static bool g_initialized = false;
 static bool g_using_external_service = false; // true when init detected a live service
+static bool g_created_config_symlink = false;
 static int g_rtsp_port = 8554; // Default RTSP port
 static int g_api_port = 1984;  // Configured API port (updated during init)
+
+static void remove_owned_config_symlink(void) {
+    if (!g_created_config_symlink || !g_config_path) return;
+
+    struct stat st;
+    if (lstat("/dev/shm/go2rtc.yaml", &st) != 0 || !S_ISLNK(st.st_mode)) {
+        return;
+    }
+
+    char target[PATH_MAX];
+    ssize_t length = readlink("/dev/shm/go2rtc.yaml", target,
+                              sizeof(target) - 1);
+    if (length <= 0) return;
+    target[length] = '\0';
+    if (strcmp(target, g_config_path) == 0 &&
+        unlink("/dev/shm/go2rtc.yaml") != 0 && errno != ENOENT) {
+        log_warn("Failed to remove managed /dev/shm/go2rtc.yaml symlink: %s",
+                 strerror(errno));
+    }
+    g_created_config_symlink = false;
+}
 
 /* T4b — crash-loop quarantine bookkeeping.
  *
@@ -448,11 +422,11 @@ static bool is_go2rtc_running_as_service(int api_port) {
     bool port_in_use = check_tcp_port_open(api_port);
 
     if (port_in_use) {
-        // Also confirm that a go2rtc process is among those found by /proc scan
-        pid_t pids[64];
-        int n = scan_proc_for_argv0_basename("go2rtc", pids, 64);
-        if (n > 0) {
-            log_debug("go2rtc is already running as a service on port %d", api_port);
+        // Confirm which go2rtc process actually owns the listening API socket.
+        pid_t serving_pid = -1;
+        if (find_go2rtc_serving_pid(api_port, &serving_pid)) {
+            log_debug("go2rtc PID %d is already serving API port %d",
+                      serving_pid, api_port);
             return true;
         }
 
@@ -496,11 +470,12 @@ static bool is_go2rtc_running_as_service(int api_port) {
         curl_easy_cleanup(curl);
 
         if (http_code == 200 || http_code == 401) {
-            log_debug("Port %d is responding like go2rtc (HTTP %ld)", api_port, http_code);
-            return true;
+            log_warn("Port %d responds like go2rtc (HTTP %ld), but no go2rtc PID owns the socket",
+                     api_port, http_code);
+        } else {
+            log_warn("Port %d returned HTTP %ld, not a verified go2rtc service",
+                     api_port, http_code);
         }
-
-        log_warn("Port %d returned HTTP %ld, not a go2rtc service", api_port, http_code);
     }
 
     return false;
@@ -1003,7 +978,7 @@ bool go2rtc_process_init(const char *binary_path, const char *config_dir, int ap
     return true;
 }
 
-bool go2rtc_process_generate_config(const char *config_path, int api_port) {
+static bool go2rtc_process_generate_config_locked(const char *config_path, int api_port) {
     if (!g_initialized) {
         log_error("go2rtc process manager not initialized");
         return false;
@@ -1187,6 +1162,19 @@ bool go2rtc_process_generate_config(const char *config_path, int api_port) {
     }
 
     return true;
+}
+
+bool go2rtc_process_generate_config(const char *config_path, int api_port) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_RECONFIGURE, false, true,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle for config generation");
+        return false;
+    }
+
+    bool result = go2rtc_process_generate_config_locked(config_path, api_port);
+    go2rtc_lifecycle_end(&guard, result);
+    return result;
 }
 
 /**
@@ -1606,7 +1594,7 @@ void go2rtc_process_clear_override_quarantine(void)
     g_fast_death_history_idx = 0;
 }
 
-int go2rtc_process_generate_override_file(const char *override_path) {
+static int go2rtc_process_generate_override_file_locked(const char *override_path) {
     if (!override_path || override_path[0] == '\0') {
         log_error("go2rtc_process_generate_override_file: invalid path");
         return -1;
@@ -1761,6 +1749,19 @@ int go2rtc_process_generate_override_file(const char *override_path) {
     return 0;
 }
 
+int go2rtc_process_generate_override_file(const char *override_path) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_RECONFIGURE, false, true,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle for override generation");
+        return -1;
+    }
+
+    int result = go2rtc_process_generate_override_file_locked(override_path);
+    go2rtc_lifecycle_end(&guard, result == 0);
+    return result;
+}
+
 const char *go2rtc_process_get_override_path(void) {
     return g_override_path;
 }
@@ -1903,26 +1904,41 @@ static bool is_zombie_process(pid_t pid) {
     return false;
 }
 
-/**
- * @brief Reap zombie child processes
- *
- * This function calls waitpid with WNOHANG to reap any zombie children
- * without blocking.
- */
-static void reap_zombie_children(pid_t pid) {
-    int status;
-    pid_t dead;
+/** Read Linux /proc starttime (field 22) to make PID identity reuse-safe. */
+static unsigned long long process_start_ticks(pid_t pid) {
+    char stat_path[64];
+    snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", pid);
+    FILE *fp = fopen(stat_path, "r");
+    if (!fp) return 0;
 
-    // Reap all zombie children with WNOHANG (non-blocking)
-    while ((dead = waitpid(pid, &status, WNOHANG)) > 0) {
-        if (WIFEXITED(status)) {
-            log_debug("Reaped zombie child process %d (exit code %d)", dead, WEXITSTATUS(status));
-        } else if (WIFSIGNALED(status)) {
-            log_debug("Reaped zombie child process %d (killed by signal %d)", dead, WTERMSIG(status));
-        } else {
-            log_debug("Reaped zombie child process %d", dead);
+    char line[2048];
+    bool read_ok = fgets(line, sizeof(line), fp) != NULL;
+    fclose(fp);
+    if (!read_ok) return 0;
+
+    char *close_paren = strrchr(line, ')');
+    if (!close_paren || close_paren[1] != ' ') return 0;
+
+    char *saveptr = NULL;
+    char *token = strtok_r(close_paren + 2, " ", &saveptr);
+    for (int field = 3; token; field++) {
+        if (field == 22) {
+            return strtoull(token, NULL, 10);
         }
+        token = strtok_r(NULL, " ", &saveptr);
     }
+    return 0;
+}
+
+static bool managed_process_identity_matches(pid_t pid) {
+    if (pid <= 0 || g_process_start_ticks == 0) return false;
+    unsigned long long actual_ticks = process_start_ticks(pid);
+    if (actual_ticks != g_process_start_ticks) {
+        log_warn("Managed go2rtc PID %d identity changed (expected start=%llu, actual=%llu)",
+                 pid, g_process_start_ticks, actual_ticks);
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -1967,204 +1983,68 @@ static bool wait_for_process_termination(pid_t pid, int timeout_ms) {
     return false;
 }
 
-/**
- * @brief Check if a process is actually a go2rtc process
- *
- * @param pid Process ID to check
- * @return true if it's a go2rtc process, false otherwise
- */
-static bool is_go2rtc_process(pid_t pid) {
-    // First check if the process exists
-    if (kill(pid, 0) != 0) {
-        return false;
+static void signal_managed_process(pid_t pid, int sig) {
+    pid_t pgid = getpgid(pid);
+    if (pgid == pid && pgid != getpgrp()) {
+        if (kill(-pgid, sig) == 0 || errno == ESRCH) {
+            return;
+        }
     }
-
-    // Check if it's a zombie - zombies don't count as running processes
-    if (is_zombie_process(pid)) {
-        log_debug("Process %d is a zombie, not counting as go2rtc", pid);
-        return false;
+    if (kill(pid, sig) != 0 && errno != ESRCH) {
+        log_warn("Failed to signal managed go2rtc PID %d: %s",
+                 pid, strerror(errno));
     }
+}
 
-    // Check argv[0] basename only so later arguments or directory names do not
-    // produce false positives.
-    if (proc_first_cmdline_arg_basename_equals(pid, "go2rtc")) {
+/** Terminate and synchronously reap a child that never became the server. */
+static bool terminate_and_reap_child(pid_t pid) {
+    if (pid <= 0) return true;
+
+    signal_managed_process(pid, SIGTERM);
+    if (wait_for_process_termination(pid, 2000)) {
         return true;
     }
 
-    // Fallback: read /proc/{pid}/comm and require an exact name match.
-    if (proc_comm_equals(pid, "go2rtc")) {
+    signal_managed_process(pid, SIGKILL);
+    return wait_for_process_termination(pid, 1000);
+}
+
+static bool child_exited_and_reaped(pid_t pid) {
+    int status = 0;
+    pid_t result;
+    do {
+        result = waitpid(pid, &status, WNOHANG);
+    } while (result == -1 && errno == EINTR);
+
+    if (result == pid) {
+        if (WIFEXITED(status)) {
+            log_error("go2rtc child %d exited with status %d",
+                      pid, WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+            log_error("go2rtc child %d exited on signal %d",
+                      pid, WTERMSIG(status));
+        }
         return true;
     }
-
-    return false;
+    return result == -1 && errno == ECHILD;
 }
 
-/**
- * Sends signal to all processes matching the specified command-line.
- *
- * See documentation for kill() and waitpid() for exact meaning of pids: some
- * values have special meaning for killing process groups.
- *
- * @param name String identifying process; only used for logging
- * @param pids The array of pids
- * @param n_pids The size of the pid array
- * @param sig The signal to send to the processes
- * @param timeout_ms The amount of time to wait for each process to terminate
- * @return The number of pids reaped (zero if none are terminated)
- */
-static int killall_pids(const char *name, pid_t *pids, int n_pids, int sig, int timeout_ms) {
-    int i;
-    char *sig_name = strsignal(sig);
-    for (i = 0; i < n_pids; i++) {
-        log_info("Sending %s to '%s' process with PID: %d", sig_name, name, pids[i]);
-        if (kill(pids[i], sig) != 0 && errno != ESRCH) {
-            log_warn("Failed to send %s to '%s' process %d: %s",
-                        sig_name, name, pids[i], strerror(errno));
-        }
-    }
-    // Reap only the children we killed here if we sent a killing signal to the
-    // process. Note that any signal could, in theory, result in the death of
-    // the process, but we don't want to warn if we send e.g. SIGUSR2 and the process
-    // doesn't terminate.
-    int n_reaped = 0;
-    for (i = 0; i < n_pids; i++) {
-        if (wait_for_process_termination(pids[i], timeout_ms)) {
-            n_reaped++;
-        } else if (sig == SIGTERM || sig == SIGKILL) {
-            log_warn("Timed out waiting for '%s' process %d to terminate", name, pids[i]);
-        }
-    }
+static pid_t process_parent_pid(pid_t pid) {
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/status", pid);
+    FILE *fp = fopen(path, "r");
+    if (!fp) return -1;
 
-    return n_reaped;
+    char line[256];
+    pid_t parent = -1;
+    while (fgets(line, sizeof(line), fp)) {
+        if (sscanf(line, "PPid:%d", &parent) == 1) break;
+    }
+    fclose(fp);
+    return parent;
 }
 
-// Sends SIGTERM to all processes matching the specified command-line
-// Returns the number of processes remaining; if
-// all matching processes terminate, will return 0.
-static int killall_cmdline(const char *cmdline, int sig, int timeout_ms) {
-    pid_t pids[64];
-    int n_pids = scan_proc_for_cmdline(cmdline, pids, 64);
-    int n_reaped = killall_pids(cmdline, pids, n_pids, sig, timeout_ms);
-
-    return n_pids - n_reaped;
-}
-
-// Sends SIGTERM to all processes with the specified binary name.
-// Returns the number of processes remaining; if
-// all matching processes terminate, will return 0.
-static int killall_argv0(const char *cmdline, int sig, int timeout_ms) {
-    pid_t pids[64];
-    int n_pids = scan_proc_for_argv0_basename(cmdline, pids, 64);
-    int n_reaped = killall_pids(cmdline, pids, n_pids, sig, timeout_ms);
-
-    return n_pids - n_reaped;
-}
-
-/**
- * @brief Kill all go2rtc and related supervision processes
- *
- * @return true if all processes were killed, false otherwise
- */
-static bool kill_all_go2rtc_processes(void) {
-    bool success = true;
-
-    // Reap any existing zombie children first. Note that this reaps *all* child
-    // processes. If any other subprocesses or threads are terminating and the
-    // program expects them to be in a zombie state, this will reap them. As this
-    // is only called on shutdown, this catch-all should be safe but may be
-    // removed in the future.
-    reap_zombie_children(WAIT_ANY);
-
-    // First kill any s6-supervise processes related to go2rtc
-    killall_cmdline("s6-supervise go2rtc", SIGTERM, 2000);
-
-    // Also kill any s6-supervise processes related to go2rtc-healthcheck and go2rtc-log
-    killall_cmdline("s6-supervise go2rtc-", SIGTERM, 2000);
-
-    // Scan /proc for go2rtc processes (replaces "ps | grep go2rtc | awk '{print $1}'")
-    // Wait up to 3 seconds for graceful termination
-    int remaining = killall_argv0("go2rtc", SIGTERM, 3000);
-
-    if (remaining > 0) {
-        // Forcefully kill
-        remaining = killall_argv0("go2rtc", SIGKILL, 500);
-    }
-
-    if (remaining > 0) {
-        // Final verification - check one more time
-        pid_t final_pids[64];
-        pid_t pgids[64];
-        int n_pgids = 0;
-        int nfinal = scan_proc_for_argv0_basename("go2rtc", final_pids, 64);
-        for (int j = 0; j < nfinal; j++) {
-            pid_t pid = final_pids[j];
-            if (is_go2rtc_process(pid) && !is_zombie_process(pid)) {
-                log_error("go2rtc process %d still running after SIGKILL", pid);
-                pid_t pgid = getpgid(pid);
-                if (pgid > 0 && pgid != getpgrp()) {
-                    // Use the negative of the process group ID to pass to kill()
-                    pgids[n_pgids++] = -pgid;
-                }
-            }
-        }
-
-        if (n_pgids > 0) {
-            remaining = n_pgids - killall_pids("go2rtc process group", pgids, n_pgids, SIGKILL, 500);
-        }
-    }
-
-    if (remaining > 0) {
-        pid_t last_pids[64];
-        int nlast = scan_proc_for_argv0_basename("go2rtc", last_pids, 64);
-        for (int j = 0; j < nlast; j++) {
-            if (is_go2rtc_process(last_pids[j]) && !is_zombie_process(last_pids[j])) {
-                log_error("go2rtc process %d could not be killed", last_pids[j]);
-                success = false;
-            }
-        }
-    }
-
-    // Also try to remove any /dev/shm/go2rtc.yaml file that might be used by s6-supervised go2rtc
-    if (access("/dev/shm/go2rtc.yaml", F_OK) == 0) {
-        log_info("Removing /dev/shm/go2rtc.yaml file");
-        if (unlink("/dev/shm/go2rtc.yaml") != 0) {
-            log_warn("Failed to remove /dev/shm/go2rtc.yaml: %s", strerror(errno));
-            success = false;
-        }
-    }
-
-    // Also try to remove any /dev/shm/logs/go2rtc directory (recursive, no shell)
-    if (access("/dev/shm/logs/go2rtc", F_OK) == 0) {
-        log_info("Removing /dev/shm/logs/go2rtc directory");
-        recursive_remove("/dev/shm/logs/go2rtc");
-        if (access("/dev/shm/logs/go2rtc", F_OK) == 0) {
-            log_warn("Failed to fully remove /dev/shm/logs/go2rtc directory");
-            success = false;
-        }
-    }
-
-    // Check whether any go2rtc process is still alive as a proxy for "ports still held"
-    // (correlating /proc/net/tcp inodes to PIDs is expensive; a live-process check suffices)
-    {
-        pid_t leftover[64];
-        int nleft = scan_proc_for_argv0_basename("go2rtc", leftover, 64);
-        bool found_ports = false;
-        for (int i = 0; i < nleft; i++) {
-            if (is_go2rtc_process(leftover[i]) && !is_zombie_process(leftover[i])) {
-                found_ports = true;
-                log_warn("go2rtc process %d still alive after kill sequence", leftover[i]);
-            }
-        }
-        if (found_ports) {
-            log_warn("go2rtc may still have open network connections");
-            success = false;
-        }
-    }
-
-    return success;
-}
-
-bool go2rtc_process_is_running(void) {
+static bool go2rtc_process_is_running_locked(void) {
     if (!g_initialized) {
         return false;
     }
@@ -2177,55 +2057,42 @@ bool go2rtc_process_is_running(void) {
         return is_go2rtc_running_as_service(g_api_port);
     }
 
-    // Check if our tracked process is running
+    // A managed PID is recorded only after that exact process owns the API
+    // LISTEN socket. Never adopt an arbitrary process merely because its name
+    // is go2rtc; that is how a failed second launch displaced the serving PID.
     if (g_process_pid > 0) {
-        // First check if process exists
-        if (kill(g_process_pid, 0) == 0) {
-            // Process exists, now check if it's actually a go2rtc process
-            if (is_go2rtc_process(g_process_pid)) {
-                return true;
-            } else {
-                log_warn("Tracked PID %d exists but is not a go2rtc process", g_process_pid);
-                g_process_pid = -1; // Reset our tracked PID
-            }
+        bool identity_matches = managed_process_identity_matches(g_process_pid);
+        if (identity_matches &&
+            process_owns_tcp_listen_port(g_process_pid, g_api_port)) {
+            return true;
+        }
+        if (!identity_matches || is_zombie_process(g_process_pid)) {
+            pid_t dead_pid = g_process_pid;
+            (void)waitpid(dead_pid, NULL, WNOHANG);
+            log_info("Tracked go2rtc process (PID: %d) exited", dead_pid);
+            g_process_pid = -1;
+            g_process_start_ticks = 0;
         } else {
-            log_info("Tracked go2rtc process (PID: %d) is no longer running", g_process_pid);
-            g_process_pid = -1; // Reset our tracked PID
+            log_warn("Tracked go2rtc PID %d is alive but is not serving API port %d",
+                     g_process_pid, g_api_port);
         }
     }
-
-    // Scan /proc for go2rtc processes (replaces "ps | grep go2rtc | awk '{print $1}'")
-    bool found = false;
-    {
-        pid_t scan_pids[64];
-        int n = scan_proc_for_argv0_basename("go2rtc", scan_pids, 64);
-        for (int i = 0; i < n && !found; i++) {
-            if (is_go2rtc_process(scan_pids[i])) {
-                if (g_process_pid <= 0 || g_process_pid != scan_pids[i]) {
-                    log_warn("Found untracked go2rtc process with PID: %d", scan_pids[i]);
-                    g_process_pid = scan_pids[i];
-                }
-                found = true;
-            }
-        }
-    }
-
-    // If we didn't find any go2rtc processes, also check if the port is in use
-    if (!found) {
-        if (check_tcp_port_open(g_api_port)) {
-            log_warn("Port %d is in use but no go2rtc process found in /proc", g_api_port);
-            // Check if it responds like go2rtc
-            if (is_go2rtc_running_as_service(g_api_port)) {
-                log_info("Port %d is responding like go2rtc, assuming it's running as a service", g_api_port);
-                found = true;
-            }
-        }
-    }
-
-    return found;
+    return false;
 }
 
-bool go2rtc_process_start(int api_port) {
+bool go2rtc_process_is_running(void) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_CHECK, false, false,
+                                &guard)) {
+        return false;
+    }
+
+    bool result = go2rtc_process_is_running_locked();
+    go2rtc_lifecycle_end(&guard, result);
+    return result;
+}
+
+static bool go2rtc_process_start_locked(int api_port) {
     if (!g_initialized) {
         log_error("go2rtc process manager not initialized");
         return false;
@@ -2264,7 +2131,20 @@ bool go2rtc_process_start(int api_port) {
 
     // Check if go2rtc is already running as a service
     if (is_go2rtc_running_as_service(api_port)) {
-        log_info("go2rtc is already running as a service on port %d, using existing service", api_port);
+        pid_t serving_pid = -1;
+        (void)find_go2rtc_serving_pid(api_port, &serving_pid);
+        if (serving_pid > 0 && process_parent_pid(serving_pid) == getpid()) {
+            g_using_external_service = false;
+            g_process_pid = serving_pid;
+            g_process_start_ticks = process_start_ticks(serving_pid);
+            log_info("Recovered verified managed go2rtc serving PID %d", serving_pid);
+        } else if (serving_pid > 0 && serving_pid != g_process_pid) {
+            g_using_external_service = true;
+            g_process_pid = -1;
+            g_process_start_ticks = 0;
+            log_info("Using verified external go2rtc serving PID %d on port %d",
+                     serving_pid, api_port);
+        }
 
         // Try to get the RTSP port from the API with multiple retries
         int retries = 5;
@@ -2366,13 +2246,18 @@ bool go2rtc_process_start(int api_port) {
 
     // Create a symbolic link from /dev/shm/go2rtc.yaml to our config file
     // This ensures that even if something tries to use the /dev/shm path, it will use our config
-    if (access("/dev/shm/go2rtc.yaml", F_OK) == 0) {
-        unlink("/dev/shm/go2rtc.yaml");
+    struct stat shared_config_stat;
+    if (lstat("/dev/shm/go2rtc.yaml", &shared_config_stat) == 0 &&
+        unlink("/dev/shm/go2rtc.yaml") != 0) {
+        log_warn("Failed to replace /dev/shm/go2rtc.yaml: %s", strerror(errno));
     }
+    g_created_config_symlink = false;
     if (symlink(g_config_path, "/dev/shm/go2rtc.yaml") != 0) {
         log_warn("Failed to create symlink from /dev/shm/go2rtc.yaml to %s: %s",
                 g_config_path, strerror(errno));
         // Continue anyway, this is not critical
+    } else {
+        g_created_config_symlink = true;
     }
 
     // Fork a new process
@@ -2385,19 +2270,18 @@ bool go2rtc_process_start(int api_port) {
     } else if (pid == 0) {
         // Child process
 
-        // Request to receive SIGTERM when parent dies
-        // This ensures go2rtc is terminated even if lightNVR is killed with SIGKILL
-        if (prctl(PR_SET_PDEATHSIG, SIGTERM) == -1) {
-            fprintf(stderr, "Warning: Failed to set parent death signal: %s\n", strerror(errno));
-            // Continue anyway, this is not critical but means we might leak go2rtc on SIGKILL
+        // Put go2rtc and any ffmpeg children it creates in their own process
+        // group so a targeted stop never signals LightNVR or another go2rtc.
+        if (setpgid(0, 0) != 0) {
+            fprintf(stderr, "Warning: Failed to create go2rtc process group: %s\n",
+                    strerror(errno));
         }
 
-        // Double-check parent is still alive after prctl (race condition protection)
-        // If parent died between fork and prctl, we should exit now
-        if (getppid() == 1) {
-            fprintf(stderr, "Parent died before prctl completed, exiting\n");
-            exit(EXIT_FAILURE);
-        }
+        /* Do not use PR_SET_PDEATHSIG here. On Linux it is triggered when the
+         * particular thread that called fork() exits. A short-lived stream
+         * refresh worker would therefore kill an otherwise healthy shared
+         * go2rtc process as soon as that worker returned. Normal shutdown is
+         * handled by go2rtc_process_cleanup() and container teardown. */
 
         // Redirect stdout and stderr to log files
         char log_path[PATH_MAX]; // Use PATH_MAX to accommodate full filesystem paths
@@ -2496,18 +2380,21 @@ bool go2rtc_process_start(int api_port) {
         exit(EXIT_FAILURE);
     } else {
         // Parent process
-        g_process_pid = pid;
-        g_last_start_time = time(NULL);  /* T4b crash-loop bookkeeping */
-        log_info("Started go2rtc process with PID: %d", pid);
+        // Close the fork/setpgid race from the parent side too. EACCES means
+        // the child already exec'd after setting its own group, which is fine.
+        if (setpgid(pid, pid) != 0 && errno != EACCES && errno != ESRCH) {
+            log_warn("Failed to set go2rtc child %d process group: %s",
+                     pid, strerror(errno));
+        }
+        log_info("Launched go2rtc candidate process with PID: %d", pid);
 
         // Wait a moment for the process to start
         sleep(1);
 
         // Verify the process is still running
-        reap_zombie_children(pid);
-        if (kill(pid, 0) != 0) {
+        if (child_exited_and_reaped(pid) || kill(pid, 0) != 0) {
             log_error("go2rtc process %d failed to start", pid);
-            g_process_pid = -1;
+            (void)terminate_and_reap_child(pid);
             return false;
         }
 
@@ -2523,10 +2410,9 @@ bool go2rtc_process_start(int api_port) {
             char url[256];
             long http_code = 0;
 
-            reap_zombie_children(pid);
-            if (kill(pid, 0) != 0) {
+            if (child_exited_and_reaped(pid) || kill(pid, 0) != 0) {
                 log_error("go2rtc process %d no longer running", pid);
-                g_process_pid = -1;
+                (void)terminate_and_reap_child(pid);
                 return false;
             }
 
@@ -2540,7 +2426,7 @@ bool go2rtc_process_start(int api_port) {
             }
 
             // Format the URL for the API endpoint
-            snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api", api_port);
+            snprintf(url, sizeof(url), "http://localhost:%d" GO2RTC_BASE_PATH "/api/streams", api_port);
 
             // Set curl options
             curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -2579,9 +2465,33 @@ bool go2rtc_process_start(int api_port) {
         }
 
         if (!api_ready) {
-            log_warn("go2rtc API did not become ready within timeout, but process is running");
-            // Continue anyway, as the process might still be starting up
+            log_error("go2rtc API did not become ready; rejecting candidate PID %d", pid);
+            (void)terminate_and_reap_child(pid);
+            return false;
         }
+
+        if (!process_owns_tcp_listen_port(pid, api_port)) {
+            pid_t actual_serving_pid = -1;
+            (void)find_go2rtc_serving_pid(api_port, &actual_serving_pid);
+            log_error("go2rtc candidate PID %d does not own API port %d (serving PID: %d)",
+                      pid, api_port, actual_serving_pid);
+            (void)terminate_and_reap_child(pid);
+            return false;
+        }
+
+        // Publish the PID only after the exact child is verified as the API
+        // listener. Failed bind/exec children are never visible as managed.
+        unsigned long long start_ticks = process_start_ticks(pid);
+        if (start_ticks == 0) {
+            log_error("Could not capture stable identity for go2rtc candidate PID %d", pid);
+            (void)terminate_and_reap_child(pid);
+            return false;
+        }
+        g_process_pid = pid;
+        g_process_start_ticks = start_ticks;
+        g_using_external_service = false;
+        g_last_start_time = time(NULL);  /* T4b crash-loop bookkeeping */
+        log_info("Verified go2rtc serving PID: %d", pid);
 
         // Try to get the RTSP port from the API with multiple retries
         log_info("Attempting to retrieve RTSP port from go2rtc API...");
@@ -2607,6 +2517,22 @@ bool go2rtc_process_start(int api_port) {
     }
 }
 
+bool go2rtc_process_start(int api_port) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_PROCESS_START, true, false,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle for process start");
+        return false;
+    }
+    if (guard.coalesced) {
+        return guard.result;
+    }
+
+    bool result = go2rtc_process_start_locked(api_port);
+    go2rtc_lifecycle_end(&guard, result);
+    return result;
+}
+
 /**
  * @brief Get the RTSP port used by go2rtc
  *
@@ -2616,7 +2542,7 @@ int go2rtc_process_get_rtsp_port(void) {
     return g_rtsp_port;
 }
 
-bool go2rtc_process_stop(void) {
+static bool go2rtc_process_stop_locked(void) {
     if (!g_initialized) {
         log_error("go2rtc process manager not initialized");
         return false;
@@ -2626,18 +2552,34 @@ bool go2rtc_process_stop(void) {
     // service, we never launched anything — even if g_binary_path was cached
     // for fallback purposes.
     if (!g_using_external_service && g_binary_path && g_binary_path[0] != '\0') {
-        log_info("Stopping go2rtc process that we started");
+        pid_t pid = g_process_pid;
+        if (pid <= 0) {
+            g_process_start_ticks = 0;
+            log_info("No verified managed go2rtc PID to stop");
+            return true;
+        }
 
-        // Kill all go2rtc processes, not just the one we started
-        bool result = kill_all_go2rtc_processes();
-
-        // Reset our tracked PID
+        log_info("Stopping verified managed go2rtc PID %d", pid);
+        bool result = true;
+        if (managed_process_identity_matches(pid)) {
+            signal_managed_process(pid, SIGTERM);
+            if (!wait_for_process_termination(pid, 3000)) {
+                log_warn("Managed go2rtc PID %d did not stop on SIGTERM; sending SIGKILL",
+                         pid);
+                signal_managed_process(pid, SIGKILL);
+                result = wait_for_process_termination(pid, 1000);
+            }
+        } else {
+            // Reap a dead child, but never signal a reused/unverified PID.
+            (void)waitpid(pid, NULL, WNOHANG);
+        }
         g_process_pid = -1;
+        g_process_start_ticks = 0;
 
         if (result) {
-            log_info("Stopped all go2rtc processes");
+            log_info("Stopped and reaped managed go2rtc PID %d", pid);
         } else {
-            log_warn("Some go2rtc processes may still be running");
+            log_warn("Managed go2rtc PID %d may still be running", pid);
         }
 
         return result;
@@ -2647,7 +2589,20 @@ bool go2rtc_process_stop(void) {
     }
 }
 
-void go2rtc_process_cleanup(void) {
+bool go2rtc_process_stop(void) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_PROCESS_STOP, false, true,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle for process stop");
+        return false;
+    }
+
+    bool result = go2rtc_process_stop_locked();
+    go2rtc_lifecycle_end(&guard, result);
+    return result;
+}
+
+static void go2rtc_process_cleanup_locked(void) {
     if (!g_initialized) {
         return;
     }
@@ -2655,10 +2610,12 @@ void go2rtc_process_cleanup(void) {
     // Only stop go2rtc if we started it (not an externally-managed service)
     if (!g_using_external_service && g_binary_path && g_binary_path[0] != '\0') {
         log_info("Stopping go2rtc process that we started during cleanup");
-        kill_all_go2rtc_processes();
+        (void)go2rtc_process_stop_locked();
     } else {
         log_info("Not stopping go2rtc during cleanup as we're using an existing service");
     }
+
+    remove_owned_config_symlink();
 
     // Free allocated memory
     free(g_binary_path);
@@ -2673,7 +2630,9 @@ void go2rtc_process_cleanup(void) {
     g_override_path = NULL;
     g_override_quarantined_path = NULL;
     g_process_pid = -1;
+    g_process_start_ticks = 0;
     g_using_external_service = false;
+    g_created_config_symlink = false;
     g_api_port = 1984;
     g_initialized = false;
     /* Reset T4b crash-loop bookkeeping so a fresh init starts clean. */
@@ -2684,6 +2643,18 @@ void go2rtc_process_cleanup(void) {
     log_info("go2rtc process manager cleaned up");
 }
 
+void go2rtc_process_cleanup(void) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_CLEANUP, false, true,
+                                &guard)) {
+        log_error("Failed to enter go2rtc lifecycle for process cleanup");
+        return;
+    }
+
+    go2rtc_process_cleanup_locked();
+    go2rtc_lifecycle_end(&guard, true);
+}
+
 /**
  * @brief Get the PID of the go2rtc process
  *
@@ -2692,25 +2663,38 @@ void go2rtc_process_cleanup(void) {
  *
  * @return int The process ID, or -1 if not running
  */
-int go2rtc_process_get_pid(void) {
-    // First check if our tracked process is still running
+static int go2rtc_process_get_pid_locked(void) {
+    // Return a PID only when that exact process owns the API listener.
     if (g_process_pid > 0) {
-        if (kill(g_process_pid, 0) == 0) {
+        bool identity_matches = managed_process_identity_matches(g_process_pid);
+        if (identity_matches &&
+            process_owns_tcp_listen_port(g_process_pid, g_api_port)) {
             return g_process_pid;
-        } else {
-            // Process no longer exists
+        }
+        if (!identity_matches || is_zombie_process(g_process_pid)) {
+            (void)child_exited_and_reaped(g_process_pid);
             g_process_pid = -1;
+            g_process_start_ticks = 0;
         }
     }
 
-    // Scan /proc for go2rtc processes (by exact argv[0] basename)
-    pid_t scan_pids[64];
-    int n = scan_proc_for_argv0_basename("go2rtc", scan_pids, 64);
-    for (int i = 0; i < n; i++) {
-        if (is_go2rtc_process(scan_pids[i])) {
-            g_process_pid = scan_pids[i];  // Update our tracked PID
-            return scan_pids[i];
+    if (g_using_external_service) {
+        pid_t serving_pid = -1;
+        if (find_go2rtc_serving_pid(g_api_port, &serving_pid)) {
+            return serving_pid;
         }
     }
     return -1;
+}
+
+int go2rtc_process_get_pid(void) {
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_begin(GO2RTC_LIFECYCLE_CHECK, false, false,
+                                &guard)) {
+        return -1;
+    }
+
+    int pid = go2rtc_process_get_pid_locked();
+    go2rtc_lifecycle_end(&guard, pid > 0);
+    return pid;
 }
