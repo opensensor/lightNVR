@@ -1127,7 +1127,7 @@ int load_stream_configs(config_t *config) {
 }
 
 // Save stream configurations to database with improved timeout protection
-int save_stream_configs(const config_t *config) {
+int save_stream_configs(config_t *config) {
     if (!config) return -1;
     
     int saved = 0;
@@ -1206,6 +1206,22 @@ int save_stream_configs(const config_t *config) {
         }
 
         if (identical) {
+            /* The database owns stable camera identity. Hydrate UUIDs even when
+             * no stream configuration write is necessary. */
+            for (int i = 0; i < config->max_streams; i++) {
+                if (config->streams[i].name[0] == '\0') {
+                    continue;
+                }
+                for (int j = 0; j < loaded; j++) {
+                    if (strcmp(config->streams[i].name,
+                               db_streams[j].name) == 0) {
+                        safe_strcpy(config->streams[i].camera_uuid,
+                                    db_streams[j].camera_uuid,
+                                    sizeof(config->streams[i].camera_uuid), 0);
+                        break;
+                    }
+                }
+            }
             log_info("Stream configurations unchanged, skipping update");
             free(db_streams);
             commit_transaction();
@@ -1229,9 +1245,19 @@ int save_stream_configs(const config_t *config) {
     // Add stream configurations to database
     for (int i = 0; i < config->max_streams; i++) {
         if (strlen(config->streams[i].name) > 0) {
+            char stream_name[MAX_STREAM_NAME];
+            safe_strcpy(stream_name, config->streams[i].name,
+                        sizeof(stream_name), 0);
             uint64_t result = add_stream_config(&config->streams[i]);
             if (result == 0) {
-                log_error("Failed to add stream configuration: %s", config->streams[i].name);
+                log_error("Failed to add stream configuration: %s", stream_name);
+                rollback_transaction();
+                return -1;
+            }
+            if (get_stream_config_by_name(stream_name,
+                                          &config->streams[i]) != 0) {
+                log_error("Failed to reload stable identity for stream: %s",
+                          stream_name);
                 rollback_transaction();
                 return -1;
             }

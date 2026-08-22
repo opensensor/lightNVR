@@ -223,6 +223,7 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
                                    expose_sensitive_config);
 
         // Add stream properties
+        cJSON_AddStringToObject(stream_obj, "camera_uuid", db_streams[i].camera_uuid);
         cJSON_AddStringToObject(stream_obj, "name", db_streams[i].name);
         cJSON_AddStringToObject(stream_obj, "url", safe_url);
         cJSON_AddBoolToObject(stream_obj, "enabled", db_streams[i].enabled);
@@ -427,6 +428,7 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
                                expose_sensitive_config);
 
     // Add stream properties
+    cJSON_AddStringToObject(stream_obj, "camera_uuid", config.camera_uuid);
     cJSON_AddStringToObject(stream_obj, "name", config.name);
     cJSON_AddStringToObject(stream_obj, "url", safe_url);
     cJSON_AddBoolToObject(stream_obj, "enabled", config.enabled);
@@ -628,6 +630,7 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
                                api_onvif_password_full, sizeof(api_onvif_password_full),
                                expose_sensitive_config);
 
+    cJSON_AddStringToObject(stream_obj, "camera_uuid", config.camera_uuid);
     cJSON_AddStringToObject(stream_obj, "name", config.name);
     cJSON_AddStringToObject(stream_obj, "url", safe_url_full);
     cJSON_AddBoolToObject(stream_obj, "enabled", config.enabled);

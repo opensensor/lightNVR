@@ -8,6 +8,8 @@
 #define MAX_PATH_LENGTH 512
 // Maximum length for stream names
 #define MAX_STREAM_NAME 256
+// Canonical UUID string plus null terminator
+#define CAMERA_UUID_STRING_SIZE 37
 // Maximum length for URLs
 #define MAX_URL_LENGTH 512
 // Compile-time ceiling for per-stream static arrays (pointer arrays, watchdog trackers, etc.).
@@ -23,6 +25,7 @@ typedef enum {
 
 // Stream configuration structure
 typedef struct {
+    char camera_uuid[CAMERA_UUID_STRING_SIZE]; // Immutable fleet identity
     char name[MAX_STREAM_NAME];
     char url[MAX_URL_LENGTH];
     bool enabled;
@@ -373,10 +376,11 @@ int load_stream_configs(config_t *config);
 /**
  * Save stream configurations to database
  * 
- * @param config Pointer to config structure containing stream configurations to save
+ * @param config Pointer to config structure containing stream configurations to
+ *               save. Database-owned fields may be hydrated in place.
  * @return Number of stream configurations saved, or -1 on error
  */
-int save_stream_configs(const config_t *config);
+int save_stream_configs(config_t *config);
 
 /**
  * Set a custom configuration file path

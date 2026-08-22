@@ -279,8 +279,12 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "onvif_username, onvif_password, onvif_profile, onvif_port, "
           "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
           "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-          "detection_record_on_schedule, detection_recording_schedule) "
-          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+          "detection_record_on_schedule, detection_recording_schedule, camera_uuid) "
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+          "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
+          "substr(hex(randomblob(2)), 2) || '-' || "
+          "substr('89ab', (abs(random()) % 4) + 1, 1) || "
+          "substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))));";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -814,7 +818,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
         "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-        "detection_record_on_schedule, detection_recording_schedule "
+        "detection_record_on_schedule, detection_recording_schedule, camera_uuid "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -832,7 +836,8 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_TAGS, COL_ADMIN_URL, COL_PRIVACY_MODE,
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
         COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL, COL_PUBLISH_URL,
-        COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE
+        COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE,
+        COL_CAMERA_UUID
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -846,6 +851,13 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
 
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         memset(stream, 0, sizeof(stream_config_t));
+
+        const char *camera_uuid =
+            (const char *)sqlite3_column_text(stmt, COL_CAMERA_UUID);
+        if (camera_uuid) {
+            safe_strcpy(stream->camera_uuid, camera_uuid,
+                        sizeof(stream->camera_uuid), 0);
+        }
 
         // Basic stream settings
         const char *stream_name = (const char *)sqlite3_column_text(stmt, COL_NAME);
@@ -1049,6 +1061,52 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
 }
 
 /**
+ * Get a stream configuration by immutable camera UUID.
+ */
+int get_stream_config_by_uuid(const char *camera_uuid, stream_config_t *stream) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    sqlite3_stmt *stmt = NULL;
+    char stream_name[MAX_STREAM_NAME] = {0};
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+    if (!camera_uuid || strlen(camera_uuid) != CAMERA_UUID_STRING_SIZE - 1 ||
+        !stream) {
+        log_error("Valid camera UUID and stream configuration pointer are required");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    int rc = sqlite3_prepare_v2(
+        db, "SELECT name FROM streams WHERE camera_uuid = ?;", -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, camera_uuid, -1, SQLITE_STATIC);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char *name = (const char *)sqlite3_column_text(stmt, 0);
+            if (name) {
+                safe_strcpy(stream_name, name, sizeof(stream_name), 0);
+            }
+        }
+    } else {
+        log_error("Failed to prepare camera UUID lookup: %s", sqlite3_errmsg(db));
+    }
+
+    if (stmt) {
+        sqlite3_finalize(stmt);
+    }
+    pthread_mutex_unlock(db_mutex);
+
+    if (stream_name[0] == '\0') {
+        return -1;
+    }
+    return get_stream_config_by_name(stream_name, stream);
+}
+
+/**
  * Get all stream configurations from the database
  *
  * @param streams Array to fill with stream configurations
@@ -1088,7 +1146,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
         "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-        "detection_record_on_schedule, detection_recording_schedule "
+        "detection_record_on_schedule, detection_recording_schedule, camera_uuid "
         "FROM streams ORDER BY name;";
 
     // Column index constants (same as get_stream_config_by_name)
@@ -1106,7 +1164,8 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         COL_RECORD_ON_SCHEDULE, COL_RECORDING_SCHEDULE, COL_TAGS, COL_ADMIN_URL, COL_PRIVACY_MODE,
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
         COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL, COL_PUBLISH_URL,
-        COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE
+        COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE,
+        COL_CAMERA_UUID
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1119,6 +1178,13 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
         stream_config_t *s = &streams[count];
         memset(s, 0, sizeof(stream_config_t));
+
+        const char *camera_uuid =
+            (const char *)sqlite3_column_text(stmt, COL_CAMERA_UUID);
+        if (camera_uuid) {
+            safe_strcpy(s->camera_uuid, camera_uuid,
+                        sizeof(s->camera_uuid), 0);
+        }
 
         // Basic settings
         const char *name = (const char *)sqlite3_column_text(stmt, COL_NAME);

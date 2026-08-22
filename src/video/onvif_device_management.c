@@ -794,6 +794,12 @@ int add_onvif_device_as_stream(const onvif_device_info_t *device_info,
     
     log_info("Added ONVIF device stream configuration to database with ID %llu: %s", 
              (unsigned long long)stream_id, stream_name);
+
+    if (get_stream_config_by_name(stream_name, &config) != 0) {
+        log_error("Failed to load generated camera UUID for ONVIF stream: %s",
+                  stream_name);
+        return -1;
+    }
     
     // Then add stream to memory
     stream_handle_t handle = add_stream(&config);
