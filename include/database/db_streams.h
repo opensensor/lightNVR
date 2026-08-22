@@ -59,6 +59,15 @@ int delete_stream_config_internal(const char *name, bool permanent);
 int get_stream_config_by_name(const char *name, stream_config_t *stream);
 
 /**
+ * Get a stream configuration by its immutable camera UUID.
+ *
+ * @param camera_uuid Camera UUID to look up
+ * @param stream Stream configuration to fill
+ * @return 0 on success, non-zero on failure
+ */
+int get_stream_config_by_uuid(const char *camera_uuid, stream_config_t *stream);
+
+/**
  * Get all stream configurations from the database
  *
  * @param streams Array to fill with stream configurations
