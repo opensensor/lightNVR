@@ -47,6 +47,37 @@ static stream_config_t add_and_load_stream(const char *name, const char *tags) {
     return stream;
 }
 
+static void make_unique_legacy_tags(char *output, size_t output_size,
+                                    int tag_count) {
+    size_t used = 0;
+    int produced = 0;
+    for (int ch = 33; ch <= 126 && produced < tag_count; ch++) {
+        if (ch == ',' || (ch >= 'A' && ch <= 'Z')) continue;
+        if (used > 0) TEST_ASSERT_LESS_THAN(output_size, used + 1);
+        if (used > 0) output[used++] = ',';
+        TEST_ASSERT_LESS_THAN(output_size, used + 1);
+        output[used++] = (char)ch;
+        produced++;
+    }
+    TEST_ASSERT_EQUAL_INT(tag_count, produced);
+    output[used] = '\0';
+}
+
+static void update_legacy_tags_direct(const char *camera_uuid,
+                                      const char *legacy_tags) {
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(db,
+                           "UPDATE streams SET tags = ? WHERE camera_uuid = ?;",
+                           -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, legacy_tags, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, camera_uuid, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
 void setUp(void) {
     sqlite3 *db = get_db_handle();
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
@@ -142,6 +173,9 @@ void test_uuid_assignments_rebuild_legacy_tags(void) {
 void test_rename_updates_all_legacy_assignments_atomically(void) {
     stream_config_t first = add_and_load_stream("rename_one", "old");
     stream_config_t second = add_and_load_stream("rename_two", "old,other");
+    stream_config_t unrelated =
+        add_and_load_stream("rename_unrelated", "unrelated");
+    update_legacy_tags_direct(unrelated.camera_uuid, "legacy-only");
     camera_tag_t tags[4];
     int count = db_camera_tag_list_for_camera(first.camera_uuid, tags, 4);
     TEST_ASSERT_EQUAL_INT(1, count);
@@ -156,6 +190,9 @@ void test_rename_updates_all_legacy_assignments_atomically(void) {
     TEST_ASSERT_EQUAL_INT(0,
                           get_stream_config_by_uuid(second.camera_uuid, &second));
     TEST_ASSERT_EQUAL_STRING("other,renamed", second.tags);
+    TEST_ASSERT_EQUAL_INT(
+        0, get_stream_config_by_uuid(unrelated.camera_uuid, &unrelated));
+    TEST_ASSERT_EQUAL_STRING("legacy-only", unrelated.tags);
 
     camera_tag_t other;
     count = db_camera_tag_list_for_camera(second.camera_uuid, tags, 4);
@@ -198,6 +235,34 @@ void test_delete_tag_cascades_assignments_and_legacy_value(void) {
     TEST_ASSERT_EQUAL_STRING("", stream.tags);
 }
 
+void test_legacy_assignment_limit_rolls_back_stream_writes(void) {
+    char too_many_tags[256];
+    make_unique_legacy_tags(too_many_tags, sizeof(too_many_tags),
+                            CAMERA_TAG_MAX_ASSIGNMENTS + 1);
+
+    stream_config_t stream = add_and_load_stream("atomic_update", "stable");
+    stream_config_t update = stream;
+    safe_strcpy(update.url, "rtsp://camera/changed", sizeof(update.url), 0);
+    safe_strcpy(update.tags, too_many_tags, sizeof(update.tags), 0);
+    TEST_ASSERT_NOT_EQUAL(0, update_stream_config(stream.name, &update));
+
+    stream_config_t reloaded;
+    TEST_ASSERT_EQUAL_INT(
+        0, get_stream_config_by_uuid(stream.camera_uuid, &reloaded));
+    TEST_ASSERT_EQUAL_STRING("rtsp://camera/stream", reloaded.url);
+    TEST_ASSERT_EQUAL_STRING("stable", reloaded.tags);
+    camera_tag_t assigned[2];
+    TEST_ASSERT_EQUAL_INT(
+        1, db_camera_tag_list_for_camera(stream.camera_uuid, assigned, 2));
+    TEST_ASSERT_EQUAL_STRING("stable", assigned[0].label);
+    TEST_ASSERT_EQUAL_INT(1, db_camera_tag_count());
+
+    stream_config_t insert = make_stream("atomic_insert", too_many_tags);
+    TEST_ASSERT_EQUAL_UINT64(0, add_stream_config(&insert));
+    TEST_ASSERT_NOT_EQUAL(0, get_stream_config_by_name(insert.name, &reloaded));
+    TEST_ASSERT_EQUAL_INT(1, db_camera_tag_count());
+}
+
 void test_assignment_rolls_back_when_legacy_limit_would_be_exceeded(void) {
     stream_config_t stream = add_and_load_stream("limit", NULL);
     char first_label[201];
@@ -237,6 +302,7 @@ int main(void) {
     RUN_TEST(test_merge_deduplicates_assignments_and_removes_source);
     RUN_TEST(test_delete_tag_cascades_assignments_and_legacy_value);
     RUN_TEST(test_assignment_rolls_back_when_legacy_limit_would_be_exceeded);
+    RUN_TEST(test_legacy_assignment_limit_rolls_back_stream_writes);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

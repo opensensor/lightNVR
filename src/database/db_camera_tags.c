@@ -168,54 +168,67 @@ static int rebuild_legacy_for_camera_locked(sqlite3 *db,
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
-static int rebuild_all_legacy_locked(sqlite3 *db) {
-    sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(db, "SELECT camera_uuid FROM streams;",
-                                -1, &stmt, NULL);
-    if (rc != SQLITE_OK) return -1;
+typedef struct {
+    char (*items)[CAMERA_UUID_STRING_SIZE];
+    int count;
+    int capacity;
+} camera_uuid_list_t;
 
-    int camera_count = 0;
-    int camera_capacity = 32;
-    char (*camera_uuids)[CAMERA_UUID_STRING_SIZE] =
-        calloc((size_t)camera_capacity, sizeof(*camera_uuids));
-    if (!camera_uuids) {
-        sqlite3_finalize(stmt);
-        return -1;
-    }
+static void camera_uuid_list_free(camera_uuid_list_t *cameras) {
+    if (!cameras) return;
+    free(cameras->items);
+    memset(cameras, 0, sizeof(*cameras));
+}
+
+static int collect_cameras_for_tag_locked(sqlite3 *db, const char *tag_uuid,
+                                          camera_uuid_list_t *cameras) {
+    memset(cameras, 0, sizeof(*cameras));
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        db,
+        "SELECT camera_uuid FROM camera_tag_assignments WHERE tag_uuid = ?;",
+        -1, &stmt, NULL);
+    if (rc != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, tag_uuid, -1, SQLITE_TRANSIENT);
+
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        if (camera_count == camera_capacity) {
-            int new_capacity = camera_capacity * 2;
-            void *resized = realloc(camera_uuids,
-                                    (size_t)new_capacity * sizeof(*camera_uuids));
+        if (cameras->count == cameras->capacity) {
+            int new_capacity = cameras->capacity == 0 ? 16
+                                                       : cameras->capacity * 2;
+            void *resized = realloc(
+                cameras->items,
+                (size_t)new_capacity * sizeof(*cameras->items));
             if (!resized) {
-                free(camera_uuids);
                 sqlite3_finalize(stmt);
+                camera_uuid_list_free(cameras);
                 return -1;
             }
-            camera_uuids = resized;
-            camera_capacity = new_capacity;
+            cameras->items = resized;
+            cameras->capacity = new_capacity;
         }
-        safe_strcpy(camera_uuids[camera_count],
+        safe_strcpy(cameras->items[cameras->count],
                     (const char *)sqlite3_column_text(stmt, 0),
                     CAMERA_UUID_STRING_SIZE, 0);
-        camera_count++;
+        cameras->count++;
     }
     sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        free(camera_uuids);
+        camera_uuid_list_free(cameras);
         return -1;
     }
+    return 0;
+}
 
-    int result = 0;
-    for (int i = 0; i < camera_count; i++) {
-        int rebuild_rc = rebuild_legacy_for_camera_locked(db, camera_uuids[i]);
+static int rebuild_legacy_for_cameras_locked(
+    sqlite3 *db, const camera_uuid_list_t *cameras) {
+    for (int i = 0; i < cameras->count; i++) {
+        int rebuild_rc =
+            rebuild_legacy_for_camera_locked(db, cameras->items[i]);
         if (rebuild_rc != 0) {
-            result = rebuild_rc;
-            break;
+            return rebuild_rc;
         }
     }
-    free(camera_uuids);
-    return result;
+    return 0;
 }
 
 static int sync_legacy_locked(sqlite3 *db, const char *camera_uuid,
@@ -234,6 +247,7 @@ static int sync_legacy_locked(sqlite3 *db, const char *camera_uuid,
     char tags_copy[256];
     safe_strcpy(tags_copy, legacy_tags, sizeof(tags_copy), 0);
     char *saveptr = NULL;
+    int assignment_count = 0;
     for (char *token = strtok_r(tags_copy, ",", &saveptr);
          token != NULL;
          token = strtok_r(NULL, ",", &saveptr)) {
@@ -257,6 +271,8 @@ static int sync_legacy_locked(sqlite3 *db, const char *camera_uuid,
         rc = sqlite3_step(stmt);
         sqlite3_finalize(stmt);
         if (rc != SQLITE_DONE) return -1;
+        assignment_count += sqlite3_changes(db);
+        if (assignment_count > CAMERA_TAG_MAX_ASSIGNMENTS) return -2;
     }
     return 0;
 }
@@ -452,8 +468,14 @@ db_camera_tag_result_t db_camera_tag_update(camera_tag_t *tag) {
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_TAG_NOT_FOUND;
     }
+    camera_uuid_list_t affected_cameras;
+    if (collect_cameras_for_tag_locked(db, tag->uuid, &affected_cameras) != 0) {
+        pthread_mutex_unlock(mutex);
+        return DB_CAMERA_TAG_ERROR;
+    }
     bool owns_transaction = false;
     if (!transaction_begin(db, &owns_transaction)) {
+        camera_uuid_list_free(&affected_cameras);
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_TAG_ERROR;
     }
@@ -471,9 +493,12 @@ db_camera_tag_result_t db_camera_tag_update(camera_tag_t *tag) {
         rc = sqlite3_step(stmt);
     }
     if (stmt) sqlite3_finalize(stmt);
-    int rebuild_rc = rc == SQLITE_DONE ? rebuild_all_legacy_locked(db) : -1;
+    int rebuild_rc = rc == SQLITE_DONE
+        ? rebuild_legacy_for_cameras_locked(db, &affected_cameras)
+        : -1;
     bool success = rc == SQLITE_DONE && rebuild_rc == 0;
     success = transaction_finish(db, owns_transaction, success);
+    camera_uuid_list_free(&affected_cameras);
     if (!success) {
         db_camera_tag_result_t result =
             (rc == SQLITE_CONSTRAINT) ? DB_CAMERA_TAG_CONFLICT :
@@ -495,8 +520,14 @@ db_camera_tag_result_t db_camera_tag_delete(const char *uuid) {
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_TAG_NOT_FOUND;
     }
+    camera_uuid_list_t affected_cameras;
+    if (collect_cameras_for_tag_locked(db, uuid, &affected_cameras) != 0) {
+        pthread_mutex_unlock(mutex);
+        return DB_CAMERA_TAG_ERROR;
+    }
     bool owns_transaction = false;
     if (!transaction_begin(db, &owns_transaction)) {
+        camera_uuid_list_free(&affected_cameras);
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_TAG_ERROR;
     }
@@ -508,8 +539,10 @@ db_camera_tag_result_t db_camera_tag_delete(const char *uuid) {
         rc = sqlite3_step(stmt);
     }
     if (stmt) sqlite3_finalize(stmt);
-    bool success = rc == SQLITE_DONE && rebuild_all_legacy_locked(db) == 0;
+    bool success = rc == SQLITE_DONE &&
+        rebuild_legacy_for_cameras_locked(db, &affected_cameras) == 0;
     success = transaction_finish(db, owns_transaction, success);
+    camera_uuid_list_free(&affected_cameras);
     pthread_mutex_unlock(mutex);
     return success ? DB_CAMERA_TAG_OK : DB_CAMERA_TAG_ERROR;
 }
@@ -530,8 +563,15 @@ db_camera_tag_result_t db_camera_tag_merge(const char *source_uuid,
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_TAG_NOT_FOUND;
     }
+    camera_uuid_list_t affected_cameras;
+    if (collect_cameras_for_tag_locked(db, source_uuid,
+                                      &affected_cameras) != 0) {
+        pthread_mutex_unlock(mutex);
+        return DB_CAMERA_TAG_ERROR;
+    }
     bool owns_transaction = false;
     if (!transaction_begin(db, &owns_transaction)) {
+        camera_uuid_list_free(&affected_cameras);
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_TAG_ERROR;
     }
@@ -559,8 +599,10 @@ db_camera_tag_result_t db_camera_tag_merge(const char *source_uuid,
         }
         if (stmt) sqlite3_finalize(stmt);
     }
-    bool success = rc == SQLITE_DONE && rebuild_all_legacy_locked(db) == 0;
+    bool success = rc == SQLITE_DONE &&
+        rebuild_legacy_for_cameras_locked(db, &affected_cameras) == 0;
     success = transaction_finish(db, owns_transaction, success);
+    camera_uuid_list_free(&affected_cameras);
     pthread_mutex_unlock(mutex);
     return success ? DB_CAMERA_TAG_OK : DB_CAMERA_TAG_ERROR;
 }
