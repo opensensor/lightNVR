@@ -173,10 +173,12 @@ test.describe('Authentication @ui @auth', () => {
         // Wait for the JavaScript-based redirect to login page
         // This happens after the page makes an API call and receives a 401
         try {
-          await page.waitForURL('**/login.html**', { timeout: 10000 });
+          await expect(page).toHaveURL(/\/login\.html(?:[?#]|$)/, { timeout: 10000 });
         } catch (e) {
           // If redirect didn't happen within timeout, take screenshot and fail with useful info
-          await page.screenshot({ path: `test-results/auth-redirect-failed-${pagePath.replace(/\//g, '_')}.png` });
+          await page.screenshot({
+            path: `test-results/auth-redirect-failed-${pagePath.replace(/\//g, '_')}.png`,
+          }).catch(() => {});
           throw new Error(`Expected redirect to login from ${pagePath}, but URL is: ${page.url()}`);
         }
 
@@ -187,4 +189,3 @@ test.describe('Authentication @ui @auth', () => {
     });
   });
 });
-

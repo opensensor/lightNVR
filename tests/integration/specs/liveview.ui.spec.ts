@@ -5,7 +5,7 @@
  * @tags @ui @liveview
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Route } from '@playwright/test';
 import { LiveViewPage } from '../pages/LiveViewPage';
 import { USERS, login, sleep } from '../fixtures/test-fixtures';
 
@@ -52,28 +52,34 @@ test.describe('Live View Page @ui @liveview', () => {
 
   test.describe('Video Streaming', () => {
     test('should show a stream-starting placeholder while tiles initialize', async ({ page }) => {
-      // Hold every stream-media request open for a few seconds so each tile
-      // stays in its loading state long enough to assert the placeholder.
-      // The default Live View tile is HLS, and when go2rtc is enabled (as in
-      // CI) the manifest is fetched from go2rtc's `/api/stream.m3u8` endpoint —
-      // NOT lightNVR's native `/hls/...` path — so that pattern must be stalled
-      // too, otherwise the manifest resolves in milliseconds and the
-      // placeholder disappears before this assertion can observe it.
-      const stallThenAbort = async route => {
-        await new Promise(resolve => setTimeout(resolve, 2000));
+      // Hold every stream-media request open until the assertion completes so
+      // each tile remains in its loading state regardless of render timing.
+      // The active view can use WebRTC, native HLS, or go2rtc HLS, so stall
+      // every media path that can advance a tile out of its loading state.
+      let releaseMediaRequests!: () => void;
+      const mediaRequestsReleased = new Promise<void>(resolve => {
+        releaseMediaRequests = resolve;
+      });
+      const stallThenAbort = async (route: Route) => {
+        await mediaRequestsReleased;
         await route.abort();
       };
       await page.route('**/api/webrtc?*', stallThenAbort);
       await page.route('**/hls/**', stallThenAbort);
       await page.route('**/api/stream.m3u8*', stallThenAbort);
 
-      const liveView = new LiveViewPage(page);
-      await Promise.all([
-        page.waitForResponse(response => response.url().includes('/api/streams') && response.status() === 200),
-        liveView.goto(),
-      ]);
+      try {
+        const liveView = new LiveViewPage(page);
+        await Promise.all([
+          page.waitForResponse(response => response.url().includes('/api/streams') && response.status() === 200),
+          liveView.goto(),
+        ]);
 
-      await expect(liveView.streamStartingPlaceholders.first()).toContainText('Stream starting...');
+        await expect(liveView.streamStartingPlaceholders.first()).toContainText('Stream starting...');
+      } finally {
+        releaseMediaRequests();
+        await page.unrouteAll({ behavior: 'wait' });
+      }
     });
 
     test('should load video elements for test streams', async ({ page }) => {
