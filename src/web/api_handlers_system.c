@@ -1448,6 +1448,8 @@ void handle_post_system_backup(const http_request_t *req, http_response_t *res) 
                 continue;
             }
 
+            cJSON_AddStringToObject(stream, "camera_uuid",
+                                    g_config.streams[i].camera_uuid);
             cJSON_AddStringToObject(stream, "name", g_config.streams[i].name);
             cJSON_AddStringToObject(stream, "url", g_config.streams[i].url);
             cJSON_AddBoolToObject(stream, "enabled", g_config.streams[i].enabled);

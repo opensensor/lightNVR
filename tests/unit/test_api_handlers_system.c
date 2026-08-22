@@ -383,6 +383,10 @@ void test_handle_get_streams_includes_audio_voice_enhancement(void) {
     TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(root));
 
     cJSON *stream = cJSON_GetArrayItem(root, 0);
+    cJSON *camera_uuid = cJSON_GetObjectItemCaseSensitive(stream, "camera_uuid");
+    TEST_ASSERT_TRUE(cJSON_IsString(camera_uuid));
+    TEST_ASSERT_EQUAL_UINT(CAMERA_UUID_STRING_SIZE - 1,
+                           strlen(camera_uuid->valuestring));
     cJSON *avoe = cJSON_GetObjectItemCaseSensitive(stream, "audio_voice_enhancement");
     TEST_ASSERT_NOT_NULL(avoe);
     TEST_ASSERT_TRUE(cJSON_IsBool(avoe));
@@ -401,6 +405,10 @@ void test_handle_get_stream_by_name_includes_audio_voice_enhancement(void) {
     stream_config_t s = make_test_stream("cam_avoe_one");
     s.audio_voice_enhancement = true;
     add_stream_config(&s);
+    TEST_ASSERT_EQUAL_INT(0,
+                          get_stream_config_by_name("cam_avoe_one", &s));
+    TEST_ASSERT_EQUAL_UINT(CAMERA_UUID_STRING_SIZE - 1,
+                           strlen(s.camera_uuid));
 
     init_stream_state_manager(16);
     init_stream_manager(16);
@@ -418,6 +426,10 @@ void test_handle_get_stream_by_name_includes_audio_voice_enhancement(void) {
         TEST_ASSERT_EQUAL_INT(200, res.status_code);
 
         cJSON *root = parse_response_json(&res);
+        cJSON *camera_uuid =
+            cJSON_GetObjectItemCaseSensitive(root, "camera_uuid");
+        TEST_ASSERT_TRUE(cJSON_IsString(camera_uuid));
+        TEST_ASSERT_EQUAL_STRING(s.camera_uuid, camera_uuid->valuestring);
         cJSON *avoe = cJSON_GetObjectItemCaseSensitive(root, "audio_voice_enhancement");
         TEST_ASSERT_NOT_NULL(avoe);
         TEST_ASSERT_TRUE(cJSON_IsTrue(avoe));
@@ -440,6 +452,10 @@ void test_handle_get_stream_by_name_includes_audio_voice_enhancement(void) {
         cJSON *root = parse_response_json(&res);
         cJSON *stream_obj = cJSON_GetObjectItemCaseSensitive(root, "stream");
         TEST_ASSERT_NOT_NULL(stream_obj);
+        cJSON *camera_uuid =
+            cJSON_GetObjectItemCaseSensitive(stream_obj, "camera_uuid");
+        TEST_ASSERT_TRUE(cJSON_IsString(camera_uuid));
+        TEST_ASSERT_EQUAL_STRING(s.camera_uuid, camera_uuid->valuestring);
         cJSON *avoe = cJSON_GetObjectItemCaseSensitive(stream_obj, "audio_voice_enhancement");
         TEST_ASSERT_NOT_NULL(avoe);
         TEST_ASSERT_TRUE(cJSON_IsTrue(avoe));
