@@ -1127,7 +1127,7 @@ int load_stream_configs(config_t *config) {
 }
 
 // Save stream configurations to database with improved timeout protection
-int save_stream_configs(const config_t *config) {
+int save_stream_configs(config_t *config) {
     if (!config) return -1;
     
     int saved = 0;

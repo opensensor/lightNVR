@@ -376,10 +376,11 @@ int load_stream_configs(config_t *config);
 /**
  * Save stream configurations to database
  * 
- * @param config Pointer to config structure containing stream configurations to save
+ * @param config Pointer to config structure containing stream configurations to
+ *               save. Database-owned fields may be hydrated in place.
  * @return Number of stream configurations saved, or -1 on error
  */
-int save_stream_configs(const config_t *config);
+int save_stream_configs(config_t *config);
 
 /**
  * Set a custom configuration file path
