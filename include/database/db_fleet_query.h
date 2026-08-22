@@ -7,4 +7,8 @@
  * returned array and must free it. Zero cameras returns success with NULL. */
 int db_fleet_camera_load(fleet_camera_t **cameras, int *count);
 
+/* Add the current in-process health snapshot to a loaded inventory. Cameras
+ * without an active metrics slot remain unknown; disabled cameras stay disabled. */
+void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count);
+
 #endif /* LIGHTNVR_DB_FLEET_QUERY_H */
