@@ -38,6 +38,7 @@
 #include "web/api_handlers_recording_control.h"
 #include "web/api_handlers_locations.h"
 #include "web/api_handlers_camera_tags.h"
+#include "web/api_handlers_fleet.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -110,6 +111,12 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_camera_tag_assignments);
     http_server_register_handler(server, "/api/cameras/#/tags", "PUT",
                                  handle_put_camera_tag_assignments);
+
+    // Shared selector evaluation and server-side fleet inventory query
+    http_server_register_handler(server, "/api/fleet/cameras/query", "POST",
+                                 handle_post_fleet_camera_query);
+    http_server_register_handler(server, "/api/fleet/selectors/preview", "POST",
+                                 handle_post_fleet_selector_preview);
 
     // Stream-specific routes (must come before /api/streams/# wildcard)
     http_server_register_handler(server, "/api/streams/#/recording", "GET",
