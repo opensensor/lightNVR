@@ -12,7 +12,6 @@
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_fleet_query.h"
-#include "telemetry/stream_metrics.h"
 #include "utils/strings.h"
 #include "web/api_handlers_fleet.h"
 #include "web/httpd_utils.h"
@@ -215,39 +214,6 @@ static bool parse_options(const cJSON *body, bool preview,
     }
     options->explain = preview || (explain_item && cJSON_IsTrue(explain_item));
     return true;
-}
-
-static void enrich_health(fleet_camera_t *cameras, int camera_count) {
-    int maximum = metrics_get_max_streams();
-    if (maximum <= 0) return;
-    stream_metrics_t *metrics = calloc((size_t)maximum, sizeof(*metrics));
-    if (!metrics) return;
-    int metric_count = metrics_snapshot_all(metrics, maximum);
-    for (int i = 0; i < camera_count; i++) {
-        if (!cameras[i].enabled) {
-            cameras[i].health = FLEET_HEALTH_DISABLED;
-            continue;
-        }
-        for (int j = 0; j < metric_count; j++) {
-            if (strcmp(cameras[i].name, metrics[j].stream_name) != 0) continue;
-            switch ((stream_health_status_t)metrics[j].health_status) {
-                case STREAM_HEALTH_UP:
-                    cameras[i].health = FLEET_HEALTH_UP;
-                    break;
-                case STREAM_HEALTH_DEGRADED:
-                    cameras[i].health = FLEET_HEALTH_DEGRADED;
-                    break;
-                case STREAM_HEALTH_DOWN:
-                    cameras[i].health = FLEET_HEALTH_DOWN;
-                    break;
-            }
-            cameras[i].last_frame_ts = (int64_t)metrics[j].last_frame_ts;
-            cameras[i].current_fps = metrics[j].current_fps;
-            cameras[i].recording_active = metrics[j].recording_active != 0;
-            break;
-        }
-    }
-    free(metrics);
 }
 
 static bool facet_increment(facet_count_t **facets, int *count, int *capacity,
@@ -545,7 +511,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         http_response_set_json_error(res, 500, "Failed to load fleet cameras");
         return;
     }
-    enrich_health(cameras, camera_count);
+    fleet_camera_enrich_runtime_health(cameras, camera_count);
     fleet_camera_t **matches = camera_count > 0 ?
         calloc((size_t)camera_count, sizeof(*matches)) : NULL;
     if (camera_count > 0 && !matches) {

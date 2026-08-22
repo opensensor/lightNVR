@@ -39,6 +39,7 @@
 #include "web/api_handlers_locations.h"
 #include "web/api_handlers_camera_tags.h"
 #include "web/api_handlers_fleet.h"
+#include "web/api_handlers_camera_collections.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -117,6 +118,24 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_post_fleet_camera_query);
     http_server_register_handler(server, "/api/fleet/selectors/preview", "POST",
                                  handle_post_fleet_selector_preview);
+
+    // Saved static and selector-backed smart camera collections
+    http_server_register_handler(server, "/api/camera-collections", "GET",
+                                 handle_get_camera_collections);
+    http_server_register_handler(server, "/api/camera-collections", "POST",
+                                 handle_post_camera_collection);
+    http_server_register_handler(server, "/api/camera-collections/#/members", "GET",
+                                 handle_get_camera_collection_members);
+    http_server_register_handler(server, "/api/camera-collections/#/members", "PUT",
+                                 handle_put_camera_collection_members);
+    http_server_register_handler(server, "/api/camera-collections/#/preview", "POST",
+                                 handle_post_camera_collection_preview);
+    http_server_register_handler(server, "/api/camera-collections/#", "GET",
+                                 handle_get_camera_collection);
+    http_server_register_handler(server, "/api/camera-collections/#", "PUT",
+                                 handle_put_camera_collection);
+    http_server_register_handler(server, "/api/camera-collections/#", "DELETE",
+                                 handle_delete_camera_collection);
 
     // Stream-specific routes (must come before /api/streams/# wildcard)
     http_server_register_handler(server, "/api/streams/#/recording", "GET",
