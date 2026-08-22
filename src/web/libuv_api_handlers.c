@@ -37,6 +37,7 @@
 #include "web/api_handlers_motion.h"
 #include "web/api_handlers_recording_control.h"
 #include "web/api_handlers_locations.h"
+#include "web/api_handlers_camera_tags.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -91,6 +92,24 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/locations/#", "DELETE", handle_delete_location);
     http_server_register_handler(server, "/api/cameras/#/location", "PUT",
                                  handle_put_camera_location);
+
+    // Normalized camera tag dictionary and UUID-based assignments
+    http_server_register_handler(server, "/api/camera-tags", "GET",
+                                 handle_get_camera_tags);
+    http_server_register_handler(server, "/api/camera-tags", "POST",
+                                 handle_post_camera_tag);
+    http_server_register_handler(server, "/api/camera-tags/#/merge", "POST",
+                                 handle_post_camera_tag_merge);
+    http_server_register_handler(server, "/api/camera-tags/#", "GET",
+                                 handle_get_camera_tag);
+    http_server_register_handler(server, "/api/camera-tags/#", "PUT",
+                                 handle_put_camera_tag);
+    http_server_register_handler(server, "/api/camera-tags/#", "DELETE",
+                                 handle_delete_camera_tag);
+    http_server_register_handler(server, "/api/cameras/#/tags", "GET",
+                                 handle_get_camera_tag_assignments);
+    http_server_register_handler(server, "/api/cameras/#/tags", "PUT",
+                                 handle_put_camera_tag_assignments);
 
     // Stream-specific routes (must come before /api/streams/# wildcard)
     http_server_register_handler(server, "/api/streams/#/recording", "GET",

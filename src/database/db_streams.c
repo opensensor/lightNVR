@@ -13,6 +13,7 @@
 #include "database/db_core.h"
 #include "database/db_schema.h"
 #include "database/db_schema_cache.h"
+#include "database/db_camera_tags.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "utils/strings.h"
@@ -251,6 +252,12 @@ uint64_t add_stream_config(const stream_config_t *stream) {
             stmt = NULL;
         }
 
+        if (db_camera_tags_sync_legacy_by_name_locked(
+                db, stream->name, stream->tags) != 0) {
+            log_warn("Failed to sync normalized tags for reactivated stream %s",
+                     stream->name);
+        }
+
         log_info("Updated disabled stream configuration: name=%s, enabled=%s, detection=%s, model=%s",
                 stream->name,
                 stream->enabled ? "true" : "false",
@@ -399,6 +406,11 @@ uint64_t add_stream_config(const stream_config_t *stream) {
     if (stmt) {
         sqlite3_finalize(stmt);
         stmt = NULL;
+    }
+    if (stream_id != 0 && db_camera_tags_sync_legacy_by_name_locked(
+            db, stream->name, stream->tags) != 0) {
+        log_warn("Failed to sync normalized tags for new stream %s",
+                 stream->name);
     }
     pthread_mutex_unlock(db_mutex);
 
@@ -565,6 +577,10 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     if (stmt) {
         sqlite3_finalize(stmt);
         stmt = NULL;
+    }
+
+    if (db_camera_tags_sync_legacy_by_name_locked(db, name, stream->tags) != 0) {
+        log_warn("Failed to sync normalized tags for stream %s", name);
     }
 
     // Log the update
