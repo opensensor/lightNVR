@@ -26,6 +26,7 @@ typedef enum {
 // Stream configuration structure
 typedef struct {
     char camera_uuid[CAMERA_UUID_STRING_SIZE]; // Immutable fleet identity
+    char location_uuid[CAMERA_UUID_STRING_SIZE]; // Primary physical location
     char name[MAX_STREAM_NAME];
     char url[MAX_URL_LENGTH];
     bool enabled;

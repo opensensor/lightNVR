@@ -1057,6 +1057,8 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     }
     safe_strcpy(config.camera_uuid, persisted_config->camera_uuid,
                 sizeof(config.camera_uuid), 0);
+    safe_strcpy(config.location_uuid, persisted_config->location_uuid,
+                sizeof(config.location_uuid), 0);
     free(persisted_config);
 
     // Create stream in memory from the database configuration
@@ -1123,6 +1125,7 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
 
     cJSON_AddBoolToObject(success, "success", true);
     cJSON_AddStringToObject(success, "camera_uuid", config.camera_uuid);
+    cJSON_AddStringToObject(success, "location_uuid", config.location_uuid);
 
     // Add ONVIF detection result if applicable
     if (onvif_test_performed) {
