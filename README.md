@@ -564,8 +564,14 @@ For organizations that need to integrate lightNVR into proprietary products or c
 
 ## Star History
 
-## Star History
-[![Star History Chart](https://api.star-history.com/image?repos=opensensor/lightNVR&type=date&legend=top-left)](https://www.star-history.com/?repos=opensensor%2FlightNVR&type=date&legend=top-left)
+<!-- The encrypted Star History token expires on 2027-08-23; regenerate the embed before then. -->
+<a href="https://www.star-history.com/?repos=opensensor%2FlightNVR&type=date&legend=top-left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=opensensor/lightNVR&type=date&theme=dark&legend=top-left&sealed_token=8cR6LaUNd9-xW7lZFkzSohfLk3BMjr87YymKaK5bAXN-mx3XwRg7a3jP2FjwAWm21bgmUXtR5nXl_jqIg0WpHoVZODURxPGW2MG791kgYSq3zrnvnQ0RchxXLvQY6GIS8qI1Vw-20IuDmwaH5WX1KpOgk_vXqx46gFmVqIo__6ii5pYjFCIIz8SmcC_S" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=opensensor/lightNVR&type=date&legend=top-left&sealed_token=8cR6LaUNd9-xW7lZFkzSohfLk3BMjr87YymKaK5bAXN-mx3XwRg7a3jP2FjwAWm21bgmUXtR5nXl_jqIg0WpHoVZODURxPGW2MG791kgYSq3zrnvnQ0RchxXLvQY6GIS8qI1Vw-20IuDmwaH5WX1KpOgk_vXqx46gFmVqIo__6ii5pYjFCIIz8SmcC_S" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=opensensor/lightNVR&type=date&legend=top-left&sealed_token=8cR6LaUNd9-xW7lZFkzSohfLk3BMjr87YymKaK5bAXN-mx3XwRg7a3jP2FjwAWm21bgmUXtR5nXl_jqIg0WpHoVZODURxPGW2MG791kgYSq3zrnvnQ0RchxXLvQY6GIS8qI1Vw-20IuDmwaH5WX1KpOgk_vXqx46gFmVqIo__6ii5pYjFCIIz8SmcC_S" />
+  </picture>
+</a>
 
 ## Acknowledgments
 
