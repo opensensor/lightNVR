@@ -753,6 +753,37 @@ static const char migration_0049_down[] =
     "DROP TABLE IF EXISTS camera_locations;\n"
     "SELECT 1;";
 
+static const char migration_0050_up[] =
+    "CREATE TABLE camera_tags (\n"
+    "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+    "    uuid TEXT NOT NULL UNIQUE,\n"
+    "    label TEXT NOT NULL,\n"
+    "    color TEXT NOT NULL DEFAULT '',\n"
+    "    description TEXT NOT NULL DEFAULT '',\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "\n"
+    "CREATE UNIQUE INDEX idx_camera_tags_label\n"
+    "ON camera_tags(label COLLATE NOCASE);\n"
+    "\n"
+    "CREATE TABLE camera_tag_assignments (\n"
+    "    camera_uuid TEXT NOT NULL REFERENCES streams(camera_uuid) ON DELETE CASCADE,\n"
+    "    tag_uuid TEXT NOT NULL REFERENCES camera_tags(uuid) ON DELETE CASCADE,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    PRIMARY KEY (camera_uuid, tag_uuid)\n"
+    ");\n"
+    "\n"
+    "CREATE INDEX idx_camera_tag_assignments_tag\n"
+    "ON camera_tag_assignments(tag_uuid, camera_uuid);";
+
+static const char migration_0050_down[] =
+    "DROP INDEX IF EXISTS idx_camera_tag_assignments_tag;\n"
+    "DROP TABLE IF EXISTS camera_tag_assignments;\n"
+    "DROP INDEX IF EXISTS idx_camera_tags_label;\n"
+    "DROP TABLE IF EXISTS camera_tags;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1090,8 +1121,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0049_down,
         .is_embedded = true
     },
+    {
+        .version = "0050",
+        .description = "add_normalized_camera_tags",
+        .sql_up = migration_0050_up,
+        .sql_down = migration_0050_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 48
+#define EMBEDDED_MIGRATIONS_COUNT 49
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

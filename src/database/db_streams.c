@@ -13,6 +13,7 @@
 #include "database/db_core.h"
 #include "database/db_schema.h"
 #include "database/db_schema_cache.h"
+#include "database/db_camera_tags.h"
 #include "core/logger.h"
 #include "core/config.h"
 #include "utils/strings.h"
@@ -61,6 +62,26 @@ static void deserialize_recording_schedule(const char *text, uint8_t *schedule) 
     while (idx < 168) {
         schedule[idx++] = 1;
     }
+}
+
+static bool stream_transaction_begin(sqlite3 *db, bool *owns_transaction) {
+    *owns_transaction = sqlite3_get_autocommit(db) != 0;
+    if (!*owns_transaction) return true;
+    return sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) == SQLITE_OK;
+}
+
+static bool stream_transaction_finish(sqlite3 *db, bool owns_transaction,
+                                      bool success) {
+    if (!owns_transaction) return success;
+    if (!success) {
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        return false;
+    }
+    if (sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK) {
+        return true;
+    }
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    return false;
 }
 
 /**
@@ -231,6 +252,15 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         // Bind ID parameter
         sqlite3_bind_int64(stmt, 53, (sqlite3_int64)existing_id);
 
+        bool owns_transaction = false;
+        if (!stream_transaction_begin(db, &owns_transaction)) {
+            log_error("Failed to begin reactivation transaction: %s",
+                      sqlite3_errmsg(db));
+            sqlite3_finalize(stmt);
+            pthread_mutex_unlock(db_mutex);
+            return 0;
+        }
+
         // Execute statement
         rc = sqlite3_step(stmt);
         if (rc != SQLITE_DONE) {
@@ -241,6 +271,7 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                 sqlite3_finalize(stmt);
                 stmt = NULL;
             }
+            stream_transaction_finish(db, owns_transaction, false);
             pthread_mutex_unlock(db_mutex);
             return 0;
         }
@@ -249,6 +280,21 @@ uint64_t add_stream_config(const stream_config_t *stream) {
         if (stmt) {
             sqlite3_finalize(stmt);
             stmt = NULL;
+        }
+
+        if (db_camera_tags_sync_legacy_by_name_locked(
+                db, stream->name, stream->tags) != 0) {
+            log_error("Failed to sync normalized tags for reactivated stream %s",
+                      stream->name);
+            stream_transaction_finish(db, owns_transaction, false);
+            pthread_mutex_unlock(db_mutex);
+            return 0;
+        }
+        if (!stream_transaction_finish(db, owns_transaction, true)) {
+            log_error("Failed to commit reactivated stream %s: %s",
+                      stream->name, sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return 0;
         }
 
         log_info("Updated disabled stream configuration: name=%s, enabled=%s, detection=%s, model=%s",
@@ -378,27 +424,46 @@ uint64_t add_stream_config(const stream_config_t *stream) {
                                  insert_detection_schedule_buf, sizeof(insert_detection_schedule_buf));
     sqlite3_bind_text(stmt, 53, insert_detection_schedule_buf, -1, SQLITE_TRANSIENT);
 
+    bool owns_transaction = false;
+    if (!stream_transaction_begin(db, &owns_transaction)) {
+        log_error("Failed to begin stream insert transaction: %s",
+                  sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return 0;
+    }
+
     // Execute statement
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
         log_error("Failed to add stream configuration: %s", sqlite3_errmsg(db));
-        // Continue to finalize the statement
     } else {
         stream_id = (uint64_t)sqlite3_last_insert_rowid(db);
-        log_debug("Added stream configuration with ID %llu", (unsigned long long)stream_id);
-
-        // Log the addition
-        log_info("Added stream configuration: name=%s, enabled=%s, detection=%s, model=%s",
-                stream->name,
-                stream->enabled ? "true" : "false",
-                stream->detection_based_recording ? "true" : "false",
-                stream->detection_model);
     }
 
     // Finalize the prepared statement
     if (stmt) {
         sqlite3_finalize(stmt);
         stmt = NULL;
+    }
+    bool success = stream_id != 0;
+    if (success && db_camera_tags_sync_legacy_by_name_locked(
+            db, stream->name, stream->tags) != 0) {
+        log_error("Failed to sync normalized tags for new stream %s",
+                  stream->name);
+        success = false;
+    }
+    if (!stream_transaction_finish(db, owns_transaction, success)) {
+        stream_id = 0;
+    }
+    if (stream_id != 0) {
+        log_debug("Added stream configuration with ID %llu",
+                  (unsigned long long)stream_id);
+        log_info("Added stream configuration: name=%s, enabled=%s, detection=%s, model=%s",
+                 stream->name,
+                 stream->enabled ? "true" : "false",
+                 stream->detection_based_recording ? "true" : "false",
+                 stream->detection_model);
     }
     pthread_mutex_unlock(db_mutex);
 
@@ -547,6 +612,15 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     // Bind the WHERE clause parameter
     sqlite3_bind_text(stmt, 54, name, -1, SQLITE_STATIC);
 
+    bool owns_transaction = false;
+    if (!stream_transaction_begin(db, &owns_transaction)) {
+        log_error("Failed to begin stream update transaction: %s",
+                  sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
     // Execute statement
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
@@ -557,6 +631,7 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
             sqlite3_finalize(stmt);
             stmt = NULL;
         }
+        stream_transaction_finish(db, owns_transaction, false);
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
@@ -565,6 +640,20 @@ int update_stream_config(const char *name, const stream_config_t *stream) {
     if (stmt) {
         sqlite3_finalize(stmt);
         stmt = NULL;
+    }
+
+    if (db_camera_tags_sync_legacy_by_name_locked(
+            db, stream->name, stream->tags) != 0) {
+        log_error("Failed to sync normalized tags for stream %s", name);
+        stream_transaction_finish(db, owns_transaction, false);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+    if (!stream_transaction_finish(db, owns_transaction, true)) {
+        log_error("Failed to commit stream update for %s: %s", name,
+                  sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
     }
 
     // Log the update
