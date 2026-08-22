@@ -363,6 +363,16 @@ void handle_put_camera_location(const http_request_t *req,
         return;
     }
 
+    // Keep in-memory config consistent (e.g. for backups).
+    if (g_config.streams) {
+        for (int i = 0; i < g_config.max_streams; i++) {
+            if (strcmp(g_config.streams[i].camera_uuid, camera_path) == 0) {
+                safe_strcpy(g_config.streams[i].location_uuid, location_uuid,
+                            sizeof(g_config.streams[i].location_uuid), 0);
+                break;
+            }
+        }
+    }
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         http_response_set_json_error(res, 500, "Failed to create response");
