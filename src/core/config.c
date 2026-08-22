@@ -1206,8 +1206,8 @@ int save_stream_configs(config_t *config) {
         }
 
         if (identical) {
-            /* The database owns stable camera identity. Hydrate UUIDs even when
-             * no stream configuration write is necessary. */
+            /* The database owns stable camera identity and location. Hydrate
+             * both even when no stream configuration write is necessary. */
             for (int i = 0; i < config->max_streams; i++) {
                 if (config->streams[i].name[0] == '\0') {
                     continue;
@@ -1218,6 +1218,9 @@ int save_stream_configs(config_t *config) {
                         safe_strcpy(config->streams[i].camera_uuid,
                                     db_streams[j].camera_uuid,
                                     sizeof(config->streams[i].camera_uuid), 0);
+                        safe_strcpy(config->streams[i].location_uuid,
+                                    db_streams[j].location_uuid,
+                                    sizeof(config->streams[i].location_uuid), 0);
                         break;
                     }
                 }
