@@ -678,6 +678,27 @@ static const char migration_0046_up[] =
 static const char migration_0046_down[] =
     "SELECT 1;";
 
+static const char migration_0048_up[] =
+    "ALTER TABLE streams ADD COLUMN camera_uuid TEXT NOT NULL DEFAULT '';\n"
+    "\n"
+    "UPDATE streams\n"
+    "SET camera_uuid = lower(\n"
+    "    hex(randomblob(4)) || '-' ||\n"
+    "    hex(randomblob(2)) || '-4' ||\n"
+    "    substr(hex(randomblob(2)), 2) || '-' ||\n"
+    "    substr('89ab', (abs(random()) % 4) + 1, 1) ||\n"
+    "    substr(hex(randomblob(2)), 2) || '-' ||\n"
+    "    hex(randomblob(6))\n"
+    ")\n"
+    "WHERE camera_uuid = '';\n"
+    "\n"
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_streams_camera_uuid\n"
+    "ON streams(camera_uuid);";
+
+static const char migration_0048_down[] =
+    "DROP INDEX IF EXISTS idx_streams_camera_uuid;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1001,8 +1022,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0046_down,
         .is_embedded = true
     },
+    {
+        .version = "0048",
+        .description = "add_camera_uuid",
+        .sql_up = migration_0048_up,
+        .sql_down = migration_0048_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 46
+#define EMBEDDED_MIGRATIONS_COUNT 47
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

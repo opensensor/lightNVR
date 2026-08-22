@@ -8,6 +8,8 @@
 #define MAX_PATH_LENGTH 512
 // Maximum length for stream names
 #define MAX_STREAM_NAME 256
+// Canonical UUID string plus null terminator
+#define CAMERA_UUID_STRING_SIZE 37
 // Maximum length for URLs
 #define MAX_URL_LENGTH 512
 // Compile-time ceiling for per-stream static arrays (pointer arrays, watchdog trackers, etc.).
@@ -23,6 +25,7 @@ typedef enum {
 
 // Stream configuration structure
 typedef struct {
+    char camera_uuid[CAMERA_UUID_STRING_SIZE]; // Immutable fleet identity
     char name[MAX_STREAM_NAME];
     char url[MAX_URL_LENGTH];
     bool enabled;
