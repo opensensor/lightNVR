@@ -24,6 +24,7 @@
 #include "database/db_schema.h"
 #include "database/db_migrations.h"
 #include "database/db_backup.h"
+#include "database/db_camera_tags.h"
 #include "core/config.h"
 #include "core/logger.h"
 #include "core/path_utils.h"
@@ -795,6 +796,15 @@ int init_database(const char *db_path) {
             sqlite3_finalize(cleanup_stmt);
         }
         sqlite3_close_v2(db); // Use close_v2 for better cleanup
+        db = NULL;
+        return -1;
+    }
+
+    /* Normalize legacy comma-separated camera tags after the schema exists.
+     * This is idempotent and also repairs an interrupted compatibility sync. */
+    if (db_camera_tags_backfill_legacy() != 0) {
+        log_error("Failed to backfill normalized camera tags");
+        sqlite3_close_v2(db);
         db = NULL;
         return -1;
     }
