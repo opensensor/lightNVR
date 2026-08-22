@@ -671,6 +671,77 @@ GET /api/timeline/play
 
 Streams video for timeline playback at a specified point in time.
 
+### Fleet Query and Selectors
+
+#### Query Cameras
+
+```
+POST /api/fleet/cameras/query
+```
+
+Returns an authorized, server-paginated camera inventory with optional facets.
+The `address` field contains only the source scheme and network authority; paths,
+query strings, fragments, and embedded credentials are omitted. Existing
+`allowed_tags` restrictions are applied before totals and facet counts are
+calculated.
+
+```json
+{
+  "selector": {
+    "version": 1,
+    "expression": {
+      "op": "and",
+      "children": [
+        {"op": "location_subtree", "uuid": "location-uuid"},
+        {"op": "tag_any", "uuids": ["tag-uuid"]},
+        {"op": "health", "values": ["down", "degraded"]}
+      ]
+    }
+  },
+  "search": "north door",
+  "page": 1,
+  "page_size": 50,
+  "sort_by": "name",
+  "sort_order": "asc",
+  "facets": true,
+  "explain": false
+}
+```
+
+`page_size` is limited to 200. Supported sort fields are `name`,
+`camera_uuid`, `location`, `health`, `enabled`, `recording_mode`, and
+`address`. Results use the selected field plus camera UUID as a stable
+tie-breaker.
+
+Selector version 1 supports:
+
+- Boolean nodes: `and` with `children`, `or` with `children`, and `not` with
+  `child`.
+- `all`.
+- `camera_uuid` with `values`.
+- `location_subtree` with `uuid`.
+- `tag_any`, `tag_all`, and `tag_none` with tag `uuids`.
+- `enabled` with a boolean `value`.
+- `recording_mode` with `values` from `off`, `continuous`, and `detection`.
+- `vendor` and `model` with case-insensitive `values`. Inventory values are
+  populated as ONVIF inventory support becomes available.
+- `capability_any` and `capability_all` with `values` from `onvif`, `ptz`, and
+  `backchannel`.
+- `health` with `values` from `unknown`, `up`, `degraded`, `down`, and
+  `disabled`.
+
+Selectors are limited to 8 levels, 64 nodes, and 64 values per node.
+
+#### Preview Selector
+
+```
+POST /api/fleet/selectors/preview
+```
+
+Accepts the same request as the query endpoint, caps pages at 50 cameras, and
+adds `matched_clauses` to each returned camera. An optional `camera_uuid`
+restricts the preview to one camera.
+
 ### System
 
 #### Get System Information
