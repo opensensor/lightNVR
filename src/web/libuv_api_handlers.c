@@ -36,6 +36,7 @@
 #include "web/api_handlers_metrics.h"
 #include "web/api_handlers_motion.h"
 #include "web/api_handlers_recording_control.h"
+#include "web/api_handlers_locations.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -81,6 +82,15 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/streams", "GET", handle_get_streams);
     http_server_register_handler(server, "/api/streams", "POST", handle_post_stream);
     http_server_register_handler(server, "/api/streams/test", "POST", handle_test_stream);
+
+    // Fleet location hierarchy (UUID-based, admin-only until scoped auth lands)
+    http_server_register_handler(server, "/api/locations", "GET", handle_get_locations);
+    http_server_register_handler(server, "/api/locations", "POST", handle_post_location);
+    http_server_register_handler(server, "/api/locations/#", "GET", handle_get_location);
+    http_server_register_handler(server, "/api/locations/#", "PUT", handle_put_location);
+    http_server_register_handler(server, "/api/locations/#", "DELETE", handle_delete_location);
+    http_server_register_handler(server, "/api/cameras/#/location", "PUT",
+                                 handle_put_camera_location);
 
     // Stream-specific routes (must come before /api/streams/# wildcard)
     http_server_register_handler(server, "/api/streams/#/recording", "GET",

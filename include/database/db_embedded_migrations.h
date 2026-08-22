@@ -699,6 +699,60 @@ static const char migration_0048_down[] =
     "DROP INDEX IF EXISTS idx_streams_camera_uuid;\n"
     "SELECT 1;";
 
+static const char migration_0049_up[] =
+    "CREATE TABLE camera_locations (\n"
+    "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+    "    uuid TEXT NOT NULL UNIQUE,\n"
+    "    parent_uuid TEXT REFERENCES camera_locations(uuid) ON DELETE RESTRICT,\n"
+    "    name TEXT NOT NULL,\n"
+    "    type TEXT NOT NULL DEFAULT 'area',\n"
+    "    sort_order INTEGER NOT NULL DEFAULT 0,\n"
+    "    metadata_json TEXT NOT NULL DEFAULT '{}',\n"
+    "    is_system INTEGER NOT NULL DEFAULT 0,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "\n"
+    "CREATE UNIQUE INDEX idx_camera_locations_sibling_name\n"
+    "ON camera_locations(ifnull(parent_uuid, ''), name COLLATE NOCASE);\n"
+    "\n"
+    "CREATE INDEX idx_camera_locations_parent\n"
+    "ON camera_locations(parent_uuid, sort_order, name COLLATE NOCASE);\n"
+    "\n"
+    "INSERT INTO camera_locations (uuid, parent_uuid, name, type, is_system)\n"
+    "VALUES (\n"
+    "    lower(\n"
+    "        hex(randomblob(4)) || '-' ||\n"
+    "        hex(randomblob(2)) || '-4' ||\n"
+    "        substr(hex(randomblob(2)), 2) || '-' ||\n"
+    "        substr('89ab', (abs(random()) % 4) + 1, 1) ||\n"
+    "        substr(hex(randomblob(2)), 2) || '-' ||\n"
+    "        hex(randomblob(6))\n"
+    "    ),\n"
+    "    NULL,\n"
+    "    'Unassigned',\n"
+    "    'system',\n"
+    "    1\n"
+    ");\n"
+    "\n"
+    "ALTER TABLE streams ADD COLUMN location_uuid TEXT DEFAULT NULL\n"
+    "REFERENCES camera_locations(uuid) ON DELETE RESTRICT;\n"
+    "\n"
+    "UPDATE streams\n"
+    "SET location_uuid = (SELECT uuid FROM camera_locations WHERE is_system = 1 LIMIT 1)\n"
+    "WHERE location_uuid IS NULL;\n"
+    "\n"
+    "CREATE INDEX idx_streams_location_uuid\n"
+    "ON streams(location_uuid);";
+
+static const char migration_0049_down[] =
+    "DROP INDEX IF EXISTS idx_streams_location_uuid;\n"
+    "UPDATE streams SET location_uuid = NULL;\n"
+    "DROP INDEX IF EXISTS idx_camera_locations_parent;\n"
+    "DROP INDEX IF EXISTS idx_camera_locations_sibling_name;\n"
+    "DROP TABLE IF EXISTS camera_locations;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1029,8 +1083,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0048_down,
         .is_embedded = true
     },
+    {
+        .version = "0049",
+        .description = "add_camera_locations",
+        .sql_up = migration_0049_up,
+        .sql_down = migration_0049_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 47
+#define EMBEDDED_MIGRATIONS_COUNT 48
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

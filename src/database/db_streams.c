@@ -279,12 +279,13 @@ uint64_t add_stream_config(const stream_config_t *stream) {
           "onvif_username, onvif_password, onvif_profile, onvif_port, "
           "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
           "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-          "detection_record_on_schedule, detection_recording_schedule, camera_uuid) "
+          "detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid) "
           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
           "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
           "substr(hex(randomblob(2)), 2) || '-' || "
           "substr('89ab', (abs(random()) % 4) + 1, 1) || "
-          "substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))));";
+          "substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6))), "
+          "(SELECT uuid FROM camera_locations WHERE is_system = 1 LIMIT 1));";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -818,7 +819,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
         "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-        "detection_record_on_schedule, detection_recording_schedule, camera_uuid "
+        "detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid "
         "FROM streams WHERE name = ?;";
 
     // Column index constants for readability
@@ -837,7 +838,7 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
         COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL, COL_PUBLISH_URL,
         COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE,
-        COL_CAMERA_UUID
+        COL_CAMERA_UUID, COL_LOCATION_UUID
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -857,6 +858,12 @@ int get_stream_config_by_name(const char *name, stream_config_t *stream) {
         if (camera_uuid) {
             safe_strcpy(stream->camera_uuid, camera_uuid,
                         sizeof(stream->camera_uuid), 0);
+        }
+        const char *location_uuid =
+            (const char *)sqlite3_column_text(stmt, COL_LOCATION_UUID);
+        if (location_uuid) {
+            safe_strcpy(stream->location_uuid, location_uuid,
+                        sizeof(stream->location_uuid), 0);
         }
 
         // Basic stream settings
@@ -1146,7 +1153,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         "onvif_username, onvif_password, onvif_profile, onvif_port, "
         "record_on_schedule, recording_schedule, tags, admin_url, privacy_mode, motion_trigger_source, "
         "go2rtc_source_override, sub_stream_url, audio_voice_enhancement, detection_url, publish_url, "
-        "detection_record_on_schedule, detection_recording_schedule, camera_uuid "
+        "detection_record_on_schedule, detection_recording_schedule, camera_uuid, location_uuid "
         "FROM streams ORDER BY name;";
 
     // Column index constants (same as get_stream_config_by_name)
@@ -1165,7 +1172,7 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         COL_MOTION_TRIGGER_SOURCE, COL_GO2RTC_SOURCE_OVERRIDE, COL_SUB_STREAM_URL,
         COL_AUDIO_VOICE_ENHANCEMENT, COL_DETECTION_URL, COL_PUBLISH_URL,
         COL_DETECTION_RECORD_ON_SCHEDULE, COL_DETECTION_RECORDING_SCHEDULE,
-        COL_CAMERA_UUID
+        COL_CAMERA_UUID, COL_LOCATION_UUID
     };
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1184,6 +1191,12 @@ int get_all_stream_configs(stream_config_t *streams, int max_count) {
         if (camera_uuid) {
             safe_strcpy(s->camera_uuid, camera_uuid,
                         sizeof(s->camera_uuid), 0);
+        }
+        const char *location_uuid =
+            (const char *)sqlite3_column_text(stmt, COL_LOCATION_UUID);
+        if (location_uuid) {
+            safe_strcpy(s->location_uuid, location_uuid,
+                        sizeof(s->location_uuid), 0);
         }
 
         // Basic settings

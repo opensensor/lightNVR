@@ -387,6 +387,11 @@ void test_handle_get_streams_includes_audio_voice_enhancement(void) {
     TEST_ASSERT_TRUE(cJSON_IsString(camera_uuid));
     TEST_ASSERT_EQUAL_UINT(CAMERA_UUID_STRING_SIZE - 1,
                            strlen(camera_uuid->valuestring));
+    cJSON *location_uuid =
+        cJSON_GetObjectItemCaseSensitive(stream, "location_uuid");
+    TEST_ASSERT_TRUE(cJSON_IsString(location_uuid));
+    TEST_ASSERT_EQUAL_UINT(CAMERA_UUID_STRING_SIZE - 1,
+                           strlen(location_uuid->valuestring));
     cJSON *avoe = cJSON_GetObjectItemCaseSensitive(stream, "audio_voice_enhancement");
     TEST_ASSERT_NOT_NULL(avoe);
     TEST_ASSERT_TRUE(cJSON_IsBool(avoe));
@@ -430,6 +435,10 @@ void test_handle_get_stream_by_name_includes_audio_voice_enhancement(void) {
             cJSON_GetObjectItemCaseSensitive(root, "camera_uuid");
         TEST_ASSERT_TRUE(cJSON_IsString(camera_uuid));
         TEST_ASSERT_EQUAL_STRING(s.camera_uuid, camera_uuid->valuestring);
+        cJSON *location_uuid =
+            cJSON_GetObjectItemCaseSensitive(root, "location_uuid");
+        TEST_ASSERT_TRUE(cJSON_IsString(location_uuid));
+        TEST_ASSERT_EQUAL_STRING(s.location_uuid, location_uuid->valuestring);
         cJSON *avoe = cJSON_GetObjectItemCaseSensitive(root, "audio_voice_enhancement");
         TEST_ASSERT_NOT_NULL(avoe);
         TEST_ASSERT_TRUE(cJSON_IsTrue(avoe));
@@ -456,6 +465,10 @@ void test_handle_get_stream_by_name_includes_audio_voice_enhancement(void) {
             cJSON_GetObjectItemCaseSensitive(stream_obj, "camera_uuid");
         TEST_ASSERT_TRUE(cJSON_IsString(camera_uuid));
         TEST_ASSERT_EQUAL_STRING(s.camera_uuid, camera_uuid->valuestring);
+        cJSON *location_uuid =
+            cJSON_GetObjectItemCaseSensitive(stream_obj, "location_uuid");
+        TEST_ASSERT_TRUE(cJSON_IsString(location_uuid));
+        TEST_ASSERT_EQUAL_STRING(s.location_uuid, location_uuid->valuestring);
         cJSON *avoe = cJSON_GetObjectItemCaseSensitive(stream_obj, "audio_voice_enhancement");
         TEST_ASSERT_NOT_NULL(avoe);
         TEST_ASSERT_TRUE(cJSON_IsTrue(avoe));
