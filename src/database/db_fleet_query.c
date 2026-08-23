@@ -9,6 +9,7 @@
 #include "core/url_utils.h"
 #include "database/db_core.h"
 #include "database/db_fleet_query.h"
+#include "telemetry/stream_metrics.h"
 #include "utils/strings.h"
 
 static void copy_column(char *destination, size_t destination_size,
@@ -194,4 +195,38 @@ int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
     *cameras = loaded;
     *count = loaded_count;
     return 0;
+}
+
+void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
+    if (!cameras || count <= 0) return;
+    int maximum = metrics_get_max_streams();
+    if (maximum <= 0) return;
+    stream_metrics_t *metrics = calloc((size_t)maximum, sizeof(*metrics));
+    if (!metrics) return;
+    int metric_count = metrics_snapshot_all(metrics, maximum);
+    for (int i = 0; i < count; i++) {
+        if (!cameras[i].enabled) {
+            cameras[i].health = FLEET_HEALTH_DISABLED;
+            continue;
+        }
+        for (int j = 0; j < metric_count; j++) {
+            if (strcmp(cameras[i].name, metrics[j].stream_name) != 0) continue;
+            switch ((stream_health_status_t)metrics[j].health_status) {
+                case STREAM_HEALTH_UP:
+                    cameras[i].health = FLEET_HEALTH_UP;
+                    break;
+                case STREAM_HEALTH_DEGRADED:
+                    cameras[i].health = FLEET_HEALTH_DEGRADED;
+                    break;
+                case STREAM_HEALTH_DOWN:
+                    cameras[i].health = FLEET_HEALTH_DOWN;
+                    break;
+            }
+            cameras[i].last_frame_ts = (int64_t)metrics[j].last_frame_ts;
+            cameras[i].current_fps = metrics[j].current_fps;
+            cameras[i].recording_active = metrics[j].recording_active != 0;
+            break;
+        }
+    }
+    free(metrics);
 }

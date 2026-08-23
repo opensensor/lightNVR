@@ -784,6 +784,44 @@ static const char migration_0050_down[] =
     "DROP TABLE IF EXISTS camera_tags;\n"
     "SELECT 1;";
 
+static const char migration_0051_up[] =
+    "CREATE TABLE camera_collections (\n"
+    "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+    "    uuid TEXT NOT NULL UNIQUE,\n"
+    "    name TEXT NOT NULL,\n"
+    "    description TEXT NOT NULL DEFAULT '',\n"
+    "    collection_type TEXT NOT NULL CHECK (collection_type IN ('static', 'smart')),\n"
+    "    selector_json TEXT NOT NULL DEFAULT '',\n"
+    "    is_shared INTEGER NOT NULL DEFAULT 1,\n"
+    "    owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))\n"
+    ");\n"
+    "\n"
+    "CREATE UNIQUE INDEX idx_camera_collections_name\n"
+    "ON camera_collections(name COLLATE NOCASE);\n"
+    "\n"
+    "CREATE INDEX idx_camera_collections_owner\n"
+    "ON camera_collections(owner_user_id, is_shared);\n"
+    "\n"
+    "CREATE TABLE camera_collection_members (\n"
+    "    collection_uuid TEXT NOT NULL REFERENCES camera_collections(uuid) ON DELETE CASCADE,\n"
+    "    camera_uuid TEXT NOT NULL REFERENCES streams(camera_uuid) ON DELETE CASCADE,\n"
+    "    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),\n"
+    "    PRIMARY KEY (collection_uuid, camera_uuid)\n"
+    ");\n"
+    "\n"
+    "CREATE INDEX idx_camera_collection_members_camera\n"
+    "ON camera_collection_members(camera_uuid, collection_uuid);";
+
+static const char migration_0051_down[] =
+    "DROP INDEX IF EXISTS idx_camera_collection_members_camera;\n"
+    "DROP TABLE IF EXISTS camera_collection_members;\n"
+    "DROP INDEX IF EXISTS idx_camera_collections_owner;\n"
+    "DROP INDEX IF EXISTS idx_camera_collections_name;\n"
+    "DROP TABLE IF EXISTS camera_collections;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1128,8 +1166,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0050_down,
         .is_embedded = true
     },
+    {
+        .version = "0051",
+        .description = "add_camera_collections",
+        .sql_up = migration_0051_up,
+        .sql_down = migration_0051_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 49
+#define EMBEDDED_MIGRATIONS_COUNT 50
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

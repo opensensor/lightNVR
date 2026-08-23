@@ -742,6 +742,76 @@ Accepts the same request as the query endpoint, caps pages at 50 cameras, and
 adds `matched_clauses` to each returned camera. An optional `camera_uuid`
 restricts the preview to one camera.
 
+### Camera Collections
+
+Collections are durable named camera groups. A `static` collection stores UUID
+membership; a `smart` collection stores a selector v1 object and updates as
+cameras, locations, tags, configuration, or health change.
+
+#### List and Create Collections
+
+```
+GET /api/camera-collections
+POST /api/camera-collections
+```
+
+Listing requires viewer access and returns only shared collections, collections
+owned by the caller, or all collections for administrators. Counts are computed
+after current tag RBAC. Smart selector definitions are returned only to an
+administrator or the collection owner; other viewers receive `selector: null`
+and `selector_redacted: true`. Creation is administrator-only.
+
+```json
+{
+  "name": "Offline entrances",
+  "description": "Entrance cameras requiring attention",
+  "type": "smart",
+  "shared": true,
+  "selector": {
+    "version": 1,
+    "expression": {
+      "op": "and",
+      "children": [
+        {"op": "tag_any", "uuids": ["entrance-tag-uuid"]},
+        {"op": "health", "values": ["down"]}
+      ]
+    }
+  }
+}
+```
+
+#### Read, Update, and Delete a Collection
+
+```
+GET /api/camera-collections/{collection_uuid}
+PUT /api/camera-collections/{collection_uuid}
+DELETE /api/camera-collections/{collection_uuid}
+```
+
+Reads follow collection visibility and camera RBAC. Update and delete are
+administrator-only in this initial phase. Switching a collection to `smart`
+atomically removes obsolete static membership.
+
+#### Static Collection Members
+
+```
+GET /api/camera-collections/{collection_uuid}/members
+PUT /api/camera-collections/{collection_uuid}/members
+```
+
+`PUT` replaces membership atomically with a `camera_uuids` array and is limited
+to 4,096 entries. `GET` omits cameras outside the caller's current scope. Smart
+collections reject explicit member operations.
+
+#### Preview a Collection
+
+```
+POST /api/camera-collections/{collection_uuid}/preview
+```
+
+Returns the authorized `matched_count` and a sample of at most 50 camera UUIDs,
+names, and location paths.
+
 ### System
 
 #### Get System Information
