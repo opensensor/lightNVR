@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <sqlite3.h>
@@ -16,8 +17,10 @@
 #include "core/event_bus.h"
 #include "core/event_identity.h"
 #include "core/event_producers.h"
+#include "core/mqtt_delivery_worker.h"
 #include "core/mqtt_event_adapter.h"
 #include "database/db_core.h"
+#include "database/db_event_outbox.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
 #include "unity.h"
@@ -37,6 +40,7 @@ typedef struct {
 } capture_t;
 
 static capture_t capture;
+static config_t mqtt_adapter_config;
 
 static int capture_event(const event_envelope_t *event, void *context) {
     capture_t *result = context;
@@ -73,11 +77,16 @@ void setUp(void) {
     event_identity_shutdown();
     sqlite3 *db = get_db_handle();
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM event_outbox;", NULL, NULL, NULL);
     sqlite3_exec(db,
                  "DELETE FROM system_settings "
                  "WHERE key='event_installation_uuid';",
                  NULL, NULL, NULL);
     memset(&capture, 0, sizeof(capture));
+    memset(&mqtt_adapter_config, 0, sizeof(mqtt_adapter_config));
+    mqtt_adapter_config.mqtt_enabled = true;
+    safe_strcpy(mqtt_adapter_config.mqtt_topic_prefix, "lightnvr",
+                sizeof(mqtt_adapter_config.mqtt_topic_prefix), 0);
 }
 
 void tearDown(void) {
@@ -114,6 +123,8 @@ void test_detection_producer_uses_camera_uuid_and_dispatches_off_thread(void) {
     stream_config_t camera = create_camera("North Door");
     TEST_ASSERT_EQUAL_INT(0, event_identity_init());
     capture.producer_thread = pthread_self();
+    TEST_ASSERT_EQUAL_INT(
+        0, mqtt_event_adapter_register(&mqtt_adapter_config));
     TEST_ASSERT_EQUAL_INT(
         0, event_bus_subscribe("capture-detection", capture_event, &capture));
     TEST_ASSERT_EQUAL_INT(0, event_bus_init(0, 0));
@@ -162,6 +173,13 @@ void test_detection_producer_uses_camera_uuid_and_dispatches_off_thread(void) {
     TEST_ASSERT_FLOAT_WITHIN(0.0001f, 0.0f,
                              capture.detections.detections[1].width);
     TEST_ASSERT_EQUAL_INT(-1, capture.detections.detections[1].track_id);
+#ifdef ENABLE_MQTT
+    event_outbox_stats_t outbox;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(
+               MQTT_EVENT_OUTBOX_DESTINATION, (int64_t)time(NULL), &outbox));
+    TEST_ASSERT_EQUAL_INT64(1, outbox.pending_rows);
+#endif
 }
 
 void test_producer_fails_closed_without_identity_or_running_bus(void) {

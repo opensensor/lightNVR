@@ -11,6 +11,7 @@
 #include "core/event_bus.h"
 #include "core/logger.h"
 #include "core/mqtt_client.h"
+#include "core/mqtt_delivery_worker.h"
 #include "utils/strings.h"
 
 #define MQTT_EVENT_SUBSCRIBER "mqtt-compatibility"
@@ -78,8 +79,23 @@ int mqtt_event_adapter_decode_detection(
 }
 
 static int mqtt_event_handler(const event_envelope_t *event, void *context) {
-    (void)context;
-    int failed = mqtt_publish_event(event) != 0;
+    const config_t *config = context;
+    (void)config;
+    int failed = 0;
+
+#ifdef ENABLE_MQTT
+    if (config && config->mqtt_enabled) {
+        event_outbox_enqueue_result_t enqueue_result =
+            mqtt_delivery_worker_enqueue(
+                event, config->mqtt_topic_prefix, NULL);
+        if (enqueue_result != EVENT_OUTBOX_ENQUEUED &&
+            enqueue_result != EVENT_OUTBOX_DUPLICATE) {
+            log_error("MQTT event adapter could not persist event %s (%d)",
+                      event->id, enqueue_result);
+            failed = 1;
+        }
+    }
+#endif
 
     if (strcmp(event->type, DETECTION_EVENT_TYPE) == 0) {
         char stream_name[MAX_STREAM_NAME];
@@ -98,9 +114,10 @@ static int mqtt_event_handler(const event_envelope_t *event, void *context) {
     return failed ? -1 : 0;
 }
 
-int mqtt_event_adapter_register(void) {
+int mqtt_event_adapter_register(const config_t *config) {
+    if (!config) return -1;
     return event_bus_subscribe(MQTT_EVENT_SUBSCRIBER,
-                               mqtt_event_handler, NULL);
+                               mqtt_event_handler, (void *)config);
 }
 
 int mqtt_event_adapter_unregister(void) {
