@@ -475,3 +475,29 @@ int httpd_check_viewer_access(const http_request_t *req, user_t *user) {
     return 0;
 }
 
+int httpd_authorize_action(const http_request_t *req, http_response_t *res,
+                           authorization_action_t action,
+                           const fleet_camera_t *camera, user_t *user,
+                           authorization_evaluation_t *evaluation) {
+    if (!req || !res || !user || !evaluation) return 0;
+    memset(user, 0, sizeof(*user));
+    memset(evaluation, 0, sizeof(*evaluation));
+    if (!httpd_check_viewer_access(req, user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return 0;
+    }
+    if (authorization_evaluate(user, action, camera, evaluation) != 0) {
+        log_error("Authorization evaluation failed for user '%s' and action %d",
+                  user->username, (int)action);
+        http_response_set_json_error(res, 500,
+                                     "Authorization policy evaluation failed");
+        return 0;
+    }
+    if (evaluation->decision != AUTHZ_DECISION_ALLOW) {
+        log_warn("Access denied: User '%s' action %d: %s", user->username,
+                 (int)action, evaluation->explanation);
+        http_response_set_json_error(res, 403, "Forbidden");
+        return 0;
+    }
+    return 1;
+}
