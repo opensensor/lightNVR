@@ -18,7 +18,7 @@
 #define LOG_COMPONENT "DetectionAPI"
 #include "core/logger.h"
 #include "core/config.h"
-#include "core/mqtt_client.h"
+#include "core/event_producers.h"
 #include "video/detection.h"
 #include "video/detection_result.h"
 #include "video/stream_manager.h"
@@ -67,14 +67,15 @@ void store_detection_result(const char *stream_name, const detection_result_t *r
         return;
     }
 
-    // Publish to MQTT if enabled (use filtered result)
+    // Enqueue the normalized event; MQTT compatibility runs on the bus worker.
     if (filtered_result.count > 0) {
-        int mqtt_ret = mqtt_publish_detection(stream_name, &filtered_result, timestamp);
-        // cppcheck-suppress knownConditionTrueFalse
-        if (mqtt_ret != 0) {
-            log_debug("MQTT publish skipped or failed for stream '%s'", stream_name);
+        char event_error[256] = {0};
+        if (event_producer_publish_detection_for_stream(
+                stream_name, &filtered_result, timestamp,
+                event_error, sizeof(event_error)) != 0) {
+            log_debug("Detection event enqueue failed for stream '%s': %s",
+                      stream_name, event_error);
         }
-        mqtt_set_motion_state(stream_name, result);
     }
 
     // Log the stored detections
@@ -144,9 +145,9 @@ void debug_dump_detection_results(void) {
 /**
  * Handle GET /api/snapshots/{stream}/{file}.jpg
  *
- * Serves detection event snapshots saved by mqtt_publish_detection() under
- * {storage_path}/snapshots/.  The MQTT detection payload references these
- * files via its snapshot_url field (issue #449).
+ * Serves detection event snapshots saved by the MQTT compatibility adapter
+ * under {storage_path}/snapshots/. The legacy payload references these files
+ * via its snapshot_url field (issue #449).
  */
 void handle_get_detection_snapshot(const http_request_t *req, http_response_t *res) {
     if (!req || !res) {

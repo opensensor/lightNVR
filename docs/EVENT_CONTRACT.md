@@ -62,6 +62,7 @@ Additional fields are allowed unless they violate the privacy rules above.
 
 ```json
 {
+  "stream_name": "loading-bay-north",
   "count": 1,
   "detections": [
     {
@@ -79,10 +80,13 @@ Additional fields are allowed unless they violate the privacy rules above.
 }
 ```
 
-`count` must match a non-empty `detections` array. Confidence and bounding-box
-coordinates are normalized to `0.0–1.0`; width and height must be greater than
-zero. `track_id`, `zone_id`, and an authorization-aware `snapshot_url` are
-optional.
+`count` must match a non-empty `detections` array. `stream_name` is mutable
+display/legacy-routing metadata; consumers use the envelope's camera UUID
+subject as identity. Confidence is normalized to `0.0–1.0`. A bounding box may
+be omitted when a camera or external detector reports a class without spatial
+metadata; when present, all four coordinates are required, normalized to
+`0.0–1.0`, and width and height must be greater than zero. `track_id`, `zone_id`,
+and an authorization-aware `snapshot_url` are optional.
 
 ### `io.lightnvr.camera.offline.v1`
 
@@ -122,11 +126,19 @@ and 100. `free_bytes` is optional.
 
 ## Producer API
 
-Producers use `event_envelope_create()` with a registered type, installation
-URN, immutable subject, occurrence time, and a JSON data object. The constructor
+The installation source is a UUID generated once and persisted in
+`system_settings.event_installation_uuid`. Producers use
+`event_envelope_create()` with that installation URN, a registered type,
+immutable subject, occurrence time, and a JSON data object. The constructor
 deep-copies and validates the data, generates the immutable event ID, calculates
 expiry, and formats time. `event_envelope_serialize()` revalidates before
 serialization. Call `event_envelope_clear()` when finished.
+
+Detection paths use `event_producer_publish_detection()` when they already have
+the immutable camera UUID, or
+`event_producer_publish_detection_for_stream()` at legacy name-only call sites.
+Both normalize and enqueue only; neither performs MQTT, snapshot, or other
+network work on the caller thread.
 
 ## Asynchronous in-process bus
 
@@ -147,3 +159,14 @@ Subscribers register before bus startup and must keep callbacks/context alive
 until shutdown. A callback runs off the producer thread but should still use
 bounded work; durable retry and broker isolation are provided by the outbox and
 MQTT delivery layer rather than by blocking the in-process worker.
+
+## MQTT compatibility destination
+
+The P0 MQTT subscriber publishes every normalized event to
+`{topic_prefix}/v1/events/{type}/{subject-id}` as the complete envelope, with
+retention disabled for transient facts. For object detections it also decodes
+the envelope into the existing `{topic_prefix}/detections/{stream_name}` payload,
+snapshot topic, and Home Assistant motion state. This dual publish keeps current
+automations working while new consumers adopt stable UUID identity and versioned
+schemas. All broker, snapshot, and Home Assistant work runs on the event-bus
+worker rather than on capture or detection threads.

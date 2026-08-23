@@ -14,7 +14,7 @@
 #include "core/config.h"
 #include "core/curl_init.h"
 #include "core/shutdown_coordinator.h"
-#include "core/mqtt_client.h"
+#include "core/event_producers.h"
 #include "utils/strings.h"
 #include "video/api_detection.h"
 #include "video/detection_result.h"
@@ -720,8 +720,13 @@ int detect_objects_api(const char *api_url, const unsigned char *frame_data,
         store_detections_in_db(stream_name, result, timestamp, recording_id);
 
         if (result->count > 0) {
-            mqtt_publish_detection(stream_name, result, timestamp);
-            mqtt_set_motion_state(stream_name, result);
+            char event_error[256] = {0};
+            if (event_producer_publish_detection_for_stream(
+                    stream_name, result, timestamp,
+                    event_error, sizeof(event_error)) != 0) {
+                log_debug("API Detection: Event enqueue failed for %s: %s",
+                          stream_name, event_error);
+            }
         }
     } else {
         log_warn("No stream name provided, skipping database storage");
@@ -1085,10 +1090,15 @@ int detect_objects_api_snapshot(const char *api_url, const char *stream_name,
         time_t timestamp = (frame_timestamp != 0) ? frame_timestamp : time(NULL);
         store_detections_in_db(stream_name, result, timestamp, recording_id);
 
-        // Publish to MQTT if enabled
+        // Publish asynchronously through the normalized event bus.
         if (result->count > 0) {
-            mqtt_publish_detection(stream_name, result, timestamp);
-            mqtt_set_motion_state(stream_name, result);
+            char event_error[256] = {0};
+            if (event_producer_publish_detection_for_stream(
+                    stream_name, result, timestamp,
+                    event_error, sizeof(event_error)) != 0) {
+                log_debug("API Detection (snapshot): Event enqueue failed for %s: %s",
+                          stream_name, event_error);
+            }
         }
     }
 

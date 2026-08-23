@@ -53,6 +53,7 @@ typedef enum {
 typedef struct {
     // Stream identification
     char stream_name[MAX_STREAM_NAME];
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
     char rtsp_url[MAX_PATH_LENGTH];
     char output_dir[MAX_PATH_LENGTH];
     

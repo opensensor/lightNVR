@@ -200,6 +200,34 @@ void test_subject_and_per_type_schema_fail_closed(void) {
     cJSON_Delete(data);
 }
 
+void test_detection_bounding_box_is_optional_but_atomic(void) {
+    cJSON *data = detection_fixture();
+    cJSON *detection = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(data, "detections"), 0);
+    cJSON_DeleteItemFromObjectCaseSensitive(detection, "x");
+    cJSON_DeleteItemFromObjectCaseSensitive(detection, "y");
+    cJSON_DeleteItemFromObjectCaseSensitive(detection, "width");
+    cJSON_DeleteItemFromObjectCaseSensitive(detection, "height");
+
+    event_envelope_t event;
+    char error[256] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, event_envelope_create(&event,
+                                 "io.lightnvr.detection.object.v1",
+                                 INSTALLATION_SOURCE, CAMERA_SUBJECT, 0,
+                                 data, error, sizeof(error)));
+    event_envelope_clear(&event);
+
+    cJSON_AddNumberToObject(detection, "x", 0.2);
+    TEST_ASSERT_EQUAL_INT(
+        -1, event_envelope_create(&event,
+                                  "io.lightnvr.detection.object.v1",
+                                  INSTALLATION_SOURCE, CAMERA_SUBJECT, 0,
+                                  data, error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "bounding boxes"));
+    cJSON_Delete(data);
+}
+
 void test_sensitive_and_filesystem_fields_are_rejected_recursively(void) {
     cJSON *data = detection_fixture();
     cJSON *context = cJSON_AddObjectToObject(data, "context");
@@ -241,6 +269,7 @@ int main(void) {
     RUN_TEST(test_serialization_is_cloudevents_shaped_and_identity_is_stable);
     RUN_TEST(test_identity_is_unique_across_events);
     RUN_TEST(test_subject_and_per_type_schema_fail_closed);
+    RUN_TEST(test_detection_bounding_box_is_optional_but_atomic);
     RUN_TEST(test_sensitive_and_filesystem_fields_are_rejected_recursively);
     return UNITY_END();
 }
