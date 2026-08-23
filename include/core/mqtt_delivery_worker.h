@@ -34,6 +34,7 @@ typedef struct {
     uint64_t managed_connected;
     uint64_t profile_reloads;
     uint64_t profile_errors;
+    uint64_t pruned;
     bool running;
 } mqtt_delivery_worker_stats_t;
 

@@ -457,7 +457,18 @@ int event_envelope_validate(const event_envelope_t *event, char *error,
         validate_type_data(event->type, event->data, error, error_size) != 0) {
         return -1;
     }
-    char *data_json = cJSON_PrintUnformatted(event->data);
+    return 0;
+}
+
+/*
+ * Measuring the data payload needs a full serialization pass, so it runs at the
+ * boundaries where an envelope enters the system (creation) or leaves it
+ * (serialization) rather than on every internal revalidation. Envelopes are
+ * immutable after creation and clones deep-copy an already-measured tree, so
+ * the bound still holds everywhere downstream.
+ */
+static int check_data_size(const cJSON *data, char *error, size_t error_size) {
+    char *data_json = cJSON_PrintUnformatted(data);
     if (!data_json) {
         set_error(error, error_size, "event data could not be serialized");
         return -1;
@@ -513,7 +524,8 @@ int event_envelope_create(event_envelope_t *event, const char *type,
         event_envelope_clear(event);
         return -1;
     }
-    if (event_envelope_validate(event, error, error_size) != 0) {
+    if (event_envelope_validate(event, error, error_size) != 0 ||
+        check_data_size(event->data, error, error_size) != 0) {
         event_envelope_clear(event);
         return -1;
     }
@@ -544,9 +556,14 @@ char *event_envelope_serialize(const event_envelope_t *event, char *error,
         cJSON_AddStringToObject(
             root, "sensitivity",
             event_sensitivity_name(definition->sensitivity));
-    cJSON *data_copy = valid ? cJSON_Duplicate(event->data, true) : NULL;
-    if (!valid || !data_copy || !cJSON_AddItemToObject(root, "data", data_copy)) {
-        cJSON_Delete(data_copy);
+    /*
+     * Attach the payload by reference instead of deep-copying it. cJSON stores
+     * a shallow, non-owning alias, so cJSON_Delete(root) below leaves the
+     * caller's tree intact and the input is never mutated. Serialization runs
+     * several times per event, so this keeps the detection path off a full
+     * tree duplicate each time.
+     */
+    if (!valid || !cJSON_AddItemReferenceToObject(root, "data", event->data)) {
         cJSON_Delete(root);
         set_error(error, error_size, "event envelope allocation failed");
         return NULL;

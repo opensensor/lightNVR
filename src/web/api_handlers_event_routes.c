@@ -3,7 +3,6 @@
 #include "web/api_handlers_event_routes.h"
 
 #include <cjson/cJSON.h>
-#include <ctype.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,6 +16,7 @@
 #include "database/db_event_routes.h"
 #include "database/db_fleet_query.h"
 #include "utils/strings.h"
+#include "utils/uuid.h"
 #include "web/audit_log.h"
 #include "web/httpd_utils.h"
 
@@ -27,19 +27,6 @@ static bool authorize_events(const http_request_t *req, http_response_t *res,
     authorization_evaluation_t evaluation;
     return httpd_authorize_action(req, res, AUTHZ_EVENTS_CONFIGURE, NULL, user,
                                   &evaluation) != 0;
-}
-
-static bool valid_uuid(const char *value) {
-    if (!value || strlen(value) != EVENT_ROUTE_UUID_MAX - 1) return false;
-    for (int index = 0; index < EVENT_ROUTE_UUID_MAX - 1; index++) {
-        unsigned char character = (unsigned char)value[index];
-        if (index == 8 || index == 13 || index == 18 || index == 23) {
-            if (character != '-') return false;
-        } else if (!isxdigit(character)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 static bool extract_route_uuid(const http_request_t *req,
@@ -53,7 +40,7 @@ static bool extract_route_uuid(const http_request_t *req,
     }
     char *slash = strchr(value, '/');
     if (slash) *slash = '\0';
-    if (!valid_uuid(value)) {
+    if (!lightnvr_uuid_is_valid(value)) {
         http_response_set_json_error(res, 400, "Invalid event route UUID");
         return false;
     }

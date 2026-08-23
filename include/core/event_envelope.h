@@ -91,7 +91,13 @@ int event_envelope_create(event_envelope_t *event, const char *type,
                           time_t occurred_at, const cJSON *data,
                           char *error, size_t error_size);
 
-/* Validate a constructed or decoded envelope against the registry contract. */
+/*
+ * Validate a constructed or decoded envelope against the registry contract.
+ * This runs on every internal hand-off, so it performs no allocation: the
+ * EVENT_DATA_MAX_BYTES bound is enforced once by event_envelope_create() and
+ * EVENT_ENVELOPE_MAX_BYTES by event_envelope_serialize(). Envelopes are
+ * immutable after creation, so both bounds hold for every clone.
+ */
 int event_envelope_validate(const event_envelope_t *event,
                             char *error, size_t error_size);
 

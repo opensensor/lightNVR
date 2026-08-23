@@ -13,6 +13,11 @@
 #define EVENT_OUTBOX_DEFAULT_MAX_ROWS 10000
 #define EVENT_OUTBOX_DEFAULT_MAX_BYTES (64LL * 1024LL * 1024LL)
 #define EVENT_OUTBOX_DEFAULT_LEASE_SECONDS 30
+/* How long a delivered or dead row is kept for operator inspection before the
+ * delivery worker reclaims it. Terminal rows are otherwise only evicted under
+ * capacity pressure, which would leave the outbox permanently at its row and
+ * byte ceiling on a busy installation. */
+#define EVENT_OUTBOX_TERMINAL_RETENTION_SECONDS (24LL * 60LL * 60LL)
 
 typedef enum {
     EVENT_OUTBOX_ENQUEUED = 0,

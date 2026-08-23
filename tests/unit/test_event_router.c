@@ -282,7 +282,8 @@ void test_delivery_plan_commits_durable_cooldown_after_outbox_acceptance(void) {
     TEST_ASSERT_EQUAL_STRING(EVENT_ROUTE_DEFAULT_DESTINATION,
                              plan.entries[0].destination_key);
     TEST_ASSERT_TRUE(plan.entries[0].suppression_pending);
-    TEST_ASSERT_EQUAL_INT(0, event_router_record_enqueued(&first, &plan));
+    TEST_ASSERT_EQUAL_INT(0, event_router_record_destination_enqueued(
+            &first, &plan, EVENT_ROUTE_DEFAULT_DESTINATION));
     event_route_delivery_plan_clear(&plan);
     event_envelope_clear(&first);
 

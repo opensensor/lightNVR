@@ -3,6 +3,7 @@
 #include "core/event_router.h"
 
 #include <cjson/cJSON.h>
+#include <ctype.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -361,9 +362,14 @@ static bool compile_predicate(compiled_route_t *compiled) {
 }
 
 static int clock_minute(const char *value) {
-    if (!value || strlen(value) != 5) return -1;
-    return ((value[0] - '0') * 10 + value[1] - '0') * 60 +
-           (value[3] - '0') * 10 + value[4] - '0';
+    if (!value || strlen(value) != 5 || value[2] != ':') return -1;
+    for (int index = 0; index < 5; index++) {
+        if (index != 2 && !isdigit((unsigned char)value[index])) return -1;
+    }
+    int hour = (value[0] - '0') * 10 + value[1] - '0';
+    int minute = (value[3] - '0') * 10 + value[4] - '0';
+    if (hour > 23 || minute > 59) return -1;
+    return hour * 60 + minute;
 }
 
 static bool compile_schedule(compiled_route_t *compiled) {
@@ -391,6 +397,14 @@ static bool compile_schedule(compiled_route_t *compiled) {
         compiled_schedule_window_t *destination = &compiled->windows[index];
         destination->start_minute = clock_minute(start->valuestring);
         destination->end_minute = clock_minute(end->valuestring);
+        /* The route validator already rejects malformed bounds, but the
+         * compiler reads persisted rows: refuse rather than schedule on a
+         * garbage minute if a row was edited outside the API. */
+        if (destination->start_minute < 0 || destination->end_minute < 0 ||
+            destination->start_minute == destination->end_minute) {
+            cJSON_Delete(root);
+            return false;
+        }
         for (int day_index = 0; day_index < day_count; day_index++) {
             const cJSON *day = cJSON_GetArrayItem(days, day_index);
             if (!cJSON_IsNumber(day) || day->valueint < 0 ||
@@ -799,10 +813,11 @@ event_router_result_t event_router_evaluate_delivery(
             db_event_route_suppression_check(
                 &route->route, event->type, event->subject, now);
         if (suppression == EVENT_SUPPRESSION_PERMIT) {
+            /* The suppression check succeeded here; a failure to record the
+             * delivery is an evaluation error, counted once at the end. */
             if (!delivery_plan_append(plan, route, true)) {
                 relevant_error = true;
                 plan_error = true;
-                ROUTER.stats.suppression_errors++;
             } else {
                 should_enqueue = true;
             }
@@ -831,32 +846,6 @@ event_router_result_t event_router_evaluate_delivery(
 
 event_router_result_t event_router_evaluate(const event_envelope_t *event) {
     return event_router_evaluate_delivery(event, NULL);
-}
-
-int event_router_record_enqueued(const event_envelope_t *event,
-                                 const event_route_delivery_plan_t *plan) {
-    if (!event || !plan || strcmp(event->id, plan->event_id) != 0 ||
-        strcmp(event->type, plan->event_type) != 0 ||
-        strcmp(event->subject, plan->subject) != 0) {
-        return -1;
-    }
-    int failed = 0;
-    int64_t now = (int64_t)time(NULL);
-    for (size_t index = 0; index < plan->count; index++) {
-        const event_route_delivery_plan_entry_t *entry =
-            &plan->entries[index];
-        if (!entry->suppression_pending) continue;
-        event_suppression_result_t result =
-            db_event_route_suppression_record_allowed(
-                entry->route_uuid, entry->route_revision, event->type,
-                event->subject, event->id, now);
-        /* A concurrent route edit deliberately discards the old policy state. */
-        if (result != EVENT_SUPPRESSION_PERMIT &&
-            result != EVENT_SUPPRESSION_STALE) {
-            failed = 1;
-        }
-    }
-    return failed ? -1 : 0;
 }
 
 int event_router_record_destination_enqueued(

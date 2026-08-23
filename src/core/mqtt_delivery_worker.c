@@ -16,6 +16,13 @@
 
 #define MQTT_DELIVERY_POLL_SECONDS 1
 #define MQTT_DESTINATION_CREATE_RETRY_SECONDS 30
+/* Expiry and terminal-row reclamation are table sweeps, so they run on their
+ * own cadence instead of once per delivered row. While a backlog drains the
+ * loop iterates as fast as the broker acknowledges, and sweeping on every
+ * iteration would make draining quadratic in the size of the outbox. */
+#define MQTT_DELIVERY_EXPIRE_INTERVAL_SECONDS 30
+#define MQTT_DELIVERY_PRUNE_INTERVAL_SECONDS (60 * 60)
+#define MQTT_DELIVERY_PRUNE_BATCH 1000
 
 typedef struct {
     pthread_mutex_t mutex;
@@ -441,9 +448,47 @@ static void wait_for_work(void) {
     pthread_mutex_unlock(&WORKER.mutex);
 }
 
+/* Returns false only when the sweep ran and failed. */
+static bool maintain_outbox(int64_t now, int64_t *last_expire_at,
+                            int64_t *last_prune_at) {
+    if (now < *last_expire_at ||
+        now - *last_expire_at >= MQTT_DELIVERY_EXPIRE_INTERVAL_SECONDS) {
+        int expired = 0;
+        if (db_event_outbox_expire(now, &expired) != 0) {
+            increment(&WORKER.stats.outcome_errors, 1);
+            return false;
+        }
+        *last_expire_at = now;
+        if (expired > 0) increment(&WORKER.stats.expired, (uint64_t)expired);
+    }
+    /* Skip pruning until the clock is past the retention window, so a device
+     * that has not yet reached NTP sync does not log an hourly failure. */
+    if (now > EVENT_OUTBOX_TERMINAL_RETENTION_SECONDS &&
+        (now < *last_prune_at ||
+         now - *last_prune_at >= MQTT_DELIVERY_PRUNE_INTERVAL_SECONDS)) {
+        int deleted = 0;
+        if (db_event_outbox_prune_terminal(
+                now - EVENT_OUTBOX_TERMINAL_RETENTION_SECONDS,
+                MQTT_DELIVERY_PRUNE_BATCH, &deleted) != 0) {
+            increment(&WORKER.stats.outcome_errors, 1);
+            log_warn("Could not prune delivered event outbox rows");
+        } else {
+            increment(&WORKER.stats.pruned, (uint64_t)deleted);
+            if (deleted > 0) {
+                log_info("Pruned %d terminal event outbox rows", deleted);
+            }
+        }
+        /* A full batch leaves more work; the next sweep continues from here. */
+        *last_prune_at = deleted >= MQTT_DELIVERY_PRUNE_BATCH ? 0 : now;
+    }
+    return true;
+}
+
 static void *mqtt_delivery_thread(void *unused) {
     (void)unused;
     log_set_thread_context("MQTTDelivery", NULL);
+    int64_t last_expire_at = 0;
+    int64_t last_prune_at = 0;
     while (!stop_requested()) {
         int64_t now = (int64_t)time(NULL);
         int processed_count = 0;
@@ -451,13 +496,10 @@ static void *mqtt_delivery_thread(void *unused) {
             wait_for_work();
             continue;
         }
-        int expired = 0;
-        if (db_event_outbox_expire(now, &expired) != 0) {
-            increment(&WORKER.stats.outcome_errors, 1);
+        if (!maintain_outbox(now, &last_expire_at, &last_prune_at)) {
             wait_for_work();
             continue;
         }
-        if (expired > 0) increment(&WORKER.stats.expired, (uint64_t)expired);
 
         int processed = process_destination_once(
             MQTT_EVENT_OUTBOX_DESTINATION, now, mqtt_is_connected(),

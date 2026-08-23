@@ -203,6 +203,17 @@ export function Go2rtcTab({ settings, setSettings, handleInputChange, canModifyS
               `The file will be removed on the next go2rtc restart.`,
       };
     }
+    // process_state_known is false while a go2rtc start/stop/reconfigure holds
+    // the lifecycle, so the PID is unavailable rather than absent. Claiming
+    // "not running" there would be wrong during the very restart that applies
+    // the override.
+    if (s.db_bytes > 0 && s.content_matches && s.process_state_known === false) {
+      return {
+        kind: 'info',
+        text: `Override is saved and on disk. go2rtc is busy starting or ` +
+              `reconfiguring, so its runtime state is not readable yet.`,
+      };
+    }
     if (s.db_bytes > 0 && s.content_matches && !s.process_running) {
       return {
         kind: 'warn',

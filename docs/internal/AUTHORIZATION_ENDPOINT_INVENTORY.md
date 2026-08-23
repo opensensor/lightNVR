@@ -115,7 +115,8 @@ they may not trust a client-supplied collection expansion.
 | Storage health | `storage.configure` for sensitive target details; non-sensitive summary may remain operational read | Existing endpoint checks |
 | Storage cleanup | `storage.configure` | Existing administrator checks |
 | Event catalog and route CRUD/preview | `events.configure` | Central evaluator; mutation outcomes are audited and writes use optimistic revisions |
-| Future event destination profiles, runtime retry, and delivery controls | `events.configure` | Not implemented |
+| Event destination profile CRUD | `events.configure` | Central evaluator; broker credentials are write-only and mutation outcomes are audited |
+| Future delivery runtime retry and outbox controls | `events.configure` | Not implemented |
 
 Shared static and smart collections may be referenced directly by grants. The
 evaluator resolves their current membership server-side; private collections

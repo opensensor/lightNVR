@@ -70,12 +70,8 @@ event_router_result_t event_router_evaluate(const event_envelope_t *event);
 event_router_result_t event_router_evaluate_delivery(
     const event_envelope_t *event, event_route_delivery_plan_t *plan);
 
-/* Mark every suppression-enabled planned route as allowed after all relevant
- * destination enqueues return ENQUEUED or DUPLICATE. */
-int event_router_record_enqueued(const event_envelope_t *event,
-                                 const event_route_delivery_plan_t *plan);
-
-/* Commit suppression only for routes targeting one accepted destination. */
+/* Commit suppression only for routes targeting one accepted destination.
+ * Call once per destination whose enqueue returned ENQUEUED or DUPLICATE. */
 int event_router_record_destination_enqueued(
     const event_envelope_t *event, const event_route_delivery_plan_t *plan,
     const char *destination_key);
