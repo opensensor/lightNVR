@@ -14,6 +14,7 @@
 
 #include "core/camera_selector.h"
 #include "core/logger.h"
+#include "database/db_event_route_suppression.h"
 #include "database/db_event_routes.h"
 #include "database/db_fleet_query.h"
 #include "utils/strings.h"
@@ -24,6 +25,8 @@
 #define ROUTER_FILTER_VALUE_MAX 128
 #define ROUTER_SCHEDULE_MAX_WINDOWS 64
 #define ROUTER_INVENTORY_TTL_SECONDS 5
+#define ROUTER_SUPPRESSION_PRUNE_INTERVAL_SECONDS (24LL * 60LL * 60LL)
+#define ROUTER_SUPPRESSION_PRUNE_BATCH 1000
 #define ROUTER_TZ_MAX_FILE_BYTES (1024U * 1024U)
 #define ROUTER_TZ_MAX_TRANSITIONS 4096
 #define ROUTER_TZ_MAX_TYPES 256
@@ -74,6 +77,7 @@ typedef struct {
     int inventory_count;
     int64_t inventory_loaded_at;
     bool inventory_loaded;
+    int64_t last_suppression_prune_at;
     event_router_stats_t stats;
 } event_router_state_t;
 
@@ -610,9 +614,85 @@ static int find_camera_locked(const char *uuid, int64_t now,
     return 1;
 }
 
-event_router_result_t event_router_evaluate(const event_envelope_t *event) {
+static bool route_uses_suppression(const event_route_t *route) {
+    return route->debounce_seconds > 0 || route->cooldown_seconds > 0 ||
+        route->grouping_window_seconds > 0 ||
+        route->max_events_per_minute > 0;
+}
+
+static bool delivery_plan_append(event_route_delivery_plan_t *plan,
+                                 const event_route_t *route) {
+    if (!plan) return true;
+    if (plan->count == plan->capacity) {
+        size_t capacity = plan->capacity == 0 ? 4 : plan->capacity * 2;
+        if (capacity > EVENT_ROUTE_MAX_COUNT) capacity = EVENT_ROUTE_MAX_COUNT;
+        if (capacity <= plan->capacity) return false;
+        event_route_delivery_plan_entry_t *entries = realloc(
+            plan->entries, capacity * sizeof(*entries));
+        if (!entries) return false;
+        plan->entries = entries;
+        plan->capacity = capacity;
+    }
+    event_route_delivery_plan_entry_t *entry = &plan->entries[plan->count++];
+    memset(entry, 0, sizeof(*entry));
+    safe_strcpy(entry->route_uuid, route->uuid, sizeof(entry->route_uuid), 0);
+    entry->route_revision = route->revision;
+    return true;
+}
+
+static void count_suppression_locked(event_suppression_result_t result) {
+    switch (result) {
+        case EVENT_SUPPRESSION_DEBOUNCE:
+            ROUTER.stats.debounce_suppressions++;
+            break;
+        case EVENT_SUPPRESSION_COOLDOWN:
+            ROUTER.stats.cooldown_suppressions++;
+            break;
+        case EVENT_SUPPRESSION_GROUPING:
+            ROUTER.stats.grouping_suppressions++;
+            break;
+        case EVENT_SUPPRESSION_RATE:
+            ROUTER.stats.rate_suppressions++;
+            break;
+        default:
+            break;
+    }
+}
+
+static void maybe_prune_suppression_locked(int64_t now) {
+    if (now <= 0 ||
+        (ROUTER.last_suppression_prune_at > 0 &&
+         now >= ROUTER.last_suppression_prune_at &&
+         now - ROUTER.last_suppression_prune_at <
+             ROUTER_SUPPRESSION_PRUNE_INTERVAL_SECONDS)) {
+        return;
+    }
+    int deleted = 0;
+    int result = db_event_route_suppression_prune(
+        now - EVENT_ROUTE_SUPPRESSION_RETENTION_SECONDS,
+        ROUTER_SUPPRESSION_PRUNE_BATCH, &deleted);
+    if (result == 0) {
+        ROUTER.last_suppression_prune_at = now;
+        if (deleted > 0) {
+            log_info("Pruned %d expired event route suppression states",
+                     deleted);
+        }
+    } else {
+        log_warn("Could not prune expired event route suppression states");
+    }
+}
+
+event_router_result_t event_router_evaluate_delivery(
+    const event_envelope_t *event, event_route_delivery_plan_t *plan) {
+    if (plan) memset(plan, 0, sizeof(*plan));
     if (!event || event_envelope_validate(event, NULL, 0) != 0) {
         return EVENT_ROUTER_ERROR;
+    }
+    if (plan) {
+        safe_strcpy(plan->event_id, event->id, sizeof(plan->event_id), 0);
+        safe_strcpy(plan->event_type, event->type,
+                    sizeof(plan->event_type), 0);
+        safe_strcpy(plan->subject, event->subject, sizeof(plan->subject), 0);
     }
     pthread_mutex_lock(&ROUTER.mutex);
     ROUTER.stats.events_evaluated++;
@@ -628,10 +708,13 @@ event_router_result_t event_router_evaluate(const event_envelope_t *event) {
     }
 
     bool relevant_error = false;
+    bool plan_error = false;
+    bool should_enqueue = false;
     const fleet_camera_t *camera = NULL;
     bool camera_resolved = false;
     const char *camera_uuid = camera_uuid_from_subject(event->subject);
     int64_t now = (int64_t)time(NULL);
+    maybe_prune_suppression_locked(now);
     for (int index = 0; index < ROUTER.route_count; index++) {
         compiled_route_t *route = &ROUTER.routes[index];
         ROUTER.stats.routes_considered++;
@@ -673,6 +756,29 @@ event_router_result_t event_router_evaluate(const event_envelope_t *event) {
             ROUTER.stats.schedule_rejections++;
             continue;
         }
+        if (!route_uses_suppression(&route->route)) {
+            should_enqueue = true;
+            continue;
+        }
+        event_suppression_result_t suppression =
+            db_event_route_suppression_check(
+                &route->route, event->type, event->subject, now);
+        if (suppression == EVENT_SUPPRESSION_PERMIT) {
+            if (!delivery_plan_append(plan, &route->route)) {
+                relevant_error = true;
+                plan_error = true;
+                ROUTER.stats.suppression_errors++;
+            } else {
+                should_enqueue = true;
+            }
+        } else if (suppression > EVENT_SUPPRESSION_PERMIT) {
+            count_suppression_locked(suppression);
+        } else {
+            relevant_error = true;
+            ROUTER.stats.suppression_errors++;
+        }
+    }
+    if (should_enqueue && !plan_error) {
         ROUTER.stats.matched_events++;
         pthread_mutex_unlock(&ROUTER.mutex);
         return EVENT_ROUTER_MATCH;
@@ -686,6 +792,41 @@ event_router_result_t event_router_evaluate(const event_envelope_t *event) {
     }
     pthread_mutex_unlock(&ROUTER.mutex);
     return result;
+}
+
+event_router_result_t event_router_evaluate(const event_envelope_t *event) {
+    return event_router_evaluate_delivery(event, NULL);
+}
+
+int event_router_record_enqueued(const event_envelope_t *event,
+                                 const event_route_delivery_plan_t *plan) {
+    if (!event || !plan || strcmp(event->id, plan->event_id) != 0 ||
+        strcmp(event->type, plan->event_type) != 0 ||
+        strcmp(event->subject, plan->subject) != 0) {
+        return -1;
+    }
+    int failed = 0;
+    int64_t now = (int64_t)time(NULL);
+    for (size_t index = 0; index < plan->count; index++) {
+        const event_route_delivery_plan_entry_t *entry =
+            &plan->entries[index];
+        event_suppression_result_t result =
+            db_event_route_suppression_record_allowed(
+                entry->route_uuid, entry->route_revision, event->type,
+                event->subject, event->id, now);
+        /* A concurrent route edit deliberately discards the old policy state. */
+        if (result != EVENT_SUPPRESSION_PERMIT &&
+            result != EVENT_SUPPRESSION_STALE) {
+            failed = 1;
+        }
+    }
+    return failed ? -1 : 0;
+}
+
+void event_route_delivery_plan_clear(event_route_delivery_plan_t *plan) {
+    if (!plan) return;
+    free(plan->entries);
+    memset(plan, 0, sizeof(*plan));
 }
 
 void event_router_get_stats(event_router_stats_t *stats) {
@@ -703,6 +844,7 @@ void event_router_shutdown(void) {
     ROUTER.inventory_count = 0;
     ROUTER.inventory_loaded_at = 0;
     ROUTER.inventory_loaded = false;
+    ROUTER.last_suppression_prune_at = 0;
     ROUTER.route_generation = 0;
     memset(&ROUTER.stats, 0, sizeof(ROUTER.stats));
     pthread_mutex_unlock(&ROUTER.mutex);

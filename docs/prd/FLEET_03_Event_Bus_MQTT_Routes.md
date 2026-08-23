@@ -1,9 +1,9 @@
 # PRD — Event Bus & MQTT Routes
 
 **Status**: P0/P1 complete; P2 routing in progress — durable route definitions,
-catalog/CRUD API, selector preview, optimistic concurrency, and runtime
-type/scope/predicate/schedule evaluation implemented; suppression, multiple
-destinations, and UI remain
+catalog/CRUD API, selector preview, optimistic concurrency, runtime
+type/scope/predicate/schedule evaluation, and durable suppression implemented;
+multiple destinations and UI remain
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation
@@ -158,8 +158,10 @@ behavior. Its first slice persists and validates route drafts, exposes the event
 catalog and authorized CRUD API, audits mutations, and previews current camera
 scope without publishing. The runtime slice compiles enabled routes off the
 producer thread and enforces event type, Fleet selector, detection predicate,
-and occurrence-time schedule before durable enqueue. The next slices persist
-and enforce suppression state, add destination profiles, and then expose the
+and occurrence-time schedule before durable enqueue. Durable suppression now
+preserves the first event and enforces debounce, cooldown, grouping, and fixed
+per-minute limits by route/type/subject, committing allowed state only after
+outbox acceptance. The remaining slices add destination profiles and expose the
 workflow in the Streams-area UI.
 
 ## 8. Acceptance criteria

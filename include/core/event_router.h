@@ -1,9 +1,11 @@
 #ifndef LIGHTNVR_CORE_EVENT_ROUTER_H
 #define LIGHTNVR_CORE_EVENT_ROUTER_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "core/event_envelope.h"
+#include "database/db_event_routes.h"
 
 typedef enum {
     EVENT_ROUTER_ERROR = -1,
@@ -24,7 +26,26 @@ typedef struct {
     uint64_t scope_rejections;
     uint64_t predicate_rejections;
     uint64_t schedule_rejections;
+    uint64_t debounce_suppressions;
+    uint64_t cooldown_suppressions;
+    uint64_t grouping_suppressions;
+    uint64_t rate_suppressions;
+    uint64_t suppression_errors;
 } event_router_stats_t;
+
+typedef struct {
+    char route_uuid[EVENT_ROUTE_UUID_MAX];
+    int64_t route_revision;
+} event_route_delivery_plan_entry_t;
+
+typedef struct {
+    char event_id[EVENT_ID_MAX];
+    char event_type[EVENT_TYPE_MAX];
+    char subject[EVENT_SUBJECT_MAX];
+    event_route_delivery_plan_entry_t *entries;
+    size_t count;
+    size_t capacity;
+} event_route_delivery_plan_t;
 
 /*
  * Evaluate the normalized event against the current enabled route set.
@@ -33,6 +54,21 @@ typedef struct {
  * ERROR fails closed when route state cannot be evaluated safely.
  */
 event_router_result_t event_router_evaluate(const event_envelope_t *event);
+
+/*
+ * Evaluate and retain the suppression-enabled route snapshots that should be
+ * committed only after the outbox accepts the event. The caller supplies a
+ * zero-initialized plan, owns it, and must release it with
+ * event_route_delivery_plan_clear().
+ */
+event_router_result_t event_router_evaluate_delivery(
+    const event_envelope_t *event, event_route_delivery_plan_t *plan);
+
+/* Mark every planned route as allowed after ENQUEUED or DUPLICATE. */
+int event_router_record_enqueued(const event_envelope_t *event,
+                                 const event_route_delivery_plan_t *plan);
+
+void event_route_delivery_plan_clear(event_route_delivery_plan_t *plan);
 
 void event_router_get_stats(event_router_stats_t *stats);
 

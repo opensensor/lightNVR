@@ -1164,8 +1164,22 @@ most 512 routes may be stored.
 
 Timezone names must resolve under `/usr/share/zoneinfo` (with `UTC` and `GMT`
 always accepted). Schedules are evaluated against event occurrence time and
-support DST-aware overnight windows. Suppression fields are accepted and
-returned now, but their runtime enforcement lands in the next P2 slice.
+support DST-aware overnight windows.
+
+Suppression is durable and isolated by route UUID, event type, and subject:
+
+- `debounce_seconds` suppresses a repeat inside the interval since the latest
+  observation; each suppressed repeat extends the interval.
+- `cooldown_seconds` starts when an event is accepted by the outbox; suppressed
+  repeats do not extend it.
+- `grouping_window_seconds` preserves the first event and coalesces repeats for
+  the window. Version 1 does not emit an aggregate summary event.
+- `max_events_per_minute` limits allowed events in a fixed 60-second window.
+
+Checks run in that order. An allowed event advances suppression state only after
+durable outbox acceptance (`ENQUEUED` or idempotent `DUPLICATE`), so queue-full
+and persistence errors do not consume cooldown or rate budget. Editing a route
+clears its prior suppression state, and inactive state is pruned after 30 days.
 
 With zero stored routes, normalized MQTT retains its compatibility publish-all
 behavior. Once any route is stored, only events matching at least one enabled
@@ -1183,7 +1197,8 @@ DELETE /api/event-routes/{route_uuid}?revision={last_seen_revision}
 Update is a partial write but must include the last observed positive
 `revision`. Delete carries the same value as a query parameter. A stale write
 returns `409`; a successful update increments the revision. Create, update, and
-delete outcomes are recorded in the audit history.
+delete outcomes are recorded in the audit history. Any successful update resets
+the route's durable suppression history so the revised policy starts cleanly.
 
 #### Preview a Route Draft
 

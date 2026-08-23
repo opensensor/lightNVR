@@ -226,6 +226,41 @@ void test_route_mutation_invalidates_cache_and_timezone_failure_is_closed(void) 
     TEST_ASSERT_EQUAL_UINT64(1, stats.evaluation_errors);
 }
 
+void test_delivery_plan_commits_durable_cooldown_after_outbox_acceptance(void) {
+    event_route_t route = route_definition("Durable cooldown", DETECTION_TYPE);
+    route.cooldown_seconds = 30;
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK, db_event_route_create(&route));
+
+    event_envelope_t first = detection_event(
+        "22222222-2222-4222-8222-222222222222", "person", 0.9, NULL,
+        1786991400);
+    event_route_delivery_plan_t plan = {0};
+    TEST_ASSERT_EQUAL_INT(
+        EVENT_ROUTER_MATCH, event_router_evaluate_delivery(&first, &plan));
+    TEST_ASSERT_EQUAL_UINT(1, plan.count);
+    TEST_ASSERT_EQUAL_STRING(route.uuid, plan.entries[0].route_uuid);
+    TEST_ASSERT_EQUAL_INT64(route.revision, plan.entries[0].route_revision);
+    TEST_ASSERT_EQUAL_INT(0, event_router_record_enqueued(&first, &plan));
+    event_route_delivery_plan_clear(&plan);
+    event_envelope_clear(&first);
+
+    /* The state survives a cache/process-lifecycle reset. */
+    event_router_shutdown();
+    event_envelope_t second = detection_event(
+        "22222222-2222-4222-8222-222222222222", "person", 0.9, NULL,
+        1786991401);
+    TEST_ASSERT_EQUAL_INT(
+        EVENT_ROUTER_NO_MATCH,
+        event_router_evaluate_delivery(&second, &plan));
+    TEST_ASSERT_EQUAL_UINT(0, plan.count);
+    event_route_delivery_plan_clear(&plan);
+    event_envelope_clear(&second);
+
+    event_router_stats_t stats;
+    event_router_get_stats(&stats);
+    TEST_ASSERT_EQUAL_UINT64(1, stats.cooldown_suppressions);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -237,6 +272,7 @@ int main(void) {
     RUN_TEST(test_selector_predicate_and_utc_schedule_must_all_match);
     RUN_TEST(test_iana_timezone_and_overnight_windows_use_occurrence_time);
     RUN_TEST(test_route_mutation_invalidates_cache_and_timezone_failure_is_closed);
+    RUN_TEST(test_delivery_plan_commits_durable_cooldown_after_outbox_acceptance);
     int result = UNITY_END();
     event_router_shutdown();
     shutdown_database();
