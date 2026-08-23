@@ -130,6 +130,7 @@ export default defineConfig({
       input: {
         // Add all HTML files as entry points
         index: resolve(__dirname, 'index.html'),
+        fleet: resolve(__dirname, 'fleet.html'),
         login: resolve(__dirname, 'login.html'),
         recordings: resolve(__dirname, 'recordings.html'),
         settings: resolve(__dirname, 'settings.html'),

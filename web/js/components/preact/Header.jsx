@@ -244,6 +244,7 @@ export function Header({ version = VERSION }) {
   const navItems = [
     { id: 'nav-live', href: getLiveViewHref(), label: t('nav.live') },
     { id: 'nav-recordings', href: 'recordings.html', label: t('nav.recordings') },
+    { id: 'nav-fleet', href: 'fleet.html', label: t('nav.fleet') },
     { id: 'nav-streams', href: 'streams.html', label: t('nav.streams') },
     { id: 'nav-settings', href: 'settings.html', label: t('nav.settings') },
     ...(isAdmin ? [{ id: 'nav-users', href: 'users.html', label: t('nav.users') }] : []),
