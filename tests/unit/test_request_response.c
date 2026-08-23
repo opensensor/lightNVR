@@ -9,6 +9,7 @@
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
+#include <cjson/cJSON.h>
 #include <string.h>
 #include "unity.h"
 #include "web/request_response.h"
@@ -171,10 +172,17 @@ void test_response_set_json(void) {
 void test_response_set_json_error(void) {
     http_response_t res;
     http_response_init(&res);
-    int rc = http_response_set_json_error(&res, 404, "not found");
+    const char *message = "not \"found\"\\here\r\nnext";
+    int rc = http_response_set_json_error(&res, 404, message);
     TEST_ASSERT_EQUAL_INT(0, rc);
     TEST_ASSERT_EQUAL_INT(404, res.status_code);
     TEST_ASSERT_NOT_NULL(res.body);
+    cJSON *body = cJSON_Parse(res.body);
+    TEST_ASSERT_NOT_NULL(body);
+    cJSON *error = cJSON_GetObjectItemCaseSensitive(body, "error");
+    TEST_ASSERT_TRUE(cJSON_IsString(error));
+    TEST_ASSERT_EQUAL_STRING(message, error->valuestring);
+    cJSON_Delete(body);
     http_response_free(&res);
 }
 
@@ -259,4 +267,3 @@ int main(void) {
     shutdown_logger();
     return result;
 }
-

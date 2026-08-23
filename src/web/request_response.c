@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 
+#include <cjson/cJSON.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -219,17 +220,18 @@ int http_response_set_json(http_response_t *res, int status_code, const char *js
 int http_response_set_json_error(http_response_t *res, int status_code, const char *error_message) {
     if (!res || !error_message) return -1;
 
-    // Build a JSON error object: {"error": "message"}
-    // Calculate needed size: {"error": ""} = 12 chars + message + null
-    size_t msg_len = strlen(error_message);
-    size_t buf_size = msg_len + 32; // Extra space for JSON wrapping and escaping
-    char *json_buf = malloc(buf_size);
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return -1;
+    if (!cJSON_AddStringToObject(root, "error", error_message)) {
+        cJSON_Delete(root);
+        return -1;
+    }
+    char *json_buf = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
     if (!json_buf) return -1;
 
-    snprintf(json_buf, buf_size, "{\"error\":\"%s\"}", error_message);
-
     int ret = http_response_set_json(res, status_code, json_buf);
-    free(json_buf);
+    cJSON_free(json_buf);
     return ret;
 }
 
