@@ -1,6 +1,6 @@
 # PRD — Scoped Authorization & Audit
 
-**Status**: Draft
+**Status**: In progress — P0 foundation in review
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 2 — access-control foundation

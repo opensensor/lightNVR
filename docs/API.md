@@ -63,6 +63,49 @@ Write authorization is endpoint-specific. Stream creation, updates (including
 privacy mode), and deletion reject `VIEWER` with `403`, as does
 [`POST /api/motion/trigger`](#trigger-motion-event).
 
+### Action-level authorization foundation
+
+New installations and upgrades include the Fleet 02 action catalog, reusable
+roles, and camera-selector grants. Existing users remain in `legacy` authorization
+mode until an administrator creates and previews equivalent grants, so upgrading
+does not silently remove access. Users switched to `policy` mode are default-deny:
+an action is allowed only when an enabled role grant contains the action and its
+all-fleet or camera selector scope matches.
+
+Existing handlers are being migrated to the central evaluator incrementally. The
+current coverage and intended action for every route family are tracked in
+[`docs/internal/AUTHORIZATION_ENDPOINT_INVENTORY.md`](internal/AUTHORIZATION_ENDPOINT_INVENTORY.md).
+
+#### List authorization actions
+
+```
+GET /api/authorization/actions
+```
+
+Administrator-only. Returns the stable action key, category, description,
+whether a camera resource is required, and whether the action is destructive.
+
+#### Simulate authorization
+
+```
+POST /api/authorization/simulate
+```
+
+Administrator-only and side-effect free. Camera-scoped actions require a stable
+camera UUID:
+
+```json
+{
+  "user_id": 7,
+  "action": "recordings.export",
+  "camera_uuid": "0192a7f0-4f43-4a1d-9e1c-d6947677f145"
+}
+```
+
+The response reports `allowed`, the compatibility role or matching policy grant,
+the evaluated policy version, and a concise explanation. Global actions such as
+`users.manage` omit `camera_uuid`.
+
 ## API Endpoints
 
 ### Streams
