@@ -225,9 +225,28 @@ Version 1 accepts the following typed configuration:
 
 `POST /api/event-routes/preview` validates a complete draft and resolves its
 current camera scope, returning a count and a bounded sample. Preview is
-deliberately side-effect free (`would_publish` is always `false`). This control
-plane does not yet alter the compatibility/default MQTT subscriber; runtime
-matching and suppression are the next delivery slice.
+deliberately side-effect free (`would_publish` is always `false`).
+
+The normalized MQTT subscriber evaluates route type, camera scope, detection
+predicate, and schedule on the event-bus worker before durable enqueue. Route
+schedules use the event occurrence time, IANA timezone data installed at
+`/usr/share/zoneinfo`, DST transitions, and Sunday-through-Saturday day numbers;
+overnight windows remain active through their end time on the following day.
+Route definitions and Fleet inventory are cached, with inventory refreshed at
+most every five seconds so selector evaluation remains bounded for large fleets.
+
+An installation with no route definitions keeps the original publish-all
+normalized behavior. Once any route is configured, normalized events enter
+`mqtt:default` only when at least one enabled route matches. Disabling every
+configured route therefore pauses normalized enqueue; deleting the final route
+restores compatibility behavior. Multiple matching routes to the same
+destination still produce one outbox row because destination/event identity is
+unique. Already-enqueued rows are not withdrawn by later route edits.
+
+The legacy detection payload, snapshot, and Home Assistant state path is not
+filtered by normalized event routes. Suppression values are persisted but are
+not enforced by this slice; durable cooldown, debounce, grouping, and rate state
+follow next.
 
 ## MQTT compatibility destination
 

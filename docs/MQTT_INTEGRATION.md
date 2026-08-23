@@ -149,10 +149,18 @@ The current destination identifier is `mqtt:default`, which refers to the
 single broker configured in `[mqtt]`. Route preview is safe to use while
 designing a rule: it resolves matching cameras but never publishes.
 
-Route definitions are control-plane groundwork in this release. They do not
-yet replace or filter the default normalized publisher; runtime route matching
-and multiple broker profiles are subsequent P2 work. See
-[Event Routes](API.md#event-routes) for the API contract.
+With no route definitions, normalized events retain the compatibility
+publish-all behavior. Once a route exists, an event is durably enqueued only
+when at least one enabled route matches its type, current Fleet scope,
+detection predicate, and occurrence-time schedule. Disabling all configured
+routes pauses normalized enqueue; deleting the final route restores the default.
+Legacy detection and Home Assistant compatibility topics are unchanged.
+
+Schedules use installed IANA timezone data and account for DST and overnight
+windows. Stored debounce, cooldown, grouping, and rate values are reserved for
+the next suppression-state slice and are not enforced yet. Multiple broker
+profiles are subsequent P2 work. See [Event Routes](API.md#event-routes) for the
+API contract.
 
 ```json
 {

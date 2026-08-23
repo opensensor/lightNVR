@@ -57,6 +57,8 @@ db_event_route_result_t db_event_route_validate(
 
 int db_event_route_count(void);
 int db_event_route_list(event_route_t *routes, int max_count);
+/* In-process generation changes after every committed route mutation. */
+uint64_t db_event_route_generation(void);
 db_event_route_result_t db_event_route_get(const char *uuid,
                                            event_route_t *route);
 db_event_route_result_t db_event_route_create(event_route_t *route);
