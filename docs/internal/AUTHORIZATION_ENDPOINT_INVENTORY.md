@@ -31,7 +31,7 @@ must be reachable before a policy can be evaluated.
 | `GET /api/fleet/*`, collection reads/previews, camera tag/location reads | `live.view` per returned camera | Existing viewer access plus allowed tags |
 | `GET /hls/#/#`, go2rtc HLS/stream proxy reads | `live.view` | Existing authentication/proxy checks |
 | Camera audio playback | `audio.listen` | Transport-specific existing checks |
-| Camera backchannel/talk activation | `audio.talk` | Existing non-viewer checks |
+| Camera backchannel/talk activation | `audio.talk` | Transport gap: browser WebRTC connects directly to unauthenticated go2rtc; enforce with a tokenized or lightNVR-proxied signaling path before enabling policy-mode talk |
 | PTZ capability/preset reads | `live.view` | Centralized action policy with server-resolved camera scope |
 | PTZ move, stop, home, absolute, relative, and preset writes | `ptz.control` | Centralized action policy with server-resolved camera scope |
 | Imaging/day-night reads | `live.view` | Existing stream access checks |
@@ -65,7 +65,7 @@ facets, or collection membership. A request for one unauthorized camera returns
 | --- | --- | --- |
 | Recording lists/details, timeline segments/manifest/play, thumbnails | `recordings.replay` | Existing viewer access plus stream tags |
 | Recording playback and HLS media | `recordings.replay` | Existing viewer access plus stream tags |
-| Recording download and batch-download lifecycle | `recordings.export` | Existing viewer access plus stream tags |
+| Recording download and batch-download lifecycle | `recordings.export` | Centralized action policy; fixed batches are authorized in full and job status/results are bound to the creating user |
 | Snapshot creation/download | `snapshot.create` | Existing viewer access plus stream tags |
 | go2rtc frame capture proxy | `snapshot.create` | Existing proxy checks |
 | Protect/unprotect and retention overrides | `evidence.protect` | Centralized action policy; batch members are resolved and evaluated individually |

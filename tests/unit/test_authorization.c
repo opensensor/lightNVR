@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "unity.h"
@@ -28,6 +29,8 @@
 #include "web/api_handlers_authorization.h"
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_recordings.h"
+#include "web/api_handlers_recordings_batch_download.h"
+#include "web/api_handlers_recordings_download.h"
 #include "web/api_handlers_users.h"
 #include "web/request_response.h"
 
@@ -815,6 +818,74 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
              denied.name);
     json = call_handler_path(handle_ptz_move, HTTP_METHOD_POST, ptz_path,
                              "{\"pan\":1}", api_key, 403);
+    cJSON_Delete(json);
+
+    snprintf(path, sizeof(path), "/api/recordings/download/%llu",
+             (unsigned long long)denied_id);
+    json = call_handler_path(handle_recordings_download, HTTP_METHOD_GET,
+                             path, NULL, api_key, 403);
+    cJSON_Delete(json);
+
+    snprintf(batch_body, sizeof(batch_body),
+             "{\"ids\":[%llu,%llu],\"filename\":\"evidence.zip\"}",
+             (unsigned long long)allowed_id,
+             (unsigned long long)denied_id);
+    json = call_handler_path(handle_batch_download_recordings,
+                             HTTP_METHOD_POST,
+                             "/api/recordings/batch-download", batch_body,
+                             api_key, 403);
+    cJSON_Delete(json);
+
+    snprintf(batch_body, sizeof(batch_body),
+             "{\"ids\":[%llu],\"filename\":\"allowed.zip\"}",
+             (unsigned long long)allowed_id);
+    json = call_handler_path(handle_batch_download_recordings,
+                             HTTP_METHOD_POST,
+                             "/api/recordings/batch-download", batch_body,
+                             api_key, 202);
+    char download_token[64];
+    safe_strcpy(
+        download_token,
+        cJSON_GetObjectItemCaseSensitive(json, "token")->valuestring,
+        sizeof(download_token), 0);
+    cJSON_Delete(json);
+
+    int64_t other_user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("otherexporter", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &other_user_id));
+    char other_api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(other_user_id, other_api_key,
+                                    sizeof(other_api_key)));
+    char status_path[160];
+    snprintf(status_path, sizeof(status_path),
+             "/api/recordings/batch-download/status/%s", download_token);
+    json = call_handler_path(handle_batch_download_status, HTTP_METHOD_GET,
+                             status_path, NULL, other_api_key, 404);
+    cJSON_Delete(json);
+
+    bool download_finished = false;
+    for (int attempt = 0; attempt < 100 && !download_finished; attempt++) {
+        json = call_handler_path(handle_batch_download_status,
+                                 HTTP_METHOD_GET, status_path, NULL, api_key,
+                                 200);
+        const char *status = cJSON_GetObjectItemCaseSensitive(
+            json, "status")->valuestring;
+        download_finished = strcmp(status, "complete") == 0 ||
+                            strcmp(status, "error") == 0;
+        cJSON_Delete(json);
+        if (!download_finished) {
+            const struct timespec delay = {.tv_sec = 0,
+                                           .tv_nsec = 1000000};
+            nanosleep(&delay, NULL);
+        }
+    }
+    TEST_ASSERT_TRUE(download_finished);
+    snprintf(status_path, sizeof(status_path),
+             "/api/recordings/batch-download/result/%s", download_token);
+    json = call_handler_path(handle_batch_download_result, HTTP_METHOD_GET,
+                             status_path, NULL, api_key, 500);
     cJSON_Delete(json);
 
     snprintf(path, sizeof(path), "/api/recordings/%llu",

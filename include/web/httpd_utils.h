@@ -152,6 +152,10 @@ int httpd_evaluate_stream_action(const user_t *user,
                                  const char *stream_name,
                                  authorization_evaluation_t *evaluation);
 
+/** Copy a basename into an HTTP attachment-safe ASCII filename. */
+void httpd_sanitize_attachment_filename(const char *input, char *output,
+                                        size_t output_size);
+
 /**
  * @brief Check if demo mode is enabled
  * @return 1 if demo mode is enabled, 0 otherwise
