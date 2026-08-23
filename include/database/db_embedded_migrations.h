@@ -1093,6 +1093,42 @@ static const char migration_0056_down[] =
     "WHERE key = 'camera_tags_backfill_completed';\n"
     "SELECT 1;";
 
+static const char migration_0057_up[] =
+    "CREATE TABLE event_outbox ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+    "event_id TEXT NOT NULL, event_source TEXT NOT NULL, "
+    "event_type TEXT NOT NULL, subject TEXT NOT NULL, "
+    "destination TEXT NOT NULL, topic TEXT NOT NULL, "
+    "envelope_json TEXT NOT NULL, "
+    "envelope_bytes INTEGER NOT NULL CHECK (envelope_bytes>0), "
+    "severity INTEGER NOT NULL CHECK (severity BETWEEN 0 AND 3), "
+    "state TEXT NOT NULL DEFAULT 'pending' CHECK "
+    "(state IN ('pending','delivering','delivered','dead')), "
+    "attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count>=0), "
+    "next_attempt_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, "
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "last_attempt_at INTEGER, lease_expires_at INTEGER, "
+    "delivered_at INTEGER, dead_at INTEGER, "
+    "last_error TEXT NOT NULL DEFAULT '', "
+    "UNIQUE(event_source,event_id,destination));\n"
+    "CREATE INDEX idx_event_outbox_due ON event_outbox("
+    "destination,state,next_attempt_at,severity DESC,id) "
+    "WHERE state='pending';\n"
+    "CREATE INDEX idx_event_outbox_lease ON event_outbox("
+    "state,lease_expires_at) WHERE state='delivering';\n"
+    "CREATE INDEX idx_event_outbox_expiry ON event_outbox(state,expires_at);\n"
+    "CREATE INDEX idx_event_outbox_terminal ON event_outbox("
+    "state,updated_at,id) WHERE state IN ('delivered','dead');";
+
+static const char migration_0057_down[] =
+    "DROP INDEX IF EXISTS idx_event_outbox_terminal;\n"
+    "DROP INDEX IF EXISTS idx_event_outbox_expiry;\n"
+    "DROP INDEX IF EXISTS idx_event_outbox_lease;\n"
+    "DROP INDEX IF EXISTS idx_event_outbox_due;\n"
+    "DROP TABLE IF EXISTS event_outbox;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1486,8 +1522,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0056_down,
         .is_embedded = true
     },
+    {
+        .version = "0057",
+        .description = "add_event_outbox",
+        .sql_up = migration_0057_up,
+        .sql_down = migration_0057_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 56
+#define EMBEDDED_MIGRATIONS_COUNT 57
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

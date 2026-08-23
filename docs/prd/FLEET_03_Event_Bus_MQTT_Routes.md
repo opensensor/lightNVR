@@ -1,6 +1,6 @@
 # PRD — Event Bus & MQTT Routes
 
-**Status**: P0 complete — versioned envelope, registry, bounded asynchronous bus, persistent installation identity, and detection compatibility adapter implemented; P1 outbox next
+**Status**: P0 complete; P1 durable outbox repository implemented — MQTT delivery worker and retry/expiry metrics next
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation
