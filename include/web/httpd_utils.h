@@ -13,6 +13,7 @@
 #include <cjson/cJSON.h>
 #include "web/request_response.h"
 #include "database/db_auth.h"
+#include "core/authorization.h"
 
 /**
  * @brief Parse JSON body from an HTTP request
@@ -122,10 +123,19 @@ void httpd_clear_trusted_device_cookie(http_response_t *res);
 int httpd_check_viewer_access(const http_request_t *req, user_t *user);
 
 /**
+ * Authenticate and authorize a request through the centralized action policy.
+ * A NULL camera is valid for global actions and all-fleet grants. Evaluation
+ * errors fail closed with a 500 response; denials return 403.
+ */
+int httpd_authorize_action(const http_request_t *req, http_response_t *res,
+                           authorization_action_t action,
+                           const fleet_camera_t *camera, user_t *user,
+                           authorization_evaluation_t *evaluation);
+
+/**
  * @brief Check if demo mode is enabled
  * @return 1 if demo mode is enabled, 0 otherwise
  */
 int httpd_is_demo_mode(void);
 
 #endif /* HTTPD_UTILS_H */
-

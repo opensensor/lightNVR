@@ -12,6 +12,7 @@
 
 #define USER_ALLOWED_TAGS_MAX 256
 #define USER_ALLOWED_LOGIN_CIDRS_MAX 1024
+#define USER_AUTHORIZATION_MODE_MAX 16
 
 /**
  * @brief User roles
@@ -42,6 +43,7 @@ typedef struct {
     bool has_tag_restriction; /**< Whether allowed_tags is set (true) or NULL/unrestricted (false) */
     char allowed_login_cidrs[USER_ALLOWED_LOGIN_CIDRS_MAX]; /**< Newline-separated CIDR whitelist for login/auth IPs */
     bool has_login_cidr_restriction; /**< Whether allowed_login_cidrs is set (true) or NULL/unrestricted (false) */
+    char authorization_mode[USER_AUTHORIZATION_MODE_MAX]; /**< legacy compatibility or default-deny policy evaluation */
 } user_t;
 
 /**
