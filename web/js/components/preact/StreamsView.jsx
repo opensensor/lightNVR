@@ -11,6 +11,7 @@ import { StreamBulkActionModal } from './StreamBulkActionModal.jsx';
 import { StreamConfigModal } from './StreamConfigModal.jsx';
 import { StreamCard } from './StreamCard.jsx';
 import { HealthView } from './HealthView.jsx';
+import { FleetView } from './FleetView.jsx';
 import { validateSession } from '../../utils/auth-utils.js';
 import {
   useQuery,
@@ -25,6 +26,12 @@ import { useI18n } from '../../i18n.js';
  * StreamsView component
  * @returns {JSX.Element} StreamsView component
  */
+function getInitialWorkspaceTab() {
+  if (typeof window === 'undefined') return 'streams';
+  const view = new URLSearchParams(window.location.search).get('view');
+  return view === 'inventory' || view === 'health' ? view : 'streams';
+}
+
 export function StreamsView() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -63,7 +70,7 @@ export function StreamsView() {
   const shouldHideCredentials = isDemoMode || userRole === 'viewer';
 
   // State for streams data
-  const [activeTab, setActiveTab] = useState('streams');
+  const [activeTab, setActiveTab] = useState(getInitialWorkspaceTab);
   const [modalVisible, setModalVisible] = useState(false);
   const [onvifModalVisible, setOnvifModalVisible] = useState(false);
   const [showCustomNameInput, setShowCustomNameInput] = useState(false);
@@ -77,6 +84,14 @@ export function StreamsView() {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
   const [onvifNetworkOverride, setOnvifNetworkOverride] = useState('auto');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (activeTab === 'streams') url.searchParams.delete('view');
+    else url.searchParams.set('view', activeTab);
+    window.history.replaceState({}, '', url);
+  }, [activeTab]);
 
   // Credential-reveal toggle is now owned by StreamCard (per-card state).
   // StreamsView used to track a Set of revealed streams when the page was a
@@ -1303,7 +1318,7 @@ export function StreamsView() {
 
   return (
     <section id="streams-page" className="page">
-      <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
+      {activeTab !== 'inventory' && <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow">
         <h2 className="text-xl font-bold">{t('nav.streams')}</h2>
         <div className="controls flex items-center space-x-2">
           {!canModifyStreams && userRole && (
@@ -1343,7 +1358,7 @@ export function StreamsView() {
             </>
           )}
         </div>
-      </div>
+      </div>}
 
       <div className="mb-4 border-b border-border" role="tablist" aria-label={t('nav.streams')}>
         <div className="flex gap-2">
@@ -1364,6 +1379,21 @@ export function StreamsView() {
           </button>
           <button
             type="button"
+            id="inventory-tab"
+            role="tab"
+            aria-selected={activeTab === 'inventory'}
+            aria-controls="inventory-panel"
+            className={`rounded-t-lg px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'inventory'
+                ? 'bg-card text-card-foreground border border-border border-b-0 -mb-px'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab('inventory')}
+          >
+            {t('streams.inventory')}
+          </button>
+          <button
+            type="button"
             id="health-tab"
             role="tab"
             aria-selected={activeTab === 'health'}
@@ -1380,7 +1410,11 @@ export function StreamsView() {
         </div>
       </div>
 
-      {activeTab === 'health' ? (
+      {activeTab === 'inventory' ? (
+        <div role="tabpanel" id="inventory-panel" aria-labelledby="inventory-tab">
+          <FleetView />
+        </div>
+      ) : activeTab === 'health' ? (
         <div role="tabpanel" id="health-panel" aria-labelledby="health-tab">
           <HealthView />
         </div>

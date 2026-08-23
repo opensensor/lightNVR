@@ -1,7 +1,6 @@
 {
   "nav.live": "Live View",
   "nav.recordings": "Recordings",
-  "nav.fleet": "Fleet",
   "nav.streams": "Streams",
   "nav.settings": "Settings",
   "nav.users": "Users",
@@ -9,6 +8,7 @@
   "nav.timeline": "Timeline",
   "nav.health": "Health",
   "nav.toggleMenu": "Toggle menu",
+  "streams.inventory": "Inventory",
   "fleet.eyebrow": "Camera operations",
   "fleet.title": "Fleet",
   "fleet.description": "Find, assess, and organize cameras across large deployments without loading the entire inventory into the browser.",

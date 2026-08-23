@@ -150,7 +150,7 @@ export function FleetView() {
   const total = data?.total || 0;
 
   return (
-    <main className="flex-grow py-2" aria-labelledby="fleet-title">
+    <div className="flex-grow py-2" aria-labelledby="fleet-title">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[hsl(var(--primary))]">{t('fleet.eyebrow')}</div>
@@ -228,6 +228,6 @@ export function FleetView() {
           )}
         </section>
       </div>
-    </main>
+    </div>
   );
 }
