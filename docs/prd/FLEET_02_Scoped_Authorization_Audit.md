@@ -1,6 +1,6 @@
 # PRD — Scoped Authorization & Audit
 
-**Status**: In progress — P0 foundation and initial P1 grants/tokens implemented
+**Status**: In progress — P0 foundation and initial P1 grants/tokens/UI implemented
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 2 — access-control foundation

@@ -234,6 +234,12 @@ evaluator (currently scoped PTZ, recording export, evidence protection, and
 deletion paths). Other legacy handlers reject them rather than risk ignoring a
 camera scope. The endpoint inventory tracks expansion of that safe surface.
 
+Administrators can manage these credentials from **Users → Manage API access**.
+The dialog exposes only actions with current scoped-token endpoint enforcement,
+supports shared collections and custom selectors, and requires acknowledgment
+before dismissing a newly displayed secret. The non-expiring legacy key remains
+in a separate compatibility-only section.
+
 ## API Endpoints
 
 ### Streams

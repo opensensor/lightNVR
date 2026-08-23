@@ -13,7 +13,7 @@ import { useI18n } from '../../../i18n.js';
  * @param {Array} props.users - List of users to display
  * @param {Function} props.onEdit - Function to handle edit action
  * @param {Function} props.onDelete - Function to handle delete action
- * @param {Function} props.onApiKey - Function to handle API key action
+ * @param {Function} props.onApiKey - Function to manage API tokens and compatibility key
  * @param {Function} props.onMfa - Function to handle MFA setup action
  * @param {Function} props.onAccess - Function to manage scoped access
  * @returns {JSX.Element} Users table
@@ -208,7 +208,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                   <button
                     className="p-1 rounded transition-colors text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--muted-foreground)_/_0.8)] hover:bg-[hsl(var(--muted)_/_0.5)]"
                     onClick={(e) => handleApiKey(user, e)}
-                    title={t('users.manageApiKey')}
+                    title={t('tokens.manage')}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
