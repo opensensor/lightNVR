@@ -549,6 +549,17 @@ void test_check_admin_privileges_no_auth_returns_zero(void) {
     http_response_free(&res);
 }
 
+void test_sanitize_attachment_filename_removes_path_and_header_bytes(void) {
+    char filename[64];
+    httpd_sanitize_attachment_filename(
+        "/recordings/front door\"\r\nInjected: yes.mp4", filename,
+        sizeof(filename));
+    TEST_ASSERT_EQUAL_STRING("front_door___Injected__yes.mp4", filename);
+
+    httpd_sanitize_attachment_filename(NULL, filename, sizeof(filename));
+    TEST_ASSERT_EQUAL_STRING("", filename);
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -593,9 +604,9 @@ int main(void) {
     RUN_TEST(test_get_authenticated_user_rejects_api_key_with_spoofed_forwarded_ip_from_untrusted_proxy);
     RUN_TEST(test_check_admin_privileges_auth_disabled_returns_one);
     RUN_TEST(test_check_admin_privileges_no_auth_returns_zero);
+    RUN_TEST(test_sanitize_attachment_filename_removes_path_and_header_bytes);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
     return result;
 }
-

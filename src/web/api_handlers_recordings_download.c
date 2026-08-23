@@ -13,9 +13,9 @@
 #include "web/httpd_utils.h"
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
-#include "core/config.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
+#include "utils/strings.h"
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/download/:id
@@ -28,23 +28,11 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
         return;
     }
 
-    // Check authentication if enabled
-    // In demo mode, allow unauthenticated viewer access to download recordings
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (g_config.demo_mode) {
-            if (!httpd_check_viewer_access(req, &user)) {
-                log_error("Authentication failed for GET /api/recordings/download request");
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        } else {
-            if (!httpd_get_authenticated_user(req, &user)) {
-                log_error("Authentication failed for GET /api/recordings/download request");
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        }
+    user_t user;
+    if (!httpd_check_viewer_access(req, &user)) {
+        log_error("Authentication failed for GET /api/recordings/download request");
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
     }
 
     // Extract recording ID from URL
@@ -72,6 +60,19 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
         http_response_set_json_error(res, 404, "Recording not found");
         return;
     }
+    authorization_evaluation_t evaluation;
+    int authorization_result = httpd_evaluate_stream_action(
+        &user, AUTHZ_RECORDINGS_EXPORT, recording.stream_name, &evaluation);
+    if (authorization_result < 0) {
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return;
+    }
+    if (authorization_result > 0 ||
+        evaluation.decision != AUTHZ_DECISION_ALLOW) {
+        http_response_set_json_error(res, 403, "Forbidden");
+        return;
+    }
 
     // Check if file exists
     struct stat st;
@@ -82,12 +83,11 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
     }
 
     // Extract filename from path
-    const char *filename = strrchr(recording.file_path, '/');
-    if (filename) {
-        filename++; // Skip the '/'
-    } else {
-        filename = recording.file_path;
-    }
+    char filename[192];
+    httpd_sanitize_attachment_filename(recording.file_path, filename,
+                                       sizeof(filename));
+    if (filename[0] == '\0') safe_strcpy(filename, "recording.mp4",
+                                          sizeof(filename), 0);
 
     // Determine content type based on file extension
     const char *content_type = "video/mp4"; // Default
@@ -121,4 +121,3 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
 
     log_info("Successfully handled GET /api/recordings/download/%llu request", (unsigned long long)id);
 }
-
