@@ -38,6 +38,36 @@ static detection_result_t make_result(const char *label, float conf) {
     return r;
 }
 
+static recording_metadata_t make_recording(const char *stream, const char *path,
+                                           time_t start_time, time_t end_time) {
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, stream, sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.file_path, path, sizeof(recording.file_path), 0);
+    safe_strcpy(recording.codec, "h264", sizeof(recording.codec), 0);
+    safe_strcpy(recording.trigger_type, "scheduled",
+                sizeof(recording.trigger_type), 0);
+    recording.start_time = start_time;
+    recording.end_time = end_time;
+    recording.size_bytes = 1000;
+    recording.width = 1920;
+    recording.height = 1080;
+    recording.fps = 30;
+    recording.is_complete = true;
+    recording.retention_tier = RETENTION_TIER_STANDARD;
+    return recording;
+}
+
+static int summary_count_for_label(const recording_detection_summary_t *summary,
+                                   const char *label) {
+    for (int i = 0; i < summary->label_count; i++) {
+        if (strcmp(summary->labels[i].label, label) == 0) {
+            return summary->labels[i].count;
+        }
+    }
+    return 0;
+}
+
 static void clear_detections(void) {
     sqlite3_exec(get_db_handle(), "DELETE FROM detections;", NULL, NULL, NULL);
 }
@@ -119,6 +149,47 @@ void test_get_detection_labels_summary(void) {
     int n = get_detection_labels_summary("cam5", now - 100, now,
                                          labels, MAX_DETECTION_LABELS);
     TEST_ASSERT_GREATER_THAN(0, n);
+}
+
+void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(void) {
+    time_t now = time(NULL);
+    recording_metadata_t recordings[2];
+    recordings[0] = make_recording("batch_cam", "/tmp/batch-1.mp4",
+                                   now - 120, now - 61);
+    recordings[1] = make_recording("batch_cam", "/tmp/batch-2.mp4",
+                                   now - 60, now);
+    recordings[0].id = add_recording_metadata(&recordings[0]);
+    recordings[1].id = add_recording_metadata(&recordings[1]);
+    TEST_ASSERT_NOT_EQUAL(0, recordings[0].id);
+    TEST_ASSERT_NOT_EQUAL(0, recordings[1].id);
+
+    detection_result_t linked = make_result("person", 0.9f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "batch_cam", &linked, now - 90, recordings[0].id));
+
+    detection_result_t unlinked = make_result("vehicle", 0.8f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "batch_cam", &unlinked, now - 30, 0));
+
+    detection_result_t interval = make_result("motion", 1.0f);
+    TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
+        "batch_cam", &interval, now - 100, recordings[0].id));
+    TEST_ASSERT_EQUAL_INT(1, close_external_motion_detections(
+        "batch_cam", now - 20));
+
+    recording_detection_summary_t summaries[2];
+    TEST_ASSERT_EQUAL_INT(0, get_recording_detection_summaries(
+        recordings, 2, summaries));
+
+    TEST_ASSERT_TRUE(summaries[0].has_detection);
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[0], "person"));
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[0], "motion"));
+    TEST_ASSERT_EQUAL_INT(0, summary_count_for_label(&summaries[0], "vehicle"));
+
+    TEST_ASSERT_TRUE(summaries[1].has_detection);
+    TEST_ASSERT_EQUAL_INT(0, summary_count_for_label(&summaries[1], "person"));
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[1], "vehicle"));
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[1], "motion"));
 }
 
 /* update_detections_recording_id */
@@ -262,6 +333,23 @@ void test_recent_detection_queries_do_not_scan_full_stream_history(void) {
     TEST_ASSERT_EQUAL_INT(1, detection_count);
     TEST_ASSERT_EQUAL_STRING("person", out.detections[0].label);
     TEST_ASSERT_LESS_OR_EQUAL_INT(progress.abort_after, progress.calls);
+
+    recording_metadata_t recording = make_recording(
+        "cam_large", "/tmp/cam-large-recent.mp4", now - 30, now);
+    recording.id = add_recording_metadata(&recording);
+    TEST_ASSERT_NOT_EQUAL(0, recording.id);
+
+    progress.calls = 0;
+    sqlite3_progress_handler(db, 100, abort_runaway_query, &progress);
+
+    recording_detection_summary_t summary;
+    int summary_result = get_recording_detection_summaries(
+        &recording, 1, &summary);
+
+    sqlite3_progress_handler(db, 0, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(0, summary_result);
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summary, "person"));
+    TEST_ASSERT_LESS_OR_EQUAL_INT(progress.abort_after, progress.calls);
 }
 
 int main(void) {
@@ -277,6 +365,7 @@ int main(void) {
     RUN_TEST(test_has_detections_in_time_range_not_found);
     RUN_TEST(test_delete_old_detections);
     RUN_TEST(test_get_detection_labels_summary);
+    RUN_TEST(test_get_recording_detection_summaries_batches_linked_and_fallback_rows);
     RUN_TEST(test_update_detections_recording_id);
     RUN_TEST(test_store_max_detections);
     RUN_TEST(test_external_motion_interval_spans_later_recording_segment);

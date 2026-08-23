@@ -678,6 +678,26 @@ static const char migration_0046_up[] =
 static const char migration_0046_down[] =
     "SELECT 1;";
 
+static const char migration_0047_up[] =
+    "CREATE INDEX IF NOT EXISTS idx_recordings_start_time "
+    "ON recordings(start_time);\n"
+    "CREATE INDEX IF NOT EXISTS idx_recordings_complete_stream_start "
+    "ON recordings(is_complete, stream_name, start_time);\n"
+    "CREATE INDEX IF NOT EXISTS idx_detections_stream_timestamp "
+    "ON detections(stream_name, timestamp);\n"
+    "CREATE INDEX IF NOT EXISTS idx_detections_recording_id "
+    "ON detections(recording_id);\n"
+    "CREATE INDEX IF NOT EXISTS idx_recordings_history_start "
+    "ON recordings(start_time DESC) "
+    "WHERE is_complete = 1 AND end_time IS NOT NULL;\n"
+    "CREATE INDEX IF NOT EXISTS idx_detections_unlinked_stream_time_label "
+    "ON detections(stream_name, timestamp, label) "
+    "WHERE recording_id IS NULL AND source != 'external_motion';";
+
+static const char migration_0047_down[] =
+    "DROP INDEX IF EXISTS idx_detections_unlinked_stream_time_label;\n"
+    "DROP INDEX IF EXISTS idx_recordings_history_start;";
+
 static const char migration_0048_up[] =
     "ALTER TABLE streams ADD COLUMN camera_uuid TEXT NOT NULL DEFAULT '';\n"
     "\n"
@@ -1146,6 +1166,13 @@ static const migration_t embedded_migrations_data[] = {
         .is_embedded = true
     },
     {
+        .version = "0047",
+        .description = "optimize_recording_history",
+        .sql_up = migration_0047_up,
+        .sql_down = migration_0047_down,
+        .is_embedded = true
+    },
+    {
         .version = "0048",
         .description = "add_camera_uuid",
         .sql_up = migration_0048_up,
@@ -1175,6 +1202,6 @@ static const migration_t embedded_migrations_data[] = {
     },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 50
+#define EMBEDDED_MIGRATIONS_COUNT 51
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

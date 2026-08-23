@@ -188,6 +188,53 @@ void test_get_recording_count_supports_multi_value_stream_tag_and_capture_filter
     TEST_ASSERT_EQUAL_INT(2, cnt);
 }
 
+void test_recording_tag_batch_get_preserves_input_order(void) {
+    time_t now = time(NULL);
+    recording_metadata_t first = make_rec("tag_cam", "/rec/tag-batch-1.mp4", now);
+    recording_metadata_t second = make_rec("tag_cam", "/rec/tag-batch-2.mp4", now + 60);
+    uint64_t ids[3] = {
+        add_recording_metadata(&second),
+        add_recording_metadata(&first),
+        999999999
+    };
+    TEST_ASSERT_NOT_EQUAL(0, ids[0]);
+    TEST_ASSERT_NOT_EQUAL(0, ids[1]);
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(ids[0], "zebra"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(ids[0], "alpha"));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(ids[1], "review"));
+
+    recording_tag_list_t lists[3];
+    TEST_ASSERT_EQUAL_INT(3, db_recording_tag_get_batch(ids, 3, lists));
+    TEST_ASSERT_EQUAL_INT(2, lists[0].count);
+    TEST_ASSERT_EQUAL_STRING("alpha", lists[0].tags[0]);
+    TEST_ASSERT_EQUAL_STRING("zebra", lists[0].tags[1]);
+    TEST_ASSERT_EQUAL_INT(1, lists[1].count);
+    TEST_ASSERT_EQUAL_STRING("review", lists[1].tags[0]);
+    TEST_ASSERT_EQUAL_INT(0, lists[2].count);
+}
+
+void test_recording_history_indexes_are_migrated(void) {
+    const char *index_names[] = {
+        "idx_recordings_history_start",
+        "idx_detections_recording_id",
+        "idx_detections_unlinked_stream_time_label"
+    };
+
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?;",
+        -1, &stmt, NULL));
+    for (size_t i = 0; i < sizeof(index_names) / sizeof(index_names[0]); i++) {
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+        sqlite3_bind_text(stmt, 1, index_names[i], -1, SQLITE_STATIC);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SQLITE_ROW, sqlite3_step(stmt),
+                                      index_names[i]);
+    }
+    sqlite3_finalize(stmt);
+}
+
 void test_capture_filters_distinguish_continuous_from_scheduled(void) {
     time_t now = time(NULL);
     recording_metadata_t continuous = make_rec(
@@ -422,6 +469,8 @@ int main(void) {
     RUN_TEST(test_get_recording_metadata_by_path);
     RUN_TEST(test_get_recording_count);
     RUN_TEST(test_get_recording_count_supports_multi_value_stream_tag_and_capture_filters);
+    RUN_TEST(test_recording_tag_batch_get_preserves_input_order);
+    RUN_TEST(test_recording_history_indexes_are_migrated);
     RUN_TEST(test_capture_filters_distinguish_continuous_from_scheduled);
     RUN_TEST(test_get_recording_metadata_paginated);
     RUN_TEST(test_get_recording_metadata_paginated_supports_multi_value_detection_labels_and_tags);

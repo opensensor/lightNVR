@@ -13,6 +13,8 @@
 #include "core/logger.h"
 #include "utils/strings.h"
 
+#define RECORDING_TAG_QUERY_BATCH_SIZE 500
+
 /* ---- single-recording ops ---- */
 
 int db_recording_tag_add(uint64_t recording_id, const char *tag) {
@@ -103,6 +105,84 @@ int db_recording_tag_get(uint64_t recording_id, char tags[][MAX_TAG_LENGTH], int
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(mtx);
     return count;
+}
+
+int db_recording_tag_get_batch(const uint64_t *recording_ids, int count,
+                               recording_tag_list_t *tag_lists) {
+    if (!recording_ids || count <= 0 || !tag_lists) return -1;
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mtx = get_db_mutex();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    memset(tag_lists, 0, (size_t)count * sizeof(*tag_lists));
+    int total = 0;
+
+    for (int batch_start = 0; batch_start < count;
+         batch_start += RECORDING_TAG_QUERY_BATCH_SIZE) {
+        int batch_count = count - batch_start;
+        if (batch_count > RECORDING_TAG_QUERY_BATCH_SIZE) {
+            batch_count = RECORDING_TAG_QUERY_BATCH_SIZE;
+        }
+
+        char sql[2048];
+        safe_strcpy(sql,
+                    "SELECT recording_id, tag FROM recording_tags "
+                    "WHERE recording_id IN (",
+                    sizeof(sql), 0);
+        for (int i = 0; i < batch_count; i++) {
+            if (i > 0) safe_strcat(sql, ",", sizeof(sql));
+            safe_strcat(sql, "?", sizeof(sql));
+        }
+        safe_strcat(sql, ") ORDER BY recording_id, tag;", sizeof(sql));
+
+        pthread_mutex_lock(mtx);
+        sqlite3_stmt *stmt = NULL;
+        int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare batch tag select: %s", sqlite3_errmsg(db));
+            pthread_mutex_unlock(mtx);
+            return -1;
+        }
+
+        for (int i = 0; i < batch_count; i++) {
+            sqlite3_bind_int64(stmt, i + 1,
+                               (sqlite3_int64)recording_ids[batch_start + i]);
+        }
+
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            uint64_t recording_id = (uint64_t)sqlite3_column_int64(stmt, 0);
+            const char *tag = (const char *)sqlite3_column_text(stmt, 1);
+            if (!tag) continue;
+
+            for (int i = 0; i < batch_count; i++) {
+                int output_index = batch_start + i;
+                if (recording_ids[output_index] != recording_id) continue;
+
+                recording_tag_list_t *list = &tag_lists[output_index];
+                if (list->count < MAX_RECORDING_TAGS) {
+                    safe_strcpy(list->tags[list->count], tag, MAX_TAG_LENGTH, 0);
+                    list->count++;
+                    total++;
+                }
+                break;
+            }
+        }
+
+        if (rc != SQLITE_DONE) {
+            log_error("Failed to fetch batch recording tags: %s", sqlite3_errmsg(db));
+            sqlite3_finalize(stmt);
+            pthread_mutex_unlock(mtx);
+            return -1;
+        }
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(mtx);
+    }
+
+    return total;
 }
 
 int db_recording_tag_set(uint64_t recording_id, const char **tags, int tag_count) {
@@ -282,4 +362,3 @@ int db_recording_tag_get_recordings_by_tag(const char *tag, uint64_t *recording_
     pthread_mutex_unlock(mtx);
     return count;
 }
-

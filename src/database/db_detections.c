@@ -910,6 +910,125 @@ int get_detection_labels_summary(const char *stream_name, time_t start_time, tim
     return count;
 }
 
+#define RECORDING_DETECTION_QUERY_BATCH_SIZE 100
+
+int get_recording_detection_summaries(
+    const recording_metadata_t *recordings, int count,
+    recording_detection_summary_t *summaries) {
+    if (!recordings || count <= 0 || !summaries) {
+        return -1;
+    }
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    memset(summaries, 0, (size_t)count * sizeof(*summaries));
+
+    for (int batch_start = 0; batch_start < count;
+         batch_start += RECORDING_DETECTION_QUERY_BATCH_SIZE) {
+        int batch_count = count - batch_start;
+        if (batch_count > RECORDING_DETECTION_QUERY_BATCH_SIZE) {
+            batch_count = RECORDING_DETECTION_QUERY_BATCH_SIZE;
+        }
+
+        char sql[8192];
+        safe_strcpy(sql,
+            "WITH requested(recording_id, stream_name, start_time, end_time) AS (VALUES ",
+            sizeof(sql), 0);
+        for (int i = 0; i < batch_count; i++) {
+            if (i > 0) safe_strcat(sql, ",", sizeof(sql));
+            safe_strcat(sql, "(?,?,?,?)", sizeof(sql));
+        }
+        safe_strcat(sql,
+            "), label_counts AS ("
+            "SELECT q.recording_id, d.label, COUNT(*) AS cnt "
+            "FROM requested q JOIN detections d ON d.recording_id = q.recording_id "
+            "WHERE d.source != 'external_motion' "
+            "GROUP BY q.recording_id, d.label "
+            "UNION ALL "
+            "SELECT q.recording_id, d.label, COUNT(*) AS cnt "
+            "FROM requested q JOIN detections d "
+            "ON d.stream_name = q.stream_name "
+            "AND d.timestamp >= q.start_time AND d.timestamp <= q.end_time "
+            "WHERE d.recording_id IS NULL AND d.source != 'external_motion' "
+            "GROUP BY q.recording_id, d.label "
+            "UNION ALL "
+            "SELECT q.recording_id, d.label, COUNT(*) AS cnt "
+            "FROM requested q JOIN detections d "
+            "ON d.stream_name = q.stream_name AND d.timestamp <= q.end_time "
+            "WHERE d.source = 'external_motion' "
+            "AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= q.start_time "
+            "GROUP BY q.recording_id, d.label"
+            ") "
+            "SELECT recording_id, label, SUM(cnt) AS label_count "
+            "FROM label_counts GROUP BY recording_id, label "
+            "ORDER BY recording_id, label_count DESC, label;",
+            sizeof(sql));
+
+        pthread_mutex_lock(db_mutex);
+        sqlite3_stmt *stmt = NULL;
+        int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare recording detection summaries: %s",
+                      sqlite3_errmsg(db));
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+
+        int param_index = 1;
+        for (int i = 0; i < batch_count; i++) {
+            const recording_metadata_t *recording = &recordings[batch_start + i];
+            sqlite3_bind_int64(stmt, param_index++,
+                               (sqlite3_int64)recording->id);
+            sqlite3_bind_text(stmt, param_index++, recording->stream_name, -1,
+                              SQLITE_STATIC);
+            sqlite3_bind_int64(stmt, param_index++,
+                               (sqlite3_int64)recording->start_time);
+            sqlite3_bind_int64(stmt, param_index++,
+                               (sqlite3_int64)recording->end_time);
+        }
+
+        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            uint64_t recording_id = (uint64_t)sqlite3_column_int64(stmt, 0);
+            const char *label = (const char *)sqlite3_column_text(stmt, 1);
+            int label_count = sqlite3_column_int(stmt, 2);
+            if (!label) continue;
+
+            for (int i = 0; i < batch_count; i++) {
+                int output_index = batch_start + i;
+                if (recordings[output_index].id != recording_id) continue;
+
+                recording_detection_summary_t *summary = &summaries[output_index];
+                summary->has_detection = true;
+                if (summary->label_count < MAX_DETECTION_LABELS) {
+                    detection_label_summary_t *output =
+                        &summary->labels[summary->label_count];
+                    safe_strcpy(output->label, label, sizeof(output->label), 0);
+                    output->count = label_count;
+                    summary->label_count++;
+                }
+                break;
+            }
+        }
+
+        if (rc != SQLITE_DONE) {
+            log_error("Failed to fetch recording detection summaries: %s",
+                      sqlite3_errmsg(db));
+            sqlite3_finalize(stmt);
+            pthread_mutex_unlock(db_mutex);
+            return -1;
+        }
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+    }
+
+    return 0;
+}
+
 int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_labels) {
     int rc;
     sqlite3_stmt *stmt;

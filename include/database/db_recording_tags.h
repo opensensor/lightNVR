@@ -7,6 +7,11 @@
 #define MAX_RECORDING_TAGS 64
 #define MAX_TAG_LENGTH 128
 
+typedef struct {
+    int count;
+    char tags[MAX_RECORDING_TAGS][MAX_TAG_LENGTH];
+} recording_tag_list_t;
+
 /**
  * Add a tag to a recording.
  * Uses INSERT OR IGNORE to avoid duplicates.
@@ -35,6 +40,18 @@ int db_recording_tag_remove(uint64_t recording_id, const char *tag);
  * @return Number of tags found, or -1 on error
  */
 int db_recording_tag_get(uint64_t recording_id, char tags[][MAX_TAG_LENGTH], int max_tags);
+
+/**
+ * Get tags for multiple recordings with one query per bounded batch.
+ * Results use the same order as recording_ids.
+ *
+ * @param recording_ids Recording IDs to load
+ * @param count Number of recording IDs and output entries
+ * @param tag_lists Output tag lists, one per recording ID
+ * @return Total number of tags loaded, or -1 on error
+ */
+int db_recording_tag_get_batch(const uint64_t *recording_ids, int count,
+                               recording_tag_list_t *tag_lists);
 
 /**
  * Set the complete list of tags for a recording (replace all existing).
@@ -86,4 +103,3 @@ int db_recording_tag_batch_remove(const uint64_t *recording_ids, int count, cons
 int db_recording_tag_get_recordings_by_tag(const char *tag, uint64_t *recording_ids, int max_ids);
 
 #endif // LIGHTNVR_DB_RECORDING_TAGS_H
-

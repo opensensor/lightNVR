@@ -29,6 +29,8 @@
 
 #define MAX_SELECTED_STREAM_FILTERS 32
 #define MAX_SELECTED_STREAM_NAME_LEN 64
+#define MAX_BATCHED_DETECTION_RECORDINGS 1000
+#define MAX_BATCHED_TAG_RECORDINGS 100
 
 static int parse_selected_streams(const char *csv,
                                   char values[][MAX_SELECTED_STREAM_NAME_LEN],
@@ -390,6 +392,41 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     // Add pagination object to response
     cJSON_AddItemToObject(response, "pagination", pagination);
 
+    // Enrich the whole page in bounded database batches. Historically this
+    // loop issued one detection aggregation and one tag query per recording,
+    // making the endpoint increasingly sensitive to SQLite mutex contention.
+    recording_detection_summary_t *detection_summaries = NULL;
+    recording_tag_list_t *recording_tag_lists = NULL;
+
+    if (count > 0 && count <= MAX_BATCHED_DETECTION_RECORDINGS) {
+        detection_summaries = calloc((size_t)count, sizeof(*detection_summaries));
+        if (!detection_summaries ||
+            get_recording_detection_summaries(recordings, count,
+                                              detection_summaries) != 0) {
+            log_warn("Falling back to per-recording detection summary queries");
+            free(detection_summaries);
+            detection_summaries = NULL;
+        }
+    }
+
+    if (count > 0 && count <= MAX_BATCHED_TAG_RECORDINGS) {
+        recording_tag_lists = calloc((size_t)count, sizeof(*recording_tag_lists));
+        uint64_t *recording_ids = malloc((size_t)count * sizeof(*recording_ids));
+        if (recording_tag_lists && recording_ids) {
+            for (int i = 0; i < count; i++) recording_ids[i] = recordings[i].id;
+            if (db_recording_tag_get_batch(recording_ids, count,
+                                           recording_tag_lists) < 0) {
+                log_warn("Falling back to per-recording tag queries");
+                free(recording_tag_lists);
+                recording_tag_lists = NULL;
+            }
+        } else {
+            free(recording_tag_lists);
+            recording_tag_lists = NULL;
+        }
+        free(recording_ids);
+    }
+
     // Add each recording to the array
     for (int i = 0; i < count; i++) {
         cJSON *recording = cJSON_CreateObject();
@@ -449,10 +486,17 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
         // Check if recording has detections and get detection labels summary
         bool has_detection_flag = (strcmp(recordings[i].trigger_type, "detection") == 0);
-        detection_label_summary_t labels[MAX_DETECTION_LABELS];
+        detection_label_summary_t fallback_labels[MAX_DETECTION_LABELS];
+        detection_label_summary_t *labels = fallback_labels;
         int label_count = 0;
 
-        if (recordings[i].start_time > 0 && recordings[i].end_time > 0) {
+        if (detection_summaries) {
+            labels = detection_summaries[i].labels;
+            label_count = detection_summaries[i].label_count;
+            if (detection_summaries[i].has_detection) {
+                has_detection_flag = true;
+            }
+        } else if (recordings[i].start_time > 0 && recordings[i].end_time > 0) {
             // Get detection labels summary for this recording's time range
             label_count = get_detection_labels_summary(recordings[i].stream_name,
                                                        recordings[i].start_time,
@@ -490,13 +534,20 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         }
 
         // Add recording tags
-        char rec_tags[MAX_RECORDING_TAGS][MAX_TAG_LENGTH];
-        int tag_count_val = db_recording_tag_get(recordings[i].id, rec_tags, MAX_RECORDING_TAGS);
+        recording_tag_list_t fallback_tag_list = {0};
+        recording_tag_list_t *tag_list = recording_tag_lists
+            ? &recording_tag_lists[i] : &fallback_tag_list;
+        if (!recording_tag_lists) {
+            tag_list->count = db_recording_tag_get(
+                recordings[i].id, tag_list->tags, MAX_RECORDING_TAGS);
+        }
+        int tag_count_val = tag_list->count;
         if (tag_count_val > 0) {
             cJSON *tags_array = cJSON_CreateArray();
             if (tags_array) {
                 for (int j = 0; j < tag_count_val; j++) {
-                    cJSON_AddItemToArray(tags_array, cJSON_CreateString(rec_tags[j]));
+                    cJSON_AddItemToArray(tags_array,
+                                         cJSON_CreateString(tag_list->tags[j]));
                 }
                 cJSON_AddItemToObject(recording, "tags", tags_array);
             }
@@ -506,6 +557,9 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
         cJSON_AddItemToArray(recordings_array, recording);
     }
+
+    free(detection_summaries);
+    free(recording_tag_lists);
 
     // Free recordings and stream config buffer (if allocated for tag-based RBAC)
     free(recordings);
