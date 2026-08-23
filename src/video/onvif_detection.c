@@ -15,7 +15,7 @@
 #include "core/config.h"
 #include "core/curl_init.h"
 #include "core/shutdown_coordinator.h"
-#include "core/mqtt_client.h"
+#include "core/event_producers.h"
 #include "utils/strings.h"
 #include "video/onvif_detection.h"
 #include "video/onvif_soap.h"
@@ -922,9 +922,15 @@ int detect_motion_onvif(const char *onvif_url, const char *username, const char 
             // Store the detection in the database (no recording_id linkage for ONVIF)
             store_detections_in_db(stream_name, result, event_timestamp, 0);
 
-            // Publish to MQTT and trigger motion recording if detections remain after filtering
+            // Enqueue the event and trigger recording if detections remain.
             if (result->count > 0) {
-                mqtt_publish_detection(stream_name, result, event_timestamp);
+                char event_error[256] = {0};
+                if (event_producer_publish_detection_for_stream(
+                        stream_name, result, event_timestamp,
+                        event_error, sizeof(event_error)) != 0) {
+                    log_debug("ONVIF Detection: Event enqueue failed for %s: %s",
+                              stream_name, event_error);
+                }
                 process_motion_event(stream_name, true, event_timestamp, false);
             }
         } else {

@@ -3,14 +3,15 @@
 #include "core/event_envelope.h"
 
 #include <ctype.h>
-#include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/random.h>
+
+#include "utils/uuid.h"
 
 static const event_type_definition_t EVENT_TYPES[] = {
     {
@@ -73,53 +74,6 @@ static bool valid_text(const char *value, size_t maximum, bool allow_empty) {
         if (iscntrl(*cursor)) return false;
     }
     return true;
-}
-
-static bool valid_uuid(const char *value) {
-    if (!value || strnlen(value, EVENT_ID_MAX) != 36) return false;
-    for (int index = 0; index < 36; index++) {
-        if (index == 8 || index == 13 || index == 18 || index == 23) {
-            if (value[index] != '-') return false;
-        } else if (!isxdigit((unsigned char)value[index])) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static int random_bytes(unsigned char *buffer, size_t length) {
-    size_t offset = 0;
-    while (offset < length) {
-        ssize_t count = getrandom(buffer + offset, length - offset, 0);
-        if (count > 0) {
-            offset += (size_t)count;
-            continue;
-        }
-        if (count < 0 && errno == EINTR) continue;
-        break;
-    }
-    if (offset == length) return 0;
-
-    FILE *random = fopen("/dev/urandom", "rb");
-    if (!random) return -1;
-    size_t count = fread(buffer, 1, length, random);
-    fclose(random);
-    return count == length ? 0 : -1;
-}
-
-static int generate_event_id(char output[EVENT_ID_MAX]) {
-    unsigned char bytes[16];
-    if (random_bytes(bytes, sizeof(bytes)) != 0) return -1;
-    bytes[6] = (unsigned char)((bytes[6] & 0x0fU) | 0x40U);
-    bytes[8] = (unsigned char)((bytes[8] & 0x3fU) | 0x80U);
-    int written = snprintf(
-        output, EVENT_ID_MAX,
-        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
-        "%02x%02x%02x%02x%02x%02x",
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-        bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12],
-        bytes[13], bytes[14], bytes[15]);
-    return written == EVENT_ID_MAX - 1 ? 0 : -1;
 }
 
 static int format_event_time(time_t occurred_at, char output[EVENT_TIME_MAX]) {
@@ -279,7 +233,8 @@ static int validate_type_data(const char *type, const cJSON *data,
             data, "detections", cJSON_Array, error, error_size);
         if (!count || !detections) return -1;
         int count_value = count->valueint;
-        if (count_value <= 0 || count_value > 1024 ||
+        if (count->valuedouble != (double)count_value || count_value <= 0 ||
+            count_value > 1024 ||
             cJSON_GetArraySize(detections) != count_value) {
             set_error(error, error_size,
                       "detection count must match a non-empty detections array");
@@ -296,25 +251,49 @@ static int validate_type_data(const char *type, const cJSON *data,
                 detection, "label", cJSON_String, error, error_size);
             const cJSON *confidence = required_field(
                 detection, "confidence", cJSON_Number, error, error_size);
-            const cJSON *x = required_field(detection, "x", cJSON_Number,
-                                            error, error_size);
-            const cJSON *y = required_field(detection, "y", cJSON_Number,
-                                            error, error_size);
-            const cJSON *width = required_field(
-                detection, "width", cJSON_Number, error, error_size);
-            const cJSON *height = required_field(
-                detection, "height", cJSON_Number, error, error_size);
-            if (!label || !confidence || !x || !y || !width || !height) {
-                return -1;
-            }
-            if (!label->valuestring[0] || confidence->valuedouble < 0 ||
-                confidence->valuedouble > 1 || x->valuedouble < 0 ||
-                x->valuedouble > 1 || y->valuedouble < 0 ||
-                y->valuedouble > 1 || width->valuedouble <= 0 ||
-                width->valuedouble > 1 || height->valuedouble <= 0 ||
-                height->valuedouble > 1) {
+            if (!label || !confidence || !label->valuestring[0] ||
+                confidence->valuedouble < 0 || confidence->valuedouble > 1) {
                 set_error(error, error_size,
                           "detection values must use normalized ranges");
+                return -1;
+            }
+
+            const cJSON *x = cJSON_GetObjectItemCaseSensitive(detection, "x");
+            const cJSON *y = cJSON_GetObjectItemCaseSensitive(detection, "y");
+            const cJSON *width = cJSON_GetObjectItemCaseSensitive(
+                detection, "width");
+            const cJSON *height = cJSON_GetObjectItemCaseSensitive(
+                detection, "height");
+            bool any_box = x || y || width || height;
+            bool complete_box = cJSON_IsNumber(x) && cJSON_IsNumber(y) &&
+                cJSON_IsNumber(width) && cJSON_IsNumber(height);
+            if ((any_box && !complete_box) ||
+                (complete_box &&
+                 (x->valuedouble < 0 || x->valuedouble > 1 ||
+                  y->valuedouble < 0 || y->valuedouble > 1 ||
+                  width->valuedouble <= 0 || width->valuedouble > 1 ||
+                  height->valuedouble <= 0 || height->valuedouble > 1))) {
+                set_error(error, error_size,
+                          "detection bounding boxes must be complete and normalized");
+                return -1;
+            }
+
+            const cJSON *track_id = cJSON_GetObjectItemCaseSensitive(
+                detection, "track_id");
+            if (track_id &&
+                (!cJSON_IsNumber(track_id) || track_id->valuedouble < 0 ||
+                 track_id->valuedouble > INT_MAX ||
+                 track_id->valuedouble != (double)track_id->valueint)) {
+                set_error(error, error_size,
+                          "detection track_id must be a non-negative integer");
+                return -1;
+            }
+            const cJSON *zone_id = cJSON_GetObjectItemCaseSensitive(
+                detection, "zone_id");
+            if (zone_id &&
+                (!cJSON_IsString(zone_id) || zone_id->valuestring[0] == '\0')) {
+                set_error(error, error_size,
+                          "detection zone_id must be a non-empty string");
                 return -1;
             }
         }
@@ -437,13 +416,13 @@ int event_envelope_validate(const event_envelope_t *event, char *error,
         set_error(error, error_size, "event envelope version or content type is invalid");
         return -1;
     }
-    if (!valid_uuid(event->id)) {
+    if (!lightnvr_uuid_is_valid(event->id)) {
         set_error(error, error_size, "event id must be a UUID");
         return -1;
     }
     if (!valid_text(event->source, EVENT_SOURCE_MAX, false) ||
         strncmp(event->source, "urn:lightnvr:", 13) != 0 ||
-        !valid_uuid(event->source + 13)) {
+        !lightnvr_uuid_is_valid(event->source + 13)) {
         set_error(error, error_size,
                   "event source must use urn:lightnvr:<installation-uuid>");
         return -1;
@@ -454,7 +433,7 @@ int event_envelope_validate(const event_envelope_t *event, char *error,
     }
     if (definition->subject_kind == EVENT_SUBJECT_CAMERA) {
         if (strncmp(event->subject, "camera/", 7) != 0 ||
-            !valid_uuid(event->subject + 7)) {
+            !lightnvr_uuid_is_valid(event->subject + 7)) {
             set_error(error, error_size,
                       "camera event subject must use camera/<uuid>");
             return -1;
@@ -522,7 +501,7 @@ int event_envelope_create(event_envelope_t *event, const char *type,
     event->occurred_at = occurred_at > 0 ? occurred_at : time(NULL);
     const event_type_definition_t *definition = event_registry_find(type);
     event->expires_at = event->occurred_at + definition->default_expiry_seconds;
-    if (generate_event_id(event->id) != 0 ||
+    if (lightnvr_uuid_generate_v4(event->id) != 0 ||
         format_event_time(event->occurred_at, event->time) != 0) {
         set_error(error, error_size, "event identity or timestamp generation failed");
         event_envelope_clear(event);

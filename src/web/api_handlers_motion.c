@@ -42,7 +42,7 @@
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
 
-#include "core/mqtt_client.h"
+#include "core/event_producers.h"
 #include "database/db_auth.h"
 #include "database/db_detections.h"
 #include "database/db_recording_tags.h"
@@ -505,7 +505,13 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
                 log_warn("Failed to store external detections for stream '%s'", stream_name);
             }
             if (caller_supplied_objects) {
-                mqtt_publish_detection(stream_name, &detections, now);
+                char event_error[256] = {0};
+                if (event_producer_publish_detection(
+                        cfg.camera_uuid, stream_name, &detections, now,
+                        event_error, sizeof(event_error)) != 0) {
+                    log_debug("Detection event enqueue failed for stream '%s': %s",
+                              stream_name, event_error);
+                }
             }
         }
     } else {

@@ -38,7 +38,7 @@
 #include "core/config.h"
 #include "core/path_utils.h"
 #include "core/shutdown_coordinator.h"
-#include "core/mqtt_client.h"
+#include "core/event_producers.h"
 #include "utils/strings.h"
 #include "video/unified_detection_thread.h"
 #include "video/packet_buffer.h"
@@ -1002,6 +1002,8 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
 
     // Initialize context
     safe_strcpy(ctx->stream_name, stream_name, sizeof(ctx->stream_name), 0);
+    safe_strcpy(ctx->camera_uuid, config.camera_uuid,
+                sizeof(ctx->camera_uuid), 0);
     safe_strcpy(ctx->model_path, model_path, sizeof(ctx->model_path), 0);
     ctx->detection_threshold = threshold;
     ctx->pre_buffer_seconds = pre_buffer_seconds > 0 ? pre_buffer_seconds : 10;
@@ -2869,11 +2871,15 @@ static void report_detections(unified_detection_ctx_t *ctx,
         if (store_detections_in_db(ctx->stream_name, result, now, rec_id) != 0)
             log_warn("[%s] Failed to store detections in database", ctx->stream_name);
 
-        // Keep MQTT/Home Assistant topics in sync for the local detection
-        // backends (motion, SOD, TFLite). API backends publish from inside
-        // detect_objects_api / *_snapshot, so they are excluded here.
-        mqtt_publish_detection(ctx->stream_name, result, now);
-        mqtt_set_motion_state(ctx->stream_name, result);
+        // API backends enqueue from detect_objects_api / *_snapshot. Local
+        // backends enqueue here after their single database write.
+        char event_error[256] = {0};
+        if (event_producer_publish_detection(
+                ctx->camera_uuid, ctx->stream_name, result, now,
+                event_error, sizeof(event_error)) != 0) {
+            log_debug("[%s] Detection event enqueue failed: %s",
+                      ctx->stream_name, event_error);
+        }
     }
 
     pthread_mutex_lock(&ctx->mutex);

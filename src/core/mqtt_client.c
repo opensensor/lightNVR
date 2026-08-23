@@ -602,6 +602,36 @@ int mqtt_publish_raw(const char *topic, const char *payload, bool retain) {
     return 0;
 }
 
+int mqtt_publish_event(const event_envelope_t *event) {
+    if (!mosq || !mqtt_config || !mqtt_config->mqtt_enabled) {
+        return 0;
+    }
+    if (!event) return -1;
+
+    const char *subject_id = strrchr(event->subject, '/');
+    subject_id = subject_id ? subject_id + 1 : event->subject;
+    if (!subject_id[0]) return -1;
+
+    char topic[MAX_TOPIC_LENGTH];
+    int topic_length = snprintf(
+        topic, sizeof(topic), "%s/v1/events/%s/%s",
+        mqtt_config->mqtt_topic_prefix, event->type, subject_id);
+    if (topic_length < 0 || (size_t)topic_length >= sizeof(topic)) {
+        log_error("MQTT: Normalized event topic exceeds maximum length");
+        return -1;
+    }
+
+    char error[256] = {0};
+    char *payload = event_envelope_serialize(event, error, sizeof(error));
+    if (!payload) {
+        log_error("MQTT: Failed to serialize event envelope: %s", error);
+        return -1;
+    }
+    int result = mqtt_publish_raw(topic, payload, false);
+    free(payload);
+    return result;
+}
+
 /**
  * Publish binary data to a topic (e.g., JPEG snapshots)
  */

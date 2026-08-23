@@ -24,6 +24,9 @@
 #include "core/daemon.h"
 #include "core/shutdown_coordinator.h"
 #include "core/curl_init.h"
+#include "core/event_bus.h"
+#include "core/event_identity.h"
+#include "core/mqtt_event_adapter.h"
 #include "core/mqtt_client.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
@@ -726,6 +729,18 @@ int main(int argc, char *argv[]) {
 
     // Copy configuration to global config
     memcpy(&g_config, &config, sizeof(config_t));
+
+    // Establish the stable installation identity and asynchronous event path
+    // before any camera producer threads can start.
+    if (event_identity_init() != 0) {
+        log_error("Failed to initialize persistent event identity");
+    } else if (mqtt_event_adapter_register() != 0) {
+        log_error("Failed to register MQTT event compatibility adapter");
+    } else if (event_bus_init(0, 0) != 0) {
+        log_error("Failed to initialize asynchronous event bus");
+    } else {
+        log_info("Asynchronous event pipeline initialized successfully");
+    }
 
     // Initialize storage manager
     if (init_storage_manager(config.storage_path, config.max_storage_size) != 0) {
@@ -1481,6 +1496,13 @@ cleanup:
         // hangs, the safety alarm will still fire.
         cleanup_detection_resources();
 
+        // Drain accepted events while MQTT is still alive, then detach the
+        // compatibility subscriber before tearing down broker state.
+        log_info("Draining asynchronous event pipeline...");
+        event_bus_shutdown(true);
+        mqtt_event_adapter_unregister();
+        event_identity_shutdown();
+
         // Cleanup MQTT client
         log_info("Cleaning up MQTT client...");
         mqtt_cleanup();
@@ -1591,6 +1613,10 @@ cleanup:
         cleanup_mp4_recording_backend();
         cleanup_hls_streaming_backend();
         cleanup_transcoding_backend();
+
+        event_bus_shutdown(true);
+        mqtt_event_adapter_unregister();
+        event_identity_shutdown();
 
         // Cleanup MQTT client
         mqtt_cleanup();

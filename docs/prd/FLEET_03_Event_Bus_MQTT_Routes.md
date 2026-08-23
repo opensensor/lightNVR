@@ -1,6 +1,6 @@
 # PRD — Event Bus & MQTT Routes
 
-**Status**: In progress — P0 event envelope, registry, and bounded asynchronous bus implemented; detection adapter next
+**Status**: P0 complete — versioned envelope, registry, bounded asynchronous bus, persistent installation identity, and detection compatibility adapter implemented; P1 outbox next
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation
