@@ -83,7 +83,7 @@ they may not trust a client-supplied collection expansion.
 | Routes | Required action | Current enforcement |
 | --- | --- | --- |
 | User list/create/get/update/delete, API-key generation, password lock and lockout clear | `users.manage` | Existing administrator/self-service rules |
-| Authorization action catalog and policy simulation | `users.manage` | Administrator-only foundation endpoint |
+| Authorization action catalog, roles, user grants, and policy simulation | `users.manage` | Central evaluator with optimistic policy-version checks |
 | Settings reads containing secrets | `system.admin` | Existing administrator/redaction behavior |
 | Settings writes and go2rtc configuration validation | `system.admin` | Existing administrator checks |
 | System information/status/log reads | `system.admin` | Existing endpoint checks |
