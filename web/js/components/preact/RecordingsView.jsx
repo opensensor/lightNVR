@@ -3,8 +3,8 @@
  * Preact component for the recordings page
  */
 
-import { useState, useEffect, useRef, useContext } from 'preact/hooks';
-import { useQueryClient } from '../../query-client.js';
+import { useState, useEffect, useRef, useContext, useMemo } from 'preact/hooks';
+import { useQuery, useQueryClient } from '../../query-client.js';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
 import { BatchDownloadModal } from './BatchDownloadModal.jsx';
@@ -75,6 +75,13 @@ function clearStoredSelectedRecordings() {
 export function RecordingsView() {
   const { t } = useI18n();
   const queryClient = useQueryClient();
+  const { data: collectionData } = useQuery(
+    ['camera-collections'], '/api/camera-collections', {}, { staleTime: 30000 }
+  );
+  const collections = useMemo(
+    () => collectionData?.collections || [],
+    [collectionData]
+  );
   const [userRole, setUserRole] = useState(null);
   const [recordings, setRecordings] = useState([]);
   const [streams, setStreams] = useState([]);
@@ -284,7 +291,7 @@ export function RecordingsView() {
   // Update active filters when filters change
   useEffect(() => {
     updateActiveFilters();
-  }, [filters]);
+  }, [filters, collections]);
 
   // Reactively sync all view state to URL via replaceState (no browser history entries).
   // This mirrors the approach used in LiveView and ensures refresh always preserves state.
@@ -308,6 +315,9 @@ export function RecordingsView() {
     const serializedStreams = urlUtils.serializeMultiValueParam(filters.streamIds);
     if (serializedStreams) url.searchParams.set('stream', serializedStreams);
     else url.searchParams.delete('stream');
+
+    if (filters.collectionUuid) url.searchParams.set('collection', filters.collectionUuid);
+    else url.searchParams.delete('collection');
 
     if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');
     else if (filters.recordingType === 'no_detection') url.searchParams.set('detection', '-1');
@@ -536,7 +546,7 @@ export function RecordingsView() {
 
   // Update active filters
   const updateActiveFilters = () => {
-    const activeFilters = urlUtils.getActiveFiltersDisplay(filters);
+    const activeFilters = urlUtils.getActiveFiltersDisplay(filters, collections);
     setHasActiveFilters(activeFilters.length > 0);
     setActiveFiltersDisplay(activeFilters);
   };
@@ -577,6 +587,9 @@ export function RecordingsView() {
           ...prev,
           streamIds: value ? urlUtils.removeMultiValue(prev.streamIds, value) : []
         }));
+        break;
+      case 'collectionUuid':
+        setFilters(prev => ({ ...prev, collectionUuid: '' }));
         break;
       case 'recordingType':
         setFilters(prev => ({
@@ -971,6 +984,7 @@ export function RecordingsView() {
             pagination={pagination}
             setPagination={setPagination}
             streams={streams}
+            collections={collections}
             applyFilters={applyFilters}
             resetFilters={resetFilters}
             handleDateRangeChange={handleDateRangeChange}

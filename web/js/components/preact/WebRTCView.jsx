@@ -14,6 +14,8 @@ import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
 import { useI18n } from '../../i18n.js';
+import { buildLiveViewHref } from '../../utils/live-view-url.js';
+import { useCollectionMembership } from './fleet/collectionMembership.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -56,6 +58,16 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     const p = new URLSearchParams(window.location.search);
     return p.get('tag') || localStorage.getItem('lightnvr-webrtc-tag-filter') || '';
   });
+  const [collectionFilter, setCollectionFilter] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('collection') || '';
+  });
+  const {
+    collections,
+    cameraUuids: collectionCameraUuids,
+    isLoading: isCollectionLoading,
+    error: collectionError,
+  } = useCollectionMembership(collectionFilter);
 
   // State for toggling stream labels and controls visibility
   const [showLabels, setShowLabels] = useState(() => {
@@ -215,12 +227,18 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
 
   // Process streams data when it's loaded.
   useEffect(() => {
+    let cancelled = false;
     if (streamsData && Array.isArray(streamsData)) {
+      if (collectionFilter && isCollectionLoading) return;
       // Process the streams data
       const processStreams = async () => {
         try {
           // Filter and process the streams
-          const filteredStreams = await filterStreamsForWebRTC(streamsData);
+          const candidateStreams = collectionFilter
+            ? streamsData.filter((stream) => collectionCameraUuids.has(stream.camera_uuid))
+            : streamsData;
+          const filteredStreams = await filterStreamsForWebRTC(candidateStreams);
+          if (cancelled) return;
 
           if (filteredStreams.length > 0) {
             setStreams(filteredStreams);
@@ -246,8 +264,11 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
             }
           } else {
             console.warn('No streams available for WebRTC view after filtering');
+            setStreams([]);
+            setSelectedStream('');
           }
         } catch (error) {
+          if (cancelled) return;
           console.error('Error processing streams:', error);
           showStatusMessage(t('live.errorProcessingStreams', { message: error.message }));
         }
@@ -255,10 +276,11 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
 
       processStreams();
     }
+    return () => { cancelled = true; };
     // Note: selectedStream is read to preserve the current selection when valid,
     // but we still need to populate streams even when a selection already exists.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamsData, autoGrid]);
+  }, [streamsData, autoGrid, collectionFilter, collectionCameraUuids, isCollectionLoading]);
 
   // Sync layout/page/stream to URL — only meaningful once streams are loaded.
   useEffect(() => {
@@ -307,6 +329,9 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     if (tagFilter) url.searchParams.set('tag', tagFilter);
     else url.searchParams.delete('tag');
 
+    if (collectionFilter) url.searchParams.set('collection', collectionFilter);
+    else url.searchParams.delete('collection');
+
     // Omit params when at their defaults (true) to keep URL clean
     if (!showLabels) url.searchParams.set('labels', '0');
     else url.searchParams.delete('labels');
@@ -322,7 +347,13 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
     localStorage.setItem('lightnvr-show-detections', String(showDetections));
-  }, [tagFilter, showLabels, showControls, showDetections]);
+  }, [tagFilter, collectionFilter, showLabels, showControls, showDetections]);
+
+  useEffect(() => {
+    if (collectionError) {
+      showStatusMessage(t('collections.loadMembersError', { message: collectionError.message }));
+    }
+  }, [collectionError, t]);
 
   /**
    * Filter streams for WebRTC view
@@ -409,11 +440,13 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     return Array.from(tags).sort();
   }, [streams]);
 
-  // Apply tag filter before passing to the order hook
+  // Apply reusable collection and ad-hoc tag filters before camera ordering.
   const tagFilteredStreams = useMemo(() => {
-    if (!tagFilter) return streams;
-    return streams.filter(s => s.tags && s.tags.split(',').some(t => t.trim() === tagFilter));
-  }, [streams, tagFilter]);
+    return streams.filter((stream) => {
+      if (collectionFilter && !collectionCameraUuids.has(stream.camera_uuid)) return false;
+      return !tagFilter || (stream.tags && stream.tags.split(',').some(tag => tag.trim() === tagFilter));
+    });
+  }, [streams, tagFilter, collectionFilter, collectionCameraUuids]);
 
   // Camera ordering hook (operates on group-filtered streams)
   const {
@@ -527,7 +560,7 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
             {/* Tab HLS */}
             {!isHlsDisabled && (
               <a
-                href="/hls.html"
+                href={buildLiveViewHref('/hls.html', window.location.search)}
                 className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
               >
                 {t('live.hlsShort')}
@@ -537,7 +570,7 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
             {/* Tab MSE */}
             {go2rtcAvailable && !isMseDisabled && (
               <a
-                href="/hls.html?mode=mse"
+                href={buildLiveViewHref('/hls.html', window.location.search, 'mse')}
                 className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
               >
                 {t('live.mseShort')}
@@ -547,6 +580,23 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
         </div>
         
         <div className="controls flex items-center space-x-2">
+          {collections.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="webrtc-collection-filter" className="text-sm whitespace-nowrap">{t('collections.filter')}:</label>
+              <select
+                id="webrtc-collection-filter"
+                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                value={collectionFilter}
+                disabled={isCollectionLoading}
+                onChange={(event) => { setCollectionFilter(event.currentTarget.value); setCurrentPage(0); }}
+              >
+                <option value="">{t('collections.all')}</option>
+                {collections.map((collection) => (
+                  <option key={collection.uuid} value={collection.uuid}>{collection.name} ({collection.effective_count})</option>
+                ))}
+              </select>
+            </div>
+          )}
           {availableTags.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-sm whitespace-nowrap">{t('live.tags')}:</span>

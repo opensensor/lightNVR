@@ -9,6 +9,7 @@
 #include <strings.h>
 
 #include "core/camera_selector.h"
+#include "core/camera_collection_filter.h"
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_fleet_query.h"
@@ -29,6 +30,7 @@ typedef struct {
     bool descending;
     char search[FLEET_QUERY_SEARCH_MAX];
     char camera_uuid[CAMERA_UUID_STRING_SIZE];
+    char collection_uuid[CAMERA_UUID_STRING_SIZE];
     bool include_facets;
     bool explain;
 } fleet_query_options_t;
@@ -197,6 +199,17 @@ static bool parse_options(const cJSON *body, bool preview,
         }
         safe_strcpy(options->camera_uuid, camera_uuid->valuestring,
                     sizeof(options->camera_uuid), 0);
+    }
+    const cJSON *collection_uuid =
+        cJSON_GetObjectItemCaseSensitive(body, "collection_uuid");
+    if (collection_uuid) {
+        if (!cJSON_IsString(collection_uuid) ||
+            !valid_uuid(collection_uuid->valuestring)) {
+            http_response_set_json_error(res, 400, "Invalid collection_uuid");
+            return false;
+        }
+        safe_strcpy(options->collection_uuid, collection_uuid->valuestring,
+                    sizeof(options->collection_uuid), 0);
     }
     const cJSON *facets = cJSON_GetObjectItemCaseSensitive(body, "facets");
     if (facets) {
@@ -503,9 +516,30 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         return;
     }
 
+    camera_collection_filter_t collection_filter;
+    camera_collection_filter_result_t collection_result =
+        camera_collection_filter_load(options.collection_uuid, &user,
+                                      &collection_filter);
+    if (collection_result != CAMERA_COLLECTION_FILTER_OK) {
+        fleet_selector_free(selector);
+        cJSON_Delete(body);
+        if (collection_result == CAMERA_COLLECTION_FILTER_NOT_FOUND) {
+            http_response_set_json_error(res, 404, "Collection not found");
+        } else if (collection_result == CAMERA_COLLECTION_FILTER_OUT_OF_MEMORY) {
+            http_response_set_json_error(res, 500, "Out of memory");
+        } else if (collection_result == CAMERA_COLLECTION_FILTER_INVALID_SELECTOR) {
+            http_response_set_json_error(res, 500, "Collection selector is invalid");
+        } else {
+            http_response_set_json_error(res, 500,
+                                         "Failed to load collection members");
+        }
+        return;
+    }
+
     fleet_camera_t *cameras = NULL;
     int camera_count = 0;
     if (db_fleet_camera_load(&cameras, &camera_count) != 0) {
+        camera_collection_filter_free(&collection_filter);
         fleet_selector_free(selector);
         cJSON_Delete(body);
         http_response_set_json_error(res, 500, "Failed to load fleet cameras");
@@ -516,6 +550,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         calloc((size_t)camera_count, sizeof(*matches)) : NULL;
     if (camera_count > 0 && !matches) {
         free(cameras);
+        camera_collection_filter_free(&collection_filter);
         fleet_selector_free(selector);
         cJSON_Delete(body);
         http_response_set_json_error(res, 500, "Out of memory");
@@ -530,6 +565,9 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         }
         if (options.camera_uuid[0] &&
             strcmp(options.camera_uuid, cameras[i].camera_uuid) != 0) {
+            continue;
+        }
+        if (!camera_collection_filter_matches(&collection_filter, &cameras[i])) {
             continue;
         }
         if (!camera_matches_search(&cameras[i], options.search)) continue;
@@ -552,6 +590,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         cJSON_Delete(items);
         free(matches);
         free(cameras);
+        camera_collection_filter_free(&collection_filter);
         fleet_selector_free(selector);
         cJSON_Delete(body);
         http_response_set_json_error(res, 500, "Failed to create response");
@@ -568,6 +607,10 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
     cJSON_AddStringToObject(root, "sort_by", options.sort_by);
     cJSON_AddStringToObject(root, "sort_order",
                             options.descending ? "desc" : "asc");
+    if (options.collection_uuid[0]) {
+        cJSON_AddStringToObject(root, "collection_uuid",
+                               options.collection_uuid);
+    }
     cJSON_AddItemToObject(root, "cameras", items);
 
     if (options.include_facets) {
@@ -576,6 +619,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
             cJSON_Delete(root);
             free(matches);
             free(cameras);
+            camera_collection_filter_free(&collection_filter);
             fleet_selector_free(selector);
             cJSON_Delete(body);
             http_response_set_json_error(res, 500,
@@ -595,6 +639,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
             cJSON_Delete(root);
             free(matches);
             free(cameras);
+            camera_collection_filter_free(&collection_filter);
             fleet_selector_free(selector);
             cJSON_Delete(body);
             http_response_set_json_error(res, 500,
@@ -608,6 +653,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
     cJSON_Delete(root);
     free(matches);
     free(cameras);
+    camera_collection_filter_free(&collection_filter);
     fleet_selector_free(selector);
     cJSON_Delete(body);
     if (!json) {

@@ -14,6 +14,8 @@ import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
 import { useI18n } from '../../i18n.js';
+import { buildLiveViewHref } from '../../utils/live-view-url.js';
+import { useCollectionMembership } from './fleet/collectionMembership.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -55,6 +57,16 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
     const p = new URLSearchParams(window.location.search);
     return p.get('tag') || localStorage.getItem('lightnvr-hls-tag-filter') || '';
   });
+  const [collectionFilter, setCollectionFilter] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('collection') || '';
+  });
+  const {
+    collections,
+    cameraUuids: collectionCameraUuids,
+    isLoading: isCollectionLoading,
+    error: collectionError,
+  } = useCollectionMembership(collectionFilter);
 
   // State for toggling stream labels and controls visibility
   const [showLabels, setShowLabels] = useState(() => {
@@ -230,10 +242,15 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
 
   // Process streams data when it's loaded
   useEffect(() => {
+    let cancelled = false;
     if (streamsData && Array.isArray(streamsData)) {
+      if (collectionFilter && isCollectionLoading) return;
       // Process the streams data
       const processStreams = async () => {
         try {
+          const candidateStreams = collectionFilter
+            ? streamsData.filter((stream) => collectionCameraUuids.has(stream.camera_uuid))
+            : streamsData;
           // Filter and process the streams
           // Note: filterStreamsForHLS is defined below but called here via closure
           // We use a local function to fetch stream details to avoid hoisting issues
@@ -262,11 +279,12 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
           // overwhelming the backend with simultaneous /api/streams/{id} requests.
           const BATCH_SIZE = 3;
           const detailedStreams = [];
-          for (let i = 0; i < streamsData.length; i += BATCH_SIZE) {
-            const batch = streamsData.slice(i, i + BATCH_SIZE);
+          for (let i = 0; i < candidateStreams.length; i += BATCH_SIZE) {
+            const batch = candidateStreams.slice(i, i + BATCH_SIZE);
             const batchResults = await Promise.all(batch.map(fetchStreamDetails));
             detailedStreams.push(...batchResults);
           }
+          if (cancelled) return;
           console.log('Loaded detailed streams for HLS view:', detailedStreams);
 
           // Filter out streams that are soft deleted, administratively disabled, or not configured for streaming.
@@ -313,8 +331,11 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
             }
           } else {
             console.warn('No streams available for HLS view after filtering');
+            setStreams([]);
+            setSelectedStream('');
           }
         } catch (error) {
+          if (cancelled) return;
           console.error('Error processing streams:', error);
           showStatusMessage(t('live.errorProcessingStreams', { message: error.message }));
         }
@@ -322,10 +343,10 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
 
       processStreams();
     }
-    // Note: We intentionally only re-run when streamsData changes
-    // selectedStream is read but we don't want to trigger refetch when it changes
+    return () => { cancelled = true; };
+    // selectedStream is read but intentionally omitted from the dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamsData, queryClient]);
+  }, [streamsData, queryClient, collectionFilter, collectionCameraUuids, isCollectionLoading]);
 
   // Sync layout/page/stream to URL — only meaningful once streams are loaded.
   useEffect(() => {
@@ -374,6 +395,9 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
     if (tagFilter) url.searchParams.set('tag', tagFilter);
     else url.searchParams.delete('tag');
 
+    if (collectionFilter) url.searchParams.set('collection', collectionFilter);
+    else url.searchParams.delete('collection');
+
     // Omit params when at their defaults (true) to keep URL clean
     if (!showLabels) url.searchParams.set('labels', '0');
     else url.searchParams.delete('labels');
@@ -389,7 +413,13 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
     localStorage.setItem('lightnvr-show-labels', String(showLabels));
     localStorage.setItem('lightnvr-show-controls', String(showControls));
     localStorage.setItem('lightnvr-show-detections', String(showDetections));
-  }, [tagFilter, showLabels, showControls, showDetections]);
+  }, [tagFilter, collectionFilter, showLabels, showControls, showDetections]);
+
+  useEffect(() => {
+    if (collectionError) {
+      showStatusMessage(t('collections.loadMembersError', { message: collectionError.message }));
+    }
+  }, [collectionError, t]);
 
   // Derive unique tags from all streams for the filter dropdown
   const availableTags = useMemo(() => {
@@ -400,11 +430,13 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
     return Array.from(tags).sort();
   }, [streams]);
 
-  // Apply tag filter before passing to the order hook
+  // Apply reusable collection and ad-hoc tag filters before camera ordering.
   const tagFilteredStreams = useMemo(() => {
-    if (!tagFilter) return streams;
-    return streams.filter(s => s.tags && s.tags.split(',').map(t => t.trim()).includes(tagFilter));
-  }, [streams, tagFilter]);
+    return streams.filter((stream) => {
+      if (collectionFilter && !collectionCameraUuids.has(stream.camera_uuid)) return false;
+      return !tagFilter || (stream.tags && stream.tags.split(',').map(tag => tag.trim()).includes(tagFilter));
+    });
+  }, [streams, tagFilter, collectionFilter, collectionCameraUuids]);
 
   // Camera ordering hook (operates on group-filtered streams)
   const {
@@ -525,7 +557,7 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
           <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
             {!isWebRTCDisabled && (
               <a
-                href="/index.html"
+                href={buildLiveViewHref('/index.html', window.location.search)}
                 className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
               >
                 WebRTC
@@ -564,6 +596,23 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
           </div>
         </div>
         <div className="controls flex items-center space-x-2">
+          {collections.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="hls-collection-filter" className="text-sm whitespace-nowrap">{t('collections.filter')}:</label>
+              <select
+                id="hls-collection-filter"
+                className="px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                value={collectionFilter}
+                disabled={isCollectionLoading}
+                onChange={(event) => { setCollectionFilter(event.currentTarget.value); setCurrentPage(0); }}
+              >
+                <option value="">{t('collections.all')}</option>
+                {collections.map((collection) => (
+                  <option key={collection.uuid} value={collection.uuid}>{collection.name} ({collection.effective_count})</option>
+                ))}
+              </select>
+            </div>
+          )}
           {availableTags.length > 0 && (
             <div className="flex items-center gap-1.5">
               <label htmlFor="tag-filter" className="text-sm whitespace-nowrap">{t('recordings.tags')}:</label>
