@@ -547,3 +547,23 @@ int httpd_authorize_stream_action(const http_request_t *req,
     }
     return 1;
 }
+
+void httpd_sanitize_attachment_filename(const char *input, char *output,
+                                        size_t output_size) {
+    if (!output || output_size == 0) return;
+    output[0] = '\0';
+    if (!input) return;
+    const char *basename = input;
+    for (const char *cursor = input; *cursor; cursor++) {
+        if (*cursor == '/' || *cursor == '\\') basename = cursor + 1;
+    }
+    size_t written = 0;
+    for (const unsigned char *cursor = (const unsigned char *)basename;
+         *cursor && written + 1 < output_size; cursor++) {
+        unsigned char character = *cursor;
+        output[written++] = (isalnum(character) || character == '.' ||
+                             character == '-' || character == '_')
+            ? (char)character : '_';
+    }
+    output[written] = '\0';
+}
