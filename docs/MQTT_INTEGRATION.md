@@ -144,31 +144,38 @@ stale.
 ### Event route configuration
 
 The event route API can persist and validate event type, camera selector,
-schedule, predicate, and suppression configuration for the normalized stream.
-The current destination identifier is `mqtt:default`, which refers to the
-single broker configured in `[mqtt]`. Route preview is safe to use while
-designing a rule: it resolves matching cameras but never publishes.
+schedule, predicate, suppression, and destination configuration for the
+normalized stream. `mqtt:default` refers to the broker configured in `[mqtt]`;
+managed profiles use stable `mqtt:<destination_uuid>` keys. Route preview is
+safe to use while designing a rule: it resolves matching cameras but never
+publishes.
 
 With no route definitions, normalized events retain the compatibility
-publish-all behavior. Once a route exists, an event is durably enqueued only
-when at least one enabled route matches its type, current Fleet scope,
-detection predicate, and occurrence-time schedule. Disabling all configured
-routes pauses normalized enqueue; deleting the final route restores the default.
-Legacy detection and Home Assistant compatibility topics are unchanged.
+publish-all behavior through the enabled default broker. Once a route exists,
+an event is durably enqueued once per unique destination matched by at least one
+enabled route's type, current Fleet scope, detection predicate, and
+occurrence-time schedule. Multiple matching routes to one destination do not
+duplicate a publish. Disabling all configured routes pauses normalized enqueue;
+deleting the final route restores the default. Legacy detection and Home
+Assistant compatibility topics are unchanged.
 
 Schedules use installed IANA timezone data and account for DST and overnight
 windows. Debounce, cooldown, grouping, and fixed-window rate limits are enforced
 per route, event type, and subject. The first event is preserved, and an allowed
-event advances durable suppression state only after the outbox returns
-`ENQUEUED` or `DUPLICATE`; a full or failed outbox therefore does not consume a
-cooldown or rate slot.
+event advances durable suppression state for that destination only after its
+outbox write returns `ENQUEUED` or `DUPLICATE`; a full or failed destination
+write therefore does not consume a cooldown or rate slot or block successful
+fan-out elsewhere.
 
-The destination profile API can stage named MQTT brokers with write-only
-credentials, secure system-trust defaults, optional custom CA or mutual TLS,
-and per-profile topics, QoS, and keepalive settings. The existing `[mqtt]`
-configuration remains the unmanaged `mqtt:default` destination. Route selection
-and multi-client delivery for managed profiles are provided by the dependent
-runtime slice; this control-plane slice does not redirect events on its own. See
+The destination profile API manages named MQTT brokers with write-only
+credentials, secure system-trust defaults, optional custom CA or mutual TLS
+(with explicit CA, client certificate, and client key paths),
+and per-profile topics, QoS, and keepalive settings. Each enabled profile has an
+independent reconnecting client and durable queue. A disabled profile pauses
+its queue without discarding unexpired events; profile edits reconnect using the
+new revision. Topic templates are expanded and frozen at enqueue time, so an
+edit affects new events without rewriting pending work. Managed profiles remain
+active even when the existing `[mqtt]` default destination is disabled. See
 [Event Routes](API.md#event-routes) for the API contract.
 
 ```json

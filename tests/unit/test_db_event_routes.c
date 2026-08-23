@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "database/db_core.h"
+#include "database/db_event_destinations.h"
 #include "database/db_event_routes.h"
 #include "unity.h"
 #include "utils/strings.h"
@@ -48,10 +49,39 @@ static event_route_t valid_route(const char *name) {
     return route;
 }
 
+static event_destination_t create_destination(void) {
+    event_destination_t destination;
+    memset(&destination, 0, sizeof(destination));
+    safe_strcpy(destination.name, "Operations broker",
+                sizeof(destination.name), 0);
+    destination.enabled = true;
+    safe_strcpy(destination.destination_type, "mqtt",
+                sizeof(destination.destination_type), 0);
+    safe_strcpy(destination.broker_host, "mqtt.example.test",
+                sizeof(destination.broker_host), 0);
+    destination.broker_port = 1883;
+    safe_strcpy(destination.client_id, "lightnvr-routes-test",
+                sizeof(destination.client_id), 0);
+    safe_strcpy(destination.topic_template, "routes/{type}/{subject_id}",
+                sizeof(destination.topic_template), 0);
+    safe_strcpy(destination.tls_mode, "disabled",
+                sizeof(destination.tls_mode), 0);
+    destination.keepalive_seconds = 60;
+    destination.qos = 1;
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_create(&destination, NULL));
+    return destination;
+}
+
 void setUp(void) {
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM event_routes;",
                                 NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(get_db_handle(), "DELETE FROM event_destinations;",
+                     NULL, NULL, NULL));
 }
 
 void tearDown(void) {}
@@ -166,6 +196,15 @@ void test_route_validates_types_scope_predicates_and_schedule(void) {
         DB_EVENT_ROUTE_INVALID,
         db_event_route_validate(&route, error, sizeof(error)));
     TEST_ASSERT_NOT_NULL(strstr(error, "mqtt:default"));
+
+    event_destination_t destination = create_destination();
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_destination_make_key(destination.uuid,
+                                         route.destination_key));
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_ROUTE_OK,
+        db_event_route_validate(&route, error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK, db_event_route_create(&route));
 }
 
 int main(void) {

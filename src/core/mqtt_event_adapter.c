@@ -85,26 +85,62 @@ static int mqtt_event_handler(const event_envelope_t *event, void *context) {
     int failed = 0;
 
 #ifdef ENABLE_MQTT
-    if (config && config->mqtt_enabled) {
+    if (config) {
         event_route_delivery_plan_t delivery_plan = {0};
         event_router_result_t route_result = event_router_evaluate_delivery(
             event, &delivery_plan);
-        if (route_result == EVENT_ROUTER_MATCH ||
-            route_result == EVENT_ROUTER_DEFAULT) {
+        if (route_result == EVENT_ROUTER_DEFAULT && config->mqtt_enabled) {
             event_outbox_enqueue_result_t enqueue_result =
                 mqtt_delivery_worker_enqueue(
                     event, config->mqtt_topic_prefix, NULL);
-            if (enqueue_result == EVENT_OUTBOX_ENQUEUED ||
-                enqueue_result == EVENT_OUTBOX_DUPLICATE) {
-                if (event_router_record_enqueued(event, &delivery_plan) != 0) {
-                    log_error("MQTT event adapter could not commit route "
-                              "suppression for event %s", event->id);
-                    failed = 1;
-                }
-            } else {
+            if (enqueue_result != EVENT_OUTBOX_ENQUEUED &&
+                enqueue_result != EVENT_OUTBOX_DUPLICATE) {
                 log_error("MQTT event adapter could not persist event %s (%d)",
                           event->id, enqueue_result);
                 failed = 1;
+            }
+        } else if (route_result == EVENT_ROUTER_MATCH) {
+            for (size_t index = 0; index < delivery_plan.count; index++) {
+                const event_route_delivery_plan_entry_t *entry =
+                    &delivery_plan.entries[index];
+                bool already_processed = false;
+                for (size_t previous = 0; previous < index; previous++) {
+                    if (strcmp(delivery_plan.entries[previous].destination_key,
+                               entry->destination_key) == 0) {
+                        already_processed = true;
+                        break;
+                    }
+                }
+                if (already_processed) continue;
+
+                event_outbox_enqueue_result_t enqueue_result;
+                if (strcmp(entry->destination_key,
+                           EVENT_ROUTE_DEFAULT_DESTINATION) == 0) {
+                    if (!config->mqtt_enabled) continue;
+                    enqueue_result = mqtt_delivery_worker_enqueue(
+                        event, config->mqtt_topic_prefix, NULL);
+                } else {
+                    enqueue_result =
+                        mqtt_delivery_worker_enqueue_destination(
+                            event, entry->destination_key,
+                            entry->topic_template, NULL);
+                }
+                if (enqueue_result != EVENT_OUTBOX_ENQUEUED &&
+                    enqueue_result != EVENT_OUTBOX_DUPLICATE) {
+                    log_error("MQTT event adapter could not persist event %s "
+                              "for %s (%d)", event->id,
+                              entry->destination_key, enqueue_result);
+                    failed = 1;
+                    continue;
+                }
+                if (event_router_record_destination_enqueued(
+                        event, &delivery_plan,
+                        entry->destination_key) != 0) {
+                    log_error("MQTT event adapter could not commit route "
+                              "suppression for event %s and %s", event->id,
+                              entry->destination_key);
+                    failed = 1;
+                }
             }
         } else if (route_result == EVENT_ROUTER_ERROR) {
             log_error("MQTT event adapter could not evaluate routes for %s",

@@ -30,6 +30,10 @@ typedef struct {
     uint64_t dead;
     uint64_t outcome_errors;
     uint64_t disconnected_polls;
+    uint64_t managed_profiles;
+    uint64_t managed_connected;
+    uint64_t profile_reloads;
+    uint64_t profile_errors;
     bool running;
 } mqtt_delivery_worker_stats_t;
 
@@ -42,8 +46,18 @@ event_outbox_enqueue_result_t mqtt_delivery_worker_enqueue(
     const event_envelope_t *event, const char *topic_prefix,
     int64_t *row_id);
 
-/* Start/stop the single default-destination worker. Stop finishes any active
- * publish attempt but intentionally leaves pending rows for the next start. */
+/* Persist an event for an explicit destination using a validated topic
+ * template containing {type} and {subject_id}. */
+event_outbox_enqueue_result_t mqtt_delivery_worker_enqueue_destination(
+    const event_envelope_t *event, const char *destination,
+    const char *topic_template, int64_t *row_id);
+
+int mqtt_delivery_topic_expand(
+    const char *topic_template, const event_envelope_t *event,
+    char topic[EVENT_OUTBOX_TOPIC_MAX]);
+
+/* Start/stop the default and managed-destination worker. Stop finishes any
+ * active publish attempt but leaves pending rows for the next start. */
 int mqtt_delivery_worker_start(void);
 void mqtt_delivery_worker_shutdown(void);
 
@@ -55,6 +69,10 @@ void mqtt_delivery_worker_shutdown(void);
 int mqtt_delivery_worker_process_once(int64_t now, bool broker_connected,
                                       mqtt_delivery_publish_fn publish,
                                       void *context);
+
+int mqtt_delivery_worker_process_destination_once(
+    const char *destination, int64_t now, bool broker_connected,
+    mqtt_delivery_publish_fn publish, void *context);
 
 /* Deterministic bounded exponential backoff with per-event jitter. */
 int mqtt_delivery_backoff_seconds(int attempt_count, uint32_t jitter_seed);

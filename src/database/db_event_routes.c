@@ -17,6 +17,7 @@
 
 #include "core/camera_selector.h"
 #include "database/db_core.h"
+#include "database/db_event_destinations.h"
 #include "utils/strings.h"
 
 #define EVENT_ROUTE_SELECT_FIELDS \
@@ -319,10 +320,11 @@ db_event_route_result_t db_event_route_validate(
         set_error(error, error_size, "route name cannot be blank");
         return DB_EVENT_ROUTE_INVALID;
     }
-    if (strcmp(route->destination_key,
-               EVENT_ROUTE_DEFAULT_DESTINATION) != 0) {
+    if (strcmp(route->destination_key, EVENT_ROUTE_DEFAULT_DESTINATION) != 0 &&
+        !db_event_destination_key_exists(route->destination_key)) {
         set_error(error, error_size,
-                  "only the mqtt:default destination is currently available");
+                  "destination must be mqtt:default or an existing managed "
+                  "MQTT destination");
         return DB_EVENT_ROUTE_INVALID;
     }
     if (route->event_type_count < 1 ||

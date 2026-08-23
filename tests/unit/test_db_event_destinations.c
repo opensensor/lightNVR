@@ -47,6 +47,10 @@ static event_destination_t valid_destination(const char *name) {
 void setUp(void) {
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK,
+        sqlite3_exec(get_db_handle(), "DELETE FROM event_outbox;", NULL,
+                     NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
         sqlite3_exec(get_db_handle(), "DELETE FROM event_routes;", NULL,
                      NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
@@ -163,6 +167,16 @@ void test_destination_validates_topics_credentials_and_tls(void) {
                                       sizeof(error)));
 
     destination = valid_destination("Validation");
+    memset(destination.topic_template, 'a', 450);
+    safe_strcpy(destination.topic_template + 450,
+                "/{type}/{subject_id}",
+                sizeof(destination.topic_template) - 450, 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_INVALID,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+
+    destination = valid_destination("Validation");
     destination.username[0] = '\0';
     TEST_ASSERT_EQUAL_INT(
         DB_EVENT_DESTINATION_INVALID,
@@ -184,6 +198,24 @@ void test_destination_validates_topics_credentials_and_tls(void) {
         db_event_destination_validate(&destination, "secret", true, error,
                                       sizeof(error)));
 
+    destination = valid_destination("Validation");
+    safe_strcpy(destination.tls_mode, "mutual",
+                sizeof(destination.tls_mode), 0);
+    safe_strcpy(destination.cert_file, "/etc/lightnvr/certs/client.pem",
+                sizeof(destination.cert_file), 0);
+    safe_strcpy(destination.key_file, "/etc/lightnvr/certs/client.key",
+                sizeof(destination.key_file), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_INVALID,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+    safe_strcpy(destination.ca_file, "/etc/lightnvr/certs/bridge-ca.pem",
+                sizeof(destination.ca_file), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_validate(&destination, "secret", true, error,
+                                      sizeof(error)));
+
     safe_strcpy(destination.broker_host, "mqtts://mqtt.example.test",
                 sizeof(destination.broker_host), 0);
     TEST_ASSERT_EQUAL_INT(
@@ -192,7 +224,7 @@ void test_destination_validates_topics_credentials_and_tls(void) {
                                       sizeof(error)));
 }
 
-void test_destination_delete_is_blocked_when_a_route_references_it(void) {
+void test_destination_delete_is_blocked_by_routes_and_active_delivery(void) {
     event_destination_t destination = valid_destination("In use");
     TEST_ASSERT_EQUAL_INT(
         DB_EVENT_DESTINATION_OK,
@@ -221,6 +253,38 @@ void test_destination_delete_is_blocked_when_a_route_references_it(void) {
     TEST_ASSERT_EQUAL_INT(
         DB_EVENT_DESTINATION_IN_USE,
         db_event_destination_delete(destination.uuid, destination.revision));
+
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(get_db_handle(), "DELETE FROM event_routes;", NULL,
+                     NULL, NULL));
+    sqlite3_stmt *outbox = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            get_db_handle(),
+            "INSERT INTO event_outbox(event_id,event_source,event_type,subject,"
+            "destination,topic,envelope_json,envelope_bytes,severity,"
+            "next_attempt_at,expires_at) VALUES("
+            "'22222222-2222-4222-8222-222222222222','urn:lightnvr:test',"
+            "'io.lightnvr.detection.object.v1','camera/test',?,"
+            "'events/test','{}',2,0,1,4102444800);",
+            -1, &outbox, NULL));
+    sqlite3_bind_text(outbox, 1, key, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(outbox));
+    sqlite3_finalize(outbox);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_IN_USE,
+        db_event_destination_delete(destination.uuid, destination.revision));
+
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(get_db_handle(),
+                     "UPDATE event_outbox SET state='delivered';", NULL,
+                     NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_delete(destination.uuid, destination.revision));
 }
 
 int main(void) {
@@ -233,7 +297,7 @@ int main(void) {
     RUN_TEST(test_destination_crud_redacts_password_and_uses_revision);
     RUN_TEST(test_destination_name_is_unique_case_insensitively);
     RUN_TEST(test_destination_validates_topics_credentials_and_tls);
-    RUN_TEST(test_destination_delete_is_blocked_when_a_route_references_it);
+    RUN_TEST(test_destination_delete_is_blocked_by_routes_and_active_delivery);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

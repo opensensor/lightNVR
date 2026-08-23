@@ -15,6 +15,7 @@
 #include <sqlite3.h>
 
 #include "core/event_envelope.h"
+#include "core/mqtt_client.h"
 #include "core/mqtt_delivery_worker.h"
 #include "database/db_core.h"
 #include "database/db_event_outbox.h"
@@ -94,6 +95,13 @@ static int64_t next_attempt_for(int64_t row_id, char state[16],
 
 void setUp(void) {
     mqtt_delivery_worker_shutdown();
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM event_routes;",
+                                NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(get_db_handle(), "DELETE FROM event_destinations;",
+                     NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         SQLITE_OK, sqlite3_exec(get_db_handle(), "DELETE FROM event_outbox;",
                                 NULL, NULL, NULL));
@@ -251,6 +259,76 @@ void test_expiry_is_swept_even_while_broker_is_disconnected(void) {
     event_envelope_clear(&event);
 }
 
+void test_explicit_destination_freezes_template_and_processes_its_queue(void) {
+    int64_t now = (int64_t)time(NULL);
+    event_envelope_t event = detection_event((time_t)now);
+    const char *destination =
+        "mqtt:33333333-3333-4333-8333-333333333333";
+    const char *topic_template = "sjc/{subject_id}/events/{type}";
+    const char *expected_topic =
+        "sjc/22222222-2222-4222-8222-222222222222/events/"
+        "io.lightnvr.detection.object.v1";
+    int64_t row_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        EVENT_OUTBOX_ENQUEUED,
+        mqtt_delivery_worker_enqueue_destination(
+            &event, destination, topic_template, &row_id));
+    TEST_ASSERT_GREATER_THAN_INT64(0, row_id);
+
+    event_outbox_stats_t custom_stats;
+    event_outbox_stats_t default_stats;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(destination, now, &custom_stats));
+    TEST_ASSERT_EQUAL_INT64(1, custom_stats.pending_rows);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(
+               MQTT_EVENT_OUTBOX_DESTINATION, now, &default_stats));
+    TEST_ASSERT_EQUAL_INT64(0, default_stats.pending_rows);
+
+    publisher_t publisher = {.result = 0};
+    TEST_ASSERT_EQUAL_INT(
+        1, mqtt_delivery_worker_process_destination_once(
+               destination, now, true, fake_publish, &publisher));
+    TEST_ASSERT_EQUAL_INT(1, publisher.calls);
+    TEST_ASSERT_EQUAL_STRING(expected_topic, publisher.topic);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(destination, now, &custom_stats));
+    TEST_ASSERT_EQUAL_INT64(1, custom_stats.delivered_rows);
+    free(publisher.payload);
+    event_envelope_clear(&event);
+}
+
+void test_topic_expansion_rejects_unvalidated_templates(void) {
+    event_envelope_t event = detection_event(time(NULL));
+    char topic[EVENT_OUTBOX_TOPIC_MAX];
+    TEST_ASSERT_EQUAL_INT(
+        0, mqtt_delivery_topic_expand(
+               "events/{type}/{subject_id}", &event, topic));
+    TEST_ASSERT_NOT_NULL(strstr(topic, event.type));
+    TEST_ASSERT_EQUAL_INT(
+        -1, mqtt_delivery_topic_expand(
+                "events/{unknown}/{type}/{subject_id}", &event, topic));
+    TEST_ASSERT_EQUAL_STRING("", topic);
+    TEST_ASSERT_EQUAL_INT(
+        -1, mqtt_delivery_topic_expand(
+                "events/+/{type}/{subject_id}", &event, topic));
+    TEST_ASSERT_EQUAL_INT(
+        -1, mqtt_delivery_topic_expand(
+                "events/{type}/missing-subject", &event, topic));
+    TEST_ASSERT_EQUAL_INT(
+        -1, mqtt_delivery_topic_expand(
+                "/events/{type}/{subject_id}", &event, topic));
+    TEST_ASSERT_EQUAL_INT(
+        EVENT_OUTBOX_ERROR,
+        mqtt_delivery_worker_enqueue_destination(
+            &event, "mqtt:invalid", "events/{type}/{subject_id}/", NULL));
+    TEST_ASSERT_EQUAL_INT(
+        EVENT_OUTBOX_ERROR,
+        mqtt_delivery_worker_enqueue_destination(
+            &event, "not-mqtt", "events/{type}/{subject_id}", NULL));
+    event_envelope_clear(&event);
+}
+
 void test_backoff_is_bounded_and_exponential(void) {
     int previous = 0;
     for (int attempt = 1; attempt <= 8; attempt++) {
@@ -272,6 +350,10 @@ void test_backoff_is_bounded_and_exponential(void) {
 
 void test_worker_lifecycle_is_idempotent(void) {
 #ifdef ENABLE_MQTT
+    config_t config;
+    memset(&config, 0, sizeof(config));
+    config.mqtt_enabled = false;
+    TEST_ASSERT_EQUAL_INT(0, mqtt_init(&config));
     TEST_ASSERT_EQUAL_INT(0, mqtt_delivery_worker_start());
     TEST_ASSERT_EQUAL_INT(0, mqtt_delivery_worker_start());
     mqtt_delivery_worker_stats_t stats;
@@ -281,6 +363,7 @@ void test_worker_lifecycle_is_idempotent(void) {
     mqtt_delivery_worker_shutdown();
     mqtt_delivery_worker_get_stats(&stats);
     TEST_ASSERT_FALSE(stats.running);
+    mqtt_cleanup();
 #else
     TEST_ASSERT_EQUAL_INT(-1, mqtt_delivery_worker_start());
 #endif
@@ -298,6 +381,8 @@ int main(void) {
     RUN_TEST(test_unacknowledged_publish_retries_at_persisted_backoff);
     RUN_TEST(test_retry_that_would_cross_expiry_becomes_dead);
     RUN_TEST(test_expiry_is_swept_even_while_broker_is_disconnected);
+    RUN_TEST(test_explicit_destination_freezes_template_and_processes_its_queue);
+    RUN_TEST(test_topic_expansion_rejects_unvalidated_templates);
     RUN_TEST(test_backoff_is_bounded_and_exponential);
     RUN_TEST(test_worker_lifecycle_is_idempotent);
     int result = UNITY_END();
