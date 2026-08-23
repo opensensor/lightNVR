@@ -25,6 +25,7 @@
 #include "web/api_handlers_totp.h"
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
+#include "web/audit_log.h"
 #define LOG_COMPONENT "AuthAPI"
 #include "core/logger.h"
 #include "core/config.h"
@@ -469,8 +470,17 @@ void handle_totp_status(const http_request_t *req, http_response_t *res) {
 void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/auth/login/totp");
 
+    char effective_client_ip[64] = {0};
+    if (httpd_get_effective_client_ip(req, effective_client_ip,
+                                      sizeof(effective_client_ip)) != 0) {
+        snprintf(effective_client_ip, sizeof(effective_client_ip), "%s",
+                 req->client_ip);
+    }
+
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
+        audit_log_login(req, NULL, "", "password_totp", "failure",
+                        "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -483,6 +493,8 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
     if (!token_json || !cJSON_IsString(token_json) ||
         !code_json || !cJSON_IsString(code_json)) {
         cJSON_Delete(body);
+        audit_log_login(req, NULL, "", "password_totp", "failure",
+                        "invalid_request");
         http_response_set_json_error(res, 400, "Missing 'totp_token' or 'code'");
         return;
     }
@@ -490,9 +502,12 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
     /* Validate the pending MFA session token */
     int64_t user_id;
     int rc = db_auth_validate_session_with_context(token_json->valuestring, &user_id,
-                                                   req->client_ip, req->user_agent);
+                                                   effective_client_ip,
+                                                   req->user_agent);
     if (rc != 0) {
         cJSON_Delete(body);
+        audit_log_login(req, NULL, "", "password_totp", "denied",
+                        "invalid_mfa_session");
         http_response_set_json_error(res, 401, "Invalid or expired MFA token. Please login again.");
         return;
     }
@@ -501,16 +516,24 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
     char secret[64] = {0};
     bool enabled = false;
     if (db_auth_get_totp_info(user_id, secret, sizeof(secret), &enabled) != 0 || !enabled) {
-        cJSON_Delete(body);
         /* Delete the pending session */
         db_auth_delete_session(token_json->valuestring);
+        cJSON_Delete(body);
+        user_t user = {.id = user_id};
+        (void)db_auth_get_user_by_id(user_id, &user);
+        audit_log_login(req, &user, NULL, "password_totp", "failure",
+                        "mfa_not_enabled");
         http_response_set_json_error(res, 400, "TOTP not enabled for this user");
         return;
     }
 
     /* Verify the TOTP code */
     if (totp_verify(secret, code_json->valuestring) != 0) {
+        user_t user = {.id = user_id};
+        (void)db_auth_get_user_by_id(user_id, &user);
         cJSON_Delete(body);
+        audit_log_login(req, &user, NULL, "password_totp", "denied",
+                        "invalid_mfa_code");
         http_response_set_json_error(res, 401, "Invalid TOTP code");
         return;
     }
@@ -522,9 +545,13 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
 
     /* Create a real full session */
     char session_token[33];
-    rc = db_auth_create_session(user_id, req->client_ip, req->user_agent, 0,
+    rc = db_auth_create_session(user_id, effective_client_ip, req->user_agent, 0,
                                 session_token, sizeof(session_token));
     if (rc != 0) {
+        user_t user = {.id = user_id};
+        (void)db_auth_get_user_by_id(user_id, &user);
+        audit_log_login(req, &user, NULL, "password_totp", "error",
+                        "session_create_failed");
         http_response_set_json_error(res, 500, "Failed to create session");
         return;
     }
@@ -533,7 +560,8 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
 
     if (remember_device && httpd_trusted_device_lifetime_seconds() > 0) {
         char trusted_token[33];
-        if (db_auth_create_trusted_device(user_id, req->client_ip, req->user_agent,
+        if (db_auth_create_trusted_device(user_id, effective_client_ip,
+                                          req->user_agent,
                                           httpd_trusted_device_lifetime_seconds(),
                                           trusted_token, sizeof(trusted_token)) == 0) {
             httpd_add_trusted_device_cookie(res, trusted_token);
@@ -553,4 +581,8 @@ void handle_auth_login_totp(const http_request_t *req, http_response_t *res) {
     cJSON_Delete(response);
 
     log_info("TOTP login completed for user ID %lld", (long long)user_id);
+    user_t user = {.id = user_id};
+    (void)db_auth_get_user_by_id(user_id, &user);
+    audit_log_login(req, &user, NULL, "password_totp", "success",
+                    "session_created");
 }

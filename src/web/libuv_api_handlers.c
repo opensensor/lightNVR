@@ -41,6 +41,7 @@
 #include "web/api_handlers_fleet.h"
 #include "web/api_handlers_camera_collections.h"
 #include "web/api_handlers_authorization.h"
+#include "web/api_handlers_audit.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -262,6 +263,16 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_user_authorization);
     http_server_register_handler(server, "/api/authorization/users/#", "PUT",
                                  handle_put_user_authorization);
+
+    // Append-only audit history and retention controls
+    http_server_register_handler(server, "/api/audit/events/export", "GET",
+                                 handle_get_audit_export);
+    http_server_register_handler(server, "/api/audit/events", "GET",
+                                 handle_get_audit_events);
+    http_server_register_handler(server, "/api/audit/settings", "GET",
+                                 handle_get_audit_settings);
+    http_server_register_handler(server, "/api/audit/settings", "PUT",
+                                 handle_put_audit_settings);
 
     // TOTP MFA API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/auth/users/#/totp/setup", "POST", handle_totp_setup);

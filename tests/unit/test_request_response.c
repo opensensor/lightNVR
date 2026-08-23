@@ -85,6 +85,43 @@ void test_get_header_not_found(void) {
 }
 
 /* ================================================================
+ * request correlation IDs
+ * ================================================================ */
+
+void test_request_init_generates_unique_correlation_ids(void) {
+    http_request_t first;
+    http_request_t second;
+    http_request_init(&first);
+    http_request_init(&second);
+
+    TEST_ASSERT_EQUAL_UINT(36, strlen(first.request_id));
+    TEST_ASSERT_EQUAL_UINT(36, strlen(second.request_id));
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(first.request_id, second.request_id));
+}
+
+void test_request_id_accepts_safe_ingress_value(void) {
+    http_request_t req;
+    http_request_init(&req);
+
+    TEST_ASSERT_EQUAL_INT(
+        0, http_request_set_request_id(&req, "edge-01:request_42.trace"));
+    TEST_ASSERT_EQUAL_STRING("edge-01:request_42.trace", req.request_id);
+}
+
+void test_request_id_rejects_unsafe_value_without_replacing_generated_id(void) {
+    http_request_t req;
+    http_request_init(&req);
+    char generated[REQUEST_ID_MAX];
+    safe_strcpy(generated, req.request_id, sizeof(generated), 0);
+
+    TEST_ASSERT_EQUAL_INT(
+        -1, http_request_set_request_id(&req, "request\r\nInjected: yes"));
+    TEST_ASSERT_EQUAL_STRING(generated, req.request_id);
+    TEST_ASSERT_EQUAL_INT(-1, http_request_set_request_id(&req, ""));
+    TEST_ASSERT_EQUAL_STRING(generated, req.request_id);
+}
+
+/* ================================================================
  * http_request_get_query_param
  * ================================================================ */
 
@@ -248,6 +285,10 @@ int main(void) {
     RUN_TEST(test_get_header_found);
     RUN_TEST(test_get_header_case_insensitive);
     RUN_TEST(test_get_header_not_found);
+
+    RUN_TEST(test_request_init_generates_unique_correlation_ids);
+    RUN_TEST(test_request_id_accepts_safe_ingress_value);
+    RUN_TEST(test_request_id_rejects_unsafe_value_without_replacing_generated_id);
 
     RUN_TEST(test_get_query_param_found);
     RUN_TEST(test_get_query_param_not_found);

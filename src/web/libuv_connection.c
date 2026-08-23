@@ -362,6 +362,9 @@ static int on_header_value(llhttp_t *parser, const char *at, size_t length) {
                 sizeof(conn->request.user_agent), 0);
     } else if (strcasecmp(conn->current_header_field, "Connection") == 0) {
         conn->keep_alive = (strcasecmp(conn->request.headers[idx].value, "close") != 0);
+    } else if (strcasecmp(conn->current_header_field, "X-Request-ID") == 0) {
+        (void)http_request_set_request_id(
+            &conn->request, conn->request.headers[idx].value);
     }
 
     return 0;
@@ -508,6 +511,11 @@ static void handler_after_work_cb(uv_work_t *req, int status) {
     safe_free(hw);
 
     conn->handler_on_worker = false;
+
+    if (conn->request.request_id[0] != '\0') {
+        http_response_add_header(&conn->response, "X-Request-ID",
+                                 conn->request.request_id);
+    }
 
     // If cancelled (e.g., server shutting down), close connection
     if (status == UV_ECANCELED) {
@@ -732,4 +740,3 @@ static int on_message_complete(llhttp_t *parser) {
 }
 
 #endif /* HTTP_BACKEND_LIBUV */
-

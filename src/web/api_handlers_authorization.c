@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -16,6 +17,7 @@
 #include "utils/memory.h"
 #include "utils/strings.h"
 #include "web/api_handlers_authorization.h"
+#include "web/audit_log.h"
 #include "web/httpd_utils.h"
 
 static cJSON *action_to_json(const authorization_action_metadata_t *metadata) {
@@ -235,6 +237,28 @@ void handle_post_authorization_simulate(const http_request_t *req,
     } else {
         cJSON_AddNullToObject(response, "resource");
     }
+    cJSON *audit_details = cJSON_CreateObject();
+    if (audit_details) {
+        cJSON_AddStringToObject(audit_details, "event_type",
+                                "authorization.simulation");
+        cJSON_AddNumberToObject(audit_details, "subject_user_id",
+                                (double)user.id);
+        cJSON_AddStringToObject(audit_details, "subject_username",
+                                user.username);
+        cJSON_AddStringToObject(audit_details, "simulated_action",
+                                metadata->key);
+        cJSON_AddBoolToObject(audit_details, "allowed",
+                              evaluation.decision == AUTHZ_DECISION_ALLOW);
+        if (camera) {
+            cJSON_AddStringToObject(audit_details, "camera_uuid",
+                                    camera->camera_uuid);
+        }
+    }
+    char subject_id[32];
+    snprintf(subject_id, sizeof(subject_id), "%lld", (long long)user.id);
+    audit_log_append(req, &requester, "authorization.simulate", "user",
+                     subject_id, "success", audit_details);
+    cJSON_Delete(audit_details);
     free(cameras);
     set_json_response(res, response);
 }
@@ -554,6 +578,17 @@ void handle_post_authorization_role(const http_request_t *req,
         return;
     }
     set_role_mutation_response(res, 201, role.uuid, new_version);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type",
+                                "authorization.role_create");
+        cJSON_AddStringToObject(details, "name", role.name);
+        cJSON_AddNumberToObject(details, "policy_version",
+                                (double)new_version);
+    }
+    audit_log_append(req, &requester, "authorization.role.create", "role",
+                     role.uuid, "success", details);
+    cJSON_Delete(details);
 }
 
 void handle_put_authorization_role(const http_request_t *req,
@@ -588,6 +623,17 @@ void handle_put_authorization_role(const http_request_t *req,
         return;
     }
     set_role_mutation_response(res, 200, role.uuid, new_version);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type",
+                                "authorization.role_update");
+        cJSON_AddStringToObject(details, "name", role.name);
+        cJSON_AddNumberToObject(details, "policy_version",
+                                (double)new_version);
+    }
+    audit_log_append(req, &requester, "authorization.role.update", "role",
+                     role.uuid, "success", details);
+    cJSON_Delete(details);
 }
 
 void handle_delete_authorization_role(const http_request_t *req,
@@ -619,6 +665,16 @@ void handle_delete_authorization_role(const http_request_t *req,
     cJSON_AddBoolToObject(response, "success", true);
     cJSON_AddNumberToObject(response, "policy_version", (double)new_version);
     set_json_response(res, response);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type",
+                                "authorization.role_delete");
+        cJSON_AddNumberToObject(details, "policy_version",
+                                (double)new_version);
+    }
+    audit_log_append(req, &requester, "authorization.role.delete", "role",
+                     uuid, "success", details);
+    cJSON_Delete(details);
 }
 
 static cJSON *grant_to_json(const authorization_grant_t *grant) {
@@ -881,6 +937,21 @@ void handle_put_user_authorization(const http_request_t *req,
         return;
     }
     set_user_policy_response(res, user_id, 200);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type",
+                                "authorization.policy_update");
+        cJSON_AddStringToObject(details, "mode", requested_mode);
+        cJSON_AddNumberToObject(details, "grant_count", grant_count);
+        cJSON_AddNumberToObject(details, "policy_version",
+                                (double)new_version);
+    }
+    char target_user_id[32];
+    snprintf(target_user_id, sizeof(target_user_id), "%lld",
+             (long long)user_id);
+    audit_log_append(req, &requester, "authorization.policy.update", "user",
+                     target_user_id, "success", details);
+    cJSON_Delete(details);
 }
 
 static bool extract_token_path(const http_request_t *req, int64_t *user_id,
@@ -1237,7 +1308,29 @@ void handle_post_user_api_token(const http_request_t *req,
         http_response_set_json_error(res, 500, "Failed to serialize response");
         return;
     }
-    http_response_set_json(res, 201, response_body);
+    if (http_response_set_json(res, 201, response_body) != 0) {
+        db_api_token_revoke(user_id, token.uuid);
+        secure_zero_memory(secret, sizeof(secret));
+        free(response_body);
+        http_response_set_json_error(res, 500, "Failed to create response");
+        return;
+    }
+    cJSON *audit_details = cJSON_CreateObject();
+    if (audit_details) {
+        cJSON_AddStringToObject(audit_details, "event_type",
+                                "api_token.create");
+        cJSON_AddNumberToObject(audit_details, "owner_user_id",
+                                (double)user_id);
+        cJSON_AddStringToObject(audit_details, "description",
+                                token.description);
+        cJSON_AddNumberToObject(audit_details, "expires_at",
+                                (double)token.expires_at);
+        cJSON_AddStringToObject(audit_details, "scope_type",
+                                token.scope_type);
+    }
+    audit_log_append(req, &requester, "api_token.create", "api_token",
+                     token.uuid, "success", audit_details);
+    cJSON_Delete(audit_details);
     secure_zero_memory(secret, sizeof(secret));
     free(response_body);
 }
@@ -1255,5 +1348,13 @@ void handle_delete_user_api_token(const http_request_t *req,
         set_api_token_error(res, result);
         return;
     }
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type", "api_token.revoke");
+        cJSON_AddNumberToObject(details, "owner_user_id", (double)user_id);
+    }
+    audit_log_append(req, &requester, "api_token.revoke", "api_token",
+                     token_uuid, "success", details);
+    cJSON_Delete(details);
     http_response_set_json(res, 200, "{\"success\":true}");
 }

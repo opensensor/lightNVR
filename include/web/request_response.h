@@ -13,6 +13,9 @@
 // Maximum query string parameters
 #define MAX_QUERY_PARAMS 32
 
+// Server-generated or validated caller-supplied correlation identifier.
+#define REQUEST_ID_MAX 65
+
 // HTTP methods (prefixed with HTTP_METHOD_ to avoid conflicts with llhttp)
 typedef enum {
     HTTP_METHOD_GET,
@@ -46,6 +49,7 @@ typedef struct {
     http_header_t headers[MAX_HEADERS];    // Array of headers (inline, no alloc needed)
     int num_headers;                       // Number of headers
     char client_ip[64];                    // Client IP address
+    char request_id[REQUEST_ID_MAX];       // Correlates logs/audit records for this request
     void *user_data;                       // User data pointer (e.g., http_server_t*)
 } http_request_t;
 
@@ -148,6 +152,14 @@ void http_response_add_cors_headers(http_response_t *res);
  * @param req Request to initialize
  */
 void http_request_init(http_request_t *req);
+
+/**
+ * @brief Replace the generated request ID with a validated ingress ID.
+ *
+ * Accepted IDs are 1-64 ASCII letters, digits, dots, underscores, colons, or
+ * hyphens. Invalid values leave the existing generated ID unchanged.
+ */
+int http_request_set_request_id(http_request_t *req, const char *request_id);
 
 /**
  * @brief Initialize an http_response_t struct to safe defaults

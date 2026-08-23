@@ -1013,6 +1013,41 @@ static const char migration_0054_down[] =
     "DROP TABLE IF EXISTS authz_api_tokens;\n"
     "SELECT 1;";
 
+static const char migration_0055_up[] =
+    "CREATE TABLE audit_events ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+    "uuid TEXT NOT NULL UNIQUE, "
+    "occurred_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "request_id TEXT NOT NULL, "
+    "principal_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, "
+    "principal_username TEXT NOT NULL DEFAULT '', "
+    "auth_method TEXT NOT NULL DEFAULT 'unknown', "
+    "api_token_uuid TEXT, action TEXT NOT NULL, target_type TEXT, "
+    "target_uuid TEXT, "
+    "outcome TEXT NOT NULL CHECK (outcome IN "
+    "('allowed','denied','success','failure','error')), "
+    "remote_address TEXT, details_json TEXT NOT NULL DEFAULT '{}');\n"
+    "CREATE INDEX idx_audit_events_occurred "
+    "ON audit_events(occurred_at DESC,id DESC);\n"
+    "CREATE INDEX idx_audit_events_principal "
+    "ON audit_events(principal_user_id,occurred_at DESC);\n"
+    "CREATE INDEX idx_audit_events_action_outcome "
+    "ON audit_events(action,outcome,occurred_at DESC);\n"
+    "CREATE INDEX idx_audit_events_target "
+    "ON audit_events(target_uuid,occurred_at DESC) "
+    "WHERE target_uuid IS NOT NULL;\n"
+    "INSERT OR IGNORE INTO system_settings(key,value) "
+    "VALUES ('audit_retention_days','365');";
+
+static const char migration_0055_down[] =
+    "DELETE FROM system_settings WHERE key='audit_retention_days';\n"
+    "DROP INDEX IF EXISTS idx_audit_events_target;\n"
+    "DROP INDEX IF EXISTS idx_audit_events_action_outcome;\n"
+    "DROP INDEX IF EXISTS idx_audit_events_principal;\n"
+    "DROP INDEX IF EXISTS idx_audit_events_occurred;\n"
+    "DROP TABLE IF EXISTS audit_events;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1392,8 +1427,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0054_down,
         .is_embedded = true
     },
+    {
+        .version = "0055",
+        .description = "add_audit_events",
+        .sql_up = migration_0055_up,
+        .sql_down = migration_0055_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 54
+#define EMBEDDED_MIGRATIONS_COUNT 55
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */
