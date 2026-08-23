@@ -1375,7 +1375,7 @@ export function StreamsView() {
             }`}
             onClick={() => setActiveTab('streams')}
           >
-            {t('nav.streams')}
+            {t('streams.configuration')}
           </button>
           <button
             type="button"
