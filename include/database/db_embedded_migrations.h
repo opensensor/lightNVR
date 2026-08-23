@@ -1171,6 +1171,30 @@ static const char migration_0058_down[] =
     "DROP TABLE IF EXISTS event_routes;\n"
     "SELECT 1;";
 
+static const char migration_0059_up[] =
+    "CREATE TABLE event_route_suppression_state ("
+    "route_uuid TEXT NOT NULL REFERENCES event_routes(uuid) ON DELETE CASCADE, "
+    "event_type TEXT NOT NULL, subject TEXT NOT NULL, "
+    "last_observed_at INTEGER NOT NULL DEFAULT 0 CHECK(last_observed_at>=0), "
+    "last_allowed_at INTEGER NOT NULL DEFAULT 0 CHECK(last_allowed_at>=0), "
+    "rate_window_started_at INTEGER NOT NULL DEFAULT 0 "
+    "CHECK(rate_window_started_at>=0), "
+    "rate_window_count INTEGER NOT NULL DEFAULT 0 CHECK(rate_window_count>=0), "
+    "group_started_at INTEGER NOT NULL DEFAULT 0 CHECK(group_started_at>=0), "
+    "suppressed_count INTEGER NOT NULL DEFAULT 0 CHECK(suppressed_count>=0), "
+    "last_allowed_event_id TEXT NOT NULL DEFAULT '', "
+    "last_reason TEXT NOT NULL DEFAULT 'allowed' CHECK(last_reason IN "
+    "('allowed','debounce','cooldown','grouping','rate')), "
+    "updated_at INTEGER NOT NULL DEFAULT(strftime('%s','now')), "
+    "PRIMARY KEY(route_uuid,event_type,subject));\n"
+    "CREATE INDEX idx_event_route_suppression_updated "
+    "ON event_route_suppression_state(updated_at,route_uuid);";
+
+static const char migration_0059_down[] =
+    "DROP INDEX IF EXISTS idx_event_route_suppression_updated;\n"
+    "DROP TABLE IF EXISTS event_route_suppression_state;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1578,8 +1602,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0058_down,
         .is_embedded = true
     },
+    {
+        .version = "0059",
+        .description = "add_event_route_suppression",
+        .sql_up = migration_0059_up,
+        .sql_down = migration_0059_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 58
+#define EMBEDDED_MIGRATIONS_COUNT 59
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

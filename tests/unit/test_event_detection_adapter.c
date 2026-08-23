@@ -254,8 +254,19 @@ void test_enabled_routes_gate_the_normalized_outbox(void) {
     safe_strcpy(route.event_types[0],
                 "io.lightnvr.detection.object.v1",
                 sizeof(route.event_types[0]), 0);
+    route.cooldown_seconds = 30;
     TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK,
                           db_event_route_update(&route, route.revision));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_detection_for_stream(
+               camera.name, &detection, time(NULL), error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(
+               MQTT_EVENT_OUTBOX_DESTINATION, (int64_t)time(NULL), &outbox));
+    TEST_ASSERT_EQUAL_INT64(1, outbox.pending_rows);
+
+    /* A new event ID for the same subject is suppressed after outbox accept. */
     TEST_ASSERT_EQUAL_INT(
         0, event_producer_publish_detection_for_stream(
                camera.name, &detection, time(NULL), error, sizeof(error)));

@@ -557,6 +557,19 @@ static int insert_types_locked(sqlite3 *db, const event_route_t *route) {
     return result == SQLITE_OK ? 0 : -1;
 }
 
+static int clear_suppression_locked(sqlite3 *db, const char *route_uuid) {
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(
+        db, "DELETE FROM event_route_suppression_state WHERE route_uuid=?;",
+        -1, &statement, NULL);
+    if (result == SQLITE_OK) {
+        sqlite3_bind_text(statement, 1, route_uuid, -1, SQLITE_TRANSIENT);
+        result = sqlite3_step(statement);
+    }
+    if (statement) sqlite3_finalize(statement);
+    return result == SQLITE_DONE ? 0 : -1;
+}
+
 static void bind_route_fields(sqlite3_stmt *statement,
                               const event_route_t *route,
                               const char *normalized_name) {
@@ -714,6 +727,7 @@ db_event_route_result_t db_event_route_update(event_route_t *route,
     }
     if (statement) sqlite3_finalize(statement);
     bool ready_to_commit = result == SQLITE_DONE &&
+        clear_suppression_locked(db, route->uuid) == 0 &&
         insert_types_locked(db, route) == 0;
     if (!route_transaction_finish(db, ready_to_commit)) {
         pthread_mutex_unlock(mutex);

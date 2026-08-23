@@ -86,14 +86,22 @@ static int mqtt_event_handler(const event_envelope_t *event, void *context) {
 
 #ifdef ENABLE_MQTT
     if (config && config->mqtt_enabled) {
-        event_router_result_t route_result = event_router_evaluate(event);
+        event_route_delivery_plan_t delivery_plan = {0};
+        event_router_result_t route_result = event_router_evaluate_delivery(
+            event, &delivery_plan);
         if (route_result == EVENT_ROUTER_MATCH ||
             route_result == EVENT_ROUTER_DEFAULT) {
             event_outbox_enqueue_result_t enqueue_result =
                 mqtt_delivery_worker_enqueue(
                     event, config->mqtt_topic_prefix, NULL);
-            if (enqueue_result != EVENT_OUTBOX_ENQUEUED &&
-                enqueue_result != EVENT_OUTBOX_DUPLICATE) {
+            if (enqueue_result == EVENT_OUTBOX_ENQUEUED ||
+                enqueue_result == EVENT_OUTBOX_DUPLICATE) {
+                if (event_router_record_enqueued(event, &delivery_plan) != 0) {
+                    log_error("MQTT event adapter could not commit route "
+                              "suppression for event %s", event->id);
+                    failed = 1;
+                }
+            } else {
                 log_error("MQTT event adapter could not persist event %s (%d)",
                           event->id, enqueue_result);
                 failed = 1;
@@ -103,6 +111,7 @@ static int mqtt_event_handler(const event_envelope_t *event, void *context) {
                       event->id);
             failed = 1;
         }
+        event_route_delivery_plan_clear(&delivery_plan);
     }
 #endif
 

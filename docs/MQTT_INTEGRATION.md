@@ -157,10 +157,12 @@ routes pauses normalized enqueue; deleting the final route restores the default.
 Legacy detection and Home Assistant compatibility topics are unchanged.
 
 Schedules use installed IANA timezone data and account for DST and overnight
-windows. Stored debounce, cooldown, grouping, and rate values are reserved for
-the next suppression-state slice and are not enforced yet. Multiple broker
-profiles are subsequent P2 work. See [Event Routes](API.md#event-routes) for the
-API contract.
+windows. Debounce, cooldown, grouping, and fixed-window rate limits are enforced
+per route, event type, and subject. The first event is preserved, and an allowed
+event advances durable suppression state only after the outbox returns
+`ENQUEUED` or `DUPLICATE`; a full or failed outbox therefore does not consume a
+cooldown or rate slot. Multiple broker profiles are subsequent P2 work. See
+[Event Routes](API.md#event-routes) for the API contract.
 
 ```json
 {

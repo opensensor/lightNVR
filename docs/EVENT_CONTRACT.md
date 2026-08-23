@@ -220,7 +220,8 @@ Version 1 accepts the following typed configuration:
   weekday numbers run from Sunday (`0`) through Saturday (`6`). An empty
   window list means always active.
 - Suppression stores debounce, cooldown, grouping-window, and per-minute rate
-  limits for the runtime evaluator.
+  limits for the runtime evaluator. State is isolated by route UUID, event type,
+  and subject.
 - `mqtt:default` is the only destination key until broker profiles land.
 
 `POST /api/event-routes/preview` validates a complete draft and resolves its
@@ -243,10 +244,22 @@ restores compatibility behavior. Multiple matching routes to the same
 destination still produce one outbox row because destination/event identity is
 unique. Already-enqueued rows are not withdrawn by later route edits.
 
+Suppression preserves the first matching event. Debounce rejects repeats inside
+the interval since the most recent observation and extends on each repeat.
+Cooldown rejects repeats since the most recent outbox-accepted event without
+extending on suppression. Grouping similarly preserves the first event and
+coalesces repeats inside its window (v1 emits no aggregate summary). The rate
+limit counts allowed events in a fixed 60-second window. Rules are checked in
+that order.
+
+A route's allowed state advances only after the normalized outbox reports
+`ENQUEUED` or idempotent `DUPLICATE`. Queue-full and persistence failures do not
+start cooldown/grouping or consume rate budget. Suppressed observations are
+committed immediately, state survives restarts, route updates reset its state,
+and inactive keys are pruned after 30 days.
+
 The legacy detection payload, snapshot, and Home Assistant state path is not
-filtered by normalized event routes. Suppression values are persisted but are
-not enforced by this slice; durable cooldown, debounce, grouping, and rate state
-follow next.
+filtered or suppressed by normalized event routes.
 
 ## MQTT compatibility destination
 
