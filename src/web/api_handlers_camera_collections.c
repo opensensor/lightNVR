@@ -75,8 +75,9 @@ static void set_db_error(http_response_t *res,
                                          "Camera or collection not found");
             break;
         case DB_CAMERA_COLLECTION_CONFLICT:
-            http_response_set_json_error(res, 409,
-                                         "A collection with that name exists");
+            http_response_set_json_error(
+                res, 409,
+                "Collection name conflicts or the collection is used by an access policy");
             break;
         case DB_CAMERA_COLLECTION_WRONG_TYPE:
             http_response_set_json_error(

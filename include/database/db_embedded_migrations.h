@@ -934,6 +934,57 @@ static const char migration_0052_down[] =
     "DROP TABLE IF EXISTS authz_actions;\n"
     "SELECT 1;";
 
+static const char migration_0053_up[] =
+    "CREATE TABLE authz_grants_new ("
+    "uuid TEXT PRIMARY KEY, "
+    "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+    "role_uuid TEXT NOT NULL REFERENCES authz_roles(uuid) ON DELETE RESTRICT, "
+    "scope_type TEXT NOT NULL DEFAULT 'all' CHECK (scope_type IN ('all','selector','collection')), "
+    "selector_json TEXT, "
+    "collection_uuid TEXT REFERENCES camera_collections(uuid) ON DELETE RESTRICT, "
+    "enabled INTEGER NOT NULL DEFAULT 1, "
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "CHECK ((scope_type='all' AND selector_json IS NULL AND collection_uuid IS NULL) OR "
+    "(scope_type='selector' AND selector_json IS NOT NULL AND collection_uuid IS NULL) OR "
+    "(scope_type='collection' AND selector_json IS NULL AND collection_uuid IS NOT NULL)));\n"
+    "INSERT INTO authz_grants_new "
+    "(uuid,user_id,role_uuid,scope_type,selector_json,enabled,created_at,updated_at) "
+    "SELECT uuid,user_id,role_uuid,scope_type,selector_json,enabled,created_at,updated_at "
+    "FROM authz_grants;\n"
+    "DROP INDEX idx_authz_grants_role;\n"
+    "DROP INDEX idx_authz_grants_user;\n"
+    "DROP TABLE authz_grants;\n"
+    "ALTER TABLE authz_grants_new RENAME TO authz_grants;\n"
+    "CREATE INDEX idx_authz_grants_user ON authz_grants(user_id,enabled);\n"
+    "CREATE INDEX idx_authz_grants_role ON authz_grants(role_uuid);\n"
+    "CREATE INDEX idx_authz_grants_collection ON authz_grants(collection_uuid) "
+    "WHERE collection_uuid IS NOT NULL;";
+
+static const char migration_0053_down[] =
+    "CREATE TABLE authz_grants_old ("
+    "uuid TEXT PRIMARY KEY, "
+    "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+    "role_uuid TEXT NOT NULL REFERENCES authz_roles(uuid) ON DELETE RESTRICT, "
+    "scope_type TEXT NOT NULL DEFAULT 'all' CHECK (scope_type IN ('all','selector')), "
+    "selector_json TEXT, enabled INTEGER NOT NULL DEFAULT 1, "
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "CHECK ((scope_type='all' AND selector_json IS NULL) OR "
+    "(scope_type='selector' AND selector_json IS NOT NULL)));\n"
+    "INSERT INTO authz_grants_old "
+    "(uuid,user_id,role_uuid,scope_type,selector_json,enabled,created_at,updated_at) "
+    "SELECT uuid,user_id,role_uuid,scope_type,selector_json,enabled,created_at,updated_at "
+    "FROM authz_grants WHERE scope_type!='collection';\n"
+    "DROP INDEX idx_authz_grants_collection;\n"
+    "DROP INDEX idx_authz_grants_role;\n"
+    "DROP INDEX idx_authz_grants_user;\n"
+    "DROP TABLE authz_grants;\n"
+    "ALTER TABLE authz_grants_old RENAME TO authz_grants;\n"
+    "CREATE INDEX idx_authz_grants_user ON authz_grants(user_id,enabled);\n"
+    "CREATE INDEX idx_authz_grants_role ON authz_grants(role_uuid);\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1299,8 +1350,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0052_down,
         .is_embedded = true
     },
+    {
+        .version = "0053",
+        .description = "add_collection_authorization_scope",
+        .sql_up = migration_0053_up,
+        .sql_down = migration_0053_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 52
+#define EMBEDDED_MIGRATIONS_COUNT 53
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

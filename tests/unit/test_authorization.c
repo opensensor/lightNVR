@@ -19,6 +19,7 @@
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_authorization.h"
+#include "database/db_camera_collections.h"
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_fleet_query.h"
@@ -111,7 +112,8 @@ static void create_grant(int64_t user_id, const char *role_uuid,
                          char grant_uuid[CAMERA_UUID_STRING_SIZE]) {
     TEST_ASSERT_EQUAL_INT(
         0, db_authorization_create_user_grant(user_id, role_uuid, scope_type,
-                                              selector_json, grant_uuid));
+                                              selector_json, NULL,
+                                              grant_uuid));
     TEST_ASSERT_EQUAL_UINT(36, strlen(grant_uuid));
 }
 
@@ -358,6 +360,134 @@ void test_invalid_stored_selector_fails_closed(void) {
                                    &evaluation));
     TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_DENY, evaluation.decision);
     free(inventory);
+}
+
+void test_shared_collection_grants_track_membership_and_guard_scope(void) {
+    stream_config_t first = create_camera("Collection North", "North");
+    stream_config_t second = create_camera("Collection South", "South");
+    camera_collection_t collection;
+    memset(&collection, 0, sizeof(collection));
+    safe_strcpy(collection.name, "North operators", sizeof(collection.name), 0);
+    safe_strcpy(collection.collection_type, "static",
+                sizeof(collection.collection_type), 0);
+    collection.is_shared = true;
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_create(&collection));
+    const char *first_members[] = {first.camera_uuid};
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_set_members(collection.uuid, first_members, 1));
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("collectionoperator", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    int64_t version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    char path[128];
+    snprintf(path, sizeof(path), "/api/authorization/users/%lld",
+             (long long)user_id);
+    char body[768];
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":\"%s\",\"scope\":{"
+             "\"type\":\"collection\",\"collection_uuid\":\"%s\"}}]}",
+             (long long)version, OPERATOR_ROLE_UUID, collection.uuid);
+    cJSON *json = call_handler_path(
+        handle_put_user_authorization, HTTP_METHOD_PUT, path, body, NULL, 200);
+    int64_t grant_version = (int64_t)cJSON_GetObjectItemCaseSensitive(
+        json, "policy_version")->valuedouble;
+    cJSON_Delete(json);
+
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(user_id, &user));
+    fleet_camera_t *inventory = NULL;
+    fleet_camera_t *first_camera = load_camera(first.camera_uuid, &inventory);
+    authorization_evaluation_t evaluation;
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_evaluate(&user, AUTHZ_LIVE_VIEW, first_camera,
+                                  &evaluation));
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_ALLOW, evaluation.decision);
+    free(inventory);
+    inventory = NULL;
+    fleet_camera_t *second_camera = load_camera(second.camera_uuid, &inventory);
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_evaluate(&user, AUTHZ_LIVE_VIEW, second_camera,
+                                  &evaluation));
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_DENY, evaluation.decision);
+    free(inventory);
+
+    const char *second_members[] = {second.camera_uuid};
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_set_members(collection.uuid, second_members, 1));
+    int64_t membership_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_get_policy_version(&membership_version));
+    TEST_ASSERT_EQUAL_INT64(grant_version + 1, membership_version);
+
+    inventory = NULL;
+    first_camera = load_camera(first.camera_uuid, &inventory);
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_evaluate(&user, AUTHZ_LIVE_VIEW, first_camera,
+                                  &evaluation));
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_DENY, evaluation.decision);
+    free(inventory);
+    inventory = NULL;
+    second_camera = load_camera(second.camera_uuid, &inventory);
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_evaluate(&user, AUTHZ_LIVE_VIEW, second_camera,
+                                  &evaluation));
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_ALLOW, evaluation.decision);
+    free(inventory);
+
+    json = call_handler_path(
+        handle_get_user_authorization, HTTP_METHOD_GET, path, NULL, NULL, 200);
+    cJSON *scope = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(
+            cJSON_GetObjectItemCaseSensitive(json, "grants"), 0), "scope");
+    TEST_ASSERT_EQUAL_STRING(
+        "collection",
+        cJSON_GetObjectItemCaseSensitive(scope, "type")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(
+        collection.uuid,
+        cJSON_GetObjectItemCaseSensitive(scope,
+                                         "collection_uuid")->valuestring);
+    cJSON_Delete(json);
+
+    collection.is_shared = false;
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_CONFLICT,
+                          db_camera_collection_update(&collection));
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_CONFLICT,
+                          db_camera_collection_delete(collection.uuid));
+
+    int64_t cleared_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_replace_user_policy(user_id, "legacy", NULL, 0,
+                                             membership_version,
+                                             &cleared_version));
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_delete(collection.uuid));
+
+    camera_collection_t private_collection;
+    memset(&private_collection, 0, sizeof(private_collection));
+    safe_strcpy(private_collection.name, "Personal camera view",
+                sizeof(private_collection.name), 0);
+    safe_strcpy(private_collection.collection_type, "static",
+                sizeof(private_collection.collection_type), 0);
+    private_collection.is_shared = false;
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_create(&private_collection));
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":\"%s\",\"scope\":{"
+             "\"type\":\"collection\",\"collection_uuid\":\"%s\"}}]}",
+             (long long)cleared_version, OPERATOR_ROLE_UUID,
+             private_collection.uuid);
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             path, body, NULL, 400);
+    cJSON_Delete(json);
 }
 
 void test_action_catalog_and_simulation_handlers(void) {
@@ -924,6 +1054,7 @@ int main(void) {
     RUN_TEST(test_policy_mode_defaults_deny_and_matches_selector_grant);
     RUN_TEST(test_all_scope_admin_grant_allows_global_action_and_bumps_version);
     RUN_TEST(test_invalid_stored_selector_fails_closed);
+    RUN_TEST(test_shared_collection_grants_track_membership_and_guard_scope);
     RUN_TEST(test_action_catalog_and_simulation_handlers);
     RUN_TEST(test_role_and_policy_database_mutations_are_atomic);
     RUN_TEST(test_policy_management_handlers_and_conflict_guards);

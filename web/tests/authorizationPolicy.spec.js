@@ -10,6 +10,7 @@ import {
 
 describe('authorization policy UI helpers', () => {
   const roles = new Set(['viewer', 'operator']);
+  const collections = new Set(['collection-1']);
   const selector = {
     version: 1,
     expression: { op: 'tag_any', uuids: ['tag-1'] },
@@ -60,6 +61,30 @@ describe('authorization policy UI helpers', () => {
         { role_uuid: 'viewer', scope: { type: 'selector', selector } },
       ],
     });
+  });
+
+  test('round-trips and validates collection-backed grants', () => {
+    const draft = policyResponseToDraft({
+      mode: 'policy',
+      policy_version: 31,
+      grants: [{
+        uuid: 'collection-grant',
+        role_uuid: 'viewer',
+        scope: { type: 'collection', collection_uuid: 'collection-1' },
+      }],
+    });
+    expect(draft.grants[0]).toMatchObject({
+      roleUuid: 'viewer',
+      scopeType: 'collection',
+      collectionUuid: 'collection-1',
+    });
+    expect(validatePolicyDraft('policy', draft.grants, roles, collections)).toBe('');
+    expect(buildPolicyPayload('policy', draft.grants, 31).grants[0]).toEqual({
+      role_uuid: 'viewer',
+      scope: { type: 'collection', collection_uuid: 'collection-1' },
+    });
+    draft.grants[0].collectionUuid = '';
+    expect(validatePolicyDraft('policy', draft.grants, roles, collections)).toBe('missing_collection');
   });
 
   test('groups action metadata and identifies sensitive behavior', () => {
