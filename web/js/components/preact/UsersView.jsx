@@ -18,6 +18,7 @@ import { ApiKeyModal } from './users/ApiKeyModal.jsx';
 import { TotpSetupModal } from './users/TotpSetupModal.jsx';
 import { AccessPolicyModal } from './users/AccessPolicyModal.jsx';
 import { RoleManagerModal } from './users/RoleManagerModal.jsx';
+import { AuditHistoryModal } from './users/AuditHistoryModal.jsx';
 
 /**
  * UsersView component
@@ -27,7 +28,7 @@ export function UsersView() {
   const { t } = useI18n();
 
   // State for modal visibility
-  const [activeModal, setActiveModal] = useState(null); // add, edit, delete, apiKey, totp, access, roles, or null
+  const [activeModal, setActiveModal] = useState(null); // add, edit, delete, apiKey, totp, access, roles, audit, or null
 
   // State for the user targeted by the active management modal.
   const [selectedUser, setSelectedUser] = useState(null);
@@ -329,8 +330,14 @@ export function UsersView() {
     setActiveModal('roles');
   }, []);
 
+  const openAuditHistory = useCallback(() => {
+    setSelectedUser(null);
+    setActiveModal('audit');
+  }, []);
+
   const pageActions = (
     <div className="flex flex-wrap gap-2">
+      <button className="btn-secondary" onClick={openAuditHistory}>{t('audit.manage')}</button>
       <button className="btn-secondary" onClick={openRoleManager}>{t('access.roles.manage')}</button>
       <button className="btn-primary" onClick={handleAddUserClick}>{t('users.addUser')}</button>
     </div>
@@ -428,6 +435,9 @@ export function UsersView() {
         {activeModal === 'roles' && (
           <RoleManagerModal onClose={closeModal} getAuthHeaders={getAuthHeaders} />
         )}
+        {activeModal === 'audit' && (
+          <AuditHistoryModal users={users} onClose={closeModal} getAuthHeaders={getAuthHeaders} />
+        )}
       </div>
     );
   }
@@ -502,6 +512,14 @@ export function UsersView() {
 
       {activeModal === 'roles' && (
         <RoleManagerModal
+          onClose={closeModal}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
+
+      {activeModal === 'audit' && (
+        <AuditHistoryModal
+          users={users}
           onClose={closeModal}
           getAuthHeaders={getAuthHeaders}
         />
