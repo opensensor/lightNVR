@@ -29,7 +29,7 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
     }
 
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         log_error("Authentication failed for GET /api/recordings/download request");
         http_response_set_json_error(res, 401, "Unauthorized");
         return;

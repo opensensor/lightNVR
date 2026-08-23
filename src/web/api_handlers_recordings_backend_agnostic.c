@@ -719,7 +719,7 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     log_info("Handling POST /api/recordings/batch-delete request");
 
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }

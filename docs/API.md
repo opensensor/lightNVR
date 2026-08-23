@@ -27,7 +27,7 @@ curl -c cookies.txt -X POST -H "Content-Type: application/json" \
 curl -b cookies.txt http://your-lightnvr-ip:8080/api/streams
 ```
 
-### 2. API key (automation, long-lived integrations)
+### 2. Legacy API key (compatibility automation)
 
 Every user has an `api_key` field. Pass it via either header:
 
@@ -41,7 +41,9 @@ curl -H "Authorization: Bearer <your-api-key>" http://your-lightnvr-ip:8080/api/
 
 For automation (Home Assistant, NodeRED, cron jobs, etc.), create a dedicated
 user with the `USER_ROLE_API` role and use that user's `api_key`. Keep admin
-keys out of automation configs.
+keys out of automation configs. New integrations should use the expiring,
+action- and camera-scoped tokens described below. The single legacy key remains
+available during the endpoint-enforcement migration.
 
 ### 3. HTTP Basic Auth
 
@@ -192,6 +194,45 @@ anything. It also
 rejects an authenticated administrator's attempt to remove their own effective
 `users.manage` grant. Saving grants in `legacy` mode is supported so an
 administrator can prepare policy before activating default-deny evaluation.
+
+#### Manage scoped API tokens
+
+```
+GET    /api/authorization/users/{user_id}/tokens
+POST   /api/authorization/users/{user_id}/tokens
+DELETE /api/authorization/users/{user_id}/tokens/{token_uuid}
+```
+
+A user may manage their own tokens; a principal with `users.manage` may manage
+another user's. Token management itself requires a session, Basic auth, or a
+legacy API key—a scoped token cannot mint another token. `POST` requires a
+description, an explicit expiry no more than 366 days away, one or more action
+keys, and an all-fleet, selector, or shared-collection scope:
+
+```json
+{
+  "description": "North garage PTZ bridge",
+  "expires_at": 1819075200,
+  "actions": ["live.view", "ptz.control"],
+  "scope": {
+    "type": "collection",
+    "collection_uuid": "d813e24e-0c7a-48e7-960c-4f5b843466db"
+  }
+}
+```
+
+The `201` response contains the secret once as `secret` plus non-secret token
+metadata. lightNVR stores only its SHA-256 hash and a short display prefix.
+`GET` returns metadata, expiry, revocation, last-use time, actions, and scope but
+never the secret or hash. `DELETE` revokes rather than erases the token.
+
+Token authorization is the intersection of the token and its owning user's
+current effective access, so changing the user policy can only reduce what an
+existing token can do. During the incremental enforcement rollout, scoped
+tokens are accepted only by handlers that immediately invoke the central action
+evaluator (currently scoped PTZ, recording export, evidence protection, and
+deletion paths). Other legacy handlers reject them rather than risk ignoring a
+camera scope. The endpoint inventory tracks expansion of that safe surface.
 
 ## API Endpoints
 

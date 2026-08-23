@@ -19,5 +19,11 @@ void handle_get_user_authorization(const http_request_t *req,
                                    http_response_t *res);
 void handle_put_user_authorization(const http_request_t *req,
                                    http_response_t *res);
+void handle_get_user_api_tokens(const http_request_t *req,
+                                http_response_t *res);
+void handle_post_user_api_token(const http_request_t *req,
+                                http_response_t *res);
+void handle_delete_user_api_token(const http_request_t *req,
+                                  http_response_t *res);
 
 #endif /* LIGHTNVR_API_HANDLERS_AUTHORIZATION_H */
