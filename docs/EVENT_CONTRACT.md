@@ -128,5 +128,22 @@ deep-copies and validates the data, generates the immutable event ID, calculates
 expiry, and formats time. `event_envelope_serialize()` revalidates before
 serialization. Call `event_envelope_clear()` when finished.
 
-The next event-bus layer takes ownership of a validated envelope copy and queues
-it without performing broker I/O on the producer thread.
+## Asynchronous in-process bus
+
+`event_bus_publish()` revalidates an envelope and enqueues a deep copy. It never
+invokes a subscriber or performs broker I/O on the producer thread. One
+dedicated worker dispatches immutable events to registered subscribers in
+registration order.
+
+The queue defaults to 1,024 events and 8 MiB and can be configured to smaller
+limits for constrained deployments. When it is full, ordinary events are
+dropped with an observable counter. An error/critical event may evict the oldest
+lower-severity queued event, preventing a detection burst from crowding out a
+storage-critical fact. Accepted, dispatched, rejected, dropped, priority-shed,
+callback-delivery, and callback-failure counts are available through
+`event_bus_get_stats()`.
+
+Subscribers register before bus startup and must keep callbacks/context alive
+until shutdown. A callback runs off the producer thread but should still use
+bounded work; durable retry and broker isolation are provided by the outbox and
+MQTT delivery layer rather than by blocking the in-process worker.
