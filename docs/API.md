@@ -1091,8 +1091,8 @@ names, and location paths.
 
 Event route endpoints require the global `events.configure` action (legacy
 administrators have it). They expose the registered event catalog and a durable,
-revisioned route control plane. In this phase, route definitions do not alter
-the default MQTT publisher; the preview endpoint never publishes.
+revisioned route control plane. The normalized MQTT publisher evaluates enabled
+routes before durable enqueue; the preview endpoint never publishes.
 
 #### Event Catalog
 
@@ -1161,6 +1161,17 @@ An all-camera scope is `{"type":"all"}`. Defaults are enabled, all cameras,
 suppression value. A successful create returns `201` with the server-assigned
 UUID, revision `1`, and timestamps. Names are unique case-insensitively and at
 most 512 routes may be stored.
+
+Timezone names must resolve under `/usr/share/zoneinfo` (with `UTC` and `GMT`
+always accepted). Schedules are evaluated against event occurrence time and
+support DST-aware overnight windows. Suppression fields are accepted and
+returned now, but their runtime enforcement lands in the next P2 slice.
+
+With zero stored routes, normalized MQTT retains its compatibility publish-all
+behavior. Once any route is stored, only events matching at least one enabled
+route are enqueued. Thus, disabling all stored routes pauses normalized enqueue;
+deleting the last route restores the default. This does not filter legacy
+detection or Home Assistant compatibility topics.
 
 #### Update and Delete a Route
 

@@ -7,11 +7,13 @@
 #include <pthread.h>
 #include <sqlite3.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 
 #include "core/camera_selector.h"
 #include "database/db_core.h"
@@ -22,6 +24,8 @@
     "selector_json,predicate_json,schedule_json,debounce_seconds," \
     "cooldown_seconds,grouping_window_seconds,max_events_per_minute," \
     "revision,created_at,updated_at"
+
+static atomic_uint_fast64_t ROUTE_GENERATION = 1;
 
 static void set_error(char *error, size_t error_size, const char *format, ...) {
     if (!error || error_size == 0 || error[0] != '\0') return;
@@ -190,7 +194,10 @@ static bool valid_predicate(const event_route_t *route, char *error,
 }
 
 static bool valid_timezone(const char *timezone) {
-    if (!valid_text(timezone, 65, true)) return false;
+    if (!valid_text(timezone, 65, true) || timezone[0] == '/' ||
+        strstr(timezone, "//") || timezone[strlen(timezone) - 1] == '/') {
+        return false;
+    }
     for (const unsigned char *cursor = (const unsigned char *)timezone;
          *cursor; cursor++) {
         if (!isalnum(*cursor) && *cursor != '/' && *cursor != '_' &&
@@ -199,6 +206,19 @@ static bool valid_timezone(const char *timezone) {
         }
     }
     return true;
+}
+
+static bool timezone_available(const char *timezone) {
+    if (!valid_timezone(timezone)) return false;
+    if (strcmp(timezone, "UTC") == 0 || strcmp(timezone, "GMT") == 0) {
+        return true;
+    }
+    char path[256];
+    int length = snprintf(path, sizeof(path), "/usr/share/zoneinfo/%s",
+                          timezone);
+    if (length < 0 || (size_t)length >= sizeof(path)) return false;
+    struct stat metadata;
+    return stat(path, &metadata) == 0 && S_ISREG(metadata.st_mode);
 }
 
 static bool valid_clock_time(const char *value) {
@@ -266,10 +286,11 @@ static bool valid_schedule(const event_route_t *route, char *error,
     const cJSON *windows =
         cJSON_GetObjectItemCaseSensitive(root, "windows");
     int count = cJSON_IsArray(windows) ? cJSON_GetArraySize(windows) : -1;
-    if (!cJSON_IsString(timezone) || !valid_timezone(timezone->valuestring) ||
+    if (!cJSON_IsString(timezone) ||
+        !timezone_available(timezone->valuestring) ||
         count < 0 || count > 64) {
         set_error(error, error_size,
-                  "schedule requires a timezone and no more than 64 windows");
+                  "schedule requires an available timezone and at most 64 windows");
         cJSON_Delete(root);
         return false;
     }
@@ -500,6 +521,10 @@ int db_event_route_list(event_route_t *routes, int max_count) {
     return count;
 }
 
+uint64_t db_event_route_generation(void) {
+    return atomic_load_explicit(&ROUTE_GENERATION, memory_order_relaxed);
+}
+
 db_event_route_result_t db_event_route_get(const char *uuid,
                                            event_route_t *route) {
     sqlite3 *db = get_db_handle();
@@ -619,6 +644,7 @@ db_event_route_result_t db_event_route_create(event_route_t *route) {
         pthread_mutex_unlock(mutex);
         return DB_EVENT_ROUTE_ERROR;
     }
+    atomic_fetch_add_explicit(&ROUTE_GENERATION, 1, memory_order_relaxed);
     db_event_route_result_t route_result = get_locked(db, route->uuid, route);
     pthread_mutex_unlock(mutex);
     return route_result;
@@ -693,6 +719,7 @@ db_event_route_result_t db_event_route_update(event_route_t *route,
         pthread_mutex_unlock(mutex);
         return DB_EVENT_ROUTE_ERROR;
     }
+    atomic_fetch_add_explicit(&ROUTE_GENERATION, 1, memory_order_relaxed);
     route_result = get_locked(db, route->uuid, route);
     pthread_mutex_unlock(mutex);
     return route_result;
@@ -736,6 +763,10 @@ db_event_route_result_t db_event_route_delete(const char *uuid,
     if (statement) sqlite3_finalize(statement);
     bool committed = route_transaction_finish(
         db, sqlite_result == SQLITE_DONE && changed == 1);
+    if (committed) {
+        atomic_fetch_add_explicit(&ROUTE_GENERATION, 1,
+                                  memory_order_relaxed);
+    }
     pthread_mutex_unlock(mutex);
     return committed ? DB_EVENT_ROUTE_OK : DB_EVENT_ROUTE_ERROR;
 }

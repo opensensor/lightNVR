@@ -53,7 +53,7 @@ RUN if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
     bash /tmp/nodesource_setup.sh && \
     rm /tmp/nodesource_setup.sh && \
     apt-get install -y --no-install-recommends \
-      git cmake build-essential pkg-config file wget nodejs golang-go && \
+      git cmake build-essential pkg-config file wget nodejs golang-go tzdata && \
     if [ "$TARGETARCH/$TARGETVARIANT" = "arm/v7" ]; then \
       GCC_MAJOR="$(gcc -dumpfullversion -dumpversion | cut -d. -f1)" && \
       apt-get install -y --no-install-recommends \
@@ -330,7 +330,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libcurl4t64 libmbedtls21 libmbedcrypto16 procps curl ca-certificates \
     libmosquitto1 \
-    libyaml-0-2 && \
+    libyaml-0-2 tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directory structure

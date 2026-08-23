@@ -150,6 +150,16 @@ void test_route_validates_types_scope_predicates_and_schedule(void) {
     TEST_ASSERT_NOT_NULL(strstr(error, "unique"));
 
     route = valid_route("Validation");
+    safe_strcpy(route.schedule_json,
+                "{\"version\":1,\"timezone\":\"Mars/Olympus\","
+                "\"windows\":[]}",
+                sizeof(route.schedule_json), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_ROUTE_INVALID,
+        db_event_route_validate(&route, error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "available timezone"));
+
+    route = valid_route("Validation");
     safe_strcpy(route.destination_key, "mqtt:unknown",
                 sizeof(route.destination_key), 0);
     TEST_ASSERT_EQUAL_INT(

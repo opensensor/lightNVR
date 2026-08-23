@@ -9,6 +9,7 @@
 
 #include "core/config.h"
 #include "core/event_bus.h"
+#include "core/event_router.h"
 #include "core/logger.h"
 #include "core/mqtt_client.h"
 #include "core/mqtt_delivery_worker.h"
@@ -85,13 +86,21 @@ static int mqtt_event_handler(const event_envelope_t *event, void *context) {
 
 #ifdef ENABLE_MQTT
     if (config && config->mqtt_enabled) {
-        event_outbox_enqueue_result_t enqueue_result =
-            mqtt_delivery_worker_enqueue(
-                event, config->mqtt_topic_prefix, NULL);
-        if (enqueue_result != EVENT_OUTBOX_ENQUEUED &&
-            enqueue_result != EVENT_OUTBOX_DUPLICATE) {
-            log_error("MQTT event adapter could not persist event %s (%d)",
-                      event->id, enqueue_result);
+        event_router_result_t route_result = event_router_evaluate(event);
+        if (route_result == EVENT_ROUTER_MATCH ||
+            route_result == EVENT_ROUTER_DEFAULT) {
+            event_outbox_enqueue_result_t enqueue_result =
+                mqtt_delivery_worker_enqueue(
+                    event, config->mqtt_topic_prefix, NULL);
+            if (enqueue_result != EVENT_OUTBOX_ENQUEUED &&
+                enqueue_result != EVENT_OUTBOX_DUPLICATE) {
+                log_error("MQTT event adapter could not persist event %s (%d)",
+                          event->id, enqueue_result);
+                failed = 1;
+            }
+        } else if (route_result == EVENT_ROUTER_ERROR) {
+            log_error("MQTT event adapter could not evaluate routes for %s",
+                      event->id);
             failed = 1;
         }
     }
@@ -121,5 +130,7 @@ int mqtt_event_adapter_register(const config_t *config) {
 }
 
 int mqtt_event_adapter_unregister(void) {
-    return event_bus_unsubscribe(MQTT_EVENT_SUBSCRIBER);
+    int result = event_bus_unsubscribe(MQTT_EVENT_SUBSCRIBER);
+    event_router_shutdown();
+    return result;
 }

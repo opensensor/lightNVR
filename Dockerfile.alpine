@@ -20,7 +20,7 @@ RUN apk update && apk add --no-cache \
     mosquitto-dev \
     yaml-dev \
     linux-headers \
-    wget ca-certificates \
+    wget ca-certificates tzdata \
     bash
 
 # Build upstream SQLite because Alpine stable can lag the latest SQLite security fixes
@@ -94,7 +94,8 @@ RUN apk update && apk add --no-cache \
     mbedtls \
     cjson \
     mosquitto-libs \
-    yaml
+    yaml \
+    tzdata
 
 # Create necessary directories in runtime
 RUN mkdir -p /etc/lightnvr /var/lib/lightnvr/data /var/log/lightnvr /var/run/lightnvr && \
