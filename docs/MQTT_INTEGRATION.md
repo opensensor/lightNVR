@@ -161,7 +161,14 @@ windows. Debounce, cooldown, grouping, and fixed-window rate limits are enforced
 per route, event type, and subject. The first event is preserved, and an allowed
 event advances durable suppression state only after the outbox returns
 `ENQUEUED` or `DUPLICATE`; a full or failed outbox therefore does not consume a
-cooldown or rate slot. Multiple broker profiles are subsequent P2 work. See
+cooldown or rate slot.
+
+The destination profile API can stage named MQTT brokers with write-only
+credentials, secure system-trust defaults, optional custom CA or mutual TLS,
+and per-profile topics, QoS, and keepalive settings. The existing `[mqtt]`
+configuration remains the unmanaged `mqtt:default` destination. Route selection
+and multi-client delivery for managed profiles are provided by the dependent
+runtime slice; this control-plane slice does not redirect events on its own. See
 [Event Routes](API.md#event-routes) for the API contract.
 
 ```json
