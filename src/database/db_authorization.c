@@ -37,7 +37,8 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
 
     const char *sql =
         "SELECT g.uuid, g.role_uuid, r.name, g.scope_type, "
-        "       COALESCE(g.selector_json, '') "
+        "       COALESCE(g.selector_json, ''), "
+        "       COALESCE(g.collection_uuid, '') "
         "FROM authz_grants g "
         "JOIN authz_roles r ON r.uuid = g.role_uuid "
         "JOIN authz_role_actions ra ON ra.role_uuid = g.role_uuid "
@@ -115,6 +116,8 @@ int db_authorization_load_user_grants(int64_t user_id, const char *action_key,
         }
         safe_strcpy(grant->selector_json, selector ? selector : "",
                     sizeof(grant->selector_json), 0);
+        copy_column(grant->collection_uuid, sizeof(grant->collection_uuid),
+                    stmt, 5);
     }
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(mutex);
@@ -193,15 +196,37 @@ static bool sqlite_constraint_result(int rc) {
     return (rc & 0xff) == SQLITE_CONSTRAINT;
 }
 
+static bool shared_collection_exists_locked(sqlite3 *db,
+                                            const char *collection_uuid) {
+    if (!collection_uuid || collection_uuid[0] == '\0') return false;
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        db,
+        "SELECT 1 FROM camera_collections WHERE uuid=? AND is_shared=1;",
+        -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, collection_uuid, -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(stmt);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    return rc == SQLITE_ROW;
+}
+
 int db_authorization_create_user_grant(
     int64_t user_id, const char *role_uuid, const char *scope_type,
-    const char *selector_json,
+    const char *selector_json, const char *collection_uuid,
     char grant_uuid[CAMERA_UUID_STRING_SIZE]) {
     bool all_scope = scope_type && strcmp(scope_type, "all") == 0;
     bool selector_scope = scope_type && strcmp(scope_type, "selector") == 0;
-    if (user_id <= 0 || !role_uuid || (!all_scope && !selector_scope) ||
-        (all_scope && selector_json) ||
-        (selector_scope && !valid_selector(selector_json))) {
+    bool collection_scope =
+        scope_type && strcmp(scope_type, "collection") == 0;
+    if (user_id <= 0 || !role_uuid ||
+        (!all_scope && !selector_scope && !collection_scope) ||
+        (all_scope && (selector_json || collection_uuid)) ||
+        (selector_scope &&
+         (!valid_selector(selector_json) || collection_uuid)) ||
+        (collection_scope && (selector_json || !collection_uuid ||
+                              collection_uuid[0] == '\0'))) {
         return -1;
     }
     if (grant_uuid) grant_uuid[0] = '\0';
@@ -211,15 +236,22 @@ int db_authorization_create_user_grant(
     if (!db || !mutex) return -1;
     const char *sql =
         "INSERT INTO authz_grants "
-        "(uuid,user_id,role_uuid,scope_type,selector_json) VALUES ("
+        "(uuid,user_id,role_uuid,scope_type,selector_json,collection_uuid) "
+        "VALUES ("
         "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
         "substr(hex(randomblob(2)),2) || '-' || "
         "substr('89ab',(abs(random()) % 4) + 1,1) || "
         "substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),"
-        "?,?,?,?);";
+        "?,?,?,?,?);";
 
     pthread_mutex_lock(mutex);
     if (!begin_policy_change(db)) {
+        pthread_mutex_unlock(mutex);
+        return -1;
+    }
+    if (collection_scope &&
+        !shared_collection_exists_locked(db, collection_uuid)) {
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
         pthread_mutex_unlock(mutex);
         return -1;
     }
@@ -233,6 +265,12 @@ int db_authorization_create_user_grant(
             sqlite3_bind_text(stmt, 4, selector_json, -1, SQLITE_TRANSIENT);
         } else {
             sqlite3_bind_null(stmt, 4);
+        }
+        if (collection_uuid) {
+            sqlite3_bind_text(stmt, 5, collection_uuid, -1,
+                              SQLITE_TRANSIENT);
+        } else {
+            sqlite3_bind_null(stmt, 5);
         }
         rc = sqlite3_step(stmt);
     }
@@ -785,7 +823,8 @@ db_authorization_result_t db_authorization_get_user_policy(
     stmt = NULL;
     const char *sql =
         "SELECT g.uuid,g.user_id,g.role_uuid,r.name,g.scope_type,"
-        "COALESCE(g.selector_json,''),g.enabled,g.created_at,g.updated_at "
+        "COALESCE(g.selector_json,''),COALESCE(g.collection_uuid,''),"
+        "g.enabled,g.created_at,g.updated_at "
         "FROM authz_grants g JOIN authz_roles r ON r.uuid=g.role_uuid "
         "WHERE g.user_id=? ORDER BY g.created_at,g.uuid LIMIT ?;";
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
@@ -834,9 +873,11 @@ db_authorization_result_t db_authorization_get_user_policy(
         }
         safe_strcpy(grant->selector_json, selector ? selector : "",
                     sizeof(grant->selector_json), 0);
-        grant->enabled = sqlite3_column_int(stmt, 6) != 0;
-        grant->created_at = sqlite3_column_int64(stmt, 7);
-        grant->updated_at = sqlite3_column_int64(stmt, 8);
+        copy_column(grant->collection_uuid, sizeof(grant->collection_uuid),
+                    stmt, 6);
+        grant->enabled = sqlite3_column_int(stmt, 7) != 0;
+        grant->created_at = sqlite3_column_int64(stmt, 8);
+        grant->updated_at = sqlite3_column_int64(stmt, 9);
     }
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(mutex);
@@ -859,7 +900,9 @@ static bool duplicate_grant_input(const authorization_grant_input_t *grants,
         if (strcmp(grants[i].role_uuid, grants[index].role_uuid) == 0 &&
             strcmp(grants[i].scope_type, grants[index].scope_type) == 0 &&
             strcmp(grants[i].selector_json,
-                   grants[index].selector_json) == 0) {
+                   grants[index].selector_json) == 0 &&
+            strcmp(grants[i].collection_uuid,
+                   grants[index].collection_uuid) == 0) {
             return true;
         }
     }
@@ -869,10 +912,16 @@ static bool duplicate_grant_input(const authorization_grant_input_t *grants,
 static bool valid_grant_input(const authorization_grant_input_t *grant) {
     if (!grant || grant->role_uuid[0] == '\0') return false;
     if (strcmp(grant->scope_type, "all") == 0) {
-        return grant->selector_json[0] == '\0';
+        return grant->selector_json[0] == '\0' &&
+               grant->collection_uuid[0] == '\0';
     }
-    return strcmp(grant->scope_type, "selector") == 0 &&
-           valid_selector(grant->selector_json);
+    if (strcmp(grant->scope_type, "selector") == 0) {
+        return grant->collection_uuid[0] == '\0' &&
+               valid_selector(grant->selector_json);
+    }
+    return strcmp(grant->scope_type, "collection") == 0 &&
+           grant->selector_json[0] == '\0' &&
+           grant->collection_uuid[0] != '\0';
 }
 
 db_authorization_result_t db_authorization_replace_user_policy(
@@ -941,6 +990,13 @@ db_authorization_result_t db_authorization_replace_user_policy(
             return rc == SQLITE_DONE ? DB_AUTHORIZATION_INVALID
                                      : DB_AUTHORIZATION_ERROR;
         }
+        if (strcmp(grants[i].scope_type, "collection") == 0 &&
+            !shared_collection_exists_locked(db,
+                                             grants[i].collection_uuid)) {
+            sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+            pthread_mutex_unlock(mutex);
+            return DB_AUTHORIZATION_INVALID;
+        }
     }
     stmt = NULL;
     rc = sqlite3_prepare_v2(db, "DELETE FROM authz_grants WHERE user_id=?;",
@@ -952,12 +1008,13 @@ db_authorization_result_t db_authorization_replace_user_policy(
     if (stmt) sqlite3_finalize(stmt);
     const char *insert_sql =
         "INSERT INTO authz_grants "
-        "(uuid,user_id,role_uuid,scope_type,selector_json) VALUES ("
+        "(uuid,user_id,role_uuid,scope_type,selector_json,collection_uuid) "
+        "VALUES ("
         "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
         "substr(hex(randomblob(2)),2) || '-' || "
         "substr('89ab',(abs(random()) % 4) + 1,1) || "
         "substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),"
-        "?,?,?,?);";
+        "?,?,?,?,?);";
     for (int i = 0; rc == SQLITE_DONE && i < grant_count; i++) {
         stmt = NULL;
         rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, NULL);
@@ -972,6 +1029,12 @@ db_authorization_result_t db_authorization_replace_user_policy(
                                   SQLITE_TRANSIENT);
             } else {
                 sqlite3_bind_null(stmt, 4);
+            }
+            if (grants[i].collection_uuid[0]) {
+                sqlite3_bind_text(stmt, 5, grants[i].collection_uuid, -1,
+                                  SQLITE_TRANSIENT);
+            } else {
+                sqlite3_bind_null(stmt, 5);
             }
             rc = sqlite3_step(stmt);
         }

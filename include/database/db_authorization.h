@@ -42,6 +42,7 @@ typedef struct {
     char role_name[AUTHORIZATION_ROLE_NAME_MAX];
     char scope_type[AUTHORIZATION_SCOPE_TYPE_MAX];
     char selector_json[AUTHORIZATION_SELECTOR_MAX];
+    char collection_uuid[CAMERA_UUID_STRING_SIZE];
     bool enabled;
     int64_t created_at;
     int64_t updated_at;
@@ -51,6 +52,7 @@ typedef struct {
     char role_uuid[CAMERA_UUID_STRING_SIZE];
     char scope_type[AUTHORIZATION_SCOPE_TYPE_MAX];
     char selector_json[AUTHORIZATION_SELECTOR_MAX];
+    char collection_uuid[CAMERA_UUID_STRING_SIZE];
 } authorization_grant_input_t;
 
 int db_authorization_role_count(void);
@@ -92,7 +94,7 @@ int db_authorization_get_policy_version(int64_t *version);
 /* Create a validated user grant and bump the policy version atomically. */
 int db_authorization_create_user_grant(
     int64_t user_id, const char *role_uuid, const char *scope_type,
-    const char *selector_json,
+    const char *selector_json, const char *collection_uuid,
     char grant_uuid[CAMERA_UUID_STRING_SIZE]);
 
 /* Switch a user only after valid grants have been created and previewed. */

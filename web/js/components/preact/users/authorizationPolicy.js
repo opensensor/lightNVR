@@ -11,6 +11,7 @@ export function createDraftGrant(roleUuid = '', scopeType = 'all') {
     roleUuid,
     scopeType,
     selector: scopeType === 'selector' ? ALL_CAMERAS_SELECTOR : null,
+    collectionUuid: '',
     selectorError: '',
   };
 }
@@ -25,24 +26,34 @@ export function policyResponseToDraft(response) {
       selector: grant.scope?.type === 'selector'
         ? grant.scope.selector
         : null,
+      collectionUuid: grant.scope?.type === 'collection'
+        ? (grant.scope.collection_uuid || '')
+        : '',
     })),
   };
 }
 
-export function validatePolicyDraft(mode, grants, roleUuids = new Set()) {
+export function validatePolicyDraft(mode, grants, roleUuids = null, collectionUuids = null) {
   if (mode !== 'legacy' && mode !== 'policy') return 'invalid_mode';
   const seen = new Set();
   for (const grant of grants || []) {
-    if (!grant.roleUuid || (roleUuids.size > 0 && !roleUuids.has(grant.roleUuid))) {
+    if (!grant.roleUuid || (roleUuids && !roleUuids.has(grant.roleUuid))) {
       return 'missing_role';
     }
-    if (grant.scopeType !== 'all' && grant.scopeType !== 'selector') {
+    if (grant.scopeType !== 'all' && grant.scopeType !== 'selector' && grant.scopeType !== 'collection') {
       return 'invalid_scope';
     }
     if (grant.scopeType === 'selector' && (!grant.selector || grant.selectorError)) {
       return 'invalid_selector';
     }
-    const key = `${grant.roleUuid}\n${grant.scopeType}\n${grant.scopeType === 'selector' ? JSON.stringify(grant.selector) : ''}`;
+    if (grant.scopeType === 'collection' &&
+        (!grant.collectionUuid || (collectionUuids && !collectionUuids.has(grant.collectionUuid)))) {
+      return 'missing_collection';
+    }
+    const scopeKey = grant.scopeType === 'selector'
+      ? JSON.stringify(grant.selector)
+      : (grant.scopeType === 'collection' ? grant.collectionUuid : '');
+    const key = `${grant.roleUuid}\n${grant.scopeType}\n${scopeKey}`;
     if (seen.has(key)) return 'duplicate_grant';
     seen.add(key);
   }
@@ -57,7 +68,9 @@ export function buildPolicyPayload(mode, grants, policyVersion) {
       role_uuid: grant.roleUuid,
       scope: grant.scopeType === 'selector'
         ? { type: 'selector', selector: grant.selector }
-        : { type: 'all' },
+        : (grant.scopeType === 'collection'
+          ? { type: 'collection', collection_uuid: grant.collectionUuid }
+          : { type: 'all' }),
     })),
   };
 }

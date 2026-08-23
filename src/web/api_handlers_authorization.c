@@ -645,6 +645,12 @@ static cJSON *grant_to_json(const authorization_grant_t *grant) {
     } else {
         cJSON_AddNullToObject(scope, "selector");
     }
+    if (strcmp(grant->scope_type, "collection") == 0) {
+        cJSON_AddStringToObject(scope, "collection_uuid",
+                                grant->collection_uuid);
+    } else {
+        cJSON_AddNullToObject(scope, "collection_uuid");
+    }
     cJSON_AddItemToObject(object, "scope", scope);
     return object;
 }
@@ -728,10 +734,14 @@ static bool parse_grants(const cJSON *body,
             ? cJSON_GetObjectItemCaseSensitive(scope, "type") : NULL;
         const cJSON *selector = cJSON_IsObject(scope)
             ? cJSON_GetObjectItemCaseSensitive(scope, "selector") : NULL;
+        const cJSON *collection_uuid = cJSON_IsObject(scope)
+            ? cJSON_GetObjectItemCaseSensitive(scope, "collection_uuid")
+            : NULL;
         if (!cJSON_IsString(role_uuid) ||
             !valid_uuid(role_uuid->valuestring) || !cJSON_IsString(type) ||
             (strcmp(type->valuestring, "all") != 0 &&
-             strcmp(type->valuestring, "selector") != 0)) {
+             strcmp(type->valuestring, "selector") != 0 &&
+             strcmp(type->valuestring, "collection") != 0)) {
             free(parsed);
             http_response_set_json_error(res, 400, "Invalid grant");
             return false;
@@ -741,13 +751,36 @@ static bool parse_grants(const cJSON *body,
         safe_strcpy(parsed[i].scope_type, type->valuestring,
                     sizeof(parsed[i].scope_type), 0);
         if (strcmp(type->valuestring, "all") == 0) {
-            if (selector && !cJSON_IsNull(selector)) {
+            if ((selector && !cJSON_IsNull(selector)) ||
+                (collection_uuid && !cJSON_IsNull(collection_uuid))) {
                 free(parsed);
                 http_response_set_json_error(
-                    res, 400, "All-camera grants cannot include a selector");
+                    res, 400,
+                    "All-camera grants cannot include a selector or collection");
                 return false;
             }
             continue;
+        }
+        if (strcmp(type->valuestring, "collection") == 0) {
+            if ((selector && !cJSON_IsNull(selector)) ||
+                !cJSON_IsString(collection_uuid) ||
+                !valid_uuid(collection_uuid->valuestring)) {
+                free(parsed);
+                http_response_set_json_error(
+                    res, 400,
+                    "Collection grants require a valid collection UUID and no selector");
+                return false;
+            }
+            safe_strcpy(parsed[i].collection_uuid,
+                        collection_uuid->valuestring,
+                        sizeof(parsed[i].collection_uuid), 0);
+            continue;
+        }
+        if (collection_uuid && !cJSON_IsNull(collection_uuid)) {
+            free(parsed);
+            http_response_set_json_error(
+                res, 400, "Selector grants cannot include a collection");
+            return false;
         }
         if (!selector) {
             free(parsed);

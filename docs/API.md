@@ -66,11 +66,11 @@ privacy mode), and deletion reject `VIEWER` with `403`, as does
 ### Action-level authorization foundation
 
 New installations and upgrades include the Fleet 02 action catalog, reusable
-roles, and camera-selector grants. Existing users remain in `legacy` authorization
+roles, and camera-selector or shared-collection grants. Existing users remain in `legacy` authorization
 mode until an administrator creates and previews equivalent grants, so upgrading
 does not silently remove access. Users switched to `policy` mode are default-deny:
 an action is allowed only when an enabled role grant contains the action and its
-all-fleet or camera selector scope matches.
+all-fleet, shared-collection, or camera-selector scope matches.
 
 Existing handlers are being migrated to the central evaluator incrementally. The
 current coverage and intended action for every route family are tracked in
@@ -144,7 +144,7 @@ PUT /api/authorization/users/{user_id}
 
 Administrator-only. `GET` returns the user's mode, complete grants, and a policy
 version. `PUT` atomically replaces the complete grant set and mode, and requires
-that version as `expected_policy_version`. An `all` scope omits its selector; a
+that version as `expected_policy_version`. An `all` scope omits a resource; a
 selector scope embeds a Fleet 01 selector:
 
 ```json
@@ -169,7 +169,26 @@ selector scope embeds a Fleet 01 selector:
 }
 ```
 
-The server validates every selector and role before changing anything. It also
+A collection scope stores a durable reference instead of copying the
+collection's current selector or members:
+
+```json
+{
+  "role_uuid": "00000000-0000-4000-8000-000000000003",
+  "scope": {
+    "type": "collection",
+    "collection_uuid": "d813e24e-0c7a-48e7-960c-4f5b843466db"
+  }
+}
+```
+
+Only shared collections may be authorization scopes. Their current static or
+smart membership is evaluated at request time, so organizational changes take
+effect without rewriting every user policy. An in-use collection cannot be
+made private or deleted, and membership/rule changes advance the policy version.
+
+The server validates every selector, collection, and role before changing
+anything. It also
 rejects an authenticated administrator's attempt to remove their own effective
 `users.manage` grant. Saving grants in `legacy` mode is supported so an
 administrator can prepare policy before activating default-deny evaluation.

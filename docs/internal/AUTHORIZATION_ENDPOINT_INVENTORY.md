@@ -94,6 +94,11 @@ they may not trust a client-supplied collection expansion.
 | Storage cleanup | `storage.configure` | Existing administrator checks |
 | Future event destinations and routes | `events.configure` | Not implemented |
 
+Shared static and smart collections may be referenced directly by grants. The
+evaluator resolves their current membership server-side; private collections
+are rejected, and referenced collections cannot be made private or deleted.
+Collection membership or selector changes increment the policy version.
+
 ## Enforcement rollout order
 
 1. Recording deletion/protection/export and PTZ/audio talk.

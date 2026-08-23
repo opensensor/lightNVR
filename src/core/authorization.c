@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "core/authorization.h"
+#include "core/camera_collection_filter.h"
 #include "database/db_authorization.h"
 #include "utils/strings.h"
 
@@ -139,6 +140,17 @@ static int grant_matches(const authorization_grant_t *grant,
     *matches = false;
     if (strcmp(grant->scope_type, "all") == 0) {
         *matches = true;
+        return 0;
+    }
+    if (strcmp(grant->scope_type, "collection") == 0) {
+        if (!camera || grant->collection_uuid[0] == '\0') return 0;
+        camera_collection_filter_t filter;
+        camera_collection_filter_result_t result =
+            camera_collection_filter_load_for_authorization(
+                grant->collection_uuid, &filter);
+        if (result != CAMERA_COLLECTION_FILTER_OK) return -1;
+        *matches = camera_collection_filter_matches(&filter, camera);
+        camera_collection_filter_free(&filter);
         return 0;
     }
     if (strcmp(grant->scope_type, "selector") != 0 || !camera ||
