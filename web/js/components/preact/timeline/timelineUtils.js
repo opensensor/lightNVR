@@ -360,6 +360,34 @@ export function getSteppedVideoTime(currentTimeSeconds, directionSeconds, durati
   return clamp(nextTime, 0, safeDuration);
 }
 
+/**
+ * Return whether a timeline state update represents a seek that still needs to
+ * be applied to the video element.
+ *
+ * At high playback rates, consecutive native `timeupdate` events can be more
+ * than a second apart. Comparing only the current and previous timeline times
+ * mistakes those normal playback updates for user seeks and repeatedly assigns
+ * `video.currentTime`, which makes Chromium's native controls flicker (#495).
+ */
+export function shouldSeekPlaybackPosition(
+  currentTimelineTime,
+  previousTimelineTime,
+  segmentStartTime,
+  currentVideoTime,
+  thresholdSeconds = 1
+) {
+  if (![currentTimelineTime, previousTimelineTime, segmentStartTime, currentVideoTime, thresholdSeconds]
+    .every(Number.isFinite)) {
+    return false;
+  }
+
+  const timelineMoved = Math.abs(currentTimelineTime - previousTimelineTime) > thresholdSeconds;
+  const desiredVideoTime = currentTimelineTime - segmentStartTime;
+  const videoNeedsSync = Math.abs(desiredVideoTime - currentVideoTime) > thresholdSeconds;
+
+  return timelineMoved && videoNeedsSync;
+}
+
 export function getClippedSegmentHourRange(segment, selectedDate) {
   const bounds = getLocalDayBounds(selectedDate);
   if (!segment || !bounds) return null;
@@ -376,4 +404,3 @@ export function getClippedSegmentHourRange(segment, selectedDate) {
     endHour: (visibleEnd - bounds.startTimestamp) / 3600
   };
 }
-

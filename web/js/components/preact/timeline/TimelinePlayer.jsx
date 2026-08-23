@@ -5,7 +5,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { timelineState } from './TimelinePage.jsx';
-import { formatPlaybackTimeLabel, resolvePlaybackStreamName } from './timelineUtils.js';
+import {
+  formatPlaybackTimeLabel,
+  resolvePlaybackStreamName,
+  shouldSeekPlaybackPosition
+} from './timelineUtils.js';
 import { SpeedControls } from './SpeedControls.jsx';
 import { showStatusMessage } from '../ToastContainer.jsx';
 import { ConfirmDialog } from '../UI.jsx';
@@ -160,9 +164,13 @@ export function TimelinePlayer({ videoElementRef = null, autoFullscreen = false 
 
     // Only update the video if:
     // 1. We need to load a new segment, OR
-    // 2. The user is dragging the cursor (indicated by a significant time change)
-    const timeChanged = state.prevCurrentTime !== null &&
-                        Math.abs(state.currentTime - state.prevCurrentTime) > 1;
+    // 2. The timeline requested a position that the video has not reached
+    const timeChanged = shouldSeekPlaybackPosition(
+      state.currentTime,
+      state.prevCurrentTime,
+      segment.start_timestamp,
+      video.currentTime
+    );
 
     // Update last segment ID
     if (segmentChanged) {
