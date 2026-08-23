@@ -11,11 +11,37 @@
 
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
 #include "database/database_manager.h"
 #include "database/db_recordings.h"
 #include "utils/strings.h"
+
+static void audit_recording_export(
+    const http_request_t *req, const user_t *user,
+    const fleet_camera_t *camera, uint64_t recording_id,
+    const char *outcome, const char *reason, uint64_t size_bytes,
+    const char *content_type) {
+    char recording_uuid[32];
+    snprintf(recording_uuid, sizeof(recording_uuid), "%llu",
+             (unsigned long long)recording_id);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "camera_uuid", camera->camera_uuid);
+        cJSON_AddStringToObject(details, "reason", reason);
+        if (size_bytes > 0) {
+            cJSON_AddNumberToObject(details, "size_bytes", (double)size_bytes);
+        }
+        if (content_type) {
+            cJSON_AddStringToObject(details, "content_type", content_type);
+        }
+    }
+    audit_log_operation(req, user, "recordings.export", "recording",
+                        recording_uuid, "download_recording", outcome,
+                        details);
+    cJSON_Delete(details);
+}
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/download/:id
@@ -60,23 +86,19 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
         http_response_set_json_error(res, 404, "Recording not found");
         return;
     }
+    fleet_camera_t camera;
     authorization_evaluation_t evaluation;
-    int authorization_result = httpd_evaluate_stream_action(
-        &user, AUTHZ_RECORDINGS_EXPORT, recording.stream_name, &evaluation);
-    if (authorization_result < 0) {
-        http_response_set_json_error(
-            res, 500, "Authorization policy evaluation failed");
-        return;
-    }
-    if (authorization_result > 0 ||
-        evaluation.decision != AUTHZ_DECISION_ALLOW) {
-        http_response_set_json_error(res, 403, "Forbidden");
+    if (!httpd_authorize_stream_action_with_context(
+            req, res, AUTHZ_RECORDINGS_EXPORT, recording.stream_name, &user,
+            &camera, &evaluation)) {
         return;
     }
 
     // Check if file exists
     struct stat st;
     if (stat(recording.file_path, &st) != 0) {
+        audit_recording_export(req, &user, &camera, id, "failure",
+                               "recording_file_missing", 0, NULL);
         log_error("Recording file not found: %s", recording.file_path);
         http_response_set_json_error(res, 404, "Recording file not found");
         return;
@@ -114,10 +136,16 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
     // Serve the file using backend-agnostic function
     log_debug("Serving file for download: %s", recording.file_path);
     if (http_serve_file(req, res, recording.file_path, content_type, headers) != 0) {
+        audit_recording_export(req, &user, &camera, id, "error",
+                               "response_stream_failed",
+                               (uint64_t)st.st_size, content_type);
         log_error("Failed to serve file: %s", recording.file_path);
         http_response_set_json_error(res, 500, "Failed to serve file");
         return;
     }
+
+    audit_recording_export(req, &user, &camera, id, "success", "completed",
+                           (uint64_t)st.st_size, content_type);
 
     log_info("Successfully handled GET /api/recordings/download/%llu request", (unsigned long long)id);
 }

@@ -19,6 +19,7 @@
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_api_tokens.h"
+#include "database/db_audit.h"
 #include "database/db_authorization.h"
 #include "database/db_camera_collections.h"
 #include "database/db_camera_tags.h"
@@ -34,6 +35,7 @@
 #include "web/api_handlers_recordings_batch_download.h"
 #include "web/api_handlers_recordings_download.h"
 #include "web/api_handlers_users.h"
+#include "web/batch_delete_progress.h"
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
 
@@ -157,6 +159,26 @@ static cJSON *call_handler(
                              expected_status);
 }
 
+static bool audit_has_operation(const char *action, const char *outcome,
+                                const char *operation) {
+    audit_query_t query = {.page = 1, .page_size = 100};
+    safe_strcpy(query.action, action, sizeof(query.action), 0);
+    safe_strcpy(query.outcome, outcome, sizeof(query.outcome), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    char needle[128];
+    snprintf(needle, sizeof(needle), "\"operation\":\"%s\"", operation);
+    bool found = false;
+    for (int i = 0; i < page.count; i++) {
+        if (strstr(page.events[i].details_json, needle)) {
+            found = true;
+            break;
+        }
+    }
+    db_audit_page_free(&page);
+    return found;
+}
+
 static int authorize_stream_with_key(const char *api_key,
                                      authorization_action_t action,
                                      const char *stream_name,
@@ -188,6 +210,7 @@ void setUp(void) {
     sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM camera_tags;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM audit_events;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM users WHERE username != 'admin';",
                  NULL, NULL, NULL);
 }
@@ -1081,6 +1104,18 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
                              "{\"pan\":1}", api_key, 403);
     cJSON_Delete(json);
 
+    snprintf(ptz_path, sizeof(ptz_path), "/api/streams/%s/ptz/absolute",
+             allowed.name);
+    json = call_handler_path(handle_ptz_absolute, HTTP_METHOD_POST, ptz_path,
+                             "{}", api_key, 400);
+    cJSON_Delete(json);
+
+    snprintf(path, sizeof(path), "/api/recordings/download/%llu",
+             (unsigned long long)allowed_id);
+    json = call_handler_path(handle_recordings_download, HTTP_METHOD_GET,
+                             path, NULL, api_key, 404);
+    cJSON_Delete(json);
+
     snprintf(path, sizeof(path), "/api/recordings/download/%llu",
              (unsigned long long)denied_id);
     json = call_handler_path(handle_recordings_download, HTTP_METHOD_GET,
@@ -1164,6 +1199,58 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
     cJSON_Delete(json);
     TEST_ASSERT_NOT_EQUAL(
         0, get_recording_metadata_by_id(allowed_id, &reloaded));
+
+    recording_metadata_t batch_recording = allowed_recording;
+    safe_strcpy(batch_recording.file_path,
+                "/tmp/lightnvr-scoped-batch-recording.mp4",
+                sizeof(batch_recording.file_path), 0);
+    uint64_t batch_id = add_recording_metadata(&batch_recording);
+    TEST_ASSERT_NOT_EQUAL(0, batch_id);
+    snprintf(batch_body, sizeof(batch_body), "{\"ids\":[%llu]}",
+             (unsigned long long)batch_id);
+    json = call_handler_path(handle_batch_delete_recordings, HTTP_METHOD_POST,
+                             "/api/recordings/batch-delete", batch_body,
+                             api_key, 202);
+    char delete_job_id[64];
+    safe_strcpy(
+        delete_job_id,
+        cJSON_GetObjectItemCaseSensitive(json, "job_id")->valuestring,
+        sizeof(delete_job_id), 0);
+    cJSON_Delete(json);
+    bool delete_finished = false;
+    for (int attempt = 0; attempt < 100 && !delete_finished; attempt++) {
+        snprintf(status_path, sizeof(status_path),
+                 "/api/recordings/batch-delete/progress/%s", delete_job_id);
+        json = call_handler_path(handle_batch_delete_progress, HTTP_METHOD_GET,
+                                 status_path, NULL, api_key, 200);
+        delete_finished = cJSON_IsTrue(
+            cJSON_GetObjectItemCaseSensitive(json, "complete"));
+        cJSON_Delete(json);
+        if (!delete_finished) {
+            const struct timespec delay = {.tv_sec = 0,
+                                           .tv_nsec = 1000000};
+            nanosleep(&delay, NULL);
+        }
+    }
+    TEST_ASSERT_TRUE(delete_finished);
+    TEST_ASSERT_NOT_EQUAL(
+        0, get_recording_metadata_by_id(batch_id, &reloaded));
+    TEST_ASSERT_TRUE(audit_has_operation("evidence.protect", "success",
+                                         "protect"));
+    TEST_ASSERT_TRUE(audit_has_operation("evidence.protect", "failure",
+                                         "batch_unprotect"));
+    TEST_ASSERT_TRUE(audit_has_operation("ptz.control", "failure",
+                                         "absolute_move"));
+    TEST_ASSERT_TRUE(audit_has_operation("recordings.export", "failure",
+                                         "download_recording"));
+    TEST_ASSERT_TRUE(audit_has_operation("recordings.export", "failure",
+                                         "create_batch_archive"));
+    TEST_ASSERT_TRUE(audit_has_operation("recordings.export", "error",
+                                         "download_batch_archive"));
+    TEST_ASSERT_TRUE(audit_has_operation("recording.delete", "success",
+                                         "delete_recording"));
+    TEST_ASSERT_TRUE(audit_has_operation("recording.delete", "success",
+                                         "batch_delete"));
     g_config.web_auth_enabled = false;
 }
 
@@ -1175,6 +1262,12 @@ int main(void) {
     }
     if (db_auth_init() != 0) {
         fprintf(stderr, "FATAL: db_auth_init failed\n");
+        shutdown_database();
+        unlink(TEST_DB_PATH);
+        return 1;
+    }
+    if (batch_delete_progress_init() != 0) {
+        fprintf(stderr, "FATAL: batch delete progress init failed\n");
         shutdown_database();
         unlink(TEST_DB_PATH);
         return 1;
@@ -1194,6 +1287,7 @@ int main(void) {
     RUN_TEST(test_users_api_reports_authorization_mode);
     RUN_TEST(test_sensitive_handlers_enforce_camera_scoped_policy);
     int result = UNITY_END();
+    batch_delete_progress_cleanup();
     shutdown_database();
     unlink(TEST_DB_PATH);
     return result;

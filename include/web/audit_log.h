@@ -18,6 +18,16 @@ void audit_log_append(const http_request_t *req, const user_t *user,
                       const char *target_uuid, const char *outcome,
                       const cJSON *details);
 
+/*
+ * Record the outcome of an authorized operation. context remains owned by the
+ * caller and is nested below a standard operation.outcome envelope before the
+ * same recursive redaction used by audit_log_append is applied.
+ */
+void audit_log_operation(const http_request_t *req, const user_t *user,
+                         const char *action, const char *target_type,
+                         const char *target_uuid, const char *operation,
+                         const char *outcome, const cJSON *context);
+
 void audit_log_authorization(const http_request_t *req, const user_t *user,
                              authorization_action_t action,
                              const fleet_camera_t *camera,

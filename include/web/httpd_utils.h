@@ -150,6 +150,17 @@ int httpd_authorize_stream_action(const http_request_t *req,
                                   const char *stream_name);
 
 /**
+ * Resolve and authorize a camera-scoped action while returning the trusted
+ * principal, immutable camera identity, and policy evaluation to the caller.
+ * The output structures are cleared before use and are valid only when the
+ * function returns 1.
+ */
+int httpd_authorize_stream_action_with_context(
+    const http_request_t *req, http_response_t *res,
+    authorization_action_t action, const char *stream_name, user_t *user,
+    fleet_camera_t *camera, authorization_evaluation_t *evaluation);
+
+/**
  * Evaluate an already-authenticated user against a server-resolved stream.
  * Returns 0 with an allow/deny evaluation, 1 if the stream does not exist, and
  * -1 on a database or policy evaluation error. Useful for batch operations.

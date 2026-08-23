@@ -9,6 +9,7 @@
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #define LOG_COMPONENT "PTZAPI"
 #include "core/logger.h"
 #include "core/config.h"
@@ -94,11 +95,34 @@ static int extract_ptz_stream_name(const http_request_t *req, char *stream_name,
     return 0;
 }
 
+typedef struct {
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+} ptz_authorization_context_t;
+
 static int authorize_ptz_stream(const http_request_t *req,
                                 http_response_t *res,
                                 const char *stream_name,
-                                authorization_action_t action) {
-    return httpd_authorize_stream_action(req, res, action, stream_name);
+                                authorization_action_t action,
+                                ptz_authorization_context_t *context) {
+    return httpd_authorize_stream_action_with_context(
+        req, res, action, stream_name, &context->user, &context->camera,
+        &context->evaluation);
+}
+
+static void audit_ptz_operation(const http_request_t *req,
+                                const ptz_authorization_context_t *context,
+                                const char *operation, const char *outcome,
+                                const char *reason) {
+    cJSON *details = cJSON_CreateObject();
+    if (details && reason) {
+        cJSON_AddStringToObject(details, "reason", reason);
+    }
+    audit_log_operation(req, &context->user, "ptz.control", "camera",
+                        context->camera.camera_uuid, operation, outcome,
+                        details);
+    cJSON_Delete(details);
 }
 
 void handle_ptz_move(const http_request_t *req, http_response_t *res) {
@@ -109,23 +133,32 @@ void handle_ptz_move(const http_request_t *req, http_response_t *res) {
     }
 
     log_info("Handling POST /api/streams/%s/ptz/move", stream_name);
-    
+
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
+        audit_ptz_operation(req, &auth, "continuous_move", "error",
+                            "stream_configuration_unavailable");
         http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "continuous_move", "failure",
+                            "ptz_disabled");
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
-        return;
-    }
-    
+
     // Parse request body
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
+        audit_ptz_operation(req, &auth, "continuous_move", "failure",
+                            "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -144,6 +177,8 @@ void handle_ptz_move(const http_request_t *req, http_response_t *res) {
     // Build PTZ URL and execute move
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
+        audit_ptz_operation(req, &auth, "continuous_move", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -154,9 +189,14 @@ void handle_ptz_move(const http_request_t *req, http_response_t *res) {
                                    pan, tilt, zoom);
     
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "continuous_move", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ move failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "continuous_move", "success",
+                        "completed");
     
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -178,21 +218,29 @@ void handle_ptz_stop(const http_request_t *req, http_response_t *res) {
 
     log_info("Handling POST /api/streams/%s/ptz/stop", stream_name);
 
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
+        audit_ptz_operation(req, &auth, "stop", "error",
+                            "stream_configuration_unavailable");
         http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "stop", "failure", "ptz_disabled");
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
-        return;
-    }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
+        audit_ptz_operation(req, &auth, "stop", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -201,9 +249,13 @@ void handle_ptz_stop(const http_request_t *req, http_response_t *res) {
     rc = onvif_ptz_stop(ptz_url, profile_token, config.onvif_username, config.onvif_password, true, true);
 
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "stop", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ stop failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "stop", "success", "completed");
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -225,21 +277,30 @@ void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
 
     log_info("Handling POST /api/streams/%s/ptz/absolute", stream_name);
 
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
+        audit_ptz_operation(req, &auth, "absolute_move", "error",
+                            "stream_configuration_unavailable");
         http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "absolute_move", "failure",
+                            "ptz_disabled");
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
-        return;
-    }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
+        audit_ptz_operation(req, &auth, "absolute_move", "failure",
+                            "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -266,12 +327,16 @@ void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
     cJSON_Delete(body);
 
     if (!has_pan && !has_tilt && !has_zoom) {
+        audit_ptz_operation(req, &auth, "absolute_move", "failure",
+                            "missing_axis");
         http_response_set_json_error(res, 400, "At least one PTZ axis is required");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
+        audit_ptz_operation(req, &auth, "absolute_move", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -282,9 +347,14 @@ void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
                                       has_pan || has_tilt, pan, tilt, has_zoom, zoom);
 
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "absolute_move", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ absolute move failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "absolute_move", "success",
+                        "completed");
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -306,21 +376,30 @@ void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
 
     log_info("Handling POST /api/streams/%s/ptz/relative", stream_name);
 
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
+        audit_ptz_operation(req, &auth, "relative_move", "error",
+                            "stream_configuration_unavailable");
         http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "relative_move", "failure",
+                            "ptz_disabled");
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
-        return;
-    }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
+        audit_ptz_operation(req, &auth, "relative_move", "failure",
+                            "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -347,12 +426,16 @@ void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
     cJSON_Delete(body);
 
     if (!has_pan && !has_tilt && !has_zoom) {
+        audit_ptz_operation(req, &auth, "relative_move", "failure",
+                            "missing_axis");
         http_response_set_json_error(res, 400, "At least one PTZ axis is required");
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
+        audit_ptz_operation(req, &auth, "relative_move", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -363,9 +446,14 @@ void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
                                       has_pan || has_tilt, pan, tilt, has_zoom, zoom);
 
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "relative_move", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ relative move failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "relative_move", "success",
+                        "completed");
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -387,21 +475,30 @@ void handle_ptz_home(const http_request_t *req, http_response_t *res) {
 
     log_info("Handling POST /api/streams/%s/ptz/home", stream_name);
 
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
+        audit_ptz_operation(req, &auth, "goto_home", "error",
+                            "stream_configuration_unavailable");
         http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "goto_home", "failure",
+                            "ptz_disabled");
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
-        return;
-    }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
+        audit_ptz_operation(req, &auth, "goto_home", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -410,9 +507,13 @@ void handle_ptz_home(const http_request_t *req, http_response_t *res) {
     rc = onvif_ptz_goto_home(ptz_url, profile_token, config.onvif_username, config.onvif_password);
 
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "goto_home", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ go to home failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "goto_home", "success", "completed");
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -434,21 +535,30 @@ void handle_ptz_set_home(const http_request_t *req, http_response_t *res) {
 
     log_info("Handling POST /api/streams/%s/ptz/sethome", stream_name);
 
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
+        audit_ptz_operation(req, &auth, "set_home", "error",
+                            "stream_configuration_unavailable");
         http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "set_home", "failure",
+                            "ptz_disabled");
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
-        return;
-    }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
+        audit_ptz_operation(req, &auth, "set_home", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -457,9 +567,13 @@ void handle_ptz_set_home(const http_request_t *req, http_response_t *res) {
     rc = onvif_ptz_set_home(ptz_url, profile_token, config.onvif_username, config.onvif_password);
 
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "set_home", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ set home failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "set_home", "success", "completed");
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -490,7 +604,9 @@ void handle_ptz_get_presets(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_LIVE_VIEW)) {
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_LIVE_VIEW,
+                              &auth)) {
         return;
     }
 
@@ -535,9 +651,32 @@ void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Get preset token from request body
+    log_info("Handling POST /api/streams/%s/ptz/preset", stream_name);
+
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
+    stream_config_t config;
+    int rc = get_ptz_stream_config(stream_name, &config);
+    if (rc == -1) {
+        audit_ptz_operation(req, &auth, "goto_preset", "error",
+                            "stream_configuration_unavailable");
+        http_response_set_json_error(res, 404, "Stream not found");
+        return;
+    } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "goto_preset", "failure",
+                            "ptz_disabled");
+        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
+        return;
+    }
+
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
+        audit_ptz_operation(req, &auth, "goto_preset", "failure",
+                            "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -545,6 +684,8 @@ void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res) {
     cJSON *token_json = cJSON_GetObjectItem(body, "token");
     if (!token_json || !cJSON_IsString(token_json)) {
         cJSON_Delete(body);
+        audit_ptz_operation(req, &auth, "goto_preset", "failure",
+                            "missing_preset_token");
         http_response_set_json_error(res, 400, "Missing preset token");
         return;
     }
@@ -553,23 +694,10 @@ void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res) {
     safe_strcpy(preset_token, token_json->valuestring, sizeof(preset_token), 0);
     cJSON_Delete(body);
 
-    log_info("Handling POST /api/streams/%s/ptz/preset (goto %s)", stream_name, preset_token);
-
-    stream_config_t config;
-    int rc = get_ptz_stream_config(stream_name, &config);
-    if (rc == -1) {
-        http_response_set_json_error(res, 404, "Stream not found");
-        return;
-    } else if (rc == -2) {
-        http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
-        return;
-    }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
-        return;
-    }
-
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
+        audit_ptz_operation(req, &auth, "goto_preset", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -578,9 +706,13 @@ void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res) {
     rc = onvif_ptz_goto_preset(ptz_url, profile_token, config.onvif_username, config.onvif_password, preset_token);
 
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "goto_preset", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ go to preset failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "goto_preset", "success", "completed");
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -602,21 +734,30 @@ void handle_ptz_set_preset(const http_request_t *req, http_response_t *res) {
 
     log_info("Handling PUT /api/streams/%s/ptz/preset", stream_name);
 
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL,
+                              &auth)) {
+        return;
+    }
+
     stream_config_t config;
     int rc = get_ptz_stream_config(stream_name, &config);
     if (rc == -1) {
+        audit_ptz_operation(req, &auth, "set_preset", "error",
+                            "stream_configuration_unavailable");
         http_response_set_json_error(res, 404, "Stream not found");
         return;
     } else if (rc == -2) {
+        audit_ptz_operation(req, &auth, "set_preset", "failure",
+                            "ptz_disabled");
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
-        return;
-    }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
+        audit_ptz_operation(req, &auth, "set_preset", "failure",
+                            "invalid_request");
         http_response_set_json_error(res, 400, "Invalid JSON body");
         return;
     }
@@ -630,6 +771,8 @@ void handle_ptz_set_preset(const http_request_t *req, http_response_t *res) {
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
         cJSON_Delete(body);
+        audit_ptz_operation(req, &auth, "set_preset", "error",
+                            "service_discovery_failed");
         http_response_set_json_error(res, 500, "Failed to build PTZ URL");
         return;
     }
@@ -642,9 +785,13 @@ void handle_ptz_set_preset(const http_request_t *req, http_response_t *res) {
     cJSON_Delete(body);
 
     if (rc != 0) {
+        audit_ptz_operation(req, &auth, "set_preset", "failure",
+                            "device_operation_failed");
         http_response_set_json_error(res, 500, "PTZ set preset failed");
         return;
     }
+
+    audit_ptz_operation(req, &auth, "set_preset", "success", "completed");
 
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
@@ -676,7 +823,9 @@ void handle_ptz_capabilities(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
-    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_LIVE_VIEW)) {
+    ptz_authorization_context_t auth;
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_LIVE_VIEW,
+                              &auth)) {
         return;
     }
 

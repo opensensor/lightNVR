@@ -568,14 +568,28 @@ int httpd_authorize_stream_action(const http_request_t *req,
                                   authorization_action_t action,
                                   const char *stream_name) {
     user_t user;
-    if (!httpd_check_action_access(req, &user)) {
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    return httpd_authorize_stream_action_with_context(
+        req, res, action, stream_name, &user, &camera, &evaluation);
+}
+
+int httpd_authorize_stream_action_with_context(
+    const http_request_t *req, http_response_t *res,
+    authorization_action_t action, const char *stream_name, user_t *user,
+    fleet_camera_t *camera, authorization_evaluation_t *evaluation) {
+    if (!req || !res || !stream_name || !user || !camera || !evaluation) {
+        return 0;
+    }
+    memset(user, 0, sizeof(*user));
+    memset(camera, 0, sizeof(*camera));
+    memset(evaluation, 0, sizeof(*evaluation));
+    if (!httpd_check_action_access(req, user)) {
         audit_log_authorization(req, NULL, action, NULL, NULL, "denied");
         http_response_set_json_error(res, 401, "Unauthorized");
         return 0;
     }
-    fleet_camera_t camera;
-    memset(&camera, 0, sizeof(camera));
-    int result = db_fleet_camera_find_by_name(stream_name, &camera);
+    int result = db_fleet_camera_find_by_name(stream_name, camera);
     if (result > 0) {
         const authorization_action_metadata_t *metadata =
             authorization_action_metadata(action);
@@ -585,34 +599,32 @@ int httpd_authorize_stream_action(const http_request_t *req,
                                     "authorization.resource_not_found");
             cJSON_AddStringToObject(details, "stream_name", stream_name);
         }
-        audit_log_append(req, &user, metadata ? metadata->key : "unknown",
+        audit_log_append(req, user, metadata ? metadata->key : "unknown",
                          "camera", NULL, "failure", details);
         cJSON_Delete(details);
         http_response_set_json_error(res, 404, "Camera not found");
         return 0;
     }
-    authorization_evaluation_t evaluation;
-    memset(&evaluation, 0, sizeof(evaluation));
     if (result < 0 ||
-        authorization_evaluate(&user, action, &camera, &evaluation) != 0) {
-        audit_log_authorization(req, &user, action, &camera,
-                                result < 0 ? NULL : &evaluation, "error");
+        authorization_evaluate(user, action, camera, evaluation) != 0) {
+        audit_log_authorization(req, user, action, camera,
+                                result < 0 ? NULL : evaluation, "error");
         log_error("Failed to evaluate authorization for stream '%s'",
                   stream_name);
         http_response_set_json_error(
             res, 500, "Authorization policy evaluation failed");
         return 0;
     }
-    if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
-        audit_log_authorization(req, &user, action, &camera, &evaluation,
+    if (evaluation->decision != AUTHZ_DECISION_ALLOW) {
+        audit_log_authorization(req, user, action, camera, evaluation,
                                 "denied");
         log_warn("Access denied: User '%s' action %d on stream '%s': %s",
-                 user.username, (int)action, stream_name,
-                 evaluation.explanation);
+                 user->username, (int)action, stream_name,
+                 evaluation->explanation);
         http_response_set_json_error(res, 403, "Forbidden");
         return 0;
     }
-    audit_log_authorization(req, &user, action, &camera, &evaluation,
+    audit_log_authorization(req, user, action, camera, evaluation,
                             "allowed");
     return 1;
 }

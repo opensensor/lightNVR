@@ -12,9 +12,29 @@
 #include "web/api_handlers_recordings.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
 #include "database/db_recordings.h"
+
+static void audit_recording_file_delete(
+    const http_request_t *req, const user_t *user,
+    const fleet_camera_t *camera, uint64_t recording_id,
+    const char *outcome, const char *reason, const char *file_state) {
+    char recording_uuid[32];
+    snprintf(recording_uuid, sizeof(recording_uuid), "%llu",
+             (unsigned long long)recording_id);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "camera_uuid", camera->camera_uuid);
+        cJSON_AddStringToObject(details, "reason", reason);
+        cJSON_AddStringToObject(details, "file_state", file_state);
+    }
+    audit_log_operation(req, user, "recording.delete", "recording",
+                        recording_uuid, "delete_recording_file", outcome,
+                        details);
+    cJSON_Delete(details);
+}
 
 /**
  * @brief Handle GET /api/recordings/files/check
@@ -111,17 +131,11 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
         http_response_set_json_error(res, 404, "Recording not found");
         return;
     }
+    fleet_camera_t camera;
     authorization_evaluation_t evaluation;
-    int authorization_result = httpd_evaluate_stream_action(
-        &user, AUTHZ_RECORDING_DELETE, recording.stream_name, &evaluation);
-    if (authorization_result < 0) {
-        http_response_set_json_error(
-            res, 500, "Authorization policy evaluation failed");
-        return;
-    }
-    if (authorization_result > 0 ||
-        evaluation.decision != AUTHZ_DECISION_ALLOW) {
-        http_response_set_json_error(res, 403, "Forbidden");
+    if (!httpd_authorize_stream_action_with_context(
+            req, res, AUTHZ_RECORDING_DELETE, recording.stream_name, &user,
+            &camera, &evaluation)) {
         return;
     }
 
@@ -137,10 +151,17 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
         existed = false;
         log_info("File doesn't exist, no need to delete: %s", path);
     } else {
+        audit_recording_file_delete(req, &user, &camera, recording.id,
+                                    "error", "filesystem_delete_failed",
+                                    "unchanged");
         log_error("Failed to delete file: %s (error: %s)", path, strerror(errno));
         http_response_set_json_error(res, 500, "Failed to delete file");
         return;
     }
+
+    audit_recording_file_delete(
+        req, &user, &camera, recording.id, "success", "completed",
+        existed ? "deleted" : "already_missing");
 
     // Create response JSON
     cJSON *response = cJSON_CreateObject();

@@ -14,6 +14,7 @@
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
 #include "database/db_streams.h"
@@ -22,14 +23,55 @@
 static int authorize_recording_action(const http_request_t *req,
                                       http_response_t *res, uint64_t id,
                                       authorization_action_t action,
-                                      recording_metadata_t *recording) {
+                                      recording_metadata_t *recording,
+                                      user_t *user, fleet_camera_t *camera,
+                                      authorization_evaluation_t *evaluation) {
     memset(recording, 0, sizeof(*recording));
     if (get_recording_metadata_by_id(id, recording) != 0) {
         http_response_set_json_error(res, 404, "Recording not found");
         return 0;
     }
-    return httpd_authorize_stream_action(req, res, action,
-                                         recording->stream_name);
+    return httpd_authorize_stream_action_with_context(
+        req, res, action, recording->stream_name, user, camera, evaluation);
+}
+
+static void audit_recording_policy_operation(
+    const http_request_t *req, const user_t *user,
+    const fleet_camera_t *camera, uint64_t recording_id,
+    const char *operation, const char *outcome, const char *reason,
+    int value, const char *value_name) {
+    char recording_uuid[32];
+    snprintf(recording_uuid, sizeof(recording_uuid), "%llu",
+             (unsigned long long)recording_id);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "camera_uuid", camera->camera_uuid);
+        cJSON_AddStringToObject(details, "reason", reason);
+        if (value_name) cJSON_AddNumberToObject(details, value_name, value);
+    }
+    audit_log_operation(req, user, "evidence.protect", "recording",
+                        recording_uuid, operation, outcome, details);
+    cJSON_Delete(details);
+}
+
+static void audit_batch_policy_operation(const http_request_t *req,
+                                         const user_t *user,
+                                         bool protected, int requested_count,
+                                         int success_count, int fail_count,
+                                         const char *outcome,
+                                         const char *reason) {
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "reason", reason);
+        cJSON_AddBoolToObject(details, "protected", protected);
+        cJSON_AddNumberToObject(details, "requested_count", requested_count);
+        cJSON_AddNumberToObject(details, "success_count", success_count);
+        cJSON_AddNumberToObject(details, "fail_count", fail_count);
+    }
+    audit_log_operation(req, user, "evidence.protect", "recording_batch",
+                        NULL, protected ? "batch_protect" : "batch_unprotect",
+                        outcome, details);
+    cJSON_Delete(details);
 }
 
 /**
@@ -210,16 +252,26 @@ void handle_put_recording_protect(const http_request_t *req, http_response_t *re
     cJSON_Delete(json);
 
     recording_metadata_t recording;
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
     if (!authorize_recording_action(req, res, id, AUTHZ_EVIDENCE_PROTECT,
-                                    &recording)) {
+                                    &recording, &user, &camera, &evaluation)) {
         return;
     }
 
     // Update protection status
     if (set_recording_protected(id, protected) != 0) {
+        audit_recording_policy_operation(
+            req, &user, &camera, id, protected ? "protect" : "unprotect",
+            "error", "database_update_failed", protected, "protected");
         http_response_set_json_error(res, 500, "Failed to update recording protection status");
         return;
     }
+
+    audit_recording_policy_operation(
+        req, &user, &camera, id, protected ? "protect" : "unprotect",
+        "success", "completed", protected, "protected");
 
     // Return success response
     cJSON *response = cJSON_CreateObject();
@@ -282,16 +334,28 @@ void handle_put_recording_retention(const http_request_t *req, http_response_t *
     cJSON_Delete(json);
 
     recording_metadata_t recording;
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
     if (!authorize_recording_action(req, res, id, AUTHZ_EVIDENCE_PROTECT,
-                                    &recording)) {
+                                    &recording, &user, &camera, &evaluation)) {
         return;
     }
 
     // Update retention override
     if (set_recording_retention_override(id, days) != 0) {
+        audit_recording_policy_operation(
+            req, &user, &camera, id,
+            days < 0 ? "clear_retention_override" : "set_retention_override",
+            "error", "database_update_failed", days, "retention_days");
         http_response_set_json_error(res, 500, "Failed to update recording retention override");
         return;
     }
+
+    audit_recording_policy_operation(
+        req, &user, &camera, id,
+        days < 0 ? "clear_retention_override" : "set_retention_override",
+        "success", "completed", days, "retention_days");
 
     // Return success response
     cJSON *response = cJSON_CreateObject();
@@ -386,6 +450,9 @@ void handle_batch_protect_recordings(const http_request_t *req, http_response_t 
     uint64_t *authorized_ids = item_count > 0
         ? calloc((size_t)item_count, sizeof(*authorized_ids)) : NULL;
     if (item_count > 0 && !authorized_ids) {
+        audit_batch_policy_operation(req, &user, protected, item_count, 0,
+                                     item_count, "error",
+                                     "allocation_failed");
         cJSON_Delete(json);
         http_response_set_json_error(res, 500, "Failed to authorize batch");
         return;
@@ -411,6 +478,9 @@ void handle_batch_protect_recordings(const http_request_t *req, http_response_t 
             &user, AUTHZ_EVIDENCE_PROTECT, recording.stream_name,
             &evaluation);
         if (result < 0) {
+            audit_batch_policy_operation(
+                req, &user, protected, item_count, 0, fail_count, "error",
+                "authorization_evaluation_failed");
             free(authorized_ids);
             cJSON_Delete(json);
             http_response_set_json_error(
@@ -435,6 +505,11 @@ void handle_batch_protect_recordings(const http_request_t *req, http_response_t 
 
     free(authorized_ids);
     cJSON_Delete(json);
+
+    audit_batch_policy_operation(
+        req, &user, protected, item_count, success_count, fail_count,
+        fail_count == 0 ? "success" : "failure",
+        fail_count == 0 ? "completed" : "partial_failure");
 
     // Return response
     cJSON *response = cJSON_CreateObject();
