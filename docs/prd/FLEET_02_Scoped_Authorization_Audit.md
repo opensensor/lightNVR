@@ -1,6 +1,6 @@
 # PRD — Scoped Authorization & Audit
 
-**Status**: In progress — P0/P1 implemented; P2 durable audit backend implemented, history UI and broader operation coverage next
+**Status**: In progress — P0/P1 and P2 durable audit/history UI implemented; broader sensitive-operation coverage next
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 2 — access-control foundation

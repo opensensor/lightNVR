@@ -305,6 +305,11 @@ Requires `system.admin`. `PUT` accepts an integer retention period from 1 to
 The default is 365 days. Routine audit writes perform an at-most-hourly expiry
 check, so retention does not depend on a separate scheduler.
 
+Administrators can browse this history from **Users → Audit History**. The
+responsive workspace keeps filters server-side, shows structured details on
+demand, exports the current filtered page, and manages retention without adding
+another top-level navigation destination.
+
 ## API Endpoints
 
 ### Streams
