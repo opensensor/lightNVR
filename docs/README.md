@@ -64,6 +64,7 @@ covers a blank or broken web UI specifically.
 | Document | What it covers |
 |---|---|
 | [API.md](API.md) | The REST API |
+| [EVENT_CONTRACT.md](EVENT_CONTRACT.md) | Versioned operational event envelope, registry, schemas, and privacy rules |
 | [MQTT_INTEGRATION.md](MQTT_INTEGRATION.md) | Publishing detection events, with Home Assistant examples |
 | [CAMERAS.md](CAMERAS.md) | Camera compatibility, finding RTSP URLs, vendor interop notes |
 | [ONVIF_DETECTION.md](ONVIF_DETECTION.md) | ONVIF discovery and camera-side motion events |
