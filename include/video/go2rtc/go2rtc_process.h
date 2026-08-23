@@ -169,6 +169,19 @@ int go2rtc_process_get_rtsp_port(void);
 int go2rtc_process_get_pid(void);
 
 /**
+ * @brief Best-effort non-blocking lookup of the go2rtc process PID.
+ *
+ * Unlike go2rtc_process_get_pid(), this function never waits for an active
+ * lifecycle operation. It is intended for observability endpoints where a
+ * temporarily unavailable PID is preferable to blocking the request.
+ *
+ * @param pid Receives the verified PID, or -1 when no process is running.
+ * @return true when the lookup ran, false when the lifecycle was busy or the
+ *         output pointer was invalid.
+ */
+bool go2rtc_process_try_get_pid(int *pid);
+
+/**
  * @brief Probe a candidate go2rtc binary by running `<path> --version`.
  *
  * Spawns @p path with argument "--version" and reads up to 4 KB of its

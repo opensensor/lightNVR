@@ -6,6 +6,8 @@
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +29,7 @@
 #include "web/api_handlers_recording_control.h"
 #include "web/api_handlers_system.h"
 #include "web/request_response.h"
+#include "video/go2rtc/go2rtc_lifecycle.h"
 #include "video/stream_manager.h"
 #include "video/stream_state.h"
 
@@ -35,6 +38,10 @@ extern config_t g_config;
 static char g_tmp_root[MAX_PATH_LENGTH];
 static char g_db_path[MAX_PATH_LENGTH];
 static char g_storage_path[MAX_PATH_LENGTH];
+static pthread_mutex_t g_lifecycle_test_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_lifecycle_test_cond = PTHREAD_COND_INITIALIZER;
+static bool g_lifecycle_owner_ready;
+static atomic_bool g_lifecycle_owner_active;
 
 static cJSON *parse_response_json(const http_response_t *res) {
     TEST_ASSERT_NOT_NULL(res);
@@ -105,6 +112,30 @@ void setUp(void) {
 
 void tearDown(void) {}
 
+static void *hold_go2rtc_lifecycle(void *arg) {
+    (void)arg;
+    go2rtc_lifecycle_guard_t guard;
+    bool acquired = go2rtc_lifecycle_begin(
+        GO2RTC_LIFECYCLE_RECONFIGURE, false, true, &guard);
+
+    atomic_store(&g_lifecycle_owner_active, acquired);
+    pthread_mutex_lock(&g_lifecycle_test_mutex);
+    g_lifecycle_owner_ready = true;
+    pthread_cond_broadcast(&g_lifecycle_test_cond);
+    pthread_mutex_unlock(&g_lifecycle_test_mutex);
+
+    if (acquired) {
+        struct timespec hold_time = {
+            .tv_sec = 1,
+            .tv_nsec = 0,
+        };
+        nanosleep(&hold_time, NULL);
+        atomic_store(&g_lifecycle_owner_active, false);
+        go2rtc_lifecycle_end(&guard, true);
+    }
+    return NULL;
+}
+
 void test_handle_get_system_info_includes_versions_summary(void) {
     http_request_t req;
     http_response_t res;
@@ -135,6 +166,38 @@ void test_handle_get_system_info_includes_versions_summary(void) {
     TEST_ASSERT_TRUE(uptime->valuedouble >= 0.0);
 
     cJSON_Delete(root);
+    http_response_free(&res);
+}
+
+void test_handle_get_system_info_does_not_wait_for_go2rtc_lifecycle(void) {
+    pthread_mutex_lock(&g_lifecycle_test_mutex);
+    g_lifecycle_owner_ready = false;
+    pthread_mutex_unlock(&g_lifecycle_test_mutex);
+    atomic_store(&g_lifecycle_owner_active, false);
+
+    pthread_t owner;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&owner, NULL,
+                                            hold_go2rtc_lifecycle, NULL));
+
+    pthread_mutex_lock(&g_lifecycle_test_mutex);
+    while (!g_lifecycle_owner_ready) {
+        pthread_cond_wait(&g_lifecycle_test_cond, &g_lifecycle_test_mutex);
+    }
+    pthread_mutex_unlock(&g_lifecycle_test_mutex);
+    TEST_ASSERT_TRUE(atomic_load(&g_lifecycle_owner_active));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+
+    handle_get_system_info(&req, &res);
+    bool returned_while_lifecycle_busy =
+        atomic_load(&g_lifecycle_owner_active);
+    pthread_join(owner, NULL);
+
+    TEST_ASSERT_TRUE(returned_while_lifecycle_busy);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
     http_response_free(&res);
 }
 
@@ -701,6 +764,7 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_handle_get_system_info_includes_versions_summary);
+    RUN_TEST(test_handle_get_system_info_does_not_wait_for_go2rtc_lifecycle);
     RUN_TEST(test_handle_get_system_info_includes_empty_stream_storage_array);
     RUN_TEST(test_get_json_logs_tail_owns_level_reference_nodes);
     RUN_TEST(test_handle_get_streams_includes_motion_trigger_source);

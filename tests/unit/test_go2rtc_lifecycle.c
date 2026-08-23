@@ -119,10 +119,29 @@ void test_refresh_waiter_observes_completed_restart_generation(void) {
     pthread_join(owner, NULL);
 }
 
+void test_try_begin_returns_busy_instead_of_waiting(void) {
+    pthread_t owner;
+    TEST_ASSERT_EQUAL_INT(0, pthread_create(&owner, NULL, restart_owner, NULL));
+    wait_for_owner();
+
+    go2rtc_lifecycle_guard_t observer;
+    TEST_ASSERT_FALSE(go2rtc_lifecycle_try_begin(
+        GO2RTC_LIFECYCLE_CHECK, false, &observer));
+    TEST_ASSERT_FALSE(observer.acquired);
+
+    pthread_join(owner, NULL);
+
+    TEST_ASSERT_TRUE(go2rtc_lifecycle_try_begin(
+        GO2RTC_LIFECYCLE_CHECK, false, &observer));
+    TEST_ASSERT_TRUE(observer.acquired);
+    go2rtc_lifecycle_end(&observer, true);
+}
+
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lifecycle_is_reentrant_for_restart_stop_start_sequence);
     RUN_TEST(test_concurrent_restarts_are_coalesced);
     RUN_TEST(test_refresh_waiter_observes_completed_restart_generation);
+    RUN_TEST(test_try_begin_returns_busy_instead_of_waiting);
     return UNITY_END();
 }

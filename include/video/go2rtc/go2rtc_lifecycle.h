@@ -42,6 +42,18 @@ bool go2rtc_lifecycle_begin(go2rtc_lifecycle_operation_t operation,
                             bool intentional,
                             go2rtc_lifecycle_guard_t *guard);
 
+/**
+ * Try to enter the lifecycle coordinator without waiting.
+ *
+ * Calls from the current owner remain re-entrant. Calls from any other thread
+ * return false immediately when the coordinator is busy. This is intended for
+ * best-effort observability paths that must not wait behind start, stop, or
+ * reconfiguration work.
+ */
+bool go2rtc_lifecycle_try_begin(go2rtc_lifecycle_operation_t operation,
+                                bool intentional,
+                                go2rtc_lifecycle_guard_t *guard);
+
 /** Complete an acquired lifecycle operation. */
 void go2rtc_lifecycle_end(go2rtc_lifecycle_guard_t *guard, bool result);
 

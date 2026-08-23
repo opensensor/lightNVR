@@ -53,6 +53,13 @@ bool go2rtc_process_generate_startup_config(const char *binary_path, const char 
 void go2rtc_process_cleanup(void) {}
 int go2rtc_process_get_rtsp_port(void) { return 0; }
 int go2rtc_process_get_pid(void) { return -1; }
+bool go2rtc_process_try_get_pid(int *pid) {
+    if (!pid) {
+        return false;
+    }
+    *pid = -1;
+    return true;
+}
 
 /* Stubs for the override-pipeline APIs added in PR #398.  When go2rtc is
  * disabled at build time the override file is meaningless, so these are

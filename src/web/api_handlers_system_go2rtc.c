@@ -36,9 +36,14 @@ bool get_go2rtc_memory_usage(unsigned long long *memory_usage) {
     // Initialize to 0
     *memory_usage = 0;
 
-    // Get go2rtc process ID from the process manager
-    // This is more reliable than pgrep as it tracks the actual process we started
-    int pid = go2rtc_process_get_pid();
+    // Observability must not wait behind a long-running go2rtc restart or
+    // reconfiguration. Use the verified PID when it is immediately available
+    // and report memory as unavailable while the lifecycle is busy.
+    int pid = -1;
+    if (!go2rtc_process_try_get_pid(&pid)) {
+        log_debug("go2rtc lifecycle busy; memory usage temporarily unavailable");
+        return false;
+    }
     if (pid <= 0) {
         log_warn("No go2rtc process found (PID: %d)", pid);
         return false;
@@ -445,7 +450,10 @@ void handle_get_system_go2rtc_override_status(const http_request_t *req,
 
     /* Runtime state — is there actually a go2rtc to consume the
      * override? */
-    int pid = go2rtc_process_get_pid();
+    int pid = -1;
+    if (!go2rtc_process_try_get_pid(&pid)) {
+        log_debug("go2rtc lifecycle busy; runtime state temporarily unavailable");
+    }
     cJSON_AddBoolToObject(root, "process_running", pid > 0);
     cJSON_AddNumberToObject(root, "process_pid", pid > 0 ? (double)pid : 0);
 

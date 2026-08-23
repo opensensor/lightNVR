@@ -2698,3 +2698,19 @@ int go2rtc_process_get_pid(void) {
     go2rtc_lifecycle_end(&guard, pid > 0);
     return pid;
 }
+
+bool go2rtc_process_try_get_pid(int *pid) {
+    if (!pid) {
+        return false;
+    }
+    *pid = -1;
+
+    go2rtc_lifecycle_guard_t guard;
+    if (!go2rtc_lifecycle_try_begin(GO2RTC_LIFECYCLE_CHECK, false, &guard)) {
+        return false;
+    }
+
+    *pid = go2rtc_process_get_pid_locked();
+    go2rtc_lifecycle_end(&guard, *pid > 0);
+    return true;
+}

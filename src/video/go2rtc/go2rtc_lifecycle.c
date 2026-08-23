@@ -97,6 +97,59 @@ bool go2rtc_lifecycle_begin(go2rtc_lifecycle_operation_t operation,
     return true;
 }
 
+bool go2rtc_lifecycle_try_begin(go2rtc_lifecycle_operation_t operation,
+                                bool intentional,
+                                go2rtc_lifecycle_guard_t *guard) {
+    if (!guard || operation < GO2RTC_LIFECYCLE_CHECK ||
+        operation >= GO2RTC_LIFECYCLE_OPERATION_COUNT) {
+        return false;
+    }
+
+    memset(guard, 0, sizeof(*guard));
+    pthread_t self = pthread_self();
+
+    if (pthread_mutex_trylock(&g_lifecycle.mutex) != 0) {
+        return false;
+    }
+
+    if (g_lifecycle.active) {
+        if (!pthread_equal(g_lifecycle.owner, self)) {
+            pthread_mutex_unlock(&g_lifecycle.mutex);
+            return false;
+        }
+
+        g_lifecycle.depth++;
+        if (operation == GO2RTC_LIFECYCLE_RESTART ||
+            operation == GO2RTC_LIFECYCLE_FULL_START) {
+            g_lifecycle.restart_occurred = true;
+        }
+        if (intentional) {
+            g_lifecycle.intentional = true;
+        }
+        guard->acquired = true;
+        guard->generation = g_lifecycle.generation;
+        guard->restart_generation = g_lifecycle.restart_generation;
+        pthread_mutex_unlock(&g_lifecycle.mutex);
+        return true;
+    }
+
+    g_lifecycle.active = true;
+    g_lifecycle.owner = self;
+    g_lifecycle.depth = 1;
+    g_lifecycle.operation = operation;
+    g_lifecycle.intentional = intentional;
+    g_lifecycle.restart_occurred =
+        (operation == GO2RTC_LIFECYCLE_RESTART ||
+         operation == GO2RTC_LIFECYCLE_FULL_START);
+
+    guard->acquired = true;
+    guard->outermost = true;
+    guard->generation = g_lifecycle.generation;
+    guard->restart_generation = g_lifecycle.restart_generation;
+    pthread_mutex_unlock(&g_lifecycle.mutex);
+    return true;
+}
+
 void go2rtc_lifecycle_end(go2rtc_lifecycle_guard_t *guard, bool result) {
     if (!guard || !guard->acquired) {
         return;
