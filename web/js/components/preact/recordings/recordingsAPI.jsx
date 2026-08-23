@@ -80,7 +80,8 @@ const applyDateRangeParams = (params, filters) => {
 };
 
 const applyFilterParams = (params, filters) => {
-  appendMultiValueParam(params, 'stream', filters.streamIds);
+  if (filters.collectionUuid) params.append('collection_uuid', filters.collectionUuid);
+  else appendMultiValueParam(params, 'stream', filters.streamIds);
 
   if (filters.recordingType === 'detection') {
     params.append('has_detection', '1');
@@ -122,8 +123,12 @@ const buildFilterObject = (filters) => {
     filter.end = end;
   }
 
-  const streamFilter = urlUtils.serializeMultiValueParam(filters.streamIds);
-  if (streamFilter) filter.stream = streamFilter;
+  if (filters.collectionUuid) {
+    filter.collection_uuid = filters.collectionUuid;
+  } else {
+    const streamFilter = urlUtils.serializeMultiValueParam(filters.streamIds);
+    if (streamFilter) filter.stream = streamFilter;
+  }
 
   if (filters.recordingType === 'detection') {
     filter.detection = 1;
@@ -527,6 +532,7 @@ export const recordingsAPI = {
         if (filter.start) params.append('start', filter.start);
         if (filter.end) params.append('end', filter.end);
         if (filter.stream) params.append('stream', filter.stream);
+        if (filter.collection_uuid) params.append('collection_uuid', filter.collection_uuid);
         if (filter.detection === 1) params.append('has_detection', '1');
         else if (filter.detection === -1) params.append('has_detection', '-1');
         if (filter.detection_label) params.append('detection_label', filter.detection_label);

@@ -94,13 +94,25 @@ function CameraContext({ camera, locale, t }) {
   );
 }
 
-export function FleetTable({ cameras, state, onSort, locale, t }) {
+export function FleetTable({ cameras, state, onSort, locale, t, selectable = false, selectedIds, onToggleCamera, onTogglePage }) {
+  const selectedOnPage = selectable ? cameras.filter((camera) => selectedIds.has(camera.camera_uuid)).length : 0;
+  const allOnPageSelected = cameras.length > 0 && selectedOnPage === cameras.length;
   return (
     <>
       <div className="hidden overflow-x-auto md:block">
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-muted/70 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
+              {selectable && <th className="w-10 px-3 py-3 text-left">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded"
+                  checked={allOnPageSelected}
+                  ref={(element) => { if (element) element.indeterminate = selectedOnPage > 0 && !allOnPageSelected; }}
+                  onChange={(event) => onTogglePage(cameras, event.currentTarget.checked)}
+                  aria-label={t('fleet.selectPage')}
+                />
+              </th>}
               <th className="px-4 py-3 text-left"><SortButton field="name" label={t('fleet.column.camera')} state={state} onSort={onSort} /></th>
               <th className="px-4 py-3 text-left"><SortButton field="health" label={t('fleet.column.health')} state={state} onSort={onSort} /></th>
               <th className="px-4 py-3 text-left"><SortButton field="location" label={t('fleet.column.location')} state={state} onSort={onSort} /></th>
@@ -112,6 +124,9 @@ export function FleetTable({ cameras, state, onSort, locale, t }) {
           <tbody className="divide-y divide-border bg-card">
             {cameras.map((camera) => (
               <tr key={camera.camera_uuid} className="align-top hover:bg-muted/40">
+                {selectable && <td className="w-10 px-3 py-3">
+                  <input type="checkbox" className="h-4 w-4 rounded" checked={selectedIds.has(camera.camera_uuid)} onChange={(event) => onToggleCamera(camera, event.currentTarget.checked)} aria-label={t('fleet.selectCamera', { name: camera.name })} />
+                </td>}
                 <td className="px-4 py-3"><CameraContext camera={camera} locale={locale} t={t} /></td>
                 <td className="whitespace-nowrap px-4 py-3">
                   <HealthBadge health={camera.health} t={t} />
@@ -133,7 +148,8 @@ export function FleetTable({ cameras, state, onSort, locale, t }) {
         {cameras.map((camera) => (
           <article key={camera.camera_uuid} className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-3">
-              <CameraContext camera={camera} locale={locale} t={t} />
+              {selectable && <input type="checkbox" className="mt-1 h-4 w-4 flex-none rounded" checked={selectedIds.has(camera.camera_uuid)} onChange={(event) => onToggleCamera(camera, event.currentTarget.checked)} aria-label={t('fleet.selectCamera', { name: camera.name })} />}
+              <div className="min-w-0 flex-1"><CameraContext camera={camera} locale={locale} t={t} /></div>
               <HealthBadge health={camera.health} t={t} />
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">

@@ -10,6 +10,7 @@ export const DEFAULT_FLEET_STATE = Object.freeze({
   recordingModes: [],
   tagUuids: [],
   locationUuid: '',
+  collectionUuid: '',
   page: 1,
   pageSize: 50,
   sortBy: 'name',
@@ -50,6 +51,7 @@ export function readFleetUrlState(search = '') {
     recordingModes: parseList(params.get('recording'), RECORDING_VALUES),
     tagUuids: parseList(params.get('tags')),
     locationUuid: params.get('location') || '',
+    collectionUuid: params.get('collection') || '',
     page: parsePositiveInteger(params.get('page'), DEFAULT_FLEET_STATE.page),
     pageSize: PAGE_SIZES.includes(pageSize) ? pageSize : DEFAULT_FLEET_STATE.pageSize,
     sortBy: SORT_FIELDS.includes(sortBy) ? sortBy : DEFAULT_FLEET_STATE.sortBy,
@@ -73,6 +75,7 @@ export function writeFleetUrlState(url, state) {
   setOrDelete('recording', state.recordingModes.join(','));
   setOrDelete('tags', state.tagUuids.join(','));
   setOrDelete('location', state.locationUuid);
+  setOrDelete('collection', state.collectionUuid);
   setOrDelete('page', state.page, 1);
   setOrDelete('size', state.pageSize, DEFAULT_FLEET_STATE.pageSize);
   setOrDelete('sort', state.sortBy, DEFAULT_FLEET_STATE.sortBy);
@@ -110,7 +113,7 @@ export function buildFleetSelector(state) {
 }
 
 export function buildFleetQueryRequest(state, search = state.search) {
-  return {
+  const request = {
     selector: buildFleetSelector(state),
     search: search.trim(),
     page: state.page,
@@ -120,6 +123,8 @@ export function buildFleetQueryRequest(state, search = state.search) {
     facets: true,
     explain: false,
   };
+  if (state.collectionUuid) request.collection_uuid = state.collectionUuid;
+  return request;
 }
 
 export function toggleFleetValue(values, value) {
@@ -130,7 +135,8 @@ export function toggleFleetValue(values, value) {
 
 export function countFleetFilters(state) {
   return state.health.length + state.recordingModes.length + state.tagUuids.length +
-    (state.enabled === 'all' ? 0 : 1) + (state.locationUuid ? 1 : 0);
+    (state.enabled === 'all' ? 0 : 1) + (state.locationUuid ? 1 : 0) +
+    (state.collectionUuid ? 1 : 0);
 }
 
 export function facetCount(facets, group, value) {

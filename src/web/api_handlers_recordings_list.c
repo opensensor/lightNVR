@@ -19,6 +19,7 @@
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/camera_collection_filter.h"
 #include "core/shutdown_coordinator.h"
 #include "utils/strings.h"
 #include "database/db_recordings.h"
@@ -55,6 +56,42 @@ static int parse_selected_streams(const char *csv,
     return count;
 }
 
+static bool valid_uuid(const char *value) {
+    if (!value || strlen(value) != CAMERA_UUID_STRING_SIZE - 1) return false;
+    for (int i = 0; i < CAMERA_UUID_STRING_SIZE - 1; i++) {
+        char c = value[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (c != '-') return false;
+        } else if (!isxdigit((unsigned char)c)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void respond_empty_recordings(http_response_t *res, int page, int limit) {
+    cJSON *root = cJSON_CreateObject();
+    cJSON *recordings = cJSON_CreateArray();
+    cJSON *pagination = cJSON_CreateObject();
+    if (!root || !recordings || !pagination) {
+        cJSON_Delete(root);
+        cJSON_Delete(recordings);
+        cJSON_Delete(pagination);
+        http_response_set_json_error(res, 500, "Failed to create response JSON");
+        return;
+    }
+    cJSON_AddItemToObject(root, "recordings", recordings);
+    cJSON_AddNumberToObject(pagination, "page", page);
+    cJSON_AddNumberToObject(pagination, "pages", 0);
+    cJSON_AddNumberToObject(pagination, "total", 0);
+    cJSON_AddNumberToObject(pagination, "limit", limit);
+    cJSON_AddItemToObject(root, "pagination", pagination);
+    char *json = cJSON_PrintUnformatted(root);
+    http_response_set_json(res, 200, json ? json : "{}");
+    free(json);
+    cJSON_Delete(root);
+}
+
 /**
  * @brief Backend-agnostic handler for GET /api/recordings
  * 
@@ -62,6 +99,8 @@ static int parse_selected_streams(const char *csv,
  * 
  * Query parameters:
  * - stream: Filter by stream name or comma-separated stream names
+ * - collection_uuid: Filter by one authorized camera collection; cannot be
+ *   combined with stream
  * - start: Start time (ISO 8601 format)
  * - end: End time (ISO 8601 format)
  * - page: Page number (default: 1)
@@ -120,6 +159,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     char protected_str[8] = {0};
     char tag_filter_str[512] = {0};
     char capture_method_str[128] = {0};
+    char collection_uuid[CAMERA_UUID_STRING_SIZE] = {0};
 
     http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name));
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -133,6 +173,17 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     http_request_get_query_param(req, "protected", protected_str, sizeof(protected_str));
     http_request_get_query_param(req, "tag", tag_filter_str, sizeof(tag_filter_str));
     http_request_get_query_param(req, "capture_method", capture_method_str, sizeof(capture_method_str));
+    http_request_get_query_param(req, "collection_uuid", collection_uuid, sizeof(collection_uuid));
+
+    if (collection_uuid[0] && !valid_uuid(collection_uuid)) {
+        http_response_set_json_error(res, 400, "Invalid collection_uuid");
+        return;
+    }
+    if (collection_uuid[0] && stream_name[0]) {
+        http_response_set_json_error(
+            res, 400, "collection_uuid cannot be combined with stream");
+        return;
+    }
 
     // Parse numeric parameters
     int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
@@ -245,61 +296,60 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
                 log_warn("User '%s' attempted to access restricted stream '%s' via recordings API",
                          auth_user.username, stream_name);
                 // Return an empty result set rather than an error to avoid leaking stream existence
-                free(recordings);
                 if (all_stream_cfgs) free(all_stream_cfgs);
-                cJSON *empty_resp = cJSON_CreateObject();
-                cJSON *empty_arr  = cJSON_CreateArray();
-                cJSON *empty_pg   = cJSON_CreateObject();
-                if (empty_resp && empty_arr && empty_pg) {
-                    cJSON_AddItemToObject(empty_resp, "recordings", empty_arr);
-                    cJSON_AddNumberToObject(empty_pg, "page", page);
-                    cJSON_AddNumberToObject(empty_pg, "pages", 0);
-                    cJSON_AddNumberToObject(empty_pg, "total", 0);
-                    cJSON_AddNumberToObject(empty_pg, "limit", limit);
-                    cJSON_AddItemToObject(empty_resp, "pagination", empty_pg);
-                    char *json_str = cJSON_PrintUnformatted(empty_resp);
-                    http_response_set_json(res, 200, json_str ? json_str : "{}");
-                    free(json_str);
-                    cJSON_Delete(empty_resp);
-                } else {
-                    cJSON_Delete(empty_resp); cJSON_Delete(empty_arr); cJSON_Delete(empty_pg);
-                    http_response_set_json_error(res, 500, "Failed to create response JSON");
-                }
+                respond_empty_recordings(res, page, limit);
                 return;
             }
             // The specific stream is permitted — no need for the IN clause; use stream_name filter
             allowed_streams_count = 0;
         } else if (allowed_streams_count == 0) {
             // User has tag restriction but no accessible streams at all
-            free(recordings);
             if (all_stream_cfgs) free(all_stream_cfgs);
-            cJSON *empty_resp = cJSON_CreateObject();
-            cJSON *empty_arr  = cJSON_CreateArray();
-            cJSON *empty_pg   = cJSON_CreateObject();
-            if (empty_resp && empty_arr && empty_pg) {
-                cJSON_AddItemToObject(empty_resp, "recordings", empty_arr);
-                cJSON_AddNumberToObject(empty_pg, "page", page);
-                cJSON_AddNumberToObject(empty_pg, "pages", 0);
-                cJSON_AddNumberToObject(empty_pg, "total", 0);
-                cJSON_AddNumberToObject(empty_pg, "limit", limit);
-                cJSON_AddItemToObject(empty_resp, "pagination", empty_pg);
-                char *json_str = cJSON_PrintUnformatted(empty_resp);
-                http_response_set_json(res, 200, json_str ? json_str : "{}");
-                free(json_str);
-                cJSON_Delete(empty_resp);
+            respond_empty_recordings(res, page, limit);
+            return;
+        }
+    }
+
+    // Resolve a collection on the server so smart rules stay private and large
+    // fleets do not expand into hundreds of stream names in a query string.
+    char **collection_streams = NULL;
+    int collection_stream_count = 0;
+    if (collection_uuid[0]) {
+        camera_collection_filter_result_t collection_result =
+            camera_collection_filter_resolve_stream_names(
+                collection_uuid, &auth_user, &collection_streams,
+                &collection_stream_count);
+        if (collection_result != CAMERA_COLLECTION_FILTER_OK) {
+            if (all_stream_cfgs) free(all_stream_cfgs);
+            if (collection_result == CAMERA_COLLECTION_FILTER_NOT_FOUND) {
+                http_response_set_json_error(res, 404, "Collection not found");
+            } else if (collection_result == CAMERA_COLLECTION_FILTER_OUT_OF_MEMORY) {
+                http_response_set_json_error(res, 500, "Out of memory");
+            } else if (collection_result == CAMERA_COLLECTION_FILTER_INVALID_SELECTOR) {
+                http_response_set_json_error(res, 500, "Collection selector is invalid");
             } else {
-                cJSON_Delete(empty_resp); cJSON_Delete(empty_arr); cJSON_Delete(empty_pg);
-                http_response_set_json_error(res, 500, "Failed to create response JSON");
+                http_response_set_json_error(res, 500,
+                                             "Failed to load collection members");
             }
+            return;
+        }
+
+        if (collection_stream_count == 0) {
+            camera_collection_filter_free_stream_names(
+                collection_streams, collection_stream_count);
+            if (all_stream_cfgs) free(all_stream_cfgs);
+            respond_empty_recordings(res, page, limit);
             return;
         }
     }
 
     // Get total count first (for pagination)
-    const char * const *streams_filter = (tag_restricted && allowed_streams_count > 0)
-                                         ? allowed_streams : NULL;
-    int streams_filter_count = (tag_restricted && allowed_streams_count > 0)
-                               ? allowed_streams_count : 0;
+    const char * const *streams_filter = collection_uuid[0]
+        ? (const char * const *)collection_streams
+        : ((tag_restricted && allowed_streams_count > 0) ? allowed_streams : NULL);
+    int streams_filter_count = collection_uuid[0]
+        ? collection_stream_count
+        : ((tag_restricted && allowed_streams_count > 0) ? allowed_streams_count : 0);
 
     const char *tag_filt = tag_filter_str[0] != '\0' ? tag_filter_str : NULL;
 
@@ -312,6 +362,8 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
     if (total_count < 0) {
         log_error("Failed to get total recording count from database");
+        camera_collection_filter_free_stream_names(
+            collection_streams, collection_stream_count);
         if (all_stream_cfgs) free(all_stream_cfgs);
         http_response_set_json_error(res, 500, "Failed to get recording count from database");
         return;
@@ -327,6 +379,8 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     recordings = (recording_metadata_t *)malloc(limit * sizeof(recording_metadata_t));
     if (!recordings) {
         log_error("Failed to allocate memory for recordings");
+        camera_collection_filter_free_stream_names(
+            collection_streams, collection_stream_count);
         if (all_stream_cfgs) free(all_stream_cfgs);
         http_response_set_json_error(res, 500, "Failed to allocate memory for recordings");
         return;
@@ -345,16 +399,21 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     if (count < 0) {
         log_error("Failed to get recordings from database");
         free(recordings);
+        camera_collection_filter_free_stream_names(
+            collection_streams, collection_stream_count);
         if (all_stream_cfgs) free(all_stream_cfgs);
         http_response_set_json_error(res, 500, "Failed to get recordings from database");
         return;
     }
+    camera_collection_filter_free_stream_names(
+        collection_streams, collection_stream_count);
 
     // Create response object with recordings array and pagination
     cJSON *response = cJSON_CreateObject();
     if (!response) {
         log_error("Failed to create response JSON object");
         free(recordings);
+        if (all_stream_cfgs) free(all_stream_cfgs);
         http_response_set_json_error(res, 500, "Failed to create response JSON");
         return;
     }
@@ -364,6 +423,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     if (!recordings_array) {
         log_error("Failed to create recordings JSON array");
         free(recordings);
+        if (all_stream_cfgs) free(all_stream_cfgs);
         cJSON_Delete(response);
         http_response_set_json_error(res, 500, "Failed to create recordings JSON");
         return;
@@ -377,6 +437,7 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     if (!pagination) {
         log_error("Failed to create pagination JSON object");
         free(recordings);
+        if (all_stream_cfgs) free(all_stream_cfgs);
         cJSON_Delete(response);
         http_response_set_json_error(res, 500, "Failed to create pagination JSON");
         return;

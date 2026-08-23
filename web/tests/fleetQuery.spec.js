@@ -51,6 +51,7 @@ describe('fleet query state', () => {
       recordingModes: ['off', 'detection'],
       tagUuids: ['tag-a'],
       locationUuid: 'location-a',
+      collectionUuid: 'collection-a',
       page: 3,
       pageSize: 100,
       sortBy: 'health',
@@ -70,8 +71,9 @@ describe('fleet query state', () => {
   });
 
   test('builds the paginated API request with debounced search', () => {
-    expect(buildFleetQueryRequest({ ...DEFAULT_FLEET_STATE, page: 2 }, ' lobby ')).toMatchObject({
+    expect(buildFleetQueryRequest({ ...DEFAULT_FLEET_STATE, page: 2, collectionUuid: 'collection-a' }, ' lobby ')).toMatchObject({
       search: 'lobby',
+      collection_uuid: 'collection-a',
       page: 2,
       page_size: 50,
       sort_by: 'name',
@@ -90,7 +92,8 @@ describe('fleet query state', () => {
       tagUuids: ['tag-a'],
       enabled: 'true',
       locationUuid: 'location-a',
-    })).toBe(5);
+      collectionUuid: 'collection-a',
+    })).toBe(6);
     expect(clampFleetPage(8, 3)).toBe(3);
     expect(clampFleetPage(8, 0)).toBe(1);
   });
