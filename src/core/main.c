@@ -28,6 +28,7 @@
 #include "core/event_identity.h"
 #include "core/mqtt_event_adapter.h"
 #include "core/mqtt_client.h"
+#include "core/mqtt_delivery_worker.h"
 #include "core/path_utils.h"
 #include "utils/strings.h"
 #include "video/stream_manager.h"
@@ -734,7 +735,7 @@ int main(int argc, char *argv[]) {
     // before any camera producer threads can start.
     if (event_identity_init() != 0) {
         log_error("Failed to initialize persistent event identity");
-    } else if (mqtt_event_adapter_register() != 0) {
+    } else if (mqtt_event_adapter_register(&g_config) != 0) {
         log_error("Failed to register MQTT event compatibility adapter");
     } else if (event_bus_init(0, 0) != 0) {
         log_error("Failed to initialize asynchronous event bus");
@@ -916,6 +917,9 @@ int main(int argc, char *argv[]) {
             // Continue anyway, MQTT is optional
         } else {
             log_info("MQTT client initialized successfully");
+            if (mqtt_delivery_worker_start() != 0) {
+                log_error("Failed to start durable MQTT delivery worker");
+            }
             // Connect to MQTT broker
             // cppcheck-suppress knownConditionTrueFalse
             if (mqtt_connect() != 0) {
@@ -1503,6 +1507,10 @@ cleanup:
         mqtt_event_adapter_unregister();
         event_identity_shutdown();
 
+        // All accepted events are now persisted. Stop delivery before broker
+        // teardown; pending rows remain eligible after restart.
+        mqtt_delivery_worker_shutdown();
+
         // Cleanup MQTT client
         log_info("Cleaning up MQTT client...");
         mqtt_cleanup();
@@ -1617,6 +1625,8 @@ cleanup:
         event_bus_shutdown(true);
         mqtt_event_adapter_unregister();
         event_identity_shutdown();
+
+        mqtt_delivery_worker_shutdown();
 
         // Cleanup MQTT client
         mqtt_cleanup();

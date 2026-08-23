@@ -63,6 +63,15 @@ int mqtt_publish_event(const event_envelope_t *event);
 int mqtt_publish_raw(const char *topic, const char *payload, bool retain);
 
 /**
+ * Publish and wait for libmosquitto's QoS-specific completion callback.
+ * QoS 1/2 therefore waits for PUBACK/PUBCOMP; QoS 0 waits until the message is
+ * handed to the local operating system. Intended for the durable outbox worker,
+ * never for capture or event-bus threads.
+ */
+int mqtt_publish_raw_confirmed(const char *topic, const char *payload,
+                               bool retain, int timeout_ms);
+
+/**
  * Publish binary data to a topic (e.g., JPEG snapshots)
  *
  * @param topic Full topic path
@@ -141,6 +150,11 @@ static inline int mqtt_publish_event(const event_envelope_t *event) {
 }
 static inline int mqtt_publish_raw(const char *topic, const char *payload, bool retain) {
     (void)topic; (void)payload; (void)retain; return 0;
+}
+static inline int mqtt_publish_raw_confirmed(const char *topic,
+                                             const char *payload,
+                                             bool retain, int timeout_ms) {
+    (void)topic; (void)payload; (void)retain; (void)timeout_ms; return 0;
 }
 static inline int mqtt_publish_binary(const char *topic, const void *data, size_t len, bool retain) {
     (void)topic; (void)data; (void)len; (void)retain; return 0;

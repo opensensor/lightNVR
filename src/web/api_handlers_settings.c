@@ -33,6 +33,7 @@
 #include "video/go2rtc/go2rtc_lifecycle.h"
 #include "video/hls/hls_api.h"
 #include "core/mqtt_client.h"
+#include "core/mqtt_delivery_worker.h"
 #include "storage/storage_manager.h"
 #include "utils/yaml_validate.h"
 
@@ -72,22 +73,30 @@ typedef struct {
     bool mqtt_now_enabled;  // Whether MQTT is enabled after the settings change
 } mqtt_settings_task_t;
 
-static void mqtt_settings_worker(mqtt_settings_task_t *task) {
-    if (!task) return;
+static void *mqtt_settings_worker(void *argument) {
+    mqtt_settings_task_t *task = argument;
+    if (!task) return NULL;
 
     log_set_thread_context("Settings", NULL);
     log_info("MQTT settings worker: reinitializing MQTT client...");
 
+    // Prevent a durable publish from racing broker teardown. Any pending or
+    // leased row remains recoverable in SQLite.
+    mqtt_delivery_worker_shutdown();
     int rc = mqtt_reinit(&g_config);
     // cppcheck-suppress knownConditionTrueFalse
     if (rc != 0) {
         log_error("MQTT settings worker: reinit failed (rc=%d)", rc);
+    } else if (g_config.mqtt_enabled &&
+               mqtt_delivery_worker_start() != 0) {
+        log_error("MQTT settings worker: delivery worker restart failed");
     } else {
         log_info("MQTT settings worker: reinit complete (mqtt_enabled=%s)",
-                 task->mqtt_now_enabled ? "true" : "false");
+                 g_config.mqtt_enabled ? "true" : "false");
     }
 
     free(task);
+    return NULL;
 }
 
 /**
@@ -2079,7 +2088,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
                 pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
                 if (pthread_create(&thread_id, &attr,
-                                   (void *(*)(void *))mqtt_settings_worker, task) != 0) {
+                                   mqtt_settings_worker, task) != 0) {
                     log_error("Failed to create MQTT settings worker thread");
                     free(task);
                 } else {

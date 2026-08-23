@@ -3,11 +3,12 @@
 
 #include <stddef.h>
 
+#include "core/config.h"
 #include "core/event_envelope.h"
 #include "video/detection_result.h"
 
 /* Register/unregister the MQTT compatibility subscriber around bus lifetime. */
-int mqtt_event_adapter_register(void);
+int mqtt_event_adapter_register(const config_t *config);
 int mqtt_event_adapter_unregister(void);
 
 /* Decode normalized detection data for the legacy MQTT/HA compatibility path. */

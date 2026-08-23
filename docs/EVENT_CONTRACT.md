@@ -189,18 +189,26 @@ rule can make room, enqueue returns `EVENT_OUTBOX_FULL` without modifying the
 queue. Terminal rows can also be pruned in bounded batches.
 
 Queue statistics expose row and byte totals, state counts, due count, and the
-oldest pending timestamp. This repository is the durable persistence boundary;
-the MQTT delivery worker that consumes it is a separate layer. Until that
-worker is enabled, the P0 MQTT compatibility subscriber described below still
-publishes directly from the asynchronous event-bus worker.
+oldest pending timestamp. The default MQTT worker claims only while its broker
+is connected, waits up to five seconds for libmosquitto's QoS-specific publish
+completion, and marks a row delivered only after that completion. A failed or
+timed-out attempt uses deterministic per-event jitter with exponential backoff
+capped at five minutes. A retry that would begin at or after event expiry moves
+directly to `dead`.
+
+Runtime counters cover enqueue outcomes, severity shedding, expiry, attempts,
+delivery, retry, dead-letter transitions, outcome errors, and disconnected
+polls. MQTT settings hot reload stops the worker before broker teardown and
+restarts it afterward; pending rows and stable event IDs remain in SQLite.
 
 ## MQTT compatibility destination
 
-The P0 MQTT subscriber publishes every normalized event to
+The MQTT subscriber persists every normalized event for delivery to
 `{topic_prefix}/v1/events/{type}/{subject-id}` as the complete envelope, with
-retention disabled for transient facts. For object detections it also decodes
+retention disabled for transient facts. The dedicated delivery worker performs
+the normalized broker publish. For object detections the subscriber also decodes
 the envelope into the existing `{topic_prefix}/detections/{stream_name}` payload,
-snapshot topic, and Home Assistant motion state. This dual publish keeps current
-automations working while new consumers adopt stable UUID identity and versioned
-schemas. All broker, snapshot, and Home Assistant work runs on the event-bus
-worker rather than on capture or detection threads.
+snapshot topic, and Home Assistant motion state on the asynchronous event-bus
+worker. This dual path keeps current automations working while new consumers
+adopt stable UUID identity and versioned schemas; capture and detection threads
+perform no broker I/O.

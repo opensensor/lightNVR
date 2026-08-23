@@ -32,6 +32,16 @@ static bool connected = false;
 static volatile bool shutting_down = false;  // Flag to prevent callbacks from acquiring mutex during shutdown
 static pthread_mutex_t mqtt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// One confirmed publish is outstanding at a time from the durable delivery
+// worker. Other legacy publishes still receive callbacks but do not match the
+// tracked message ID.
+static pthread_mutex_t publish_ack_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t publish_ack_wake = PTHREAD_COND_INITIALIZER;
+static bool publish_ack_waiting = false;
+static bool publish_ack_received = false;
+static bool publish_ack_failed = false;
+static int publish_ack_mid = -1;
+
 // HA discovery state
 static volatile bool ha_services_running = false;
 static bool ha_snapshot_thread_started = false;
@@ -63,6 +73,7 @@ static pthread_mutex_t motion_mutex = PTHREAD_MUTEX_INITIALIZER;
 static void on_connect(struct mosquitto *mosq, void *userdata, int rc);
 static void on_disconnect(struct mosquitto *mosq, void *userdata, int rc);
 static void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *msg);
+static void on_publish(struct mosquitto *mosq, void *userdata, int mid);
 static void on_log(struct mosquitto *mosq, void *userdata, int level, const char *str);
 
 /**
@@ -110,6 +121,7 @@ int mqtt_init(const config_t *config) {
     mosquitto_connect_callback_set(mosq, on_connect);
     mosquitto_disconnect_callback_set(mosq, on_disconnect);
     mosquitto_message_callback_set(mosq, on_message);
+    mosquitto_publish_callback_set(mosq, on_publish);
     mosquitto_log_callback_set(mosq, on_log);
     
     // Set username/password if configured
@@ -268,6 +280,12 @@ static void on_disconnect(struct mosquitto *m, void *userdata, int rc) {
     if (shutting_down) {
         // Still update the flag without mutex during shutdown - it's a simple write
         connected = false;
+        pthread_mutex_lock(&publish_ack_mutex);
+        if (publish_ack_waiting) {
+            publish_ack_failed = true;
+            pthread_cond_broadcast(&publish_ack_wake);
+        }
+        pthread_mutex_unlock(&publish_ack_mutex);
         if (rc == 0) {
             log_info("MQTT: Disconnected from broker (shutdown)");
         }
@@ -284,11 +302,29 @@ static void on_disconnect(struct mosquitto *m, void *userdata, int rc) {
     connected = false;
     pthread_mutex_unlock(&mqtt_mutex);
 
+    pthread_mutex_lock(&publish_ack_mutex);
+    if (publish_ack_waiting) {
+        publish_ack_failed = true;
+        pthread_cond_broadcast(&publish_ack_wake);
+    }
+    pthread_mutex_unlock(&publish_ack_mutex);
+
     if (rc == 0) {
         log_info("MQTT: Disconnected from broker");
     } else {
         log_warn("MQTT: Unexpected disconnection (rc=%d), will attempt reconnect", rc);
     }
+}
+
+static void on_publish(struct mosquitto *m, void *userdata, int mid) {
+    (void)m;
+    (void)userdata;
+    pthread_mutex_lock(&publish_ack_mutex);
+    if (publish_ack_waiting && publish_ack_mid == mid) {
+        publish_ack_received = true;
+        pthread_cond_broadcast(&publish_ack_wake);
+    }
+    pthread_mutex_unlock(&publish_ack_mutex);
 }
 
 // Message callback — handles HA birth messages for re-discovery
@@ -599,6 +635,76 @@ int mqtt_publish_raw(const char *topic, const char *payload, bool retain) {
         return -1;
     }
 
+    return 0;
+}
+
+int mqtt_publish_raw_confirmed(const char *topic, const char *payload,
+                               bool retain, int timeout_ms) {
+    if (!topic || !payload || timeout_ms <= 0) return -1;
+    size_t payload_length = strlen(payload);
+    if (payload_length > INT_MAX) return -1;
+    if (!mqtt_is_connected()) return -1;
+
+    pthread_mutex_lock(&publish_ack_mutex);
+    if (publish_ack_waiting) {
+        pthread_mutex_unlock(&publish_ack_mutex);
+        return -1;
+    }
+    publish_ack_waiting = true;
+    publish_ack_received = false;
+    publish_ack_failed = false;
+    publish_ack_mid = -1;
+
+    pthread_mutex_lock(&mqtt_mutex);
+    if (!mosq || !mqtt_config || !mqtt_config->mqtt_enabled ||
+        !connected || shutting_down) {
+        pthread_mutex_unlock(&mqtt_mutex);
+        publish_ack_waiting = false;
+        pthread_mutex_unlock(&publish_ack_mutex);
+        return -1;
+    }
+    int mid = -1;
+    int rc = mosquitto_publish(
+        mosq, &mid, topic, (int)payload_length, payload,
+        mqtt_config->mqtt_qos, retain);
+    publish_ack_mid = mid;
+    pthread_mutex_unlock(&mqtt_mutex);
+    if (rc != MOSQ_ERR_SUCCESS) {
+        log_error("MQTT: Failed to queue confirmed publish to %s: %s",
+                  topic, mosquitto_strerror(rc));
+        publish_ack_waiting = false;
+        publish_ack_mid = -1;
+        pthread_mutex_unlock(&publish_ack_mutex);
+        return -1;
+    }
+
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += timeout_ms / 1000;
+    deadline.tv_nsec += (long)(timeout_ms % 1000) * 1000000L;
+    if (deadline.tv_nsec >= 1000000000L) {
+        deadline.tv_sec++;
+        deadline.tv_nsec -= 1000000000L;
+    }
+    while (!publish_ack_received && !publish_ack_failed) {
+        rc = pthread_cond_timedwait(
+            &publish_ack_wake, &publish_ack_mutex, &deadline);
+        if (rc == ETIMEDOUT) break;
+        if (rc != 0) {
+            publish_ack_failed = true;
+            break;
+        }
+    }
+    bool acknowledged = publish_ack_received && !publish_ack_failed;
+    publish_ack_waiting = false;
+    publish_ack_received = false;
+    publish_ack_failed = false;
+    publish_ack_mid = -1;
+    pthread_mutex_unlock(&publish_ack_mutex);
+    if (!acknowledged) {
+        log_warn("MQTT: Confirmed publish to %s was not acknowledged", topic);
+        return -1;
+    }
     return 0;
 }
 

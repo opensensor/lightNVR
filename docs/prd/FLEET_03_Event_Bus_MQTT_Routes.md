@@ -1,6 +1,6 @@
 # PRD — Event Bus & MQTT Routes
 
-**Status**: P0 complete; P1 durable outbox repository implemented — MQTT delivery worker and retry/expiry metrics next
+**Status**: P0/P1 complete — versioned async bus, detection adapter, bounded SQLite outbox, acknowledged default MQTT delivery, retry/expiry metrics implemented; P2 routes and UI next
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation

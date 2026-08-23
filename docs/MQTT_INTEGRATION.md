@@ -127,9 +127,19 @@ For example:
 The payload is the versioned [lightNVR event envelope](EVENT_CONTRACT.md). Camera
 identity comes from the immutable UUID in `subject`, while `data.stream_name` is
 display and legacy-routing metadata. Transient event messages are not retained.
-Detection and capture threads only enqueue these events; broker publication,
-snapshot capture, the legacy payload, and Home Assistant state updates run on
-the asynchronous event worker.
+Detection and capture threads only enqueue these events. Normalized envelopes
+are persisted in SQLite and published by a dedicated delivery worker; snapshot
+capture, the legacy payload, and Home Assistant state updates remain on the
+asynchronous compatibility worker.
+
+The normalized path survives broker outages and process restarts. It waits for
+libmosquitto's QoS-specific completion signal (PUBACK for QoS 1, PUBCOMP for QoS
+2), retries unacknowledged work with jittered exponential backoff capped at five
+minutes, and preserves the same envelope `id` on every attempt. Consumers must
+still deduplicate by `source + id`: a timeout can make the delivery outcome
+ambiguous even when MQTT QoS is greater than zero. Events expire according to
+their registry policy rather than being delivered indefinitely after they are
+stale.
 
 ```json
 {
@@ -468,9 +478,12 @@ If your broker requires authentication:
 |-----|------|-------------|
 | 0 | At most once | Fire and forget. Fastest, but messages may be lost |
 | 1 | At least once | Message delivered at least once. May receive duplicates |
-| 2 | Exactly once | Message delivered exactly once. Slowest, highest overhead |
+| 2 | Exactly once link handshake | Strongest client-to-broker handshake; slowest, highest overhead |
 
-**Recommendation:** Use QoS 1 for most cases. QoS 0 if you have many detections and can tolerate occasional loss.
+**Recommendation:** Use QoS 1 for most cases. QoS 0 if you have many detections
+and can tolerate loss between the client and broker. Regardless of QoS, event
+consumers should deduplicate normalized envelopes by `source + id` because a
+publish timeout can cause a later retry.
 
 ## Advanced Configuration
 
