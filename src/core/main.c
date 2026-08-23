@@ -909,18 +909,19 @@ int main(int argc, char *argv[]) {
         log_info("Batch delete progress tracking initialized successfully");
     }
 
-    // Initialize MQTT client if enabled
-    if (config.mqtt_enabled) {
-        // cppcheck-suppress knownConditionTrueFalse
-        if (mqtt_init(&config) != 0) {
-            log_error("Failed to initialize MQTT client");
-            // Continue anyway, MQTT is optional
-        } else {
-            log_info("MQTT client initialized successfully");
-            if (mqtt_delivery_worker_start() != 0) {
-                log_error("Failed to start durable MQTT delivery worker");
-            }
-            // Connect to MQTT broker
+    // Initialize the shared MQTT runtime even when the legacy/default broker
+    // is disabled; managed event destinations use the same library runtime.
+#ifdef ENABLE_MQTT
+    // cppcheck-suppress knownConditionTrueFalse
+    if (mqtt_init(&config) != 0) {
+        log_error("Failed to initialize MQTT runtime");
+        // Continue anyway, MQTT is optional
+    } else {
+        log_info("MQTT runtime initialized successfully");
+        if (mqtt_delivery_worker_start() != 0) {
+            log_error("Failed to start durable MQTT delivery worker");
+        }
+        if (config.mqtt_enabled) {
             // cppcheck-suppress knownConditionTrueFalse
             if (mqtt_connect() != 0) {
                 log_warn("Failed to connect to MQTT broker, will retry automatically");
@@ -930,6 +931,11 @@ int main(int argc, char *argv[]) {
             }
         }
     }
+#else
+    if (config.mqtt_enabled) {
+        log_warn("MQTT is configured but this build has MQTT support disabled");
+    }
+#endif
 
     // Initialize web server with direct handlers
     http_server_config_t server_config = {

@@ -13,6 +13,7 @@
 #include <strings.h>
 
 #include "database/db_core.h"
+#include "database/db_event_outbox.h"
 #include "utils/memory.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
@@ -70,25 +71,31 @@ static bool valid_topic_template(const char *topic) {
     }
     bool has_type = false;
     bool has_subject_id = false;
+    size_t maximum_expanded_length = 0;
     for (size_t index = 0; topic[index] != '\0';) {
         if (topic[index] == '+' || topic[index] == '#') return false;
         if (topic[index] == '}') return false;
         if (topic[index] != '{') {
+            maximum_expanded_length++;
             index++;
             continue;
         }
         if (strncmp(topic + index, "{type}", 6) == 0) {
             has_type = true;
+            maximum_expanded_length += EVENT_TYPE_MAX - 1;
             index += 6;
         } else if (strncmp(topic + index, "{subject_id}", 12) == 0) {
             has_subject_id = true;
+            maximum_expanded_length += EVENT_SUBJECT_MAX - 1;
             index += 12;
         } else {
             return false;
         }
+        if (maximum_expanded_length >= EVENT_OUTBOX_TOPIC_MAX) return false;
     }
     return has_type && has_subject_id && topic[0] != '/' &&
-        topic[strlen(topic) - 1] != '/';
+        topic[strlen(topic) - 1] != '/' &&
+        maximum_expanded_length < EVENT_OUTBOX_TOPIC_MAX;
 }
 
 static bool valid_password(const char *password) {
@@ -156,7 +163,7 @@ db_event_destination_result_t db_event_destination_validate(
     bool custom_ca = strcmp(destination->tls_mode, "custom_ca") == 0;
     bool mutual = strcmp(destination->tls_mode, "mutual") == 0;
     if ((!disabled && !system && !custom_ca && !mutual) ||
-        !valid_path(destination->ca_file, custom_ca) ||
+        !valid_path(destination->ca_file, custom_ca || mutual) ||
         !valid_path(destination->cert_file, mutual) ||
         !valid_path(destination->key_file, mutual) ||
         ((disabled || system) &&
@@ -509,13 +516,16 @@ db_event_destination_result_t db_event_destination_update(
     return outcome;
 }
 
-static bool route_uses_key_locked(sqlite3 *db, const char *key) {
+static bool destination_in_use_locked(sqlite3 *db, const char *key) {
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(
-        db, "SELECT 1 FROM event_routes WHERE destination_key=? LIMIT 1;",
+        db, "SELECT 1 FROM event_routes WHERE destination_key=? "
+            "UNION ALL SELECT 1 FROM event_outbox WHERE destination=? "
+            "AND state IN ('pending','delivering') LIMIT 1;",
         -1, &statement, NULL);
     if (result == SQLITE_OK) {
         sqlite3_bind_text(statement, 1, key, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 2, key, -1, SQLITE_TRANSIENT);
         result = sqlite3_step(statement);
     }
     bool in_use = result == SQLITE_ROW;
@@ -546,7 +556,7 @@ db_event_destination_result_t db_event_destination_delete(
         pthread_mutex_unlock(mutex);
         return DB_EVENT_DESTINATION_STALE;
     }
-    if (route_uses_key_locked(db, key)) {
+    if (destination_in_use_locked(db, key)) {
         pthread_mutex_unlock(mutex);
         return DB_EVENT_DESTINATION_IN_USE;
     }

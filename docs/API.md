@@ -1147,7 +1147,7 @@ ID, and topic template `lightnvr/v1/events/{type}/{subject_id}`.
 
 `tls.mode` is one of `disabled`, `system`, `custom_ca`, or `mutual`. Custom
 certificate paths must be absolute; `custom_ca` requires `ca_file`, and
-`mutual` requires `cert_file` and `key_file` with an optional `ca_file`.
+`mutual` requires `ca_file`, `cert_file`, and `key_file`.
 Topic templates must contain `{type}` and `{subject_id}` and cannot contain
 MQTT wildcards.
 
@@ -1157,13 +1157,16 @@ update, omitting `authentication.password` preserves it, while JSON `null` or
 an empty string clears it. Updates are partial but require the last observed
 positive `revision`, and deletes use the same revision as a query parameter.
 Names are unique case-insensitively, as is the broker host, port, and client ID
-combination. A profile referenced by an event route cannot be deleted. Profile
-create, update, and delete outcomes are written to the audit history without
-credential material.
+combination. A profile referenced by an event route or an active durable outbox
+row cannot be deleted. Delivered and dead history does not block deletion.
+Profile create, update, and delete outcomes are written to the audit history
+without credential material.
 
-Managed profiles are staged by this API. Route selection and multi-broker
-runtime delivery are enabled by the dependent runtime slice; until that is
-installed, route definitions continue to accept only `mqtt:default`.
+Each enabled profile has an independent reconnecting MQTT client. Routes may
+use `mqtt:default` or the `mqtt:<destination_uuid>` key returned by these
+endpoints. Disabling a profile pauses delivery for its durable queue without
+discarding unexpired events; re-enabling or updating it rebuilds the client
+from the latest revision. The password remains write-only during that reload.
 
 #### List, Create, and Read Routes
 
@@ -1175,7 +1178,8 @@ GET  /api/event-routes/{route_uuid}
 
 Create accepts a complete route definition. Only `name` and `event_types` are
 required; omitted fields use the defaults shown below. Unknown fields and
-unknown event types are rejected.
+unknown event types are rejected. `destination` must be `mqtt:default` or the
+key of an existing managed MQTT destination profile.
 
 ```json
 {
@@ -1243,11 +1247,20 @@ durable outbox acceptance (`ENQUEUED` or idempotent `DUPLICATE`), so queue-full
 and persistence errors do not consume cooldown or rate budget. Editing a route
 clears its prior suppression state, and inactive state is pruned after 30 days.
 
+One normalized envelope is persisted for each unique destination matched by at
+least one route. Multiple matching routes to the same destination do not create
+duplicate publishes. The destination's topic template is expanded and frozen
+when the outbox row is created, so later profile edits affect new events without
+changing already accepted work. Fan-out is independent: acceptance or failure
+for one destination does not consume another destination's suppression state.
+
 With zero stored routes, normalized MQTT retains its compatibility publish-all
-behavior. Once any route is stored, only events matching at least one enabled
-route are enqueued. Thus, disabling all stored routes pauses normalized enqueue;
-deleting the last route restores the default. This does not filter legacy
-detection or Home Assistant compatibility topics.
+behavior through `mqtt:default` when the legacy MQTT setting is enabled. Once
+any route is stored, only events matching at least one enabled route are
+enqueued to that route's destination. Disabling all stored routes pauses
+normalized enqueue; deleting the last route restores the default. Managed
+destinations continue to run when the legacy/default MQTT setting is disabled.
+This does not filter legacy detection or Home Assistant compatibility topics.
 
 #### Update and Delete a Route
 

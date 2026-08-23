@@ -17,9 +17,11 @@
 #include "core/event_bus.h"
 #include "core/event_identity.h"
 #include "core/event_producers.h"
+#include "core/event_router.h"
 #include "core/mqtt_delivery_worker.h"
 #include "core/mqtt_event_adapter.h"
 #include "database/db_core.h"
+#include "database/db_event_destinations.h"
 #include "database/db_event_routes.h"
 #include "database/db_event_outbox.h"
 #include "database/db_streams.h"
@@ -71,15 +73,84 @@ static stream_config_t create_camera(const char *name) {
     return stream;
 }
 
+#ifdef ENABLE_MQTT
+static event_destination_t create_destination(
+    const char *name, const char *host, const char *client_id,
+    const char *topic_template) {
+    event_destination_t destination;
+    memset(&destination, 0, sizeof(destination));
+    safe_strcpy(destination.name, name, sizeof(destination.name), 0);
+    destination.enabled = true;
+    safe_strcpy(destination.destination_type, "mqtt",
+                sizeof(destination.destination_type), 0);
+    safe_strcpy(destination.broker_host, host,
+                sizeof(destination.broker_host), 0);
+    destination.broker_port = 1883;
+    safe_strcpy(destination.client_id, client_id,
+                sizeof(destination.client_id), 0);
+    safe_strcpy(destination.topic_template, topic_template,
+                sizeof(destination.topic_template), 0);
+    safe_strcpy(destination.tls_mode, "disabled",
+                sizeof(destination.tls_mode), 0);
+    destination.keepalive_seconds = 60;
+    destination.qos = 1;
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_create(&destination, NULL));
+    return destination;
+}
+
+static event_route_t create_detection_route(
+    const char *name, const char *destination_key, int cooldown_seconds) {
+    event_route_t route;
+    memset(&route, 0, sizeof(route));
+    safe_strcpy(route.name, name, sizeof(route.name), 0);
+    route.enabled = true;
+    safe_strcpy(route.destination_key, destination_key,
+                sizeof(route.destination_key), 0);
+    safe_strcpy(route.scope_type, "all", sizeof(route.scope_type), 0);
+    safe_strcpy(route.predicate_json, "{\"version\":1}",
+                sizeof(route.predicate_json), 0);
+    safe_strcpy(route.schedule_json,
+                "{\"version\":1,\"timezone\":\"UTC\",\"windows\":[]}",
+                sizeof(route.schedule_json), 0);
+    safe_strcpy(route.event_types[0],
+                "io.lightnvr.detection.object.v1",
+                sizeof(route.event_types[0]), 0);
+    route.event_type_count = 1;
+    route.cooldown_seconds = cooldown_seconds;
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK, db_event_route_create(&route));
+    return route;
+}
+
+static int outbox_topic_count(const char *destination, const char *topic) {
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            get_db_handle(),
+            "SELECT count(*) FROM event_outbox WHERE destination=? AND topic=?;",
+            -1, &statement, NULL));
+    sqlite3_bind_text(statement, 1, destination, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(statement, 2, topic, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(statement));
+    int count = sqlite3_column_int(statement, 0);
+    sqlite3_finalize(statement);
+    return count;
+}
+#endif
+
 void setUp(void) {
     event_bus_shutdown(false);
     event_bus_unsubscribe("capture-detection");
     mqtt_event_adapter_unregister();
     event_identity_shutdown();
+    event_router_shutdown();
     sqlite3 *db = get_db_handle();
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM event_outbox;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM event_routes;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM event_destinations;", NULL, NULL, NULL);
     sqlite3_exec(db,
                  "DELETE FROM system_settings "
                  "WHERE key='event_installation_uuid';",
@@ -96,6 +167,7 @@ void tearDown(void) {
     event_bus_unsubscribe("capture-detection");
     mqtt_event_adapter_unregister();
     event_identity_shutdown();
+    event_router_shutdown();
 }
 
 void test_installation_identity_is_persisted_across_reinitialization(void) {
@@ -278,6 +350,80 @@ void test_enabled_routes_gate_the_normalized_outbox(void) {
 #endif
 }
 
+void test_managed_routes_fan_out_with_per_destination_suppression(void) {
+#ifdef ENABLE_MQTT
+    stream_config_t camera = create_camera("Fanout Camera");
+    event_destination_t first = create_destination(
+        "First bridge", "first.example.test", "lightnvr-first-test",
+        "first/{subject_id}/{type}");
+    event_destination_t second = create_destination(
+        "Second bridge", "second.example.test", "lightnvr-second-test",
+        "second/{type}/{subject_id}");
+    char first_key[EVENT_DESTINATION_KEY_MAX];
+    char second_key[EVENT_DESTINATION_KEY_MAX];
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_destination_make_key(first.uuid, first_key));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_destination_make_key(second.uuid, second_key));
+    create_detection_route("First cooldown", first_key, 30);
+    create_detection_route("Second unsuppressed", second_key, 0);
+
+    mqtt_adapter_config.mqtt_enabled = false;
+    TEST_ASSERT_EQUAL_INT(0, event_identity_init());
+    TEST_ASSERT_EQUAL_INT(0, mqtt_event_adapter_register(&mqtt_adapter_config));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_init(0, 0));
+    detection_result_t detection;
+    memset(&detection, 0, sizeof(detection));
+    detection.count = 1;
+    safe_strcpy(detection.detections[0].label, "person",
+                sizeof(detection.detections[0].label), 0);
+    detection.detections[0].confidence = 0.9f;
+    detection.detections[0].width = 1.0f;
+    detection.detections[0].height = 1.0f;
+    detection.detections[0].track_id = -1;
+    char error[256] = {0};
+    time_t now = time(NULL);
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_detection_for_stream(
+               camera.name, &detection, now, error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+
+    event_outbox_stats_t stats;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(first_key, now, &stats));
+    TEST_ASSERT_EQUAL_INT64(1, stats.pending_rows);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(second_key, now, &stats));
+    TEST_ASSERT_EQUAL_INT64(1, stats.pending_rows);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(
+               MQTT_EVENT_OUTBOX_DESTINATION, now, &stats));
+    TEST_ASSERT_EQUAL_INT64(0, stats.pending_rows);
+
+    char first_topic[EVENT_OUTBOX_TOPIC_MAX];
+    char second_topic[EVENT_OUTBOX_TOPIC_MAX];
+    snprintf(first_topic, sizeof(first_topic),
+             "first/%s/io.lightnvr.detection.object.v1",
+             camera.camera_uuid);
+    snprintf(second_topic, sizeof(second_topic),
+             "second/io.lightnvr.detection.object.v1/%s",
+             camera.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(1, outbox_topic_count(first_key, first_topic));
+    TEST_ASSERT_EQUAL_INT(1, outbox_topic_count(second_key, second_topic));
+
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_detection_for_stream(
+               camera.name, &detection, now + 1, error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(first_key, now + 1, &stats));
+    TEST_ASSERT_EQUAL_INT64(1, stats.pending_rows);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(second_key, now + 1, &stats));
+    TEST_ASSERT_EQUAL_INT64(2, stats.pending_rows);
+#endif
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -290,6 +436,7 @@ int main(void) {
     RUN_TEST(test_detection_producer_uses_camera_uuid_and_dispatches_off_thread);
     RUN_TEST(test_producer_fails_closed_without_identity_or_running_bus);
     RUN_TEST(test_enabled_routes_gate_the_normalized_outbox);
+    RUN_TEST(test_managed_routes_fan_out_with_per_destination_suppression);
     int result = UNITY_END();
 
     shutdown_database();

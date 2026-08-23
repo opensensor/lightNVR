@@ -15,6 +15,7 @@
 #include "core/camera_selector.h"
 #include "core/logger.h"
 #include "database/db_event_route_suppression.h"
+#include "database/db_event_destinations.h"
 #include "database/db_event_routes.h"
 #include "database/db_fleet_query.h"
 #include "utils/strings.h"
@@ -59,6 +60,7 @@ typedef struct {
 
 typedef struct {
     event_route_t route;
+    event_destination_t destination;
     fleet_selector_t *selector;
     compiled_detection_predicate_t detection;
     compiled_schedule_window_t windows[ROUTER_SCHEDULE_MAX_WINDOWS];
@@ -73,6 +75,7 @@ typedef struct {
     int route_count;
     int definition_count;
     uint64_t route_generation;
+    uint64_t destination_generation;
     fleet_camera_t *inventory;
     int inventory_count;
     int64_t inventory_loaded_at;
@@ -415,6 +418,14 @@ static bool compile_route(compiled_route_t *compiled,
     if (db_event_route_validate(route, NULL, 0) != DB_EVENT_ROUTE_OK) {
         return false;
     }
+    if (strcmp(route->destination_key,
+               EVENT_ROUTE_DEFAULT_DESTINATION) == 0) {
+        compiled->destination.enabled = true;
+    } else if (db_event_destination_get_by_key(
+                   route->destination_key, &compiled->destination) !=
+                   DB_EVENT_DESTINATION_OK) {
+        return false;
+    }
     if (strcmp(route->scope_type, "selector") == 0) {
         cJSON *selector_json = cJSON_Parse(route->selector_json);
         compiled->selector = fleet_selector_parse(selector_json, NULL, 0);
@@ -441,7 +452,8 @@ static void clear_routes_locked(void) {
     ROUTER.definition_count = 0;
 }
 
-static bool reload_routes_locked(uint64_t generation) {
+static bool reload_routes_locked(uint64_t route_generation,
+                                 uint64_t destination_generation) {
     int total = db_event_route_count();
     if (total < 0 || total > EVENT_ROUTE_MAX_COUNT) return false;
     event_route_t *routes = total > 0
@@ -473,15 +485,18 @@ static bool reload_routes_locked(uint64_t generation) {
     ROUTER.routes = compiled;
     ROUTER.route_count = compiled_count;
     ROUTER.definition_count = count;
-    ROUTER.route_generation = generation;
+    ROUTER.route_generation = route_generation;
+    ROUTER.destination_generation = destination_generation;
     ROUTER.stats.cache_reloads++;
     return true;
 }
 
 static bool ensure_routes_locked(void) {
-    uint64_t generation = db_event_route_generation();
-    return ROUTER.route_generation == generation ||
-           reload_routes_locked(generation);
+    uint64_t route_generation = db_event_route_generation();
+    uint64_t destination_generation = db_event_destination_generation();
+    return (ROUTER.route_generation == route_generation &&
+            ROUTER.destination_generation == destination_generation) ||
+           reload_routes_locked(route_generation, destination_generation);
 }
 
 static bool route_has_type(const event_route_t *route, const char *type) {
@@ -621,7 +636,8 @@ static bool route_uses_suppression(const event_route_t *route) {
 }
 
 static bool delivery_plan_append(event_route_delivery_plan_t *plan,
-                                 const event_route_t *route) {
+                                 const compiled_route_t *compiled,
+                                 bool suppression_pending) {
     if (!plan) return true;
     if (plan->count == plan->capacity) {
         size_t capacity = plan->capacity == 0 ? 4 : plan->capacity * 2;
@@ -635,8 +651,18 @@ static bool delivery_plan_append(event_route_delivery_plan_t *plan,
     }
     event_route_delivery_plan_entry_t *entry = &plan->entries[plan->count++];
     memset(entry, 0, sizeof(*entry));
+    const event_route_t *route = &compiled->route;
     safe_strcpy(entry->route_uuid, route->uuid, sizeof(entry->route_uuid), 0);
     entry->route_revision = route->revision;
+    safe_strcpy(entry->destination_key, route->destination_key,
+                sizeof(entry->destination_key), 0);
+    if (strcmp(route->destination_key,
+               EVENT_ROUTE_DEFAULT_DESTINATION) != 0) {
+        safe_strcpy(entry->topic_template,
+                    compiled->destination.topic_template,
+                    sizeof(entry->topic_template), 0);
+    }
+    entry->suppression_pending = suppression_pending;
     return true;
 }
 
@@ -726,6 +752,10 @@ event_router_result_t event_router_evaluate_delivery(
             relevant_error = true;
             continue;
         }
+        if (!route->destination.enabled) {
+            ROUTER.stats.destination_disabled_rejections++;
+            continue;
+        }
         if (route->selector) {
             if (!camera_uuid) {
                 ROUTER.stats.scope_rejections++;
@@ -757,14 +787,19 @@ event_router_result_t event_router_evaluate_delivery(
             continue;
         }
         if (!route_uses_suppression(&route->route)) {
-            should_enqueue = true;
+            if (!delivery_plan_append(plan, route, false)) {
+                relevant_error = true;
+                plan_error = true;
+            } else {
+                should_enqueue = true;
+            }
             continue;
         }
         event_suppression_result_t suppression =
             db_event_route_suppression_check(
                 &route->route, event->type, event->subject, now);
         if (suppression == EVENT_SUPPRESSION_PERMIT) {
-            if (!delivery_plan_append(plan, &route->route)) {
+            if (!delivery_plan_append(plan, route, true)) {
                 relevant_error = true;
                 plan_error = true;
                 ROUTER.stats.suppression_errors++;
@@ -810,11 +845,42 @@ int event_router_record_enqueued(const event_envelope_t *event,
     for (size_t index = 0; index < plan->count; index++) {
         const event_route_delivery_plan_entry_t *entry =
             &plan->entries[index];
+        if (!entry->suppression_pending) continue;
         event_suppression_result_t result =
             db_event_route_suppression_record_allowed(
                 entry->route_uuid, entry->route_revision, event->type,
                 event->subject, event->id, now);
         /* A concurrent route edit deliberately discards the old policy state. */
+        if (result != EVENT_SUPPRESSION_PERMIT &&
+            result != EVENT_SUPPRESSION_STALE) {
+            failed = 1;
+        }
+    }
+    return failed ? -1 : 0;
+}
+
+int event_router_record_destination_enqueued(
+    const event_envelope_t *event, const event_route_delivery_plan_t *plan,
+    const char *destination_key) {
+    if (!event || !plan || !destination_key || destination_key[0] == '\0' ||
+        strcmp(event->id, plan->event_id) != 0 ||
+        strcmp(event->type, plan->event_type) != 0 ||
+        strcmp(event->subject, plan->subject) != 0) {
+        return -1;
+    }
+    int failed = 0;
+    int64_t now = (int64_t)time(NULL);
+    for (size_t index = 0; index < plan->count; index++) {
+        const event_route_delivery_plan_entry_t *entry =
+            &plan->entries[index];
+        if (!entry->suppression_pending ||
+            strcmp(entry->destination_key, destination_key) != 0) {
+            continue;
+        }
+        event_suppression_result_t result =
+            db_event_route_suppression_record_allowed(
+                entry->route_uuid, entry->route_revision, event->type,
+                event->subject, event->id, now);
         if (result != EVENT_SUPPRESSION_PERMIT &&
             result != EVENT_SUPPRESSION_STALE) {
             failed = 1;
@@ -846,6 +912,7 @@ void event_router_shutdown(void) {
     ROUTER.inventory_loaded = false;
     ROUTER.last_suppression_prune_at = 0;
     ROUTER.route_generation = 0;
+    ROUTER.destination_generation = 0;
     memset(&ROUTER.stats, 0, sizeof(ROUTER.stats));
     pthread_mutex_unlock(&ROUTER.mutex);
 }

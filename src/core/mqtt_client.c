@@ -28,6 +28,7 @@
 // MQTT client state
 static struct mosquitto *mosq = NULL;
 static const config_t *mqtt_config = NULL;
+static bool mqtt_library_initialized = false;
 static bool connected = false;
 static volatile bool shutting_down = false;  // Flag to prevent callbacks from acquiring mutex during shutdown
 static pthread_mutex_t mqtt_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -85,34 +86,41 @@ int mqtt_init(const config_t *config) {
         return -1;
     }
     
+    pthread_mutex_lock(&mqtt_mutex);
+
+    // Managed destinations share libmosquitto's process-wide runtime even
+    // when the legacy/default broker is disabled.
+    int rc = MOSQ_ERR_SUCCESS;
+    if (!mqtt_library_initialized) {
+        rc = mosquitto_lib_init();
+        if (rc != MOSQ_ERR_SUCCESS) {
+            log_error("MQTT: Failed to initialize mosquitto library: %s",
+                      mosquitto_strerror(rc));
+            pthread_mutex_unlock(&mqtt_mutex);
+            return -1;
+        }
+        mqtt_library_initialized = true;
+    }
+
+    // Store config reference
+    mqtt_config = config;
+
     if (!config->mqtt_enabled) {
-        log_info("MQTT: Disabled in configuration");
+        pthread_mutex_unlock(&mqtt_mutex);
+        log_info("MQTT: Default broker disabled; managed destinations remain available");
         return 0;
     }
-    
+
     if (config->mqtt_broker_host[0] == '\0') {
         log_error("MQTT: Broker host not configured");
-        return -1;
-    }
-    
-    pthread_mutex_lock(&mqtt_mutex);
-    
-    // Initialize mosquitto library
-    int rc = mosquitto_lib_init();
-    if (rc != MOSQ_ERR_SUCCESS) {
-        log_error("MQTT: Failed to initialize mosquitto library: %s", mosquitto_strerror(rc));
         pthread_mutex_unlock(&mqtt_mutex);
         return -1;
     }
-    
-    // Store config reference
-    mqtt_config = config;
     
     // Create mosquitto client instance
     mosq = mosquitto_new(config->mqtt_client_id, true, NULL);
     if (!mosq) {
         log_error("MQTT: Failed to create mosquitto client");
-        mosquitto_lib_cleanup();
         pthread_mutex_unlock(&mqtt_mutex);
         return -1;
     }
@@ -132,7 +140,6 @@ int mqtt_init(const config_t *config) {
             log_error("MQTT: Failed to set credentials: %s", mosquitto_strerror(rc));
             mosquitto_destroy(mosq);
             mosq = NULL;
-            mosquitto_lib_cleanup();
             pthread_mutex_unlock(&mqtt_mutex);
             return -1;
         }
@@ -140,12 +147,11 @@ int mqtt_init(const config_t *config) {
     
     // Enable TLS if configured
     if (config->mqtt_tls_enabled) {
-        rc = mosquitto_tls_set(mosq, NULL, NULL, NULL, NULL, NULL);
+        rc = mosquitto_int_option(mosq, MOSQ_OPT_TLS_USE_OS_CERTS, 1);
         if (rc != MOSQ_ERR_SUCCESS) {
             log_error("MQTT: Failed to enable TLS: %s", mosquitto_strerror(rc));
             mosquitto_destroy(mosq);
             mosq = NULL;
-            mosquitto_lib_cleanup();
             pthread_mutex_unlock(&mqtt_mutex);
             return -1;
         }
@@ -1574,9 +1580,15 @@ void mqtt_cleanup(void) {
 
     if (!mosq) {
         log_info("MQTT: No client to clean up");
-        // Still need to cleanup the library if it was initialized
-        log_info("MQTT: Calling mosquitto_lib_cleanup with 2 second timeout...");
-        mqtt_run_with_timeout(NULL, MQTT_OP_LIB_CLEANUP, 2, "mosquitto_lib_cleanup");
+        mqtt_config = NULL;
+        if (mqtt_library_initialized) {
+            log_info("MQTT: Calling mosquitto_lib_cleanup with 2 second timeout...");
+            if (mqtt_run_with_timeout(
+                    NULL, MQTT_OP_LIB_CLEANUP, 2,
+                    "mosquitto_lib_cleanup")) {
+                mqtt_library_initialized = false;
+            }
+        }
         log_info("MQTT: Cleaned up");
         return;
     }
@@ -1623,8 +1635,14 @@ void mqtt_cleanup(void) {
         return;
     }
 
-    log_info("MQTT: Calling mosquitto_lib_cleanup with 2 second timeout...");
-    mqtt_run_with_timeout(NULL, MQTT_OP_LIB_CLEANUP, 2, "mosquitto_lib_cleanup");
+    if (mqtt_library_initialized) {
+        log_info("MQTT: Calling mosquitto_lib_cleanup with 2 second timeout...");
+        if (mqtt_run_with_timeout(
+                NULL, MQTT_OP_LIB_CLEANUP, 2,
+                "mosquitto_lib_cleanup")) {
+            mqtt_library_initialized = false;
+        }
+    }
     log_info("MQTT: Cleaned up");
 }
 
@@ -1651,19 +1669,19 @@ int mqtt_reinit(const config_t *config) {
     shutting_down = false;
     __sync_synchronize();
 
-    // Step 3: If MQTT is now disabled, we're done
-    if (!config->mqtt_enabled) {
-        log_info("MQTT reinit: MQTT is disabled, cleanup complete");
-        return 0;
-    }
-
-    // Step 4: Re-initialize with the updated config
+    // Step 3: Re-initialize the shared MQTT runtime. Managed destinations use
+    // it even when the default broker is disabled.
     if (mqtt_init(config) != 0) {
         log_error("MQTT reinit: Failed to initialize MQTT client");
         return -1;
     }
 
-    // Step 5: Connect to broker
+    if (!config->mqtt_enabled) {
+        log_info("MQTT reinit: Default broker disabled; shared runtime ready");
+        return 0;
+    }
+
+    // Step 4: Connect to the default broker
     if (mqtt_connect() != 0) {
         log_warn("MQTT reinit: Failed to connect to MQTT broker, will retry automatically");
         // Not a fatal error — mosquitto loop thread will retry

@@ -14,6 +14,7 @@
 #include "core/event_envelope.h"
 #include "core/event_router.h"
 #include "database/db_core.h"
+#include "database/db_event_destinations.h"
 #include "database/db_event_routes.h"
 #include "database/db_streams.h"
 #include "unity.h"
@@ -57,6 +58,43 @@ static event_route_t route_definition(const char *name, const char *type) {
     return route;
 }
 
+static event_destination_t create_destination(
+    const char *name, const char *host, const char *client_id,
+    const char *topic_template, bool enabled) {
+    event_destination_t destination;
+    memset(&destination, 0, sizeof(destination));
+    safe_strcpy(destination.name, name, sizeof(destination.name), 0);
+    destination.enabled = enabled;
+    safe_strcpy(destination.destination_type, "mqtt",
+                sizeof(destination.destination_type), 0);
+    safe_strcpy(destination.broker_host, host,
+                sizeof(destination.broker_host), 0);
+    destination.broker_port = 1883;
+    safe_strcpy(destination.client_id, client_id,
+                sizeof(destination.client_id), 0);
+    safe_strcpy(destination.topic_template, topic_template,
+                sizeof(destination.topic_template), 0);
+    safe_strcpy(destination.tls_mode, "disabled",
+                sizeof(destination.tls_mode), 0);
+    destination.keepalive_seconds = 60;
+    destination.qos = 1;
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_create(&destination, NULL));
+    return destination;
+}
+
+static const event_route_delivery_plan_entry_t *find_plan_entry(
+    const event_route_delivery_plan_t *plan, const char *destination_key) {
+    for (size_t index = 0; index < plan->count; index++) {
+        if (strcmp(plan->entries[index].destination_key,
+                   destination_key) == 0) {
+            return &plan->entries[index];
+        }
+    }
+    return NULL;
+}
+
 static event_envelope_t detection_event(const char *camera_uuid,
                                         const char *label,
                                         double confidence,
@@ -86,6 +124,7 @@ void setUp(void) {
     event_router_shutdown();
     sqlite3 *db = get_db_handle();
     sqlite3_exec(db, "DELETE FROM event_routes;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM event_destinations;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
 }
 
@@ -240,6 +279,9 @@ void test_delivery_plan_commits_durable_cooldown_after_outbox_acceptance(void) {
     TEST_ASSERT_EQUAL_UINT(1, plan.count);
     TEST_ASSERT_EQUAL_STRING(route.uuid, plan.entries[0].route_uuid);
     TEST_ASSERT_EQUAL_INT64(route.revision, plan.entries[0].route_revision);
+    TEST_ASSERT_EQUAL_STRING(EVENT_ROUTE_DEFAULT_DESTINATION,
+                             plan.entries[0].destination_key);
+    TEST_ASSERT_TRUE(plan.entries[0].suppression_pending);
     TEST_ASSERT_EQUAL_INT(0, event_router_record_enqueued(&first, &plan));
     event_route_delivery_plan_clear(&plan);
     event_envelope_clear(&first);
@@ -261,6 +303,78 @@ void test_delivery_plan_commits_durable_cooldown_after_outbox_acceptance(void) {
     TEST_ASSERT_EQUAL_UINT64(1, stats.cooldown_suppressions);
 }
 
+void test_delivery_plan_fans_out_and_tracks_destination_profile_changes(void) {
+    event_destination_t managed = create_destination(
+        "Cloud bridge", "cloud.example.test", "lightnvr-cloud-test",
+        "cloud/{type}/{subject_id}", true);
+    event_destination_t disabled = create_destination(
+        "Paused bridge", "paused.example.test", "lightnvr-paused-test",
+        "paused/{type}/{subject_id}", false);
+    char managed_key[EVENT_DESTINATION_KEY_MAX];
+    char disabled_key[EVENT_DESTINATION_KEY_MAX];
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_destination_make_key(managed.uuid, managed_key));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_destination_make_key(disabled.uuid, disabled_key));
+
+    event_route_t default_route = route_definition(
+        "Default bridge", DETECTION_TYPE);
+    event_route_t managed_route = route_definition(
+        "Cloud bridge", DETECTION_TYPE);
+    safe_strcpy(managed_route.destination_key, managed_key,
+                sizeof(managed_route.destination_key), 0);
+    event_route_t paused_route = route_definition(
+        "Paused bridge", DETECTION_TYPE);
+    safe_strcpy(paused_route.destination_key, disabled_key,
+                sizeof(paused_route.destination_key), 0);
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK,
+                          db_event_route_create(&default_route));
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK,
+                          db_event_route_create(&managed_route));
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK,
+                          db_event_route_create(&paused_route));
+
+    event_envelope_t event = detection_event(
+        "22222222-2222-4222-8222-222222222222", "person", 0.9, NULL,
+        1786991400);
+    event_route_delivery_plan_t plan = {0};
+    TEST_ASSERT_EQUAL_INT(
+        EVENT_ROUTER_MATCH, event_router_evaluate_delivery(&event, &plan));
+    TEST_ASSERT_EQUAL_UINT(2, plan.count);
+    const event_route_delivery_plan_entry_t *default_entry =
+        find_plan_entry(&plan, EVENT_ROUTE_DEFAULT_DESTINATION);
+    const event_route_delivery_plan_entry_t *managed_entry =
+        find_plan_entry(&plan, managed_key);
+    TEST_ASSERT_NOT_NULL(default_entry);
+    TEST_ASSERT_NOT_NULL(managed_entry);
+    TEST_ASSERT_EQUAL_STRING("", default_entry->topic_template);
+    TEST_ASSERT_EQUAL_STRING("cloud/{type}/{subject_id}",
+                             managed_entry->topic_template);
+    TEST_ASSERT_FALSE(default_entry->suppression_pending);
+    TEST_ASSERT_FALSE(managed_entry->suppression_pending);
+    event_route_delivery_plan_clear(&plan);
+
+    safe_strcpy(managed.topic_template, "changed/{subject_id}/{type}",
+                sizeof(managed.topic_template), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_update(&managed, managed.revision, NULL, false));
+    TEST_ASSERT_EQUAL_INT(
+        EVENT_ROUTER_MATCH, event_router_evaluate_delivery(&event, &plan));
+    managed_entry = find_plan_entry(&plan, managed_key);
+    TEST_ASSERT_NOT_NULL(managed_entry);
+    TEST_ASSERT_EQUAL_STRING("changed/{subject_id}/{type}",
+                             managed_entry->topic_template);
+    event_route_delivery_plan_clear(&plan);
+    event_envelope_clear(&event);
+
+    event_router_stats_t stats;
+    event_router_get_stats(&stats);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT64(2, stats.cache_reloads);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT64(
+        2, stats.destination_disabled_rejections);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -273,6 +387,7 @@ int main(void) {
     RUN_TEST(test_iana_timezone_and_overnight_windows_use_occurrence_time);
     RUN_TEST(test_route_mutation_invalidates_cache_and_timezone_failure_is_closed);
     RUN_TEST(test_delivery_plan_commits_durable_cooldown_after_outbox_acceptance);
+    RUN_TEST(test_delivery_plan_fans_out_and_tracks_destination_profile_changes);
     int result = UNITY_END();
     event_router_shutdown();
     shutdown_database();

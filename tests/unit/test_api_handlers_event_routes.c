@@ -16,6 +16,7 @@
 #include "database/db_audit.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_event_destinations.h"
 #include "database/db_streams.h"
 #include "unity.h"
 #include "utils/strings.h"
@@ -86,6 +87,31 @@ static stream_config_t create_camera(const char *name) {
     return stream;
 }
 
+static event_destination_t create_destination(void) {
+    event_destination_t destination;
+    memset(&destination, 0, sizeof(destination));
+    safe_strcpy(destination.name, "API route bridge",
+                sizeof(destination.name), 0);
+    destination.enabled = true;
+    safe_strcpy(destination.destination_type, "mqtt",
+                sizeof(destination.destination_type), 0);
+    safe_strcpy(destination.broker_host, "route-api.example.test",
+                sizeof(destination.broker_host), 0);
+    destination.broker_port = 1883;
+    safe_strcpy(destination.client_id, "lightnvr-route-api-test",
+                sizeof(destination.client_id), 0);
+    safe_strcpy(destination.topic_template, "api/{type}/{subject_id}",
+                sizeof(destination.topic_template), 0);
+    safe_strcpy(destination.tls_mode, "disabled",
+                sizeof(destination.tls_mode), 0);
+    destination.keepalive_seconds = 60;
+    destination.qos = 1;
+    TEST_ASSERT_EQUAL_INT(
+        DB_EVENT_DESTINATION_OK,
+        db_event_destination_create(&destination, NULL));
+    return destination;
+}
+
 static bool audit_has_operation(const char *operation) {
     audit_query_t query = {.page = 1, .page_size = 100};
     safe_strcpy(query.action, "events.configure", sizeof(query.action), 0);
@@ -117,6 +143,7 @@ void setUp(void) {
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
     sqlite3_exec(db, "DELETE FROM event_routes;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM event_destinations;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM audit_events;", NULL, NULL, NULL);
     remove_user("routeviewer");
@@ -246,6 +273,32 @@ void test_invalid_drafts_and_viewer_mutations_fail_closed(void) {
     cJSON_Delete(json);
 }
 
+void test_route_api_accepts_an_existing_managed_destination(void) {
+    event_destination_t destination = create_destination();
+    char destination_key[EVENT_DESTINATION_KEY_MAX];
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_destination_make_key(destination.uuid, destination_key));
+    char body[1024];
+    snprintf(body, sizeof(body),
+             "{\"name\":\"Managed route\",\"destination\":\"%s\","
+             "\"event_types\":[\"%s\"]}",
+             destination_key, DETECTION_TYPE);
+    cJSON *json = call(handle_post_event_route, HTTP_METHOD_POST,
+                       "/api/event-routes", NULL, body, NULL, 201);
+    TEST_ASSERT_EQUAL_STRING(
+        destination_key,
+        cJSON_GetObjectItemCaseSensitive(json, "destination")->valuestring);
+    cJSON_Delete(json);
+
+    json = call(handle_post_event_route, HTTP_METHOD_POST,
+                "/api/event-routes", NULL,
+                "{\"name\":\"Missing destination\","
+                "\"destination\":\"mqtt:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\","
+                "\"event_types\":[\"" DETECTION_TYPE "\"]}",
+                NULL, 400);
+    cJSON_Delete(json);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0 || db_auth_init() != 0) {
@@ -256,6 +309,7 @@ int main(void) {
     RUN_TEST(test_catalog_and_route_crud_are_versioned_and_audited);
     RUN_TEST(test_preview_resolves_fleet_selector_without_publishing);
     RUN_TEST(test_invalid_drafts_and_viewer_mutations_fail_closed);
+    RUN_TEST(test_route_api_accepts_an_existing_managed_destination);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

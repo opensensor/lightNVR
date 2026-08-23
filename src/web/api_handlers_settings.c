@@ -87,9 +87,10 @@ static void *mqtt_settings_worker(void *argument) {
     // cppcheck-suppress knownConditionTrueFalse
     if (rc != 0) {
         log_error("MQTT settings worker: reinit failed (rc=%d)", rc);
-    } else if (g_config.mqtt_enabled &&
-               mqtt_delivery_worker_start() != 0) {
+#ifdef ENABLE_MQTT
+    } else if (mqtt_delivery_worker_start() != 0) {
         log_error("MQTT settings worker: delivery worker restart failed");
+#endif
     } else {
         log_info("MQTT settings worker: reinit complete (mqtt_enabled=%s)",
                  g_config.mqtt_enabled ? "true" : "false");
