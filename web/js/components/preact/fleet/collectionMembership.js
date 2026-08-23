@@ -8,7 +8,7 @@ export async function fetchCollectionCameraUuids(collectionUuid, request = fetch
 
   const cameraUuids = [];
   let page = 1;
-  let totalPages = 1;
+  let totalPages;
 
   do {
     const response = await request('/api/fleet/cameras/query', {
