@@ -16,6 +16,8 @@ import { EditUserModal } from './users/EditUserModal.jsx';
 import { DeleteUserModal } from './users/DeleteUserModal.jsx';
 import { ApiKeyModal } from './users/ApiKeyModal.jsx';
 import { TotpSetupModal } from './users/TotpSetupModal.jsx';
+import { AccessPolicyModal } from './users/AccessPolicyModal.jsx';
+import { RoleManagerModal } from './users/RoleManagerModal.jsx';
 
 /**
  * UsersView component
@@ -25,7 +27,7 @@ export function UsersView() {
   const { t } = useI18n();
 
   // State for modal visibility
-  const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', 'totp', or null
+  const [activeModal, setActiveModal] = useState(null); // add, edit, delete, apiKey, totp, access, roles, or null
 
   // State for selected user and API key
   const [selectedUser, setSelectedUser] = useState(null);
@@ -376,6 +378,23 @@ export function UsersView() {
     setActiveModal('totp');
   }, []);
 
+  const openAccessModal = useCallback((user) => {
+    setSelectedUser(user);
+    setActiveModal('access');
+  }, []);
+
+  const openRoleManager = useCallback(() => {
+    setSelectedUser(null);
+    setActiveModal('roles');
+  }, []);
+
+  const pageActions = (
+    <div className="flex flex-wrap gap-2">
+      <button className="btn-secondary" onClick={openRoleManager}>{t('access.roles.manage')}</button>
+      <button className="btn-primary" onClick={handleAddUserClick}>{t('users.addUser')}</button>
+    </div>
+  );
+
   /**
    * Close any open modal
    */
@@ -451,14 +470,7 @@ export function UsersView() {
   if (users.length === 0 && !loading) {
     return (
       <div>
-        {renderPageHeader(
-          <button
-            className="btn-primary"
-            onClick={handleAddUserClick}
-          >
-            {t('users.addUser')}
-          </button>
-        )}
+        {renderPageHeader(pageActions)}
 
         <div className="badge-info border px-4 py-3 rounded relative mb-4">
           <h4 className="font-bold mb-2">{t('users.noUsersFound')}</h4>
@@ -472,6 +484,9 @@ export function UsersView() {
             onClose={closeModal}
           />
         )}
+        {activeModal === 'roles' && (
+          <RoleManagerModal onClose={closeModal} getAuthHeaders={getAuthHeaders} />
+        )}
       </div>
     );
   }
@@ -479,14 +494,7 @@ export function UsersView() {
   // Render users table with modals
   return (
     <div>
-      {renderPageHeader(
-        <button
-          className="btn-primary"
-          onClick={handleAddUserClick}
-        >
-          {t('users.addUser')}
-        </button>
-      )}
+      {renderPageHeader(pageActions)}
 
       <UsersTable
         users={users}
@@ -494,6 +502,7 @@ export function UsersView() {
         onDelete={openDeleteModal}
         onApiKey={openApiKeyModal}
         onMfa={openTotpModal}
+        onAccess={openAccessModal}
       />
 
       {activeModal === 'add' && (
@@ -540,6 +549,21 @@ export function UsersView() {
           user={selectedUser}
           onClose={closeModal}
           onSuccess={refetchUsers}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
+
+      {activeModal === 'access' && selectedUser && (
+        <AccessPolicyModal
+          user={selectedUser}
+          onClose={closeModal}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
+
+      {activeModal === 'roles' && (
+        <RoleManagerModal
+          onClose={closeModal}
           getAuthHeaders={getAuthHeaders}
         />
       )}

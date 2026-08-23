@@ -15,9 +15,10 @@ import { useI18n } from '../../../i18n.js';
  * @param {Function} props.onDelete - Function to handle delete action
  * @param {Function} props.onApiKey - Function to handle API key action
  * @param {Function} props.onMfa - Function to handle MFA setup action
+ * @param {Function} props.onAccess - Function to manage scoped access
  * @returns {JSX.Element} Users table
  */
-export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
+export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess }) {
   const { t } = useI18n();
 
   const normalizedUsers = Array.isArray(users) ? users : [];
@@ -61,6 +62,9 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
       } else if (sortColumn === 'mfa') {
         aVal = a.totp_enabled ? 1 : 0;
         bVal = b.totp_enabled ? 1 : 0;
+      } else if (sortColumn === 'access') {
+        aVal = a.authorization_mode === 'policy' ? 1 : 0;
+        bVal = b.authorization_mode === 'policy' ? 1 : 0;
       } else if (sortColumn === 'lastLogin') {
         aVal = a.last_login ? new Date(a.last_login).getTime() : 0;
         bVal = b.last_login ? new Date(b.last_login).getTime() : 0;
@@ -98,6 +102,12 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
     onMfa(user);
   }, [onMfa]);
 
+  const handleAccess = useCallback((user, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onAccess(user);
+  }, [onAccess]);
+
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse">
@@ -111,6 +121,7 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
               { key: 'status',    label: t('users.status') },
               { key: 'password',  label: t('fields.password') },
               { key: 'mfa',       label: 'MFA' },
+              { key: 'access',    label: t('access.policy.column') },
               { key: 'lastLogin', label: t('users.lastLogin') },
             ].map(({ key, label }) => (
               <th
@@ -159,9 +170,23 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa }) {
                   {user.totp_enabled ? t('users.mfaEnabled') : t('users.mfaDisabled')}
                 </span>
               </td>
+              <td className="py-3 px-6 border-b border-border">
+                <span className={`inline-block whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold ${user.authorization_mode === 'policy' ? 'badge-warning' : 'badge-info'}`}>
+                  {t(user.authorization_mode === 'policy' ? 'access.policy.scopedShort' : 'access.policy.legacyShort')}
+                </span>
+              </td>
               <td className="py-3 px-6 border-b border-border">{user.last_login ? formatLocalDateTime(user.last_login) : t('common.never')}</td>
               <td className="py-3 px-6 border-b border-border">
                 <div className="flex space-x-2">
+                  <button
+                    className="p-1 rounded transition-colors text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)_/_0.1)] hover:text-[hsl(var(--primary)_/_0.7)]"
+                    onClick={(e) => handleAccess(user, e)}
+                    title={t('access.policy.manage')}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3l7 4v5c0 4.4-2.8 7.9-7 9-4.2-1.1-7-4.6-7-9V7l7-4zm-2 9l1.5 1.5L15 10" />
+                    </svg>
+                  </button>
                   <button
                     className="p-1 rounded transition-colors text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary)_/_0.1)] hover:text-[hsl(var(--primary)_/_0.7)]"
                     onClick={(e) => handleEdit(user, e)}

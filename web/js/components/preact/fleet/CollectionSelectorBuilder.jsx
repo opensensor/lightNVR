@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON } from '../../../query-client.js';
 import { buildLocationRows } from './fleetOrganization.js';
 import {
+  CAMERA_SELECTOR_RULE_TYPE,
   COLLECTION_RULE_TYPES,
   buildCollectionSelector,
   collectionRuleToExpression,
@@ -38,8 +39,149 @@ function ValueChecks({ values, options, onChange, getLabel, idPrefix }) {
   );
 }
 
-function RuleValueEditor({ rule, index, locations, tags, onChange, t }) {
-  const idPrefix = `collection-rule-${index}`;
+export function CameraValuePicker({ values, onChange, idPrefix, t, requestHeaders = {} }) {
+  const [search, setSearch] = useState('');
+  const [results, setResults] = useState([]);
+  const [labels, setLabels] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (values.length === 0) return undefined;
+    let active = true;
+    fetchJSON('/api/fleet/cameras/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...requestHeaders },
+      body: JSON.stringify({
+        selector: { version: 1, expression: { op: 'camera_uuid', values } },
+        page: 1,
+        page_size: Math.min(values.length, 64),
+        facets: false,
+      }),
+      timeout: 15000,
+      retries: 1,
+    }).then((response) => {
+      if (!active) return;
+      setLabels((current) => {
+        const next = { ...current };
+        (response.cameras || []).forEach((camera) => {
+          next[camera.camera_uuid] = camera.name;
+        });
+        return next;
+      });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [values]);
+
+  useEffect(() => {
+    const query = search.trim();
+    if (query.length < 2) {
+      setResults([]);
+      setError('');
+      return undefined;
+    }
+    let active = true;
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await fetchJSON('/api/fleet/cameras/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...requestHeaders },
+          body: JSON.stringify({
+            selector: { version: 1, expression: { op: 'all' } },
+            search: query,
+            page: 1,
+            page_size: 20,
+            facets: false,
+          }),
+          timeout: 15000,
+          retries: 1,
+        });
+        if (!active) return;
+        const cameras = response.cameras || [];
+        setResults(cameras);
+        setLabels((current) => {
+          const next = { ...current };
+          cameras.forEach((camera) => { next[camera.camera_uuid] = camera.name; });
+          return next;
+        });
+      } catch (requestError) {
+        if (active) {
+          setResults([]);
+          setError(requestError.message);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [search]);
+
+  const addCamera = (camera) => {
+    if (values.includes(camera.camera_uuid) || values.length >= 64) return;
+    setLabels((current) => ({ ...current, [camera.camera_uuid]: camera.name }));
+    onChange([...values, camera.camera_uuid]);
+  };
+
+  return (
+    <div className="min-w-64 flex-1 rounded-md border border-border bg-background p-2">
+      <label className="sr-only" htmlFor={`${idPrefix}-search`}>{t('access.cameraSearch')}</label>
+      <input
+        id={`${idPrefix}-search`}
+        type="search"
+        className={`${fieldClasses} w-full`}
+        value={search}
+        placeholder={t('access.cameraSearchPlaceholder')}
+        onInput={(event) => setSearch(event.currentTarget.value)}
+      />
+      {values.length > 0 && (
+        <div className="mt-2 flex max-h-28 flex-wrap gap-1 overflow-y-auto">
+          {values.map((uuid) => (
+            <button
+              key={uuid}
+              type="button"
+              className="rounded-full border border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.1)] px-2 py-1 text-xs"
+              title={uuid}
+              onClick={() => onChange(values.filter((value) => value !== uuid))}
+            >
+              {labels[uuid] || uuid} ×
+            </button>
+          ))}
+        </div>
+      )}
+      {search.trim().length < 2 && <p className="mt-2 text-xs text-muted-foreground">{t('access.cameraSearchHint')}</p>}
+      {loading && <p className="mt-2 text-xs text-muted-foreground">{t('common.loading')}</p>}
+      {error && <p className="mt-2 text-xs text-[hsl(var(--danger))]">{error}</p>}
+      {!loading && results.length > 0 && (
+        <div className="mt-2 max-h-40 divide-y divide-border overflow-y-auto rounded border border-border">
+          {results.map((camera) => {
+            const selected = values.includes(camera.camera_uuid);
+            return (
+              <button
+                key={camera.camera_uuid}
+                type="button"
+                className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left text-sm hover:bg-muted disabled:opacity-50"
+                disabled={selected || values.length >= 64}
+                onClick={() => addCamera(camera)}
+              >
+                <span className="min-w-0"><span className="block truncate font-medium">{camera.name}</span><span className="block truncate text-xs text-muted-foreground">{camera.location?.path || camera.camera_uuid}</span></span>
+                <span className="text-xs">{selected ? t('access.cameraSelected') : t('access.cameraAdd')}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {values.length >= 64 && <p className="mt-2 text-xs text-[hsl(var(--warning))]">{t('access.cameraLimit')}</p>}
+    </div>
+  );
+}
+
+function RuleValueEditor({ rule, index, locations, tags, onChange, t, builderId, requestHeaders }) {
+  const idPrefix = `${builderId}-rule-${index}`;
   if (rule.type === 'location_subtree') {
     return (
       <select className={`${fieldClasses} min-w-56 flex-1`} value={rule.uuid} onChange={(event) => onChange({ ...rule, uuid: event.currentTarget.value })}>
@@ -55,6 +197,9 @@ function RuleValueEditor({ rule, index, locations, tags, onChange, t }) {
         <option value="false">{t('common.disabled')}</option>
       </select>
     );
+  }
+  if (rule.type === CAMERA_SELECTOR_RULE_TYPE) {
+    return <CameraValuePicker values={rule.values || []} onChange={(values) => onChange({ ...rule, values })} idPrefix={idPrefix} t={t} requestHeaders={requestHeaders} />;
   }
   if (rule.type.startsWith('tag_')) {
     return (
@@ -104,12 +249,14 @@ function SelectorPreview({ preview, t }) {
   );
 }
 
-export function CollectionSelectorBuilder({ initialSelector, locations, tags, onChange, t }) {
+export function CollectionSelectorBuilder({ initialSelector, locations, tags, onChange, t, allowCameraSelection = false, idPrefix = 'collection-selector', requestHeaders = {} }) {
   const initial = initialSelector || { version: 1, expression: { op: 'all' } };
   const parsedInitial = parseCollectionSelector(initial);
+  const initialVisualSupported = parsedInitial.supported &&
+    (allowCameraSelection || !parsedInitial.rules.some((rule) => rule.type === CAMERA_SELECTOR_RULE_TYPE));
   const [match, setMatch] = useState(parsedInitial.match);
   const [rules, setRules] = useState(parsedInitial.rules);
-  const [advanced, setAdvanced] = useState(!parsedInitial.supported);
+  const [advanced, setAdvanced] = useState(!initialVisualSupported);
   const [advancedJson, setAdvancedJson] = useState(() => JSON.stringify(initial, null, 2));
   const [preview, setPreview] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -122,6 +269,10 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
     ? t('collections.builder.incompleteRule')
     : '';
   const validationError = advanced ? advancedValidation.error : visualError;
+  const ruleTypes = useMemo(
+    () => allowCameraSelection ? [CAMERA_SELECTOR_RULE_TYPE, ...COLLECTION_RULE_TYPES] : COLLECTION_RULE_TYPES,
+    [allowCameraSelection]
+  );
 
   useEffect(() => {
     onChange(currentSelector, validationError);
@@ -131,7 +282,8 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
   const switchMode = () => {
     if (advanced) {
       const parsed = advancedValidation.selector && parseCollectionSelector(advancedValidation.selector);
-      if (!parsed?.supported) {
+      if (!parsed?.supported ||
+          (!allowCameraSelection && parsed.rules.some((rule) => rule.type === CAMERA_SELECTOR_RULE_TYPE))) {
         setPreviewError(t('collections.builder.cannotVisualize'));
         return;
       }
@@ -153,7 +305,7 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
     try {
       const result = await fetchJSON('/api/fleet/selectors/preview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...requestHeaders },
         body: JSON.stringify({ selector: currentSelector, page: 1, page_size: 20, facets: false, explain: true }),
         timeout: 20000,
         retries: 1,
@@ -194,9 +346,9 @@ export function CollectionSelectorBuilder({ initialSelector, locations, tags, on
           {rules.map((rule, index) => (
             <div key={index} className="flex flex-col gap-2 rounded-md border border-border bg-muted/20 p-2 sm:flex-row sm:items-start">
               <select className={`${fieldClasses} sm:w-48`} value={rule.type} onChange={(event) => { updateRule(index, updateCollectionRuleType(rule, event.currentTarget.value)); setPreview(null); }}>
-                {COLLECTION_RULE_TYPES.map((type) => <option key={type} value={type}>{t(`collections.rule.${type}`)}</option>)}
+                {ruleTypes.map((type) => <option key={type} value={type}>{t(`collections.rule.${type}`)}</option>)}
               </select>
-              <RuleValueEditor rule={rule} index={index} locations={locationRows} tags={tags} t={t} onChange={(nextRule) => { updateRule(index, nextRule); setPreview(null); }} />
+              <RuleValueEditor rule={rule} index={index} locations={locationRows} tags={tags} t={t} builderId={idPrefix} requestHeaders={requestHeaders} onChange={(nextRule) => { updateRule(index, nextRule); setPreview(null); }} />
               <button type="button" className="rounded px-2 py-2 text-sm text-[hsl(var(--danger))] hover:bg-muted" onClick={() => { setRules((current) => current.filter((_, ruleIndex) => ruleIndex !== index)); setPreview(null); }} aria-label={t('collections.builder.removeRule')}>×</button>
             </div>
           ))}
