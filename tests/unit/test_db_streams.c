@@ -519,9 +519,10 @@ void test_repair_onvif_embedded_credentials_migration_normalizes_legacy_rows(voi
         "detection_based_recording, detection_model, detection_threshold, detection_interval, pre_detection_buffer, post_detection_buffer, "
         "detection_api_url, detection_object_filter, detection_object_filter_list, protocol, is_onvif, record_audio, backchannel_enabled, "
         "retention_days, detection_retention_days, max_storage_mb, tier_critical_multiplier, tier_important_multiplier, tier_ephemeral_multiplier, storage_priority, "
-        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags) VALUES ("
+        "ptz_enabled, ptz_max_x, ptz_max_y, ptz_max_z, ptz_has_home, onvif_username, onvif_password, onvif_profile, onvif_port, record_on_schedule, recording_schedule, tags, camera_uuid) VALUES ("
         "'legacy_onvif', 'rtsp://legacy_user:legacy_pass@camera.example/live', 1, 1, 1920, 1080, 25, 'h264', 5, 1, 60, "
-        "0, '', 0.5, 10, 0, 3, '', 'none', '', 0, 1, 1, 0, 0, 0, 0, 3.0, 2.0, 0.25, 0, 0, 0.0, 0.0, 0.0, 0, '', '', 'profile1', 8899, 0, '', '');");
+        "0, '', 0.5, 10, 0, 3, '', 'none', '', 0, 1, 1, 0, 0, 0, 0, 3.0, 2.0, 0.25, 0, 0, 0.0, 0.0, 0.0, 0, '', '', 'profile1', 8899, 0, '', '', "
+        "'20000000-0000-4000-8000-000000000001');");
     exec_sql_or_fail(db, "DELETE FROM schema_migrations WHERE version = '0034';");
 
     shutdown_database();

@@ -1048,6 +1048,51 @@ static const char migration_0055_down[] =
     "DROP TABLE IF EXISTS audit_events;\n"
     "SELECT 1;";
 
+static const char migration_0056_up[] =
+    "ALTER TABLE authz_actions "
+    "ADD COLUMN bit_index INTEGER NOT NULL DEFAULT -1;\n"
+    "UPDATE authz_actions SET bit_index = CASE action_key "
+    "WHEN 'live.view' THEN 0 "
+    "WHEN 'audio.listen' THEN 1 "
+    "WHEN 'audio.talk' THEN 2 "
+    "WHEN 'recordings.replay' THEN 3 "
+    "WHEN 'recordings.export' THEN 4 "
+    "WHEN 'snapshot.create' THEN 5 "
+    "WHEN 'ptz.control' THEN 6 "
+    "WHEN 'evidence.protect' THEN 7 "
+    "WHEN 'recording.delete' THEN 8 "
+    "WHEN 'camera.configure' THEN 9 "
+    "WHEN 'fleet.execute_job' THEN 10 "
+    "WHEN 'storage.configure' THEN 11 "
+    "WHEN 'events.configure' THEN 12 "
+    "WHEN 'users.manage' THEN 13 "
+    "WHEN 'system.admin' THEN 14 "
+    "ELSE -1 END;\n"
+    "CREATE UNIQUE INDEX idx_authz_actions_bit_index "
+    "ON authz_actions(bit_index);\n"
+    "CREATE TRIGGER trg_streams_camera_uuid_insert "
+    "BEFORE INSERT ON streams "
+    "FOR EACH ROW WHEN NEW.camera_uuid IS NULL OR NEW.camera_uuid = '' "
+    "BEGIN "
+    "SELECT RAISE(ABORT, 'streams.camera_uuid must be a generated UUID'); "
+    "END;\n"
+    "CREATE TRIGGER trg_streams_camera_uuid_update "
+    "BEFORE UPDATE OF camera_uuid ON streams "
+    "FOR EACH ROW WHEN NEW.camera_uuid IS NULL OR NEW.camera_uuid = '' "
+    "BEGIN "
+    "SELECT RAISE(ABORT, 'streams.camera_uuid must be a generated UUID'); "
+    "END;\n"
+    "INSERT OR IGNORE INTO system_settings (key, value) "
+    "VALUES ('camera_tags_backfill_completed', '0');";
+
+static const char migration_0056_down[] =
+    "DROP TRIGGER IF EXISTS trg_streams_camera_uuid_update;\n"
+    "DROP TRIGGER IF EXISTS trg_streams_camera_uuid_insert;\n"
+    "DROP INDEX IF EXISTS idx_authz_actions_bit_index;\n"
+    "DELETE FROM system_settings "
+    "WHERE key = 'camera_tags_backfill_completed';\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1434,8 +1479,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0055_down,
         .is_embedded = true
     },
+    {
+        .version = "0056",
+        .description = "harden_authorization_metadata",
+        .sql_up = migration_0056_up,
+        .sql_down = migration_0056_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 55
+#define EMBEDDED_MIGRATIONS_COUNT 56
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

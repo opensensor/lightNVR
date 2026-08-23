@@ -87,6 +87,22 @@ GET /api/authorization/actions
 Administrator-only. Returns the stable action key, category, description,
 whether a camera resource is required, and whether the action is destructive.
 
+Each entry also reports:
+
+- `enforced` — whether any request handler currently routes through the
+  centralized evaluator for this action. Actions are grantable ahead of their
+  enforcement work, so clients must label the unenforced ones rather than imply
+  a boundary that is not applied yet. See
+  `docs/internal/AUTHORIZATION_ENDPOINT_INVENTORY.md` for the coverage map.
+- `mask_bit` — the bit position this action occupies in a persisted API token
+  `action_mask`. The position is frozen once an action ships; the daemon refuses
+  to start if the stored layout in `authz_actions` disagrees with the binary.
+
+A policy manager may only author roles, grants, and tokens whose actions are a
+subset of the authority it holds itself. Requests that would widen the
+requester's own authority are rejected with `403` and name the offending
+actions, so `users.manage` cannot be used as a path to `system.admin`.
+
 #### Simulate authorization
 
 ```

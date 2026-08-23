@@ -60,6 +60,7 @@ void init_recordings_system(void);
 #include "database/database_manager.h"
 #include "database/db_schema_cache.h"
 #include "database/db_core.h"
+#include "database/db_authorization.h"
 #include "database/db_recordings_sync.h"
 #include <sqlite3.h>
 #include "web/http_server.h"
@@ -701,6 +702,14 @@ int main(int argc, char *argv[]) {
     // Initialize database
     if (init_database(config.db_path) != 0) {
         log_error("Failed to initialize database");
+        goto cleanup;
+    }
+
+    // authz_actions records the bit layout every issued API token was minted
+    // against. Refuse to serve a policy this binary would read differently
+    // than it was authored, rather than silently re-mapping permissions.
+    if (db_authorization_verify_action_catalog() != 0) {
+        log_error("Authorization action catalog does not match this build");
         goto cleanup;
     }
 

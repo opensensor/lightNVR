@@ -18,6 +18,7 @@
 #include "web/libuv_connection.h"
 #include "web/go2rtc_proxy_thread.h"
 #include "web/api_handlers_health.h"
+#include "web/httpd_utils.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "utils/strings.h"
@@ -363,8 +364,14 @@ static int on_header_value(llhttp_t *parser, const char *at, size_t length) {
     } else if (strcasecmp(conn->current_header_field, "Connection") == 0) {
         conn->keep_alive = (strcasecmp(conn->request.headers[idx].value, "close") != 0);
     } else if (strcasecmp(conn->current_header_field, "X-Request-ID") == 0) {
-        (void)http_request_set_request_id(
-            &conn->request, conn->request.headers[idx].value);
+        /* The audit trail correlates on this value, so only adopt a caller's
+         * ID when it reached us through a declared trusted proxy. Anything
+         * else keeps the server-generated ID and cannot forge or collide with
+         * another principal's requests. */
+        if (httpd_peer_is_trusted_proxy(&conn->request)) {
+            (void)http_request_set_request_id(
+                &conn->request, conn->request.headers[idx].value);
+        }
     }
 
     return 0;

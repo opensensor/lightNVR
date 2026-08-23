@@ -23,6 +23,18 @@ describe('scoped API token UI helpers', () => {
     ]);
   });
 
+  test('drops actions the server reports as unenforced', () => {
+    const reported = [
+      { key: 'recordings.export', enforced: true },
+      { key: 'ptz.control', enforced: false },
+      { key: 'recording.delete' },
+    ];
+    expect(selectableTokenActions(reported).map((action) => action.key)).toEqual([
+      'recordings.export',
+      'recording.delete',
+    ]);
+  });
+
   test('validates required fields and scoped resources', () => {
     const draft = createTokenDraft();
     expect(validateTokenDraft(draft)).toBe('missing_description');

@@ -305,9 +305,14 @@ int db_audit_query(const audit_query_t *query, audit_page_t *page) {
     if (rc == SQLITE_OK && !events) rc = SQLITE_NOMEM;
     int count = 0;
     if (rc == SQLITE_OK) {
-        while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        /* The SQL LIMIT already caps this, but the allocation is sized from
+         * page_size rather than from the statement, so bound the write here
+         * too instead of trusting the two to stay in step. */
+        while (count < query->page_size &&
+               (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
             populate_event(stmt, &events[count++]);
         }
+        if (rc == SQLITE_ROW) rc = SQLITE_DONE;
     }
     if (stmt) sqlite3_finalize(stmt);
     pthread_mutex_unlock(mutex);

@@ -11,6 +11,7 @@
 #define HTTPD_UTILS_H
 
 #include <cjson/cJSON.h>
+#include <stdbool.h>
 #include "web/request_response.h"
 #include "database/db_auth.h"
 #include "core/authorization.h"
@@ -53,6 +54,15 @@ int httpd_get_api_key(const http_request_t *req, char *api_key, size_t api_key_s
  * @return 0 on success, -1 on error
  */
 int httpd_get_effective_client_ip(const http_request_t *req, char *client_ip, size_t client_ip_size);
+
+/**
+ * @brief Whether the direct peer is inside trusted_proxy_cidrs.
+ *
+ * Request metadata that a client can set freely (forwarded addresses, an
+ * inbound correlation ID) may only be believed when it came from a proxy the
+ * operator declared. Defaults to false when no proxies are configured.
+ */
+bool httpd_peer_is_trusted_proxy(const http_request_t *req);
 
 /**
  * @brief Get the authenticated user from the HTTP request

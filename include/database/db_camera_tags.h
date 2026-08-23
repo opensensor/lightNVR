@@ -48,6 +48,14 @@ db_camera_tag_result_t db_camera_tag_set_for_camera(
  * startup immediately after migrations. */
 int db_camera_tags_backfill_legacy(void);
 
+/*
+ * Run the legacy backfill only the first time this schema version starts.
+ * The backfill rewrites every assignment for every camera, and both tag
+ * writers keep streams.tags and the normalized tables consistent afterwards,
+ * so repeating it on each boot is pure churn.
+ */
+int db_camera_tags_backfill_legacy_once(void);
+
 /* Compatibility bridge used by db_streams.c while the database mutex is held.
  * The normalized assignments are replaced from the legacy comma-separated
  * value. The caller must already own get_db_mutex(). */

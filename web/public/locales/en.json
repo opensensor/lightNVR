@@ -554,6 +554,7 @@
   "access.roles.builtinHelp": "Built-in roles are fixed upgrade-safe templates. Clone one to customize it.",
   "access.roles.actionCount": "{count} actions",
   "access.roles.destructive": "Sensitive action",
+  "access.roles.notEnforced": "Not yet enforced by any endpoint",
   "access.roles.destructiveWarning": "This role can change configuration or evidence. Grant it only over the scopes where that authority is required.",
   "access.roles.created": "Role created",
   "access.roles.updated": "Role updated",

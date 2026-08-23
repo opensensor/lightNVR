@@ -3,6 +3,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "core/authorization.h"
 #include "core/camera_collection_filter.h"
 #include "database/db_camera_collections.h"
 #include "database/db_fleet_query.h"
@@ -122,12 +123,16 @@ camera_collection_filter_result_t camera_collection_filter_resolve_stream_names(
         camera_collection_filter_free(&filter);
         return CAMERA_COLLECTION_FILTER_OUT_OF_MEMORY;
     }
+    /* Resolving a collection to stream names hands the caller the cameras it
+     * will act on, so it is subject to the same live.view decision as a list. */
+    if (authorization_filter_visible_cameras(user, cameras, &camera_count) != 0) {
+        free(names);
+        free(cameras);
+        camera_collection_filter_free(&filter);
+        return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
+    }
     for (int i = 0; i < camera_count; i++) {
         if (!camera_collection_filter_matches(&filter, &cameras[i])) continue;
-        if (user->has_tag_restriction &&
-            !db_auth_stream_allowed_for_user(user, cameras[i].legacy_tags)) {
-            continue;
-        }
         size_t name_size = strlen(cameras[i].name) + 1;
         names[*stream_count] = malloc(name_size);
         if (!names[*stream_count]) {

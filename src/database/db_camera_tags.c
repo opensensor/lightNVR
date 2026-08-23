@@ -320,15 +320,20 @@ int db_camera_tags_backfill_legacy(void) {
                                 -1, &stmt, NULL);
     int result = rc == SQLITE_OK ? 0 : -1;
     while (result == 0 && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        char camera_uuid[CAMERA_UUID_STRING_SIZE];
+        char camera_uuid[CAMERA_UUID_STRING_SIZE] = {0};
         char legacy_tags[256];
-        safe_strcpy(camera_uuid,
-                    (const char *)sqlite3_column_text(stmt, 0),
+        const char *uuid_value = (const char *)sqlite3_column_text(stmt, 0);
+        safe_strcpy(camera_uuid, uuid_value ? uuid_value : "",
                     sizeof(camera_uuid), 0);
         const char *legacy_value =
             (const char *)sqlite3_column_text(stmt, 1);
         safe_strcpy(legacy_tags, legacy_value ? legacy_value : "",
                     sizeof(legacy_tags), 0);
+        if (!valid_uuid_string(camera_uuid)) {
+            log_error("Skipping tag backfill for a stream without a camera UUID");
+            result = -1;
+            break;
+        }
         if (sync_legacy_locked(db, camera_uuid, legacy_tags) != 0) result = -1;
     }
     if (stmt) sqlite3_finalize(stmt);
@@ -339,6 +344,68 @@ int db_camera_tags_backfill_legacy(void) {
         log_error("Failed to backfill normalized camera tags: %s",
                   sqlite3_errmsg(db));
         return -1;
+    }
+    return 0;
+}
+
+/*
+ * Read/write the marker that records whether the 0050 legacy tag import has
+ * already run. A missing row means an older database that predates migration
+ * 0056, which is treated as "not yet done" so the import still happens once.
+ */
+static int backfill_marker_locked(sqlite3 *db, bool *completed) {
+    *completed = false;
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        db, "SELECT value FROM system_settings "
+            "WHERE key='camera_tags_backfill_completed' LIMIT 1;",
+        -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        if (stmt) sqlite3_finalize(stmt);
+        return -1;
+    }
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *value = (const char *)sqlite3_column_text(stmt, 0);
+        *completed = value && strcmp(value, "1") == 0;
+    }
+    sqlite3_finalize(stmt);
+    return 0;
+}
+
+static int mark_backfill_complete_locked(sqlite3 *db) {
+    return sqlite3_exec(
+        db,
+        "INSERT INTO system_settings(key,value,updated_at) "
+        "VALUES('camera_tags_backfill_completed','1',strftime('%s','now')) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value,"
+        "updated_at=excluded.updated_at;",
+        NULL, NULL, NULL) == SQLITE_OK ? 0 : -1;
+}
+
+int db_camera_tags_backfill_legacy_once(void) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+
+    pthread_mutex_lock(mutex);
+    bool completed = false;
+    int rc = backfill_marker_locked(db, &completed);
+    pthread_mutex_unlock(mutex);
+    if (rc != 0) return -1;
+    if (completed) {
+        log_debug("Legacy camera tag backfill already completed; skipping");
+        return 0;
+    }
+
+    if (db_camera_tags_backfill_legacy() != 0) return -1;
+
+    pthread_mutex_lock(mutex);
+    rc = mark_backfill_complete_locked(db);
+    pthread_mutex_unlock(mutex);
+    if (rc != 0) {
+        /* The import itself succeeded and is idempotent, so a failed marker
+         * write only costs a repeat on the next start. */
+        log_warn("Failed to record camera tag backfill completion");
     }
     return 0;
 }

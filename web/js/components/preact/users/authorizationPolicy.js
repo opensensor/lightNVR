@@ -95,3 +95,19 @@ export function roleHasDestructiveActions(roleActions = [], actionCatalog = []) 
 export function actionRequiresCamera(actionKey, actionCatalog = []) {
   return actionCatalog.find((action) => action.key === actionKey)?.camera_scoped === true;
 }
+
+// The action catalog is authored ahead of endpoint coverage: a role may include
+// an action that no handler consults yet. The server reports that per action so
+// the UI can say so instead of implying a boundary that is not applied. Treat a
+// missing flag as enforced so an older server does not paint every action as a
+// gap.
+export function actionIsEnforced(action) {
+  return action?.enforced !== false;
+}
+
+export function unenforcedActionKeys(roleActions = [], actionCatalog = []) {
+  const unenforced = new Set(
+    actionCatalog.filter((action) => !actionIsEnforced(action)).map((action) => action.key)
+  );
+  return (roleActions || []).filter((key) => unenforced.has(key));
+}
