@@ -21,9 +21,13 @@
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_fleet_query.h"
+#include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "utils/strings.h"
+#include "web/api_handlers.h"
 #include "web/api_handlers_authorization.h"
+#include "web/api_handlers_ptz.h"
+#include "web/api_handlers_recordings.h"
 #include "web/api_handlers_users.h"
 #include "web/request_response.h"
 
@@ -153,6 +157,7 @@ void setUp(void) {
     sqlite3_exec(db, "DELETE FROM authz_grants;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM authz_roles WHERE is_builtin=0;", NULL, NULL,
                  NULL);
+    sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM camera_tags;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM users WHERE username != 'admin';",
@@ -714,6 +719,122 @@ void test_users_api_reports_authorization_mode(void) {
     cJSON_Delete(json);
 }
 
+void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
+    stream_config_t allowed = create_camera("Scoped Camera", "Outdoor");
+    stream_config_t denied = create_camera("Other Camera", "Indoor");
+    allowed.ptz_enabled = true;
+    denied.ptz_enabled = true;
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config(allowed.name, &allowed));
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config(denied.name, &denied));
+
+    fleet_camera_t resolved;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_fleet_camera_find_by_name(allowed.name, &resolved));
+    TEST_ASSERT_EQUAL_STRING(allowed.camera_uuid, resolved.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(
+        1, db_fleet_camera_find_by_name("Missing Camera", &resolved));
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("scopedoperator", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_set_user_mode(user_id, "policy"));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             allowed.camera_uuid);
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, OPERATOR_ROLE_UUID, "selector", selector,
+                 grant_uuid);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+
+    recording_metadata_t allowed_recording;
+    memset(&allowed_recording, 0, sizeof(allowed_recording));
+    safe_strcpy(allowed_recording.stream_name, allowed.name,
+                sizeof(allowed_recording.stream_name), 0);
+    safe_strcpy(allowed_recording.file_path, "/tmp/lightnvr-scoped-recording.mp4",
+                sizeof(allowed_recording.file_path), 0);
+    allowed_recording.start_time = 100;
+    allowed_recording.end_time = 200;
+    allowed_recording.is_complete = true;
+    allowed_recording.retention_override_days = -1;
+    uint64_t allowed_id = add_recording_metadata(&allowed_recording);
+    TEST_ASSERT_NOT_EQUAL(0, allowed_id);
+
+    recording_metadata_t denied_recording = allowed_recording;
+    safe_strcpy(denied_recording.stream_name, denied.name,
+                sizeof(denied_recording.stream_name), 0);
+    safe_strcpy(denied_recording.file_path, "/tmp/lightnvr-denied-recording.mp4",
+                sizeof(denied_recording.file_path), 0);
+    uint64_t denied_id = add_recording_metadata(&denied_recording);
+    TEST_ASSERT_NOT_EQUAL(0, denied_id);
+
+    char path[128];
+    snprintf(path, sizeof(path), "/api/recordings/%llu/protect",
+             (unsigned long long)allowed_id);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(
+        handle_put_recording_protect, HTTP_METHOD_PUT, path,
+        "{\"protected\":true}", api_key, 200);
+    cJSON_Delete(json);
+    recording_metadata_t reloaded;
+    TEST_ASSERT_EQUAL_INT(
+        0, get_recording_metadata_by_id(allowed_id, &reloaded));
+    TEST_ASSERT_TRUE(reloaded.protected);
+
+    snprintf(path, sizeof(path), "/api/recordings/%llu/protect",
+             (unsigned long long)denied_id);
+    json = call_handler_path(handle_put_recording_protect, HTTP_METHOD_PUT,
+                             path, "{\"protected\":true}", api_key, 403);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(
+        0, get_recording_metadata_by_id(denied_id, &reloaded));
+    TEST_ASSERT_FALSE(reloaded.protected);
+
+    char batch_body[256];
+    snprintf(batch_body, sizeof(batch_body),
+             "{\"ids\":[%llu,%llu],\"protected\":false}",
+             (unsigned long long)allowed_id,
+             (unsigned long long)denied_id);
+    json = call_handler_path(handle_batch_protect_recordings,
+                             HTTP_METHOD_POST,
+                             "/api/recordings/batch-protect", batch_body,
+                             api_key, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "success_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "fail_count")->valueint);
+    cJSON_Delete(json);
+
+    char ptz_path[MAX_STREAM_NAME + 64];
+    snprintf(ptz_path, sizeof(ptz_path), "/api/streams/%s/ptz/move",
+             denied.name);
+    json = call_handler_path(handle_ptz_move, HTTP_METHOD_POST, ptz_path,
+                             "{\"pan\":1}", api_key, 403);
+    cJSON_Delete(json);
+
+    snprintf(path, sizeof(path), "/api/recordings/%llu",
+             (unsigned long long)denied_id);
+    json = call_handler_path(handle_delete_recording, HTTP_METHOD_DELETE,
+                             path, NULL, api_key, 403);
+    cJSON_Delete(json);
+    TEST_ASSERT_EQUAL_INT(
+        0, get_recording_metadata_by_id(denied_id, &reloaded));
+
+    snprintf(path, sizeof(path), "/api/recordings/%llu",
+             (unsigned long long)allowed_id);
+    json = call_handler_path(handle_delete_recording, HTTP_METHOD_DELETE,
+                             path, NULL, api_key, 200);
+    cJSON_Delete(json);
+    TEST_ASSERT_NOT_EQUAL(
+        0, get_recording_metadata_by_id(allowed_id, &reloaded));
+    g_config.web_auth_enabled = false;
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -737,6 +858,7 @@ int main(void) {
     RUN_TEST(test_policy_management_handlers_and_conflict_guards);
     RUN_TEST(test_policy_role_update_cannot_lock_out_requester);
     RUN_TEST(test_users_api_reports_authorization_mode);
+    RUN_TEST(test_sensitive_handlers_enforce_camera_scoped_policy);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

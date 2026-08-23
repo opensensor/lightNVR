@@ -2,6 +2,7 @@
 
 #include <pthread.h>
 #include <sqlite3.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -56,7 +57,8 @@ static int load_location_ancestors(fleet_camera_t *camera,
     return 0;
 }
 
-int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
+static int load_fleet_cameras(const char *stream_name,
+                              fleet_camera_t **cameras, int *count) {
     if (!cameras || !count) return -1;
     *cameras = NULL;
     *count = 0;
@@ -67,8 +69,13 @@ int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
 
     pthread_mutex_lock(mutex);
     sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(db, "SELECT count(*) FROM streams;", -1,
-                                &stmt, NULL);
+    const char *count_sql = stream_name
+        ? "SELECT count(*) FROM streams WHERE name = ?;"
+        : "SELECT count(*) FROM streams;";
+    int rc = sqlite3_prepare_v2(db, count_sql, -1, &stmt, NULL);
+    if (rc == SQLITE_OK && stream_name) {
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_TRANSIENT);
+    }
     int camera_count = -1;
     if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
         camera_count = sqlite3_column_int(stmt, 0);
@@ -93,7 +100,7 @@ int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
         return -1;
     }
 
-    const char *sql =
+    const char *select_prefix =
         "WITH RECURSIVE location_tree(uuid, parent_uuid, name, path, ancestors) AS ("
         " SELECT uuid, parent_uuid, name, name, uuid FROM camera_locations "
         " WHERE parent_uuid IS NULL "
@@ -114,8 +121,18 @@ int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
         "LEFT JOIN location_tree loc ON loc.uuid = s.location_uuid "
         "LEFT JOIN camera_tag_assignments assignment "
         "       ON assignment.camera_uuid = s.camera_uuid "
-        "LEFT JOIN camera_tags tag ON tag.uuid = assignment.tag_uuid "
+        "LEFT JOIN camera_tags tag ON tag.uuid = assignment.tag_uuid ";
+    const char *select_suffix =
         "ORDER BY s.camera_uuid, tag.label COLLATE NOCASE;";
+    char sql[4096];
+    int written = snprintf(sql, sizeof(sql), "%s%s%s", select_prefix,
+                           stream_name ? "WHERE s.name = ? " : "",
+                           select_suffix);
+    if (written < 0 || (size_t)written >= sizeof(sql)) {
+        free(loaded);
+        pthread_mutex_unlock(mutex);
+        return -1;
+    }
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -124,6 +141,9 @@ int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
         free(loaded);
         pthread_mutex_unlock(mutex);
         return -1;
+    }
+    if (stream_name) {
+        sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_TRANSIENT);
     }
 
     int loaded_count = 0;
@@ -194,6 +214,26 @@ int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
 
     *cameras = loaded;
     *count = loaded_count;
+    return 0;
+}
+
+int db_fleet_camera_load(fleet_camera_t **cameras, int *count) {
+    return load_fleet_cameras(NULL, cameras, count);
+}
+
+int db_fleet_camera_find_by_name(const char *stream_name,
+                                 fleet_camera_t *camera) {
+    if (!stream_name || stream_name[0] == '\0' || !camera) return -1;
+    fleet_camera_t *loaded = NULL;
+    int count = 0;
+    if (load_fleet_cameras(stream_name, &loaded, &count) != 0) return -1;
+    if (count == 0) return 1;
+    if (count != 1) {
+        free(loaded);
+        return -1;
+    }
+    *camera = loaded[0];
+    free(loaded);
     return 0;
 }
 
