@@ -23,9 +23,10 @@ function FilterGroup({ title, children }) {
   );
 }
 
-export function FleetFilters({ state, facets = {}, onChange, t, idPrefix = 'fleet' }) {
+export function FleetFilters({ state, facets = {}, locations: locationCatalog = [], onChange, t, idPrefix = 'fleet' }) {
   const tags = facets.tags || [];
   const locations = facets.locations || [];
+  const locationNames = new Map(locationCatalog.map((location) => [location.uuid, location.path || location.name]));
   const labelHealth = (value) => t(`fleet.health.${value}`);
   const labelRecording = (value) => t(`fleet.recording.${value}`);
 
@@ -82,7 +83,7 @@ export function FleetFilters({ state, facets = {}, onChange, t, idPrefix = 'flee
           <option value="">{t('fleet.filter.allLocations')}</option>
           {locations.map((location) => (
             <option key={location.uuid} value={location.uuid}>
-              {location.label || location.uuid} ({location.count})
+              {location.label || locationNames.get(location.uuid) || location.uuid} ({location.count})
             </option>
           ))}
         </select>

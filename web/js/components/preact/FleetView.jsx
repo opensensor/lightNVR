@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../query-client.js';
 import { useI18n } from '../../i18n.js';
+import { validateSession } from '../../utils/auth-utils.js';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
+import { BulkOrganizeModal } from './fleet/BulkOrganizeModal.jsx';
 import { FleetFilters } from './fleet/FleetFilters.jsx';
 import { FleetTable } from './fleet/FleetTable.jsx';
+import { OrganizationManager } from './fleet/OrganizationManager.jsx';
+import { buildLocationRows } from './fleet/fleetOrganization.js';
 import {
   DEFAULT_FLEET_STATE,
   PAGE_SIZES,
@@ -89,6 +93,10 @@ function Pagination({ state, total, totalPages, onChange, t }) {
 export function FleetView() {
   const { t, locale } = useI18n();
   const [state, setState] = useState(() => readFleetUrlState(typeof window === 'undefined' ? '' : window.location.search));
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [selectedCameras, setSelectedCameras] = useState(() => new Map());
+  const [showOrganizationManager, setShowOrganizationManager] = useState(false);
+  const [showBulkOrganizer, setShowBulkOrganizer] = useState(false);
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const requestBody = useMemo(
     () => buildFleetQueryRequest(state, debouncedSearch),
@@ -108,6 +116,23 @@ export function FleetView() {
     staleTime: 15000,
     refetchInterval: 30000,
     placeholderData: (previousData) => previousData,
+  });
+
+  const {
+    data: locationData,
+    isLoading: locationsLoading,
+    refetch: refetchLocations,
+  } = useQuery(['fleet-locations'], '/api/locations', {}, {
+    enabled: isAdmin,
+    staleTime: 60000,
+  });
+  const {
+    data: tagData,
+    isLoading: tagsLoading,
+    refetch: refetchTags,
+  } = useQuery(['fleet-tags'], '/api/camera-tags', {}, {
+    enabled: isAdmin,
+    staleTime: 60000,
   });
 
   const updateState = useCallback((changes, resetPage = true) => {
@@ -132,6 +157,44 @@ export function FleetView() {
     }));
   }, []);
 
+  const toggleCamera = useCallback((camera, checked) => {
+    setSelectedCameras((current) => {
+      const next = new Map(current);
+      if (checked) next.set(camera.camera_uuid, camera);
+      else next.delete(camera.camera_uuid);
+      return next;
+    });
+  }, []);
+
+  const togglePage = useCallback((pageCameras, checked) => {
+    setSelectedCameras((current) => {
+      const next = new Map(current);
+      pageCameras.forEach((camera) => {
+        if (checked) next.set(camera.camera_uuid, camera);
+        else next.delete(camera.camera_uuid);
+      });
+      return next;
+    });
+  }, []);
+
+  const refreshOrganization = useCallback(async () => {
+    await Promise.all([refetchLocations(), refetchTags(), refetch()]);
+  }, [refetch, refetchLocations, refetchTags]);
+
+  const handleBulkComplete = useCallback(async (result) => {
+    await refreshOrganization();
+    const failedByUuid = new Map(result.failed.map(({ camera }) => [camera.camera_uuid, camera]));
+    setSelectedCameras(failedByUuid);
+  }, [refreshOrganization]);
+
+  useEffect(() => {
+    let mounted = true;
+    validateSession().then((session) => {
+      if (mounted) setIsAdmin(session.valid && (session.role === 'admin' || session.auth_enabled === false));
+    });
+    return () => { mounted = false; };
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const nextUrl = writeFleetUrlState(window.location.href, state);
@@ -145,6 +208,9 @@ export function FleetView() {
 
   const cameras = data?.cameras || [];
   const facets = data?.facets || {};
+  const locations = locationData?.locations || [];
+  const locationRows = useMemo(() => buildLocationRows(locations), [locations]);
+  const tags = tagData?.tags || [];
   const filterCount = countFleetFilters(state);
   const hasFilter = filterCount > 0 || Boolean(state.search.trim());
   const total = data?.total || 0;
@@ -157,10 +223,13 @@ export function FleetView() {
           <h1 id="fleet-title" className="mt-1 text-3xl font-bold">{t('fleet.title')}</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('fleet.description')}</p>
         </div>
-        <button type="button" className="btn-secondary self-start sm:self-auto" onClick={() => refetch()} disabled={isFetching}>
-          <span className={isFetching ? 'inline-block animate-spin' : ''} aria-hidden="true">↻</span>
-          <span className="ml-2">{isFetching ? t('fleet.refreshing') : t('common.refresh')}</span>
-        </button>
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          {isAdmin && <button type="button" className="btn-secondary" onClick={() => setShowOrganizationManager(true)}>{t('fleet.organization.manage')}</button>}
+          <button type="button" className="btn-secondary" onClick={() => refetch()} disabled={isFetching}>
+            <span className={isFetching ? 'inline-block animate-spin' : ''} aria-hidden="true">↻</span>
+            <span className="ml-2">{isFetching ? t('fleet.refreshing') : t('common.refresh')}</span>
+          </button>
+        </div>
       </div>
 
       <section className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={t('fleet.summary')}>
@@ -196,9 +265,17 @@ export function FleetView() {
           <summary className="cursor-pointer text-sm font-semibold">
             {t('fleet.filters')} {filterCount > 0 && <span className="ml-1 rounded-full bg-[hsl(var(--primary))] px-2 py-0.5 text-xs text-[hsl(var(--primary-foreground))]">{filterCount}</span>}
           </summary>
-          <div className="mt-4"><FleetFilters state={state} facets={facets} onChange={updateState} t={t} idPrefix="fleet-mobile" /></div>
+          <div className="mt-4"><FleetFilters state={state} facets={facets} locations={locationRows} onChange={updateState} t={t} idPrefix="fleet-mobile" /></div>
         </details>
       </div>
+
+      {isAdmin && selectedCameras.size > 0 && (
+        <div className="sticky top-2 z-10 mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-[hsl(var(--primary)/0.45)] bg-card px-4 py-3 shadow-lg">
+          <span className="font-semibold">{t('fleet.selectedCount', { count: selectedCameras.size })}</span>
+          <button type="button" className="btn-primary" onClick={() => setShowBulkOrganizer(true)}>{t('fleet.organizeSelected')}</button>
+          <button type="button" className="ml-auto text-sm text-muted-foreground hover:text-foreground" onClick={() => setSelectedCameras(new Map())}>{t('fleet.clearSelection')}</button>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="hidden self-start rounded-lg border border-border bg-card p-4 shadow-sm lg:block" aria-label={t('fleet.filters')}>
@@ -206,7 +283,7 @@ export function FleetView() {
             <h2 className="font-semibold">{t('fleet.filters')}</h2>
             {filterCount > 0 && <span className="rounded-full bg-[hsl(var(--primary))] px-2 py-0.5 text-xs text-[hsl(var(--primary-foreground))]">{filterCount}</span>}
           </div>
-          <FleetFilters state={state} facets={facets} onChange={updateState} t={t} idPrefix="fleet-desktop" />
+          <FleetFilters state={state} facets={facets} locations={locationRows} onChange={updateState} t={t} idPrefix="fleet-desktop" />
         </aside>
 
         <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm" aria-live="polite" aria-busy={isLoading || isFetching}>
@@ -222,12 +299,43 @@ export function FleetView() {
             <EmptyFleet filtered={hasFilter} onClear={clearFilters} t={t} />
           ) : (
             <>
-              <FleetTable cameras={cameras} state={state} onSort={handleSort} locale={locale} t={t} />
+              <FleetTable
+                cameras={cameras}
+                state={state}
+                onSort={handleSort}
+                locale={locale}
+                t={t}
+                selectable={isAdmin}
+                selectedIds={new Set(selectedCameras.keys())}
+                onToggleCamera={toggleCamera}
+                onTogglePage={togglePage}
+              />
               <Pagination state={state} total={total} totalPages={data.total_pages || 0} onChange={updateState} t={t} />
             </>
           )}
         </section>
       </div>
+
+      {showOrganizationManager && (
+        <OrganizationManager
+          locations={locations}
+          tags={tags}
+          loading={locationsLoading || tagsLoading}
+          onRefresh={refreshOrganization}
+          onClose={() => setShowOrganizationManager(false)}
+          t={t}
+        />
+      )}
+      {showBulkOrganizer && (
+        <BulkOrganizeModal
+          cameras={[...selectedCameras.values()]}
+          locations={locations}
+          tags={tags}
+          onComplete={handleBulkComplete}
+          onClose={() => setShowBulkOrganizer(false)}
+          t={t}
+        />
+      )}
     </div>
   );
 }
