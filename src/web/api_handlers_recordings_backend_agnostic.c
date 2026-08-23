@@ -17,6 +17,7 @@
 
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #include "web/batch_delete_progress.h"
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
@@ -30,6 +31,26 @@
 #include "utils/strings.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "storage/storage_manager_streams_cache.h"
+
+static void audit_recording_delete_operation(
+    const http_request_t *req, const user_t *user,
+    const fleet_camera_t *camera, uint64_t recording_id,
+    const char *outcome, const char *reason, const char *file_cleanup) {
+    char recording_uuid[32];
+    snprintf(recording_uuid, sizeof(recording_uuid), "%llu",
+             (unsigned long long)recording_id);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "camera_uuid", camera->camera_uuid);
+        cJSON_AddStringToObject(details, "reason", reason);
+        if (file_cleanup) {
+            cJSON_AddStringToObject(details, "file_cleanup", file_cleanup);
+        }
+    }
+    audit_log_operation(req, user, "recording.delete", "recording",
+                        recording_uuid, "delete_recording", outcome, details);
+    cJSON_Delete(details);
+}
 
 /**
  * @brief Backend-agnostic handler for GET /api/recordings/:id
@@ -221,8 +242,12 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 404, "Recording not found");
         return;
     }
-    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDING_DELETE,
-                                       recording.stream_name)) {
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_stream_action_with_context(
+            req, res, AUTHZ_RECORDING_DELETE, recording.stream_name, &user,
+            &camera, &evaluation)) {
         return;
     }
 
@@ -232,6 +257,9 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
 
     // Delete from database FIRST
     if (delete_recording_metadata(id) != 0) {
+        audit_recording_delete_operation(
+            req, &user, &camera, id, "error", "database_delete_failed",
+            "not_attempted");
         log_error("Failed to delete recording from database: %llu", (unsigned long long)id);
         http_response_set_json_error(res, 500, "Failed to delete recording from database");
         return;
@@ -241,11 +269,14 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
 
     // Then delete the file from disk.
     // Attempt unlink directly instead of stat-then-unlink to avoid TOCTOU (#38).
+    const char *file_cleanup = "deleted";
     if (unlink(file_path_copy) != 0) {
         if (errno == ENOENT) {
+            file_cleanup = "already_missing";
             log_warn("Recording file does not exist: %s (already deleted or never created)", file_path_copy);
             // This is acceptable - DB entry is removed
         } else {
+            file_cleanup = "failed";
             log_warn("Failed to delete recording file: %s (error: %s)",
                     file_path_copy, strerror(errno));
             // File deletion failed but DB entry is already removed
@@ -261,6 +292,9 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
     // Update stream storage cache so System page stats reflect the deletion immediately.
     update_stream_storage_cache_remove_recording(recording.stream_name, recording.size_bytes);
 
+    audit_recording_delete_operation(req, &user, &camera, id, "success",
+                                     "completed", file_cleanup);
+
     // Send success response
     http_response_set_json(res, 200, "{\"success\":true,\"message\":\"Recording deleted successfully\"}");
 
@@ -274,7 +308,50 @@ typedef struct {
     char job_id[64];
     cJSON *json;  // Parsed JSON request (will be freed by thread)
     int preflight_error_count;
+    int64_t owner_user_id;
+    char owner_username[64];
+    char owner_auth_method[USER_AUTH_METHOD_MAX];
+    char owner_api_token_uuid[USER_API_TOKEN_UUID_MAX];
+    char audit_request_id[REQUEST_ID_MAX];
+    char audit_client_ip[64];
 } batch_delete_thread_data_t;
+
+static void audit_batch_delete_job(const batch_delete_thread_data_t *data,
+                                   const char *outcome, const char *reason,
+                                   int total_count, int success_count,
+                                   int error_count) {
+    if (!data) return;
+    user_t user = {0};
+    user.id = data->owner_user_id;
+    safe_strcpy(user.username, data->owner_username, sizeof(user.username), 0);
+    safe_strcpy(user.authentication_method, data->owner_auth_method,
+                sizeof(user.authentication_method), 0);
+    if (data->owner_api_token_uuid[0]) {
+        user.authenticated_via_scoped_token = true;
+        safe_strcpy(user.api_token_uuid, data->owner_api_token_uuid,
+                    sizeof(user.api_token_uuid), 0);
+    }
+    http_request_t request = {0};
+    request.method = HTTP_METHOD_POST;
+    safe_strcpy(request.method_str, "POST", sizeof(request.method_str), 0);
+    safe_strcpy(request.path, "/api/recordings/batch-delete",
+                sizeof(request.path), 0);
+    safe_strcpy(request.uri, request.path, sizeof(request.uri), 0);
+    safe_strcpy(request.client_ip, data->audit_client_ip,
+                sizeof(request.client_ip), 0);
+    safe_strcpy(request.request_id, data->audit_request_id,
+                sizeof(request.request_id), 0);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "reason", reason);
+        cJSON_AddNumberToObject(details, "total_count", total_count);
+        cJSON_AddNumberToObject(details, "success_count", success_count);
+        cJSON_AddNumberToObject(details, "error_count", error_count);
+    }
+    audit_log_operation(&request, &user, "recording.delete", "delete_job",
+                        data->job_id, "batch_delete", outcome, details);
+    cJSON_Delete(details);
+}
 
 /**
  * @brief Thread function to perform batch delete with progress updates
@@ -368,6 +445,10 @@ static void *batch_delete_worker_thread(void *arg) {
 
         // Mark as complete
         batch_delete_progress_complete(job_id, success_count, error_count);
+        audit_batch_delete_job(
+            data, error_count == 0 ? "success" : "failure",
+            error_count == 0 ? "completed" : "partial_failure", array_size,
+            success_count, error_count);
         log_info("Batch delete job completed: %s (succeeded: %d, failed: %d)", job_id, success_count, error_count);
 
     } else if (filter && cJSON_IsObject(filter)) {
@@ -429,6 +510,8 @@ static void *batch_delete_worker_thread(void *arg) {
         if (stream_name[0] && collection_uuid[0]) {
             batch_delete_progress_error(
                 job_id, "Collection and stream filters cannot be combined");
+            audit_batch_delete_job(data, "failure", "invalid_filter", 0, 0,
+                                   0);
             cJSON_Delete(json);
             free(data);
             return NULL;
@@ -474,6 +557,9 @@ static void *batch_delete_worker_thread(void *arg) {
             if (result != CAMERA_COLLECTION_FILTER_OK) {
                 batch_delete_progress_error(job_id,
                                             "Failed to resolve camera collection");
+                audit_batch_delete_job(data, "error",
+                                       "collection_resolution_failed", 0, 0,
+                                       0);
                 cJSON_Delete(json);
                 free(data);
                 return NULL;
@@ -482,6 +568,8 @@ static void *batch_delete_worker_thread(void *arg) {
                 camera_collection_filter_free_stream_names(
                     collection_streams, collection_stream_count);
                 batch_delete_progress_complete(job_id, 0, 0);
+                audit_batch_delete_job(data, "success", "no_matches", 0, 0,
+                                       0);
                 cJSON_Delete(json);
                 free(data);
                 return NULL;
@@ -505,6 +593,7 @@ static void *batch_delete_worker_thread(void *arg) {
             camera_collection_filter_free_stream_names(
                 collection_streams, collection_stream_count);
             batch_delete_progress_complete(job_id, 0, 0);
+            audit_batch_delete_job(data, "success", "no_matches", 0, 0, 0);
             cJSON_Delete(json);
             free(data);
             return NULL;
@@ -523,6 +612,8 @@ static void *batch_delete_worker_thread(void *arg) {
             camera_collection_filter_free_stream_names(
                 collection_streams, collection_stream_count);
             batch_delete_progress_error(job_id, "Failed to allocate memory");
+            audit_batch_delete_job(data, "error", "allocation_failed",
+                                   total_count, 0, 0);
             cJSON_Delete(json);
             free(data);
             return NULL;
@@ -547,6 +638,7 @@ static void *batch_delete_worker_thread(void *arg) {
             camera_collection_filter_free_stream_names(
                 collection_streams, collection_stream_count);
             batch_delete_progress_complete(job_id, 0, 0);
+            audit_batch_delete_job(data, "success", "no_matches", 0, 0, 0);
             cJSON_Delete(json);
             free(data);
             return NULL;
@@ -605,10 +697,15 @@ static void *batch_delete_worker_thread(void *arg) {
 
         free(recordings);
         batch_delete_progress_complete(job_id, success_count, error_count);
+        audit_batch_delete_job(
+            data, error_count == 0 ? "success" : "failure",
+            error_count == 0 ? "completed" : "partial_failure", count,
+            success_count, error_count);
         log_info("Batch delete job completed: %s (succeeded: %d, failed: %d)", job_id, success_count, error_count);
     } else {
         log_error("Invalid request format");
         batch_delete_progress_error(job_id, "Invalid request format");
+        audit_batch_delete_job(data, "failure", "invalid_request", 0, 0, 0);
     }
 
     // Cleanup
@@ -789,9 +886,27 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
         return;
     }
 
+    memset(thread_data, 0, sizeof(*thread_data));
     safe_strcpy(thread_data->job_id, job_id, sizeof(thread_data->job_id), 0);
     thread_data->json = json;  // Transfer ownership to thread
     thread_data->preflight_error_count = preflight_error_count;
+    thread_data->owner_user_id = user.id;
+    safe_strcpy(thread_data->owner_username, user.username,
+                sizeof(thread_data->owner_username), 0);
+    safe_strcpy(thread_data->owner_auth_method, user.authentication_method,
+                sizeof(thread_data->owner_auth_method), 0);
+    if (user.authenticated_via_scoped_token) {
+        safe_strcpy(thread_data->owner_api_token_uuid, user.api_token_uuid,
+                    sizeof(thread_data->owner_api_token_uuid), 0);
+    }
+    safe_strcpy(thread_data->audit_request_id, req->request_id,
+                sizeof(thread_data->audit_request_id), 0);
+    if (httpd_get_effective_client_ip(req, thread_data->audit_client_ip,
+                                      sizeof(thread_data->audit_client_ip)) !=
+        0) {
+        safe_strcpy(thread_data->audit_client_ip, req->client_ip,
+                    sizeof(thread_data->audit_client_ip), 0);
+    }
 
     // Spawn worker thread
     pthread_t thread;
@@ -802,6 +917,8 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     if (pthread_create(&thread, &attr, batch_delete_worker_thread, thread_data) != 0) {
         log_error("Failed to create worker thread");
         batch_delete_progress_error(job_id, "Failed to create worker thread");
+        audit_batch_delete_job(thread_data, "error", "worker_start_failed",
+                               total_count, 0, preflight_error_count);
         cJSON_Delete(json);
         free(thread_data);
         pthread_attr_destroy(&attr);

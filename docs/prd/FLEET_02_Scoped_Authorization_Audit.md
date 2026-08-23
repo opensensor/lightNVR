@@ -1,6 +1,6 @@
 # PRD — Scoped Authorization & Audit
 
-**Status**: In progress — P0/P1 and P2 durable audit/history UI implemented; broader sensitive-operation coverage next
+**Status**: In progress — P0/P1, durable audit/history UI, and initial sensitive-operation outcomes implemented; broader endpoint enforcement continues
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 2 — access-control foundation
@@ -136,7 +136,7 @@ defer useful access-control work.
 | --- | --- | --- |
 | P0 | Action vocabulary, policy evaluator, endpoint inventory | Immediate |
 | P1 | Selector grants, migration, scoped API tokens | After Fleet 01 selector API |
-| P2 | Audit log and policy administration UI | After P0/P1 |
+| P2 | Audit log, policy administration UI, and sensitive-operation outcomes | After P0/P1 |
 | P3 | OIDC/SSO and group mapping | Committed organizational customer only |
 
 ## 7. Acceptance criteria

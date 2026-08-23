@@ -136,6 +136,29 @@ void audit_log_append(const http_request_t *req, const user_t *user,
     free(serialized);
 }
 
+void audit_log_operation(const http_request_t *req, const user_t *user,
+                         const char *action, const char *target_type,
+                         const char *target_uuid, const char *operation,
+                         const char *outcome, const cJSON *context) {
+    if (!req || !action || !operation || !outcome) return;
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type", "operation.outcome");
+        cJSON_AddStringToObject(details, "method", req->method_str);
+        cJSON_AddStringToObject(details, "path", req->path);
+        cJSON_AddStringToObject(details, "operation", operation);
+        if (context) {
+            cJSON *context_copy = cJSON_Duplicate(context, true);
+            if (context_copy) {
+                cJSON_AddItemToObject(details, "context", context_copy);
+            }
+        }
+    }
+    audit_log_append(req, user, action, target_type, target_uuid, outcome,
+                     details);
+    cJSON_Delete(details);
+}
+
 void audit_log_authorization(const http_request_t *req, const user_t *user,
                              authorization_action_t action,
                              const fleet_camera_t *camera,

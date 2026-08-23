@@ -178,6 +178,43 @@ void test_web_helper_redacts_sensitive_detail_fields(void) {
     db_audit_page_free(&page);
 }
 
+void test_operation_helper_adds_standard_envelope_and_redacts_context(void) {
+    http_request_t req;
+    http_request_init(&req);
+    req.method = HTTP_METHOD_POST;
+    safe_strcpy(req.path, "/api/streams/front/ptz/move",
+                sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "POST", sizeof(req.method_str), 0);
+    safe_strcpy(req.client_ip, "198.51.100.10", sizeof(req.client_ip), 0);
+    user_t user = {0};
+    user.id = admin_user_id;
+    safe_strcpy(user.username, "admin", sizeof(user.username), 0);
+    safe_strcpy(user.authentication_method, "session",
+                sizeof(user.authentication_method), 0);
+    cJSON *context = cJSON_CreateObject();
+    cJSON_AddStringToObject(context, "reason", "completed");
+    cJSON_AddStringToObject(context, "onvif_password", "never-store-this");
+    audit_log_operation(&req, &user, "ptz.control", "camera", "camera-2",
+                        "continuous_move", "success", context);
+    cJSON_Delete(context);
+
+    audit_query_t query = {.page = 1, .page_size = 20};
+    safe_strcpy(query.request_id, req.request_id, sizeof(query.request_id), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT(1, page.count);
+    TEST_ASSERT_EQUAL_STRING("ptz.control", page.events[0].action);
+    TEST_ASSERT_EQUAL_STRING("success", page.events[0].outcome);
+    TEST_ASSERT_NOT_NULL(strstr(page.events[0].details_json,
+                                "\"event_type\":\"operation.outcome\""));
+    TEST_ASSERT_NOT_NULL(strstr(page.events[0].details_json,
+                                "\"operation\":\"continuous_move\""));
+    TEST_ASSERT_NOT_NULL(strstr(page.events[0].details_json,
+                                "\"onvif_password\":\"[REDACTED]\""));
+    TEST_ASSERT_NULL(strstr(page.events[0].details_json, "never-store-this"));
+    db_audit_page_free(&page);
+}
+
 void test_audit_http_settings_list_and_csv_export(void) {
     audit_event_input_t input =
         event_input("request-csv", "recordings.export", "success");
@@ -336,6 +373,7 @@ int main(void) {
     RUN_TEST(test_query_paginates_newest_first);
     RUN_TEST(test_retention_prunes_expired_events);
     RUN_TEST(test_web_helper_redacts_sensitive_detail_fields);
+    RUN_TEST(test_operation_helper_adds_standard_envelope_and_redacts_context);
     RUN_TEST(test_audit_http_settings_list_and_csv_export);
     RUN_TEST(test_login_success_and_denial_are_audited_without_credentials);
     RUN_TEST(test_audit_api_denies_and_records_unauthenticated_access);

@@ -23,6 +23,7 @@
 
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
 #include "utils/strings.h"
@@ -146,6 +147,9 @@ typedef struct {
     int64_t     owner_user_id;
     char        owner_username[64];
     char        owner_api_token_uuid[CAMERA_UUID_STRING_SIZE];
+    char        owner_auth_method[USER_AUTH_METHOD_MAX];
+    char        audit_request_id[REQUEST_ID_MAX];
+    char        audit_client_ip[64];
     char        zip_filename[DOWNLOAD_FILENAME_MAX];
     char        tmp_path[MAX_PATH_LENGTH];
     uint64_t    ids[MAX_DL_IDS];
@@ -162,6 +166,57 @@ typedef struct {
 static batch_dl_job_t  s_dl_jobs[MAX_BATCH_DL_JOBS];
 static pthread_mutex_t s_dl_mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool            s_dl_inited = false;
+
+static void audit_batch_archive_job(const batch_dl_job_t *job,
+                                    const char *outcome,
+                                    const char *reason,
+                                    int completed_count) {
+    if (!job) return;
+    user_t user = {0};
+    user.id = job->owner_user_id;
+    safe_strcpy(user.username, job->owner_username, sizeof(user.username), 0);
+    safe_strcpy(user.authentication_method, job->owner_auth_method,
+                sizeof(user.authentication_method), 0);
+    if (job->owner_api_token_uuid[0]) {
+        user.authenticated_via_scoped_token = true;
+        safe_strcpy(user.api_token_uuid, job->owner_api_token_uuid,
+                    sizeof(user.api_token_uuid), 0);
+    }
+    http_request_t request = {0};
+    request.method = HTTP_METHOD_POST;
+    safe_strcpy(request.method_str, "POST", sizeof(request.method_str), 0);
+    safe_strcpy(request.path, "/api/recordings/batch-download",
+                sizeof(request.path), 0);
+    safe_strcpy(request.uri, request.path, sizeof(request.uri), 0);
+    safe_strcpy(request.client_ip, job->audit_client_ip,
+                sizeof(request.client_ip), 0);
+    safe_strcpy(request.request_id, job->audit_request_id,
+                sizeof(request.request_id), 0);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "reason", reason);
+        cJSON_AddNumberToObject(details, "requested_count", job->id_count);
+        cJSON_AddNumberToObject(details, "completed_count", completed_count);
+    }
+    audit_log_operation(&request, &user, "recordings.export", "export_job",
+                        job->job_id, "create_batch_archive", outcome, details);
+    cJSON_Delete(details);
+}
+
+static void audit_batch_archive_transfer(const http_request_t *req,
+                                         const user_t *user,
+                                         const char *job_id, int total,
+                                         const char *outcome,
+                                         const char *reason) {
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "reason", reason);
+        cJSON_AddNumberToObject(details, "recording_count", total);
+    }
+    audit_log_operation(req, user, "recordings.export", "export_job", job_id,
+                        "download_batch_archive", outcome, details);
+    cJSON_Delete(details);
+}
 
 static void dl_jobs_init(void) {
     if (s_dl_inited) return;
@@ -276,14 +331,44 @@ static void *zip_worker(void *arg) {
             s_dl_jobs[slot].updated_at = time(NULL);
         }
         pthread_mutex_unlock(&s_dl_mutex);
+        audit_batch_archive_job(&job, "error", "temp_file_create_failed", 0);
         return NULL;
     }
     FILE *zip = fdopen(fd, "wb");
-    if (!zip) { close(fd); return NULL; }
+    if (!zip) {
+        close(fd);
+        unlink(tmp_template);
+        pthread_mutex_lock(&s_dl_mutex);
+        slot = find_dl_job(job_id);
+        if (slot >= 0) {
+            s_dl_jobs[slot].status = DL_ERROR;
+            safe_strcpy(s_dl_jobs[slot].error,
+                        "Failed to open temp archive", 256, 0);
+            s_dl_jobs[slot].updated_at = time(NULL);
+        }
+        pthread_mutex_unlock(&s_dl_mutex);
+        audit_batch_archive_job(&job, "error", "temp_archive_open_failed", 0);
+        return NULL;
+    }
 
     /* Per-entry info for central directory */
     typedef struct { char name[128]; uint32_t crc; uint32_t size; uint32_t offset; uint16_t dos_date; uint16_t dos_time; } entry_t;
     entry_t *entries = calloc(job.id_count, sizeof(entry_t));
+    if (!entries) {
+        fclose(zip);
+        unlink(tmp_template);
+        pthread_mutex_lock(&s_dl_mutex);
+        slot = find_dl_job(job_id);
+        if (slot >= 0) {
+            s_dl_jobs[slot].status = DL_ERROR;
+            safe_strcpy(s_dl_jobs[slot].error,
+                        "Failed to allocate archive index", 256, 0);
+            s_dl_jobs[slot].updated_at = time(NULL);
+        }
+        pthread_mutex_unlock(&s_dl_mutex);
+        audit_batch_archive_job(&job, "error", "allocation_failed", 0);
+        return NULL;
+    }
     int entry_count = 0;
     uint32_t data_offset = 0;
 
@@ -351,6 +436,10 @@ static void *zip_worker(void *arg) {
         s_dl_jobs[slot].updated_at = time(NULL);
     }
     pthread_mutex_unlock(&s_dl_mutex);
+    audit_batch_archive_job(
+        &job, entry_count == job.id_count ? "success" : "failure",
+        entry_count == job.id_count ? "completed" : "partial_archive",
+        entry_count);
     log_info("zip_worker: completed job %s -> %s (%d entries)", job_id, tmp_template, entry_count);
     return NULL;
 }
@@ -446,9 +535,18 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
     job->owner_user_id = user.id;
     safe_strcpy(job->owner_username, user.username,
                 sizeof(job->owner_username), 0);
+    safe_strcpy(job->owner_auth_method, user.authentication_method,
+                sizeof(job->owner_auth_method), 0);
     if (user.authenticated_via_scoped_token) {
         safe_strcpy(job->owner_api_token_uuid, user.api_token_uuid,
                     sizeof(job->owner_api_token_uuid), 0);
+    }
+    safe_strcpy(job->audit_request_id, req->request_id,
+                sizeof(job->audit_request_id), 0);
+    if (httpd_get_effective_client_ip(req, job->audit_client_ip,
+                                      sizeof(job->audit_client_ip)) != 0) {
+        safe_strcpy(job->audit_client_ip, req->client_ip,
+                    sizeof(job->audit_client_ip), 0);
     }
     httpd_sanitize_attachment_filename(filename_raw, job->zip_filename,
                                        sizeof(job->zip_filename));
@@ -475,6 +573,7 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
     /* Spawn worker thread */
     dl_thread_arg_t *targ = malloc(sizeof(dl_thread_arg_t));
     if (!targ) {
+        audit_batch_archive_job(job, "error", "allocation_failed", 0);
         discard_dl_job(job_id);
         http_response_set_json_error(res, 500, "Out of memory");
         return;
@@ -488,6 +587,7 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
     if (pthread_create(&tid, &attr, zip_worker, targ) != 0) {
         pthread_attr_destroy(&attr);
         free(targ);
+        audit_batch_archive_job(job, "error", "worker_start_failed", 0);
         discard_dl_job(job_id);
         http_response_set_json_error(res, 500, "Failed to start ZIP worker");
         return;
@@ -571,6 +671,7 @@ void handle_batch_download_result(const http_request_t *req, http_response_t *re
     }
     char tmp_path[MAX_PATH_LENGTH];
     char zip_filename[DOWNLOAD_FILENAME_MAX];
+    int job_total = s_dl_jobs[slot].total;
     safe_strcpy(tmp_path,     s_dl_jobs[slot].tmp_path,     sizeof(tmp_path), 0);
     safe_strcpy(zip_filename, s_dl_jobs[slot].zip_filename, sizeof(zip_filename), 0);
     /* Keep the completed slot active while libuv opens the file
@@ -584,6 +685,8 @@ void handle_batch_download_result(const http_request_t *req, http_response_t *re
     snprintf(disp, sizeof(disp), "Content-Disposition: attachment; filename=\"%s\"\r\n", zip_filename);
 
     if (http_serve_file(req, res, tmp_path, "application/zip", disp) != 0) {
+        audit_batch_archive_transfer(req, &user, token, job_total, "error",
+                                     "response_stream_failed");
         log_error("handle_batch_download_result: failed to serve %s", tmp_path);
         http_response_set_json_error(res, 500, "Failed to serve ZIP file");
         /* Safe to unlink here because http_serve_file failed before opening */
@@ -597,5 +700,7 @@ void handle_batch_download_result(const http_request_t *req, http_response_t *re
         pthread_mutex_unlock(&s_dl_mutex);
         return;
     }
+    audit_batch_archive_transfer(req, &user, token, job_total, "success",
+                                 "completed");
     log_info("Serving batch download ZIP: %s -> %s", token, zip_filename);
 }

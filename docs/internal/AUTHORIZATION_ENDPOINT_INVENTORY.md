@@ -33,7 +33,7 @@ must be reachable before a policy can be evaluated.
 | Camera audio playback | `audio.listen` | Transport-specific existing checks |
 | Camera backchannel/talk activation | `audio.talk` | Transport gap: browser WebRTC connects directly to unauthenticated go2rtc; enforce with a tokenized or lightNVR-proxied signaling path before enabling policy-mode talk |
 | PTZ capability/preset reads | `live.view` | Centralized action policy with server-resolved camera scope |
-| PTZ move, stop, home, absolute, relative, and preset writes | `ptz.control` | Centralized action policy with server-resolved camera scope |
+| PTZ move, stop, home, absolute, relative, and preset writes | `ptz.control` | Centralized action policy with server-resolved camera scope; authorization and device-operation outcomes are audited |
 | Imaging/day-night reads | `live.view` | Existing stream access checks |
 | Imaging/day-night writes | `camera.configure` | Existing stream write checks |
 | `POST /api/motion/trigger` | `camera.configure` | Existing non-viewer check |
@@ -65,11 +65,11 @@ facets, or collection membership. A request for one unauthorized camera returns
 | --- | --- | --- |
 | Recording lists/details, timeline segments/manifest/play, thumbnails | `recordings.replay` | Existing viewer access plus stream tags |
 | Recording playback and HLS media | `recordings.replay` | Existing viewer access plus stream tags |
-| Recording download and batch-download lifecycle | `recordings.export` | Centralized action policy; fixed batches are authorized in full and job status/results are bound to the creating user |
+| Recording download and batch-download lifecycle | `recordings.export` | Centralized action policy; fixed batches are authorized in full, job status/results are bound to the creating user, and archive/transfer outcomes are audited |
 | Snapshot creation/download | `snapshot.create` | Existing viewer access plus stream tags |
 | go2rtc frame capture proxy | `snapshot.create` | Existing proxy checks |
-| Protect/unprotect and retention overrides | `evidence.protect` | Centralized action policy; batch members are resolved and evaluated individually |
-| Single/file/batch recording deletion | `recording.delete` | Centralized action policy; fixed batches are filtered member-by-member and open-ended filters require sufficient server-resolved scope |
+| Protect/unprotect and retention overrides | `evidence.protect` | Centralized action policy; batch members are resolved and evaluated individually, with mutation outcomes audited |
+| Single/file/batch recording deletion | `recording.delete` | Centralized action policy; fixed batches are filtered member-by-member, open-ended filters require sufficient server-resolved scope, and completion outcomes are audited |
 | Recording tag reads | `recordings.replay` | Existing viewer access |
 | Recording tag writes | `evidence.protect` | Existing endpoint checks |
 | Recording database/file sync | `storage.configure` | Existing administrative behavior |
@@ -101,12 +101,15 @@ evaluator resolves their current membership server-side; private collections
 are rejected, and referenced collections cannot be made private or deleted.
 Collection membership or selector changes increment the policy version.
 
-The durable audit store currently records every decision made through
+The durable audit store records every decision made through
 `httpd_authorize_action()` / `httpd_authorize_stream_action()`, login outcomes,
 policy and role changes, authorization simulation, scoped-token lifecycle, and
-audit-retention changes. Handler migrations must add a separate success/failure
-event for the completed sensitive operation; an `allowed` decision proves
-authorization, not that downstream work succeeded.
+audit-retention changes. PTZ writes, evidence protection/retention, recording
+deletion, and recording export now add a separate redacted operation-outcome
+event; asynchronous jobs preserve only the minimum principal and correlation
+context needed to record their eventual result. Remaining handler migrations
+must follow the same pattern because an `allowed` decision proves authorization,
+not that downstream work succeeded.
 
 Scoped API tokens are accepted only through `httpd_check_action_access()` and
 must be followed by central action evaluation for every affected resource.
