@@ -32,8 +32,8 @@ must be reachable before a policy can be evaluated.
 | `GET /hls/#/#`, go2rtc HLS/stream proxy reads | `live.view` | Existing authentication/proxy checks |
 | Camera audio playback | `audio.listen` | Transport-specific existing checks |
 | Camera backchannel/talk activation | `audio.talk` | Existing non-viewer checks |
-| PTZ capability/preset reads | `live.view` | Existing stream access checks |
-| PTZ move, stop, home, absolute, relative, and preset writes | `ptz.control` | Existing stream access checks |
+| PTZ capability/preset reads | `live.view` | Centralized action policy with server-resolved camera scope |
+| PTZ move, stop, home, absolute, relative, and preset writes | `ptz.control` | Centralized action policy with server-resolved camera scope |
 | Imaging/day-night reads | `live.view` | Existing stream access checks |
 | Imaging/day-night writes | `camera.configure` | Existing stream write checks |
 | `POST /api/motion/trigger` | `camera.configure` | Existing non-viewer check |
@@ -68,8 +68,8 @@ facets, or collection membership. A request for one unauthorized camera returns
 | Recording download and batch-download lifecycle | `recordings.export` | Existing viewer access plus stream tags |
 | Snapshot creation/download | `snapshot.create` | Existing viewer access plus stream tags |
 | go2rtc frame capture proxy | `snapshot.create` | Existing proxy checks |
-| Protect/unprotect and retention overrides | `evidence.protect` | Inconsistent legacy checks; high-priority enforcement gap |
-| Single/file/batch recording deletion | `recording.delete` | Existing admin/user check; batch scope must be revalidated server-side |
+| Protect/unprotect and retention overrides | `evidence.protect` | Centralized action policy; batch members are resolved and evaluated individually |
+| Single/file/batch recording deletion | `recording.delete` | Centralized action policy; fixed batches are filtered member-by-member and open-ended filters require sufficient server-resolved scope |
 | Recording tag reads | `recordings.replay` | Existing viewer access |
 | Recording tag writes | `evidence.protect` | Existing endpoint checks |
 | Recording database/file sync | `storage.configure` | Existing administrative behavior |

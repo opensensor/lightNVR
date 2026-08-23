@@ -133,6 +133,26 @@ int httpd_authorize_action(const http_request_t *req, http_response_t *res,
                            authorization_evaluation_t *evaluation);
 
 /**
+ * Resolve a stream to its immutable fleet camera and authorize a camera-scoped
+ * action. Missing streams return 404, query failures return 500, and policy
+ * denials return 403. This avoids trusting a client-supplied selector or UUID.
+ */
+int httpd_authorize_stream_action(const http_request_t *req,
+                                  http_response_t *res,
+                                  authorization_action_t action,
+                                  const char *stream_name);
+
+/**
+ * Evaluate an already-authenticated user against a server-resolved stream.
+ * Returns 0 with an allow/deny evaluation, 1 if the stream does not exist, and
+ * -1 on a database or policy evaluation error. Useful for batch operations.
+ */
+int httpd_evaluate_stream_action(const user_t *user,
+                                 authorization_action_t action,
+                                 const char *stream_name,
+                                 authorization_evaluation_t *evaluation);
+
+/**
  * @brief Check if demo mode is enabled
  * @return 1 if demo mode is enabled, 0 otherwise
  */

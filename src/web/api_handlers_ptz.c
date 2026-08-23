@@ -94,6 +94,13 @@ static int extract_ptz_stream_name(const http_request_t *req, char *stream_name,
     return 0;
 }
 
+static int authorize_ptz_stream(const http_request_t *req,
+                                http_response_t *res,
+                                const char *stream_name,
+                                authorization_action_t action) {
+    return httpd_authorize_stream_action(req, res, action, stream_name);
+}
+
 void handle_ptz_move(const http_request_t *req, http_response_t *res) {
     char stream_name[MAX_STREAM_NAME];
     if (extract_ptz_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
@@ -110,6 +117,9 @@ void handle_ptz_move(const http_request_t *req, http_response_t *res) {
         return;
     } else if (rc == -2) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
+        return;
+    }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
     
@@ -177,6 +187,9 @@ void handle_ptz_stop(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
+        return;
+    }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
@@ -219,6 +232,9 @@ void handle_ptz_absolute(const http_request_t *req, http_response_t *res) {
         return;
     } else if (rc == -2) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
+        return;
+    }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
@@ -299,6 +315,9 @@ void handle_ptz_relative(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
+        return;
+    }
 
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
@@ -377,6 +396,9 @@ void handle_ptz_home(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
+        return;
+    }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
@@ -421,6 +443,9 @@ void handle_ptz_set_home(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
+        return;
+    }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
@@ -463,6 +488,9 @@ void handle_ptz_get_presets(const http_request_t *req, http_response_t *res) {
         return;
     } else if (rc == -2) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
+        return;
+    }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_LIVE_VIEW)) {
         return;
     }
 
@@ -536,6 +564,9 @@ void handle_ptz_goto_preset(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
         return;
     }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
+        return;
+    }
 
     char ptz_url[512];
     if (build_ptz_url(&config, ptz_url, sizeof(ptz_url)) != 0) {
@@ -578,6 +609,9 @@ void handle_ptz_set_preset(const http_request_t *req, http_response_t *res) {
         return;
     } else if (rc == -2) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
+        return;
+    }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_PTZ_CONTROL)) {
         return;
     }
 
@@ -640,6 +674,9 @@ void handle_ptz_capabilities(const http_request_t *req, http_response_t *res) {
         return;
     } else if (rc == -2) {
         http_response_set_json_error(res, 400, "PTZ not enabled for this stream");
+        return;
+    }
+    if (!authorize_ptz_stream(req, res, stream_name, AUTHZ_LIVE_VIEW)) {
         return;
     }
 
