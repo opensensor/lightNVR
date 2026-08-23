@@ -622,6 +622,40 @@ static bool stream_needs_reregistration(const char *stream_name) {
 }
 
 /**
+ * @brief Recover one unhealthy stream without disrupting healthy streams
+ *
+ * Normal streams are registered through go2rtc's runtime API, so deleting and
+ * re-adding just that stream is safe. Source overrides are generated into
+ * go2rtc.yaml and cannot be reloaded through the runtime API. Restarting the
+ * shared go2rtc process for an unchanged, unhealthy override would disconnect
+ * every healthy stream, so leave the YAML registration in place and let the
+ * caller reconnect this stream's consumers instead.
+ *
+ * Actual source-override configuration changes still use the explicit process
+ * restart path in the stream update handler.
+ */
+static bool recover_stream_scoped(const stream_config_t *config) {
+    if (!config || config->name[0] == '\0') {
+        return false;
+    }
+
+    if (config->go2rtc_source_override[0] == '\0') {
+        return go2rtc_integration_reload_stream(config->name);
+    }
+
+    if (!go2rtc_stream_is_ready()) {
+        log_warn("Cannot recover YAML-backed stream %s while go2rtc is unavailable",
+                 config->name);
+        return false;
+    }
+
+    log_warn("Stream %s uses a go2rtc source override; preserving the shared "
+             "go2rtc process and reconnecting only this stream's consumers",
+             config->name);
+    return true;
+}
+
+/**
  * @brief Check stream consensus - if all/most streams are down, it's likely go2rtc
  *
  * Two signal sources are used per stream so that go2rtc-managed streams
@@ -945,9 +979,9 @@ static void *unified_health_monitor_thread(void *arg) {
             if (stream_needs_reregistration(config.name)) {
                 log_info("Stream %s needs re-registration (state-based), attempting to fix", config.name);
 
-                if (go2rtc_integration_reload_stream(config.name)) {
-                    log_info("Successfully re-registered stream %s", config.name);
-                    reset_stuck_tracker(config.name);  // Reset stuck tracking after reload
+                if (recover_stream_scoped(&config)) {
+                    log_info("Completed stream-scoped recovery for %s", config.name);
+                    reset_stuck_tracker(config.name);  // Reset tracking after recovery
 
                     // Update reconnect state
                     stream_state_manager_t *state = get_stream_state_by_name(config.name);
@@ -960,7 +994,7 @@ static void *unified_health_monitor_thread(void *arg) {
                     // discovering the stale RTSP connection through av_read_frame errors.
                     signal_mp4_recording_reconnect(config.name);
                 } else {
-                    log_error("Failed to re-register stream %s", config.name);
+                    log_error("Failed stream-scoped recovery for %s", config.name);
                 }
                 continue;  // Skip stuck check for this stream, we just reloaded it
             }
@@ -969,16 +1003,17 @@ static void *unified_health_monitor_thread(void *arg) {
             // This catches cases where go2rtc thinks the stream is fine but no data is flowing
             // (e.g., video doorbells that stop sending frames without disconnecting)
             if (check_stream_data_flow(config.name)) {
-                log_warn("Stream %s detected as STUCK (no data flow), attempting reload", config.name);
+                log_warn("Stream %s detected as STUCK (no data flow), attempting scoped recovery",
+                         config.name);
 
-                if (go2rtc_integration_reload_stream(config.name)) {
-                    log_info("Successfully reloaded stuck stream %s", config.name);
-                    reset_stuck_tracker(config.name);  // Reset tracking after reload
+                if (recover_stream_scoped(&config)) {
+                    log_info("Completed stream-scoped recovery for stuck stream %s", config.name);
+                    reset_stuck_tracker(config.name);  // Reset tracking after recovery
 
                     // Signal the recording thread to reconnect cleanly after the reload.
                     signal_mp4_recording_reconnect(config.name);
                 } else {
-                    log_error("Failed to reload stuck stream %s", config.name);
+                    log_error("Failed stream-scoped recovery for stuck stream %s", config.name);
                 }
             }
         }
