@@ -107,15 +107,16 @@ static void create_grant(int64_t user_id, const char *role_uuid,
     TEST_ASSERT_EQUAL_UINT(36, strlen(grant_uuid));
 }
 
-static cJSON *call_handler(
+static cJSON *call_handler_path(
     void (*handler)(const http_request_t *, http_response_t *),
-    http_method_t method, const char *body, const char *api_key,
-    int expected_status) {
+    http_method_t method, const char *path, const char *body,
+    const char *api_key, int expected_status) {
     http_request_t req;
     http_response_t res;
     http_request_init(&req);
     http_response_init(&res);
     req.method = method;
+    if (path) safe_strcpy(req.path, path, sizeof(req.path), 0);
     safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
     if (body) {
         req.body = (void *)body;
@@ -136,11 +137,21 @@ static cJSON *call_handler(
     return json;
 }
 
+static cJSON *call_handler(
+    void (*handler)(const http_request_t *, http_response_t *),
+    http_method_t method, const char *body, const char *api_key,
+    int expected_status) {
+    return call_handler_path(handler, method, NULL, body, api_key,
+                             expected_status);
+}
+
 void setUp(void) {
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
     sqlite3_exec(db, "DELETE FROM authz_grants;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM authz_roles WHERE is_builtin=0;", NULL, NULL,
+                 NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM camera_tags;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM users WHERE username != 'admin';",
@@ -376,6 +387,304 @@ void test_action_catalog_and_simulation_handlers(void) {
     cJSON_Delete(json);
 }
 
+void test_role_and_policy_database_mutations_are_atomic(void) {
+    int64_t version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    authorization_role_t role;
+    memset(&role, 0, sizeof(role));
+    safe_strcpy(role.name, "Evidence reviewer", sizeof(role.name), 0);
+    safe_strcpy(role.description, "Reviews without export",
+                sizeof(role.description), 0);
+    role.action_mask = (UINT64_C(1) << AUTHZ_LIVE_VIEW) |
+                       (UINT64_C(1) << AUTHZ_RECORDINGS_REPLAY);
+    int64_t next_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&role, version, &next_version));
+    TEST_ASSERT_EQUAL_INT64(version + 1, next_version);
+    TEST_ASSERT_EQUAL_UINT(36, strlen(role.uuid));
+    TEST_ASSERT_EQUAL_INT(5, db_authorization_role_count());
+
+    authorization_role_t duplicate = role;
+    duplicate.uuid[0] = '\0';
+    int64_t ignored_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_CONFLICT,
+        db_authorization_role_create(&duplicate, next_version,
+                                     &ignored_version));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_get_policy_version(&ignored_version));
+    TEST_ASSERT_EQUAL_INT64(next_version, ignored_version);
+
+    authorization_role_t loaded;
+    TEST_ASSERT_EQUAL_INT(DB_AUTHORIZATION_OK,
+                          db_authorization_role_get(role.uuid, &loaded));
+    TEST_ASSERT_EQUAL_STRING(role.name, loaded.name);
+    TEST_ASSERT_EQUAL_UINT64(role.action_mask, loaded.action_mask);
+    safe_strcpy(role.name, "Evidence auditor", sizeof(role.name), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_STALE,
+        db_authorization_role_update(&role, version, &version));
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_update(&role, next_version, &version));
+    TEST_ASSERT_EQUAL_INT64(next_version + 1, version);
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("atomicpolicy", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    authorization_grant_input_t grant;
+    memset(&grant, 0, sizeof(grant));
+    safe_strcpy(grant.role_uuid, role.uuid, sizeof(grant.role_uuid), 0);
+    safe_strcpy(grant.scope_type, "all", sizeof(grant.scope_type), 0);
+    int64_t grants_version = 0;
+    int64_t read_version = 0;
+    authorization_grant_input_t invalid_grant = grant;
+    safe_strcpy(invalid_grant.scope_type, "selector",
+                sizeof(invalid_grant.scope_type), 0);
+    safe_strcpy(invalid_grant.selector_json, "{\"invalid\":true}",
+                sizeof(invalid_grant.selector_json), 0);
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_INVALID,
+        db_authorization_replace_user_policy(user_id, "policy",
+                                             &invalid_grant, 1, version,
+                                             &grants_version));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_get_policy_version(&read_version));
+    TEST_ASSERT_EQUAL_INT64(version, read_version);
+    authorization_grant_input_t duplicate_grants[2] = {grant, grant};
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_INVALID,
+        db_authorization_replace_user_policy(user_id, "policy",
+                                             duplicate_grants, 2, version,
+                                             &grants_version));
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_replace_user_policy(user_id, "policy", &grant, 1,
+                                             version, &grants_version));
+    TEST_ASSERT_EQUAL_INT64(version + 1, grants_version);
+
+    char mode[USER_AUTHORIZATION_MODE_MAX];
+    authorization_grant_t *grants = NULL;
+    int grant_count = 0;
+    read_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_get_user_policy(user_id, mode, &grants,
+                                         &grant_count, &read_version));
+    TEST_ASSERT_EQUAL_STRING("policy", mode);
+    TEST_ASSERT_EQUAL_INT(1, grant_count);
+    TEST_ASSERT_EQUAL_STRING(role.uuid, grants[0].role_uuid);
+    TEST_ASSERT_EQUAL_STRING("all", grants[0].scope_type);
+    TEST_ASSERT_EQUAL_INT64(grants_version, read_version);
+    free(grants);
+
+    ignored_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_STALE,
+        db_authorization_replace_user_policy(user_id, "legacy", NULL, 0,
+                                             version, &ignored_version));
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_IN_USE,
+        db_authorization_role_delete(role.uuid, grants_version,
+                                     &ignored_version));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&read_version));
+    TEST_ASSERT_EQUAL_INT64(grants_version, read_version);
+
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_replace_user_policy(user_id, "legacy", NULL, 0,
+                                             grants_version, &version));
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_delete(role.uuid, version, &next_version));
+    TEST_ASSERT_EQUAL_INT64(version + 1, next_version);
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_IMMUTABLE,
+        db_authorization_role_delete(ADMIN_ROLE_UUID, next_version,
+                                     &ignored_version));
+    TEST_ASSERT_EQUAL_INT(4, db_authorization_role_count());
+}
+
+void test_policy_management_handlers_and_conflict_guards(void) {
+    int64_t version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    cJSON *json = call_handler_path(
+        handle_get_authorization_roles, HTTP_METHOD_GET,
+        "/api/authorization/roles", NULL, NULL, 200);
+    TEST_ASSERT_EQUAL_INT(
+        4, cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
+    TEST_ASSERT_EQUAL_INT64(
+        version,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            json, "policy_version")->valuedouble);
+    cJSON_Delete(json);
+
+    char body[1024];
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,"
+             "\"name\":\"Live desk\",\"description\":\"Live only\","
+             "\"actions\":[\"live.view\"]}",
+             (long long)version);
+    json = call_handler_path(
+        handle_post_authorization_role, HTTP_METHOD_POST,
+        "/api/authorization/roles", body, NULL, 201);
+    cJSON *created = cJSON_GetObjectItemCaseSensitive(json, "role");
+    char role_uuid[CAMERA_UUID_STRING_SIZE];
+    safe_strcpy(
+        role_uuid,
+        cJSON_GetObjectItemCaseSensitive(created, "uuid")->valuestring,
+        sizeof(role_uuid), 0);
+    int64_t role_version = (int64_t)cJSON_GetObjectItemCaseSensitive(
+        json, "policy_version")->valuedouble;
+    TEST_ASSERT_EQUAL_INT64(version + 1, role_version);
+    cJSON_Delete(json);
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("managedpolicy", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    char user_path[128];
+    snprintf(user_path, sizeof(user_path), "/api/authorization/users/%lld",
+             (long long)user_id);
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":\"%s\","
+             "\"scope\":{\"type\":\"all\"}}]}",
+             (long long)role_version, role_uuid);
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             user_path, body, NULL, 200);
+    TEST_ASSERT_EQUAL_STRING(
+        "policy", cJSON_GetObjectItemCaseSensitive(json, "mode")->valuestring);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "grant_count")->valueint);
+    int64_t policy_version = (int64_t)cJSON_GetObjectItemCaseSensitive(
+        json, "policy_version")->valuedouble;
+    cJSON_Delete(json);
+
+    json = call_handler_path(handle_get_user_authorization, HTTP_METHOD_GET,
+                             user_path, NULL, NULL, 200);
+    cJSON *scope = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(
+            cJSON_GetObjectItemCaseSensitive(json, "grants"), 0), "scope");
+    TEST_ASSERT_EQUAL_STRING(
+        "all", cJSON_GetObjectItemCaseSensitive(scope, "type")->valuestring);
+    cJSON_Delete(json);
+
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             user_path, body, NULL, 409);
+    cJSON_Delete(json);
+
+    char role_path[160];
+    snprintf(role_path, sizeof(role_path), "/api/authorization/roles/%s",
+             role_uuid);
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld}",
+             (long long)policy_version);
+    json = call_handler_path(handle_delete_authorization_role,
+                             HTTP_METHOD_DELETE, role_path, body, NULL, 409);
+    cJSON_Delete(json);
+
+    char builtin_path[160];
+    snprintf(builtin_path, sizeof(builtin_path),
+             "/api/authorization/roles/%s", ADMIN_ROLE_UUID);
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,\"name\":\"Changed\","
+             "\"actions\":[\"users.manage\"]}",
+             (long long)policy_version);
+    json = call_handler_path(handle_put_authorization_role, HTTP_METHOD_PUT,
+                             builtin_path, body, NULL, 409);
+    cJSON_Delete(json);
+
+    user_t admin;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_username("admin", &admin));
+    char self_path[128];
+    snprintf(self_path, sizeof(self_path), "/api/authorization/users/%lld",
+             (long long)admin.id);
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":\"%s\","
+             "\"scope\":{\"type\":\"all\"}}]}",
+             (long long)policy_version, OPERATOR_ROLE_UUID);
+    char admin_api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(admin.id, admin_api_key,
+                                    sizeof(admin_api_key)));
+    g_config.web_auth_enabled = true;
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             self_path, body, admin_api_key, 409);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+
+    int64_t viewer_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("policyreader", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &viewer_id));
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(viewer_id, api_key, sizeof(api_key)));
+    g_config.web_auth_enabled = true;
+    json = call_handler_path(handle_get_authorization_roles, HTTP_METHOD_GET,
+                             "/api/authorization/roles", NULL, api_key, 403);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
+void test_policy_role_update_cannot_lock_out_requester(void) {
+    int64_t version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    authorization_role_t role;
+    memset(&role, 0, sizeof(role));
+    safe_strcpy(role.name, "Policy manager", sizeof(role.name), 0);
+    role.action_mask = UINT64_C(1) << AUTHZ_USERS_MANAGE;
+    int64_t role_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&role, version, &role_version));
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("custommanager", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    authorization_grant_input_t grant;
+    memset(&grant, 0, sizeof(grant));
+    safe_strcpy(grant.role_uuid, role.uuid, sizeof(grant.role_uuid), 0);
+    safe_strcpy(grant.scope_type, "all", sizeof(grant.scope_type), 0);
+    int64_t policy_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_replace_user_policy(user_id, "policy", &grant, 1,
+                                             role_version, &policy_version));
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+    char path[160];
+    snprintf(path, sizeof(path), "/api/authorization/roles/%s", role.uuid);
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,"
+             "\"name\":\"Policy manager\","
+             "\"actions\":[\"live.view\"]}",
+             (long long)policy_version);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(
+        handle_put_authorization_role, HTTP_METHOD_PUT, path, body, api_key,
+        409);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+
+    authorization_role_t unchanged;
+    TEST_ASSERT_EQUAL_INT(DB_AUTHORIZATION_OK,
+                          db_authorization_role_get(role.uuid, &unchanged));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_C(1) << AUTHZ_USERS_MANAGE,
+                             unchanged.action_mask);
+    int64_t unchanged_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_get_policy_version(&unchanged_version));
+    TEST_ASSERT_EQUAL_INT64(policy_version, unchanged_version);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -395,6 +704,9 @@ int main(void) {
     RUN_TEST(test_all_scope_admin_grant_allows_global_action_and_bumps_version);
     RUN_TEST(test_invalid_stored_selector_fails_closed);
     RUN_TEST(test_action_catalog_and_simulation_handlers);
+    RUN_TEST(test_role_and_policy_database_mutations_are_atomic);
+    RUN_TEST(test_policy_management_handlers_and_conflict_guards);
+    RUN_TEST(test_policy_role_update_cannot_lock_out_requester);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

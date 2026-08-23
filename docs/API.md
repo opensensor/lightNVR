@@ -106,6 +106,74 @@ The response reports `allowed`, the compatibility role or matching policy grant,
 the evaluated policy version, and a concise explanation. Global actions such as
 `users.manage` omit `camera_uuid`.
 
+#### Manage authorization roles
+
+```
+GET    /api/authorization/roles
+POST   /api/authorization/roles
+PUT    /api/authorization/roles/{role_uuid}
+DELETE /api/authorization/roles/{role_uuid}
+```
+
+Administrator-only. The list response includes the current `policy_version` and
+each role's action keys. Built-in roles are readable but immutable. Create,
+update, and delete requests must include the last observed version as
+`expected_policy_version`; stale writes return `409` so concurrent policy edits
+cannot silently overwrite one another.
+
+Create and update bodies use a complete role representation:
+
+```json
+{
+  "expected_policy_version": 12,
+  "name": "Evidence reviewer",
+  "description": "Can replay evidence without exporting it",
+  "actions": ["live.view", "recordings.replay"]
+}
+```
+
+A delete body contains only `expected_policy_version`. A custom role cannot be
+deleted while a grant references it.
+
+#### Manage a user's authorization policy
+
+```
+GET /api/authorization/users/{user_id}
+PUT /api/authorization/users/{user_id}
+```
+
+Administrator-only. `GET` returns the user's mode, complete grants, and a policy
+version. `PUT` atomically replaces the complete grant set and mode, and requires
+that version as `expected_policy_version`. An `all` scope omits its selector; a
+selector scope embeds a Fleet 01 selector:
+
+```json
+{
+  "expected_policy_version": 13,
+  "mode": "policy",
+  "grants": [
+    {
+      "role_uuid": "00000000-0000-4000-8000-000000000003",
+      "scope": {
+        "type": "selector",
+        "selector": {
+          "version": 1,
+          "expression": {
+            "op": "tag_any",
+            "uuids": ["c401035a-a208-4af9-9bf5-e49da3bd4200"]
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+The server validates every selector and role before changing anything. It also
+rejects an authenticated administrator's attempt to remove their own effective
+`users.manage` grant. Saving grants in `legacy` mode is supported so an
+administrator can prepare policy before activating default-deny evaluation.
+
 ## API Endpoints
 
 ### Streams
