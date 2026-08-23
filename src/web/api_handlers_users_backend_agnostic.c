@@ -45,6 +45,9 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
     cJSON_AddBoolToObject(json, "is_active", user->is_active);
     cJSON_AddBoolToObject(json, "password_change_locked", user->password_change_locked);
     cJSON_AddBoolToObject(json, "totp_enabled", user->totp_enabled);
+    cJSON_AddStringToObject(
+        json, "authorization_mode",
+        user->authorization_mode[0] ? user->authorization_mode : "legacy");
 
     // Tag-based RBAC: include allowed_tags (null when unrestricted, string when restricted)
     if (user->has_tag_restriction) {
@@ -70,15 +73,17 @@ static int prepare_user_select_stmt(sqlite3 *db, const char *suffix, sqlite3_stm
     bool has_totp = cached_column_exists("users", "totp_enabled");
     bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
     bool has_allowed_login_cidrs = cached_column_exists("users", "allowed_login_cidrs");
+    bool has_authorization_mode = cached_column_exists("users", "authorization_mode");
 
     char sql[768];
     int written = snprintf(sql, sizeof(sql),
                            "SELECT id, username, email, role, api_key, created_at, "
-                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s "
+                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s, %s "
                            "FROM users %s;",
                            has_totp ? "totp_enabled" : "0",
                            has_allowed_tags ? "allowed_tags" : "NULL",
                            has_allowed_login_cidrs ? "allowed_login_cidrs" : "NULL",
+                           has_authorization_mode ? "authorization_mode" : "'legacy'",
                            suffix);
     if (written < 0 || (size_t)written >= sizeof(sql)) {
         return SQLITE_TOOBIG;
@@ -123,6 +128,12 @@ static void populate_user_from_stmt(sqlite3_stmt *stmt, user_t *user) {
         safe_strcpy(user->allowed_login_cidrs, allowed_login_cidrs, sizeof(user->allowed_login_cidrs), 0);
         user->has_login_cidr_restriction = true;
     }
+
+    const char *authorization_mode =
+        (const char *)sqlite3_column_text(stmt, 13);
+    safe_strcpy(user->authorization_mode,
+                authorization_mode ? authorization_mode : "legacy",
+                sizeof(user->authorization_mode), 0);
 }
 
 /**
@@ -1069,4 +1080,3 @@ void handle_users_clear_login_lockout(const http_request_t *req, http_response_t
     log_info("Cleared login lockout for user: %s (ID: %lld, existed: %d)",
              user.username, (long long)user_id, cleared ? 1 : 0);
 }
-

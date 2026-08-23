@@ -24,6 +24,7 @@
 #include "database/db_streams.h"
 #include "utils/strings.h"
 #include "web/api_handlers_authorization.h"
+#include "web/api_handlers_users.h"
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_authorization_test.db"
@@ -685,6 +686,34 @@ void test_policy_role_update_cannot_lock_out_requester(void) {
     TEST_ASSERT_EQUAL_INT64(policy_version, unchanged_version);
 }
 
+void test_users_api_reports_authorization_mode(void) {
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("modebadge", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    cJSON *json = call_handler_path(handle_users_list, HTTP_METHOD_GET,
+                                    "/api/auth/users", NULL, NULL, 200);
+    cJSON *users = cJSON_GetObjectItemCaseSensitive(json, "users");
+    cJSON *matched = NULL;
+    cJSON *user = NULL;
+    cJSON_ArrayForEach(user, users) {
+        cJSON *username = cJSON_GetObjectItemCaseSensitive(user, "username");
+        if (cJSON_IsString(username) &&
+            strcmp(username->valuestring, "modebadge") == 0) {
+            matched = user;
+            break;
+        }
+    }
+    TEST_ASSERT_NOT_NULL(matched);
+    TEST_ASSERT_EQUAL_STRING(
+        "policy",
+        cJSON_GetObjectItemCaseSensitive(
+            matched, "authorization_mode")->valuestring);
+    cJSON_Delete(json);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -707,6 +736,7 @@ int main(void) {
     RUN_TEST(test_role_and_policy_database_mutations_are_atomic);
     RUN_TEST(test_policy_management_handlers_and_conflict_guards);
     RUN_TEST(test_policy_role_update_cannot_lock_out_requester);
+    RUN_TEST(test_users_api_reports_authorization_mode);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
