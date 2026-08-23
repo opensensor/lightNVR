@@ -4,6 +4,7 @@ import { useI18n } from '../../i18n.js';
 import { validateSession } from '../../utils/auth-utils.js';
 import { LoadingIndicator } from './LoadingIndicator.jsx';
 import { BulkOrganizeModal } from './fleet/BulkOrganizeModal.jsx';
+import { CollectionManager } from './fleet/CollectionManager.jsx';
 import { FleetFilters } from './fleet/FleetFilters.jsx';
 import { FleetTable } from './fleet/FleetTable.jsx';
 import { OrganizationManager } from './fleet/OrganizationManager.jsx';
@@ -97,6 +98,7 @@ export function FleetView() {
   const [selectedCameras, setSelectedCameras] = useState(() => new Map());
   const [showOrganizationManager, setShowOrganizationManager] = useState(false);
   const [showBulkOrganizer, setShowBulkOrganizer] = useState(false);
+  const [showCollectionManager, setShowCollectionManager] = useState(false);
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const requestBody = useMemo(
     () => buildFleetQueryRequest(state, debouncedSearch),
@@ -133,6 +135,13 @@ export function FleetView() {
   } = useQuery(['fleet-tags'], '/api/camera-tags', {}, {
     enabled: isAdmin,
     staleTime: 60000,
+  });
+  const {
+    data: collectionData,
+    isLoading: collectionsLoading,
+    refetch: refetchCollections,
+  } = useQuery(['camera-collections'], '/api/camera-collections', {}, {
+    staleTime: 30000,
   });
 
   const updateState = useCallback((changes, resetPage = true) => {
@@ -178,8 +187,8 @@ export function FleetView() {
   }, []);
 
   const refreshOrganization = useCallback(async () => {
-    await Promise.all([refetchLocations(), refetchTags(), refetch()]);
-  }, [refetch, refetchLocations, refetchTags]);
+    await Promise.all([refetchLocations(), refetchTags(), refetchCollections(), refetch()]);
+  }, [refetch, refetchCollections, refetchLocations, refetchTags]);
 
   const handleBulkComplete = useCallback(async (result) => {
     await refreshOrganization();
@@ -211,6 +220,7 @@ export function FleetView() {
   const locations = locationData?.locations || [];
   const locationRows = useMemo(() => buildLocationRows(locations), [locations]);
   const tags = tagData?.tags || [];
+  const collections = collectionData?.collections || [];
   const filterCount = countFleetFilters(state);
   const hasFilter = filterCount > 0 || Boolean(state.search.trim());
   const total = data?.total || 0;
@@ -224,6 +234,7 @@ export function FleetView() {
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('fleet.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <button type="button" className="btn-secondary" onClick={() => setShowCollectionManager(true)}>{t('collections.manage')}</button>
           {isAdmin && <button type="button" className="btn-secondary" onClick={() => setShowOrganizationManager(true)}>{t('fleet.organization.manage')}</button>}
           <button type="button" className="btn-secondary" onClick={() => refetch()} disabled={isFetching}>
             <span className={isFetching ? 'inline-block animate-spin' : ''} aria-hidden="true">↻</span>
@@ -333,6 +344,18 @@ export function FleetView() {
           tags={tags}
           onComplete={handleBulkComplete}
           onClose={() => setShowBulkOrganizer(false)}
+          t={t}
+        />
+      )}
+      {showCollectionManager && (
+        <CollectionManager
+          collections={collections}
+          loading={collectionsLoading}
+          isAdmin={isAdmin}
+          locations={locations}
+          tags={tags}
+          onRefresh={refreshOrganization}
+          onClose={() => setShowCollectionManager(false)}
           t={t}
         />
       )}
