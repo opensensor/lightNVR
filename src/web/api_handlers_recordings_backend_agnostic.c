@@ -189,33 +189,11 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
 }
 
 /**
- * @brief Check if the user has permission to delete recordings
- */
-static int check_delete_permission(const http_request_t *req) {
-    user_t user;
-
-    // Get the authenticated user
-    if (!httpd_get_authenticated_user(req, &user)) {
-        return 0; // Not authenticated
-    }
-
-    // Only admin and regular users can delete recordings, viewers cannot
-    return (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER);
-}
-
-/**
  * @brief Backend-agnostic handler for DELETE /api/recordings/:id
  *
  * Deletes a single recording from the database and filesystem.
  */
 void handle_delete_recording(const http_request_t *req, http_response_t *res) {
-    // Check authentication and permissions
-    if (!check_delete_permission(req)) {
-        log_error("Permission denied for DELETE /api/recordings/:id");
-        http_response_set_json_error(res, 403, "Permission denied: Only admin and regular users can delete recordings");
-        return;
-    }
-
     // Extract recording ID from URL
     char id_str[32];
     if (http_request_extract_path_param(req, "/api/recordings/", id_str, sizeof(id_str)) != 0) {
@@ -241,6 +219,10 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
     if (get_recording_metadata_by_id(id, &recording) != 0) {
         log_error("Recording not found: %llu", (unsigned long long)id);
         http_response_set_json_error(res, 404, "Recording not found");
+        return;
+    }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDING_DELETE,
+                                       recording.stream_name)) {
         return;
     }
 
@@ -291,6 +273,7 @@ void handle_delete_recording(const http_request_t *req, http_response_t *res) {
 typedef struct {
     char job_id[64];
     cJSON *json;  // Parsed JSON request (will be freed by thread)
+    int preflight_error_count;
 } batch_delete_thread_data_t;
 
 /**
@@ -322,7 +305,7 @@ static void *batch_delete_worker_thread(void *arg) {
 
         // Process each ID
         int success_count = 0;
-        int error_count = 0;
+        int error_count = data->preflight_error_count;
 
         for (int i = 0; i < array_size; i++) {
             cJSON *id_item = cJSON_GetArrayItem(ids_array, i);
@@ -635,6 +618,98 @@ static void *batch_delete_worker_thread(void *arg) {
     return NULL;
 }
 
+static int authorize_batch_delete_ids(const user_t *user, cJSON *json,
+                                      int *failure_count,
+                                      http_response_t *res) {
+    cJSON *ids = cJSON_GetObjectItemCaseSensitive(json, "ids");
+    cJSON *authorized = cJSON_CreateArray();
+    if (!authorized) {
+        http_response_set_json_error(res, 500, "Failed to authorize batch");
+        return 0;
+    }
+
+    *failure_count = 0;
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, ids) {
+        if (!cJSON_IsNumber(item) || item->valuedouble <= 0) {
+            (*failure_count)++;
+            continue;
+        }
+        uint64_t id = (uint64_t)item->valuedouble;
+        recording_metadata_t recording;
+        if (get_recording_metadata_by_id(id, &recording) != 0) {
+            (*failure_count)++;
+            continue;
+        }
+        authorization_evaluation_t evaluation;
+        int result = httpd_evaluate_stream_action(
+            user, AUTHZ_RECORDING_DELETE, recording.stream_name, &evaluation);
+        if (result < 0) {
+            cJSON_Delete(authorized);
+            http_response_set_json_error(
+                res, 500, "Authorization policy evaluation failed");
+            return 0;
+        }
+        if (result > 0 || evaluation.decision != AUTHZ_DECISION_ALLOW) {
+            (*failure_count)++;
+            continue;
+        }
+        cJSON_AddItemToArray(authorized, cJSON_CreateNumber((double)id));
+    }
+
+    cJSON_DeleteItemFromObjectCaseSensitive(json, "ids");
+    cJSON_AddItemToObject(json, "ids", authorized);
+    return 1;
+}
+
+static int authorize_batch_delete_filter(const user_t *user,
+                                         const cJSON *filter,
+                                         http_response_t *res) {
+    cJSON *stream = cJSON_GetObjectItemCaseSensitive(filter, "stream_name");
+    if (!stream) stream = cJSON_GetObjectItemCaseSensitive(filter, "stream");
+    if (cJSON_IsString(stream) && stream->valuestring[0] != '\0') {
+        char names[256];
+        if (strlen(stream->valuestring) >= sizeof(names)) {
+            http_response_set_json_error(res, 400, "Stream filter is too long");
+            return 0;
+        }
+        safe_strcpy(names, stream->valuestring, sizeof(names), 0);
+        char *saveptr = NULL;
+        for (char *name = strtok_r(names, ",", &saveptr); name;
+             name = strtok_r(NULL, ",", &saveptr)) {
+            name = trim_ascii_whitespace(name);
+            authorization_evaluation_t evaluation;
+            int result = httpd_evaluate_stream_action(
+                user, AUTHZ_RECORDING_DELETE, name, &evaluation);
+            if (result < 0) {
+                http_response_set_json_error(
+                    res, 500, "Authorization policy evaluation failed");
+                return 0;
+            }
+            if (result > 0 || evaluation.decision != AUTHZ_DECISION_ALLOW) {
+                http_response_set_json_error(res, 403, "Forbidden");
+                return 0;
+            }
+        }
+        return 1;
+    }
+
+    // Open-ended filters can expand after this request. Only an all-fleet
+    // grant (or an unrestricted compatible legacy role) may launch them.
+    authorization_evaluation_t evaluation;
+    if (authorization_evaluate(user, AUTHZ_RECORDING_DELETE, NULL,
+                               &evaluation) != 0) {
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return 0;
+    }
+    if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
+        http_response_set_json_error(res, 403, "Forbidden");
+        return 0;
+    }
+    return 1;
+}
+
 /**
  * @brief Backend-agnostic handler for POST /api/recordings/batch-delete
  *
@@ -643,10 +718,9 @@ static void *batch_delete_worker_thread(void *arg) {
 void handle_batch_delete_recordings(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/recordings/batch-delete request");
 
-    // Check authentication and permissions
-    if (!check_delete_permission(req)) {
-        log_error("Permission denied for batch delete");
-        http_response_set_json_error(res, 403, "Permission denied: Only admin and regular users can delete recordings");
+    user_t user;
+    if (!httpd_check_viewer_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }
 
@@ -665,6 +739,7 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
     // Determine total count for job creation
     int total_count = 0;
 
+    int preflight_error_count = 0;
     if (ids_array && cJSON_IsArray(ids_array)) {
         // Delete by IDs
         total_count = cJSON_GetArraySize(ids_array);
@@ -674,9 +749,18 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
             http_response_set_json_error(res, 400, "Empty 'ids' array");
             return;
         }
+        if (!authorize_batch_delete_ids(&user, json,
+                                        &preflight_error_count, res)) {
+            cJSON_Delete(json);
+            return;
+        }
     } else if (filter && cJSON_IsObject(filter)) {
         // Delete by filter - total count will be determined by worker thread
         total_count = 0;
+        if (!authorize_batch_delete_filter(&user, filter, res)) {
+            cJSON_Delete(json);
+            return;
+        }
     } else {
         log_error("Request must contain either 'ids' array or 'filter' object");
         cJSON_Delete(json);
@@ -707,6 +791,7 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
 
     safe_strcpy(thread_data->job_id, job_id, sizeof(thread_data->job_id), 0);
     thread_data->json = json;  // Transfer ownership to thread
+    thread_data->preflight_error_count = preflight_error_count;
 
     // Spawn worker thread
     pthread_t thread;

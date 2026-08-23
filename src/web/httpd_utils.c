@@ -16,6 +16,7 @@
 #include "core/config.h"
 #include "utils/strings.h"
 #include "database/db_auth.h"
+#include "database/db_fleet_query.h"
 
 cJSON* httpd_parse_json_body(const http_request_t *req) {
     if (!req || !req->body || req->body_len == 0) {
@@ -496,6 +497,51 @@ int httpd_authorize_action(const http_request_t *req, http_response_t *res,
     if (evaluation->decision != AUTHZ_DECISION_ALLOW) {
         log_warn("Access denied: User '%s' action %d: %s", user->username,
                  (int)action, evaluation->explanation);
+        http_response_set_json_error(res, 403, "Forbidden");
+        return 0;
+    }
+    return 1;
+}
+
+int httpd_evaluate_stream_action(const user_t *user,
+                                 authorization_action_t action,
+                                 const char *stream_name,
+                                 authorization_evaluation_t *evaluation) {
+    if (!user || !stream_name || !evaluation) return -1;
+    fleet_camera_t camera;
+    memset(&camera, 0, sizeof(camera));
+    int result = db_fleet_camera_find_by_name(stream_name, &camera);
+    if (result != 0) return result;
+    return authorization_evaluate(user, action, &camera, evaluation);
+}
+
+int httpd_authorize_stream_action(const http_request_t *req,
+                                  http_response_t *res,
+                                  authorization_action_t action,
+                                  const char *stream_name) {
+    user_t user;
+    if (!httpd_check_viewer_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return 0;
+    }
+    authorization_evaluation_t evaluation;
+    int result = httpd_evaluate_stream_action(&user, action, stream_name,
+                                               &evaluation);
+    if (result > 0) {
+        http_response_set_json_error(res, 404, "Camera not found");
+        return 0;
+    }
+    if (result < 0) {
+        log_error("Failed to evaluate authorization for stream '%s'",
+                  stream_name);
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return 0;
+    }
+    if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
+        log_warn("Access denied: User '%s' action %d on stream '%s': %s",
+                 user.username, (int)action, stream_name,
+                 evaluation.explanation);
         http_response_set_json_error(res, 403, "Forbidden");
         return 0;
     }
