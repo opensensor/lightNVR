@@ -28,8 +28,13 @@ export function createTokenDraft() {
   };
 }
 
+// Offer an action only when this client believes a scoped token can use it AND
+// the server agrees the action is enforced. Intersecting the two means the list
+// can only shrink toward reality: a client that is ahead of the daemon never
+// offers a token permission that would be silently ignored.
 export function selectableTokenActions(actions = []) {
-  return actions.filter((action) => ENFORCED_SCOPED_TOKEN_ACTIONS.has(action.key));
+  return actions.filter((action) =>
+    ENFORCED_SCOPED_TOKEN_ACTIONS.has(action.key) && action?.enforced !== false);
 }
 
 export function validateTokenDraft(

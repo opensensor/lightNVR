@@ -28,7 +28,22 @@ static cJSON *action_to_json(const authorization_action_metadata_t *metadata) {
     cJSON_AddStringToObject(item, "description", metadata->description);
     cJSON_AddBoolToObject(item, "camera_scoped", metadata->camera_scoped);
     cJSON_AddBoolToObject(item, "destructive", metadata->destructive);
+    /* Whether a request handler actually consults this action yet. Clients
+     * must surface unenforced actions so an operator is not shown a boundary
+     * that no endpoint applies. */
+    cJSON_AddBoolToObject(item, "enforced", metadata->enforced);
+    cJSON_AddNumberToObject(item, "mask_bit", (double)metadata->action);
     return item;
+}
+
+/*
+ * The database mutation has already committed by the time these handlers log,
+ * so only response assembly can still fail. Report the outcome the client
+ * actually received instead of recording "success" alongside a 500.
+ */
+static const char *response_outcome(const http_response_t *res) {
+    return res && res->status_code >= 200 && res->status_code < 300
+        ? "success" : "error";
 }
 
 static void set_json_response(http_response_t *res, cJSON *json) {
@@ -500,6 +515,46 @@ void handle_get_authorization_roles(const http_request_t *req,
     set_json_response(res, root);
 }
 
+/*
+ * A policy manager may only hand out authority it holds itself.
+ *
+ * Without this, users.manage is silently equivalent to system.admin: the
+ * holder can author a role containing any action and grant it to themselves.
+ * Comparing against the requester's own effective mask keeps a delegated
+ * "user administrator" role bounded by what it was actually given.
+ *
+ * Returns true when the request may proceed and writes the response otherwise.
+ */
+static bool requester_may_delegate(const user_t *requester,
+                                   uint64_t requested_mask,
+                                   http_response_t *res) {
+    uint64_t held_mask = 0;
+    if (authorization_effective_action_mask(requester, &held_mask) != 0) {
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return false;
+    }
+    uint64_t escalated = requested_mask & ~held_mask;
+    if (escalated == 0) return true;
+
+    char detail[256];
+    int written = snprintf(detail, sizeof(detail),
+                           "You cannot grant actions you do not hold:");
+    int count = 0;
+    const authorization_action_metadata_t *catalog =
+        authorization_action_catalog(&count);
+    for (int i = 0; i < count && written > 0 && written < (int)sizeof(detail);
+         i++) {
+        if ((escalated & authorization_action_bit(catalog[i].action)) == 0) {
+            continue;
+        }
+        written += snprintf(detail + written, sizeof(detail) - (size_t)written,
+                            " %s", catalog[i].key);
+    }
+    http_response_set_json_error(res, 403, detail);
+    return false;
+}
+
 static void set_role_mutation_response(http_response_t *res, int status,
                                        const char *uuid,
                                        int64_t policy_version) {
@@ -570,6 +625,7 @@ void handle_post_authorization_role(const http_request_t *req,
         return;
     }
     cJSON_Delete(body);
+    if (!requester_may_delegate(&requester, role.action_mask, res)) return;
     int64_t new_version = 0;
     db_authorization_result_t result = db_authorization_role_create(
         &role, expected_version, &new_version);
@@ -587,7 +643,7 @@ void handle_post_authorization_role(const http_request_t *req,
                                 (double)new_version);
     }
     audit_log_append(req, &requester, "authorization.role.create", "role",
-                     role.uuid, "success", details);
+                     role.uuid, response_outcome(res), details);
     cJSON_Delete(details);
 }
 
@@ -605,6 +661,9 @@ void handle_put_authorization_role(const http_request_t *req,
         return;
     }
     cJSON_Delete(body);
+    /* Lock-out is the more specific failure, so report it before the broader
+     * delegation check: an edit that strips the requester's own management
+     * access should say so rather than read as an escalation attempt. */
     int retains_management =
         retains_management_after_role_update(&requester, &role);
     if (retains_management <= 0) {
@@ -615,6 +674,7 @@ void handle_put_authorization_role(const http_request_t *req,
                 : "Failed to verify policy-management access");
         return;
     }
+    if (!requester_may_delegate(&requester, role.action_mask, res)) return;
     int64_t new_version = 0;
     db_authorization_result_t result = db_authorization_role_update(
         &role, expected_version, &new_version);
@@ -632,7 +692,7 @@ void handle_put_authorization_role(const http_request_t *req,
                                 (double)new_version);
     }
     audit_log_append(req, &requester, "authorization.role.update", "role",
-                     role.uuid, "success", details);
+                     role.uuid, response_outcome(res), details);
     cJSON_Delete(details);
 }
 
@@ -673,7 +733,7 @@ void handle_delete_authorization_role(const http_request_t *req,
                                 (double)new_version);
     }
     audit_log_append(req, &requester, "authorization.role.delete", "role",
-                     uuid, "success", details);
+                     uuid, response_outcome(res), details);
     cJSON_Delete(details);
 }
 
@@ -880,6 +940,29 @@ static bool grants_allow_self_management(
     return false;
 }
 
+/*
+ * Reject a policy update that would hand the target user a role carrying more
+ * authority than the requester holds. Roles are reusable, so constraining role
+ * authorship alone is not enough: granting a pre-existing Administrator role
+ * would escalate just as effectively.
+ */
+static bool grants_within_requester_authority(
+    const user_t *requester, const authorization_grant_input_t *grants,
+    int grant_count, http_response_t *res) {
+    uint64_t requested_mask = 0;
+    for (int i = 0; i < grant_count; i++) {
+        authorization_role_t role;
+        if (db_authorization_role_get(grants[i].role_uuid, &role) !=
+            DB_AUTHORIZATION_OK) {
+            http_response_set_json_error(res, 400, "Unknown role in grant");
+            return false;
+        }
+        requested_mask |= role.action_mask;
+    }
+    return requested_mask == 0 ||
+        requester_may_delegate(requester, requested_mask, res);
+}
+
 void handle_put_user_authorization(const http_request_t *req,
                                    http_response_t *res) {
     user_t requester;
@@ -910,6 +993,12 @@ void handle_put_user_authorization(const http_request_t *req,
     authorization_grant_input_t *grants = NULL;
     int grant_count = 0;
     if (!parse_grants(body, &grants, &grant_count, res)) {
+        cJSON_Delete(body);
+        return;
+    }
+    if (!grants_within_requester_authority(&requester, grants, grant_count,
+                                           res)) {
+        free(grants);
         cJSON_Delete(body);
         return;
     }
@@ -950,7 +1039,7 @@ void handle_put_user_authorization(const http_request_t *req,
     snprintf(target_user_id, sizeof(target_user_id), "%lld",
              (long long)user_id);
     audit_log_append(req, &requester, "authorization.policy.update", "user",
-                     target_user_id, "success", details);
+                     target_user_id, response_outcome(res), details);
     cJSON_Delete(details);
 }
 
@@ -1266,6 +1355,18 @@ void handle_post_user_api_token(const http_request_t *req,
         cJSON_Delete(body);
         return;
     }
+    /*
+     * A token minted for someone else returns its secret to the requester, so
+     * it must not carry authority the requester lacks. A self-service token is
+     * already bounded because evaluation intersects it with the owner's own
+     * decision.
+     */
+    if (requester.id != user_id &&
+        !requester_may_delegate(&requester, action_mask, res)) {
+        free(selector_json);
+        cJSON_Delete(body);
+        return;
+    }
     api_token_create_t input = {
         .user_id = user_id,
         .created_by_user_id = requester.id > 0 ? requester.id : user_id,
@@ -1329,7 +1430,7 @@ void handle_post_user_api_token(const http_request_t *req,
                                 token.scope_type);
     }
     audit_log_append(req, &requester, "api_token.create", "api_token",
-                     token.uuid, "success", audit_details);
+                     token.uuid, response_outcome(res), audit_details);
     cJSON_Delete(audit_details);
     secure_zero_memory(secret, sizeof(secret));
     free(response_body);

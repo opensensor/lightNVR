@@ -230,6 +230,16 @@ int httpd_get_api_key(const http_request_t *req, char *api_key, size_t api_key_s
     return copy_trimmed_value(api_key, api_key_size, auth + 7, 0) ? 0 : -1;
 }
 
+bool httpd_peer_is_trusted_proxy(const http_request_t *req) {
+    if (!req || req->client_ip[0] == '\0') return false;
+    if (g_config.trusted_proxy_cidrs[0] == '\0') return false;
+    char peer_ip[INET6_ADDRSTRLEN] = {0};
+    if (!normalize_ip_literal(req->client_ip, peer_ip, sizeof(peer_ip))) {
+        return false;
+    }
+    return ip_matches_cidr_list(g_config.trusted_proxy_cidrs, peer_ip);
+}
+
 int httpd_get_effective_client_ip(const http_request_t *req, char *client_ip, size_t client_ip_size) {
     if (!req || !client_ip || client_ip_size == 0) {
         return -1;
@@ -484,15 +494,9 @@ static int check_viewer_access(const http_request_t *req, user_t *user,
         return 1;
     }
 
-    // If authentication is disabled entirely, grant viewer access
-    if (!g_config.web_auth_enabled) {
-        // Create a pseudo-user for unauthenticated access
-        memset(user, 0, sizeof(user_t));
-        safe_strcpy(user->username, "anonymous", sizeof(user->username), 0);
-        user->role = USER_ROLE_VIEWER;
-        user->is_active = true;
-        return 1;
-    }
+    // Authentication being disabled is already handled inside
+    // get_authenticated_user(), which returns a dummy admin, so there is no
+    // unauthenticated fall-through for that case to handle here.
 
     // If demo mode is enabled, grant viewer access to unauthenticated users
     if (g_config.demo_mode) {

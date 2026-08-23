@@ -801,8 +801,10 @@ int init_database(const char *db_path) {
     }
 
     /* Normalize legacy comma-separated camera tags after the schema exists.
-     * This is idempotent and also repairs an interrupted compatibility sync. */
-    if (db_camera_tags_backfill_legacy() != 0) {
+     * This rewrites every assignment, so it runs once rather than on every
+     * start; both tag writers keep streams.tags and the normalized tables in
+     * sync from then on. */
+    if (db_camera_tags_backfill_legacy_once() != 0) {
         log_error("Failed to backfill normalized camera tags");
         sqlite3_close_v2(db);
         db = NULL;

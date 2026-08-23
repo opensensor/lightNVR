@@ -1057,3 +1057,67 @@ db_authorization_result_t db_authorization_replace_user_policy(
     pthread_mutex_unlock(mutex);
     return committed ? DB_AUTHORIZATION_OK : DB_AUTHORIZATION_ERROR;
 }
+
+/*
+ * Reconcile the compiled action catalog with the authz_actions table.
+ *
+ * authz_actions is the referential target for authz_role_actions and records
+ * the bit position each action occupies inside a persisted API-token
+ * action_mask. Those positions are frozen once a token has been issued, so a
+ * mismatch between the table and the running binary means either the catalog
+ * was reordered or a migration did not apply. Both silently re-map existing
+ * token permissions, so refuse to start rather than serve a policy the
+ * operator did not author.
+ */
+int db_authorization_verify_action_catalog(void) {
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+
+    int catalog_count = 0;
+    (void)authorization_action_catalog(&catalog_count);
+
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        db, "SELECT action_key,bit_index FROM authz_actions;", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to read the authorization action catalog: %s",
+                  sqlite3_errmsg(db));
+        if (stmt) sqlite3_finalize(stmt);
+        pthread_mutex_unlock(mutex);
+        return -1;
+    }
+
+    int matched = 0;
+    int mismatches = 0;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const char *key = (const char *)sqlite3_column_text(stmt, 0);
+        int64_t bit_index = sqlite3_column_int64(stmt, 1);
+        authorization_action_t action = authorization_action_from_key(key);
+        if (action == AUTHZ_ACTION_INVALID) {
+            log_error("Action '%s' exists in authz_actions but not in this "
+                      "build's catalog", key ? key : "(null)");
+            mismatches++;
+            continue;
+        }
+        if (bit_index != (int64_t)action) {
+            log_error("Action '%s' is stored at mask bit %lld but this build "
+                      "uses bit %d; API token permissions would be re-mapped",
+                      key, (long long)bit_index, (int)action);
+            mismatches++;
+            continue;
+        }
+        matched++;
+    }
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(mutex);
+
+    if (rc != SQLITE_DONE) return -1;
+    if (matched != catalog_count) {
+        log_error("Authorization action catalog has %d of %d expected actions",
+                  matched, catalog_count);
+        return -1;
+    }
+    return mismatches == 0 ? 0 : -1;
+}

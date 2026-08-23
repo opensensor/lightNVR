@@ -220,6 +220,71 @@ static int validate_migration_file_security(const char *filepath) {
     return 0;
 }
 
+/*
+ * Return a pointer to the terminating semicolon of the statement starting at
+ * `start` (or to the trailing NUL when there is none).
+ *
+ * A CREATE TRIGGER body is a sequence of statements wrapped in BEGIN..END, so
+ * splitting on the first semicolon would cut it in half: the allowlist would
+ * reject the dangling END and sqlite3_exec would report "incomplete input".
+ * Treat the whole trigger, including nested CASE..END expressions, as one
+ * statement. Single-quoted literals are skipped everywhere.
+ */
+static bool is_word_char(char c) {
+    return isalnum((unsigned char)c) || c == '_';
+}
+
+/* Match `word` at `cursor` on identifier boundaries, so a column such as
+ * "MYBEGIN" or "ENDPOINT" is not mistaken for a block keyword. `start` marks
+ * the beginning of the buffer so the preceding character can be inspected. */
+static bool word_matches(const char *start, const char *cursor,
+                         const char *word, size_t length) {
+    if (cursor > start && is_word_char(cursor[-1])) return false;
+    if (strncasecmp(cursor, word, length) != 0) return false;
+    return !is_word_char(cursor[length]);
+}
+
+static const char *statement_end(const char *start) {
+    const char *cursor = start;
+    while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+    bool trigger = word_matches(start, cursor, "CREATE", 6);
+    if (trigger) {
+        const char *after = cursor + 6;
+        while (*after && isspace((unsigned char)*after)) after++;
+        trigger = word_matches(start, after, "TRIGGER", 7);
+    }
+
+    int in_string = 0;
+    int depth = 0;          /* BEGIN/CASE blocks still open */
+    bool body_started = false;
+    for (cursor = start; *cursor; cursor++) {
+        if (*cursor == '\'') {
+            in_string = !in_string;
+            continue;
+        }
+        if (in_string) continue;
+        if (!trigger) {
+            if (*cursor == ';') return cursor;
+            continue;
+        }
+        if (word_matches(start, cursor, "BEGIN", 5) ||
+            word_matches(start, cursor, "CASE", 4)) {
+            depth++;
+            body_started = true;
+            continue;
+        }
+        if (word_matches(start, cursor, "END", 3)) {
+            if (depth > 0) depth--;
+            if (body_started && depth == 0) {
+                cursor += 3;
+                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+                return cursor;
+            }
+        }
+    }
+    return cursor;
+}
+
 /**
  * Validate that SQL from a migration file only contains allowlisted statement
  * types (DDL + safe DML).  This acts as a sanitization boundary between the
@@ -295,15 +360,10 @@ static int validate_migration_sql(const char *sql) {
             return -1;
         }
 
-        /* Advance past this statement (to the next semicolon),
-         * respecting single-quoted string literals.              */
-        int in_str = 0;
-        while (*p) {
-            if (*p == '\'' && !in_str) { in_str = 1; p++; continue; }
-            if (*p == '\'' &&  in_str) { in_str = 0; p++; continue; }
-            if (*p == ';'  && !in_str) { p++; break; }
-            p++;
-        }
+        /* Advance past this statement, including a trigger's BEGIN..END
+         * body, which carries semicolons of its own. */
+        p = statement_end(p);
+        if (*p == ';') p++;
     }
 
     return 0;
@@ -717,19 +777,9 @@ static int execute_sql(sqlite3 *db, const char *sql) {
             continue;
         }
 
-        // Find end of statement (semicolon)
-        end = start;
-        int in_string = 0;
-        while (*end) {
-            if (*end == '\'' && !in_string) {
-                in_string = 1;
-            } else if (*end == '\'' && in_string) {
-                in_string = 0;
-            } else if (*end == ';' && !in_string) {
-                break;
-            }
-            end++;
-        }
+        // Find end of statement. A trigger's BEGIN..END body carries its own
+        // semicolons, so it must be handed to SQLite whole.
+        end = statement_end(start);
 
         if (end == start) {
             start = end + 1;

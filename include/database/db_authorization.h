@@ -97,6 +97,13 @@ int db_authorization_create_user_grant(
     const char *selector_json, const char *collection_uuid,
     char grant_uuid[CAMERA_UUID_STRING_SIZE]);
 
+/*
+ * Fail startup when authz_actions disagrees with the compiled action catalog.
+ * The table records the persisted action-mask bit layout, so drift would
+ * silently re-map the permissions of every already-issued API token.
+ */
+int db_authorization_verify_action_catalog(void);
+
 /* Switch a user only after valid grants have been created and previewed. */
 int db_authorization_set_user_mode(int64_t user_id, const char *mode);
 

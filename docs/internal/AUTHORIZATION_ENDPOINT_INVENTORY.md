@@ -44,6 +44,26 @@ List handlers must filter unauthorized cameras before calculating totals,
 facets, or collection membership. A request for one unauthorized camera returns
 `403` without disclosing camera metadata.
 
+`authorization_filter_visible_cameras()` implements that rule for every handler
+that loads the fleet inventory: `POST /api/fleet/cameras/query`,
+`POST /api/fleet/selectors/preview`, the collection reads and previews, and the
+collection-to-stream-name resolution used by recording filters. It evaluates
+`live.view` per camera through one shared evaluation context, so the whole page
+costs a single grant load. Legacy-mode principals keep their allowed-tags
+behaviour because the evaluator applies that restriction for them.
+
+Rows still marked "Existing" below have not moved to the centralized evaluator.
+Their actions are reported with `"enforced": false` by
+`GET /api/authorization/actions` so an operator authoring a policy can see which
+boundaries the daemon does not apply yet.
+
+Scoped API tokens authenticate only on routes that call
+`httpd_check_action_access()`. A route still using `httpd_check_viewer_access()`
+rejects a scoped token with `401` rather than ignoring its scope, which is the
+fail-closed behaviour but also means a token carrying an unenforced action
+cannot be used at all. The token UI therefore offers only actions that are both
+enforced and reachable with a scoped token.
+
 ## Camera administration
 
 | Routes | Required action | Current enforcement |

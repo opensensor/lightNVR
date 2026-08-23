@@ -102,15 +102,14 @@ static bool load_authorized_fleet(const user_t *user,
                                   fleet_camera_t **cameras, int *count) {
     if (db_fleet_camera_load(cameras, count) != 0) return false;
     fleet_camera_enrich_runtime_health(*cameras, *count);
-    if (!user->has_tag_restriction) return true;
-    int authorized = 0;
-    for (int i = 0; i < *count; i++) {
-        if (db_auth_stream_allowed_for_user(user, (*cameras)[i].legacy_tags)) {
-            if (authorized != i) (*cameras)[authorized] = (*cameras)[i];
-            authorized++;
-        }
+    /* Collection previews and membership lists are camera disclosures, so
+     * they use the same live.view decision as every other read path. */
+    if (authorization_filter_visible_cameras(user, *cameras, count) != 0) {
+        free(*cameras);
+        *cameras = NULL;
+        *count = 0;
+        return false;
     }
-    *count = authorized;
     return true;
 }
 

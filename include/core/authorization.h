@@ -39,6 +39,14 @@ typedef struct {
     const char *description;
     bool camera_scoped;
     bool destructive;
+    /*
+     * True once at least one request handler routes this action through the
+     * centralized evaluator. Unenforced actions are still grantable so that a
+     * policy can be authored ahead of the enforcement work, but they must be
+     * reported as unenforced so operators are not told a boundary exists
+     * before it does. See docs/internal/AUTHORIZATION_ENDPOINT_INVENTORY.md.
+     */
+    bool enforced;
 } authorization_action_metadata_t;
 
 typedef enum {
@@ -70,6 +78,54 @@ const authorization_action_metadata_t *authorization_action_metadata(
 authorization_action_t authorization_action_from_key(const char *key);
 const char *authorization_decision_source_name(
     authorization_decision_source_t source);
+
+/*
+ * Bit position of an action inside a persisted action mask. The mask is stored
+ * in authz_api_tokens.action_mask, so the position must never change for an
+ * action that has shipped. db_authorization_verify_action_catalog() checks the
+ * running catalog against the authz_actions table at startup.
+ */
+uint64_t authorization_action_bit(authorization_action_t action);
+
+/*
+ * Union of every action reachable by a principal, ignoring resource scope.
+ * Used to stop a policy manager from minting authority it does not itself
+ * hold. Returns 0 on success and -1 on evaluation failure.
+ */
+int authorization_effective_action_mask(const user_t *user, uint64_t *mask);
+
+/*
+ * Reusable evaluation state for callers that authorize many resources in one
+ * request. The context memoizes the grants loaded for a user/action, the
+ * selectors parsed from those grants, the collection filters they reference,
+ * and the scoped API token, none of which change while a request is running.
+ * A context is owned by one thread and must not be shared between requests.
+ */
+typedef struct authorization_context authorization_context_t;
+
+authorization_context_t *authorization_context_create(void);
+void authorization_context_free(authorization_context_t *context);
+
+int authorization_evaluate_in_context(authorization_context_t *context,
+                                      const user_t *user,
+                                      authorization_action_t action,
+                                      const fleet_camera_t *camera,
+                                      authorization_evaluation_t *evaluation);
+
+/*
+ * Reduce a loaded fleet inventory in place to the cameras a user may see.
+ *
+ * Applies the same centralized live.view decision the per-camera endpoints
+ * use, so list handlers cannot disclose cameras outside a policy grant while
+ * computing totals, facets, or collection membership. Legacy-mode principals
+ * keep their allowed-tags behaviour because the evaluator applies it for them.
+ * Uses one shared context, so the cost is one grant load for the whole page.
+ *
+ * Returns 0 with *count reduced, or -1 on evaluation failure. Callers must
+ * fail closed rather than serving an unfiltered list.
+ */
+int authorization_filter_visible_cameras(const user_t *user,
+                                         fleet_camera_t *cameras, int *count);
 
 /*
  * Evaluate one user/action/resource tuple. A NULL camera is valid for global

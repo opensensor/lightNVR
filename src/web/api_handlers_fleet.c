@@ -546,6 +546,18 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         return;
     }
     fleet_camera_enrich_runtime_health(cameras, camera_count);
+    /* Drop unauthorized cameras before anything derived from the inventory is
+     * computed, so totals, facets, and pagination cannot disclose cameras
+     * outside the caller's scope. */
+    if (authorization_filter_visible_cameras(&user, cameras, &camera_count) != 0) {
+        free(cameras);
+        camera_collection_filter_free(&collection_filter);
+        fleet_selector_free(selector);
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 500,
+                                     "Authorization policy evaluation failed");
+        return;
+    }
     fleet_camera_t **matches = camera_count > 0 ?
         calloc((size_t)camera_count, sizeof(*matches)) : NULL;
     if (camera_count > 0 && !matches) {
@@ -559,10 +571,6 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
 
     int match_count = 0;
     for (int i = 0; i < camera_count; i++) {
-        if (user.has_tag_restriction &&
-            !db_auth_stream_allowed_for_user(&user, cameras[i].legacy_tags)) {
-            continue;
-        }
         if (options.camera_uuid[0] &&
             strcmp(options.camera_uuid, cameras[i].camera_uuid) != 0) {
             continue;

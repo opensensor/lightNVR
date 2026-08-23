@@ -1254,6 +1254,252 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
     g_config.web_auth_enabled = false;
 }
 
+
+/*
+ * Regression: a policy-scoped principal must not be able to enumerate the
+ * whole fleet through a list endpoint. Filtering has to happen before totals
+ * and facets are derived, so the helper the list handlers share is the unit
+ * under test.
+ */
+void test_visible_camera_filter_hides_cameras_outside_grant(void) {
+    stream_config_t lobby = create_camera("Filter Lobby", "Lobby");
+    create_camera("Filter Vault", "Vault");
+    camera_tag_t lobby_tag = find_tag("Lobby");
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("listscoped", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"tag_any\","
+             "\"uuids\":[\"%s\"]}}",
+             lobby_tag.uuid);
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, OPERATOR_ROLE_UUID, "selector", selector,
+                 grant_uuid);
+
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(user_id, &user));
+
+    fleet_camera_t *cameras = NULL;
+    int count = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_fleet_camera_load(&cameras, &count));
+    TEST_ASSERT_GREATER_THAN(1, count);
+    int total = count;
+
+    g_config.web_auth_enabled = true;
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_filter_visible_cameras(&user, cameras, &count));
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_STRING(lobby.camera_uuid, cameras[0].camera_uuid);
+    free(cameras);
+
+    /* An unscoped legacy admin still sees everything. */
+    user_t admin;
+    memset(&admin, 0, sizeof(admin));
+    admin.id = 999999;
+    admin.role = USER_ROLE_ADMIN;
+    admin.is_active = true;
+    cameras = NULL;
+    count = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_fleet_camera_load(&cameras, &count));
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_filter_visible_cameras(&admin, cameras, &count));
+    TEST_ASSERT_EQUAL_INT(total, count);
+    free(cameras);
+
+    /* With authentication off the handlers never populate a principal, so the
+     * filter must pass the inventory through rather than hide every camera. */
+    g_config.web_auth_enabled = false;
+    user_t unpopulated;
+    memset(&unpopulated, 0, sizeof(unpopulated));
+    cameras = NULL;
+    count = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_fleet_camera_load(&cameras, &count));
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_filter_visible_cameras(&unpopulated, cameras, &count));
+    TEST_ASSERT_EQUAL_INT(total, count);
+    free(cameras);
+}
+
+/*
+ * The effective mask is what stops a policy manager from minting authority it
+ * does not hold, so it must reflect grants, legacy roles, and token narrowing.
+ */
+void test_effective_action_mask_reflects_grants_and_tokens(void) {
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("maskuser", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, OPERATOR_ROLE_UUID, "all", NULL, grant_uuid);
+
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(user_id, &user));
+    uint64_t mask = 0;
+    TEST_ASSERT_EQUAL_INT(0, authorization_effective_action_mask(&user, &mask));
+    TEST_ASSERT_TRUE((mask & authorization_action_bit(AUTHZ_PTZ_CONTROL)) != 0);
+    /* Operator deliberately excludes policy administration. */
+    TEST_ASSERT_TRUE((mask & authorization_action_bit(AUTHZ_USERS_MANAGE)) == 0);
+    TEST_ASSERT_TRUE((mask & authorization_action_bit(AUTHZ_SYSTEM_ADMIN)) == 0);
+
+    /* A legacy administrator holds the entire catalog. */
+    user_t admin;
+    memset(&admin, 0, sizeof(admin));
+    admin.id = 1;
+    admin.role = USER_ROLE_ADMIN;
+    admin.is_active = true;
+    TEST_ASSERT_EQUAL_INT(0, authorization_effective_action_mask(&admin, &mask));
+    int catalog_count = 0;
+    const authorization_action_metadata_t *catalog =
+        authorization_action_catalog(&catalog_count);
+    for (int i = 0; i < catalog_count; i++) {
+        TEST_ASSERT_TRUE(
+            (mask & authorization_action_bit(catalog[i].action)) != 0);
+    }
+
+    /* An inactive principal holds nothing. */
+    admin.is_active = false;
+    TEST_ASSERT_EQUAL_INT(0, authorization_effective_action_mask(&admin, &mask));
+    TEST_ASSERT_EQUAL_UINT64(UINT64_C(0), mask);
+}
+
+/*
+ * users.manage must not be a back door to system.admin: authoring a role that
+ * carries more than the requester holds has to be refused.
+ */
+void test_policy_manager_cannot_grant_actions_it_lacks(void) {
+    int64_t manager_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("limitedmanager", "password123", NULL,
+                               USER_ROLE_USER, true, &manager_id));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_set_user_mode(manager_id, "policy"));
+
+    /* A role that can administer users but nothing else. */
+    authorization_role_t manager_role;
+    memset(&manager_role, 0, sizeof(manager_role));
+    safe_strcpy(manager_role.name, "User Administrator",
+                sizeof(manager_role.name), 0);
+    manager_role.action_mask = authorization_action_bit(AUTHZ_USERS_MANAGE);
+    int64_t version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    int64_t new_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&manager_role, version, &new_version));
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(manager_id, manager_role.uuid, "all", NULL, grant_uuid);
+
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(manager_id, api_key, sizeof(api_key)));
+
+    int64_t current_version = 0;
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_get_policy_version(&current_version));
+
+    /* Escalating: a new role carrying system.admin is refused. */
+    char escalate_body[256];
+    snprintf(escalate_body, sizeof(escalate_body),
+             "{\"expected_policy_version\":%lld,\"name\":\"Escalate\","
+             "\"actions\":[\"system.admin\"]}",
+             (long long)current_version);
+    g_config.web_auth_enabled = true;
+    cJSON *denied = call_handler_path(
+        handle_post_authorization_role, HTTP_METHOD_POST,
+        "/api/authorization/roles", escalate_body, api_key, 403);
+    cJSON_Delete(denied);
+
+    /* Non-escalating: a role bounded by what the manager holds is accepted. */
+    char allowed_body[256];
+    snprintf(allowed_body, sizeof(allowed_body),
+             "{\"expected_policy_version\":%lld,"
+             "\"name\":\"Delegated User Admin\","
+             "\"actions\":[\"users.manage\"]}",
+             (long long)current_version);
+    cJSON *allowed = call_handler_path(
+        handle_post_authorization_role, HTTP_METHOD_POST,
+        "/api/authorization/roles", allowed_body, api_key, 201);
+    cJSON_Delete(allowed);
+    g_config.web_auth_enabled = false;
+}
+
+/*
+ * The persisted mask layout is a compatibility contract with every issued
+ * token, so the table and the compiled catalog must agree bit for bit.
+ */
+void test_action_catalog_bit_layout_matches_database(void) {
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_verify_action_catalog());
+
+    int count = 0;
+    const authorization_action_metadata_t *catalog =
+        authorization_action_catalog(&count);
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(db,
+                           "SELECT bit_index FROM authz_actions "
+                           "WHERE action_key = ?;", -1, &stmt, NULL));
+    for (int i = 0; i < count; i++) {
+        sqlite3_reset(stmt);
+        sqlite3_clear_bindings(stmt);
+        sqlite3_bind_text(stmt, 1, catalog[i].key, -1, SQLITE_TRANSIENT);
+        TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+        TEST_ASSERT_EQUAL_INT64((int64_t)catalog[i].action,
+                                sqlite3_column_int64(stmt, 0));
+        TEST_ASSERT_EQUAL_UINT64(UINT64_C(1) << catalog[i].action,
+                                 authorization_action_bit(catalog[i].action));
+    }
+    sqlite3_finalize(stmt);
+
+    /* Drift in the stored layout must fail startup rather than re-map tokens. */
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db,
+                     "UPDATE authz_actions SET bit_index = 63 "
+                     "WHERE action_key = 'system.admin';",
+                     NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(-1, db_authorization_verify_action_catalog());
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_exec(db,
+                     "UPDATE authz_actions SET bit_index = 14 "
+                     "WHERE action_key = 'system.admin';",
+                     NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_verify_action_catalog());
+}
+
+/*
+ * streams.camera_uuid defaults to '' so the 0048 backfill could run; the guard
+ * added in 0056 must reject that value instead of letting the unique index
+ * accept one row and fail every later insert.
+ */
+void test_streams_reject_empty_camera_uuid(void) {
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_NOT_EQUAL(
+        SQLITE_DONE,
+        sqlite3_exec(db,
+                     "INSERT INTO streams (name,url) "
+                     "VALUES ('No UUID','rtsp://camera/live');",
+                     NULL, NULL, NULL));
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(db,
+                           "SELECT count(*) FROM streams WHERE name='No UUID';",
+                           -1, &stmt, NULL));
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    TEST_ASSERT_EQUAL_INT(0, sqlite3_column_int(stmt, 0));
+    sqlite3_finalize(stmt);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -1286,6 +1532,11 @@ int main(void) {
     RUN_TEST(test_policy_role_update_cannot_lock_out_requester);
     RUN_TEST(test_users_api_reports_authorization_mode);
     RUN_TEST(test_sensitive_handlers_enforce_camera_scoped_policy);
+    RUN_TEST(test_visible_camera_filter_hides_cameras_outside_grant);
+    RUN_TEST(test_effective_action_mask_reflects_grants_and_tokens);
+    RUN_TEST(test_policy_manager_cannot_grant_actions_it_lacks);
+    RUN_TEST(test_action_catalog_bit_layout_matches_database);
+    RUN_TEST(test_streams_reject_empty_camera_uuid);
     int result = UNITY_END();
     batch_delete_progress_cleanup();
     shutdown_database();

@@ -1,4 +1,6 @@
 import {
+  actionIsEnforced,
+  unenforcedActionKeys,
   actionRequiresCamera,
   buildPolicyPayload,
   createDraftGrant,
@@ -98,5 +100,25 @@ describe('authorization policy UI helpers', () => {
     expect(roleHasDestructiveActions(['live.view'], catalog)).toBe(false);
     expect(actionRequiresCamera('live.view', catalog)).toBe(true);
     expect(actionRequiresCamera('users.manage', catalog)).toBe(false);
+  });
+});
+
+describe('action enforcement reporting', () => {
+  test('treats a missing enforced flag as enforced so old servers look normal', () => {
+    expect(actionIsEnforced({ key: 'live.view' })).toBe(true);
+    expect(actionIsEnforced({ key: 'live.view', enforced: true })).toBe(true);
+    expect(actionIsEnforced({ key: 'audio.talk', enforced: false })).toBe(false);
+  });
+
+  test('names the role actions no endpoint applies yet', () => {
+    const catalog = [
+      { key: 'live.view', enforced: true },
+      { key: 'audio.talk', enforced: false },
+      { key: 'storage.configure', enforced: false },
+    ];
+    expect(unenforcedActionKeys(['live.view', 'audio.talk'], catalog))
+      .toEqual(['audio.talk']);
+    expect(unenforcedActionKeys(['live.view'], catalog)).toEqual([]);
+    expect(unenforcedActionKeys([], catalog)).toEqual([]);
   });
 });
