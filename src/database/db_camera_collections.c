@@ -71,8 +71,15 @@ static bool transaction_begin(sqlite3 *db) {
 }
 
 static bool transaction_finish(sqlite3 *db, bool success) {
-    const char *sql = success ? "COMMIT;" : "ROLLBACK;";
-    return sqlite3_exec(db, sql, NULL, NULL, NULL) == SQLITE_OK && success;
+    if (!success) {
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        return false;
+    }
+    if (sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK) {
+        return true;
+    }
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    return false;
 }
 
 static void copy_column(char *destination, size_t destination_size,

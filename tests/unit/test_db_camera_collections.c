@@ -18,6 +18,17 @@
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_camera_collections_test.db"
 
+static int deny_commit(void *context, int action, const char *detail,
+                       const char *unused_1, const char *unused_2,
+                       const char *unused_3) {
+    (void)context;
+    (void)unused_1;
+    (void)unused_2;
+    (void)unused_3;
+    return action == SQLITE_TRANSACTION && detail &&
+           strcmp(detail, "COMMIT") == 0 ? SQLITE_DENY : SQLITE_OK;
+}
+
 static stream_config_t create_camera(const char *name) {
     stream_config_t stream;
     memset(&stream, 0, sizeof(stream));
@@ -179,6 +190,36 @@ void test_delete_cascades_members_and_reports_not_found(void) {
                           db_camera_collection_delete(collection.uuid));
 }
 
+void test_failed_commit_rolls_back_member_replacement(void) {
+    stream_config_t first = create_camera("Commit First");
+    stream_config_t second = create_camera("Commit Second");
+    camera_collection_t collection = make_collection("Commit Failure", "static");
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_create(&collection));
+    const char *initial_members[] = {first.camera_uuid};
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_set_members(collection.uuid, initial_members, 1));
+
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_set_authorizer(db, deny_commit, NULL));
+    const char *replacement_members[] = {second.camera_uuid};
+    db_camera_collection_result_t result = db_camera_collection_set_members(
+        collection.uuid, replacement_members, 1);
+    int autocommit = sqlite3_get_autocommit(db);
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK,
+                          sqlite3_set_authorizer(db, NULL, NULL));
+    if (!autocommit) sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_ERROR, result);
+    TEST_ASSERT_EQUAL_INT(1, autocommit);
+    char members[2][CAMERA_UUID_STRING_SIZE];
+    TEST_ASSERT_EQUAL_INT(
+        1, db_camera_collection_list_members(collection.uuid, members, 2));
+    TEST_ASSERT_EQUAL_STRING(first.camera_uuid, members[0]);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -191,6 +232,7 @@ int main(void) {
     RUN_TEST(test_switching_to_smart_clears_static_members);
     RUN_TEST(test_rejects_invalid_smart_selector_and_unknown_member);
     RUN_TEST(test_delete_cascades_members_and_reports_not_found);
+    RUN_TEST(test_failed_commit_rolls_back_member_replacement);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

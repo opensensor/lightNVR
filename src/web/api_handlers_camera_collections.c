@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <cjson/cJSON.h>
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,7 +20,16 @@
 #define COLLECTION_PREVIEW_MAX 50
 
 static bool valid_uuid(const char *value) {
-    return value && strlen(value) == CAMERA_UUID_STRING_SIZE - 1;
+    if (!value || strlen(value) != CAMERA_UUID_STRING_SIZE - 1) return false;
+    for (int i = 0; i < CAMERA_UUID_STRING_SIZE - 1; i++) {
+        unsigned char c = (unsigned char)value[i];
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
+            if (c != '-') return false;
+        } else if (!isxdigit(c)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static bool authenticate(const http_request_t *req, http_response_t *res,
@@ -164,7 +174,8 @@ static int collection_matches(const camera_collection_t *collection,
 }
 
 static cJSON *collection_to_json(const camera_collection_t *collection,
-                                 int effective_count, bool include_selector) {
+                                 int member_count, int effective_count,
+                                 bool include_selector) {
     cJSON *object = cJSON_CreateObject();
     if (!object) return NULL;
     cJSON_AddStringToObject(object, "uuid", collection->uuid);
@@ -178,7 +189,7 @@ static cJSON *collection_to_json(const camera_collection_t *collection,
     } else {
         cJSON_AddNullToObject(object, "owner_user_id");
     }
-    cJSON_AddNumberToObject(object, "member_count", collection->member_count);
+    cJSON_AddNumberToObject(object, "member_count", member_count);
     cJSON_AddNumberToObject(object, "effective_count", effective_count);
     cJSON_AddNumberToObject(object, "created_at",
                             (double)collection->created_at);
@@ -313,8 +324,11 @@ static void set_collection_response(http_response_t *res, int status,
     bool include_selector = user->role == USER_ROLE_ADMIN ||
         (collection->owner_user_id > 0 &&
          collection->owner_user_id == user->id);
-    cJSON *object = collection_to_json(collection, effective_count,
-                                       include_selector);
+    int member_count = user->has_tag_restriction &&
+        strcmp(collection->collection_type, "static") == 0 ?
+        effective_count : collection->member_count;
+    cJSON *object = collection_to_json(collection, member_count,
+                                       effective_count, include_selector);
     char *json = object ? cJSON_PrintUnformatted(object) : NULL;
     cJSON_Delete(object);
     if (!json) {
@@ -382,8 +396,11 @@ void handle_get_camera_collections(const http_request_t *req,
         bool include_selector = user.role == USER_ROLE_ADMIN ||
             (collections[i].owner_user_id > 0 &&
              collections[i].owner_user_id == user.id);
-        cJSON *item = collection_to_json(&collections[i], effective_count,
-                                         include_selector);
+        int member_count = user.has_tag_restriction &&
+            strcmp(collections[i].collection_type, "static") == 0 ?
+            effective_count : collections[i].member_count;
+        cJSON *item = collection_to_json(&collections[i], member_count,
+                                         effective_count, include_selector);
         if (!item) {
             cJSON_Delete(root);
             free(cameras);

@@ -257,6 +257,30 @@ void test_rejects_invalid_smart_selector_and_non_admin_mutation(void) {
     cJSON_Delete(json);
 }
 
+void test_rejects_malformed_collection_and_member_uuids(void) {
+    cJSON *json = call(handle_get_camera_collection, HTTP_METHOD_GET,
+                       "/api/camera-collections/"
+                       "00000000-0000-4000-8000-00000000000g",
+                       NULL, NULL, 400);
+    cJSON_Delete(json);
+
+    json = call(handle_post_camera_collection, HTTP_METHOD_POST,
+                "/api/camera-collections",
+                "{\"name\":\"UUID Validation\",\"type\":\"static\"}",
+                NULL, 201);
+    char member_path[MAX_PATH_LENGTH];
+    collection_path(member_path, sizeof(member_path),
+        cJSON_GetObjectItemCaseSensitive(json, "uuid")->valuestring,
+        "/members");
+    cJSON_Delete(json);
+    json = call(handle_put_camera_collection_members, HTTP_METHOD_PUT,
+                member_path,
+                "{\"camera_uuids\":["
+                "\"00000000-0000-4000-8000-00000000000g\"]}",
+                NULL, 400);
+    cJSON_Delete(json);
+}
+
 void test_private_visibility_and_rbac_filter_counts_and_members(void) {
     stream_config_t outside = create_camera("Outside", "Outdoor");
     stream_config_t inside = create_camera("Inside", "Indoor");
@@ -278,6 +302,15 @@ void test_private_visibility_and_rbac_filter_counts_and_members(void) {
     json = call(handle_put_camera_collection_members, HTTP_METHOD_PUT,
                 member_path, member_body, NULL, 200);
     cJSON_Delete(json);
+    char path[MAX_PATH_LENGTH];
+    collection_path(path, sizeof(path), uuid, NULL);
+    json = call(handle_get_camera_collection, HTTP_METHOD_GET,
+                path, NULL, NULL, 200);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(json, "shared")));
+    TEST_ASSERT_EQUAL_INT(2,
+        cJSON_GetObjectItemCaseSensitive(json, "member_count")->valueint);
+    cJSON_Delete(json);
 
     int64_t user_id = 0;
     TEST_ASSERT_EQUAL_INT(
@@ -293,8 +326,6 @@ void test_private_visibility_and_rbac_filter_counts_and_members(void) {
     TEST_ASSERT_EQUAL_INT(0,
         cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
     cJSON_Delete(json);
-    char path[MAX_PATH_LENGTH];
-    collection_path(path, sizeof(path), uuid, NULL);
     json = call(handle_get_camera_collection, HTTP_METHOD_GET,
                 path, NULL, api_key, 404);
     cJSON_Delete(json);
@@ -307,7 +338,16 @@ void test_private_visibility_and_rbac_filter_counts_and_members(void) {
     json = call(handle_get_camera_collection, HTTP_METHOD_GET,
                 path, NULL, api_key, 200);
     TEST_ASSERT_EQUAL_INT(1,
+        cJSON_GetObjectItemCaseSensitive(json, "member_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(1,
         cJSON_GetObjectItemCaseSensitive(json, "effective_count")->valueint);
+    cJSON_Delete(json);
+    json = call(handle_get_camera_collections, HTTP_METHOD_GET,
+                "/api/camera-collections", NULL, api_key, 200);
+    cJSON *listed = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(json, "collections"), 0);
+    TEST_ASSERT_EQUAL_INT(1,
+        cJSON_GetObjectItemCaseSensitive(listed, "member_count")->valueint);
     cJSON_Delete(json);
     json = call(handle_get_camera_collection_members, HTTP_METHOD_GET,
                 member_path, NULL, api_key, 200);
@@ -330,6 +370,7 @@ int main(void) {
     RUN_TEST(test_smart_collection_membership_updates_with_tags);
     RUN_TEST(test_preview_returns_count_and_bounded_sample);
     RUN_TEST(test_rejects_invalid_smart_selector_and_non_admin_mutation);
+    RUN_TEST(test_rejects_malformed_collection_and_member_uuids);
     RUN_TEST(test_private_visibility_and_rbac_filter_counts_and_members);
     int result = UNITY_END();
     shutdown_database();
