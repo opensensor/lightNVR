@@ -85,6 +85,7 @@ they may not trust a client-supplied collection expansion.
 | User list/create/get/update/delete, API-key generation, password lock and lockout clear | `users.manage` | Existing administrator/self-service rules |
 | Authorization action catalog, roles, user grants, and policy simulation | `users.manage` | Central evaluator with optimistic policy-version checks |
 | Scoped API token list/create/revoke | Self-service or `users.manage` | Hashed, expiring tokens; token-authenticated token chaining is rejected |
+| Audit event list/CSV export and retention settings | `system.admin` | Central evaluator; access decisions and retention changes are themselves audited |
 | Settings reads containing secrets | `system.admin` | Existing administrator/redaction behavior |
 | Settings writes and go2rtc configuration validation | `system.admin` | Existing administrator checks |
 | System information/status/log reads | `system.admin` | Existing endpoint checks |
@@ -99,6 +100,13 @@ Shared static and smart collections may be referenced directly by grants. The
 evaluator resolves their current membership server-side; private collections
 are rejected, and referenced collections cannot be made private or deleted.
 Collection membership or selector changes increment the policy version.
+
+The durable audit store currently records every decision made through
+`httpd_authorize_action()` / `httpd_authorize_stream_action()`, login outcomes,
+policy and role changes, authorization simulation, scoped-token lifecycle, and
+audit-retention changes. Handler migrations must add a separate success/failure
+event for the completed sensitive operation; an `allowed` decision proves
+authorization, not that downstream work succeeded.
 
 Scoped API tokens are accepted only through `httpd_check_action_access()` and
 must be followed by central action evaluation for every affected resource.

@@ -6,6 +6,10 @@
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
+#include <stdatomic.h>
+#include <sys/random.h>
+#include <time.h>
+#include <unistd.h>
 
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
@@ -16,6 +20,36 @@
 
 #define MAX_HEADER_SIZE 8192
 #define RECV_BUFFER_SIZE 4096
+
+static atomic_uint_fast64_t request_id_counter = 1;
+
+static void generate_request_id(char output[REQUEST_ID_MAX]) {
+    unsigned char random_bytes[16];
+    ssize_t random_count =
+        getrandom(random_bytes, sizeof(random_bytes), GRND_NONBLOCK);
+    if (random_count == (ssize_t)sizeof(random_bytes)) {
+        random_bytes[6] = (random_bytes[6] & 0x0f) | 0x40;
+        random_bytes[8] = (random_bytes[8] & 0x3f) | 0x80;
+        snprintf(output, REQUEST_ID_MAX,
+                 "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
+                 "%02x%02x%02x%02x%02x%02x",
+                 random_bytes[0], random_bytes[1], random_bytes[2],
+                 random_bytes[3], random_bytes[4], random_bytes[5],
+                 random_bytes[6], random_bytes[7], random_bytes[8],
+                 random_bytes[9], random_bytes[10], random_bytes[11],
+                 random_bytes[12], random_bytes[13], random_bytes[14],
+                 random_bytes[15]);
+        return;
+    }
+
+    struct timespec timestamp = {0};
+    clock_gettime(CLOCK_REALTIME, &timestamp);
+    uint64_t counter = atomic_fetch_add(&request_id_counter, 1);
+    snprintf(output, REQUEST_ID_MAX, "req-%llx-%lx-%llx",
+             (unsigned long long)timestamp.tv_sec,
+             (unsigned long)timestamp.tv_nsec,
+             (unsigned long long)(counter ^ (uint64_t)getpid()));
+}
 
 // URL decode function
 int url_decode(const char *src, char *dst, size_t dst_size) {
@@ -49,6 +83,22 @@ int url_decode(const char *src, char *dst, size_t dst_size) {
 void http_request_init(http_request_t *req) {
     if (!req) return;
     memset(req, 0, sizeof(http_request_t));
+    generate_request_id(req->request_id);
+}
+
+int http_request_set_request_id(http_request_t *req, const char *request_id) {
+    if (!req || !request_id) return -1;
+    size_t length = strlen(request_id);
+    if (length == 0 || length >= REQUEST_ID_MAX) return -1;
+    for (size_t i = 0; i < length; i++) {
+        unsigned char value = (unsigned char)request_id[i];
+        if (!isalnum(value) && value != '.' && value != '_' &&
+            value != ':' && value != '-') {
+            return -1;
+        }
+    }
+    safe_strcpy(req->request_id, request_id, sizeof(req->request_id), 0);
+    return 0;
 }
 
 void http_response_init(http_response_t *res) {
@@ -197,7 +247,12 @@ void http_response_add_cors_headers(http_response_t *res) {
     if (!res) return;
     http_response_add_header(res, "Access-Control-Allow-Origin", "*");
     http_response_add_header(res, "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    http_response_add_header(res, "Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+    http_response_add_header(
+        res, "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, X-Requested-With, X-Request-ID");
+    http_response_add_header(
+        res, "Access-Control-Expose-Headers",
+        "X-Request-ID, X-Total-Count, Content-Disposition");
     http_response_add_header(res, "Access-Control-Allow-Credentials", "true");
     http_response_add_header(res, "Access-Control-Max-Age", "86400");
 }

@@ -14,6 +14,7 @@
 #define USER_ALLOWED_LOGIN_CIDRS_MAX 1024
 #define USER_AUTHORIZATION_MODE_MAX 16
 #define USER_API_TOKEN_UUID_MAX 37
+#define USER_AUTH_METHOD_MAX 24
 
 /**
  * @brief User roles
@@ -47,6 +48,7 @@ typedef struct {
     char authorization_mode[USER_AUTHORIZATION_MODE_MAX]; /**< legacy compatibility or default-deny policy evaluation */
     bool authenticated_via_scoped_token; /**< Request used a scoped, hashed API token */
     char api_token_uuid[USER_API_TOKEN_UUID_MAX]; /**< Scoped token constraint for this request */
+    char authentication_method[USER_AUTH_METHOD_MAX]; /**< session/basic/legacy_api_key/scoped_token */
 } user_t;
 
 /**

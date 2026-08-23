@@ -18,6 +18,7 @@
 #include "database/db_auth.h"
 #include "database/db_api_tokens.h"
 #include "database/db_fleet_query.h"
+#include "web/audit_log.h"
 
 cJSON* httpd_parse_json_body(const http_request_t *req) {
     if (!req || !req->body || req->body_len == 0) {
@@ -357,6 +358,8 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
     if (!g_config.web_auth_enabled) {
         memset(user, 0, sizeof(user_t));
         safe_strcpy(user->username, "admin", sizeof(user->username), 0);
+        safe_strcpy(user->authentication_method, "auth_disabled",
+                    sizeof(user->authentication_method), 0);
         user->role = USER_ROLE_ADMIN;
         user->is_active = true;
         return 1;
@@ -373,6 +376,8 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
                 rc = db_auth_validate_session_with_context(session_token, &user_id,
                                                            effective_client_ip, req->user_agent);
                 if (rc == 0) {
+                    safe_strcpy(user->authentication_method, "session",
+                                sizeof(user->authentication_method), 0);
                     return 1;
                 }
             } else if (rc == 0) {
@@ -393,6 +398,8 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
             if (rc == 0) {
                 rc = db_auth_get_user_by_id(user_id, user);
                 if (rc == 0 && db_auth_ip_allowed_for_user(user, effective_client_ip)) {
+                    safe_strcpy(user->authentication_method, "basic",
+                                sizeof(user->authentication_method), 0);
                     return 1;
                 } else if (rc == 0) {
                     log_warn("Basic auth blocked by allowed_login_cidrs for user '%s' from IP %s",
@@ -408,6 +415,8 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
     if (httpd_get_api_key(req, api_key, sizeof(api_key)) == 0) {
         int rc = db_auth_get_user_by_api_key(api_key, user);
         if (rc == 0 && user->is_active && db_auth_ip_allowed_for_user(user, effective_client_ip)) {
+            safe_strcpy(user->authentication_method, "legacy_api_key",
+                        sizeof(user->authentication_method), 0);
             return 1;
         }
         if (rc == 0 && user->is_active) {
@@ -424,6 +433,8 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
                 user->is_active &&
                 db_auth_ip_allowed_for_user(user, effective_client_ip)) {
                 user->authenticated_via_scoped_token = true;
+                safe_strcpy(user->authentication_method, "scoped_token",
+                            sizeof(user->authentication_method), 0);
                 safe_strcpy(user->api_token_uuid, token_uuid,
                             sizeof(user->api_token_uuid), 0);
                 return 1;
@@ -488,6 +499,8 @@ static int check_viewer_access(const http_request_t *req, user_t *user,
         // Create a demo viewer pseudo-user
         memset(user, 0, sizeof(user_t));
         safe_strcpy(user->username, "demo", sizeof(user->username), 0);
+        safe_strcpy(user->authentication_method, "demo",
+                    sizeof(user->authentication_method), 0);
         user->role = USER_ROLE_VIEWER;
         user->is_active = true;
         log_debug("Demo mode: granting viewer access to unauthenticated user");
@@ -515,10 +528,12 @@ int httpd_authorize_action(const http_request_t *req, http_response_t *res,
     memset(user, 0, sizeof(*user));
     memset(evaluation, 0, sizeof(*evaluation));
     if (!httpd_check_action_access(req, user)) {
+        audit_log_authorization(req, NULL, action, camera, NULL, "denied");
         http_response_set_json_error(res, 401, "Unauthorized");
         return 0;
     }
     if (authorization_evaluate(user, action, camera, evaluation) != 0) {
+        audit_log_authorization(req, user, action, camera, NULL, "error");
         log_error("Authorization evaluation failed for user '%s' and action %d",
                   user->username, (int)action);
         http_response_set_json_error(res, 500,
@@ -526,11 +541,13 @@ int httpd_authorize_action(const http_request_t *req, http_response_t *res,
         return 0;
     }
     if (evaluation->decision != AUTHZ_DECISION_ALLOW) {
+        audit_log_authorization(req, user, action, camera, evaluation, "denied");
         log_warn("Access denied: User '%s' action %d: %s", user->username,
                  (int)action, evaluation->explanation);
         http_response_set_json_error(res, 403, "Forbidden");
         return 0;
     }
+    audit_log_authorization(req, user, action, camera, evaluation, "allowed");
     return 1;
 }
 
@@ -552,17 +569,34 @@ int httpd_authorize_stream_action(const http_request_t *req,
                                   const char *stream_name) {
     user_t user;
     if (!httpd_check_action_access(req, &user)) {
+        audit_log_authorization(req, NULL, action, NULL, NULL, "denied");
         http_response_set_json_error(res, 401, "Unauthorized");
         return 0;
     }
-    authorization_evaluation_t evaluation;
-    int result = httpd_evaluate_stream_action(&user, action, stream_name,
-                                               &evaluation);
+    fleet_camera_t camera;
+    memset(&camera, 0, sizeof(camera));
+    int result = db_fleet_camera_find_by_name(stream_name, &camera);
     if (result > 0) {
+        const authorization_action_metadata_t *metadata =
+            authorization_action_metadata(action);
+        cJSON *details = cJSON_CreateObject();
+        if (details) {
+            cJSON_AddStringToObject(details, "event_type",
+                                    "authorization.resource_not_found");
+            cJSON_AddStringToObject(details, "stream_name", stream_name);
+        }
+        audit_log_append(req, &user, metadata ? metadata->key : "unknown",
+                         "camera", NULL, "failure", details);
+        cJSON_Delete(details);
         http_response_set_json_error(res, 404, "Camera not found");
         return 0;
     }
-    if (result < 0) {
+    authorization_evaluation_t evaluation;
+    memset(&evaluation, 0, sizeof(evaluation));
+    if (result < 0 ||
+        authorization_evaluate(&user, action, &camera, &evaluation) != 0) {
+        audit_log_authorization(req, &user, action, &camera,
+                                result < 0 ? NULL : &evaluation, "error");
         log_error("Failed to evaluate authorization for stream '%s'",
                   stream_name);
         http_response_set_json_error(
@@ -570,12 +604,16 @@ int httpd_authorize_stream_action(const http_request_t *req,
         return 0;
     }
     if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
+        audit_log_authorization(req, &user, action, &camera, &evaluation,
+                                "denied");
         log_warn("Access denied: User '%s' action %d on stream '%s': %s",
                  user.username, (int)action, stream_name,
                  evaluation.explanation);
         http_response_set_json_error(res, 403, "Forbidden");
         return 0;
     }
+    audit_log_authorization(req, &user, action, &camera, &evaluation,
+                            "allowed");
     return 1;
 }
 

@@ -406,6 +406,7 @@ void test_get_authenticated_user_auth_disabled_returns_admin(void) {
     TEST_ASSERT_EQUAL_STRING("admin", user.username);
     TEST_ASSERT_EQUAL_INT(USER_ROLE_ADMIN, user.role);
     TEST_ASSERT_TRUE(user.is_active);
+    TEST_ASSERT_EQUAL_STRING("auth_disabled", user.authentication_method);
 }
 
 void test_get_authenticated_user_null_params_returns_zero(void) {
@@ -430,6 +431,7 @@ void test_get_authenticated_user_allows_basic_auth_from_allowed_ip(void) {
     int rc = httpd_get_authenticated_user(&req, &user);
     TEST_ASSERT_EQUAL_INT(1, rc);
     TEST_ASSERT_EQUAL_STRING("test", user.username);
+    TEST_ASSERT_EQUAL_STRING("basic", user.authentication_method);
 }
 
 void test_get_authenticated_user_rejects_basic_auth_from_disallowed_ip(void) {
@@ -490,6 +492,7 @@ void test_get_authenticated_user_allows_api_key_from_trusted_forwarded_ip(void) 
     int rc = httpd_get_authenticated_user(&req, &user);
     TEST_ASSERT_EQUAL_INT(1, rc);
     TEST_ASSERT_EQUAL_STRING("apitest", user.username);
+    TEST_ASSERT_EQUAL_STRING("legacy_api_key", user.authentication_method);
 }
 
 void test_get_authenticated_user_rejects_api_key_with_spoofed_forwarded_ip_from_untrusted_proxy(void) {
