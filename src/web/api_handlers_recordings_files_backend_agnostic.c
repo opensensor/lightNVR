@@ -93,7 +93,7 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
     log_info("Handling DELETE /api/recordings/files request");
 
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }

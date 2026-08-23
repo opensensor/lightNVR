@@ -7,6 +7,7 @@
 
 #include "core/authorization.h"
 #include "core/camera_collection_filter.h"
+#include "database/db_api_tokens.h"
 #include "database/db_authorization.h"
 #include "utils/strings.h"
 
@@ -170,9 +171,10 @@ static int grant_matches(const authorization_grant_t *grant,
     return 0;
 }
 
-int authorization_evaluate(const user_t *user, authorization_action_t action,
-                           const fleet_camera_t *camera,
-                           authorization_evaluation_t *evaluation) {
+static int evaluate_principal(const user_t *user,
+                              authorization_action_t action,
+                              const fleet_camera_t *camera,
+                              authorization_evaluation_t *evaluation) {
     if (!user || !evaluation) return -1;
     const authorization_action_metadata_t *metadata =
         authorization_action_metadata(action);
@@ -224,5 +226,92 @@ int authorization_evaluate(const user_t *user, authorization_action_t action,
                     ? "No all-fleet grant allows this action"
                     : "No matching grant allows this action",
                 sizeof(evaluation->explanation), 0);
+    return 0;
+}
+
+static int token_scope_matches(const api_token_t *token,
+                               const fleet_camera_t *camera, bool *matches) {
+    *matches = false;
+    if (strcmp(token->scope_type, "all") == 0) {
+        *matches = true;
+        return 0;
+    }
+    if (!camera) return 0;
+    if (strcmp(token->scope_type, "collection") == 0) {
+        camera_collection_filter_t filter;
+        camera_collection_filter_result_t result =
+            camera_collection_filter_load_for_authorization(
+                token->collection_uuid, &filter);
+        if (result != CAMERA_COLLECTION_FILTER_OK) return -1;
+        *matches = camera_collection_filter_matches(&filter, camera);
+        camera_collection_filter_free(&filter);
+        return 0;
+    }
+    if (strcmp(token->scope_type, "selector") != 0 ||
+        token->selector_json[0] == '\0') {
+        return -1;
+    }
+    cJSON *json = cJSON_Parse(token->selector_json);
+    if (!json) return -1;
+    char error[FLEET_SELECTOR_ERROR_MAX] = {0};
+    fleet_selector_t *selector =
+        fleet_selector_parse(json, error, sizeof(error));
+    cJSON_Delete(json);
+    if (!selector) return -1;
+    *matches = fleet_selector_matches(selector, camera, NULL);
+    fleet_selector_free(selector);
+    return 0;
+}
+
+int authorization_evaluate(const user_t *user, authorization_action_t action,
+                           const fleet_camera_t *camera,
+                           authorization_evaluation_t *evaluation) {
+    int result = evaluate_principal(user, action, camera, evaluation);
+    if (result != 0 || !user || !evaluation ||
+        evaluation->decision != AUTHZ_DECISION_ALLOW ||
+        !user->authenticated_via_scoped_token) {
+        return result;
+    }
+
+    api_token_t token;
+    db_api_token_result_t token_result =
+        db_api_token_get_active(user->api_token_uuid, &token);
+    if (token_result == DB_API_TOKEN_ERROR) return -1;
+    if (token_result != DB_API_TOKEN_OK || token.user_id != user->id) {
+        evaluation->decision = AUTHZ_DECISION_DENY;
+        evaluation->source = AUTHZ_SOURCE_NONE;
+        safe_strcpy(evaluation->explanation,
+                    "Scoped API token is expired, revoked, or unavailable",
+                    sizeof(evaluation->explanation), 0);
+        return 0;
+    }
+    safe_strcpy(evaluation->token_uuid, token.uuid,
+                sizeof(evaluation->token_uuid), 0);
+    if ((token.action_mask & (UINT64_C(1) << action)) == 0) {
+        evaluation->decision = AUTHZ_DECISION_DENY;
+        evaluation->source = AUTHZ_SOURCE_NONE;
+        safe_strcpy(evaluation->explanation,
+                    "Scoped API token does not include this action",
+                    sizeof(evaluation->explanation), 0);
+        return 0;
+    }
+    bool matches = false;
+    if (token_scope_matches(&token, camera, &matches) != 0) return -1;
+    if (!matches) {
+        evaluation->decision = AUTHZ_DECISION_DENY;
+        evaluation->source = AUTHZ_SOURCE_NONE;
+        safe_strcpy(evaluation->explanation,
+                    camera ? "Camera is outside the scoped API token"
+                           : "Scoped API token is not valid for global actions",
+                    sizeof(evaluation->explanation), 0);
+        return 0;
+    }
+    char principal_explanation[AUTHORIZATION_EXPLANATION_MAX];
+    safe_strcpy(principal_explanation, evaluation->explanation,
+                sizeof(principal_explanation), 0);
+    safe_strcpy(evaluation->explanation, principal_explanation,
+                sizeof(evaluation->explanation), 0);
+    safe_strcat(evaluation->explanation, "; narrowed by scoped API token",
+                sizeof(evaluation->explanation));
     return 0;
 }

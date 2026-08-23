@@ -139,7 +139,9 @@ static bool authorization_scope_in_use_locked(sqlite3 *db,
                                               const char *collection_uuid) {
     return row_exists_locked(
         db,
-        "SELECT 1 FROM authz_grants WHERE collection_uuid = ? LIMIT 1;",
+        "SELECT collection_uuid FROM authz_grants WHERE collection_uuid = ?1 "
+        "UNION ALL SELECT collection_uuid FROM authz_api_tokens "
+        "WHERE collection_uuid = ?1 LIMIT 1;",
         collection_uuid);
 }
 

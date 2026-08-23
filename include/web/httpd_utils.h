@@ -123,6 +123,13 @@ void httpd_clear_trusted_device_cookie(http_response_t *res);
 int httpd_check_viewer_access(const http_request_t *req, user_t *user);
 
 /**
+ * Authenticate for a handler that immediately applies centralized action
+ * authorization. This additionally accepts scoped API tokens. Do not use it
+ * in handlers that rely only on legacy role or allowed-tag checks.
+ */
+int httpd_check_action_access(const http_request_t *req, user_t *user);
+
+/**
  * Authenticate and authorize a request through the centralized action policy.
  * A NULL camera is valid for global actions and all-fleet grants. Evaluation
  * errors fail closed with a 500 response; denials return 403.

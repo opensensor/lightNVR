@@ -145,6 +145,7 @@ typedef struct {
     char        job_id[64];
     int64_t     owner_user_id;
     char        owner_username[64];
+    char        owner_api_token_uuid[CAMERA_UUID_STRING_SIZE];
     char        zip_filename[DOWNLOAD_FILENAME_MAX];
     char        tmp_path[MAX_PATH_LENGTH];
     uint64_t    ids[MAX_DL_IDS];
@@ -209,8 +210,15 @@ static int find_dl_job(const char *jid) {
 }
 
 static bool dl_job_owned_by(const batch_dl_job_t *job, const user_t *user) {
-    return job && user && job->owner_user_id == user->id &&
-           strcmp(job->owner_username, user->username) == 0;
+    if (!job || !user || job->owner_user_id != user->id ||
+        strcmp(job->owner_username, user->username) != 0) {
+        return false;
+    }
+    if (job->owner_api_token_uuid[0] == '\0') {
+        return !user->authenticated_via_scoped_token;
+    }
+    return user->authenticated_via_scoped_token &&
+           strcmp(job->owner_api_token_uuid, user->api_token_uuid) == 0;
 }
 
 static void discard_dl_job(const char *job_id) {
@@ -357,7 +365,7 @@ static void *zip_worker(void *arg) {
  */
 void handle_batch_download_recordings(const http_request_t *req, http_response_t *res) {
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }
@@ -438,6 +446,10 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
     job->owner_user_id = user.id;
     safe_strcpy(job->owner_username, user.username,
                 sizeof(job->owner_username), 0);
+    if (user.authenticated_via_scoped_token) {
+        safe_strcpy(job->owner_api_token_uuid, user.api_token_uuid,
+                    sizeof(job->owner_api_token_uuid), 0);
+    }
     httpd_sanitize_attachment_filename(filename_raw, job->zip_filename,
                                        sizeof(job->zip_filename));
     if (job->zip_filename[0] == '\0') {
@@ -494,7 +506,7 @@ void handle_batch_download_recordings(const http_request_t *req, http_response_t
  */
 void handle_batch_download_status(const http_request_t *req, http_response_t *res) {
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }
@@ -533,7 +545,7 @@ void handle_batch_download_status(const http_request_t *req, http_response_t *re
  */
 void handle_batch_download_result(const http_request_t *req, http_response_t *res) {
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }

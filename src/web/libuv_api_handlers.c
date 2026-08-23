@@ -249,6 +249,15 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_put_authorization_role);
     http_server_register_handler(server, "/api/authorization/roles/#", "DELETE",
                                  handle_delete_authorization_role);
+    http_server_register_handler(server,
+                                 "/api/authorization/users/#/tokens", "GET",
+                                 handle_get_user_api_tokens);
+    http_server_register_handler(server,
+                                 "/api/authorization/users/#/tokens", "POST",
+                                 handle_post_user_api_token);
+    http_server_register_handler(server,
+                                 "/api/authorization/users/#/tokens/#", "DELETE",
+                                 handle_delete_user_api_token);
     http_server_register_handler(server, "/api/authorization/users/#", "GET",
                                  handle_get_user_authorization);
     http_server_register_handler(server, "/api/authorization/users/#", "PUT",
