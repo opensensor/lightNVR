@@ -1,6 +1,6 @@
 # PRD — Scoped Authorization & Audit
 
-**Status**: In progress — P0 foundation in review
+**Status**: In progress — P0 foundation and initial P1 grants/UI implemented
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 2 — access-control foundation
@@ -56,8 +56,11 @@ Initial actions:
 - `users.manage`, `system.admin`
 
 Roles are named reusable action bundles. A grant binds a user or local group to
-a role and a Fleet 01 selector. A schedule may limit a grant by local time and
-day. Explicit deny rules are out of scope for v1; absence of an allow is deny.
+a role and an all-fleet scope, a durable shared-collection reference, or an
+inline Fleet 01 selector. Collection grants follow current static or smart
+membership and cannot reference private personal collections. A schedule may
+limit a grant by local time and day. Explicit deny rules are out of scope for
+v1; absence of an allow is deny.
 
 ## 5. Requirements
 

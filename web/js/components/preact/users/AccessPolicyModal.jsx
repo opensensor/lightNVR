@@ -19,7 +19,7 @@ function policyFingerprint(mode, grants) {
   return JSON.stringify(buildPolicyPayload(mode, grants, 0));
 }
 
-function GrantEditor({ grant, roles, locations, tags, onChange, onSelectorChange, onRemove, t, requestHeaders }) {
+function GrantEditor({ grant, roles, collections, locations, tags, onChange, onSelectorChange, onRemove, t, requestHeaders }) {
   const handleSelectorChange = useCallback(
     (selector, error) => onSelectorChange(grant.draftId, selector, error),
     [grant.draftId, onSelectorChange]
@@ -41,9 +41,11 @@ function GrantEditor({ grant, roles, locations, tags, onChange, onSelectorChange
             <select className={`${fieldClasses} mt-1`} value={grant.scopeType} onChange={(event) => onChange(grant.draftId, {
               scopeType: event.currentTarget.value,
               selector: event.currentTarget.value === 'selector' ? (grant.selector || ALL_CAMERAS_SELECTOR) : null,
+              collectionUuid: event.currentTarget.value === 'collection' ? grant.collectionUuid : '',
               selectorError: '',
             })}>
               <option value="all">{t('access.policy.allCameras')}</option>
+              <option value="collection">{t('access.policy.collectionScope')}</option>
               <option value="selector">{t('access.policy.dynamicScope')}</option>
             </select>
           </label>
@@ -51,6 +53,16 @@ function GrantEditor({ grant, roles, locations, tags, onChange, onSelectorChange
         <button type="button" className="rounded px-2 py-1 text-sm text-[hsl(var(--danger))] hover:bg-muted" onClick={() => onRemove(grant.draftId)}>{t('common.remove')}</button>
       </div>
       {selectedRole?.description && <p className="mt-2 text-xs text-muted-foreground">{selectedRole.description}</p>}
+      {grant.scopeType === 'collection' && (
+        <label className="mt-4 block text-sm font-medium">
+          {t('access.policy.collection')}
+          <select className={`${fieldClasses} mt-1`} value={grant.collectionUuid} onChange={(event) => onChange(grant.draftId, { collectionUuid: event.currentTarget.value })}>
+            <option value="">{t('access.policy.chooseCollection')}</option>
+            {collections.map((collection) => <option key={collection.uuid} value={collection.uuid}>{collection.name} ({collection.effective_count})</option>)}
+          </select>
+          <span className="mt-1 block text-xs font-normal text-muted-foreground">{t('access.policy.collectionHelp')}</span>
+        </label>
+      )}
       {grant.scopeType === 'selector' && (
         <div className="mt-4">
           <CollectionSelectorBuilder
@@ -144,6 +156,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
   const [error, setError] = useState('');
   const [roles, setRoles] = useState([]);
   const [actions, setActions] = useState([]);
+  const [collections, setCollections] = useState([]);
   const [locations, setLocations] = useState([]);
   const [tags, setTags] = useState([]);
   const [mode, setMode] = useState('legacy');
@@ -165,15 +178,17 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
     setLoading(true);
     setError('');
     try {
-      const [actionResponse, roleResponse, policyResponse, locationResponse, tagResponse] = await Promise.all([
+      const [actionResponse, roleResponse, policyResponse, collectionResponse, locationResponse, tagResponse] = await Promise.all([
         fetchJSON('/api/authorization/actions', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON('/api/authorization/roles', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON(`/api/authorization/users/${encodeURIComponent(user.id)}`, { headers: getAuthHeaders(), cache: 'no-store' }),
+        fetchJSON('/api/camera-collections', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON('/api/locations', { headers: getAuthHeaders(), cache: 'no-store' }),
         fetchJSON('/api/camera-tags', { headers: getAuthHeaders(), cache: 'no-store' }),
       ]);
       setActions(actionResponse.actions || []);
       setRoles(roleResponse.roles || []);
+      setCollections((collectionResponse.collections || []).filter((collection) => collection.shared));
       setLocations(locationResponse.locations || []);
       setTags(tagResponse.tags || []);
       applyPolicyResponse(policyResponse);
@@ -194,8 +209,13 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
   const fingerprint = useMemo(() => policyFingerprint(mode, grants), [mode, grants]);
   const dirty = policyVersion > 0 && fingerprint !== savedFingerprint;
   const validationCode = useMemo(
-    () => validatePolicyDraft(mode, grants, new Set(roles.map((role) => role.uuid))),
-    [mode, grants, roles]
+    () => validatePolicyDraft(
+      mode,
+      grants,
+      new Set(roles.map((role) => role.uuid)),
+      new Set(collections.map((collection) => collection.uuid))
+    ),
+    [mode, grants, roles, collections]
   );
 
   const updateGrant = useCallback((draftId, changes) => {
@@ -267,7 +287,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
 
               <div className="flex items-center justify-between gap-3"><div><h3 className="text-lg font-semibold">{t('access.policy.grants')}</h3><p className="text-sm text-muted-foreground">{t('access.policy.grantsDescription')}</p></div><button type="button" className="btn-secondary whitespace-nowrap" onClick={addGrant} disabled={roles.length === 0}>{t('access.policy.addGrant')}</button></div>
               <div className="space-y-3">
-                {grants.map((grant) => <GrantEditor key={grant.draftId} grant={grant} roles={roles} locations={locations} tags={tags} onChange={updateGrant} onSelectorChange={updateSelector} onRemove={removeGrant} t={t} requestHeaders={getAuthHeaders()} />)}
+                {grants.map((grant) => <GrantEditor key={grant.draftId} grant={grant} roles={roles} collections={collections} locations={locations} tags={tags} onChange={updateGrant} onSelectorChange={updateSelector} onRemove={removeGrant} t={t} requestHeaders={getAuthHeaders()} />)}
                 {grants.length === 0 && <div className="rounded-lg border border-dashed border-border p-8 text-center"><h4 className="font-semibold">{t('access.policy.noGrants')}</h4><p className="mt-1 text-sm text-muted-foreground">{t('access.policy.noGrantsHelp')}</p></div>}
               </div>
               {validationCode && <p className="text-sm text-[hsl(var(--danger))]">{t(`access.policy.validation.${validationCode}`)}</p>}
