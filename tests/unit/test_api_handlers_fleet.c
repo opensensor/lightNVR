@@ -280,9 +280,13 @@ void test_existing_tag_rbac_is_applied_before_totals_and_facets(void) {
 void test_rejects_malformed_selector_and_oversized_page(void) {
     cJSON *json = call_handler(
         handle_post_fleet_camera_query,
-        "{\"selector\":{\"version\":1,\"expression\":{\"op\":\"sql\"}}}",
+        "{\"selector\":{\"version\":1,\"expression\":{"
+        "\"op\":\"bad\\\"op\\\\path\\nline\"}}}",
         NULL, 400);
-    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON *error = cJSON_GetObjectItemCaseSensitive(json, "error");
+    TEST_ASSERT_TRUE(cJSON_IsString(error));
+    TEST_ASSERT_EQUAL_STRING("Unknown selector op: bad\"op\\path\nline",
+                             error->valuestring);
     cJSON_Delete(json);
     json = call_handler(handle_post_fleet_camera_query,
                         "{\"page_size\":201}", NULL, 400);

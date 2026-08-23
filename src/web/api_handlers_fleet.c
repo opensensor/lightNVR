@@ -399,57 +399,102 @@ static cJSON *camera_to_json(const fleet_camera_t *camera,
                              const fleet_selector_t *selector, bool explain_match) {
     cJSON *object = cJSON_CreateObject();
     if (!object) return NULL;
-    cJSON_AddStringToObject(object, "camera_uuid", camera->camera_uuid);
-    cJSON_AddStringToObject(object, "name", camera->name);
-    cJSON_AddStringToObject(object, "address", camera->address);
-    cJSON_AddBoolToObject(object, "enabled", camera->enabled);
-    cJSON_AddStringToObject(object, "recording_mode",
-                            fleet_camera_recording_mode(camera));
-    cJSON_AddStringToObject(object, "health",
-                            fleet_health_state_name(camera->health));
-    cJSON_AddNumberToObject(object, "last_frame_ts",
-                            (double)camera->last_frame_ts);
-    cJSON_AddNumberToObject(object, "current_fps", camera->current_fps);
-    cJSON_AddBoolToObject(object, "recording_active", camera->recording_active);
-    cJSON_AddStringToObject(object, "manufacturer", camera->manufacturer);
-    cJSON_AddStringToObject(object, "model", camera->model);
+    if (!cJSON_AddStringToObject(object, "camera_uuid", camera->camera_uuid) ||
+        !cJSON_AddStringToObject(object, "name", camera->name) ||
+        !cJSON_AddStringToObject(object, "address", camera->address) ||
+        !cJSON_AddBoolToObject(object, "enabled", camera->enabled) ||
+        !cJSON_AddStringToObject(object, "recording_mode",
+                                 fleet_camera_recording_mode(camera)) ||
+        !cJSON_AddStringToObject(object, "health",
+                                 fleet_health_state_name(camera->health)) ||
+        !cJSON_AddNumberToObject(object, "last_frame_ts",
+                                 (double)camera->last_frame_ts) ||
+        !cJSON_AddNumberToObject(object, "current_fps", camera->current_fps) ||
+        !cJSON_AddBoolToObject(object, "recording_active",
+                               camera->recording_active) ||
+        !cJSON_AddStringToObject(object, "manufacturer", camera->manufacturer) ||
+        !cJSON_AddStringToObject(object, "model", camera->model)) {
+        goto fail;
+    }
 
     cJSON *capabilities = cJSON_CreateArray();
-    if (camera->is_onvif) cJSON_AddItemToArray(capabilities,
-                                               cJSON_CreateString("onvif"));
-    if (camera->ptz_enabled) cJSON_AddItemToArray(capabilities,
-                                                  cJSON_CreateString("ptz"));
-    if (camera->backchannel_enabled) cJSON_AddItemToArray(
-        capabilities, cJSON_CreateString("backchannel"));
-    cJSON_AddItemToObject(object, "capabilities", capabilities);
+    if (!capabilities ||
+        !cJSON_AddItemToObject(object, "capabilities", capabilities)) {
+        cJSON_Delete(capabilities);
+        goto fail;
+    }
+    if (camera->is_onvif) {
+        cJSON *capability = cJSON_CreateString("onvif");
+        if (!capability || !cJSON_AddItemToArray(capabilities, capability)) {
+            cJSON_Delete(capability);
+            goto fail;
+        }
+    }
+    if (camera->ptz_enabled) {
+        cJSON *capability = cJSON_CreateString("ptz");
+        if (!capability || !cJSON_AddItemToArray(capabilities, capability)) {
+            cJSON_Delete(capability);
+            goto fail;
+        }
+    }
+    if (camera->backchannel_enabled) {
+        cJSON *capability = cJSON_CreateString("backchannel");
+        if (!capability || !cJSON_AddItemToArray(capabilities, capability)) {
+            cJSON_Delete(capability);
+            goto fail;
+        }
+    }
 
     cJSON *location = cJSON_CreateObject();
-    cJSON_AddStringToObject(location, "uuid", camera->location_uuid);
-    cJSON_AddStringToObject(location, "name", camera->location_name);
-    cJSON_AddStringToObject(location, "path", camera->location_path);
-    cJSON_AddItemToObject(object, "location", location);
+    if (!location || !cJSON_AddItemToObject(object, "location", location)) {
+        cJSON_Delete(location);
+        goto fail;
+    }
+    if (!cJSON_AddStringToObject(location, "uuid", camera->location_uuid) ||
+        !cJSON_AddStringToObject(location, "name", camera->location_name) ||
+        !cJSON_AddStringToObject(location, "path", camera->location_path)) {
+        goto fail;
+    }
 
     cJSON *tags = cJSON_CreateArray();
+    if (!tags || !cJSON_AddItemToObject(object, "tags", tags)) {
+        cJSON_Delete(tags);
+        goto fail;
+    }
     for (int i = 0; i < camera->tag_count; i++) {
         cJSON *tag = cJSON_CreateObject();
-        cJSON_AddStringToObject(tag, "uuid", camera->tags[i].uuid);
-        cJSON_AddStringToObject(tag, "label", camera->tags[i].label);
-        cJSON_AddItemToArray(tags, tag);
+        if (!tag ||
+            !cJSON_AddStringToObject(tag, "uuid", camera->tags[i].uuid) ||
+            !cJSON_AddStringToObject(tag, "label", camera->tags[i].label) ||
+            !cJSON_AddItemToArray(tags, tag)) {
+            cJSON_Delete(tag);
+            goto fail;
+        }
     }
-    cJSON_AddItemToObject(object, "tags", tags);
 
     if (explain_match) {
         fleet_selector_explanation_t explanation;
         if (fleet_selector_matches(selector, camera, &explanation)) {
             cJSON *clauses = cJSON_CreateArray();
-            for (int i = 0; i < explanation.clause_count; i++) {
-                cJSON_AddItemToArray(
-                    clauses, cJSON_CreateString(explanation.clauses[i]));
+            if (!clauses ||
+                !cJSON_AddItemToObject(object, "matched_clauses", clauses)) {
+                cJSON_Delete(clauses);
+                goto fail;
             }
-            cJSON_AddItemToObject(object, "matched_clauses", clauses);
+            for (int i = 0; i < explanation.clause_count; i++) {
+                cJSON *clause = cJSON_CreateString(explanation.clauses[i]);
+                if (!clause || !cJSON_AddItemToArray(clauses, clause)) {
+                    cJSON_Delete(clause);
+                    goto fail;
+                }
+            }
         }
     }
     return object;
+
+fail:
+    cJSON_Delete(object);
+    return NULL;
 }
 
 static void handle_fleet_query(const http_request_t *req, http_response_t *res,
