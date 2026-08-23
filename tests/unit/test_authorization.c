@@ -18,6 +18,7 @@
 #include "core/authorization.h"
 #include "core/config.h"
 #include "database/db_auth.h"
+#include "database/db_api_tokens.h"
 #include "database/db_authorization.h"
 #include "database/db_camera_collections.h"
 #include "database/db_camera_tags.h"
@@ -33,6 +34,7 @@
 #include "web/api_handlers_recordings_batch_download.h"
 #include "web/api_handlers_recordings_download.h"
 #include "web/api_handlers_users.h"
+#include "web/httpd_utils.h"
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_authorization_test.db"
@@ -153,6 +155,27 @@ static cJSON *call_handler(
     int expected_status) {
     return call_handler_path(handler, method, NULL, body, api_key,
                              expected_status);
+}
+
+static int authorize_stream_with_key(const char *api_key,
+                                     authorization_action_t action,
+                                     const char *stream_name,
+                                     int expected_status) {
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    safe_strcpy(req.headers[0].name, "X-API-Key",
+                sizeof(req.headers[0].name), 0);
+    safe_strcpy(req.headers[0].value, api_key,
+                sizeof(req.headers[0].value), 0);
+    req.num_headers = 1;
+    int allowed =
+        httpd_authorize_stream_action(&req, &res, action, stream_name);
+    TEST_ASSERT_EQUAL_INT(expected_status, res.status_code);
+    http_response_free(&res);
+    return allowed;
 }
 
 void setUp(void) {
@@ -486,6 +509,114 @@ void test_shared_collection_grants_track_membership_and_guard_scope(void) {
              (long long)cleared_version, OPERATOR_ROLE_UUID,
              private_collection.uuid);
     json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             path, body, NULL, 400);
+    cJSON_Delete(json);
+}
+
+void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
+    stream_config_t allowed = create_camera("Token Allowed", "Token");
+    stream_config_t denied = create_camera("Token Denied", "Token");
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("tokenoperator", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, OPERATOR_ROLE_UUID, "all", NULL, grant_uuid);
+
+    int64_t expiry = (int64_t)time(NULL) + 3600;
+    char path[128];
+    snprintf(path, sizeof(path), "/api/authorization/users/%lld/tokens",
+             (long long)user_id);
+    char body[1536];
+    snprintf(body, sizeof(body),
+             "{\"description\":\"North PTZ integration\","
+             "\"expires_at\":%lld,\"actions\":[\"ptz.control\"],"
+             "\"scope\":{\"type\":\"selector\",\"selector\":{"
+             "\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}}}",
+             (long long)expiry, allowed.camera_uuid);
+    cJSON *json = call_handler_path(
+        handle_post_user_api_token, HTTP_METHOD_POST, path, body, NULL, 201);
+    cJSON *secret_item = cJSON_GetObjectItemCaseSensitive(json, "secret");
+    cJSON *created = cJSON_GetObjectItemCaseSensitive(json, "token");
+    TEST_ASSERT_TRUE(cJSON_IsString(secret_item));
+    TEST_ASSERT_TRUE(strncmp(secret_item->valuestring, "lnvr_", 5) == 0);
+    char secret[API_TOKEN_SECRET_MAX];
+    char token_uuid[CAMERA_UUID_STRING_SIZE];
+    safe_strcpy(secret, secret_item->valuestring, sizeof(secret), 0);
+    safe_strcpy(token_uuid,
+                cJSON_GetObjectItemCaseSensitive(created, "uuid")->valuestring,
+                sizeof(token_uuid), 0);
+    cJSON_Delete(json);
+
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            db, "SELECT token_hash FROM authz_api_tokens WHERE uuid=?;", -1,
+            &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, token_uuid, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(stmt));
+    const char *stored_hash = (const char *)sqlite3_column_text(stmt, 0);
+    TEST_ASSERT_NOT_NULL(stored_hash);
+    TEST_ASSERT_EQUAL_UINT(64, strlen(stored_hash));
+    TEST_ASSERT_NOT_EQUAL(0, strcmp(secret, stored_hash));
+    sqlite3_finalize(stmt);
+
+    json = call_handler_path(handle_get_user_api_tokens, HTTP_METHOD_GET,
+                             path, NULL, NULL, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(json, "tokens"), 0),
+        "secret"));
+    cJSON_Delete(json);
+
+    g_config.web_auth_enabled = true;
+    TEST_ASSERT_EQUAL_INT(
+        1, authorize_stream_with_key(secret, AUTHZ_PTZ_CONTROL,
+                                     allowed.name, 200));
+    TEST_ASSERT_EQUAL_INT(
+        0, authorize_stream_with_key(secret, AUTHZ_PTZ_CONTROL,
+                                     denied.name, 403));
+    TEST_ASSERT_EQUAL_INT(
+        0, authorize_stream_with_key(secret, AUTHZ_EVIDENCE_PROTECT,
+                                     allowed.name, 403));
+
+    http_request_t request;
+    http_request_init(&request);
+    safe_strcpy(request.client_ip, "127.0.0.1", sizeof(request.client_ip), 0);
+    safe_strcpy(request.headers[0].name, "X-API-Key",
+                sizeof(request.headers[0].name), 0);
+    safe_strcpy(request.headers[0].value, secret,
+                sizeof(request.headers[0].value), 0);
+    request.num_headers = 1;
+    user_t authenticated;
+    TEST_ASSERT_EQUAL_INT(
+        0, httpd_get_authenticated_user(&request, &authenticated));
+
+    g_config.web_auth_enabled = false;
+    char revoke_path[192];
+    snprintf(revoke_path, sizeof(revoke_path),
+             "/api/authorization/users/%lld/tokens/%s",
+             (long long)user_id, token_uuid);
+    json = call_handler_path(handle_delete_user_api_token,
+                             HTTP_METHOD_DELETE, revoke_path, NULL, NULL, 200);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = true;
+    TEST_ASSERT_EQUAL_INT(
+        0, authorize_stream_with_key(secret, AUTHZ_PTZ_CONTROL,
+                                     allowed.name, 401));
+    g_config.web_auth_enabled = false;
+
+    snprintf(body, sizeof(body),
+             "{\"description\":\"No expiry\","
+             "\"actions\":[\"ptz.control\"],"
+             "\"scope\":{\"type\":\"all\"}}");
+    json = call_handler_path(handle_post_user_api_token, HTTP_METHOD_POST,
                              path, body, NULL, 400);
     cJSON_Delete(json);
 }
@@ -1055,6 +1186,7 @@ int main(void) {
     RUN_TEST(test_all_scope_admin_grant_allows_global_action_and_bumps_version);
     RUN_TEST(test_invalid_stored_selector_fails_closed);
     RUN_TEST(test_shared_collection_grants_track_membership_and_guard_scope);
+    RUN_TEST(test_scoped_api_token_intersects_user_policy_and_revokes);
     RUN_TEST(test_action_catalog_and_simulation_handlers);
     RUN_TEST(test_role_and_policy_database_mutations_are_atomic);
     RUN_TEST(test_policy_management_handlers_and_conflict_guards);

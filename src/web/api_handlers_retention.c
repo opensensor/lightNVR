@@ -376,7 +376,7 @@ void handle_batch_protect_recordings(const http_request_t *req, http_response_t 
 
     bool protected = cJSON_IsTrue(protected_json);
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         cJSON_Delete(json);
         http_response_set_json_error(res, 401, "Unauthorized");
         return;

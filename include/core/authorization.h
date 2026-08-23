@@ -57,6 +57,7 @@ typedef struct {
     authorization_decision_source_t source;
     int64_t policy_version;
     char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    char token_uuid[CAMERA_UUID_STRING_SIZE];
     char role_uuid[CAMERA_UUID_STRING_SIZE];
     char role_name[128];
     char explanation[AUTHORIZATION_EXPLANATION_MAX];
@@ -73,6 +74,7 @@ const char *authorization_decision_source_name(
 /*
  * Evaluate one user/action/resource tuple. A NULL camera is valid for global
  * actions and for an all-fleet grant, but never matches a selector-backed grant.
+ * Scoped API tokens are intersected with the user's effective decision.
  * Returns 0 for an allow/deny decision and -1 for an evaluation failure. Callers
  * must fail closed when this function returns -1.
  */

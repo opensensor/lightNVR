@@ -16,6 +16,7 @@
 #include "core/config.h"
 #include "utils/strings.h"
 #include "database/db_auth.h"
+#include "database/db_api_tokens.h"
 #include "database/db_fleet_query.h"
 
 cJSON* httpd_parse_json_body(const http_request_t *req) {
@@ -343,7 +344,8 @@ void httpd_clear_trusted_device_cookie(http_response_t *res) {
                              "trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
 }
 
-int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
+static int get_authenticated_user(const http_request_t *req, user_t *user,
+                                  bool allow_scoped_token) {
     if (!req || !user) return 0;
 
     char effective_client_ip[64] = {0};
@@ -412,9 +414,28 @@ int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
             log_warn("API key auth blocked by allowed_login_cidrs for user '%s' from IP %s",
                      user->username, effective_client_ip[0] != '\0' ? effective_client_ip : "(unknown)");
         }
+        if (rc != 0 && allow_scoped_token) {
+            int64_t user_id = 0;
+            char token_uuid[CAMERA_UUID_STRING_SIZE] = {0};
+            db_api_token_result_t token_result = db_api_token_authenticate(
+                api_key, &user_id, token_uuid);
+            if (token_result == DB_API_TOKEN_OK &&
+                db_auth_get_user_by_id(user_id, user) == 0 &&
+                user->is_active &&
+                db_auth_ip_allowed_for_user(user, effective_client_ip)) {
+                user->authenticated_via_scoped_token = true;
+                safe_strcpy(user->api_token_uuid, token_uuid,
+                            sizeof(user->api_token_uuid), 0);
+                return 1;
+            }
+        }
     }
 
     return 0;
+}
+
+int httpd_get_authenticated_user(const http_request_t *req, user_t *user) {
+    return get_authenticated_user(req, user, false);
 }
 
 int httpd_check_admin_privileges(const http_request_t *req, http_response_t *res) {
@@ -442,11 +463,12 @@ int httpd_is_demo_mode(void) {
     return g_config.demo_mode ? 1 : 0;
 }
 
-int httpd_check_viewer_access(const http_request_t *req, user_t *user) {
+static int check_viewer_access(const http_request_t *req, user_t *user,
+                               bool allow_scoped_token) {
     if (!user) return 0;
 
     // First, try to get an authenticated user
-    if (httpd_get_authenticated_user(req, user)) {
+    if (get_authenticated_user(req, user, allow_scoped_token)) {
         // User is authenticated - they have at least viewer access
         return 1;
     }
@@ -476,6 +498,15 @@ int httpd_check_viewer_access(const http_request_t *req, user_t *user) {
     return 0;
 }
 
+
+int httpd_check_viewer_access(const http_request_t *req, user_t *user) {
+    return check_viewer_access(req, user, false);
+}
+
+int httpd_check_action_access(const http_request_t *req, user_t *user) {
+    return check_viewer_access(req, user, true);
+}
+
 int httpd_authorize_action(const http_request_t *req, http_response_t *res,
                            authorization_action_t action,
                            const fleet_camera_t *camera, user_t *user,
@@ -483,7 +514,7 @@ int httpd_authorize_action(const http_request_t *req, http_response_t *res,
     if (!req || !res || !user || !evaluation) return 0;
     memset(user, 0, sizeof(*user));
     memset(evaluation, 0, sizeof(*evaluation));
-    if (!httpd_check_viewer_access(req, user)) {
+    if (!httpd_check_action_access(req, user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return 0;
     }
@@ -520,7 +551,7 @@ int httpd_authorize_stream_action(const http_request_t *req,
                                   authorization_action_t action,
                                   const char *stream_name) {
     user_t user;
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return 0;
     }

@@ -985,6 +985,34 @@ static const char migration_0053_down[] =
     "CREATE INDEX idx_authz_grants_role ON authz_grants(role_uuid);\n"
     "SELECT 1;";
 
+static const char migration_0054_up[] =
+    "CREATE TABLE authz_api_tokens ("
+    "uuid TEXT PRIMARY KEY, "
+    "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+    "created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL, "
+    "description TEXT NOT NULL, token_prefix TEXT NOT NULL, "
+    "token_hash TEXT NOT NULL UNIQUE, "
+    "action_mask INTEGER NOT NULL CHECK (action_mask>0), "
+    "scope_type TEXT NOT NULL CHECK (scope_type IN ('all','selector','collection')), "
+    "selector_json TEXT, "
+    "collection_uuid TEXT REFERENCES camera_collections(uuid) ON DELETE RESTRICT, "
+    "expires_at INTEGER NOT NULL, revoked_at INTEGER, last_used_at INTEGER, "
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')), "
+    "CHECK ((scope_type='all' AND selector_json IS NULL AND collection_uuid IS NULL) OR "
+    "(scope_type='selector' AND selector_json IS NOT NULL AND collection_uuid IS NULL) OR "
+    "(scope_type='collection' AND selector_json IS NULL AND collection_uuid IS NOT NULL)), "
+    "CHECK (expires_at>created_at));\n"
+    "CREATE INDEX idx_authz_api_tokens_user "
+    "ON authz_api_tokens(user_id,created_at DESC);\n"
+    "CREATE INDEX idx_authz_api_tokens_active "
+    "ON authz_api_tokens(token_hash,expires_at) WHERE revoked_at IS NULL;";
+
+static const char migration_0054_down[] =
+    "DROP INDEX IF EXISTS idx_authz_api_tokens_active;\n"
+    "DROP INDEX IF EXISTS idx_authz_api_tokens_user;\n"
+    "DROP TABLE IF EXISTS authz_api_tokens;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1357,8 +1385,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0053_down,
         .is_embedded = true
     },
+    {
+        .version = "0054",
+        .description = "add_scoped_api_tokens",
+        .sql_up = migration_0054_up,
+        .sql_down = migration_0054_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 53
+#define EMBEDDED_MIGRATIONS_COUNT 54
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

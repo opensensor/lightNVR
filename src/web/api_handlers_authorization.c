@@ -10,8 +10,10 @@
 
 #include "core/authorization.h"
 #include "database/db_auth.h"
+#include "database/db_api_tokens.h"
 #include "database/db_authorization.h"
 #include "database/db_fleet_query.h"
+#include "utils/memory.h"
 #include "utils/strings.h"
 #include "web/api_handlers_authorization.h"
 #include "web/httpd_utils.h"
@@ -879,4 +881,379 @@ void handle_put_user_authorization(const http_request_t *req,
         return;
     }
     set_user_policy_response(res, user_id, 200);
+}
+
+static bool extract_token_path(const http_request_t *req, int64_t *user_id,
+                               char token_uuid[CAMERA_UUID_STRING_SIZE],
+                               bool require_token, http_response_t *res) {
+    char value[MAX_PATH_LENGTH];
+    if (http_request_extract_path_param(req, "/api/authorization/users/",
+                                        value, sizeof(value)) != 0) {
+        http_response_set_json_error(res, 400, "Invalid token path");
+        return false;
+    }
+    char *separator = strchr(value, '/');
+    if (!separator) {
+        http_response_set_json_error(res, 400, "Invalid token path");
+        return false;
+    }
+    *separator = '\0';
+    char *end = NULL;
+    errno = 0;
+    long long parsed = strtoll(value, &end, 10);
+    if (errno == ERANGE || !end || *end != '\0' || parsed <= 0) {
+        http_response_set_json_error(res, 400, "Invalid user ID");
+        return false;
+    }
+    *user_id = (int64_t)parsed;
+    const char *suffix = separator + 1;
+    if (!require_token) {
+        if (strcmp(suffix, "tokens") != 0) {
+            http_response_set_json_error(res, 400, "Invalid token path");
+            return false;
+        }
+        token_uuid[0] = '\0';
+        return true;
+    }
+    if (strncmp(suffix, "tokens/", 7) != 0 ||
+        !valid_uuid(suffix + 7) || strchr(suffix + 7, '/')) {
+        http_response_set_json_error(res, 400, "Invalid token UUID");
+        return false;
+    }
+    safe_strcpy(token_uuid, suffix + 7, CAMERA_UUID_STRING_SIZE, 0);
+    return true;
+}
+
+static bool authorize_token_manager(const http_request_t *req,
+                                    http_response_t *res,
+                                    int64_t target_user_id,
+                                    user_t *requester) {
+    if (!httpd_get_authenticated_user(req, requester)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return false;
+    }
+    if (requester->id == target_user_id) return true;
+    authorization_evaluation_t evaluation;
+    if (authorization_evaluate(requester, AUTHZ_USERS_MANAGE, NULL,
+                               &evaluation) != 0) {
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return false;
+    }
+    if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
+        http_response_set_json_error(res, 403, "Forbidden");
+        return false;
+    }
+    return true;
+}
+
+static cJSON *api_token_to_json(const api_token_t *token) {
+    cJSON *object = cJSON_CreateObject();
+    cJSON *actions = cJSON_CreateArray();
+    cJSON *scope = cJSON_CreateObject();
+    if (!object || !actions || !scope) {
+        cJSON_Delete(object);
+        cJSON_Delete(actions);
+        cJSON_Delete(scope);
+        return NULL;
+    }
+    cJSON_AddStringToObject(object, "uuid", token->uuid);
+    cJSON_AddStringToObject(object, "description", token->description);
+    cJSON_AddStringToObject(object, "prefix", token->token_prefix);
+    cJSON_AddNumberToObject(object, "expires_at", (double)token->expires_at);
+    if (token->revoked_at > 0) {
+        cJSON_AddNumberToObject(object, "revoked_at",
+                                (double)token->revoked_at);
+    } else {
+        cJSON_AddNullToObject(object, "revoked_at");
+    }
+    if (token->last_used_at > 0) {
+        cJSON_AddNumberToObject(object, "last_used_at",
+                                (double)token->last_used_at);
+    } else {
+        cJSON_AddNullToObject(object, "last_used_at");
+    }
+    cJSON_AddNumberToObject(object, "created_at", (double)token->created_at);
+    int action_count = 0;
+    const authorization_action_metadata_t *catalog =
+        authorization_action_catalog(&action_count);
+    for (int i = 0; i < action_count; i++) {
+        if ((token->action_mask & (UINT64_C(1) << catalog[i].action)) != 0) {
+            cJSON_AddItemToArray(actions, cJSON_CreateString(catalog[i].key));
+        }
+    }
+    cJSON_AddItemToObject(object, "actions", actions);
+    cJSON_AddStringToObject(scope, "type", token->scope_type);
+    if (strcmp(token->scope_type, "selector") == 0) {
+        cJSON *selector = cJSON_Parse(token->selector_json);
+        if (!selector) {
+            cJSON_Delete(object);
+            cJSON_Delete(scope);
+            return NULL;
+        }
+        cJSON_AddItemToObject(scope, "selector", selector);
+    } else {
+        cJSON_AddNullToObject(scope, "selector");
+    }
+    if (strcmp(token->scope_type, "collection") == 0) {
+        cJSON_AddStringToObject(scope, "collection_uuid",
+                                token->collection_uuid);
+    } else {
+        cJSON_AddNullToObject(scope, "collection_uuid");
+    }
+    cJSON_AddItemToObject(object, "scope", scope);
+    return object;
+}
+
+static void set_api_token_error(http_response_t *res,
+                                db_api_token_result_t result) {
+    switch (result) {
+        case DB_API_TOKEN_NOT_FOUND:
+            http_response_set_json_error(res, 404, "API token not found");
+            break;
+        case DB_API_TOKEN_INVALID:
+            http_response_set_json_error(res, 400,
+                                         "Invalid API token request");
+            break;
+        case DB_API_TOKEN_LIMIT:
+            http_response_set_json_error(res, 409,
+                                         "Active API token limit reached");
+            break;
+        default:
+            http_response_set_json_error(res, 500,
+                                         "API token operation failed");
+            break;
+    }
+}
+
+void handle_get_user_api_tokens(const http_request_t *req,
+                                http_response_t *res) {
+    int64_t user_id = 0;
+    char unused_uuid[CAMERA_UUID_STRING_SIZE];
+    if (!extract_token_path(req, &user_id, unused_uuid, false, res)) return;
+    user_t requester;
+    if (!authorize_token_manager(req, res, user_id, &requester)) return;
+    user_t target;
+    if (db_auth_get_user_by_id(user_id, &target) != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+    api_token_t *tokens = NULL;
+    int count = 0;
+    db_api_token_result_t result =
+        db_api_token_list(user_id, &tokens, &count);
+    if (result != DB_API_TOKEN_OK) {
+        set_api_token_error(res, result);
+        return;
+    }
+    cJSON *root = cJSON_CreateObject();
+    cJSON *items = cJSON_CreateArray();
+    if (!root || !items) {
+        cJSON_Delete(root);
+        cJSON_Delete(items);
+        free(tokens);
+        http_response_set_json_error(res, 500, "Failed to create response");
+        return;
+    }
+    cJSON_AddNumberToObject(root, "user_id", (double)user_id);
+    cJSON_AddNumberToObject(root, "count", count);
+    cJSON_AddItemToObject(root, "tokens", items);
+    for (int i = 0; i < count; i++) {
+        cJSON *item = api_token_to_json(&tokens[i]);
+        if (!item) {
+            cJSON_Delete(root);
+            free(tokens);
+            http_response_set_json_error(res, 500,
+                                         "Failed to create response");
+            return;
+        }
+        cJSON_AddItemToArray(items, item);
+    }
+    free(tokens);
+    set_json_response(res, root);
+}
+
+static bool parse_token_actions(const cJSON *body, uint64_t *action_mask,
+                                http_response_t *res) {
+    const cJSON *actions = cJSON_GetObjectItemCaseSensitive(body, "actions");
+    if (!cJSON_IsArray(actions) || cJSON_GetArraySize(actions) == 0) {
+        http_response_set_json_error(res, 400,
+                                     "actions must be a non-empty array");
+        return false;
+    }
+    *action_mask = 0;
+    const cJSON *item = NULL;
+    cJSON_ArrayForEach(item, actions) {
+        authorization_action_t action = cJSON_IsString(item)
+            ? authorization_action_from_key(item->valuestring)
+            : AUTHZ_ACTION_INVALID;
+        if (action == AUTHZ_ACTION_INVALID) {
+            http_response_set_json_error(res, 400,
+                                         "Unknown API token action");
+            return false;
+        }
+        *action_mask |= UINT64_C(1) << action;
+    }
+    return true;
+}
+
+static bool parse_token_scope(const cJSON *body, char *scope_type,
+                              size_t scope_type_size, char **selector_json,
+                              char collection_uuid[CAMERA_UUID_STRING_SIZE],
+                              http_response_t *res) {
+    const cJSON *scope = cJSON_GetObjectItemCaseSensitive(body, "scope");
+    const cJSON *type = cJSON_IsObject(scope)
+        ? cJSON_GetObjectItemCaseSensitive(scope, "type") : NULL;
+    const cJSON *selector = cJSON_IsObject(scope)
+        ? cJSON_GetObjectItemCaseSensitive(scope, "selector") : NULL;
+    const cJSON *collection = cJSON_IsObject(scope)
+        ? cJSON_GetObjectItemCaseSensitive(scope, "collection_uuid") : NULL;
+    if (!cJSON_IsString(type) ||
+        (strcmp(type->valuestring, "all") != 0 &&
+         strcmp(type->valuestring, "selector") != 0 &&
+         strcmp(type->valuestring, "collection") != 0)) {
+        http_response_set_json_error(res, 400, "Invalid API token scope");
+        return false;
+    }
+    safe_strcpy(scope_type, type->valuestring, scope_type_size, 0);
+    *selector_json = NULL;
+    collection_uuid[0] = '\0';
+    if (strcmp(type->valuestring, "all") == 0) {
+        if ((selector && !cJSON_IsNull(selector)) ||
+            (collection && !cJSON_IsNull(collection))) {
+            http_response_set_json_error(
+                res, 400, "All-camera token scope cannot include a resource");
+            return false;
+        }
+        return true;
+    }
+    if (strcmp(type->valuestring, "collection") == 0) {
+        if ((selector && !cJSON_IsNull(selector)) ||
+            !cJSON_IsString(collection) ||
+            !valid_uuid(collection->valuestring)) {
+            http_response_set_json_error(
+                res, 400, "Collection token scope requires a valid UUID");
+            return false;
+        }
+        safe_strcpy(collection_uuid, collection->valuestring,
+                    CAMERA_UUID_STRING_SIZE, 0);
+        return true;
+    }
+    if (!selector || (collection && !cJSON_IsNull(collection))) {
+        http_response_set_json_error(
+            res, 400, "Selector token scope requires only a selector");
+        return false;
+    }
+    *selector_json = cJSON_PrintUnformatted(selector);
+    if (!*selector_json || strlen(*selector_json) >= API_TOKEN_SELECTOR_MAX) {
+        free(*selector_json);
+        *selector_json = NULL;
+        http_response_set_json_error(res, 400, "API token selector is too large");
+        return false;
+    }
+    return true;
+}
+
+void handle_post_user_api_token(const http_request_t *req,
+                                http_response_t *res) {
+    int64_t user_id = 0;
+    char unused_uuid[CAMERA_UUID_STRING_SIZE];
+    if (!extract_token_path(req, &user_id, unused_uuid, false, res)) return;
+    user_t requester;
+    if (!authorize_token_manager(req, res, user_id, &requester)) return;
+    user_t target;
+    if (db_auth_get_user_by_id(user_id, &target) != 0) {
+        http_response_set_json_error(res, 404, "User not found");
+        return;
+    }
+    cJSON *body = httpd_parse_json_body(req);
+    const cJSON *description = cJSON_IsObject(body)
+        ? cJSON_GetObjectItemCaseSensitive(body, "description") : NULL;
+    const cJSON *expires_at = cJSON_IsObject(body)
+        ? cJSON_GetObjectItemCaseSensitive(body, "expires_at") : NULL;
+    double expiry_number = cJSON_IsNumber(expires_at)
+        ? expires_at->valuedouble : 0;
+    int64_t expiry = expiry_number > 0 &&
+        expiry_number <= 9007199254740991.0 ? (int64_t)expiry_number : 0;
+    uint64_t action_mask = 0;
+    char scope_type[API_TOKEN_SCOPE_TYPE_MAX];
+    char collection_uuid[CAMERA_UUID_STRING_SIZE];
+    char *selector_json = NULL;
+    if (!cJSON_IsObject(body) || !cJSON_IsString(description) ||
+        !description->valuestring || description->valuestring[0] == '\0' ||
+        strlen(description->valuestring) >= API_TOKEN_DESCRIPTION_MAX ||
+        expiry <= 0 || (double)expiry != expiry_number) {
+        http_response_set_json_error(res, 400,
+                                     "Invalid API token request");
+        cJSON_Delete(body);
+        return;
+    }
+    if (!parse_token_actions(body, &action_mask, res) ||
+        !parse_token_scope(body, scope_type, sizeof(scope_type),
+                           &selector_json, collection_uuid, res)) {
+        free(selector_json);
+        cJSON_Delete(body);
+        return;
+    }
+    api_token_create_t input = {
+        .user_id = user_id,
+        .created_by_user_id = requester.id > 0 ? requester.id : user_id,
+        .description = description->valuestring,
+        .action_mask = action_mask,
+        .scope_type = scope_type,
+        .selector_json = selector_json,
+        .collection_uuid = collection_uuid[0] ? collection_uuid : NULL,
+        .expires_at = expiry,
+    };
+    api_token_t token;
+    char secret[API_TOKEN_SECRET_MAX];
+    db_api_token_result_t result =
+        db_api_token_create(&input, &token, secret);
+    free(selector_json);
+    cJSON_Delete(body);
+    if (result != DB_API_TOKEN_OK) {
+        set_api_token_error(res, result);
+        return;
+    }
+    cJSON *root = cJSON_CreateObject();
+    cJSON *token_json = api_token_to_json(&token);
+    cJSON *secret_json = cJSON_CreateString(secret);
+    if (!root || !token_json || !secret_json) {
+        cJSON_Delete(root);
+        cJSON_Delete(token_json);
+        cJSON_Delete(secret_json);
+        db_api_token_revoke(user_id, token.uuid);
+        secure_zero_memory(secret, sizeof(secret));
+        http_response_set_json_error(res, 500, "Failed to create response");
+        return;
+    }
+    cJSON_AddItemToObject(root, "secret", secret_json);
+    cJSON_AddItemToObject(root, "token", token_json);
+    char *response_body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!response_body) {
+        db_api_token_revoke(user_id, token.uuid);
+        secure_zero_memory(secret, sizeof(secret));
+        http_response_set_json_error(res, 500, "Failed to serialize response");
+        return;
+    }
+    http_response_set_json(res, 201, response_body);
+    secure_zero_memory(secret, sizeof(secret));
+    free(response_body);
+}
+
+void handle_delete_user_api_token(const http_request_t *req,
+                                  http_response_t *res) {
+    int64_t user_id = 0;
+    char token_uuid[CAMERA_UUID_STRING_SIZE];
+    if (!extract_token_path(req, &user_id, token_uuid, true, res)) return;
+    user_t requester;
+    if (!authorize_token_manager(req, res, user_id, &requester)) return;
+    db_api_token_result_t result =
+        db_api_token_revoke(user_id, token_uuid);
+    if (result != DB_API_TOKEN_OK) {
+        set_api_token_error(res, result);
+        return;
+    }
+    http_response_set_json(res, 200, "{\"success\":true}");
 }
