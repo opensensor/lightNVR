@@ -160,6 +160,40 @@ until shutdown. A callback runs off the producer thread but should still use
 bounded work; durable retry and broker isolation are provided by the outbox and
 MQTT delivery layer rather than by blocking the in-process worker.
 
+## Durable delivery outbox
+
+The SQLite outbox persists one validated, already-serialized envelope per
+destination. Its identity is `source + id + destination`, so a retry reuses the
+same event ID while the same event can still be sent to multiple destinations.
+Rows move through this lifecycle:
+
+```text
+pending -> delivering -> delivered
+   ^            |
+   +------------+  retry or expired lease
+                |
+                +-> dead  permanent failure or expiry
+```
+
+Claims are atomic and carry a 30-second lease by default. If a worker exits
+without recording an outcome, the row becomes eligible again when the lease
+expires. Each claim increments `attempt_count`; retry callers supply the next
+eligible time after applying their destination-specific backoff policy. An
+event that reaches its registry expiry moves to `dead` and is never claimed.
+
+The repository defaults to 10,000 rows and 64 MiB. Capacity is checked inside
+the enqueue transaction. Old delivered/dead rows are reclaimed first. An
+incoming error or critical event may then shed the oldest lower-severity pending
+row; ordinary events never evict an equal- or higher-severity row. If neither
+rule can make room, enqueue returns `EVENT_OUTBOX_FULL` without modifying the
+queue. Terminal rows can also be pruned in bounded batches.
+
+Queue statistics expose row and byte totals, state counts, due count, and the
+oldest pending timestamp. This repository is the durable persistence boundary;
+the MQTT delivery worker that consumes it is a separate layer. Until that
+worker is enabled, the P0 MQTT compatibility subscriber described below still
+publishes directly from the asynchronous event-bus worker.
+
 ## MQTT compatibility destination
 
 The P0 MQTT subscriber publishes every normalized event to
