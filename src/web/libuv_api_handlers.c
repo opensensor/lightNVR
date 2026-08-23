@@ -42,6 +42,7 @@
 #include "web/api_handlers_camera_collections.h"
 #include "web/api_handlers_authorization.h"
 #include "web/api_handlers_audit.h"
+#include "web/api_handlers_event_routes.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -273,6 +274,22 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_audit_settings);
     http_server_register_handler(server, "/api/audit/settings", "PUT",
                                  handle_put_audit_settings);
+
+    // Versioned event catalog and optimistic-concurrency route management
+    http_server_register_handler(server, "/api/events/catalog", "GET",
+                                 handle_get_event_catalog);
+    http_server_register_handler(server, "/api/event-routes/preview", "POST",
+                                 handle_post_event_route_preview);
+    http_server_register_handler(server, "/api/event-routes", "GET",
+                                 handle_get_event_routes);
+    http_server_register_handler(server, "/api/event-routes", "POST",
+                                 handle_post_event_route);
+    http_server_register_handler(server, "/api/event-routes/#", "GET",
+                                 handle_get_event_route);
+    http_server_register_handler(server, "/api/event-routes/#", "PUT",
+                                 handle_put_event_route);
+    http_server_register_handler(server, "/api/event-routes/#", "DELETE",
+                                 handle_delete_event_route);
 
     // TOTP MFA API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/auth/users/#/totp/setup", "POST", handle_totp_setup);

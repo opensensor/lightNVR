@@ -141,6 +141,19 @@ ambiguous even when MQTT QoS is greater than zero. Events expire according to
 their registry policy rather than being delivered indefinitely after they are
 stale.
 
+### Event route configuration
+
+The event route API can persist and validate event type, camera selector,
+schedule, predicate, and suppression configuration for the normalized stream.
+The current destination identifier is `mqtt:default`, which refers to the
+single broker configured in `[mqtt]`. Route preview is safe to use while
+designing a rule: it resolves matching cameras but never publishes.
+
+Route definitions are control-plane groundwork in this release. They do not
+yet replace or filter the default normalized publisher; runtime route matching
+and multiple broker profiles are subsequent P2 work. See
+[Event Routes](API.md#event-routes) for the API contract.
+
 ```json
 {
   "specversion": "1.0",
