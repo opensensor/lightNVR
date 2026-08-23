@@ -1103,6 +1103,68 @@ GET /api/events/catalog
 Returns every registered event type with its family, description, severity,
 sensitivity, media policy, expected rate, subject kind, and default expiry.
 
+#### MQTT Destination Profiles
+
+```
+GET    /api/event-destinations
+POST   /api/event-destinations
+GET    /api/event-destinations/{destination_uuid}
+PUT    /api/event-destinations/{destination_uuid}
+DELETE /api/event-destinations/{destination_uuid}?revision={last_seen_revision}
+```
+
+These endpoints manage up to 64 named MQTT broker profiles. All operations
+require `events.configure`. The list response also describes the unmanaged
+`mqtt:default` destination backed by the existing `[mqtt]` settings.
+
+Create requires `name` and `broker.host`. It defaults to port `8883`, system
+certificate trust, QoS 1, a 60-second keepalive, a unique `lightnvr-…` client
+ID, and topic template `lightnvr/v1/events/{type}/{subject_id}`.
+
+```json
+{
+  "name": "Operations bridge",
+  "description": "Input for the hosted notification service",
+  "enabled": true,
+  "type": "mqtt",
+  "broker": {
+    "host": "mqtt.example.net",
+    "port": 8883,
+    "client_id": "lightnvr-campus-a",
+    "topic_template": "campus-a/{type}/{subject_id}",
+    "keepalive_seconds": 60,
+    "qos": 1
+  },
+  "authentication": {
+    "username": "event-publisher",
+    "password": "write-only-secret"
+  },
+  "tls": {
+    "mode": "system"
+  }
+}
+```
+
+`tls.mode` is one of `disabled`, `system`, `custom_ca`, or `mutual`. Custom
+certificate paths must be absolute; `custom_ca` requires `ca_file`, and
+`mutual` requires `cert_file` and `key_file` with an optional `ca_file`.
+Topic templates must contain `{type}` and `{subject_id}` and cannot contain
+MQTT wildcards.
+
+Passwords are write-only. Responses contain only
+`authentication.password_configured`; they never return the credential. On
+update, omitting `authentication.password` preserves it, while JSON `null` or
+an empty string clears it. Updates are partial but require the last observed
+positive `revision`, and deletes use the same revision as a query parameter.
+Names are unique case-insensitively, as is the broker host, port, and client ID
+combination. A profile referenced by an event route cannot be deleted. Profile
+create, update, and delete outcomes are written to the audit history without
+credential material.
+
+Managed profiles are staged by this API. Route selection and multi-broker
+runtime delivery are enabled by the dependent runtime slice; until that is
+installed, route definitions continue to accept only `mqtt:default`.
+
 #### List, Create, and Read Routes
 
 ```

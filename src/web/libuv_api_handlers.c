@@ -43,6 +43,7 @@
 #include "web/api_handlers_authorization.h"
 #include "web/api_handlers_audit.h"
 #include "web/api_handlers_event_routes.h"
+#include "web/api_handlers_event_destinations.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -275,9 +276,19 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/audit/settings", "PUT",
                                  handle_put_audit_settings);
 
-    // Versioned event catalog and optimistic-concurrency route management
+    // Versioned event catalog, destination profiles, and route management
     http_server_register_handler(server, "/api/events/catalog", "GET",
                                  handle_get_event_catalog);
+    http_server_register_handler(server, "/api/event-destinations", "GET",
+                                 handle_get_event_destinations);
+    http_server_register_handler(server, "/api/event-destinations", "POST",
+                                 handle_post_event_destination);
+    http_server_register_handler(server, "/api/event-destinations/#", "GET",
+                                 handle_get_event_destination);
+    http_server_register_handler(server, "/api/event-destinations/#", "PUT",
+                                 handle_put_event_destination);
+    http_server_register_handler(server, "/api/event-destinations/#", "DELETE",
+                                 handle_delete_event_destination);
     http_server_register_handler(server, "/api/event-routes/preview", "POST",
                                  handle_post_event_route_preview);
     http_server_register_handler(server, "/api/event-routes", "GET",
