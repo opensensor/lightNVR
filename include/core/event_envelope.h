@@ -99,6 +99,11 @@ int event_envelope_validate(const event_envelope_t *event,
 char *event_envelope_serialize(const event_envelope_t *event,
                                char *error, size_t error_size);
 
+/* Deep-copy a validated envelope while preserving its immutable identity. */
+int event_envelope_clone(event_envelope_t *destination,
+                         const event_envelope_t *source, char *error,
+                         size_t error_size);
+
 void event_envelope_clear(event_envelope_t *event);
 
 #endif /* LIGHTNVR_CORE_EVENT_ENVELOPE_H */

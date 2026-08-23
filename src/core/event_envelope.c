@@ -586,6 +586,26 @@ char *event_envelope_serialize(const event_envelope_t *event, char *error,
     return serialized;
 }
 
+int event_envelope_clone(event_envelope_t *destination,
+                         const event_envelope_t *source, char *error,
+                         size_t error_size) {
+    if (error && error_size > 0) error[0] = '\0';
+    if (!destination) {
+        set_error(error, error_size, "event clone destination is required");
+        return -1;
+    }
+    memset(destination, 0, sizeof(*destination));
+    if (event_envelope_validate(source, error, error_size) != 0) return -1;
+    *destination = *source;
+    destination->data = cJSON_Duplicate(source->data, true);
+    if (!destination->data) {
+        memset(destination, 0, sizeof(*destination));
+        set_error(error, error_size, "event clone allocation failed");
+        return -1;
+    }
+    return 0;
+}
+
 void event_envelope_clear(event_envelope_t *event) {
     if (!event) return;
     cJSON_Delete(event->data);
