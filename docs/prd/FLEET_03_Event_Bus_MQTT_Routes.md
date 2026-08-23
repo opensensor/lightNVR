@@ -1,6 +1,8 @@
 # PRD — Event Bus & MQTT Routes
 
-**Status**: P0/P1 complete — versioned async bus, detection adapter, bounded SQLite outbox, acknowledged default MQTT delivery, retry/expiry metrics implemented; P2 routes and UI next
+**Status**: P0/P1 complete; P2 control plane in progress — durable route definitions,
+catalog/CRUD API, selector preview, and optimistic concurrency implemented;
+runtime evaluation, multiple destinations, and UI remain
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation
@@ -149,6 +151,13 @@ Initial event families:
 | P1 | SQLite outbox, one MQTT destination, retry/expiry metrics |
 | P2 | Multiple destinations, selector routes, suppression rules, UI |
 | P3 | Broader health/storage/security/ONVIF event producers and media references |
+
+P2 is split so configuration can be reviewed independently from delivery
+behavior. Its first slice persists and validates route drafts, exposes the event
+catalog and authorized CRUD API, audits mutations, and previews current camera
+scope without publishing. The next slices evaluate enabled routes on the event
+worker, enforce schedule and suppression state, add destination profiles, and
+then expose the workflow in the Streams-area UI.
 
 ## 8. Acceptance criteria
 

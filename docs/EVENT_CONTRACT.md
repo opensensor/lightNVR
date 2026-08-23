@@ -201,6 +201,34 @@ delivery, retry, dead-letter transitions, outcome errors, and disconnected
 polls. MQTT settings hot reload stops the worker before broker teardown and
 restarts it afterward; pending rows and stable event IDs remain in SQLite.
 
+## Route configuration control plane
+
+Administrators with `events.configure` can define durable event routes through
+the [event route API](API.md#event-routes). A route binds one or more registered
+event types to a Fleet selector, an optional detection predicate, a schedule,
+suppression values, and a destination key. Route names are unique without
+regard to case, definitions are capped at 512, and updates and deletes require
+the last observed `revision` so concurrent edits return `409` instead of
+silently overwriting one another.
+
+Version 1 accepts the following typed configuration:
+
+- Camera scope is either `all` or a Fleet selector v1 object.
+- Detection predicates may select any listed label or zone and set a minimum
+  confidence from zero to one.
+- A schedule supplies an IANA-style timezone and up to 64 day/time windows;
+  weekday numbers run from Sunday (`0`) through Saturday (`6`). An empty
+  window list means always active.
+- Suppression stores debounce, cooldown, grouping-window, and per-minute rate
+  limits for the runtime evaluator.
+- `mqtt:default` is the only destination key until broker profiles land.
+
+`POST /api/event-routes/preview` validates a complete draft and resolves its
+current camera scope, returning a count and a bounded sample. Preview is
+deliberately side-effect free (`would_publish` is always `false`). This control
+plane does not yet alter the compatibility/default MQTT subscriber; runtime
+matching and suppression are the next delivery slice.
+
 ## MQTT compatibility destination
 
 The MQTT subscriber persists every normalized event for delivery to

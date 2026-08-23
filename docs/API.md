@@ -1087,6 +1087,105 @@ POST /api/camera-collections/{collection_uuid}/preview
 Returns the authorized `matched_count` and a sample of at most 50 camera UUIDs,
 names, and location paths.
 
+### Event Routes
+
+Event route endpoints require the global `events.configure` action (legacy
+administrators have it). They expose the registered event catalog and a durable,
+revisioned route control plane. In this phase, route definitions do not alter
+the default MQTT publisher; the preview endpoint never publishes.
+
+#### Event Catalog
+
+```
+GET /api/events/catalog
+```
+
+Returns every registered event type with its family, description, severity,
+sensitivity, media policy, expected rate, subject kind, and default expiry.
+
+#### List, Create, and Read Routes
+
+```
+GET  /api/event-routes
+POST /api/event-routes
+GET  /api/event-routes/{route_uuid}
+```
+
+Create accepts a complete route definition. Only `name` and `event_types` are
+required; omitted fields use the defaults shown below. Unknown fields and
+unknown event types are rejected.
+
+```json
+{
+  "name": "North entrance people",
+  "description": "External notification input",
+  "enabled": true,
+  "destination": "mqtt:default",
+  "event_types": ["io.lightnvr.detection.object.v1"],
+  "camera_scope": {
+    "type": "selector",
+    "selector": {
+      "version": 1,
+      "expression": {
+        "op": "location_prefix",
+        "values": ["Campus/North"]
+      }
+    }
+  },
+  "predicate": {
+    "version": 1,
+    "detection": {
+      "labels_any": ["person"],
+      "min_confidence": 0.8,
+      "zone_ids_any": ["entry"]
+    }
+  },
+  "schedule": {
+    "version": 1,
+    "timezone": "America/New_York",
+    "windows": [
+      {"days": [1, 2, 3, 4, 5], "start": "18:00", "end": "06:00"}
+    ]
+  },
+  "suppression": {
+    "debounce_seconds": 2,
+    "cooldown_seconds": 30,
+    "grouping_window_seconds": 10,
+    "max_events_per_minute": 20
+  }
+}
+```
+
+An all-camera scope is `{"type":"all"}`. Defaults are enabled, all cameras,
+`{"version":1}` predicate, an always-active UTC schedule, and zero for each
+suppression value. A successful create returns `201` with the server-assigned
+UUID, revision `1`, and timestamps. Names are unique case-insensitively and at
+most 512 routes may be stored.
+
+#### Update and Delete a Route
+
+```
+PUT    /api/event-routes/{route_uuid}
+DELETE /api/event-routes/{route_uuid}?revision={last_seen_revision}
+```
+
+Update is a partial write but must include the last observed positive
+`revision`. Delete carries the same value as a query parameter. A stale write
+returns `409`; a successful update increments the revision. Create, update, and
+delete outcomes are recorded in the audit history.
+
+#### Preview a Route Draft
+
+```
+POST /api/event-routes/preview
+```
+
+Accepts the same complete body as create, validates every field, and resolves
+the camera selector against the current Fleet inventory. The response includes
+`matched_camera_count`, a `camera_sample` of at most 20 entries, registry
+metadata for the selected event types, and `would_publish: false`. It neither
+persists the draft nor enqueues or publishes an event.
+
 ### System
 
 #### Get System Information

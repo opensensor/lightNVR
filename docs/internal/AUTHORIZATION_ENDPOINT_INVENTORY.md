@@ -114,7 +114,8 @@ they may not trust a client-supplied collection expansion.
 | ICE server configuration reads | `system.admin` | Existing endpoint checks |
 | Storage health | `storage.configure` for sensitive target details; non-sensitive summary may remain operational read | Existing endpoint checks |
 | Storage cleanup | `storage.configure` | Existing administrator checks |
-| Future event destinations and routes | `events.configure` | Not implemented |
+| Event catalog and route CRUD/preview | `events.configure` | Central evaluator; mutation outcomes are audited and writes use optimistic revisions |
+| Future event destination profiles, runtime retry, and delivery controls | `events.configure` | Not implemented |
 
 Shared static and smart collections may be referenced directly by grants. The
 evaluator resolves their current membership server-side; private collections
@@ -125,11 +126,11 @@ The durable audit store records every decision made through
 `httpd_authorize_action()` / `httpd_authorize_stream_action()`, login outcomes,
 policy and role changes, authorization simulation, scoped-token lifecycle, and
 audit-retention changes. PTZ writes, evidence protection/retention, recording
-deletion, and recording export now add a separate redacted operation-outcome
-event; asynchronous jobs preserve only the minimum principal and correlation
-context needed to record their eventual result. Remaining handler migrations
-must follow the same pattern because an `allowed` decision proves authorization,
-not that downstream work succeeded.
+deletion, recording export, and event route mutations now add a separate
+redacted operation-outcome event; asynchronous jobs preserve only the minimum
+principal and correlation context needed to record their eventual result.
+Remaining handler migrations must follow the same pattern because an `allowed`
+decision proves authorization, not that downstream work succeeded.
 
 Scoped API tokens are accepted only through `httpd_check_action_access()` and
 must be followed by central action evaluation for every affected resource.
