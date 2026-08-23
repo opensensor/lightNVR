@@ -241,6 +241,18 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_authorization_actions);
     http_server_register_handler(server, "/api/authorization/simulate", "POST",
                                  handle_post_authorization_simulate);
+    http_server_register_handler(server, "/api/authorization/roles", "GET",
+                                 handle_get_authorization_roles);
+    http_server_register_handler(server, "/api/authorization/roles", "POST",
+                                 handle_post_authorization_role);
+    http_server_register_handler(server, "/api/authorization/roles/#", "PUT",
+                                 handle_put_authorization_role);
+    http_server_register_handler(server, "/api/authorization/roles/#", "DELETE",
+                                 handle_delete_authorization_role);
+    http_server_register_handler(server, "/api/authorization/users/#", "GET",
+                                 handle_get_user_authorization);
+    http_server_register_handler(server, "/api/authorization/users/#", "PUT",
+                                 handle_put_user_authorization);
 
     // TOTP MFA API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/auth/users/#/totp/setup", "POST", handle_totp_setup);
