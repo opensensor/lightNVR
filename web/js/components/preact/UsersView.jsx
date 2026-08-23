@@ -16,6 +16,8 @@ import { EditUserModal } from './users/EditUserModal.jsx';
 import { DeleteUserModal } from './users/DeleteUserModal.jsx';
 import { ApiKeyModal } from './users/ApiKeyModal.jsx';
 import { TotpSetupModal } from './users/TotpSetupModal.jsx';
+import { AccessPolicyModal } from './users/AccessPolicyModal.jsx';
+import { RoleManagerModal } from './users/RoleManagerModal.jsx';
 
 /**
  * UsersView component
@@ -25,11 +27,10 @@ export function UsersView() {
   const { t } = useI18n();
 
   // State for modal visibility
-  const [activeModal, setActiveModal] = useState(null); // 'add', 'edit', 'delete', 'apiKey', 'totp', or null
+  const [activeModal, setActiveModal] = useState(null); // add, edit, delete, apiKey, totp, access, roles, or null
 
-  // State for selected user and API key
+  // State for the user targeted by the active management modal.
   const [selectedUser, setSelectedUser] = useState(null);
-  const [apiKey, setApiKey] = useState('');
 
   // Form state for adding/editing users
   const [formData, setFormData] = useState({
@@ -192,39 +193,6 @@ export function UsersView() {
     }
   });
 
-  // Generate API key mutation
-  const generateApiKeyMutation = useMutation({
-    mutationFn: async (userId) => {
-      return await fetchJSON(`/api/auth/users/${userId}/api-key`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        timeout: 20000, // 20 second timeout for key generation
-        retries: 1,     // Retry once
-        retryDelay: 2000 // 2 seconds between retries
-      });
-    },
-    onMutate: () => {
-      // Show loading state
-      setApiKey(t('users.generatingApiKey'));
-    },
-    onSuccess: (data) => {
-      // Set the API key and ensure the modal stays open
-      setApiKey(data.api_key);
-      showStatusMessage(t('users.apiKeyGenerated'), 'success');
-
-      // Refresh users list without affecting the modal
-      // We'll use a separate function to avoid closing the modal
-      setTimeout(() => {
-        refetchUsers();
-      }, 100);
-    },
-    onError: (error) => {
-      console.error('Error generating API key:', error);
-      setApiKey('');
-      showStatusMessage(t('users.apiKeyGenerateError', { message: error.message }), 'error');
-    }
-  });
-
   const clearLoginLockoutMutation = useMutation({
     mutationFn: async (userId) => {
       return await fetchJSON(`/api/auth/users/${userId}/login-lockout/clear`, {
@@ -297,36 +265,12 @@ export function UsersView() {
     return deleteUserMutation.mutateAsync(selectedUser.id);
   }, [selectedUser, deleteUserMutation]);
 
-  /**
-   * Handle generating a new API key for a user. Returns the mutation's
-   * promise so the child ApiKeyModal's <AsyncButton> can track pending
-   * state and block the rapid double-tap (#399).
-   */
-  const handleGenerateApiKey = useCallback(() => {
-    console.log('Generating API key for user:', selectedUser.id, selectedUser.username);
-    return generateApiKeyMutation.mutateAsync(selectedUser.id);
-  }, [selectedUser, generateApiKeyMutation]);
-
   const handleClearLoginLockout = useCallback(() => {
     if (!selectedUser?.id) return;
 
     console.log('Clearing login lockout for user:', selectedUser.id, selectedUser.username);
     clearLoginLockoutMutation.mutate(selectedUser.id);
   }, [selectedUser, clearLoginLockoutMutation]);
-
-  /**
-   * Copy API key to clipboard
-   */
-  const copyApiKey = useCallback(() => {
-    navigator.clipboard.writeText(apiKey)
-      .then(() => {
-        showStatusMessage(t('users.apiKeyCopied'), 'success');
-      })
-      .catch((err) => {
-        console.error('Error copying API key:', err);
-        showStatusMessage(t('users.apiKeyCopyError'), 'error');
-      });
-  }, [apiKey]);
 
   /**
    * Open the edit modal for a user
@@ -358,12 +302,11 @@ export function UsersView() {
   }, []);
 
   /**
-   * Open the API key modal for a user
-   * @param {Object} user - User to generate API key for
+   * Open API access management for a user.
+   * @param {Object} user - User whose tokens should be managed
    */
   const openApiKeyModal = useCallback((user) => {
     setSelectedUser(user);
-    setApiKey('');
     setActiveModal('apiKey');
   }, []);
 
@@ -375,6 +318,23 @@ export function UsersView() {
     setSelectedUser(user);
     setActiveModal('totp');
   }, []);
+
+  const openAccessModal = useCallback((user) => {
+    setSelectedUser(user);
+    setActiveModal('access');
+  }, []);
+
+  const openRoleManager = useCallback(() => {
+    setSelectedUser(null);
+    setActiveModal('roles');
+  }, []);
+
+  const pageActions = (
+    <div className="flex flex-wrap gap-2">
+      <button className="btn-secondary" onClick={openRoleManager}>{t('access.roles.manage')}</button>
+      <button className="btn-primary" onClick={handleAddUserClick}>{t('users.addUser')}</button>
+    </div>
+  );
 
   /**
    * Close any open modal
@@ -451,14 +411,7 @@ export function UsersView() {
   if (users.length === 0 && !loading) {
     return (
       <div>
-        {renderPageHeader(
-          <button
-            className="btn-primary"
-            onClick={handleAddUserClick}
-          >
-            {t('users.addUser')}
-          </button>
-        )}
+        {renderPageHeader(pageActions)}
 
         <div className="badge-info border px-4 py-3 rounded relative mb-4">
           <h4 className="font-bold mb-2">{t('users.noUsersFound')}</h4>
@@ -472,6 +425,9 @@ export function UsersView() {
             onClose={closeModal}
           />
         )}
+        {activeModal === 'roles' && (
+          <RoleManagerModal onClose={closeModal} getAuthHeaders={getAuthHeaders} />
+        )}
       </div>
     );
   }
@@ -479,14 +435,7 @@ export function UsersView() {
   // Render users table with modals
   return (
     <div>
-      {renderPageHeader(
-        <button
-          className="btn-primary"
-          onClick={handleAddUserClick}
-        >
-          {t('users.addUser')}
-        </button>
-      )}
+      {renderPageHeader(pageActions)}
 
       <UsersTable
         users={users}
@@ -494,6 +443,7 @@ export function UsersView() {
         onDelete={openDeleteModal}
         onApiKey={openApiKeyModal}
         onMfa={openTotpModal}
+        onAccess={openAccessModal}
       />
 
       {activeModal === 'add' && (
@@ -528,9 +478,7 @@ export function UsersView() {
       {activeModal === 'apiKey' && (
         <ApiKeyModal
           currentUser={selectedUser}
-          newApiKey={apiKey}
-          handleGenerateApiKey={handleGenerateApiKey}
-          copyApiKey={copyApiKey}
+          getAuthHeaders={getAuthHeaders}
           onClose={closeModal}
         />
       )}
@@ -540,6 +488,21 @@ export function UsersView() {
           user={selectedUser}
           onClose={closeModal}
           onSuccess={refetchUsers}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
+
+      {activeModal === 'access' && selectedUser && (
+        <AccessPolicyModal
+          user={selectedUser}
+          onClose={closeModal}
+          getAuthHeaders={getAuthHeaders}
+        />
+      )}
+
+      {activeModal === 'roles' && (
+        <RoleManagerModal
+          onClose={closeModal}
           getAuthHeaders={getAuthHeaders}
         />
       )}

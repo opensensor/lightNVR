@@ -19,6 +19,19 @@
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
 
+static int authorize_recording_action(const http_request_t *req,
+                                      http_response_t *res, uint64_t id,
+                                      authorization_action_t action,
+                                      recording_metadata_t *recording) {
+    memset(recording, 0, sizeof(*recording));
+    if (get_recording_metadata_by_id(id, recording) != 0) {
+        http_response_set_json_error(res, 404, "Recording not found");
+        return 0;
+    }
+    return httpd_authorize_stream_action(req, res, action,
+                                         recording->stream_name);
+}
+
 /**
  * @brief Handler for GET /api/streams/:name/retention
  * Get retention configuration for a stream
@@ -196,6 +209,12 @@ void handle_put_recording_protect(const http_request_t *req, http_response_t *re
     bool protected = cJSON_IsTrue(protected_json);
     cJSON_Delete(json);
 
+    recording_metadata_t recording;
+    if (!authorize_recording_action(req, res, id, AUTHZ_EVIDENCE_PROTECT,
+                                    &recording)) {
+        return;
+    }
+
     // Update protection status
     if (set_recording_protected(id, protected) != 0) {
         http_response_set_json_error(res, 500, "Failed to update recording protection status");
@@ -261,6 +280,12 @@ void handle_put_recording_retention(const http_request_t *req, http_response_t *
 
     int days = days_json->valueint;
     cJSON_Delete(json);
+
+    recording_metadata_t recording;
+    if (!authorize_recording_action(req, res, id, AUTHZ_EVIDENCE_PROTECT,
+                                    &recording)) {
+        return;
+    }
 
     // Update retention override
     if (set_recording_retention_override(id, days) != 0) {
@@ -350,24 +375,65 @@ void handle_batch_protect_recordings(const http_request_t *req, http_response_t 
     }
 
     bool protected = cJSON_IsTrue(protected_json);
-    int success_count = 0;
+    user_t user;
+    if (!httpd_check_action_access(req, &user)) {
+        cJSON_Delete(json);
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
+    int item_count = cJSON_GetArraySize(ids_json);
+    uint64_t *authorized_ids = item_count > 0
+        ? calloc((size_t)item_count, sizeof(*authorized_ids)) : NULL;
+    if (item_count > 0 && !authorized_ids) {
+        cJSON_Delete(json);
+        http_response_set_json_error(res, 500, "Failed to authorize batch");
+        return;
+    }
+    int authorized_count = 0;
     int fail_count = 0;
 
-    // Process each ID
+    // Resolve and authorize every fixed member before mutating any recording.
     cJSON *id_item;
     cJSON_ArrayForEach(id_item, ids_json) {
-        if (cJSON_IsNumber(id_item)) {
-            uint64_t id = (uint64_t)id_item->valuedouble;
-            if (set_recording_protected(id, protected) == 0) {
-                success_count++;
-            } else {
-                fail_count++;
-            }
+        if (!cJSON_IsNumber(id_item) || id_item->valuedouble <= 0) {
+            fail_count++;
+            continue;
+        }
+        uint64_t id = (uint64_t)id_item->valuedouble;
+        recording_metadata_t recording;
+        if (get_recording_metadata_by_id(id, &recording) != 0) {
+            fail_count++;
+            continue;
+        }
+        authorization_evaluation_t evaluation;
+        int result = httpd_evaluate_stream_action(
+            &user, AUTHZ_EVIDENCE_PROTECT, recording.stream_name,
+            &evaluation);
+        if (result < 0) {
+            free(authorized_ids);
+            cJSON_Delete(json);
+            http_response_set_json_error(
+                res, 500, "Authorization policy evaluation failed");
+            return;
+        }
+        if (result > 0 || evaluation.decision != AUTHZ_DECISION_ALLOW) {
+            fail_count++;
+            continue;
+        }
+        authorized_ids[authorized_count++] = id;
+    }
+
+    int success_count = 0;
+    for (int i = 0; i < authorized_count; i++) {
+        if (set_recording_protected(authorized_ids[i], protected) == 0) {
+            success_count++;
         } else {
             fail_count++;
         }
     }
 
+    free(authorized_ids);
     cJSON_Delete(json);
 
     // Return response

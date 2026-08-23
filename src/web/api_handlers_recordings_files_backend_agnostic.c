@@ -11,8 +11,10 @@
 
 #include "web/api_handlers_recordings.h"
 #include "web/request_response.h"
+#include "web/httpd_utils.h"
 #define LOG_COMPONENT "RecordingsAPI"
 #include "core/logger.h"
+#include "database/db_recordings.h"
 
 /**
  * @brief Handle GET /api/recordings/files/check
@@ -90,11 +92,36 @@ void handle_check_recording_file(const http_request_t *req, http_response_t *res
 void handle_delete_recording_file(const http_request_t *req, http_response_t *res) {
     log_info("Handling DELETE /api/recordings/files request");
 
+    user_t user;
+    if (!httpd_check_action_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
     // Extract path from query parameter
     char path[MAX_PATH_LENGTH];
     if (http_request_get_query_param(req, "path", path, sizeof(path)) < 0) {
         log_error("Missing path parameter");
         http_response_set_json_error(res, 400, "Missing path parameter");
+        return;
+    }
+
+    recording_metadata_t recording;
+    if (get_recording_metadata_by_path(path, &recording) != 0) {
+        http_response_set_json_error(res, 404, "Recording not found");
+        return;
+    }
+    authorization_evaluation_t evaluation;
+    int authorization_result = httpd_evaluate_stream_action(
+        &user, AUTHZ_RECORDING_DELETE, recording.stream_name, &evaluation);
+    if (authorization_result < 0) {
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return;
+    }
+    if (authorization_result > 0 ||
+        evaluation.decision != AUTHZ_DECISION_ALLOW) {
+        http_response_set_json_error(res, 403, "Forbidden");
         return;
     }
 
@@ -140,4 +167,3 @@ void handle_delete_recording_file(const http_request_t *req, http_response_t *re
     http_response_set_json(res, 200, json_str);
     free(json_str);
 }
-

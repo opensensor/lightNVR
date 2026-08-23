@@ -135,6 +135,24 @@ static bool row_exists_locked(sqlite3 *db, const char *sql, const char *value) {
     return exists;
 }
 
+static bool authorization_scope_in_use_locked(sqlite3 *db,
+                                              const char *collection_uuid) {
+    return row_exists_locked(
+        db,
+        "SELECT collection_uuid FROM authz_grants WHERE collection_uuid = ?1 "
+        "UNION ALL SELECT collection_uuid FROM authz_api_tokens "
+        "WHERE collection_uuid = ?1 LIMIT 1;",
+        collection_uuid);
+}
+
+static bool bump_authorization_policy_locked(sqlite3 *db) {
+    return sqlite3_exec(
+        db,
+        "UPDATE authz_policy_state SET version=version+1,"
+        "updated_at=strftime('%s','now') WHERE id=1;",
+        NULL, NULL, NULL) == SQLITE_OK;
+}
+
 int db_camera_collection_count(void) {
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
@@ -286,6 +304,15 @@ db_camera_collection_result_t db_camera_collection_update(
         pthread_mutex_unlock(mutex);
         return result;
     }
+    bool authorization_scope =
+        authorization_scope_in_use_locked(db, collection->uuid);
+    if (authorization_scope && !collection->is_shared) {
+        pthread_mutex_unlock(mutex);
+        return DB_CAMERA_COLLECTION_CONFLICT;
+    }
+    bool scope_membership_changed = authorization_scope &&
+        (strcmp(existing.collection_type, collection->collection_type) != 0 ||
+         strcmp(existing.selector_json, collection->selector_json) != 0);
     if (!transaction_begin(db)) {
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_COLLECTION_ERROR;
@@ -325,6 +352,10 @@ db_camera_collection_result_t db_camera_collection_update(
             stmt = NULL;
         }
     }
+    if (rc == SQLITE_DONE && scope_membership_changed &&
+        !bump_authorization_policy_locked(db)) {
+        rc = SQLITE_ERROR;
+    }
     bool success = transaction_finish(db, rc == SQLITE_DONE);
     if (!success) {
         result = rc == SQLITE_CONSTRAINT ? DB_CAMERA_COLLECTION_CONFLICT
@@ -357,8 +388,9 @@ db_camera_collection_result_t db_camera_collection_delete(const char *uuid) {
     }
     if (stmt) sqlite3_finalize(stmt);
     pthread_mutex_unlock(mutex);
-    return rc == SQLITE_DONE ? DB_CAMERA_COLLECTION_OK
-                             : DB_CAMERA_COLLECTION_ERROR;
+    if (rc == SQLITE_DONE) return DB_CAMERA_COLLECTION_OK;
+    return (rc & 0xff) == SQLITE_CONSTRAINT
+        ? DB_CAMERA_COLLECTION_CONFLICT : DB_CAMERA_COLLECTION_ERROR;
 }
 
 int db_camera_collection_list_members(
@@ -430,6 +462,8 @@ db_camera_collection_result_t db_camera_collection_set_members(
         pthread_mutex_unlock(mutex);
         return DB_CAMERA_COLLECTION_WRONG_TYPE;
     }
+    bool authorization_scope =
+        authorization_scope_in_use_locked(db, collection_uuid);
     for (int i = 0; i < camera_count; i++) {
         if (!valid_uuid(camera_uuids[i]) ||
             !row_exists_locked(db,
@@ -469,6 +503,10 @@ db_camera_collection_result_t db_camera_collection_set_members(
         stmt = NULL;
     }
     if (stmt) sqlite3_finalize(stmt);
+    if (rc == SQLITE_DONE && authorization_scope &&
+        !bump_authorization_policy_locked(db)) {
+        rc = SQLITE_ERROR;
+    }
     bool success = transaction_finish(db, rc == SQLITE_DONE);
     pthread_mutex_unlock(mutex);
     return success ? DB_CAMERA_COLLECTION_OK : DB_CAMERA_COLLECTION_ERROR;

@@ -22,6 +22,9 @@ describe('camera collection selector builder', () => {
     expect(collectionRuleToExpression({ type: 'enabled', value: false })).toEqual({
       op: 'enabled', value: false,
     });
+    expect(collectionRuleToExpression({ type: 'camera_uuid', values: ['a', 'a', 'b'] })).toEqual({
+      op: 'camera_uuid', values: ['a', 'b'],
+    });
   });
 
   test('builds any and all groups without unnecessary nesting', () => {
@@ -44,6 +47,7 @@ describe('camera collection selector builder', () => {
       { type: 'location_subtree', uuid: 'location-a' },
       { type: 'capability_all', values: ['onvif', 'ptz'] },
       { type: 'enabled', value: true },
+      { type: 'camera_uuid', values: ['camera-a'] },
     ]);
     const parsed = parseCollectionSelector(selector);
     expect(parsed.supported).toBe(true);

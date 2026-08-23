@@ -14,10 +14,12 @@ void camera_collection_filter_free(camera_collection_filter_t *filter) {
     memset(filter, 0, sizeof(*filter));
 }
 
-camera_collection_filter_result_t camera_collection_filter_load(
-    const char *collection_uuid, const user_t *user,
+static camera_collection_filter_result_t load_filter(
+    const char *collection_uuid, const user_t *user, bool shared_only,
     camera_collection_filter_t *filter) {
-    if (!filter || !user) return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
+    if (!filter || (!user && !shared_only)) {
+        return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
+    }
     memset(filter, 0, sizeof(*filter));
     if (!collection_uuid || collection_uuid[0] == '\0') {
         return CAMERA_COLLECTION_FILTER_OK;
@@ -27,8 +29,10 @@ camera_collection_filter_result_t camera_collection_filter_load(
     db_camera_collection_result_t result =
         db_camera_collection_get(collection_uuid, &collection);
     bool visible = result == DB_CAMERA_COLLECTION_OK &&
-        (user->role == USER_ROLE_ADMIN || collection.is_shared ||
-         (collection.owner_user_id > 0 && collection.owner_user_id == user->id));
+        (shared_only ? collection.is_shared :
+         (user->role == USER_ROLE_ADMIN || collection.is_shared ||
+          (collection.owner_user_id > 0 &&
+           collection.owner_user_id == user->id)));
     if (!visible) return CAMERA_COLLECTION_FILTER_NOT_FOUND;
 
     filter->active = true;
@@ -61,6 +65,18 @@ camera_collection_filter_result_t camera_collection_filter_load(
     }
     filter->member_count = count;
     return CAMERA_COLLECTION_FILTER_OK;
+}
+
+camera_collection_filter_result_t camera_collection_filter_load(
+    const char *collection_uuid, const user_t *user,
+    camera_collection_filter_t *filter) {
+    return load_filter(collection_uuid, user, false, filter);
+}
+
+camera_collection_filter_result_t
+camera_collection_filter_load_for_authorization(
+    const char *collection_uuid, camera_collection_filter_t *filter) {
+    return load_filter(collection_uuid, NULL, true, filter);
 }
 
 bool camera_collection_filter_matches(

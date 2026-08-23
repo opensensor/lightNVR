@@ -40,6 +40,7 @@
 #include "web/api_handlers_camera_tags.h"
 #include "web/api_handlers_fleet.h"
 #include "web/api_handlers_camera_collections.h"
+#include "web/api_handlers_authorization.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -234,6 +235,33 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/auth/users/#/password", "PUT", handle_users_change_password);
     http_server_register_handler(server, "/api/auth/users/#/password-lock", "PUT", handle_users_password_lock);
     http_server_register_handler(server, "/api/auth/users/#/login-lockout/clear", "POST", handle_users_clear_login_lockout);
+
+    // Action-level authorization catalog and administrator policy simulation
+    http_server_register_handler(server, "/api/authorization/actions", "GET",
+                                 handle_get_authorization_actions);
+    http_server_register_handler(server, "/api/authorization/simulate", "POST",
+                                 handle_post_authorization_simulate);
+    http_server_register_handler(server, "/api/authorization/roles", "GET",
+                                 handle_get_authorization_roles);
+    http_server_register_handler(server, "/api/authorization/roles", "POST",
+                                 handle_post_authorization_role);
+    http_server_register_handler(server, "/api/authorization/roles/#", "PUT",
+                                 handle_put_authorization_role);
+    http_server_register_handler(server, "/api/authorization/roles/#", "DELETE",
+                                 handle_delete_authorization_role);
+    http_server_register_handler(server,
+                                 "/api/authorization/users/#/tokens", "GET",
+                                 handle_get_user_api_tokens);
+    http_server_register_handler(server,
+                                 "/api/authorization/users/#/tokens", "POST",
+                                 handle_post_user_api_token);
+    http_server_register_handler(server,
+                                 "/api/authorization/users/#/tokens/#", "DELETE",
+                                 handle_delete_user_api_token);
+    http_server_register_handler(server, "/api/authorization/users/#", "GET",
+                                 handle_get_user_authorization);
+    http_server_register_handler(server, "/api/authorization/users/#", "PUT",
+                                 handle_put_user_authorization);
 
     // TOTP MFA API (backend-agnostic handlers)
     http_server_register_handler(server, "/api/auth/users/#/totp/setup", "POST", handle_totp_setup);
