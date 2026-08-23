@@ -12,6 +12,13 @@ export const COLLECTION_RULE_TYPES = [
   'model',
 ];
 
+export const CAMERA_SELECTOR_RULE_TYPE = 'camera_uuid';
+
+const VISUAL_RULE_TYPES = new Set([
+  ...COLLECTION_RULE_TYPES,
+  CAMERA_SELECTOR_RULE_TYPE,
+]);
+
 const MULTI_VALUE_RULES = new Set([
   'tag_any', 'tag_all', 'tag_none', 'health', 'recording_mode',
   'capability_any', 'capability_all', 'vendor', 'model',
@@ -28,7 +35,7 @@ function normalizeValues(values) {
 }
 
 export function collectionRuleToExpression(rule) {
-  if (!COLLECTION_RULE_TYPES.includes(rule.type)) return null;
+  if (!VISUAL_RULE_TYPES.has(rule.type)) return null;
   if (rule.type === 'location_subtree') {
     return rule.uuid ? { op: rule.type, uuid: rule.uuid } : null;
   }
@@ -50,10 +57,10 @@ export function buildCollectionSelector(rules, match = 'all') {
 }
 
 function expressionToRule(expression) {
-  if (!expression || !COLLECTION_RULE_TYPES.includes(expression.op)) return null;
+  if (!expression || !VISUAL_RULE_TYPES.has(expression.op)) return null;
   if (expression.op === 'location_subtree') return { type: expression.op, uuid: expression.uuid || '' };
   if (expression.op === 'enabled') return { type: expression.op, value: expression.value === true };
-  if (MULTI_VALUE_RULES.has(expression.op)) {
+  if (MULTI_VALUE_RULES.has(expression.op) || expression.op === CAMERA_SELECTOR_RULE_TYPE) {
     const values = expression.op.startsWith('tag_') ? expression.uuids : expression.values;
     return { type: expression.op, values: normalizeValues(values) };
   }
