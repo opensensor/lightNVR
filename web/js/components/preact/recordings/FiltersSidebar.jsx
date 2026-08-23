@@ -91,6 +91,7 @@ export function FiltersSidebar({
   pagination,
   setPagination,
   streams,
+  collections = [],
   applyFilters,
   resetFilters,
   handleDateRangeChange
@@ -143,6 +144,9 @@ export function FiltersSidebar({
       ? t('recordings.withoutDetections')
       : null;
   const protectedBadge = filters.protectedStatus !== 'all' ? filters.protectedStatus : null;
+  const streamBadge = filters.collectionUuid
+    ? t('collections.filter')
+    : getCountBadge(filters.streamIds);
 
   return (
     <aside
@@ -211,13 +215,38 @@ export function FiltersSidebar({
             )}
           </FilterSection>
 
-          <FilterSection title={t('nav.streams')} badge={getCountBadge(filters.streamIds)} isExpanded={sections.stream} onToggle={() => toggleSection('stream')}>
+          <FilterSection title={t('nav.streams')} badge={streamBadge} isExpanded={sections.stream} onToggle={() => toggleSection('stream')}>
+            {collections.length > 0 && (
+              <select
+                id="recordings-collection-filter"
+                className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
+                value={filters.collectionUuid}
+                onChange={(event) => setFilters((prev) => ({
+                  ...prev,
+                  collectionUuid: event.currentTarget.value,
+                  streamIds: [],
+                }))}
+              >
+                <option value="">{t('collections.all')}</option>
+                {collections.map((collection) => (
+                  <option key={collection.uuid} value={collection.uuid}>
+                    {collection.name} ({collection.effective_count})
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               id="stream-filter"
               className="w-full p-2 text-sm border border-input rounded-md bg-background text-foreground"
               defaultValue=""
               onChange={(e) => {
-                if (e.target.value) addMultiFilterValue('streamIds', e.target.value);
+                if (e.target.value) {
+                  setFilters((prev) => ({
+                    ...prev,
+                    collectionUuid: '',
+                    streamIds: urlUtils.addMultiValue(prev.streamIds, e.target.value),
+                  }));
+                }
                 e.target.value = '';
               }}
             >

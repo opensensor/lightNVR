@@ -102,7 +102,7 @@ export function FleetView() {
   const debouncedSearch = useDebouncedValue(state.search, 300);
   const requestBody = useMemo(
     () => buildFleetQueryRequest(state, debouncedSearch),
-    [state.locationUuid, state.tagUuids, state.health, state.enabled, state.recordingModes, state.page, state.pageSize, state.sortBy, state.sortOrder, debouncedSearch]
+    [state.locationUuid, state.collectionUuid, state.tagUuids, state.health, state.enabled, state.recordingModes, state.page, state.pageSize, state.sortBy, state.sortOrder, debouncedSearch]
   );
 
   const { data, error, isLoading, isFetching, refetch } = useQuery({
@@ -276,7 +276,7 @@ export function FleetView() {
           <summary className="cursor-pointer text-sm font-semibold">
             {t('fleet.filters')} {filterCount > 0 && <span className="ml-1 rounded-full bg-[hsl(var(--primary))] px-2 py-0.5 text-xs text-[hsl(var(--primary-foreground))]">{filterCount}</span>}
           </summary>
-          <div className="mt-4"><FleetFilters state={state} facets={facets} locations={locationRows} onChange={updateState} t={t} idPrefix="fleet-mobile" /></div>
+          <div className="mt-4"><FleetFilters state={state} facets={facets} locations={locationRows} collections={collections} onChange={updateState} t={t} idPrefix="fleet-mobile" /></div>
         </details>
       </div>
 
@@ -294,7 +294,7 @@ export function FleetView() {
             <h2 className="font-semibold">{t('fleet.filters')}</h2>
             {filterCount > 0 && <span className="rounded-full bg-[hsl(var(--primary))] px-2 py-0.5 text-xs text-[hsl(var(--primary-foreground))]">{filterCount}</span>}
           </div>
-          <FleetFilters state={state} facets={facets} locations={locationRows} onChange={updateState} t={t} idPrefix="fleet-desktop" />
+          <FleetFilters state={state} facets={facets} locations={locationRows} collections={collections} onChange={updateState} t={t} idPrefix="fleet-desktop" />
         </aside>
 
         <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm" aria-live="polite" aria-busy={isLoading || isFetching}>

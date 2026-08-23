@@ -13,15 +13,19 @@
 #include <sqlite3.h>
 
 #include "unity.h"
+#include "core/camera_collection_filter.h"
 #include "core/config.h"
 #include "database/db_auth.h"
+#include "database/db_camera_collections.h"
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_fleet_query.h"
 #include "database/db_locations.h"
+#include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "utils/strings.h"
 #include "web/api_handlers_fleet.h"
+#include "web/api_handlers.h"
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_fleet_query_test.db"
@@ -123,10 +127,54 @@ static cJSON *call_handler(void (*handler)(const http_request_t *,
     return json;
 }
 
+static cJSON *call_get_recordings(const char *query, int expected_status) {
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    safe_strcpy(req.path, "/api/recordings", sizeof(req.path), 0);
+    safe_strcpy(req.query_string, query ? query : "",
+                sizeof(req.query_string), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    handle_get_recordings(&req, &res);
+    TEST_ASSERT_EQUAL_INT(expected_status, res.status_code);
+    cJSON *json = res.body ? cJSON_Parse((const char *)res.body) : NULL;
+    TEST_ASSERT_NOT_NULL(json);
+    http_response_free(&res);
+    return json;
+}
+
+static void add_test_recording(const char *stream_name, const char *path,
+                               time_t start_time) {
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, stream_name,
+                sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.file_path, path, sizeof(recording.file_path), 0);
+    safe_strcpy(recording.codec, "h264", sizeof(recording.codec), 0);
+    safe_strcpy(recording.trigger_type, "scheduled",
+                sizeof(recording.trigger_type), 0);
+    recording.start_time = start_time;
+    recording.end_time = start_time + 60;
+    recording.size_bytes = 1024;
+    recording.width = 1920;
+    recording.height = 1080;
+    recording.fps = 25;
+    recording.is_complete = true;
+    recording.retention_override_days = -1;
+    recording.disk_pressure_eligible = true;
+    recording.schedule_restricted = 0;
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&recording));
+}
+
 void setUp(void) {
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
+    sqlite3_exec(db, "DELETE FROM camera_collections;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM camera_tags;", NULL, NULL, NULL);
     do {
@@ -277,6 +325,75 @@ void test_existing_tag_rbac_is_applied_before_totals_and_facets(void) {
     cJSON_Delete(json);
 }
 
+void test_query_filters_by_collection_without_exposing_smart_rules(void) {
+    stream_config_t outside = create_camera(
+        "Outside", "rtsp://10.0.0.40/live", "Outdoor", true, NULL);
+    create_camera("Inside", "rtsp://10.0.0.41/live", "Indoor", true, NULL);
+
+    camera_collection_t static_collection;
+    memset(&static_collection, 0, sizeof(static_collection));
+    safe_strcpy(static_collection.name, "Static Outside",
+                sizeof(static_collection.name), 0);
+    safe_strcpy(static_collection.collection_type, "static",
+                sizeof(static_collection.collection_type), 0);
+    static_collection.is_shared = true;
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_create(&static_collection));
+    const char *members[] = {outside.camera_uuid};
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_set_members(static_collection.uuid, members, 1));
+
+    char body[256];
+    snprintf(body, sizeof(body), "{\"collection_uuid\":\"%s\"}",
+             static_collection.uuid);
+    cJSON *json = call_handler(handle_post_fleet_camera_query, body, NULL, 200);
+    TEST_ASSERT_EQUAL_INT(1,
+        cJSON_GetObjectItemCaseSensitive(json, "total")->valueint);
+    TEST_ASSERT_EQUAL_STRING(
+        static_collection.uuid,
+        cJSON_GetObjectItemCaseSensitive(json,
+                                         "collection_uuid")->valuestring);
+    cJSON_Delete(json);
+
+    camera_tag_t outdoor = find_tag("Outdoor");
+    camera_collection_t smart_collection;
+    memset(&smart_collection, 0, sizeof(smart_collection));
+    safe_strcpy(smart_collection.name, "Smart Outside",
+                sizeof(smart_collection.name), 0);
+    safe_strcpy(smart_collection.collection_type, "smart",
+                sizeof(smart_collection.collection_type), 0);
+    smart_collection.is_shared = true;
+    snprintf(smart_collection.selector_json,
+             sizeof(smart_collection.selector_json),
+             "{\"version\":1,\"expression\":{\"op\":\"tag_any\","
+             "\"uuids\":[\"%s\"]}}", outdoor.uuid);
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_create(&smart_collection));
+    snprintf(body, sizeof(body), "{\"collection_uuid\":\"%s\"}",
+             smart_collection.uuid);
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("fleetviewer", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+    g_config.web_auth_enabled = true;
+    json = call_handler(handle_post_fleet_camera_query, body, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(1,
+        cJSON_GetObjectItemCaseSensitive(json, "total")->valueint);
+    TEST_ASSERT_EQUAL_STRING(
+        "Outside", cJSON_GetObjectItemCaseSensitive(
+                       cJSON_GetArrayItem(
+                           cJSON_GetObjectItemCaseSensitive(json, "cameras"), 0),
+                       "name")->valuestring);
+    cJSON_Delete(json);
+}
+
 void test_rejects_malformed_selector_and_oversized_page(void) {
     cJSON *json = call_handler(
         handle_post_fleet_camera_query,
@@ -290,6 +407,53 @@ void test_rejects_malformed_selector_and_oversized_page(void) {
     cJSON_Delete(json);
     json = call_handler(handle_post_fleet_camera_query,
                         "{\"page_size\":201}", NULL, 400);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+    json = call_handler(
+        handle_post_fleet_camera_query,
+        "{\"collection_uuid\":\"not-a-uuid\"}", NULL, 400);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+}
+
+void test_recordings_filter_by_collection_uuid(void) {
+    stream_config_t outside = create_camera(
+        "Outside", "rtsp://10.0.0.50/live", "Outdoor", true, NULL);
+    create_camera("Inside", "rtsp://10.0.0.51/live", "Indoor", true, NULL);
+    add_test_recording("Outside", "/tmp/outside.mp4", 1000);
+    add_test_recording("Inside", "/tmp/inside.mp4", 2000);
+
+    camera_collection_t collection;
+    memset(&collection, 0, sizeof(collection));
+    safe_strcpy(collection.name, "Outside Recordings",
+                sizeof(collection.name), 0);
+    safe_strcpy(collection.collection_type, "static",
+                sizeof(collection.collection_type), 0);
+    collection.is_shared = true;
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_create(&collection));
+    const char *members[] = {outside.camera_uuid};
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_set_members(collection.uuid, members, 1));
+
+    char query[128];
+    snprintf(query, sizeof(query), "collection_uuid=%s", collection.uuid);
+    cJSON *json = call_get_recordings(query, 200);
+    cJSON *recordings = cJSON_GetObjectItemCaseSensitive(json, "recordings");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(recordings));
+    TEST_ASSERT_EQUAL_STRING(
+        "Outside", cJSON_GetObjectItemCaseSensitive(
+                       cJSON_GetArrayItem(recordings, 0), "stream")->valuestring);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "pagination"),
+               "total")->valueint);
+    cJSON_Delete(json);
+
+    snprintf(query, sizeof(query), "collection_uuid=%s&stream=Inside",
+             collection.uuid);
+    json = call_get_recordings(query, 400);
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
     cJSON_Delete(json);
 }
@@ -329,6 +493,42 @@ void test_thousand_camera_fixture_returns_only_requested_page(void) {
     TEST_ASSERT_EQUAL_INT(SQLITE_OK,
                           sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL));
 
+    camera_collection_t all_collection;
+    memset(&all_collection, 0, sizeof(all_collection));
+    safe_strcpy(all_collection.name, "All Fleet Cameras",
+                sizeof(all_collection.name), 0);
+    safe_strcpy(all_collection.collection_type, "smart",
+                sizeof(all_collection.collection_type), 0);
+    safe_strcpy(all_collection.selector_json,
+                "{\"version\":1,\"expression\":{\"op\":\"all\"}}",
+                sizeof(all_collection.selector_json), 0);
+    all_collection.is_shared = true;
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_create(&all_collection));
+    user_t admin_user;
+    memset(&admin_user, 0, sizeof(admin_user));
+    admin_user.role = USER_ROLE_ADMIN;
+    char **stream_names = NULL;
+    int stream_name_count = 0;
+    TEST_ASSERT_EQUAL_INT(
+        CAMERA_COLLECTION_FILTER_OK,
+        camera_collection_filter_resolve_stream_names(
+            all_collection.uuid, &admin_user, &stream_names,
+            &stream_name_count));
+    TEST_ASSERT_EQUAL_INT(1000, stream_name_count);
+    camera_collection_filter_free_stream_names(stream_names,
+                                               stream_name_count);
+
+    char recordings_query[128];
+    snprintf(recordings_query, sizeof(recordings_query),
+             "collection_uuid=%s", all_collection.uuid);
+    cJSON *recordings_json = call_get_recordings(recordings_query, 200);
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(recordings_json, "pagination"),
+               "total")->valueint);
+    cJSON_Delete(recordings_json);
+
     cJSON *json = call_handler(
         handle_post_fleet_camera_query,
         "{\"page\":10,\"page_size\":25,\"facets\":false,"
@@ -355,7 +555,9 @@ int main(void) {
     RUN_TEST(test_query_composes_selector_search_sort_pagination_and_facets);
     RUN_TEST(test_preview_returns_bounded_match_explanation);
     RUN_TEST(test_existing_tag_rbac_is_applied_before_totals_and_facets);
+    RUN_TEST(test_query_filters_by_collection_without_exposing_smart_rules);
     RUN_TEST(test_rejects_malformed_selector_and_oversized_page);
+    RUN_TEST(test_recordings_filter_by_collection_uuid);
     RUN_TEST(test_thousand_camera_fixture_returns_only_requested_page);
     int result = UNITY_END();
     shutdown_database();

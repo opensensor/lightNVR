@@ -528,7 +528,12 @@ recording enabled.
 GET /api/recordings
 ```
 
-Returns a list of recordings. Supports query parameters for filtering by stream name, date range, and pagination.
+Returns a list of recordings. Supports query parameters for filtering by stream
+name, date range, and pagination. Pass `collection_uuid` to filter recordings
+by an authorized static or smart camera collection. `collection_uuid` and
+`stream` are mutually exclusive; collection rules are evaluated on the server
+so shared smart rules remain private and large collections do not expand into
+query strings.
 
 `capture_method` is `continuous` for always-on recording, `scheduled` when
 continuous capture is gated by a weekly schedule, or `detection`, `motion`, or
@@ -699,6 +704,7 @@ calculated.
     }
   },
   "search": "north door",
+  "collection_uuid": "optional-collection-uuid",
   "page": 1,
   "page_size": 50,
   "sort_by": "name",
@@ -712,6 +718,12 @@ calculated.
 `camera_uuid`, `location`, `health`, `enabled`, `recording_mode`, and
 `address`. Results use the selected field plus camera UUID as a stable
 tie-breaker.
+
+`collection_uuid` is optional and composes with `selector` and `search`. The
+collection must be shared, owned by the caller, or requested by an
+administrator. Collection membership and the caller's `allowed_tags` scope are
+applied before totals, pages, and facets are calculated. A collection that is
+not visible to the caller returns `404`.
 
 Selector version 1 supports:
 

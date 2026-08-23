@@ -70,6 +70,7 @@ const createDefaultFilters = () => {
     endDate,
     endTime: '23:59',
     streamIds: [],
+    collectionUuid: '',
     recordingType: 'all',
     detectionLabels: [],
     tags: [],
@@ -104,6 +105,7 @@ export const urlUtils = {
         !urlParams.has('sort') &&
         !urlParams.has('detection') &&
         !urlParams.has('stream') &&
+        !urlParams.has('collection') &&
         !urlParams.has('detection_label') &&
         !urlParams.has('tag') &&
         !urlParams.has('capture_method') &&
@@ -144,6 +146,10 @@ export const urlUtils = {
     // Stream
     if (urlParams.has('stream')) {
       result.filters.streamIds = parseMultiValueParam(urlParams.get('stream'));
+    }
+    if (urlParams.has('collection')) {
+      result.filters.collectionUuid = urlParams.get('collection') || '';
+      result.filters.streamIds = [];
     }
     
     // Recording type
@@ -201,13 +207,14 @@ export const urlUtils = {
    * @param {Object} filters Current filters
    * @returns {Array} Array of active filter objects with key and label
    */
-  getActiveFiltersDisplay: (filters) => {
+  getActiveFiltersDisplay: (filters, collections = []) => {
     const activeFilters = [];
     
     // Check if we have any active filters
     const hasFilters = (
       filters.dateRange !== 'last7days' ||
       filters.streamIds.length > 0 ||
+      Boolean(filters.collectionUuid) ||
       filters.recordingType !== 'all' ||
       filters.detectionLabels.length > 0 ||
       filters.tags.length > 0 ||
@@ -240,6 +247,14 @@ export const urlUtils = {
       filters.streamIds.forEach((streamId) => {
         activeFilters.push({ key: 'streamIds', value: streamId, label: `Stream: ${streamId}` });
       });
+      if (filters.collectionUuid) {
+        const collection = collections.find((item) => item.uuid === filters.collectionUuid);
+        activeFilters.push({
+          key: 'collectionUuid',
+          value: filters.collectionUuid,
+          label: `Collection: ${collection?.name || filters.collectionUuid}`,
+        });
+      }
       
       // Recording type filter
       if (filters.recordingType === 'detection') {
@@ -317,6 +332,10 @@ export const urlUtils = {
     // Stream
     if (urlParams.has('stream')) {
       newFilters.streamIds = parseMultiValueParam(urlParams.get('stream'));
+    }
+    if (urlParams.has('collection')) {
+      newFilters.collectionUuid = urlParams.get('collection') || '';
+      newFilters.streamIds = [];
     }
     
     // Recording type - IMPORTANT: Check for this parameter even if dateRange is not present
@@ -399,6 +418,9 @@ export const urlUtils = {
     const serializedStreams = serializeMultiValueParam(filters.streamIds);
     if (serializedStreams) url.searchParams.set('stream', serializedStreams);
     else url.searchParams.delete('stream');
+
+    if (filters.collectionUuid) url.searchParams.set('collection', filters.collectionUuid);
+    else url.searchParams.delete('collection');
 
     // Recording type filter
     if (filters.recordingType === 'detection') url.searchParams.set('detection', '1');

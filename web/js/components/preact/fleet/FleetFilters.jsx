@@ -23,7 +23,7 @@ function FilterGroup({ title, children }) {
   );
 }
 
-export function FleetFilters({ state, facets = {}, locations: locationCatalog = [], onChange, t, idPrefix = 'fleet' }) {
+export function FleetFilters({ state, facets = {}, locations: locationCatalog = [], collections = [], onChange, t, idPrefix = 'fleet' }) {
   const tags = facets.tags || [];
   const locations = facets.locations || [];
   const locationNames = new Map(locationCatalog.map((location) => [location.uuid, location.path || location.name]));
@@ -32,6 +32,25 @@ export function FleetFilters({ state, facets = {}, locations: locationCatalog = 
 
   return (
     <div className="space-y-4">
+      {collections.length > 0 && (
+        <FilterGroup title={t('fleet.filter.collection')}>
+          <select
+            id={`${idPrefix}-collection`}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+            value={state.collectionUuid}
+            onChange={(event) => onChange({ collectionUuid: event.currentTarget.value })}
+            aria-label={t('fleet.filter.collection')}
+          >
+            <option value="">{t('collections.all')}</option>
+            {collections.map((collection) => (
+              <option key={collection.uuid} value={collection.uuid}>
+                {collection.name} ({collection.effective_count})
+              </option>
+            ))}
+          </select>
+        </FilterGroup>
+      )}
+
       <FilterGroup title={t('fleet.filter.health')}>
         {HEALTH_VALUES.map((value) => (
           <FilterCheckbox
