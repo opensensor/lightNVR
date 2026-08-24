@@ -92,7 +92,7 @@ void handle_get_system_logs(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/system/logs request");
 
     // System logs contain sensitive information — restrict to admins
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) {
         return;  // Error response already set
     }
 
@@ -168,7 +168,7 @@ void handle_post_system_logs_clear(const http_request_t *req, http_response_t *r
     log_info("Handling POST /api/system/logs/clear request");
 
     // Clearing logs is a destructive admin operation — require admin privileges
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) {
         return;  // Error response already set
     }
 

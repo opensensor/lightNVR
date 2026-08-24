@@ -38,22 +38,11 @@ static bool check_stream_access(const http_request_t *req,
                                 user_t *user,
                                 bool write_access,
                                 http_response_t *res) {
-    memset(user, 0, sizeof(*user));
-    if (!httpd_check_viewer_access(req, user)) {
-        http_response_set_json_error(res, 401, "Unauthorized");
-        return false;
-    }
-    if (!db_auth_stream_allowed_for_user(user, config->tags)) {
-        http_response_set_json_error(res, 403, "Stream access denied");
-        return false;
-    }
-    if (write_access && g_config.web_auth_enabled &&
-        user->role == USER_ROLE_VIEWER) {
-        http_response_set_json_error(res, 403,
-            "Viewer role cannot control recordings");
-        return false;
-    }
-    return true;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    return httpd_authorize_stream_action_with_context(
+        req, res, write_access ? AUTHZ_CAMERA_CONFIGURE : AUTHZ_LIVE_VIEW,
+        config->name, user, &camera, &evaluation) != 0;
 }
 
 static void add_runtime_json(cJSON *json, const char *stream_name,
@@ -113,8 +102,10 @@ void handle_get_stream_recording(const http_request_t *req,
     get_mp4_recording_runtime_info(stream_name, &info);
     uint64_t detection_id =
         get_unified_detection_recording_id(stream_name);
-    bool may_write = !g_config.web_auth_enabled ||
-                     user.role != USER_ROLE_VIEWER;
+    authorization_evaluation_t write_evaluation;
+    bool may_write = httpd_evaluate_stream_action(
+        &user, AUTHZ_CAMERA_CONFIGURE, stream_name, &write_evaluation) == 0 &&
+        write_evaluation.decision == AUTHZ_DECISION_ALLOW;
     bool continuous_expected =
         config.record && is_recording_scheduled(&config);
     const char *manual_control_reason = !may_write ? "read_only"

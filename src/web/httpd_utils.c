@@ -8,6 +8,9 @@
 #include <string.h>
 #include <strings.h>
 #include <arpa/inet.h>
+#include <pthread.h>
+#include <time.h>
+#include <mbedtls/sha256.h>
 
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
@@ -20,6 +23,22 @@
 #include "database/db_fleet_query.h"
 #include "database/db_streams.h"
 #include "web/audit_log.h"
+
+#define MEDIA_AUTH_CACHE_CAPACITY \
+    ((MAX_STREAMS * 2 < 64) ? 64 : ((MAX_STREAMS * 2 > 2048) ? 2048 : MAX_STREAMS * 2))
+#define MEDIA_AUTH_CACHE_TTL_SECONDS 30
+
+typedef struct {
+    bool occupied;
+    char fingerprint[65];
+    char stream_name[MAX_STREAM_NAME];
+    authorization_action_t action;
+    time_t authorized_until;
+    time_t last_used;
+} media_auth_cache_entry_t;
+
+static media_auth_cache_entry_t g_media_auth_cache[MEDIA_AUTH_CACHE_CAPACITY];
+static pthread_mutex_t g_media_auth_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 cJSON* httpd_parse_json_body(const http_request_t *req) {
     if (!req || !req->body || req->body_len == 0) {
@@ -471,8 +490,9 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
         if (rc != 0 && allow_scoped_token) {
             int64_t user_id = 0;
             char token_uuid[CAMERA_UUID_STRING_SIZE] = {0};
+            bool usage_audit_due = false;
             db_api_token_result_t token_result = db_api_token_authenticate(
-                api_key, &user_id, token_uuid);
+                api_key, &user_id, token_uuid, &usage_audit_due);
             if (token_result == DB_API_TOKEN_OK &&
                 db_auth_get_user_by_id(user_id, user) == 0 &&
                 user->is_active &&
@@ -482,7 +502,47 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
                             sizeof(user->authentication_method), 0);
                 safe_strcpy(user->api_token_uuid, token_uuid,
                             sizeof(user->api_token_uuid), 0);
+                if (usage_audit_due) {
+                    cJSON *details = cJSON_CreateObject();
+                    if (details) {
+                        cJSON_AddStringToObject(details, "event_type",
+                                                "api_token.use");
+                        cJSON_AddStringToObject(details, "reason", "active");
+                    }
+                    audit_log_append(req, user, "api_token.use", "api_token",
+                                     token_uuid, "success", details);
+                    cJSON_Delete(details);
+                }
                 return 1;
+            }
+            if (strncmp(api_key, "lnvr_", 5) == 0) {
+                user_t denied_user = {0};
+                user_t *principal = NULL;
+                if (user_id > 0 &&
+                    db_auth_get_user_by_id(user_id, &denied_user) == 0) {
+                    safe_strcpy(denied_user.authentication_method,
+                                "scoped_token",
+                                sizeof(denied_user.authentication_method), 0);
+                    denied_user.authenticated_via_scoped_token = true;
+                    safe_strcpy(denied_user.api_token_uuid, token_uuid,
+                                sizeof(denied_user.api_token_uuid), 0);
+                    principal = &denied_user;
+                }
+                const char *reason = token_result == DB_API_TOKEN_EXPIRED
+                    ? "expired" : token_result == DB_API_TOKEN_REVOKED
+                    ? "revoked" : token_result == DB_API_TOKEN_INACTIVE_OWNER
+                    ? "inactive_owner" : token_result == DB_API_TOKEN_ERROR
+                    ? "error" : "unknown";
+                cJSON *details = cJSON_CreateObject();
+                if (details) {
+                    cJSON_AddStringToObject(details, "event_type",
+                                            "api_token.use");
+                    cJSON_AddStringToObject(details, "reason", reason);
+                }
+                audit_log_append(req, principal, "api_token.use", "api_token",
+                                 token_uuid[0] ? token_uuid : NULL, "denied",
+                                 details);
+                cJSON_Delete(details);
             }
         }
     }
@@ -590,6 +650,14 @@ int httpd_authorize_action(const http_request_t *req, http_response_t *res,
     return 1;
 }
 
+int httpd_authorize_global_action(const http_request_t *req,
+                                  http_response_t *res,
+                                  authorization_action_t action) {
+    user_t user;
+    authorization_evaluation_t evaluation;
+    return httpd_authorize_action(req, res, action, NULL, &user, &evaluation);
+}
+
 int httpd_evaluate_stream_action(const user_t *user,
                                  authorization_action_t action,
                                  const char *stream_name,
@@ -611,6 +679,104 @@ int httpd_authorize_stream_action(const http_request_t *req,
     authorization_evaluation_t evaluation;
     return httpd_authorize_stream_action_with_context(
         req, res, action, stream_name, &user, &camera, &evaluation);
+}
+
+int httpd_request_auth_fingerprint(const http_request_t *req,
+                                   char fingerprint[65]) {
+    if (!req || !fingerprint) return -1;
+    char material[1152] = {0};
+    char session_token[64] = {0};
+    const char *authorization = http_request_get_header(req, "Authorization");
+    const char *api_key = http_request_get_header(req, "X-API-Key");
+
+    if (httpd_get_session_token(req, session_token,
+                                sizeof(session_token)) == 0) {
+        snprintf(material, sizeof(material), "session:%s", session_token);
+    } else if (authorization && strncasecmp(authorization, "Basic ", 6) == 0) {
+        snprintf(material, sizeof(material), "basic:%s", authorization + 6);
+    } else if (api_key && api_key[0] != '\0') {
+        snprintf(material, sizeof(material), "api:%s", api_key);
+    } else if (authorization && strncasecmp(authorization, "Bearer ", 7) == 0) {
+        snprintf(material, sizeof(material), "bearer:%s", authorization + 7);
+    } else if (!g_config.web_auth_enabled) {
+        snprintf(material, sizeof(material), "auth-disabled:%s", req->client_ip);
+    } else if (g_config.demo_mode) {
+        snprintf(material, sizeof(material), "demo:%s", req->client_ip);
+    } else {
+        return -1;
+    }
+
+    unsigned char digest[32];
+    if (mbedtls_sha256((const unsigned char *)material, strlen(material),
+                       digest, 0) != 0) {
+        memset(material, 0, sizeof(material));
+        return -1;
+    }
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0; i < sizeof(digest); i++) {
+        fingerprint[i * 2] = hex[digest[i] >> 4];
+        fingerprint[i * 2 + 1] = hex[digest[i] & 0x0f];
+    }
+    fingerprint[64] = '\0';
+    memset(digest, 0, sizeof(digest));
+    memset(material, 0, sizeof(material));
+    return 0;
+}
+
+int httpd_authorize_media_stream_action(const http_request_t *req,
+                                        http_response_t *res,
+                                        authorization_action_t action,
+                                        const char *stream_name) {
+    if (!req || !res || !stream_name || stream_name[0] == '\0') return 0;
+    char fingerprint[65];
+    time_t now = time(NULL);
+    if (httpd_request_auth_fingerprint(req, fingerprint) == 0) {
+        pthread_mutex_lock(&g_media_auth_cache_mutex);
+        for (int i = 0; i < MEDIA_AUTH_CACHE_CAPACITY; i++) {
+            media_auth_cache_entry_t *entry = &g_media_auth_cache[i];
+            if (entry->occupied && entry->authorized_until >= now &&
+                entry->action == action &&
+                strcmp(entry->fingerprint, fingerprint) == 0 &&
+                strcmp(entry->stream_name, stream_name) == 0) {
+                entry->last_used = now;
+                pthread_mutex_unlock(&g_media_auth_cache_mutex);
+                return 1;
+            }
+        }
+        pthread_mutex_unlock(&g_media_auth_cache_mutex);
+    }
+
+    // Misses use the normal fail-closed path. This produces the durable allow,
+    // deny, or error decision that covers the next short media cache window.
+    if (!httpd_authorize_stream_action(req, res, action, stream_name)) return 0;
+    if (httpd_request_auth_fingerprint(req, fingerprint) != 0) return 1;
+
+    pthread_mutex_lock(&g_media_auth_cache_mutex);
+    int selected = 0;
+    time_t oldest = g_media_auth_cache[0].last_used;
+    for (int i = 0; i < MEDIA_AUTH_CACHE_CAPACITY; i++) {
+        media_auth_cache_entry_t *entry = &g_media_auth_cache[i];
+        if (!entry->occupied || entry->authorized_until < now) {
+            selected = i;
+            break;
+        }
+        if (i == 0 || entry->last_used < oldest) {
+            selected = i;
+            oldest = entry->last_used;
+        }
+    }
+    media_auth_cache_entry_t *entry = &g_media_auth_cache[selected];
+    memset(entry, 0, sizeof(*entry));
+    entry->occupied = true;
+    safe_strcpy(entry->fingerprint, fingerprint,
+                sizeof(entry->fingerprint), 0);
+    safe_strcpy(entry->stream_name, stream_name,
+                sizeof(entry->stream_name), 0);
+    entry->action = action;
+    entry->authorized_until = now + MEDIA_AUTH_CACHE_TTL_SECONDS;
+    entry->last_used = now;
+    pthread_mutex_unlock(&g_media_auth_cache_mutex);
+    return 1;
 }
 
 int httpd_authorize_stream_action_with_context(

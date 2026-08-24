@@ -71,6 +71,9 @@ int db_recording_tag_set(uint64_t recording_id, const char **tags, int tag_count
  * @return Number of unique tags found, or -1 on error
  */
 int db_recording_tag_get_all_unique(char tags[][MAX_TAG_LENGTH], int max_tags);
+int db_recording_tag_get_unique_for_streams(
+    const char *const *stream_names, int stream_count,
+    char tags[][MAX_TAG_LENGTH], int max_tags);
 
 /**
  * Add a tag to multiple recordings at once.

@@ -12,7 +12,7 @@ let settingsCacheTime = 0;
 const CACHE_TTL = 60000; // 1 minute cache TTL
 
 // In-flight promise deduplication: prevents N concurrent callers from each
-// firing a separate /api/settings request before the first response returns.
+// firing a separate /api/client-config request before the first response returns.
 let settingsInflight = null;
 
 /**
@@ -34,7 +34,7 @@ export async function getSettings(forceRefresh = false) {
     return settingsInflight;
   }
 
-  settingsInflight = fetchJSON('/api/settings', {
+  settingsInflight = fetchJSON('/api/client-config', {
     timeout: 10000,
     retries: 1,
     retryDelay: 500
@@ -121,7 +121,7 @@ export async function getGo2rtcWebSocketUrl() {
 }
 
 // Default browser-side WebRTC live-view timeouts (milliseconds). These mirror
-// the server defaults in include/core/config.h and are used when /api/settings
+// the server defaults in include/core/config.h and are used when /api/client-config
 // does not supply values (older server, fetch failure).
 const DEFAULT_WEBRTC_CONNECTION_TIMEOUT_MS = 30000;
 const DEFAULT_WEBRTC_ICE_RECOVERY_TIMEOUT_MS = 5000;
@@ -165,6 +165,7 @@ function getDefaultSettings() {
     web_port: 8080,
     web_bind_ip: "0.0.0.0",
     web_auth_enabled: true, // Default to auth enabled for safety
+    demo_mode: false,
     webrtc_connection_timeout_ms: DEFAULT_WEBRTC_CONNECTION_TIMEOUT_MS,
     webrtc_ice_recovery_timeout_ms: DEFAULT_WEBRTC_ICE_RECOVERY_TIMEOUT_MS
   };
@@ -184,7 +185,9 @@ let go2rtcAvailableInflight = null;
 
 /**
  * Check if go2rtc is available and responding
- * Tries to reach go2rtc's API endpoint with a short timeout
+ * Uses LightNVR's authenticated, non-sensitive readiness value. This avoids
+ * exposing go2rtc's stream inventory and does not make every viewer probe the
+ * media process directly.
  * @param {boolean} forceRefresh - Force refresh the cache
  * @returns {Promise<boolean>} - true if go2rtc is available
  */
@@ -203,22 +206,13 @@ export async function isGo2rtcAvailable(forceRefresh = false) {
 
   go2rtcAvailableInflight = (async () => {
     try {
-      const baseUrl = await getGo2rtcBaseUrl();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-      const response = await fetch(`${baseUrl}/api/streams`, {
-        method: 'GET',
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      const available = response.ok;
+      const settings = await getSettings(forceRefresh);
+      const available = settings.go2rtc_available === true;
       go2rtcAvailableCache = available;
       go2rtcAvailableCacheTime = nowMilliseconds();
 
       if (!available) {
-        console.warn(`go2rtc API responded with status ${response.status}`);
+        console.warn('go2rtc is not currently ready');
       }
       return available;
     } catch (error) {
@@ -276,4 +270,3 @@ export function clearSettingsCache() {
   go2rtcAvailableCacheTime = 0;
   go2rtcAvailableInflight = null;
 }
-

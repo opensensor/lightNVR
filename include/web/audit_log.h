@@ -40,4 +40,31 @@ void audit_log_login(const http_request_t *req, const user_t *user,
                      const char *authentication_method,
                      const char *outcome, const char *reason);
 
+typedef struct {
+    bool applicable;
+    bool has_user;
+    bool identity_is_camera_uuid;
+    authorization_action_t action;
+    user_t user;
+    char operation[48];
+    char target_type[32];
+    char identity[MAX_STREAM_NAME];
+    char target_uuid[CAMERA_UUID_STRING_SIZE];
+} audit_sensitive_operation_context_t;
+
+/* Capture the principal and pre-mutation target while it still exists. */
+void audit_log_sensitive_operation_begin(
+    const http_request_t *req, audit_sensitive_operation_context_t *context);
+
+/* Append the final redacted outcome, deriving create identities from response. */
+void audit_log_sensitive_operation_end(
+    const http_request_t *req, const http_response_t *res,
+    audit_sensitive_operation_context_t *context);
+
+/* Append the redacted outcome for camera-configuration route families. This
+ * is invoked by the backend dispatch boundary after the handler returns, so
+ * validation failures and downstream errors are covered consistently. */
+void audit_log_sensitive_operation_outcome(const http_request_t *req,
+                                           const http_response_t *res);
+
 #endif /* LIGHTNVR_WEB_AUDIT_LOG_H */

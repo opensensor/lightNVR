@@ -11,6 +11,8 @@
 #include "web/api_handlers_setup.h"
 #include "web/request_response.h"
 #include "web/http_server.h"
+#include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #include "database/db_system_settings.h"
 #define LOG_COMPONENT "SetupAPI"
 #include "core/logger.h"
@@ -59,6 +61,14 @@ void handle_get_setup_status(const http_request_t *req, http_response_t *res) {
  */
 void handle_post_setup_complete(const http_request_t *req, http_response_t *res) {
     bool mark_complete = true;  /* default: mark done */
+    bool was_complete = db_is_setup_complete();
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    if (was_complete) {
+        authorization_evaluation_t evaluation;
+        if (!httpd_authorize_action(req, res, AUTHZ_SYSTEM_ADMIN, NULL,
+                                    &user, &evaluation)) return;
+    }
 
     /* Parse optional body */
     if (req->body && req->body_len > 0) {
@@ -81,9 +91,20 @@ void handle_post_setup_complete(const http_request_t *req, http_response_t *res)
     }
 
     if (rc != 0) {
+        if (was_complete) {
+            audit_log_operation(req, &user, "system.admin", "system", NULL,
+                                mark_complete ? "setup.complete" : "setup.reset",
+                                "error", NULL);
+        }
         log_error("handle_post_setup_complete: failed to persist setup state");
         http_response_set_json_error(res, 500, "Failed to save setup state");
         return;
+    }
+
+    if (was_complete) {
+        audit_log_operation(req, &user, "system.admin", "system", NULL,
+                            mark_complete ? "setup.complete" : "setup.reset",
+                            "success", NULL);
     }
 
     cJSON *obj = cJSON_CreateObject();
@@ -103,4 +124,3 @@ void handle_post_setup_complete(const http_request_t *req, http_response_t *res)
     http_response_set_json(res, 200, json_str);
     free(json_str);
 }
-

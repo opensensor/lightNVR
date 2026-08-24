@@ -27,6 +27,7 @@
 #include "database/db_auth.h"
 #include "database/db_streams.h"
 #include "database/db_recording_tags.h"
+#include "database/db_fleet_query.h"
 
 #define MAX_SELECTED_STREAM_FILTERS 32
 #define MAX_SELECTED_STREAM_NAME_LEN 64
@@ -99,8 +100,8 @@ static void respond_empty_recordings(http_response_t *res, int page, int limit) 
  * 
  * Query parameters:
  * - stream: Filter by stream name or comma-separated stream names
- * - collection_uuid: Filter by one authorized camera collection; cannot be
- *   combined with stream
+ * - collection_uuid: Filter by one authorized camera collection; when paired
+ *   with stream, both predicates are applied
  * - start: Start time (ISO 8601 format)
  * - end: End time (ISO 8601 format)
  * - page: Page number (default: 1)
@@ -123,27 +124,11 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
     log_debug("Processing GET /api/recordings request");
 
-    // Check authentication if enabled
-    // In demo mode, allow unauthenticated viewer access to read recordings
     user_t auth_user;
     memset(&auth_user, 0, sizeof(auth_user));
-    bool have_auth_user = false;
-    if (g_config.web_auth_enabled) {
-        if (g_config.demo_mode) {
-            if (!httpd_check_viewer_access(req, &auth_user)) {
-                log_error("Authentication failed for GET /api/recordings request");
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-            have_auth_user = true;
-        } else {
-            if (!httpd_get_authenticated_user(req, &auth_user)) {
-                log_error("Authentication failed for GET /api/recordings request");
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-            have_auth_user = true;
-        }
+    if (!httpd_check_action_access(req, &auth_user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
     }
 
     // Extract query parameters
@@ -179,12 +164,6 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "Invalid collection_uuid");
         return;
     }
-    if (collection_uuid[0] && stream_name[0]) {
-        http_response_set_json_error(
-            res, 400, "collection_uuid cannot be combined with stream");
-        return;
-    }
-
     // Parse numeric parameters
     int page = page_str[0] ? (int)strtol(page_str, NULL, 10) : 1;
     int all_limit_requested = (limit_str[0] != '\0' && strcasecmp(limit_str, "all") == 0);
@@ -256,58 +235,52 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
         has_detection = 1;  // Searching by label implies detection filter
     }
 
-    // --- Tag-based RBAC: build list of allowed streams for this user ---
-    stream_config_t *all_stream_cfgs = NULL;
+    // Build the recordings.replay-authorized camera set before querying. Both
+    // rows and pagination totals therefore use the same server-side scope.
+    fleet_camera_t *all_stream_cfgs = NULL;
     const char *allowed_streams[MAX_STREAMS];
     int allowed_streams_count = 0;
-    bool tag_restricted = have_auth_user && auth_user.has_tag_restriction;
+    int authorized_camera_count = 0;
+    if (db_fleet_camera_load(&all_stream_cfgs, &authorized_camera_count) != 0 ||
+        authorization_filter_cameras(&auth_user, AUTHZ_RECORDINGS_REPLAY,
+                                     all_stream_cfgs,
+                                     &authorized_camera_count) != 0) {
+        free(all_stream_cfgs);
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return;
+    }
+    for (int i = 0; i < authorized_camera_count && i < MAX_STREAMS; i++) {
+        allowed_streams[allowed_streams_count++] = all_stream_cfgs[i].name;
+    }
 
-    if (tag_restricted) {
-        all_stream_cfgs = calloc(g_config.max_streams, sizeof(stream_config_t));
-        if (all_stream_cfgs) {
-            int sc = get_all_stream_configs(all_stream_cfgs, g_config.max_streams);
-            for (int i = 0; i < sc; i++) {
-                if (db_auth_stream_allowed_for_user(&auth_user, all_stream_cfgs[i].tags)) {
-                    allowed_streams[allowed_streams_count++] = all_stream_cfgs[i].name;
+    // If the caller requested specific streams, validate each one is in the
+    // allowed list without revealing which camera failed.
+    if (stream_name[0] != '\0') {
+        char requested_streams[MAX_SELECTED_STREAM_FILTERS][MAX_SELECTED_STREAM_NAME_LEN] = {{0}};
+        int requested_stream_count = parse_selected_streams(stream_name, requested_streams, MAX_SELECTED_STREAM_FILTERS);
+        bool permitted = requested_stream_count > 0;
+
+        for (int requested = 0; requested < requested_stream_count && permitted; requested++) {
+            bool found = false;
+            for (int i = 0; i < allowed_streams_count; i++) {
+                if (strcmp(requested_streams[requested], allowed_streams[i]) == 0) {
+                    found = true;
+                    break;
                 }
             }
+            if (!found) permitted = false;
         }
 
-        // If the caller requested specific streams, validate each one is in the allowed list
-        if (stream_name[0] != '\0') {
-            char requested_streams[MAX_SELECTED_STREAM_FILTERS][MAX_SELECTED_STREAM_NAME_LEN] = {{0}};
-            int requested_stream_count = parse_selected_streams(stream_name, requested_streams, MAX_SELECTED_STREAM_FILTERS);
-            bool permitted = requested_stream_count > 0;
-
-            for (int requested = 0; requested < requested_stream_count && permitted; requested++) {
-                bool found = false;
-                for (int i = 0; i < allowed_streams_count; i++) {
-                    if (strcmp(requested_streams[requested], allowed_streams[i]) == 0) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    permitted = false;
-                }
-            }
-
-            if (!permitted) {
-                log_warn("User '%s' attempted to access restricted stream '%s' via recordings API",
-                         auth_user.username, stream_name);
-                // Return an empty result set rather than an error to avoid leaking stream existence
-                if (all_stream_cfgs) free(all_stream_cfgs);
-                respond_empty_recordings(res, page, limit);
-                return;
-            }
-            // The specific stream is permitted — no need for the IN clause; use stream_name filter
-            allowed_streams_count = 0;
-        } else if (allowed_streams_count == 0) {
-            // User has tag restriction but no accessible streams at all
+        if (!permitted) {
             if (all_stream_cfgs) free(all_stream_cfgs);
-            respond_empty_recordings(res, page, limit);
+            http_response_set_json_error(res, 403, "Forbidden");
             return;
         }
+    } else if (allowed_streams_count == 0) {
+        if (all_stream_cfgs) free(all_stream_cfgs);
+        respond_empty_recordings(res, page, limit);
+        return;
     }
 
     // Resolve a collection on the server so smart rules stay private and large
@@ -316,9 +289,9 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
     int collection_stream_count = 0;
     if (collection_uuid[0]) {
         camera_collection_filter_result_t collection_result =
-            camera_collection_filter_resolve_stream_names(
-                collection_uuid, &auth_user, &collection_streams,
-                &collection_stream_count);
+            camera_collection_filter_resolve_stream_names_for_action(
+                collection_uuid, &auth_user, AUTHZ_RECORDINGS_REPLAY,
+                &collection_streams, &collection_stream_count);
         if (collection_result != CAMERA_COLLECTION_FILTER_OK) {
             if (all_stream_cfgs) free(all_stream_cfgs);
             if (collection_result == CAMERA_COLLECTION_FILTER_NOT_FOUND) {
@@ -341,15 +314,39 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
             respond_empty_recordings(res, page, limit);
             return;
         }
+        int authorized_collection_count = 0;
+        for (int i = 0; i < collection_stream_count; i++) {
+            bool permitted = false;
+            for (int j = 0; j < allowed_streams_count; j++) {
+                if (strcmp(collection_streams[i], allowed_streams[j]) == 0) {
+                    permitted = true;
+                    break;
+                }
+            }
+            if (!permitted) {
+                free(collection_streams[i]);
+                continue;
+            }
+            collection_streams[authorized_collection_count++] =
+                collection_streams[i];
+        }
+        collection_stream_count = authorized_collection_count;
+        if (collection_stream_count == 0) {
+            camera_collection_filter_free_stream_names(
+                collection_streams, collection_stream_count);
+            free(all_stream_cfgs);
+            respond_empty_recordings(res, page, limit);
+            return;
+        }
     }
 
     // Get total count first (for pagination)
     const char * const *streams_filter = collection_uuid[0]
         ? (const char * const *)collection_streams
-        : ((tag_restricted && allowed_streams_count > 0) ? allowed_streams : NULL);
+        : (allowed_streams_count > 0 ? allowed_streams : NULL);
     int streams_filter_count = collection_uuid[0]
         ? collection_stream_count
-        : ((tag_restricted && allowed_streams_count > 0) ? allowed_streams_count : 0);
+        : allowed_streams_count;
 
     const char *tag_filt = tag_filter_str[0] != '\0' ? tag_filter_str : NULL;
 

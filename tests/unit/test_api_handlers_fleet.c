@@ -16,6 +16,7 @@
 #include "core/camera_collection_filter.h"
 #include "core/config.h"
 #include "database/db_auth.h"
+#include "database/db_authorization.h"
 #include "database/db_camera_collections.h"
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
@@ -305,7 +306,19 @@ void test_existing_tag_rbac_is_applied_before_totals_and_facets(void) {
     TEST_ASSERT_EQUAL_INT(
         0, db_auth_create_user("fleetviewer", "password123", NULL,
                                USER_ROLE_VIEWER, true, &user_id));
-    TEST_ASSERT_EQUAL_INT(0, db_auth_set_allowed_tags(user_id, "Outdoor"));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    stream_config_t outside;
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("Outside", &outside));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             outside.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_create_user_grant(
+               user_id, "00000000-0000-4000-8000-000000000003",
+               "selector", selector, NULL, NULL));
     char api_key[128] = {0};
     TEST_ASSERT_EQUAL_INT(
         0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
@@ -453,8 +466,14 @@ void test_recordings_filter_by_collection_uuid(void) {
 
     snprintf(query, sizeof(query), "collection_uuid=%s&stream=Inside",
              collection.uuid);
-    json = call_get_recordings(query, 400);
-    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    json = call_get_recordings(query, 200);
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetArraySize(
+               cJSON_GetObjectItemCaseSensitive(json, "recordings")));
+    TEST_ASSERT_EQUAL_INT(
+        0, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "pagination"),
+               "total")->valueint);
     cJSON_Delete(json);
 }
 

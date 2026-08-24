@@ -11,6 +11,7 @@
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
+#include "web/httpd_utils.h"
 #define LOG_COMPONENT "DetectionAPI"
 #include "core/logger.h"
 #include "core/config.h"
@@ -39,6 +40,8 @@ void handle_get_detection_results(const http_request_t *req, http_response_t *re
         http_response_set_json_error(res, 400, "Invalid request path");
         return;
     }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_LIVE_VIEW,
+                                       stream_name)) return;
 
     log_info("Handling GET /api/detection/results/%s request", stream_name);
 

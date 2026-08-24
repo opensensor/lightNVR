@@ -29,6 +29,7 @@
 #define LOG_COMPONENT "AuthAPI"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/authorization.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
 
@@ -243,11 +244,18 @@ static int extract_totp_user_id(const http_request_t *req, int64_t *user_id) {
  */
 static int check_totp_permission(const http_request_t *req, http_response_t *res,
                                   int64_t target_user_id, user_t *current_user) {
-    if (!httpd_get_authenticated_user(req, current_user)) {
+    if (!httpd_check_action_access(req, current_user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return 0;
     }
-    if (current_user->role != USER_ROLE_ADMIN && current_user->id != target_user_id) {
+    authorization_evaluation_t evaluation;
+    bool can_manage_users =
+        authorization_evaluate(current_user, AUTHZ_USERS_MANAGE, NULL,
+                               &evaluation) == 0 &&
+        evaluation.decision == AUTHZ_DECISION_ALLOW;
+    bool is_session_self = !current_user->authenticated_via_scoped_token &&
+                           current_user->id == target_user_id;
+    if (!can_manage_users && !is_session_self) {
         http_response_set_json_error(res, 403, "Forbidden: Can only manage your own MFA");
         return 0;
     }

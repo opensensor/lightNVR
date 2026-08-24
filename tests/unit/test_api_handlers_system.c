@@ -25,9 +25,11 @@
 #include "database/db_core.h"
 #include "database/db_auth.h"
 #include "database/db_streams.h"
+#include "database/db_system_settings.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_recording_control.h"
 #include "web/api_handlers_system.h"
+#include "web/api_handlers_setup.h"
 #include "web/request_response.h"
 #include "video/go2rtc/go2rtc_lifecycle.h"
 #include "video/stream_manager.h"
@@ -741,6 +743,41 @@ void test_manual_start_rejects_continuous_config_before_runtime_starts(void) {
     clear_db_streams();
 }
 
+void test_completed_setup_post_requires_system_admin(void) {
+    TEST_ASSERT_EQUAL_INT(0, db_mark_setup_complete());
+    bool prior_auth = g_config.web_auth_enabled;
+    g_config.web_auth_enabled = true;
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/setup/status", sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "POST", sizeof(req.method_str), 0);
+    req.body = "{\"complete\":false}";
+    req.body_len = strlen((const char *)req.body);
+    handle_post_setup_complete(&req, &res);
+    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    TEST_ASSERT_TRUE(db_is_setup_complete());
+    http_response_free(&res);
+    g_config.web_auth_enabled = prior_auth;
+}
+
+void test_stream_retention_routes_require_camera_configure(void) {
+    bool prior_auth = g_config.web_auth_enabled;
+    g_config.web_auth_enabled = true;
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/streams/private/retention",
+                sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    handle_get_stream_retention(&req, &res);
+    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    http_response_free(&res);
+    g_config.web_auth_enabled = prior_auth;
+}
+
 int main(void) {
     init_logger();
     load_default_config(&g_config);
@@ -779,6 +816,8 @@ int main(void) {
     RUN_TEST(test_handle_post_stream_rejects_disallowed_detection_url);
     RUN_TEST(test_handle_put_stream_rejects_disallowed_detection_url);
     RUN_TEST(test_manual_start_rejects_continuous_config_before_runtime_starts);
+    RUN_TEST(test_completed_setup_post_requires_system_admin);
+    RUN_TEST(test_stream_retention_routes_require_camera_configure);
     int result = UNITY_END();
 
     shutdown_database();

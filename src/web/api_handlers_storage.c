@@ -12,6 +12,7 @@
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #include "storage/storage_manager.h"
 #include "core/config.h"
 #define LOG_COMPONENT "StorageAPI"
@@ -28,15 +29,7 @@
 void handle_get_storage_health(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/storage/health request");
 
-    // Check authentication
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (!httpd_get_authenticated_user(req, &user)) {
-            log_error("Authentication failed for GET /api/storage/health request");
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
-        }
-    }
+    if (!httpd_authorize_global_action(req, res, AUTHZ_STORAGE_CONFIGURE)) return;
 
     // Get cached storage health from unified controller
     storage_health_t health;
@@ -131,15 +124,10 @@ void handle_get_storage_health(const http_request_t *req, http_response_t *res) 
 void handle_post_storage_cleanup(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/storage/cleanup request");
 
-    // Check authentication
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (!httpd_get_authenticated_user(req, &user)) {
-            log_error("Authentication failed for POST /api/storage/cleanup request");
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
-        }
-    }
+    user_t user;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_action(req, res, AUTHZ_STORAGE_CONFIGURE, NULL,
+                                &user, &evaluation)) return;
 
     // Parse optional body for aggressive flag
     bool aggressive = false;
@@ -161,6 +149,8 @@ void handle_post_storage_cleanup(const http_request_t *req, http_response_t *res
 
     // Trigger cleanup via the unified controller (signals the controller thread)
     trigger_storage_cleanup(aggressive);
+    audit_log_operation(req, &user, "storage.configure", "storage", NULL,
+                        "storage.cleanup", "success", NULL);
 
     // Build response
     cJSON *root = cJSON_CreateObject();

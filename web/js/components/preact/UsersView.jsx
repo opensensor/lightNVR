@@ -41,7 +41,6 @@ export function UsersView() {
     role: 1,
     is_active: true,
     password_change_locked: false,
-    allowed_tags: '',
     allowed_login_cidrs: ''
   });
 
@@ -92,7 +91,6 @@ export function UsersView() {
       role: 1,
       is_active: true,
       password_change_locked: false,
-      allowed_tags: '',
       allowed_login_cidrs: ''
     });
     setActiveModal('add');
@@ -229,7 +227,6 @@ export function UsersView() {
     console.log('Adding user:', formData.username);
     const userData = {
       ...formData,
-      allowed_tags: formData.allowed_tags?.trim() || null,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
     };
     return addUserMutateAsync(userData);
@@ -247,9 +244,9 @@ export function UsersView() {
     console.log('Editing user:', selectedUser.id, selectedUser.username);
     const userData = {
       ...formData,
-      allowed_tags: formData.allowed_tags?.trim() || null,
       allowed_login_cidrs: formData.allowed_login_cidrs?.trim() || null
     };
+    if (selectedUser.authorization_mode === 'policy') delete userData.role;
     return editUserMutation.mutateAsync({
       userId: selectedUser.id,
       userData
@@ -286,8 +283,6 @@ export function UsersView() {
       role: user.role,
       is_active: user.is_active,
       password_change_locked: user.password_change_locked || false,
-      // null from API means unrestricted; convert to '' for form controls
-      allowed_tags: user.allowed_tags || '',
       allowed_login_cidrs: user.allowed_login_cidrs || ''
     });
     setActiveModal('edit');
@@ -473,6 +468,7 @@ export function UsersView() {
           handleEditUser={handleEditUser}
           handleClearLoginLockout={handleClearLoginLockout}
           isClearingLoginLockout={clearLoginLockoutMutation.isPending}
+          showRoleField={selectedUser.authorization_mode !== 'policy'}
           onClose={closeModal}
         />
       )}

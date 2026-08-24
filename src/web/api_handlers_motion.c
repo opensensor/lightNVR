@@ -317,26 +317,6 @@ int motion_trigger_parse_tags(const cJSON *body, char tags[][MAX_TAG_LENGTH],
 void handle_post_motion_trigger(const http_request_t *req, http_response_t *res) {
     log_info("POST /api/motion/trigger");
 
-    /* ---- Auth ------------------------------------------------------------ */
-    /* The setup-wizard endpoints are deliberately unauthenticated; everything
-     * else in this codebase either respects g_config.web_auth_enabled or is
-     * admin-only. External motion trigger is a write operation from
-     * (potentially) the public network, so require auth unconditionally when
-     * it is globally enabled, and reject read-only viewers. */
-    user_t user;
-    memset(&user, 0, sizeof(user));
-    if (g_config.web_auth_enabled) {
-        if (!httpd_get_authenticated_user(req, &user)) {
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
-        }
-        if (user.role == USER_ROLE_VIEWER) {
-            http_response_set_json_error(res, 403,
-                "Viewer role cannot trigger motion events");
-            return;
-        }
-    }
-
     /* ---- Body parsing ---------------------------------------------------- */
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
@@ -421,6 +401,9 @@ void handle_post_motion_trigger(const http_request_t *req, http_response_t *res)
     char stream_name[MAX_STREAM_NAME];
     safe_strcpy(stream_name, j_stream->valuestring, sizeof(stream_name), 0);
     cJSON_Delete(body);
+
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                       stream_name)) return;
 
     /* ---- Validate target stream ----------------------------------------- */
     stream_handle_t handle = get_stream_by_name(stream_name);

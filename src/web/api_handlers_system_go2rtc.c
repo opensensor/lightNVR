@@ -176,7 +176,7 @@ void handle_get_system_go2rtc_effective_config(const http_request_t *req,
 {
     log_info("Handling GET /api/system/go2rtc/effective-config");
 
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) {
         return;
     }
 
@@ -363,7 +363,7 @@ void handle_get_system_go2rtc_override_status(const http_request_t *req,
 {
     log_info("Handling GET /api/system/go2rtc/override-status");
 
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) {
         return;
     }
 

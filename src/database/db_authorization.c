@@ -13,6 +13,11 @@
 #include "database/db_core.h"
 #include "utils/strings.h"
 
+#define AUTHZ_ADMIN_ROLE_UUID "00000000-0000-4000-8000-000000000001"
+#define AUTHZ_OPERATOR_ROLE_UUID "00000000-0000-4000-8000-000000000002"
+#define AUTHZ_VIEWER_ROLE_UUID "00000000-0000-4000-8000-000000000003"
+#define AUTHZ_API_ROLE_UUID "00000000-0000-4000-8000-000000000004"
+
 static void copy_column(char *destination, size_t destination_size,
                         sqlite3_stmt *stmt, int column) {
     const char *value = (const char *)sqlite3_column_text(stmt, column);
@@ -1120,4 +1125,279 @@ int db_authorization_verify_action_catalog(void) {
         return -1;
     }
     return mismatches == 0 ? 0 : -1;
+}
+
+#define LEGACY_ALLOWED_TAGS_MAX 256
+
+typedef struct {
+    int64_t user_id;
+    user_role_t role;
+    char allowed_tags[LEGACY_ALLOWED_TAGS_MAX];
+    bool has_allowed_tags;
+} legacy_principal_t;
+
+static const char *compatibility_role_uuid(user_role_t role) {
+    switch (role) {
+        case USER_ROLE_ADMIN: return AUTHZ_ADMIN_ROLE_UUID;
+        case USER_ROLE_USER: return AUTHZ_OPERATOR_ROLE_UUID;
+        case USER_ROLE_VIEWER: return AUTHZ_VIEWER_ROLE_UUID;
+        case USER_ROLE_API: return AUTHZ_API_ROLE_UUID;
+        default: return NULL;
+    }
+}
+
+static bool lookup_or_create_tag_uuid_locked(
+    sqlite3 *db, const char *label, char uuid[CAMERA_UUID_STRING_SIZE]) {
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        db, "SELECT uuid FROM camera_tags WHERE label=? COLLATE NOCASE;", -1,
+        &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(stmt);
+    }
+    if (rc == SQLITE_ROW) {
+        copy_column(uuid, CAMERA_UUID_STRING_SIZE, stmt, 0);
+        sqlite3_finalize(stmt);
+        return uuid[0] != '\0';
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) return false;
+
+    const char *insert_sql =
+        "INSERT INTO camera_tags (uuid,label) VALUES ("
+        "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
+        "substr(hex(randomblob(2)),2) || '-' || "
+        "substr('89ab',(abs(random()) % 4) + 1,1) || "
+        "substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),?);";
+    stmt = NULL;
+    rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(stmt);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) return false;
+
+    stmt = NULL;
+    rc = sqlite3_prepare_v2(
+        db, "SELECT uuid FROM camera_tags WHERE label=? COLLATE NOCASE;", -1,
+        &stmt, NULL);
+    if (rc == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(stmt);
+    }
+    if (rc == SQLITE_ROW) copy_column(uuid, CAMERA_UUID_STRING_SIZE, stmt, 0);
+    if (stmt) sqlite3_finalize(stmt);
+    return rc == SQLITE_ROW && uuid[0] != '\0';
+}
+
+static char *trim_legacy_tag(char *value) {
+    if (!value) return value;
+    while (*value == ' ' || *value == '\t' || *value == '\r' ||
+           *value == '\n') {
+        value++;
+    }
+    size_t length = strlen(value);
+    while (length > 0 &&
+           (value[length - 1] == ' ' || value[length - 1] == '\t' ||
+            value[length - 1] == '\r' || value[length - 1] == '\n')) {
+        value[--length] = '\0';
+    }
+    return value;
+}
+
+static char *legacy_tag_selector_locked(sqlite3 *db,
+                                        const char *allowed_tags) {
+    if (!allowed_tags || allowed_tags[0] == '\0') return NULL;
+    char copy[LEGACY_ALLOWED_TAGS_MAX];
+    safe_strcpy(copy, allowed_tags, sizeof(copy), 0);
+    cJSON *root = cJSON_CreateObject();
+    cJSON *expression = cJSON_CreateObject();
+    cJSON *uuids = cJSON_CreateArray();
+    if (!root || !expression || !uuids) {
+        cJSON_Delete(root);
+        cJSON_Delete(expression);
+        cJSON_Delete(uuids);
+        return NULL;
+    }
+    cJSON_AddNumberToObject(root, "version", 1);
+    cJSON_AddStringToObject(expression, "op", "tag_any");
+    cJSON_AddItemToObject(expression, "uuids", uuids);
+    cJSON_AddItemToObject(root, "expression", expression);
+
+    int tag_count = 0;
+    char *saveptr = NULL;
+    for (char *item = strtok_r(copy, ",", &saveptr); item;
+         item = strtok_r(NULL, ",", &saveptr)) {
+        char *label = trim_legacy_tag(item);
+        if (!label[0]) continue;
+        char uuid[CAMERA_UUID_STRING_SIZE] = {0};
+        if (!lookup_or_create_tag_uuid_locked(db, label, uuid) ||
+            !cJSON_AddItemToArray(uuids, cJSON_CreateString(uuid))) {
+            cJSON_Delete(root);
+            return NULL;
+        }
+        tag_count++;
+    }
+    if (tag_count == 0) {
+        cJSON_Delete(root);
+        return NULL;
+    }
+    char *serialized = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (serialized && strlen(serialized) >= AUTHORIZATION_SELECTOR_MAX) {
+        free(serialized);
+        return NULL;
+    }
+    return serialized;
+}
+
+int db_authorization_migrate_legacy_users(int *migrated_count) {
+    if (migrated_count) *migrated_count = 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return -1;
+
+    pthread_mutex_lock(mutex);
+    if (!begin_policy_change(db)) {
+        pthread_mutex_unlock(mutex);
+        return -1;
+    }
+
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2(
+        db,
+        "SELECT id,role,allowed_tags FROM users "
+        "WHERE authorization_mode='legacy' ORDER BY id;",
+        -1, &stmt, NULL);
+    legacy_principal_t *principals = NULL;
+    int count = 0;
+    int capacity = 0;
+    int step_rc = rc == SQLITE_OK ? SQLITE_ROW : rc;
+    while (rc == SQLITE_OK && (step_rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        if (count == capacity) {
+            int next = capacity == 0 ? 8 : capacity * 2;
+            void *resized = realloc(principals,
+                                    (size_t)next * sizeof(*principals));
+            if (!resized) {
+                rc = SQLITE_NOMEM;
+                break;
+            }
+            principals = resized;
+            capacity = next;
+        }
+        legacy_principal_t *principal = &principals[count++];
+        memset(principal, 0, sizeof(*principal));
+        principal->user_id = sqlite3_column_int64(stmt, 0);
+        principal->role = (user_role_t)sqlite3_column_int(stmt, 1);
+        const char *tags = (const char *)sqlite3_column_text(stmt, 2);
+        principal->has_allowed_tags = tags && tags[0] != '\0';
+        safe_strcpy(principal->allowed_tags, tags ? tags : "",
+                    sizeof(principal->allowed_tags), 0);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    if (rc != SQLITE_OK || step_rc != SQLITE_DONE) {
+        free(principals);
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        pthread_mutex_unlock(mutex);
+        return -1;
+    }
+    if (count == 0) {
+        free(principals);
+        bool committed =
+            sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) == SQLITE_OK;
+        if (!committed) sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+        pthread_mutex_unlock(mutex);
+        return committed ? 0 : -1;
+    }
+
+    const char *insert_sql =
+        "INSERT INTO authz_grants "
+        "(uuid,user_id,role_uuid,scope_type,selector_json,collection_uuid) "
+        "VALUES ("
+        "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
+        "substr(hex(randomblob(2)),2) || '-' || "
+        "substr('89ab',(abs(random()) % 4) + 1,1) || "
+        "substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))),"
+        "?,?,?,?,NULL);";
+    bool success = true;
+    for (int i = 0; success && i < count; i++) {
+        const char *role_uuid = compatibility_role_uuid(principals[i].role);
+        if (!role_uuid) {
+            success = false;
+            break;
+        }
+        /* Grants attached to a legacy-mode user were never an active access
+         * boundary. Do not trust stale/pre-authored grants during upgrade:
+         * replacing them is the only way to prove migration cannot widen the
+         * currently active role + allowed_tags compatibility policy. */
+        stmt = NULL;
+        rc = sqlite3_prepare_v2(
+            db, "DELETE FROM authz_grants WHERE user_id=?;", -1, &stmt,
+            NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_int64(stmt, 1, principals[i].user_id);
+            rc = sqlite3_step(stmt);
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            success = false;
+            break;
+        }
+
+        char *selector = NULL;
+        if (principals[i].has_allowed_tags) {
+            selector = legacy_tag_selector_locked(
+                db, principals[i].allowed_tags);
+            if (!selector) {
+                success = false;
+                break;
+            }
+        }
+        stmt = NULL;
+        rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_int64(stmt, 1, principals[i].user_id);
+            sqlite3_bind_text(stmt, 2, role_uuid, -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt, 3, selector ? "selector" : "all", -1,
+                              SQLITE_STATIC);
+            if (selector) {
+                sqlite3_bind_text(stmt, 4, selector, -1,
+                                  SQLITE_TRANSIENT);
+            } else {
+                sqlite3_bind_null(stmt, 4);
+            }
+            rc = sqlite3_step(stmt);
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) success = false;
+        free(selector);
+        if (!success) break;
+
+        stmt = NULL;
+        rc = sqlite3_prepare_v2(
+            db,
+            "UPDATE users SET authorization_mode='policy',allowed_tags=NULL,"
+            "updated_at=strftime('%s','now') WHERE id=? AND "
+            "authorization_mode='legacy';",
+            -1, &stmt, NULL);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_int64(stmt, 1, principals[i].user_id);
+            rc = sqlite3_step(stmt);
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE || sqlite3_changes(db) != 1) success = false;
+    }
+    free(principals);
+
+    bool committed = finish_policy_change(db, success);
+    pthread_mutex_unlock(mutex);
+    if (!committed) return -1;
+    if (migrated_count) *migrated_count = count;
+    if (count > 0) {
+        log_info("Migrated %d legacy authorization principal(s) to policy grants",
+                 count);
+    }
+    return 0;
 }

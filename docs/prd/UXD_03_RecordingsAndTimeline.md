@@ -1,6 +1,6 @@
 # PRD — Recordings & Timeline UX
 
-**Status**: Draft
+**Status**: In progress — P3 mobile gestures implemented; earlier phase acceptance reconciliation and beta/manual outcome metrics remain
 **Created**: 2026-04-22
 **Owner**: TBD
 **Driving signal**: [#331 (CDx4f3kCAf3Y)](https://github.com/opensensor/lightNVR/issues/331), the Recordings/Timeline items from [#399 (AndyIsHereBoi)](https://github.com/opensensor/lightNVR/issues/399).
@@ -94,6 +94,13 @@ Every list-mutating action goes through the `<AsyncButton>` / `useAsyncAction` p
 | P2 — Refresh + async feedback | Wire the AsyncButton primitive; assumes PRD 01 P0 has shipped | 1 day |
 | P3 — Mobile gestures | Pinch/fling/snap on the ruler | 3–4 days |
 
+Implementation note (2026-08-24): P3 owns touch input explicitly rather than
+depending on synthesized mouse events. It includes anchored pinch zoom,
+scale-aware ruler ticks down to the one-minute view, two-finger pan,
+reduced-motion-aware one-finger inertial fling, a 36×36 px
+cursor hit target, and deterministic 500 ms recording-edge snapping. Desktop
+wheel, mouse, and keyboard paths remain independent.
+
 ## 6. Acceptance criteria
 
 - Closes #331: deleted recordings disappear from ruler within one polling tick.
@@ -106,7 +113,7 @@ Every list-mutating action goes through the `<AsyncButton>` / `useAsyncAction` p
 | Risk | Mitigation |
 |---|---|
 | Diffing runs every poll on a busy day → CPU spike | Cap diff candidates to the visible time window; index by id |
-| Pinch-zoom collides with browser pinch-zoom on iOS | Use `touch-action: none` on the ruler track; reserve `pinch-zoom` only when both fingers land on the track |
+| Pinch-zoom collides with browser pinch-zoom on iOS | Use `touch-action: pan-y` on the ruler track so vertical page scrolling remains native while horizontal and two-finger timeline gestures stay owned by the application |
 | Scrub-keep-playing causes excessive seeks while dragging | Throttle network seeks to commit only on pointerup; show local preview-frame during drag |
 
 ## 8. Related issues

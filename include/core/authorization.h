@@ -127,6 +127,12 @@ int authorization_evaluate_in_context(authorization_context_t *context,
 int authorization_filter_visible_cameras(const user_t *user,
                                          fleet_camera_t *cameras, int *count);
 
+/* Generic list filtering for camera-scoped actions such as recordings.replay
+ * and snapshot.create. Totals must be calculated from the reduced inventory. */
+int authorization_filter_cameras(const user_t *user,
+                                 authorization_action_t action,
+                                 fleet_camera_t *cameras, int *count);
+
 /*
  * Evaluate one user/action/resource tuple. A NULL camera is valid for global
  * actions and for an all-fleet grant, but never matches a selector-backed grant.

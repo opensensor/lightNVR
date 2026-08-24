@@ -281,8 +281,41 @@ void handle_post_authorization_simulate(const http_request_t *req,
 static bool authorize_policy_manager(const http_request_t *req,
                                      http_response_t *res, user_t *requester) {
     authorization_evaluation_t evaluation;
-    return httpd_authorize_action(req, res, AUTHZ_USERS_MANAGE, NULL,
-                                  requester, &evaluation) != 0;
+    if (!httpd_authorize_action(req, res, AUTHZ_USERS_MANAGE, NULL,
+                                requester, &evaluation)) {
+        return false;
+    }
+    /* A bearer token must never be able to rewrite the policy that bounds it
+     * or mint a replacement credential. Session/Basic/legacy-key principals
+     * remain eligible, subject to scope-containment checks below. */
+    if (requester->authenticated_via_scoped_token) {
+        http_response_set_json_error(
+            res, 403, "Scoped API tokens cannot mutate authorization policy");
+        const char *target = NULL;
+        const char *prefix = "/api/authorization/users/";
+        if (req->method == HTTP_METHOD_PUT &&
+            strncmp(req->path, prefix, strlen(prefix)) == 0) {
+            target = req->path + strlen(prefix);
+            if (!target[0] || strchr(target, '/')) target = NULL;
+        }
+        cJSON *details = cJSON_CreateObject();
+        if (details) {
+            cJSON_AddStringToObject(details, "event_type",
+                                    "authorization.policy_update");
+            cJSON_AddStringToObject(details, "reason",
+                                    "scoped_token_policy_mutation");
+        }
+        audit_log_append(
+            req, requester,
+            req->method == HTTP_METHOD_PUT && target
+                ? "authorization.policy.update"
+                : "authorization.policy.manage",
+            target ? "user" : "authorization_policy", target, "denied",
+            details);
+        cJSON_Delete(details);
+        return false;
+    }
+    return true;
 }
 
 static bool valid_uuid(const char *value) {
@@ -940,27 +973,153 @@ static bool grants_allow_self_management(
     return false;
 }
 
+static bool selector_scopes_equal(const char *left, const char *right) {
+    if (!left || !right || left[0] == '\0' || right[0] == '\0') return false;
+    cJSON *left_json = cJSON_Parse(left);
+    cJSON *right_json = cJSON_Parse(right);
+    bool equal = left_json && right_json &&
+        cJSON_Compare(left_json, right_json, true);
+    cJSON_Delete(left_json);
+    cJSON_Delete(right_json);
+    return equal;
+}
+
+/*
+ * Prove scope containment without relying on today's fleet membership. Tag
+ * selectors and shared collections are dynamic, so enumerating current cameras
+ * would allow a delegated grant to widen later. An all-fleet requester grant
+ * contains every scope; otherwise the dynamic scope must be equivalent.
+ */
+typedef enum {
+    REQUESTER_SCOPE_CONTAINS = 0,
+    REQUESTER_SCOPE_DENIED,
+    REQUESTER_SCOPE_ERROR,
+} requester_scope_result_t;
+
+static requester_scope_result_t requester_scope_contains(
+    const user_t *requester, authorization_action_t action,
+    const char *scope_type, const char *selector_json,
+    const char *collection_uuid) {
+    const authorization_action_metadata_t *metadata =
+        authorization_action_metadata(action);
+    if (!metadata) return REQUESTER_SCOPE_ERROR;
+
+    if (!metadata->camera_scoped || strcmp(scope_type, "all") == 0 ||
+        strcmp(requester->authorization_mode, "policy") != 0) {
+        authorization_evaluation_t evaluation;
+        if (authorization_evaluate(requester, action, NULL, &evaluation) != 0) {
+            return REQUESTER_SCOPE_ERROR;
+        }
+        return evaluation.decision == AUTHZ_DECISION_ALLOW
+            ? REQUESTER_SCOPE_CONTAINS : REQUESTER_SCOPE_DENIED;
+    }
+
+    authorization_grant_t *held = NULL;
+    int held_count = 0;
+    int64_t policy_version = 0;
+    if (db_authorization_load_user_grants(requester->id, metadata->key, &held,
+                                          &held_count, &policy_version) != 0) {
+        return REQUESTER_SCOPE_ERROR;
+    }
+    bool contained = false;
+    for (int i = 0; i < held_count && !contained; i++) {
+        /* load_user_grants only returns enabled rows. */
+        if (strcmp(held[i].scope_type, "all") == 0) {
+            contained = true;
+        } else if (strcmp(scope_type, "collection") == 0 &&
+                   strcmp(held[i].scope_type, "collection") == 0 &&
+                   collection_uuid && collection_uuid[0] != '\0' &&
+                   strcmp(held[i].collection_uuid, collection_uuid) == 0) {
+            contained = true;
+        } else if (strcmp(scope_type, "selector") == 0 &&
+                   strcmp(held[i].scope_type, "selector") == 0 &&
+                   selector_scopes_equal(held[i].selector_json,
+                                         selector_json)) {
+            contained = true;
+        }
+    }
+    free(held);
+    return contained ? REQUESTER_SCOPE_CONTAINS : REQUESTER_SCOPE_DENIED;
+}
+
 /*
  * Reject a policy update that would hand the target user a role carrying more
  * authority than the requester holds. Roles are reusable, so constraining role
  * authorship alone is not enough: granting a pre-existing Administrator role
  * would escalate just as effectively.
  */
-static bool grants_within_requester_authority(
+typedef enum {
+    GRANT_AUTHORITY_OK = 0,
+    GRANT_AUTHORITY_INVALID_ROLE,
+    GRANT_AUTHORITY_SCOPE_DENIED,
+    GRANT_AUTHORITY_RESOLUTION_ERROR,
+} grant_authority_result_t;
+
+static grant_authority_result_t grants_within_requester_authority(
     const user_t *requester, const authorization_grant_input_t *grants,
     int grant_count, http_response_t *res) {
-    uint64_t requested_mask = 0;
     for (int i = 0; i < grant_count; i++) {
         authorization_role_t role;
-        if (db_authorization_role_get(grants[i].role_uuid, &role) !=
-            DB_AUTHORIZATION_OK) {
+        db_authorization_result_t role_result =
+            db_authorization_role_get(grants[i].role_uuid, &role);
+        if (role_result == DB_AUTHORIZATION_NOT_FOUND) {
             http_response_set_json_error(res, 400, "Unknown role in grant");
-            return false;
+            return GRANT_AUTHORITY_INVALID_ROLE;
         }
-        requested_mask |= role.action_mask;
+        if (role_result != DB_AUTHORIZATION_OK) {
+            http_response_set_json_error(
+                res, 500, "Failed to resolve grant authority");
+            return GRANT_AUTHORITY_RESOLUTION_ERROR;
+        }
+        for (int action = 0; action < AUTHZ_ACTION_COUNT; action++) {
+            if ((role.action_mask &
+                 authorization_action_bit((authorization_action_t)action)) == 0) {
+                continue;
+            }
+            requester_scope_result_t scope_result = requester_scope_contains(
+                requester, (authorization_action_t)action,
+                grants[i].scope_type, grants[i].selector_json,
+                grants[i].collection_uuid);
+            if (scope_result == REQUESTER_SCOPE_ERROR) {
+                http_response_set_json_error(
+                    res, 500, "Failed to resolve grant authority");
+                return GRANT_AUTHORITY_RESOLUTION_ERROR;
+            }
+            if (scope_result == REQUESTER_SCOPE_DENIED) {
+                const authorization_action_metadata_t *metadata =
+                    authorization_action_metadata(
+                        (authorization_action_t)action);
+                char message[256];
+                snprintf(message, sizeof(message),
+                         "You cannot grant %s outside your own scope",
+                         metadata ? metadata->key : "this action");
+                http_response_set_json_error(res, 403, message);
+                return GRANT_AUTHORITY_SCOPE_DENIED;
+            }
+        }
     }
-    return requested_mask == 0 ||
-        requester_may_delegate(requester, requested_mask, res);
+    return GRANT_AUTHORITY_OK;
+}
+
+static void audit_policy_update_failure(const http_request_t *req,
+                                        const user_t *requester,
+                                        int64_t target_user_id,
+                                        const char *outcome,
+                                        const char *reason) {
+    char target[32] = {0};
+    if (target_user_id > 0) {
+        snprintf(target, sizeof(target), "%lld",
+                 (long long)target_user_id);
+    }
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type",
+                                "authorization.policy_update");
+        cJSON_AddStringToObject(details, "reason", reason);
+    }
+    audit_log_append(req, requester, "authorization.policy.update", "user",
+                     target[0] ? target : NULL, outcome, details);
+    cJSON_Delete(details);
 }
 
 void handle_put_user_authorization(const http_request_t *req,
@@ -968,49 +1127,72 @@ void handle_put_user_authorization(const http_request_t *req,
     user_t requester;
     if (!authorize_policy_manager(req, res, &requester)) return;
     int64_t user_id = 0;
-    if (!extract_user_id(req, &user_id, res)) return;
+    if (!extract_user_id(req, &user_id, res)) {
+        audit_policy_update_failure(req, &requester, 0, "failure",
+                                    "invalid_target_user");
+        return;
+    }
     cJSON *body = httpd_parse_json_body(req);
     if (!cJSON_IsObject(body)) {
         cJSON_Delete(body);
         http_response_set_json_error(res, 400,
                                      "Request body must be an object");
+        audit_policy_update_failure(req, &requester, user_id, "failure",
+                                    "invalid_request_body");
         return;
     }
     int64_t expected_version = 0;
     const cJSON *mode = cJSON_GetObjectItemCaseSensitive(body, "mode");
     if (!parse_expected_version(body, &expected_version, res)) {
         cJSON_Delete(body);
+        audit_policy_update_failure(req, &requester, user_id, "failure",
+                                    "invalid_policy_version");
         return;
     }
     if (!cJSON_IsString(mode) || !mode->valuestring ||
-        (strcmp(mode->valuestring, "legacy") != 0 &&
-         strcmp(mode->valuestring, "policy") != 0)) {
-        http_response_set_json_error(res, 400,
-                                     "mode must be legacy or policy");
+        strcmp(mode->valuestring, "policy") != 0) {
+        http_response_set_json_error(
+            res, 400,
+            "mode must be policy; legacy authorization is retired");
         cJSON_Delete(body);
+        audit_policy_update_failure(req, &requester, user_id, "failure",
+                                    "invalid_authorization_mode");
         return;
     }
     authorization_grant_input_t *grants = NULL;
     int grant_count = 0;
     if (!parse_grants(body, &grants, &grant_count, res)) {
         cJSON_Delete(body);
+        audit_policy_update_failure(req, &requester, user_id, "failure",
+                                    "invalid_grants");
         return;
     }
-    if (!grants_within_requester_authority(&requester, grants, grant_count,
-                                           res)) {
+    grant_authority_result_t authority_result =
+        grants_within_requester_authority(&requester, grants, grant_count,
+                                          res);
+    if (authority_result != GRANT_AUTHORITY_OK) {
         free(grants);
         cJSON_Delete(body);
+        audit_policy_update_failure(
+            req, &requester, user_id,
+            authority_result == GRANT_AUTHORITY_SCOPE_DENIED ? "denied"
+            : authority_result == GRANT_AUTHORITY_RESOLUTION_ERROR ? "error"
+            : "failure",
+            authority_result == GRANT_AUTHORITY_INVALID_ROLE
+                ? "invalid_grant_role"
+            : authority_result == GRANT_AUTHORITY_RESOLUTION_ERROR
+                ? "scope_resolution_failed"
+                : "scope_exceeds_authority");
         return;
     }
     if (user_id == requester.id &&
-        ((strcmp(mode->valuestring, "policy") == 0 &&
-          !grants_allow_self_management(grants, grant_count)) ||
-         (strcmp(mode->valuestring, "legacy") == 0 &&
-          requester.role != USER_ROLE_ADMIN))) {
+        !grants_allow_self_management(grants, grant_count)) {
         free(grants);
         cJSON_Delete(body);
         http_response_set_json_error(
             res, 409, "This change would remove your own policy-management access");
+        audit_policy_update_failure(req, &requester, user_id, "failure",
+                                    "self_lockout_prevented");
         return;
     }
     char requested_mode[USER_AUTHORIZATION_MODE_MAX];
@@ -1023,6 +1205,13 @@ void handle_put_user_authorization(const http_request_t *req,
     free(grants);
     if (result != DB_AUTHORIZATION_OK) {
         set_authorization_db_error(res, result);
+        audit_policy_update_failure(
+            req, &requester, user_id,
+            result == DB_AUTHORIZATION_ERROR ? "error" : "failure",
+            result == DB_AUTHORIZATION_STALE ? "policy_version_conflict"
+            : result == DB_AUTHORIZATION_NOT_FOUND ? "target_not_found"
+            : result == DB_AUTHORIZATION_INVALID ? "database_validation_failed"
+            : "database_update_failed");
         return;
     }
     set_user_policy_response(res, user_id, 200);
@@ -1084,12 +1273,44 @@ static bool extract_token_path(const http_request_t *req, int64_t *user_id,
     return true;
 }
 
+static void audit_token_management_outcome(const http_request_t *req,
+                                           const user_t *requester,
+                                           const char *action,
+                                           const char *target_type,
+                                           const char *target_uuid,
+                                           int64_t owner_user_id,
+                                           const char *outcome,
+                                           const char *reason) {
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type", action);
+        if (reason) cJSON_AddStringToObject(details, "reason", reason);
+        cJSON_AddNumberToObject(details, "owner_user_id",
+                                (double)owner_user_id);
+    }
+    audit_log_append(req, requester, action, target_type, target_uuid,
+                     outcome, details);
+    cJSON_Delete(details);
+}
+
 static bool authorize_token_manager(const http_request_t *req,
                                     http_response_t *res,
                                     int64_t target_user_id,
                                     user_t *requester) {
-    if (!httpd_get_authenticated_user(req, requester)) {
+    if (!httpd_check_action_access(req, requester)) {
         http_response_set_json_error(res, 401, "Unauthorized");
+        return false;
+    }
+    const char *action = req->method == HTTP_METHOD_POST
+        ? "api_token.create" : "api_token.manage";
+    char target[32];
+    snprintf(target, sizeof(target), "%lld", (long long)target_user_id);
+    if (requester->authenticated_via_scoped_token) {
+        http_response_set_json_error(
+            res, 403, "Scoped API tokens cannot manage API tokens");
+        audit_token_management_outcome(
+            req, requester, action, "user", target, target_user_id, "denied",
+            "scoped_token_management_denied");
         return false;
     }
     if (requester->id == target_user_id) return true;
@@ -1098,10 +1319,16 @@ static bool authorize_token_manager(const http_request_t *req,
                                &evaluation) != 0) {
         http_response_set_json_error(
             res, 500, "Authorization policy evaluation failed");
+        audit_token_management_outcome(
+            req, requester, action, "user", target, target_user_id, "error",
+            "users_manage_evaluation_failed");
         return false;
     }
     if (evaluation.decision != AUTHZ_DECISION_ALLOW) {
         http_response_set_json_error(res, 403, "Forbidden");
+        audit_token_management_outcome(
+            req, requester, action, "user", target, target_user_id, "denied",
+            "users_manage_denied");
         return false;
     }
     return true;
@@ -1314,6 +1541,54 @@ static bool parse_token_scope(const cJSON *body, char *scope_type,
     return true;
 }
 
+static requester_scope_result_t token_scope_within_user(
+    const user_t *user, uint64_t action_mask, const char *scope_type,
+    const char *selector_json, const char *collection_uuid,
+    http_response_t *res) {
+    for (int action = 0; action < AUTHZ_ACTION_COUNT; action++) {
+        authorization_action_t requested = (authorization_action_t)action;
+        if ((action_mask & authorization_action_bit(requested)) == 0) continue;
+        requester_scope_result_t result = requester_scope_contains(
+            user, requested, scope_type, selector_json, collection_uuid);
+        if (result == REQUESTER_SCOPE_CONTAINS) {
+            continue;
+        }
+        if (result == REQUESTER_SCOPE_ERROR) {
+            http_response_set_json_error(
+                res, 500, "Failed to resolve API token authority");
+            return REQUESTER_SCOPE_ERROR;
+        }
+        const authorization_action_metadata_t *metadata =
+            authorization_action_metadata(requested);
+        char message[256];
+        snprintf(message, sizeof(message),
+                 "API token scope exceeds %s authority",
+                 metadata ? metadata->key : "owner");
+        http_response_set_json_error(res, 403, message);
+        return REQUESTER_SCOPE_DENIED;
+    }
+    return REQUESTER_SCOPE_CONTAINS;
+}
+
+static void audit_api_token_create_failure(const http_request_t *req,
+                                           const user_t *requester,
+                                           int64_t owner_user_id,
+                                           const char *outcome,
+                                           const char *reason) {
+    char target[32];
+    snprintf(target, sizeof(target), "%lld", (long long)owner_user_id);
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type", "api_token.create");
+        cJSON_AddStringToObject(details, "reason", reason);
+        cJSON_AddNumberToObject(details, "owner_user_id",
+                                (double)owner_user_id);
+    }
+    audit_log_append(req, requester, "api_token.create", "user", target,
+                     outcome, details);
+    cJSON_Delete(details);
+}
+
 void handle_post_user_api_token(const http_request_t *req,
                                 http_response_t *res) {
     int64_t user_id = 0;
@@ -1324,6 +1599,8 @@ void handle_post_user_api_token(const http_request_t *req,
     user_t target;
     if (db_auth_get_user_by_id(user_id, &target) != 0) {
         http_response_set_json_error(res, 404, "User not found");
+        audit_api_token_create_failure(req, &requester, user_id, "failure",
+                                       "owner_not_found");
         return;
     }
     cJSON *body = httpd_parse_json_body(req);
@@ -1346,6 +1623,8 @@ void handle_post_user_api_token(const http_request_t *req,
         http_response_set_json_error(res, 400,
                                      "Invalid API token request");
         cJSON_Delete(body);
+        audit_api_token_create_failure(req, &requester, user_id, "failure",
+                                       "invalid_request");
         return;
     }
     if (!parse_token_actions(body, &action_mask, res) ||
@@ -1353,18 +1632,28 @@ void handle_post_user_api_token(const http_request_t *req,
                            &selector_json, collection_uuid, res)) {
         free(selector_json);
         cJSON_Delete(body);
+        audit_api_token_create_failure(req, &requester, user_id, "failure",
+                                       "invalid_actions_or_scope");
         return;
     }
-    /*
-     * A token minted for someone else returns its secret to the requester, so
-     * it must not carry authority the requester lacks. A self-service token is
-     * already bounded because evaluation intersects it with the owner's own
-     * decision.
-     */
-    if (requester.id != user_id &&
-        !requester_may_delegate(&requester, action_mask, res)) {
+    /* The returned bearer secret must be contained by both its owner and the
+     * requester. Scope is checked as well as action bits; dynamic selectors
+     * and collections are only delegated from an equivalent or all scope. */
+    requester_scope_result_t scope_result = token_scope_within_user(
+        &target, action_mask, scope_type, selector_json, collection_uuid, res);
+    if (scope_result == REQUESTER_SCOPE_CONTAINS && requester.id != user_id) {
+        scope_result = token_scope_within_user(
+            &requester, action_mask, scope_type, selector_json,
+            collection_uuid, res);
+    }
+    if (scope_result != REQUESTER_SCOPE_CONTAINS) {
         free(selector_json);
         cJSON_Delete(body);
+        audit_api_token_create_failure(
+            req, &requester, user_id,
+            scope_result == REQUESTER_SCOPE_ERROR ? "error" : "denied",
+            scope_result == REQUESTER_SCOPE_ERROR
+                ? "scope_resolution_failed" : "scope_exceeds_authority");
         return;
     }
     api_token_create_t input = {
@@ -1385,6 +1674,10 @@ void handle_post_user_api_token(const http_request_t *req,
     cJSON_Delete(body);
     if (result != DB_API_TOKEN_OK) {
         set_api_token_error(res, result);
+        audit_api_token_create_failure(
+            req, &requester, user_id,
+            result == DB_API_TOKEN_ERROR ? "error" : "failure",
+            "database_rejected_request");
         return;
     }
     cJSON *root = cJSON_CreateObject();
@@ -1397,6 +1690,8 @@ void handle_post_user_api_token(const http_request_t *req,
         db_api_token_revoke(user_id, token.uuid);
         secure_zero_memory(secret, sizeof(secret));
         http_response_set_json_error(res, 500, "Failed to create response");
+        audit_api_token_create_failure(req, &requester, user_id, "error",
+                                       "response_allocation_failed");
         return;
     }
     cJSON_AddItemToObject(root, "secret", secret_json);
@@ -1407,6 +1702,8 @@ void handle_post_user_api_token(const http_request_t *req,
         db_api_token_revoke(user_id, token.uuid);
         secure_zero_memory(secret, sizeof(secret));
         http_response_set_json_error(res, 500, "Failed to serialize response");
+        audit_api_token_create_failure(req, &requester, user_id, "error",
+                                       "response_serialization_failed");
         return;
     }
     if (http_response_set_json(res, 201, response_body) != 0) {
@@ -1414,6 +1711,8 @@ void handle_post_user_api_token(const http_request_t *req,
         secure_zero_memory(secret, sizeof(secret));
         free(response_body);
         http_response_set_json_error(res, 500, "Failed to create response");
+        audit_api_token_create_failure(req, &requester, user_id, "error",
+                                       "response_write_failed");
         return;
     }
     cJSON *audit_details = cJSON_CreateObject();
@@ -1447,15 +1746,17 @@ void handle_delete_user_api_token(const http_request_t *req,
         db_api_token_revoke(user_id, token_uuid);
     if (result != DB_API_TOKEN_OK) {
         set_api_token_error(res, result);
+        audit_token_management_outcome(
+            req, &requester, "api_token.revoke", "api_token", token_uuid,
+            user_id, result == DB_API_TOKEN_ERROR ? "error" : "failure",
+            result == DB_API_TOKEN_NOT_FOUND ? "token_not_found"
+            : result == DB_API_TOKEN_INVALID ? "invalid_token_request"
+            : result == DB_API_TOKEN_ERROR ? "database_revoke_failed"
+            : "token_revoke_failed");
         return;
     }
-    cJSON *details = cJSON_CreateObject();
-    if (details) {
-        cJSON_AddStringToObject(details, "event_type", "api_token.revoke");
-        cJSON_AddNumberToObject(details, "owner_user_id", (double)user_id);
-    }
-    audit_log_append(req, &requester, "api_token.revoke", "api_token",
-                     token_uuid, "success", details);
-    cJSON_Delete(details);
+    audit_token_management_outcome(
+        req, &requester, "api_token.revoke", "api_token", token_uuid,
+        user_id, "success", NULL);
     http_response_set_json(res, 200, "{\"success\":true}");
 }

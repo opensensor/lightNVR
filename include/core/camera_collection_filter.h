@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+#include "core/authorization.h"
 #include "core/camera_selector.h"
 #include "database/db_auth.h"
 
@@ -34,6 +35,15 @@ bool camera_collection_filter_matches(
 camera_collection_filter_result_t camera_collection_filter_resolve_stream_names(
     const char *collection_uuid, const user_t *user, char ***stream_names,
     int *stream_count);
+camera_collection_filter_result_t
+camera_collection_filter_resolve_stream_names_for_action(
+    const char *collection_uuid, const user_t *user,
+    authorization_action_t action, char ***stream_names, int *stream_count);
+/* Resolve a shared collection after the caller has already proved an
+ * all-fleet authorization boundary for the operation. */
+camera_collection_filter_result_t
+camera_collection_filter_resolve_stream_names_for_authorization(
+    const char *collection_uuid, char ***stream_names, int *stream_count);
 void camera_collection_filter_free_stream_names(char **stream_names,
                                                 int stream_count);
 

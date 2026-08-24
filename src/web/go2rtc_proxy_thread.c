@@ -21,6 +21,8 @@
 #include <curl/curl.h>
 
 #include "web/go2rtc_proxy_thread.h"
+#include "web/api_handlers_go2rtc_proxy.h"
+#include "web/httpd_utils.h"
 #include "web/libuv_connection.h"
 #include "web/request_response.h"
 #include "core/config.h"
@@ -50,6 +52,9 @@ typedef struct proxy_thread_ctx {
     char *body;                 // malloc'd copy, NULL if no body
     size_t body_len;
     char content_type[256];
+    bool capture_hls_session;
+    char capture_stream_name[MAX_STREAM_NAME];
+    char auth_fingerprint[65];
     write_complete_action_t action;
 
     // Connection for response delivery (safe only on event-loop thread)
@@ -204,6 +209,12 @@ static void *proxy_worker_thread(void *arg) {
         if (cres != CURLE_OK || ctx->error) {
             log_warn("go2rtc proxy thread: curl failed: %s", curl_easy_strerror(cres));
             ctx->error = true;
+        } else {
+            if (ctx->capture_hls_session) {
+                go2rtc_proxy_capture_hls_sessions_for(
+                    ctx->capture_stream_name, ctx->auth_fingerprint,
+                    ctx->response_buffer, ctx->response_size);
+            }
         }
     }
 
@@ -334,6 +345,12 @@ int go2rtc_proxy_thread_submit(libuv_connection_t *conn, write_complete_action_t
     if (!ctx) {
         log_error("go2rtc_proxy_thread_submit: Failed to allocate context");
         return -1;
+    }
+    if (strstr(req->path, "/api/stream.m3u8") &&
+        http_request_get_query_param(req, "src", ctx->capture_stream_name,
+                                     sizeof(ctx->capture_stream_name)) >= 0 &&
+        httpd_request_auth_fingerprint(req, ctx->auth_fingerprint) == 0) {
+        ctx->capture_hls_session = true;
     }
 
     // Forward the full path as-is. go2rtc is configured with base_path: /go2rtc

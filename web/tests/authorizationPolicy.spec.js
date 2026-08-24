@@ -47,7 +47,7 @@ describe('authorization policy UI helpers', () => {
     first.selector = selector;
     const second = createDraftGrant('viewer', 'selector');
     second.selector = selector;
-    expect(validatePolicyDraft('legacy', [first, second], roles)).toBe('duplicate_grant');
+    expect(validatePolicyDraft('legacy', [first, second], roles)).toBe('invalid_mode');
     expect(validatePolicyDraft('policy', [first], roles)).toBe('');
   });
 

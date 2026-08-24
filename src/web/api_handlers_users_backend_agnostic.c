@@ -16,6 +16,7 @@
 #include "core/logger.h"
 #include "utils/strings.h"
 #include "database/db_auth.h"
+#include "database/db_authorization.h"
 #include "database/db_core.h"
 #include "database/db_schema_cache.h"
 
@@ -50,13 +51,6 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
         json, "authorization_mode",
         user->authorization_mode[0] ? user->authorization_mode : "legacy");
 
-    // Tag-based RBAC: include allowed_tags (null when unrestricted, string when restricted)
-    if (user->has_tag_restriction) {
-        cJSON_AddStringToObject(json, "allowed_tags", user->allowed_tags);
-    } else {
-        cJSON_AddNullToObject(json, "allowed_tags");
-    }
-
     if (user->has_login_cidr_restriction) {
         cJSON_AddStringToObject(json, "allowed_login_cidrs", user->allowed_login_cidrs);
     } else {
@@ -72,7 +66,6 @@ static int prepare_user_select_stmt(sqlite3 *db, const char *suffix, sqlite3_stm
     }
 
     bool has_totp = cached_column_exists("users", "totp_enabled");
-    bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
     bool has_allowed_login_cidrs = cached_column_exists("users", "allowed_login_cidrs");
     bool has_authorization_mode = cached_column_exists("users", "authorization_mode");
     bool has_must_change_password = cached_column_exists("users", "must_change_password");
@@ -80,11 +73,10 @@ static int prepare_user_select_stmt(sqlite3 *db, const char *suffix, sqlite3_stm
     char sql[768];
     int written = snprintf(sql, sizeof(sql),
                            "SELECT id, username, email, role, api_key, created_at, "
-                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s, %s, %s "
+                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s, %s "
                            "FROM users %s;",
                            has_must_change_password ? "must_change_password" : "0",
                            has_totp ? "totp_enabled" : "0",
-                           has_allowed_tags ? "allowed_tags" : "NULL",
                            has_allowed_login_cidrs ? "allowed_login_cidrs" : "NULL",
                            has_authorization_mode ? "authorization_mode" : "'legacy'",
                            suffix);
@@ -121,49 +113,17 @@ static void populate_user_from_stmt(sqlite3_stmt *stmt, user_t *user) {
     user->must_change_password = sqlite3_column_int(stmt, 10) != 0;
     user->totp_enabled = sqlite3_column_int(stmt, 11) != 0;
 
-    const char *allowed_tags = (const char *)sqlite3_column_text(stmt, 12);
-    if (allowed_tags && allowed_tags[0] != '\0') {
-        safe_strcpy(user->allowed_tags, allowed_tags, sizeof(user->allowed_tags), 0);
-        user->has_tag_restriction = true;
-    }
-
-    const char *allowed_login_cidrs = (const char *)sqlite3_column_text(stmt, 13);
+    const char *allowed_login_cidrs = (const char *)sqlite3_column_text(stmt, 12);
     if (allowed_login_cidrs && allowed_login_cidrs[0] != '\0') {
         safe_strcpy(user->allowed_login_cidrs, allowed_login_cidrs, sizeof(user->allowed_login_cidrs), 0);
         user->has_login_cidr_restriction = true;
     }
 
     const char *authorization_mode =
-        (const char *)sqlite3_column_text(stmt, 14);
+        (const char *)sqlite3_column_text(stmt, 13);
     safe_strcpy(user->authorization_mode,
                 authorization_mode ? authorization_mode : "legacy",
                 sizeof(user->authorization_mode), 0);
-}
-
-/**
- * @brief Check if the user has permission to view users
- *
- * @param req HTTP request
- * @param res HTTP response (error will be set if not permitted)
- * @return 1 if the user has permission, 0 otherwise (error response already set)
- */
-static int check_view_users_permission(const http_request_t *req, http_response_t *res) {
-    user_t user;
-    if (httpd_get_authenticated_user(req, &user)) {
-        // Only admin and regular users can view users, viewers cannot
-        if (user.role == USER_ROLE_ADMIN || user.role == USER_ROLE_USER) {
-            return 1;
-        }
-        // User is authenticated but doesn't have permission
-        log_warn("Access denied: User '%s' (role: %s) cannot view users",
-                 user.username, db_auth_get_role_name(user.role));
-        http_response_set_json_error(res, 403, "Forbidden: Insufficient privileges to view users");
-        return 0;
-    }
-    // User is not authenticated
-    log_warn("Access denied: Unauthenticated request attempted to view users");
-    http_response_set_json_error(res, 401, "Unauthorized: Authentication required");
-    return 0;
 }
 
 /**
@@ -174,16 +134,51 @@ static int check_view_users_permission(const http_request_t *req, http_response_
  * @param target_user_id ID of the user for whom the API key is being generated
  * @return 1 if the user has permission, 0 otherwise (error response already set)
  */
+static bool principal_holds_global_action(const user_t *user,
+                                          authorization_action_t action) {
+    authorization_evaluation_t evaluation;
+    return user && authorization_evaluate(user, action, NULL, &evaluation) == 0 &&
+           evaluation.decision == AUTHZ_DECISION_ALLOW;
+}
+
+static const char *built_in_role_uuid_for_legacy_role(user_role_t role) {
+    switch (role) {
+        case USER_ROLE_ADMIN: return "00000000-0000-4000-8000-000000000001";
+        case USER_ROLE_USER: return "00000000-0000-4000-8000-000000000002";
+        case USER_ROLE_VIEWER: return "00000000-0000-4000-8000-000000000003";
+        case USER_ROLE_API: return "00000000-0000-4000-8000-000000000004";
+        default: return NULL;
+    }
+}
+
+static bool provision_new_user_policy(int64_t user_id, user_role_t role) {
+    const char *role_uuid = built_in_role_uuid_for_legacy_role(role);
+    if (!role_uuid) return false;
+    authorization_grant_input_t grant;
+    memset(&grant, 0, sizeof(grant));
+    safe_strcpy(grant.role_uuid, role_uuid, sizeof(grant.role_uuid), 0);
+    safe_strcpy(grant.scope_type, "all", sizeof(grant.scope_type), 0);
+    for (int attempt = 0; attempt < 3; attempt++) {
+        int64_t version = 0;
+        int64_t new_version = 0;
+        if (db_authorization_get_policy_version(&version) != 0) return false;
+        db_authorization_result_t result =
+            db_authorization_replace_user_policy(
+                user_id, "policy", &grant, 1, version, &new_version);
+        if (result == DB_AUTHORIZATION_OK) return true;
+        if (result != DB_AUTHORIZATION_STALE) return false;
+    }
+    return false;
+}
+
 static int check_generate_api_key_permission(const http_request_t *req, http_response_t *res, int64_t target_user_id) {
     user_t user;
-    if (httpd_get_authenticated_user(req, &user)) {
-        // Admins can generate API keys for any user
-        if (user.role == USER_ROLE_ADMIN) {
+    if (httpd_check_action_access(req, &user)) {
+        if (principal_holds_global_action(&user, AUTHZ_USERS_MANAGE)) {
             return 1;
         }
 
-        // Regular users can only generate API keys for themselves
-        if (user.role == USER_ROLE_USER && user.id == target_user_id) {
+        if (!user.authenticated_via_scoped_token && user.id == target_user_id) {
             return 1;
         }
 
@@ -209,10 +204,8 @@ static int check_generate_api_key_permission(const http_request_t *req, http_res
  */
 static int check_delete_user_permission(const http_request_t *req, http_response_t *res, int64_t target_user_id) {
     user_t user;
-    if (httpd_get_authenticated_user(req, &user)) {
-        // Only admins can delete users
-        if (user.role == USER_ROLE_ADMIN) {
-            // Admins cannot delete themselves
+    if (httpd_check_action_access(req, &user)) {
+        if (principal_holds_global_action(&user, AUTHZ_USERS_MANAGE)) {
             if (user.id != target_user_id) {
                 return 1;
             }
@@ -239,7 +232,7 @@ void handle_users_list(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/auth/users request");
 
     // Check if user has admin role
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_USERS_MANAGE)) {
         return;  // Error response already set by httpd_check_admin_privileges
     }
 
@@ -292,7 +285,7 @@ void handle_users_get(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/auth/users/:id request");
 
     // Check if user has admin role
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_USERS_MANAGE)) {
         return;  // Error response already set by httpd_check_admin_privileges
     }
 
@@ -341,7 +334,7 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/auth/users request");
 
     // Check if user has admin role
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_USERS_MANAGE)) {
         return;  // Error response already set by httpd_check_admin_privileges
     }
 
@@ -361,6 +354,14 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
     cJSON *is_active_json = cJSON_GetObjectItem(json_req, "is_active");
     cJSON *allowed_tags_create_json = cJSON_GetObjectItem(json_req, "allowed_tags");
     cJSON *allowed_login_cidrs_create_json = cJSON_GetObjectItem(json_req, "allowed_login_cidrs");
+
+    if (allowed_tags_create_json) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(
+            res, 400,
+            "allowed_tags is retired; update selector-backed authorization grants instead");
+        return;
+    }
 
     // Validate required fields
     if (!username_json || !cJSON_IsString(username_json) ||
@@ -401,20 +402,6 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Extract allowed_tags before freeing JSON
-    char allowed_tags_buf[256] = {0};
-    bool has_at_create = false;
-    bool at_create_is_null = false;
-    if (allowed_tags_create_json) {
-        if (cJSON_IsNull(allowed_tags_create_json)) {
-            has_at_create = true;
-            at_create_is_null = true;
-        } else if (cJSON_IsString(allowed_tags_create_json)) {
-            safe_strcpy(allowed_tags_buf, allowed_tags_create_json->valuestring, sizeof(allowed_tags_buf), 0);
-            has_at_create = true;
-        }
-    }
-
     char allowed_login_cidrs_buf[USER_ALLOWED_LOGIN_CIDRS_MAX] = {0};
     bool has_cidr_create = false;
     bool cidr_create_is_null = false;
@@ -441,7 +428,11 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
 
     // Create the user
     int64_t user_id;
-    int rc = db_auth_create_user(username, password, email, role, is_active, &user_id);
+    /* Keep the row inactive until its CIDR restriction and exact policy grant
+     * are installed. This closes the otherwise observable legacy-role window
+     * between user creation and policy provisioning. */
+    int rc = db_auth_create_user(username, password, email, role, false,
+                                 &user_id);
 
     cJSON_Delete(json_req);
 
@@ -450,13 +441,24 @@ void handle_users_create(const http_request_t *req, http_response_t *res) {
         return;
     }
 
-    // Set allowed_tags if provided
-    if (has_at_create) {
-        db_auth_set_allowed_tags(user_id, at_create_is_null ? NULL : allowed_tags_buf);
+    if (has_cidr_create && db_auth_set_allowed_login_cidrs(user_id, cidr_create_is_null ? NULL : allowed_login_cidrs_buf) != 0) {
+        db_auth_delete_user(user_id);
+        http_response_set_json_error(res, 500, "Failed to save allowed_login_cidrs");
+        return;
     }
 
-    if (has_cidr_create && db_auth_set_allowed_login_cidrs(user_id, cidr_create_is_null ? NULL : allowed_login_cidrs_buf) != 0) {
-        http_response_set_json_error(res, 500, "User created but failed to save allowed_login_cidrs");
+    /* New principals enter policy mode immediately. The tombstoned
+     * allowed_tags column is read only by the one-way startup migration. */
+    if (!provision_new_user_policy(user_id, (user_role_t)role)) {
+        db_auth_delete_user(user_id);
+        http_response_set_json_error(
+            res, 500, "Failed to provision user authorization policy");
+        return;
+    }
+
+    if (is_active && db_auth_update_user(user_id, NULL, NULL, -1, 1) != 0) {
+        db_auth_delete_user(user_id);
+        http_response_set_json_error(res, 500, "Failed to activate user");
         return;
     }
 
@@ -490,7 +492,7 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     log_info("Handling PUT /api/auth/users/:id request");
 
     user_t current_user;
-    if (!httpd_get_authenticated_user(req, &current_user)) {
+    if (!httpd_check_action_access(req, &current_user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }
@@ -509,10 +511,12 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     }
 
     int64_t user_id = strtoll(id_str, NULL, 10);
-    bool is_admin = (current_user.role == USER_ROLE_ADMIN);
-    bool is_self_update = (current_user.id == user_id);
+    bool can_manage_users =
+        principal_holds_global_action(&current_user, AUTHZ_USERS_MANAGE);
+    bool is_self_update = !current_user.authenticated_via_scoped_token &&
+                          current_user.id == user_id;
 
-    if (!is_admin && !is_self_update) {
+    if (!can_manage_users && !is_self_update) {
         http_response_set_json_error(res, 403, "You can only update your own account");
         return;
     }
@@ -542,7 +546,25 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     cJSON *allowed_tags_json = cJSON_GetObjectItem(json_req, "allowed_tags");
     cJSON *allowed_login_cidrs_json = cJSON_GetObjectItem(json_req, "allowed_login_cidrs");
 
-    if (!is_admin && (password_json || role_json || is_active_json || allowed_tags_json || allowed_login_cidrs_json)) {
+    if (allowed_tags_json) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(
+            res, 400,
+            "allowed_tags is retired; update selector-backed authorization grants instead");
+        return;
+    }
+
+    if (role_json && strcmp(user.authorization_mode, "policy") == 0) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(
+            res, 400,
+            "role is compatibility metadata for policy users; update authorization grants instead");
+        return;
+    }
+
+    if (!can_manage_users &&
+        (password_json || role_json || is_active_json ||
+         allowed_login_cidrs_json)) {
         cJSON_Delete(json_req);
         http_response_set_json_error(res, 403, "You can only update your own username and email");
         return;
@@ -638,22 +660,6 @@ void handle_users_update(const http_request_t *req, http_response_t *res) {
     if (rc == 0 && is_active == 0) {
         db_auth_delete_user_sessions(user_id);
         log_info("Invalidated all sessions for user %lld after deactivation", (long long)user_id);
-    }
-
-    if (rc == 0 && allowed_tags_json) {
-        // allowed_tags: JSON null removes restriction; string sets it
-        const char *at = NULL;
-        bool set_tags = false;
-        if (cJSON_IsNull(allowed_tags_json)) {
-            at = NULL;    // Remove restriction
-            set_tags = true;
-        } else if (cJSON_IsString(allowed_tags_json)) {
-            at = allowed_tags_json->valuestring;
-            set_tags = true;
-        }
-        if (set_tags) {
-            db_auth_set_allowed_tags(user_id, at);
-        }
     }
 
     if (rc == 0 && set_allowed_login_cidrs && db_auth_set_allowed_login_cidrs(user_id, allowed_login_cidrs) != 0) {
@@ -845,9 +851,10 @@ void handle_users_generate_api_key(const http_request_t *req, http_response_t *r
 void handle_users_change_password(const http_request_t *req, http_response_t *res) {
     log_info("Handling PUT /api/auth/users/:id/password request");
 
-    // Get the current user from session
+    // Get the current principal. Scoped tokens may carry users.manage and
+    // must not be reduced back to their legacy numeric role.
     user_t current_user;
-    if (!httpd_get_authenticated_user(req, &current_user)) {
+    if (!httpd_check_action_access(req, &current_user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }
@@ -870,13 +877,12 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
         return;
     }
 
-    // Check permissions:
-    // - Admins can change any user's password
-    // - Non-admins can only change their own password
-    bool is_admin = (current_user.role == USER_ROLE_ADMIN);
-    bool is_own_password = (current_user.id == target_user_id);
+    bool is_own_password = !current_user.authenticated_via_scoped_token &&
+                           current_user.id == target_user_id;
+    bool can_manage_users =
+        principal_holds_global_action(&current_user, AUTHZ_USERS_MANAGE);
 
-    if (!is_admin && !is_own_password) {
+    if (!can_manage_users && !is_own_password) {
         http_response_set_json_error(res, 403, "You can only change your own password");
         return;
     }
@@ -913,7 +919,7 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
                              is_own_password && !g_config.demo_mode;
 
     // Non-admins and forced first-login sessions must provide old password
-    if (!is_admin || forced_own_change) {
+    if (!can_manage_users || forced_own_change) {
         if (!old_password_json || !cJSON_IsString(old_password_json)) {
             cJSON_Delete(json_req);
             http_response_set_json_error(res, 400, "Current password is required");
@@ -982,7 +988,7 @@ void handle_users_password_lock(const http_request_t *req, http_response_t *res)
     log_info("Handling PUT /api/auth/users/:id/password-lock request");
 
     // Check if user has admin role
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_USERS_MANAGE)) {
         return;  // Error response already set by httpd_check_admin_privileges
     }
 
@@ -1059,7 +1065,7 @@ void handle_users_password_lock(const http_request_t *req, http_response_t *res)
 void handle_users_clear_login_lockout(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/auth/users/:id/login-lockout/clear request");
 
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_USERS_MANAGE)) {
         return;
     }
 

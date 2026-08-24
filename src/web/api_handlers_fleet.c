@@ -480,7 +480,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
                                bool preview) {
     user_t user;
     memset(&user, 0, sizeof(user));
-    if (!httpd_check_viewer_access(req, &user)) {
+    if (!httpd_check_action_access(req, &user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return;
     }

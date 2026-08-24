@@ -8,6 +8,7 @@
 
 #include "core/config.h"
 #include "database/db_camera_tags.h"
+#include "database/db_fleet_query.h"
 #include "utils/strings.h"
 #include "web/api_handlers_camera_tags.h"
 #include "web/httpd_utils.h"
@@ -158,21 +159,74 @@ static bool extract_camera_uuid(const http_request_t *req, char *uuid,
     return true;
 }
 
+static bool load_visible_cameras(const http_request_t *req,
+                                 http_response_t *res,
+                                 fleet_camera_t **cameras, int *count,
+                                 bool *all_fleet) {
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    *cameras = NULL;
+    *count = 0;
+    *all_fleet = false;
+    if (!httpd_check_action_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return false;
+    }
+    authorization_evaluation_t evaluation;
+    *all_fleet =
+        (authorization_evaluate(&user, AUTHZ_LIVE_VIEW, NULL, &evaluation) == 0 &&
+         evaluation.decision == AUTHZ_DECISION_ALLOW) ||
+        (authorization_evaluate(&user, AUTHZ_CAMERA_CONFIGURE, NULL,
+                                &evaluation) == 0 &&
+         evaluation.decision == AUTHZ_DECISION_ALLOW);
+    if (db_fleet_camera_load(cameras, count) != 0 ||
+        authorization_filter_cameras(&user, AUTHZ_LIVE_VIEW, *cameras,
+                                     count) != 0) {
+        free(*cameras);
+        *cameras = NULL;
+        *count = 0;
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return false;
+    }
+    return true;
+}
+
+static int visible_tag_camera_count(const fleet_camera_t *cameras,
+                                    int camera_count, const char *tag_uuid) {
+    int count = 0;
+    for (int i = 0; i < camera_count; i++) {
+        for (int j = 0; j < cameras[i].tag_count; j++) {
+            if (strcmp(cameras[i].tags[j].uuid, tag_uuid) == 0) {
+                count++;
+                break;
+            }
+        }
+    }
+    return count;
+}
+
 void handle_get_camera_tags(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    bool all_fleet = false;
+    if (!load_visible_cameras(req, res, &cameras, &camera_count, &all_fleet)) return;
     int total = db_camera_tag_count();
     if (total < 0) {
+        free(cameras);
         http_response_set_json_error(res, 500, "Failed to count camera tags");
         return;
     }
 
     camera_tag_t *tags = total > 0 ? calloc((size_t)total, sizeof(*tags)) : NULL;
     if (total > 0 && !tags) {
+        free(cameras);
         http_response_set_json_error(res, 500, "Out of memory");
         return;
     }
     int count = total > 0 ? db_camera_tag_list(tags, total) : 0;
     if (count < 0) {
+        free(cameras);
         free(tags);
         http_response_set_json_error(res, 500, "Failed to list camera tags");
         return;
@@ -183,23 +237,33 @@ void handle_get_camera_tags(const http_request_t *req, http_response_t *res) {
     if (!root || !items) {
         cJSON_Delete(root);
         cJSON_Delete(items);
+        free(cameras);
         free(tags);
         http_response_set_json_error(res, 500, "Failed to create response");
         return;
     }
     cJSON_AddItemToObject(root, "tags", items);
-    cJSON_AddNumberToObject(root, "count", count);
+    int visible_count = 0;
     for (int i = 0; i < count; i++) {
-        cJSON *item = tag_to_json(&tags[i]);
+        int scoped_count = all_fleet ? tags[i].camera_count :
+            visible_tag_camera_count(cameras, camera_count, tags[i].uuid);
+        if (!all_fleet && scoped_count == 0) continue;
+        camera_tag_t filtered = tags[i];
+        filtered.camera_count = scoped_count;
+        cJSON *item = tag_to_json(&filtered);
         if (!item) {
             cJSON_Delete(root);
             free(tags);
+            free(cameras);
             http_response_set_json_error(res, 500, "Failed to create response");
             return;
         }
         cJSON_AddItemToArray(items, item);
+        visible_count++;
     }
+    cJSON_AddNumberToObject(root, "count", visible_count);
     free(tags);
+    free(cameras);
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!json) {
@@ -211,7 +275,7 @@ void handle_get_camera_tags(const http_request_t *req, http_response_t *res) {
 }
 
 void handle_post_camera_tag(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
         http_response_set_json_error(res, 400, "Invalid JSON request body");
@@ -233,20 +297,30 @@ void handle_post_camera_tag(const http_request_t *req, http_response_t *res) {
 }
 
 void handle_get_camera_tag(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_tag_uuid(req, uuid, sizeof(uuid), res)) return;
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    bool all_fleet = false;
+    if (!load_visible_cameras(req, res, &cameras, &camera_count, &all_fleet)) return;
+    int scoped_count = visible_tag_camera_count(cameras, camera_count, uuid);
+    free(cameras);
+    if (!all_fleet && scoped_count == 0) {
+        http_response_set_json_error(res, 403, "Forbidden");
+        return;
+    }
     camera_tag_t tag;
     db_camera_tag_result_t result = db_camera_tag_get(uuid, &tag);
     if (result != DB_CAMERA_TAG_OK) {
         set_db_error(res, result);
         return;
     }
+    if (!all_fleet) tag.camera_count = scoped_count;
     set_tag_json(res, 200, &tag);
 }
 
 void handle_put_camera_tag(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_tag_uuid(req, uuid, sizeof(uuid), res)) return;
     camera_tag_t tag;
@@ -274,7 +348,7 @@ void handle_put_camera_tag(const http_request_t *req, http_response_t *res) {
 }
 
 void handle_delete_camera_tag(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_tag_uuid(req, uuid, sizeof(uuid), res)) return;
     db_camera_tag_result_t result = db_camera_tag_delete(uuid);
@@ -287,7 +361,7 @@ void handle_delete_camera_tag(const http_request_t *req, http_response_t *res) {
 
 void handle_post_camera_tag_merge(const http_request_t *req,
                                   http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     char source_uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_tag_uuid(req, source_uuid, sizeof(source_uuid), res)) return;
     cJSON *body = httpd_parse_json_body(req);
@@ -371,17 +445,21 @@ static void set_camera_assignments_json(http_response_t *res,
 
 void handle_get_camera_tag_assignments(const http_request_t *req,
                                        http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
     char camera_uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_camera_uuid(req, camera_uuid, sizeof(camera_uuid), res)) return;
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_LIVE_VIEW, camera_uuid, NULL, &(user_t){0},
+            &(fleet_camera_t){0}, &(authorization_evaluation_t){0})) return;
     set_camera_assignments_json(res, camera_uuid);
 }
 
 void handle_put_camera_tag_assignments(const http_request_t *req,
                                        http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
     char camera_uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_camera_uuid(req, camera_uuid, sizeof(camera_uuid), res)) return;
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_CAMERA_CONFIGURE, camera_uuid, NULL, &(user_t){0},
+            &(fleet_camera_t){0}, &(authorization_evaluation_t){0})) return;
     cJSON *body = httpd_parse_json_body(req);
     cJSON *items = body ?
         cJSON_GetObjectItemCaseSensitive(body, "tag_uuids") : NULL;

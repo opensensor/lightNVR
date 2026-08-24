@@ -237,6 +237,8 @@ int get_recordings_for_retention(const char *stream_name,
  * @return Count of protected recordings, or -1 on error
  */
 int get_protected_recordings_count(const char *stream_name);
+int get_protected_recordings_count_for_streams(
+    const char *const *stream_names, int stream_count);
 
 /**
  * Get recordings for quota enforcement.

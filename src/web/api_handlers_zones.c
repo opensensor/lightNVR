@@ -17,16 +17,6 @@
  * Handler for GET /api/streams/:stream_name/zones
  */
 void handle_get_zones(const http_request_t *req, http_response_t *res) {
-    // Check authentication
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (!httpd_get_authenticated_user(req, &user)) {
-            log_error("Authentication failed for GET zones request");
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
-        }
-    }
-
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
@@ -40,6 +30,8 @@ void handle_get_zones(const http_request_t *req, http_response_t *res) {
     if (zones_suffix) {
         *zones_suffix = '\0';
     }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_LIVE_VIEW,
+                                       stream_name)) return;
 
     log_info("GET /api/streams/%s/zones", stream_name);
 
@@ -113,16 +105,6 @@ void handle_get_zones(const http_request_t *req, http_response_t *res) {
  * Handler for POST /api/streams/:stream_name/zones
  */
 void handle_post_zones(const http_request_t *req, http_response_t *res) {
-    // Check authentication
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (!httpd_get_authenticated_user(req, &user)) {
-            log_error("Authentication failed for POST zones request");
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
-        }
-    }
-
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
@@ -136,6 +118,8 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
     if (zones_suffix) {
         *zones_suffix = '\0';
     }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                       stream_name)) return;
 
     log_info("POST /api/streams/%s/zones", stream_name);
 
@@ -262,16 +246,6 @@ void handle_post_zones(const http_request_t *req, http_response_t *res) {
  * Handler for DELETE /api/streams/:stream_name/zones
  */
 void handle_delete_zones(const http_request_t *req, http_response_t *res) {
-    // Check authentication
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (!httpd_get_authenticated_user(req, &user)) {
-            log_error("Authentication failed for DELETE zones request");
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
-        }
-    }
-
     char stream_name[MAX_STREAM_NAME];
 
     // Extract stream name from URL
@@ -285,6 +259,8 @@ void handle_delete_zones(const http_request_t *req, http_response_t *res) {
     if (zones_suffix) {
         *zones_suffix = '\0';
     }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                       stream_name)) return;
 
     log_info("DELETE /api/streams/%s/zones", stream_name);
 
@@ -309,4 +285,3 @@ void handle_delete_zones(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 500, "Failed to serialize JSON");
     }
 }
-

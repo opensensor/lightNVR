@@ -40,7 +40,6 @@ export function EditUserModal({
   showRoleField = true,
   showActiveField = true,
   showPasswordLockField = true,
-  showAllowedTagsField = true,
   showAllowedLoginCidrsField = true,
   showClearLoginLockoutButton = true,
 }) {
@@ -250,36 +249,6 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
               <p className="text-xs text-muted-foreground mt-1 ml-6">
                 {t('users.lockPasswordChangesHelp')}
               </p>
-            </div>
-          )}
-
-          {showAllowedTagsField && (
-            <div className="mb-4">
-              <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-                {t('users.allowedStreamTags')} <span className="font-normal text-muted-foreground">(RBAC)</span>
-              </label>
-              <input
-                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                id="allowed_tags"
-                type="text"
-                name="allowed_tags"
-                value={formData.allowed_tags || ''}
-                onChange={handleInputChange}
-                placeholder={t('users.allowedTagsPlaceholder')}
-                maxLength={255}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                {t('users.allowedTagsHelp')}
-              </p>
-              {(formData.allowed_tags || '').split(',').filter(t => t.trim()).length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {(formData.allowed_tags || '').split(',').filter(t => t.trim()).map(tag => (
-                    <span key={tag.trim()} className="badge-info">
-                      #{tag.trim()}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
           )}
 

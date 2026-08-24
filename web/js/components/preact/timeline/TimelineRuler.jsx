@@ -25,80 +25,74 @@ export function TimelineRuler() {
     return () => unsubscribe();
   }, []);
 
-  // Generate hour markers and labels
-  const generateHourMarkers = () => {
+  // Generate scale-aware markers. At mobile pinch depth, hour-only ticks leave
+  // an apparently empty ruler, so progressively switch to 30/15/5/1-minute
+  // increments as the visible window narrows.
+  const generateTimeMarkers = () => {
     const markers = [];
     const dayLengthHours = getTimelineDayLengthHours(selectedDate);
+    const visibleHours = endHour - startHour;
+    if (visibleHours <= 0) {
+      return markers;
+    }
 
-    // Add hour markers and labels
-    for (let hour = Math.floor(startHour); hour <= Math.ceil(endHour); hour++) {
-      if (hour >= 0 && hour <= dayLengthHours) {
-        const position = ((hour - startHour) / (endHour - startHour)) * 100;
+    let stepHours = 1;
+    if (visibleHours <= (5 / 60)) {
+      stepHours = 1 / 60;
+    } else if (visibleHours <= 0.5) {
+      stepHours = 5 / 60;
+    } else if (visibleHours <= 2) {
+      stepHours = 0.25;
+    } else if (visibleHours <= 6) {
+      stepHours = 0.5;
+    }
 
-        // Add hour marker
+    const firstMarker = Math.ceil((startHour - 1e-9) / stepHours) * stepHours;
+    const markerCount = Math.ceil((endHour - firstMarker) / stepHours) + 1;
+
+    for (let index = 0; index < markerCount; index++) {
+      const hour = firstMarker + (index * stepHours);
+      if (hour >= -1e-9 && hour <= dayLengthHours + 1e-9 && hour <= endHour + 1e-9) {
+        const position = ((hour - startHour) / visibleHours) * 100;
+        const markerKey = Math.round(hour * 3600);
+
         markers.push(
           <div
-            key={`tick-${hour}`}
+            key={`tick-${markerKey}`}
             className="absolute top-0 w-px h-5 bg-foreground"
             style={{ left: `${position}%` }}
           ></div>
         );
 
-        // Add hour label
         markers.push(
           <div
-            key={`label-${hour}`}
+            key={`label-${markerKey}`}
             className="absolute top-0 text-xs text-muted-foreground transform -translate-x-1/2"
             style={{ left: `${position}%` }}
           >
             {formatTimelineOffsetLabel(hour, selectedDate)}
           </div>
         );
-
-        // Add half-hour marker when the visible range is ≤ 12 h (zoomed or auto-fit)
-        if (hour < dayLengthHours && (endHour - startHour) <= 12) {
-          const halfHourPosition = ((hour + 0.5 - startHour) / (endHour - startHour)) * 100;
-          markers.push(
-            <div
-              key={`tick-${hour}-30`}
-              className="absolute top-2 w-px h-3 bg-muted-foreground"
-              style={{ left: `${halfHourPosition}%` }}
-            ></div>
-          );
-
-          // Add 15-minute markers when visible range is ≤ 6 h
-          if ((endHour - startHour) <= 6) {
-            const quarterHourPosition1 = ((hour + 0.25 - startHour) / (endHour - startHour)) * 100;
-            const quarterHourPosition3 = ((hour + 0.75 - startHour) / (endHour - startHour)) * 100;
-
-            markers.push(
-              <div
-                key={`tick-${hour}-15`}
-                className="absolute top-3 w-px h-2 bg-muted-foreground"
-                style={{ left: `${quarterHourPosition1}%` }}
-              ></div>
-            );
-
-            markers.push(
-              <div
-                key={`tick-${hour}-45`}
-                className="absolute top-3 w-px h-2 bg-muted-foreground"
-                style={{ left: `${quarterHourPosition3}%` }}
-              ></div>
-            );
-          }
-        }
       }
     }
 
     return markers;
   };
 
+  const visibleHours = endHour - startHour;
+  const viewLabel = visibleHours < 1
+    ? `${Math.max(Math.round(visibleHours * 60), 1)}m view`
+    : `${visibleHours.toFixed(visibleHours < 10 ? 1 : 0)}h view`;
+
   return (
-    <div className="timeline-ruler relative w-full h-8 bg-muted border-b border-border">
-      {generateHourMarkers()}
+    <div
+      className="timeline-ruler relative w-full h-8 bg-muted border-b border-border"
+      data-timeline-start-hour={startHour}
+      data-timeline-end-hour={endHour}
+    >
+      {generateTimeMarkers()}
       <div className="absolute bottom-0 left-0 text-xs text-muted-foreground px-1">
-        {`${(endHour - startHour).toFixed(1)}h view`}
+        {viewLabel}
       </div>
     </div>
   );

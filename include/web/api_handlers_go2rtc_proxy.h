@@ -24,5 +24,16 @@
  */
 void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res);
 
-#endif /* API_HANDLERS_GO2RTC_PROXY_H */
+/* Shared by the detached libuv proxy worker. HLS session follow-up requests
+ * are bound to the credential/camera authorized at manifest creation. */
+bool go2rtc_proxy_authorize_request(const http_request_t *req,
+                                    http_response_t *res);
+void go2rtc_proxy_capture_hls_sessions(const http_request_t *req,
+                                       const void *manifest,
+                                       size_t manifest_size);
+void go2rtc_proxy_capture_hls_sessions_for(const char *stream_name,
+                                           const char *auth_fingerprint,
+                                           const void *manifest,
+                                           size_t manifest_size);
 
+#endif /* API_HANDLERS_GO2RTC_PROXY_H */

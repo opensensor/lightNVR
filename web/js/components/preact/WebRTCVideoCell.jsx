@@ -265,7 +265,7 @@ export function WebRTCVideoCell({
     let go2rtcBaseUrl = null;
 
     // Server-configurable WebRTC timeouts (ms). Populated in initWebRTC from
-    // /api/settings; seeded with the previous hardcoded defaults so behaviour is
+    // /api/client-config; seeded with the previous hardcoded defaults so behaviour is
     // unchanged when the server does not supply values. Lets Docker users tune
     // these via lightnvr.ini / env / settings API without rebuilding the bundle.
     let webrtcConnectionTimeoutMs = 30000;

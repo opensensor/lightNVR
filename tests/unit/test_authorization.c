@@ -16,6 +16,7 @@
 
 #include "unity.h"
 #include "core/authorization.h"
+#include "core/camera_collection_filter.h"
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_api_tokens.h"
@@ -25,17 +26,21 @@
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_fleet_query.h"
+#include "database/db_locations.h"
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "utils/strings.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_authorization.h"
 #include "web/api_handlers_investigations.h"
+#include "web/api_handlers_locations.h"
+#include "web/api_handlers_metrics.h"
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_recordings_batch_download.h"
 #include "web/api_handlers_recordings_download.h"
 #include "web/api_handlers_users.h"
+#include "web/api_handlers_totp.h"
 #include "web/batch_delete_progress.h"
 #include "web/httpd_utils.h"
 #include "web/request_response.h"
@@ -119,7 +124,39 @@ static void create_grant(int64_t user_id, const char *role_uuid,
         0, db_authorization_create_user_grant(user_id, role_uuid, scope_type,
                                               selector_json, NULL,
                                               grant_uuid));
-    TEST_ASSERT_EQUAL_UINT(36, strlen(grant_uuid));
+    if (grant_uuid) TEST_ASSERT_EQUAL_UINT(36, strlen(grant_uuid));
+}
+
+static void seed_legacy_allowed_tags(int64_t user_id, const char *tags) {
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            db, "UPDATE users SET authorization_mode='legacy',allowed_tags=? "
+                "WHERE id=?;", -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, tags, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, user_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
+static void create_scoped_token(int64_t user_id, uint64_t action_mask,
+                                const char *scope_type,
+                                const char *selector_json,
+                                api_token_t *token,
+                                char secret[API_TOKEN_SECRET_MAX]) {
+    api_token_create_t input;
+    memset(&input, 0, sizeof(input));
+    input.user_id = user_id;
+    input.created_by_user_id = user_id;
+    input.description = "authorization regression";
+    input.action_mask = action_mask;
+    input.scope_type = scope_type;
+    input.selector_json = selector_json;
+    input.expires_at = (int64_t)time(NULL) + 3600;
+    TEST_ASSERT_EQUAL_INT(DB_API_TOKEN_OK,
+                          db_api_token_create(&input, token, secret));
 }
 
 static cJSON *call_handler_path(
@@ -131,7 +168,19 @@ static cJSON *call_handler_path(
     http_request_init(&req);
     http_response_init(&res);
     req.method = method;
-    if (path) safe_strcpy(req.path, path, sizeof(req.path), 0);
+    if (path) {
+        const char *query = strchr(path, '?');
+        if (query) {
+            size_t path_length = (size_t)(query - path);
+            if (path_length >= sizeof(req.path)) path_length = sizeof(req.path) - 1;
+            memcpy(req.path, path, path_length);
+            req.path[path_length] = '\0';
+            safe_strcpy(req.query_string, query + 1,
+                        sizeof(req.query_string), 0);
+        } else {
+            safe_strcpy(req.path, path, sizeof(req.path), 0);
+        }
+    }
     safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
     if (body) {
         req.body = (void *)body;
@@ -205,7 +254,11 @@ void setUp(void) {
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
-    sqlite3_exec(db, "DELETE FROM authz_grants;", NULL, NULL, NULL);
+    sqlite3_exec(
+        db,
+        "DELETE FROM authz_grants WHERE user_id NOT IN "
+        "(SELECT id FROM users WHERE username='admin');",
+        NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM authz_roles WHERE is_builtin=0;", NULL, NULL,
                  NULL);
     sqlite3_exec(db, "DELETE FROM detections;", NULL, NULL, NULL);
@@ -262,15 +315,13 @@ void test_action_catalog_is_stable_and_complete(void) {
     sqlite3_finalize(stmt);
 }
 
-void test_legacy_roles_preserve_access_and_allowed_tags(void) {
+void test_legacy_role_compatibility_has_no_runtime_allowed_tags_path(void) {
     stream_config_t outside = create_camera("Outside", "Outdoor");
     stream_config_t inside = create_camera("Inside", "Indoor");
     int64_t viewer_id = 0;
     TEST_ASSERT_EQUAL_INT(
         0, db_auth_create_user("legacyviewer", "password123", NULL,
                                USER_ROLE_VIEWER, true, &viewer_id));
-    TEST_ASSERT_EQUAL_INT(0,
-                          db_auth_set_allowed_tags(viewer_id, "Outdoor"));
     user_t viewer;
     TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(viewer_id, &viewer));
     TEST_ASSERT_EQUAL_STRING("legacy", viewer.authorization_mode);
@@ -290,13 +341,94 @@ void test_legacy_roles_preserve_access_and_allowed_tags(void) {
     TEST_ASSERT_EQUAL_INT(
         0, authorization_evaluate(&viewer, AUTHZ_LIVE_VIEW, inside_camera,
                                   &evaluation));
-    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_DENY, evaluation.decision);
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_ALLOW, evaluation.decision);
     TEST_ASSERT_EQUAL_INT(
         0, authorization_evaluate(&viewer, AUTHZ_PTZ_CONTROL, outside_camera,
                                   &evaluation));
     TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_DENY, evaluation.decision);
     free(outside_inventory);
     free(inside_inventory);
+}
+
+void test_legacy_principals_migrate_to_idempotent_selector_grants(void) {
+    stream_config_t outside = create_camera("Migrated Outside", "Outdoor");
+    stream_config_t inside = create_camera("Migrated Inside", "Indoor");
+    int64_t viewer_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("migratedviewer", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &viewer_id));
+    seed_legacy_allowed_tags(viewer_id, " Outdoor ");
+    /* A legacy principal may have stale/pre-authored grants, but those grants
+     * were never part of its active access decision. Migration must replace
+     * this broader grant instead of silently widening the tag-scoped viewer. */
+    insert_grant("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", viewer_id,
+                 OPERATOR_ROLE_UUID, "all", NULL);
+
+    int migrated = -1;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_migrate_legacy_users(&migrated));
+    TEST_ASSERT_EQUAL_INT(1, migrated);
+
+    user_t viewer;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(viewer_id, &viewer));
+    TEST_ASSERT_EQUAL_STRING("policy", viewer.authorization_mode);
+    sqlite3_stmt *allowed_tags_stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(get_db_handle(),
+                           "SELECT allowed_tags FROM users WHERE id=?;", -1,
+                           &allowed_tags_stmt, NULL));
+    sqlite3_bind_int64(allowed_tags_stmt, 1, viewer_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_ROW, sqlite3_step(allowed_tags_stmt));
+    TEST_ASSERT_EQUAL_INT(SQLITE_NULL,
+                          sqlite3_column_type(allowed_tags_stmt, 0));
+    sqlite3_finalize(allowed_tags_stmt);
+
+    char mode[USER_AUTHORIZATION_MODE_MAX] = {0};
+    authorization_grant_t *grants = NULL;
+    int grant_count = 0;
+    int64_t policy_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_get_user_policy(viewer_id, mode, &grants,
+                                         &grant_count, &policy_version));
+    TEST_ASSERT_EQUAL_STRING("policy", mode);
+    TEST_ASSERT_EQUAL_INT(1, grant_count);
+    TEST_ASSERT_EQUAL_STRING("Viewer", grants[0].role_name);
+    TEST_ASSERT_EQUAL_STRING("selector", grants[0].scope_type);
+    TEST_ASSERT_NOT_NULL(strstr(grants[0].selector_json, "tag_any"));
+    free(grants);
+
+    fleet_camera_t *outside_inventory = NULL;
+    fleet_camera_t *outside_camera =
+        load_camera(outside.camera_uuid, &outside_inventory);
+    fleet_camera_t *inside_inventory = NULL;
+    fleet_camera_t *inside_camera =
+        load_camera(inside.camera_uuid, &inside_inventory);
+    authorization_evaluation_t evaluation;
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_evaluate(&viewer, AUTHZ_LIVE_VIEW, outside_camera,
+                                  &evaluation));
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_ALLOW, evaluation.decision);
+    TEST_ASSERT_EQUAL_INT(AUTHZ_SOURCE_POLICY_GRANT, evaluation.source);
+    TEST_ASSERT_EQUAL_INT(
+        0, authorization_evaluate(&viewer, AUTHZ_LIVE_VIEW, inside_camera,
+                                  &evaluation));
+    TEST_ASSERT_EQUAL_INT(AUTHZ_DECISION_DENY, evaluation.decision);
+    free(outside_inventory);
+    free(inside_inventory);
+
+    int64_t version_before = 0;
+    int64_t version_after = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_get_policy_version(&version_before));
+    migrated = -1;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_migrate_legacy_users(&migrated));
+    TEST_ASSERT_EQUAL_INT(0, migrated);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_get_policy_version(&version_after));
+    TEST_ASSERT_EQUAL_INT64(version_before, version_after);
 }
 
 void test_policy_mode_defaults_deny_and_matches_selector_grant(void) {
@@ -538,6 +670,80 @@ void test_shared_collection_grants_track_membership_and_guard_scope(void) {
     cJSON_Delete(json);
 }
 
+void test_recording_list_intersects_explicit_stream_collection_and_policy_scope(void) {
+    stream_config_t camera = create_camera("ReplayIntersection", "Review");
+    camera_collection_t collection;
+    memset(&collection, 0, sizeof(collection));
+    safe_strcpy(collection.name, "Replay intersection",
+                sizeof(collection.name), 0);
+    safe_strcpy(collection.collection_type, "static",
+                sizeof(collection.collection_type), 0);
+    collection.is_shared = true;
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_create(&collection));
+    const char *members[] = {camera.camera_uuid};
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_set_members(collection.uuid, members, 1));
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("replayintersection", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, OPERATOR_ROLE_UUID, "all", NULL, grant_uuid);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, camera.name,
+                sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.camera_uuid, camera.camera_uuid,
+                sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, "/tmp/replay-intersection.mp4",
+                sizeof(recording.file_path), 0);
+    recording.start_time = 1700000000;
+    recording.end_time = 1700000060;
+    recording.is_complete = true;
+    recording.retention_override_days = -1;
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&recording));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    safe_strcpy(req.path, "/api/recordings", sizeof(req.path), 0);
+    snprintf(req.query_string, sizeof(req.query_string),
+             "stream=%s&collection_uuid=%s", camera.name, collection.uuid);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    safe_strcpy(req.headers[0].name, "X-API-Key",
+                sizeof(req.headers[0].name), 0);
+    safe_strcpy(req.headers[0].value, api_key,
+                sizeof(req.headers[0].value), 0);
+    req.num_headers = 1;
+    g_config.web_auth_enabled = true;
+    handle_get_recordings(&req, &res);
+    g_config.web_auth_enabled = false;
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *json = cJSON_Parse((const char *)res.body);
+    TEST_ASSERT_NOT_NULL(json);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "pagination"),
+               "total")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(
+               json, "recordings")));
+    cJSON_Delete(json);
+    http_response_free(&res);
+}
+
 void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
     stream_config_t allowed = create_camera("Token Allowed", "Token");
     stream_config_t denied = create_camera("Token Denied", "Token");
@@ -549,6 +755,9 @@ void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
                           db_authorization_set_user_mode(user_id, "policy"));
     char grant_uuid[CAMERA_UUID_STRING_SIZE];
     create_grant(user_id, OPERATOR_ROLE_UUID, "all", NULL, grant_uuid);
+    char owner_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, owner_key, sizeof(owner_key)));
 
     int64_t expiry = (int64_t)time(NULL) + 3600;
     char path[128];
@@ -562,8 +771,10 @@ void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
              "\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
              "\"values\":[\"%s\"]}}}}",
              (long long)expiry, allowed.camera_uuid);
+    g_config.web_auth_enabled = true;
     cJSON *json = call_handler_path(
-        handle_post_user_api_token, HTTP_METHOD_POST, path, body, NULL, 201);
+        handle_post_user_api_token, HTTP_METHOD_POST, path, body, owner_key,
+        201);
     cJSON *secret_item = cJSON_GetObjectItemCaseSensitive(json, "secret");
     cJSON *created = cJSON_GetObjectItemCaseSensitive(json, "token");
     TEST_ASSERT_TRUE(cJSON_IsString(secret_item));
@@ -592,7 +803,7 @@ void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
     sqlite3_finalize(stmt);
 
     json = call_handler_path(handle_get_user_api_tokens, HTTP_METHOD_GET,
-                             path, NULL, NULL, 200);
+                             path, NULL, owner_key, 200);
     TEST_ASSERT_EQUAL_INT(
         1, cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
     TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(
@@ -600,7 +811,6 @@ void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
         "secret"));
     cJSON_Delete(json);
 
-    g_config.web_auth_enabled = true;
     TEST_ASSERT_EQUAL_INT(
         1, authorize_stream_with_key(secret, AUTHZ_PTZ_CONTROL,
                                      allowed.name, 200));
@@ -610,6 +820,20 @@ void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
     TEST_ASSERT_EQUAL_INT(
         0, authorize_stream_with_key(secret, AUTHZ_EVIDENCE_PROTECT,
                                      allowed.name, 403));
+
+    audit_query_t token_use_query = {.page = 1, .page_size = 20};
+    safe_strcpy(token_use_query.action, "api_token.use",
+                sizeof(token_use_query.action), 0);
+    audit_page_t token_use_page;
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_audit_query(&token_use_query, &token_use_page));
+    TEST_ASSERT_EQUAL_INT64(1, token_use_page.total);
+    TEST_ASSERT_EQUAL_STRING("success", token_use_page.events[0].outcome);
+    TEST_ASSERT_EQUAL_STRING(token_uuid,
+                             token_use_page.events[0].target_uuid);
+    TEST_ASSERT_NOT_NULL(strstr(token_use_page.events[0].details_json,
+                                "\"reason\":\"active\""));
+    db_audit_page_free(&token_use_page);
 
     http_request_t request;
     http_request_init(&request);
@@ -635,6 +859,57 @@ void test_scoped_api_token_intersects_user_policy_and_revokes(void) {
     TEST_ASSERT_EQUAL_INT(
         0, authorize_stream_with_key(secret, AUTHZ_PTZ_CONTROL,
                                      allowed.name, 401));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_audit_query(&token_use_query, &token_use_page));
+    TEST_ASSERT_EQUAL_INT64(2, token_use_page.total);
+    bool revoked_use = false;
+    for (int i = 0; i < token_use_page.count; i++) {
+        revoked_use |= strcmp(token_use_page.events[i].outcome, "denied") == 0 &&
+            strstr(token_use_page.events[i].details_json,
+                   "\"reason\":\"revoked\"") != NULL;
+    }
+    TEST_ASSERT_TRUE(revoked_use);
+    db_audit_page_free(&token_use_page);
+
+    api_token_t expired_token;
+    char expired_secret[API_TOKEN_SECRET_MAX];
+    create_scoped_token(user_id,
+                        authorization_action_bit(AUTHZ_PTZ_CONTROL), "all",
+                        NULL, &expired_token, expired_secret);
+    stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            db, "UPDATE authz_api_tokens SET created_at=?,expires_at=? "
+                "WHERE uuid=?;", -1,
+            &stmt, NULL));
+    sqlite3_bind_int64(stmt, 1, (sqlite3_int64)time(NULL) - 100);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)time(NULL) - 1);
+    sqlite3_bind_text(stmt, 3, expired_token.uuid, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+    TEST_ASSERT_EQUAL_INT(
+        0, authorize_stream_with_key(expired_secret, AUTHZ_PTZ_CONTROL,
+                                     allowed.name, 401));
+    const char *unknown_secret =
+        "lnvr_0000000000000000000000000000000000000000000000000000000000000000";
+    TEST_ASSERT_EQUAL_INT(
+        0, authorize_stream_with_key(unknown_secret, AUTHZ_PTZ_CONTROL,
+                                     allowed.name, 401));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_audit_query(&token_use_query, &token_use_page));
+    TEST_ASSERT_EQUAL_INT64(4, token_use_page.total);
+    bool expired_use = false;
+    bool unknown_use = false;
+    for (int i = 0; i < token_use_page.count; i++) {
+        expired_use |= strstr(token_use_page.events[i].details_json,
+                              "\"reason\":\"expired\"") != NULL;
+        unknown_use |= strstr(token_use_page.events[i].details_json,
+                              "\"reason\":\"unknown\"") != NULL;
+    }
+    TEST_ASSERT_TRUE(expired_use);
+    TEST_ASSERT_TRUE(unknown_use);
+    db_audit_page_free(&token_use_page);
     g_config.web_auth_enabled = false;
 
     snprintf(body, sizeof(body),
@@ -858,6 +1133,13 @@ void test_policy_management_handlers_and_conflict_guards(void) {
         json, "policy_version")->valuedouble;
     cJSON_Delete(json);
 
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"legacy\","
+             "\"grants\":[]}", (long long)policy_version);
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             user_path, body, NULL, 400);
+    cJSON_Delete(json);
+
     json = call_handler_path(handle_get_user_authorization, HTTP_METHOD_GET,
                              user_path, NULL, NULL, 200);
     cJSON *scope = cJSON_GetObjectItemCaseSensitive(
@@ -867,6 +1149,11 @@ void test_policy_management_handlers_and_conflict_guards(void) {
         "all", cJSON_GetObjectItemCaseSensitive(scope, "type")->valuestring);
     cJSON_Delete(json);
 
+    snprintf(body, sizeof(body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":\"%s\","
+             "\"scope\":{\"type\":\"all\"}}]}",
+             (long long)role_version, role_uuid);
     json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
                              user_path, body, NULL, 409);
     cJSON_Delete(json);
@@ -1220,6 +1507,11 @@ void test_sensitive_handlers_enforce_camera_scoped_policy(void) {
         sizeof(delete_job_id), 0);
     cJSON_Delete(json);
     bool delete_finished = false;
+    snprintf(status_path, sizeof(status_path),
+             "/api/recordings/batch-delete/progress/%s", delete_job_id);
+    json = call_handler_path(handle_batch_delete_progress, HTTP_METHOD_GET,
+                             status_path, NULL, other_api_key, 404);
+    cJSON_Delete(json);
     for (int attempt = 0; attempt < 100 && !delete_finished; attempt++) {
         snprintf(status_path, sizeof(status_path),
                  "/api/recordings/batch-delete/progress/%s", delete_job_id);
@@ -1678,6 +1970,574 @@ void test_streams_reject_empty_camera_uuid(void) {
     sqlite3_finalize(stmt);
 }
 
+void test_player_telemetry_requires_live_view_authorization(void) {
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/telemetry/player", sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "POST", sizeof(req.method_str), 0);
+    req.body = "{\"stream_name\":\"arbitrary-camera\",\"ttff_ms\":10}";
+    req.body_len = strlen((const char *)req.body);
+    g_config.web_auth_enabled = true;
+    handle_post_player_telemetry(&req, &res);
+    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    http_response_free(&res);
+    g_config.web_auth_enabled = false;
+}
+
+void test_metrics_require_system_admin_authorization(void) {
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    safe_strcpy(req.path, "/api/metrics", sizeof(req.path), 0);
+    safe_strcpy(req.method_str, "GET", sizeof(req.method_str), 0);
+    g_config.web_auth_enabled = true;
+    handle_get_metrics(&req, &res);
+    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    http_response_free(&res);
+    g_config.web_auth_enabled = false;
+}
+
+void test_user_create_rejects_retired_allowed_tags_field(void) {
+    cJSON *json = call_handler_path(
+        handle_users_create, HTTP_METHOD_POST, "/api/auth/users",
+        "{\"username\":\"retiredtags\",\"password\":\"password123\","
+        "\"role\":2,\"allowed_tags\":\"Outdoor\"}", NULL, 400);
+    cJSON_Delete(json);
+    user_t user;
+    TEST_ASSERT_NOT_EQUAL(0,
+                          db_auth_get_user_by_username("retiredtags", &user));
+}
+
+void test_users_manage_grant_controls_cross_user_password_and_totp(void) {
+    int64_t manager_id = 0;
+    int64_t target_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("grantmanager", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &manager_id));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("granttarget", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &target_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(manager_id, "policy"));
+    create_grant(manager_id, ADMIN_ROLE_UUID, "all", NULL, NULL);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(manager_id, api_key, sizeof(api_key)));
+    char path[128];
+    snprintf(path, sizeof(path), "/api/auth/users/%lld/password",
+             (long long)target_id);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(
+        handle_users_change_password, HTTP_METHOD_PUT, path,
+        "{\"new_password\":\"replacement123\"}", api_key, 200);
+    cJSON_Delete(json);
+    snprintf(path, sizeof(path), "/api/auth/users/%lld/totp/status",
+             (long long)target_id);
+    json = call_handler_path(handle_totp_status, HTTP_METHOD_GET, path, NULL,
+                             api_key, 200);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
+void test_scoped_token_cannot_use_identity_self_service_or_other_progress(void) {
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("scopedself", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    create_grant(user_id, OPERATOR_ROLE_UUID, "all", NULL, NULL);
+    api_token_t first_token;
+    api_token_t second_token;
+    char first_secret[API_TOKEN_SECRET_MAX];
+    char second_secret[API_TOKEN_SECRET_MAX];
+    create_scoped_token(user_id, authorization_action_bit(AUTHZ_LIVE_VIEW),
+                        "all", NULL, &first_token, first_secret);
+    create_scoped_token(user_id, authorization_action_bit(AUTHZ_LIVE_VIEW),
+                        "all", NULL, &second_token, second_secret);
+
+    char path[192];
+    snprintf(path, sizeof(path), "/api/auth/users/%lld", (long long)user_id);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(handle_users_update, HTTP_METHOD_PUT, path,
+                                    "{\"email\":\"new@example.com\"}",
+                                    first_secret, 403);
+    cJSON_Delete(json);
+    snprintf(path, sizeof(path), "/api/auth/users/%lld/password",
+             (long long)user_id);
+    json = call_handler_path(
+        handle_users_change_password, HTTP_METHOD_PUT, path,
+        "{\"old_password\":\"password123\",\"new_password\":\"replacement123\"}",
+        first_secret, 403);
+    cJSON_Delete(json);
+    snprintf(path, sizeof(path), "/api/auth/users/%lld/totp/setup",
+             (long long)user_id);
+    json = call_handler_path(handle_totp_setup, HTTP_METHOD_POST, path, "{}",
+                             first_secret, 403);
+    cJSON_Delete(json);
+
+    char job_id[64];
+    TEST_ASSERT_EQUAL_INT(
+        0, batch_delete_progress_create_job_for_principal(
+               1, user_id, first_token.uuid, job_id));
+    snprintf(path, sizeof(path),
+             "/api/recordings/batch-delete/progress/%s", job_id);
+    json = call_handler_path(handle_batch_delete_progress, HTTP_METHOD_GET,
+                             path, NULL, first_secret, 200);
+    cJSON_Delete(json);
+    json = call_handler_path(handle_batch_delete_progress, HTTP_METHOD_GET,
+                             path, NULL, second_secret, 404);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
+void test_recording_file_check_requires_scoped_replay_access(void) {
+    stream_config_t allowed = create_camera("File Check Allowed", "Review");
+    stream_config_t denied = create_camera("File Check Denied", "Review");
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("filechecker", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             allowed.camera_uuid);
+    create_grant(user_id, OPERATOR_ROLE_UUID, "selector", selector, NULL);
+    api_token_t token;
+    char secret[API_TOKEN_SECRET_MAX];
+    create_scoped_token(
+        user_id, authorization_action_bit(AUTHZ_RECORDINGS_REPLAY), "all",
+        NULL, &token, secret);
+
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, allowed.name,
+                sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.camera_uuid, allowed.camera_uuid,
+                sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, "/tmp/lightnvr-file-check-allowed.mp4",
+                sizeof(recording.file_path), 0);
+    recording.start_time = 100;
+    recording.end_time = 200;
+    recording.is_complete = true;
+    recording.retention_override_days = -1;
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&recording));
+    safe_strcpy(recording.stream_name, denied.name,
+                sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.camera_uuid, denied.camera_uuid,
+                sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, "/tmp/lightnvr-file-check-denied.mp4",
+                sizeof(recording.file_path), 0);
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&recording));
+
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(
+        handle_check_recording_file, HTTP_METHOD_GET,
+        "/api/recordings/files/check?path=/tmp/lightnvr-file-check-allowed.mp4",
+        NULL, NULL, 401);
+    cJSON_Delete(json);
+    json = call_handler_path(
+        handle_check_recording_file, HTTP_METHOD_GET,
+        "/api/recordings/files/check?path=/tmp/lightnvr-file-check-denied.mp4",
+        NULL, secret, 403);
+    cJSON_Delete(json);
+    json = call_handler_path(
+        handle_check_recording_file, HTTP_METHOD_GET,
+        "/api/recordings/files/check?path=/tmp/lightnvr-file-check-allowed.mp4",
+        NULL, secret, 200);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
+void test_collection_resolution_uses_requested_replay_action(void) {
+    stream_config_t camera = create_camera("Replay Only Collection", "Review");
+    camera_collection_t collection;
+    memset(&collection, 0, sizeof(collection));
+    safe_strcpy(collection.name, "Replay only", sizeof(collection.name), 0);
+    safe_strcpy(collection.collection_type, "static",
+                sizeof(collection.collection_type), 0);
+    collection.is_shared = true;
+    TEST_ASSERT_EQUAL_INT(DB_CAMERA_COLLECTION_OK,
+                          db_camera_collection_create(&collection));
+    const char *members[] = {camera.camera_uuid};
+    TEST_ASSERT_EQUAL_INT(
+        DB_CAMERA_COLLECTION_OK,
+        db_camera_collection_set_members(collection.uuid, members, 1));
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("replayonly", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    authorization_role_t replay_role;
+    memset(&replay_role, 0, sizeof(replay_role));
+    safe_strcpy(replay_role.name, "Replay only test role",
+                sizeof(replay_role.name), 0);
+    replay_role.action_mask = authorization_action_bit(AUTHZ_RECORDINGS_REPLAY);
+    int64_t version = 0;
+    int64_t new_version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&replay_role, version, &new_version));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    create_grant(user_id, replay_role.uuid, "all", NULL, NULL);
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(user_id, &user));
+
+    char **stream_names = NULL;
+    int stream_count = 0;
+    g_config.web_auth_enabled = true;
+    TEST_ASSERT_EQUAL_INT(
+        CAMERA_COLLECTION_FILTER_OK,
+        camera_collection_filter_resolve_stream_names_for_action(
+            collection.uuid, &user, AUTHZ_RECORDINGS_REPLAY, &stream_names,
+            &stream_count));
+    TEST_ASSERT_EQUAL_INT(1, stream_count);
+    TEST_ASSERT_EQUAL_STRING(camera.name, stream_names[0]);
+    camera_collection_filter_free_stream_names(stream_names, stream_count);
+    stream_names = NULL;
+    stream_count = 0;
+    TEST_ASSERT_EQUAL_INT(
+        CAMERA_COLLECTION_FILTER_OK,
+        camera_collection_filter_resolve_stream_names(
+            collection.uuid, &user, &stream_names, &stream_count));
+    TEST_ASSERT_EQUAL_INT(0, stream_count);
+    camera_collection_filter_free_stream_names(stream_names, stream_count);
+    g_config.web_auth_enabled = false;
+}
+
+void test_delegated_policy_scope_cannot_widen_or_chain_scoped_tokens(void) {
+    stream_config_t allowed = create_camera("Delegation Allowed", "Delegate");
+    int64_t manager_id = 0;
+    int64_t target_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("scopedmanager", "password123", NULL,
+                               USER_ROLE_USER, true, &manager_id));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("delegatetarget", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &target_id));
+
+    authorization_role_t user_manager;
+    memset(&user_manager, 0, sizeof(user_manager));
+    safe_strcpy(user_manager.name, "Scoped delegation user manager",
+                sizeof(user_manager.name), 0);
+    user_manager.action_mask =
+        authorization_action_bit(AUTHZ_USERS_MANAGE);
+    int64_t version = 0;
+    int64_t new_version = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&user_manager, version, &new_version));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(manager_id, "policy"));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(target_id, "policy"));
+    create_grant(manager_id, user_manager.uuid, "all", NULL, NULL);
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             allowed.camera_uuid);
+    create_grant(manager_id, OPERATOR_ROLE_UUID, "selector", selector, NULL);
+    char manager_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(manager_id, manager_key,
+                                    sizeof(manager_key)));
+
+    TEST_ASSERT_EQUAL_INT(0, db_authorization_get_policy_version(&version));
+    char policy_path[128];
+    char policy_body[768];
+    snprintf(policy_path, sizeof(policy_path),
+             "/api/authorization/users/%lld", (long long)target_id);
+    snprintf(policy_body, sizeof(policy_body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":\"%s\","
+             "\"scope\":{\"type\":\"all\"}}]}",
+             (long long)version, OPERATOR_ROLE_UUID);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(
+        handle_put_user_authorization, HTTP_METHOD_PUT, policy_path,
+        policy_body, manager_key, 403);
+    cJSON_Delete(json);
+
+    char invalid_policy_body[256];
+    snprintf(invalid_policy_body, sizeof(invalid_policy_body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"legacy\","
+             "\"grants\":[]}",
+             (long long)version);
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             policy_path, invalid_policy_body, manager_key,
+                             400);
+    cJSON_Delete(json);
+
+    char unknown_role_policy_body[512];
+    snprintf(unknown_role_policy_body, sizeof(unknown_role_policy_body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":"
+             "\"00000000-0000-4000-8000-000000000099\","
+             "\"scope\":{\"type\":\"all\"}}]}",
+             (long long)version);
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             policy_path, unknown_role_policy_body,
+                             manager_key, 400);
+    cJSON_Delete(json);
+
+    char manager_policy_path[128];
+    char empty_policy_body[256];
+    snprintf(manager_policy_path, sizeof(manager_policy_path),
+             "/api/authorization/users/%lld", (long long)manager_id);
+    snprintf(empty_policy_body, sizeof(empty_policy_body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[]}",
+             (long long)version);
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             manager_policy_path, empty_policy_body,
+                             manager_key, 409);
+    cJSON_Delete(json);
+
+    char stale_policy_body[1024];
+    snprintf(stale_policy_body, sizeof(stale_policy_body),
+             "{\"expected_policy_version\":%lld,\"mode\":\"policy\","
+             "\"grants\":[{\"role_uuid\":\"%s\","
+             "\"scope\":{\"type\":\"selector\",\"selector\":%s}}]}",
+             (long long)(version - 1), OPERATOR_ROLE_UUID, selector);
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             policy_path, stale_policy_body, manager_key,
+                             409);
+    cJSON_Delete(json);
+
+    char token_path[128];
+    snprintf(token_path, sizeof(token_path),
+             "/api/authorization/users/%lld/tokens", (long long)manager_id);
+    char token_body[512];
+    snprintf(token_body, sizeof(token_body),
+             "{\"description\":\"No chaining\",\"expires_at\":%lld,"
+             "\"actions\":[\"users.manage\"],"
+             "\"scope\":{\"type\":\"all\"}}",
+             (long long)time(NULL) + 3600);
+    json = call_handler_path(handle_post_user_api_token, HTTP_METHOD_POST,
+                             token_path, token_body, manager_key, 201);
+    const cJSON *secret = cJSON_GetObjectItemCaseSensitive(json, "secret");
+    TEST_ASSERT_TRUE(cJSON_IsString(secret));
+    char scoped_secret[API_TOKEN_SECRET_MAX];
+    safe_strcpy(scoped_secret, secret->valuestring, sizeof(scoped_secret), 0);
+    cJSON_Delete(json);
+
+    json = call_handler_path(handle_put_user_authorization, HTTP_METHOD_PUT,
+                             policy_path, policy_body, scoped_secret, 403);
+    cJSON_Delete(json);
+    json = call_handler_path(handle_post_user_api_token, HTTP_METHOD_POST,
+                             token_path, token_body, scoped_secret, 403);
+    cJSON_Delete(json);
+
+    char overbroad_body[512];
+    snprintf(overbroad_body, sizeof(overbroad_body),
+             "{\"description\":\"Scope expansion\",\"expires_at\":%lld,"
+             "\"actions\":[\"camera.configure\"],"
+             "\"scope\":{\"type\":\"all\"}}",
+             (long long)time(NULL) + 3600);
+    json = call_handler_path(handle_post_user_api_token, HTTP_METHOD_POST,
+                             token_path, overbroad_body, manager_key, 403);
+    cJSON_Delete(json);
+    char invalid_body[512];
+    snprintf(invalid_body, sizeof(invalid_body),
+             "{\"description\":\"Invalid actions\",\"expires_at\":%lld,"
+             "\"actions\":[],\"scope\":{\"type\":\"all\"}}",
+             (long long)time(NULL) + 3600);
+    json = call_handler_path(handle_post_user_api_token, HTTP_METHOD_POST,
+                             token_path, invalid_body, manager_key, 400);
+    cJSON_Delete(json);
+
+    const char *missing_token_uuid =
+        "00000000-0000-4000-8000-000000000098";
+    char missing_token_path[192];
+    snprintf(missing_token_path, sizeof(missing_token_path),
+             "/api/authorization/users/%lld/tokens/%s",
+             (long long)manager_id, missing_token_uuid);
+    json = call_handler_path(handle_delete_user_api_token,
+                             HTTP_METHOD_DELETE, missing_token_path, NULL,
+                             manager_key, 404);
+    cJSON_Delete(json);
+
+    audit_query_t query = {.page = 1, .page_size = 50};
+    safe_strcpy(query.action, "authorization.policy.update",
+                sizeof(query.action), 0);
+    safe_strcpy(query.outcome, "denied", sizeof(query.outcome), 0);
+    audit_page_t page;
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT64(2, page.total);
+    char target_text[32];
+    snprintf(target_text, sizeof(target_text), "%lld", (long long)target_id);
+    bool policy_scope_denied = false;
+    bool scoped_policy_denied = false;
+    for (int i = 0; i < page.count; i++) {
+        TEST_ASSERT_EQUAL_STRING(target_text, page.events[i].target_uuid);
+        policy_scope_denied |= strstr(
+            page.events[i].details_json,
+            "\"reason\":\"scope_exceeds_authority\"") != NULL;
+        scoped_policy_denied |= strstr(
+            page.events[i].details_json,
+            "\"reason\":\"scoped_token_policy_mutation\"") != NULL;
+        TEST_ASSERT_NULL(strstr(page.events[i].details_json, scoped_secret));
+        TEST_ASSERT_NULL(strstr(page.events[i].details_json, manager_key));
+    }
+    TEST_ASSERT_TRUE(policy_scope_denied);
+    TEST_ASSERT_TRUE(scoped_policy_denied);
+    db_audit_page_free(&page);
+
+    memset(&query, 0, sizeof(query));
+    query.page = 1;
+    query.page_size = 50;
+    safe_strcpy(query.action, "authorization.policy.update",
+                sizeof(query.action), 0);
+    safe_strcpy(query.outcome, "failure", sizeof(query.outcome), 0);
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    bool invalid_mode_failed = false;
+    bool invalid_role_failed = false;
+    bool self_lockout_failed = false;
+    bool conflict_failed = false;
+    for (int i = 0; i < page.count; i++) {
+        invalid_mode_failed |= strstr(
+            page.events[i].details_json,
+            "\"reason\":\"invalid_authorization_mode\"") != NULL;
+        invalid_role_failed |= strstr(
+            page.events[i].details_json,
+            "\"reason\":\"invalid_grant_role\"") != NULL;
+        self_lockout_failed |= strstr(
+            page.events[i].details_json,
+            "\"reason\":\"self_lockout_prevented\"") != NULL;
+        conflict_failed |= strstr(
+            page.events[i].details_json,
+            "\"reason\":\"policy_version_conflict\"") != NULL;
+        TEST_ASSERT_NULL(strstr(page.events[i].details_json, scoped_secret));
+        TEST_ASSERT_NULL(strstr(page.events[i].details_json, manager_key));
+    }
+    TEST_ASSERT_TRUE(invalid_mode_failed);
+    TEST_ASSERT_TRUE(invalid_role_failed);
+    TEST_ASSERT_TRUE(self_lockout_failed);
+    TEST_ASSERT_TRUE(conflict_failed);
+    db_audit_page_free(&page);
+
+    memset(&query, 0, sizeof(query));
+    query.page = 1;
+    query.page_size = 50;
+    safe_strcpy(query.action, "api_token.create", sizeof(query.action), 0);
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    bool chaining_denied = false;
+    bool scope_denied = false;
+    bool validation_failed = false;
+    for (int i = 0; i < page.count; i++) {
+        chaining_denied |= strcmp(page.events[i].outcome, "denied") == 0 &&
+            strstr(page.events[i].details_json,
+                   "scoped_token_management_denied") != NULL;
+        scope_denied |= strcmp(page.events[i].outcome, "denied") == 0 &&
+            strstr(page.events[i].details_json,
+                   "scope_exceeds_authority") != NULL;
+        validation_failed |= strcmp(page.events[i].outcome, "failure") == 0 &&
+            strstr(page.events[i].details_json,
+                   "invalid_actions_or_scope") != NULL;
+        TEST_ASSERT_NULL(strstr(page.events[i].details_json, scoped_secret));
+        TEST_ASSERT_NULL(strstr(page.events[i].details_json, manager_key));
+    }
+    TEST_ASSERT_TRUE(chaining_denied);
+    TEST_ASSERT_TRUE(scope_denied);
+    TEST_ASSERT_TRUE(validation_failed);
+    db_audit_page_free(&page);
+
+    memset(&query, 0, sizeof(query));
+    query.page = 1;
+    query.page_size = 50;
+    safe_strcpy(query.action, "api_token.revoke", sizeof(query.action), 0);
+    safe_strcpy(query.outcome, "failure", sizeof(query.outcome), 0);
+    TEST_ASSERT_EQUAL_INT(0, db_audit_query(&query, &page));
+    TEST_ASSERT_EQUAL_INT64(1, page.total);
+    TEST_ASSERT_EQUAL_STRING(missing_token_uuid, page.events[0].target_uuid);
+    TEST_ASSERT_NOT_NULL(strstr(page.events[0].details_json,
+                                "\"reason\":\"token_not_found\""));
+    TEST_ASSERT_NULL(strstr(page.events[0].details_json, scoped_secret));
+    TEST_ASSERT_NULL(strstr(page.events[0].details_json, manager_key));
+    db_audit_page_free(&page);
+    g_config.web_auth_enabled = false;
+}
+
+void test_scoped_location_read_filters_direct_child_count(void) {
+    camera_location_t parent = {0};
+    camera_location_t visible_child = {0};
+    camera_location_t hidden_child = {0};
+    safe_strcpy(parent.name, "Scoped Parent", sizeof(parent.name), 0);
+    safe_strcpy(parent.type, "site", sizeof(parent.type), 0);
+    safe_strcpy(parent.metadata_json, "{}", sizeof(parent.metadata_json), 0);
+    TEST_ASSERT_EQUAL_INT(DB_LOCATION_OK, db_location_create(&parent));
+    safe_strcpy(visible_child.name, "Visible Child",
+                sizeof(visible_child.name), 0);
+    safe_strcpy(visible_child.type, "area", sizeof(visible_child.type), 0);
+    safe_strcpy(visible_child.metadata_json, "{}",
+                sizeof(visible_child.metadata_json), 0);
+    safe_strcpy(visible_child.parent_uuid, parent.uuid,
+                sizeof(visible_child.parent_uuid), 0);
+    TEST_ASSERT_EQUAL_INT(DB_LOCATION_OK,
+                          db_location_create(&visible_child));
+    safe_strcpy(hidden_child.name, "Hidden Child", sizeof(hidden_child.name), 0);
+    safe_strcpy(hidden_child.type, "area", sizeof(hidden_child.type), 0);
+    safe_strcpy(hidden_child.metadata_json, "{}",
+                sizeof(hidden_child.metadata_json), 0);
+    safe_strcpy(hidden_child.parent_uuid, parent.uuid,
+                sizeof(hidden_child.parent_uuid), 0);
+    TEST_ASSERT_EQUAL_INT(DB_LOCATION_OK, db_location_create(&hidden_child));
+
+    stream_config_t visible = create_camera("Location Visible", "Location");
+    stream_config_t hidden = create_camera("Location Hidden", "Location");
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            db, "UPDATE streams SET location_uuid=? WHERE camera_uuid=?;",
+            -1, &stmt, NULL));
+    sqlite3_bind_text(stmt, 1, visible_child.uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, visible.camera_uuid, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_reset(stmt);
+    sqlite3_clear_bindings(stmt);
+    sqlite3_bind_text(stmt, 1, hidden_child.uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, hidden.camera_uuid, -1, SQLITE_TRANSIENT);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("locationviewer", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             visible.camera_uuid);
+    create_grant(user_id, OPERATOR_ROLE_UUID, "selector", selector, NULL);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+    char path[128];
+    snprintf(path, sizeof(path), "/api/locations/%s", parent.uuid);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(handle_get_location, HTTP_METHOD_GET, path,
+                                    NULL, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "child_count")->valueint);
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -1698,11 +2558,13 @@ int main(void) {
     }
     UNITY_BEGIN();
     RUN_TEST(test_action_catalog_is_stable_and_complete);
-    RUN_TEST(test_legacy_roles_preserve_access_and_allowed_tags);
+    RUN_TEST(test_legacy_role_compatibility_has_no_runtime_allowed_tags_path);
+    RUN_TEST(test_legacy_principals_migrate_to_idempotent_selector_grants);
     RUN_TEST(test_policy_mode_defaults_deny_and_matches_selector_grant);
     RUN_TEST(test_all_scope_admin_grant_allows_global_action_and_bumps_version);
     RUN_TEST(test_invalid_stored_selector_fails_closed);
     RUN_TEST(test_shared_collection_grants_track_membership_and_guard_scope);
+    RUN_TEST(test_recording_list_intersects_explicit_stream_collection_and_policy_scope);
     RUN_TEST(test_scoped_api_token_intersects_user_policy_and_revokes);
     RUN_TEST(test_action_catalog_and_simulation_handlers);
     RUN_TEST(test_role_and_policy_database_mutations_are_atomic);
@@ -1717,6 +2579,15 @@ int main(void) {
     RUN_TEST(test_policy_manager_cannot_grant_actions_it_lacks);
     RUN_TEST(test_action_catalog_bit_layout_matches_database);
     RUN_TEST(test_streams_reject_empty_camera_uuid);
+    RUN_TEST(test_player_telemetry_requires_live_view_authorization);
+    RUN_TEST(test_metrics_require_system_admin_authorization);
+    RUN_TEST(test_user_create_rejects_retired_allowed_tags_field);
+    RUN_TEST(test_users_manage_grant_controls_cross_user_password_and_totp);
+    RUN_TEST(test_scoped_token_cannot_use_identity_self_service_or_other_progress);
+    RUN_TEST(test_recording_file_check_requires_scoped_replay_access);
+    RUN_TEST(test_collection_resolution_uses_requested_replay_action);
+    RUN_TEST(test_delegated_policy_scope_cannot_widen_or_chain_scoped_tokens);
+    RUN_TEST(test_scoped_location_read_filters_direct_child_count);
     int result = UNITY_END();
     batch_delete_progress_cleanup();
     shutdown_database();

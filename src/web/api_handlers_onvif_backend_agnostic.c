@@ -23,6 +23,7 @@
  * @brief Backend-agnostic handler for GET /api/onvif/discovery/status
  */
 void handle_get_onvif_discovery_status(const http_request_t *req, http_response_t *res) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     log_info("Handling GET /api/onvif/discovery/status request");
     
     // Create JSON response
@@ -61,6 +62,7 @@ void handle_get_onvif_discovery_status(const http_request_t *req, http_response_
  * @brief Backend-agnostic handler for GET /api/onvif/devices
  */
 void handle_get_discovered_onvif_devices(const http_request_t *req, http_response_t *res) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     log_info("Handling GET /api/onvif/devices request");
     
     // Get discovered devices
@@ -140,6 +142,7 @@ void handle_get_discovered_onvif_devices(const http_request_t *req, http_respons
  * @brief Backend-agnostic handler for POST /api/onvif/discovery/discover
  */
 void handle_post_discover_onvif_devices(const http_request_t *req, http_response_t *res) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     log_info("Handling POST /api/onvif/discovery/discover request");
 
     // Parse JSON request
@@ -248,6 +251,7 @@ void handle_post_discover_onvif_devices(const http_request_t *req, http_response
  * @brief Backend-agnostic handler for GET /api/onvif/device/profiles
  */
 void handle_get_onvif_device_profiles(const http_request_t *req, http_response_t *res) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     log_info("Handling GET /api/onvif/device/profiles request");
 
     // Get URL parameters from headers
@@ -362,6 +366,7 @@ void handle_get_onvif_device_profiles(const http_request_t *req, http_response_t
  * @brief Backend-agnostic handler for POST /api/onvif/device/add
  */
 void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_response_t *res) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     log_info("Handling POST /api/onvif/device/add request");
 
     // Parse JSON request
@@ -479,6 +484,7 @@ void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_resp
  * @brief Backend-agnostic handler for POST /api/onvif/device/test
  */
 void handle_post_test_onvif_connection(const http_request_t *req, http_response_t *res) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     log_info("Handling POST /api/onvif/device/test request");
 
     // Parse JSON request

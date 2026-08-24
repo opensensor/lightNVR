@@ -16,6 +16,7 @@
 #include "unity.h"
 #include "core/config.h"
 #include "database/db_auth.h"
+#include "database/db_authorization.h"
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_streams.h"
@@ -316,7 +317,17 @@ void test_private_visibility_and_rbac_filter_counts_and_members(void) {
     TEST_ASSERT_EQUAL_INT(
         0, db_auth_create_user("collectionviewer", "password123", NULL,
                                USER_ROLE_VIEWER, true, &user_id));
-    TEST_ASSERT_EQUAL_INT(0, db_auth_set_allowed_tags(user_id, "Outdoor"));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             outside.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_create_user_grant(
+               user_id, "00000000-0000-4000-8000-000000000003",
+               "selector", selector, NULL, NULL));
     char api_key[128] = {0};
     TEST_ASSERT_EQUAL_INT(
         0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));

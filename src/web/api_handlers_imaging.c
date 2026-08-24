@@ -442,6 +442,7 @@ static bool parse_settings_update(cJSON *body, onvif_imaging_settings_t *setting
 
 static int prepare_imaging_request(const http_request_t *req,
                                    http_response_t *res,
+                                   authorization_action_t action,
                                    stream_config_t *config,
                                    char *imaging_url,
                                    size_t imaging_url_size,
@@ -450,6 +451,9 @@ static int prepare_imaging_request(const http_request_t *req,
     char stream_name[MAX_STREAM_NAME];
     if (extract_imaging_stream_name(req, stream_name, sizeof(stream_name)) != 0) {
         http_response_set_json_error(res, 400, "Invalid stream name");
+        return -1;
+    }
+    if (!httpd_authorize_stream_action(req, res, action, stream_name)) {
         return -1;
     }
 
@@ -480,7 +484,7 @@ void handle_imaging_get_settings(const http_request_t *req, http_response_t *res
     char imaging_url[MAX_URL_LENGTH];
     char video_source_token[64];
 
-    if (prepare_imaging_request(req, res, &config, imaging_url, sizeof(imaging_url),
+    if (prepare_imaging_request(req, res, AUTHZ_LIVE_VIEW, &config, imaging_url, sizeof(imaging_url),
                                 video_source_token, sizeof(video_source_token)) != 0) {
         return;
     }
@@ -514,7 +518,7 @@ void handle_imaging_get_options(const http_request_t *req, http_response_t *res)
     char imaging_url[MAX_URL_LENGTH];
     char video_source_token[64];
 
-    if (prepare_imaging_request(req, res, &config, imaging_url, sizeof(imaging_url),
+    if (prepare_imaging_request(req, res, AUTHZ_LIVE_VIEW, &config, imaging_url, sizeof(imaging_url),
                                 video_source_token, sizeof(video_source_token)) != 0) {
         return;
     }
@@ -548,7 +552,7 @@ void handle_imaging_put_settings(const http_request_t *req, http_response_t *res
     char imaging_url[MAX_URL_LENGTH];
     char video_source_token[64];
 
-    if (prepare_imaging_request(req, res, &config, imaging_url, sizeof(imaging_url),
+    if (prepare_imaging_request(req, res, AUTHZ_CAMERA_CONFIGURE, &config, imaging_url, sizeof(imaging_url),
                                 video_source_token, sizeof(video_source_token)) != 0) {
         return;
     }
@@ -591,7 +595,7 @@ void handle_daynight_get(const http_request_t *req, http_response_t *res) {
     char imaging_url[MAX_URL_LENGTH];
     char video_source_token[64];
 
-    if (prepare_imaging_request(req, res, &config, imaging_url, sizeof(imaging_url),
+    if (prepare_imaging_request(req, res, AUTHZ_LIVE_VIEW, &config, imaging_url, sizeof(imaging_url),
                                 video_source_token, sizeof(video_source_token)) != 0) {
         return;
     }
@@ -645,7 +649,7 @@ void handle_daynight_put(const http_request_t *req, http_response_t *res) {
     char imaging_url[MAX_URL_LENGTH];
     char video_source_token[64];
 
-    if (prepare_imaging_request(req, res, &config, imaging_url, sizeof(imaging_url),
+    if (prepare_imaging_request(req, res, AUTHZ_CAMERA_CONFIGURE, &config, imaging_url, sizeof(imaging_url),
                                 video_source_token, sizeof(video_source_token)) != 0) {
         return;
     }

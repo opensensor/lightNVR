@@ -35,6 +35,8 @@ typedef struct {
     char error_message[256];        // Error message if status is ERROR
     time_t created_at;              // When the job was created
     time_t updated_at;              // When the job was last updated
+    int64_t owner_user_id;          // Principal that created the job
+    char owner_api_token_uuid[37];  // Exact scoped token, or empty for session/key
     bool is_active;                 // Whether this slot is in use
 } batch_delete_progress_t;
 
@@ -58,6 +60,9 @@ void batch_delete_progress_cleanup(void);
  * @return int 0 on success, non-zero on error
  */
 int batch_delete_progress_create_job(int total, char *job_id_out);
+int batch_delete_progress_create_job_for_principal(
+    int total, int64_t owner_user_id, const char *owner_api_token_uuid,
+    char *job_id_out);
 
 /**
  * @brief Update the total count for a batch delete job
@@ -120,4 +125,3 @@ int batch_delete_progress_get(const char *job_id, batch_delete_progress_t *progr
 int batch_delete_progress_delete(const char *job_id);
 
 #endif /* BATCH_DELETE_PROGRESS_H */
-

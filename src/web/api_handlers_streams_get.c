@@ -19,6 +19,7 @@
 #include "video/stream_state.h"
 #include "video/detection_stream.h"
 #include "database/database_manager.h"
+#include "database/db_fleet_query.h"
 
 #include "database/db_motion_config.h"
 #include "database/db_auth.h"
@@ -101,36 +102,27 @@ static void get_stream_api_credentials(const stream_config_t *config,
     }
 }
 
-static bool stream_user_can_modify(bool have_auth_user, const user_t *user) {
-    if (!g_config.web_auth_enabled) {
-        return true;
-    }
-    return have_auth_user && user && user->role != USER_ROLE_VIEWER;
+static bool stream_user_can_modify(const user_t *user,
+                                   const fleet_camera_t *camera) {
+    authorization_evaluation_t evaluation;
+    return user && camera &&
+           authorization_evaluate(user, AUTHZ_CAMERA_CONFIGURE, camera,
+                                  &evaluation) == 0 &&
+           evaluation.decision == AUTHZ_DECISION_ALLOW;
 }
 
-static bool authenticate_stream_request(const http_request_t *req,
-                                        http_response_t *res,
-                                        user_t *user) {
-    memset(user, 0, sizeof(*user));
-    if (!g_config.web_auth_enabled) {
-        return true;
+static const fleet_camera_t *find_loaded_camera(
+    const fleet_camera_t *cameras, int camera_count,
+    const stream_config_t *config) {
+    if (!cameras || !config) return NULL;
+    for (int i = 0; i < camera_count; i++) {
+        if ((config->camera_uuid[0] != '\0' &&
+             strcmp(cameras[i].camera_uuid, config->camera_uuid) == 0) ||
+            strcmp(cameras[i].name, config->name) == 0) {
+            return &cameras[i];
+        }
     }
-    if (!httpd_check_viewer_access(req, user)) {
-        http_response_set_json_error(res, 401, "Unauthorized");
-        return false;
-    }
-    return true;
-}
-
-static bool check_stream_tag_access(const user_t *user,
-                                    const stream_config_t *config,
-                                    http_response_t *res) {
-    if (g_config.web_auth_enabled && user->has_tag_restriction &&
-        !db_auth_stream_allowed_for_user(user, config->tags)) {
-        http_response_set_json_error(res, 403, "Stream access denied");
-        return false;
-    }
-    return true;
+    return NULL;
 }
 
 /**
@@ -139,42 +131,26 @@ static bool check_stream_tag_access(const user_t *user,
 void handle_get_streams(const http_request_t *req, http_response_t *res) {
 	log_info("Handling GET /api/streams request");
 
-	// Capture the authenticated user so we can apply tag-based RBAC filtering
+	// Capture the authenticated principal once; resource decisions below use a
+    // shared context so selector grants do not cause one grant load per row.
 	user_t auth_user;
 	memset(&auth_user, 0, sizeof(auth_user));
-	bool have_auth_user = false;
-
-	// When web authentication is enabled, require a valid authenticated user
-	// for access to the streams list. In demo mode, unauthenticated users
-	// get viewer access.
-	if (g_config.web_auth_enabled) {
-		// In demo mode, allow unauthenticated viewer access
-		if (g_config.demo_mode) {
-			if (!httpd_check_viewer_access(req, &auth_user)) {
-				log_error("Authentication failed for GET /api/streams request");
-				http_response_set_json_error(res, 401, "Unauthorized");
-				return;
-			}
-			have_auth_user = true;
-		} else {
-			// Normal mode: require authentication
-			if (!httpd_get_authenticated_user(req, &auth_user)) {
-				log_error("Authentication failed for GET /api/streams request");
-				http_response_set_json_error(res, 401, "Unauthorized");
-				return;
-			}
-			have_auth_user = true;
-		}
-	}
-
-    const bool expose_sensitive_config =
-        stream_user_can_modify(have_auth_user, &auth_user);
+    if (!httpd_check_action_access(req, &auth_user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+    authorization_context_t *authz_context = authorization_context_create();
+    if (!authz_context) {
+        http_response_set_json_error(res, 500, "Out of memory");
+        return;
+    }
 
     // Get all stream configurations from database (heap-allocated)
     stream_config_t *db_streams = calloc(g_config.max_streams, sizeof(stream_config_t));
     if (!db_streams) {
         log_error("handle_get_streams: out of memory");
         http_response_set_json_error(res, 500, "Internal error");
+        authorization_context_free(authz_context);
         return;
     }
     int count = get_all_stream_configs(db_streams, g_config.max_streams);
@@ -182,7 +158,19 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     if (count < 0) {
         log_error("Failed to get stream configurations from database");
         free(db_streams);
+        authorization_context_free(authz_context);
         http_response_set_json_error(res, 500, "Failed to get stream configurations");
+        return;
+    }
+
+    // Load the credential-free inventory once. At large fleet sizes a lookup
+    // per stream would otherwise turn this endpoint into N database queries.
+    fleet_camera_t *fleet_cameras = NULL;
+    int fleet_camera_count = 0;
+    if (db_fleet_camera_load(&fleet_cameras, &fleet_camera_count) != 0) {
+        free(db_streams);
+        authorization_context_free(authz_context);
+        http_response_set_json_error(res, 500, "Failed to load camera inventory");
         return;
     }
 
@@ -190,26 +178,46 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     cJSON *streams_array = cJSON_CreateArray();
     if (!streams_array) {
         log_error("Failed to create streams JSON array");
+        free(fleet_cameras);
         free(db_streams);
+        authorization_context_free(authz_context);
         http_response_set_json_error(res, 500, "Failed to create streams JSON");
         return;
     }
 
-    // Add each stream to the array, applying tag-based RBAC if user has a restriction
+    // Add only streams allowed by the centralized live.view evaluator.
     for (int i = 0; i < count; i++) {
-        // Skip streams that don't match the user's allowed_tags restriction
-        if (have_auth_user && auth_user.has_tag_restriction) {
-            if (!db_auth_stream_allowed_for_user(&auth_user, db_streams[i].tags)) {
-                log_debug("Stream '%s' hidden from user '%s' (tag restriction)",
-                          db_streams[i].name, auth_user.username);
-                continue;
-            }
+        const fleet_camera_t *camera =
+            find_loaded_camera(fleet_cameras, fleet_camera_count,
+                               &db_streams[i]);
+        authorization_evaluation_t live_evaluation;
+        authorization_evaluation_t configure_evaluation;
+        if (!camera ||
+            authorization_evaluate_in_context(
+                authz_context, &auth_user, AUTHZ_LIVE_VIEW, camera,
+                &live_evaluation) != 0 ||
+            authorization_evaluate_in_context(
+                authz_context, &auth_user, AUTHZ_CAMERA_CONFIGURE, camera,
+                &configure_evaluation) != 0) {
+            cJSON_Delete(streams_array);
+            free(fleet_cameras);
+            free(db_streams);
+            authorization_context_free(authz_context);
+            http_response_set_json_error(
+                res, 500, "Authorization policy evaluation failed");
+            return;
         }
+        if (live_evaluation.decision != AUTHZ_DECISION_ALLOW) continue;
+        const bool expose_sensitive_config =
+            configure_evaluation.decision == AUTHZ_DECISION_ALLOW;
 
         cJSON *stream_obj = cJSON_CreateObject();
         if (!stream_obj) {
             log_error("Failed to create stream JSON object");
             cJSON_Delete(streams_array);
+            free(fleet_cameras);
+            free(db_streams);
+            authorization_context_free(authz_context);
             http_response_set_json_error(res, 500, "Failed to create stream JSON");
             return;
         }
@@ -357,6 +365,9 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
     if (!json_str) {
         log_error("Failed to convert streams JSON to string");
         cJSON_Delete(streams_array);
+        free(fleet_cameras);
+        free(db_streams);
+        authorization_context_free(authz_context);
         http_response_set_json_error(res, 500, "Failed to convert streams JSON to string");
         return;
     }
@@ -366,7 +377,9 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
 
     // Clean up
     free(json_str);
+    free(fleet_cameras);
     free(db_streams);
+    authorization_context_free(authz_context);
     cJSON_Delete(streams_array);
 
     log_info("Successfully handled GET /api/streams request");
@@ -376,11 +389,6 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
  * @brief Backend-agnostic handler for GET /api/streams/:id
  */
 void handle_get_stream(const http_request_t *req, http_response_t *res) {
-    user_t auth_user;
-    if (!authenticate_stream_request(req, res, &auth_user)) {
-        return;
-    }
-
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
     if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
@@ -406,11 +414,16 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 500, "Failed to get stream configuration");
         return;
     }
-    if (!check_stream_tag_access(&auth_user, &config, res)) {
+    user_t auth_user;
+    fleet_camera_t camera;
+    authorization_evaluation_t live_evaluation;
+    if (!httpd_authorize_stream_action_with_context(
+            req, res, AUTHZ_LIVE_VIEW, stream_id, &auth_user, &camera,
+            &live_evaluation)) {
         return;
     }
     const bool expose_sensitive_config =
-        stream_user_can_modify(true, &auth_user);
+        stream_user_can_modify(&auth_user, &camera);
 
     // Create JSON object
     cJSON *stream_obj = cJSON_CreateObject();
@@ -573,11 +586,6 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
  * Returns both stream config and motion recording config in one response
  */
 void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
-    user_t auth_user;
-    if (!authenticate_stream_request(req, res, &auth_user)) {
-        return;
-    }
-
     // Extract stream ID from URL
     char stream_id[MAX_STREAM_NAME];
     if (http_request_extract_path_param(req, "/api/streams/", stream_id, sizeof(stream_id)) != 0) {
@@ -610,11 +618,16 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 500, "Failed to get stream configuration");
         return;
     }
-    if (!check_stream_tag_access(&auth_user, &config, res)) {
+    user_t auth_user;
+    fleet_camera_t camera;
+    authorization_evaluation_t live_evaluation;
+    if (!httpd_authorize_stream_action_with_context(
+            req, res, AUTHZ_LIVE_VIEW, stream_id, &auth_user, &camera,
+            &live_evaluation)) {
         return;
     }
     const bool expose_sensitive_config =
-        stream_user_can_modify(true, &auth_user);
+        stream_user_can_modify(&auth_user, &camera);
 
     // Build stream JSON object (same as handle_get_stream)
     cJSON *stream_obj = cJSON_CreateObject();

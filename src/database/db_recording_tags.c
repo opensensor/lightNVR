@@ -263,6 +263,78 @@ int db_recording_tag_get_all_unique(char tags[][MAX_TAG_LENGTH], int max_tags) {
     return count;
 }
 
+int db_recording_tag_get_unique_for_streams(
+    const char *const *stream_names, int stream_count,
+    char tags[][MAX_TAG_LENGTH], int max_tags) {
+    if (!stream_names || stream_count <= 0 || !tags || max_tags <= 0) return 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mtx = get_db_mutex();
+    if (!db || !mtx) return -1;
+    pthread_mutex_lock(mtx);
+    int variable_limit = sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
+    int batch_limit = variable_limit > 1 ? variable_limit - 1 : 1;
+    if (batch_limit > 256) batch_limit = 256;
+    int count = 0;
+    int final_rc = SQLITE_DONE;
+    for (int offset = 0; offset < stream_count; offset += batch_limit) {
+        int batch_count = stream_count - offset;
+        if (batch_count > batch_limit) batch_count = batch_limit;
+        size_t sql_size = 256 + (size_t)batch_count * 3;
+        char *sql = calloc(sql_size, 1);
+        if (!sql) {
+            final_rc = SQLITE_NOMEM;
+            break;
+        }
+        safe_strcpy(sql,
+            "SELECT DISTINCT rt.tag FROM recording_tags rt "
+            "JOIN recordings r ON r.id=rt.recording_id WHERE r.stream_name IN (",
+            sql_size, 0);
+        for (int i = 0; i < batch_count; i++) {
+            safe_strcat(sql, i == 0 ? "?" : ",?", sql_size);
+        }
+        safe_strcat(sql, ") ORDER BY rt.tag LIMIT ?;", sql_size);
+
+        sqlite3_stmt *stmt = NULL;
+        int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        free(sql);
+        if (rc == SQLITE_OK) {
+            for (int i = 0; i < batch_count; i++) {
+                sqlite3_bind_text(stmt, i + 1, stream_names[offset + i], -1,
+                                  SQLITE_TRANSIENT);
+            }
+            sqlite3_bind_int(stmt, batch_count + 1, max_tags);
+        }
+        while (rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            const char *tag = (const char *)sqlite3_column_text(stmt, 0);
+            if (!tag) continue;
+            int insert_at = 0;
+            while (insert_at < count && strcmp(tags[insert_at], tag) < 0) {
+                insert_at++;
+            }
+            if (insert_at < count && strcmp(tags[insert_at], tag) == 0) {
+                continue;
+            }
+            if (insert_at < max_tags) {
+                int move_count = count < max_tags ? count - insert_at
+                                                  : max_tags - insert_at - 1;
+                if (move_count > 0) {
+                    memmove(tags[insert_at + 1], tags[insert_at],
+                            (size_t)move_count * MAX_TAG_LENGTH);
+                }
+                safe_strcpy(tags[insert_at], tag, MAX_TAG_LENGTH, 0);
+                if (count < max_tags) count++;
+            }
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            final_rc = rc;
+            break;
+        }
+    }
+    pthread_mutex_unlock(mtx);
+    return final_rc == SQLITE_DONE ? count : -1;
+}
+
 int db_recording_tag_batch_add(const uint64_t *recording_ids, int count, const char *tag) {
     if (!recording_ids || !tag || count <= 0) return -1;
     char trimmed[MAX_TAG_LENGTH];

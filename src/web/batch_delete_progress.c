@@ -155,7 +155,9 @@ static int find_job_by_id(const char *job_id) {
 /**
  * @brief Create a new batch delete job
  */
-int batch_delete_progress_create_job(int total, char *job_id_out) {
+int batch_delete_progress_create_job_for_principal(
+    int total, int64_t owner_user_id, const char *owner_api_token_uuid,
+    char *job_id_out) {
     if (!g_initialized) {
         log_error("Batch delete progress tracking not initialized");
         return -1;
@@ -190,6 +192,10 @@ int batch_delete_progress_create_job(int total, char *job_id_out) {
     g_jobs[slot].error_message[0] = '\0';
     g_jobs[slot].created_at = time(NULL);
     g_jobs[slot].updated_at = g_jobs[slot].created_at;
+    g_jobs[slot].owner_user_id = owner_user_id;
+    safe_strcpy(g_jobs[slot].owner_api_token_uuid,
+                owner_api_token_uuid ? owner_api_token_uuid : "",
+                sizeof(g_jobs[slot].owner_api_token_uuid), 0);
     g_jobs[slot].is_active = true;
     
     // Copy job ID to output
@@ -199,6 +205,11 @@ int batch_delete_progress_create_job(int total, char *job_id_out) {
     
     log_info("Created batch delete job: %s (total: %d)", g_jobs[slot].job_id, total);
     return 0;
+}
+
+int batch_delete_progress_create_job(int total, char *job_id_out) {
+    return batch_delete_progress_create_job_for_principal(
+        total, 0, NULL, job_id_out);
 }
 
 /**
@@ -418,4 +429,3 @@ int batch_delete_progress_delete(const char *job_id) {
     log_info("Deleted batch delete job: %s", job_id);
     return 0;
 }
-

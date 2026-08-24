@@ -7,6 +7,7 @@
 
 #include "core/config.h"
 #include "database/db_locations.h"
+#include "database/db_fleet_query.h"
 #include "utils/strings.h"
 #include "web/api_handlers_locations.h"
 #include "web/httpd_utils.h"
@@ -180,21 +181,111 @@ static bool extract_location_uuid(const http_request_t *req, char *uuid,
     return true;
 }
 
+static bool load_visible_cameras(const http_request_t *req,
+                                 http_response_t *res, user_t *user,
+                                 fleet_camera_t **cameras, int *count,
+                                 bool *all_fleet) {
+    memset(user, 0, sizeof(*user));
+    *cameras = NULL;
+    *count = 0;
+    *all_fleet = false;
+    if (!httpd_check_action_access(req, user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return false;
+    }
+    authorization_evaluation_t evaluation;
+    *all_fleet =
+        (authorization_evaluate(user, AUTHZ_LIVE_VIEW, NULL, &evaluation) == 0 &&
+         evaluation.decision == AUTHZ_DECISION_ALLOW) ||
+        (authorization_evaluate(user, AUTHZ_CAMERA_CONFIGURE, NULL,
+                                &evaluation) == 0 &&
+         evaluation.decision == AUTHZ_DECISION_ALLOW);
+    if (db_fleet_camera_load(cameras, count) != 0 ||
+        authorization_filter_cameras(user, AUTHZ_LIVE_VIEW, *cameras,
+                                     count) != 0) {
+        free(*cameras);
+        *cameras = NULL;
+        *count = 0;
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return false;
+    }
+    return true;
+}
+
+static bool camera_reaches_location(const fleet_camera_t *camera,
+                                    const char *location_uuid) {
+    if (strcmp(camera->location_uuid, location_uuid) == 0) return true;
+    for (int i = 0; i < camera->location_depth; i++) {
+        if (strcmp(camera->location_ancestor_uuids[i], location_uuid) == 0)
+            return true;
+    }
+    return false;
+}
+
+static int visible_location_camera_count(const fleet_camera_t *cameras,
+                                         int camera_count,
+                                         const char *location_uuid) {
+    int count = 0;
+    for (int i = 0; i < camera_count; i++) {
+        if (strcmp(cameras[i].location_uuid, location_uuid) == 0) count++;
+    }
+    return count;
+}
+
+static int visible_direct_child_count(const fleet_camera_t *cameras,
+                                      int camera_count,
+                                      const char *location_uuid) {
+    int total = db_location_count();
+    if (total < 0) return -1;
+    camera_location_t *locations = total > 0
+        ? calloc((size_t)total, sizeof(*locations)) : NULL;
+    if (total > 0 && !locations) return -1;
+    int count = total > 0 ? db_location_list(locations, total) : 0;
+    if (count < 0) {
+        free(locations);
+        return -1;
+    }
+    int visible_children = 0;
+    for (int child = 0; child < count; child++) {
+        if (strcmp(locations[child].parent_uuid, location_uuid) != 0) continue;
+        for (int camera_index = 0; camera_index < camera_count;
+             camera_index++) {
+            if (camera_reaches_location(&cameras[camera_index],
+                                        locations[child].uuid)) {
+                visible_children++;
+                break;
+            }
+        }
+    }
+    free(locations);
+    return visible_children;
+}
+
 void handle_get_locations(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    user_t user;
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    bool all_fleet = false;
+    if (!load_visible_cameras(req, res, &user, &cameras, &camera_count,
+                              &all_fleet)) return;
 
     int total = db_location_count();
-    if (total <= 0) {
+    if (total < 0) {
+        free(cameras);
         http_response_set_json_error(res, 500, "Failed to count locations");
         return;
     }
-    camera_location_t *locations = calloc((size_t)total, sizeof(*locations));
-    if (!locations) {
+    camera_location_t *locations = total > 0
+        ? calloc((size_t)total, sizeof(*locations)) : NULL;
+    if (total > 0 && !locations) {
+        free(cameras);
         http_response_set_json_error(res, 500, "Out of memory");
         return;
     }
-    int count = db_location_list(locations, total);
+    int count = total > 0 ? db_location_list(locations, total) : 0;
     if (count < 0) {
+        free(cameras);
         free(locations);
         http_response_set_json_error(res, 500, "Failed to list locations");
         return;
@@ -206,26 +297,59 @@ void handle_get_locations(const http_request_t *req, http_response_t *res) {
         cJSON_Delete(root);
         cJSON_Delete(items);
         free(locations);
+        free(cameras);
         http_response_set_json_error(res, 500, "Failed to create response");
         return;
     }
     cJSON_AddItemToObject(root, "locations", items);
-    cJSON_AddNumberToObject(root, "count", count);
+    int visible_count = 0;
     for (int i = 0; i < count; i++) {
-        cJSON *item = location_to_json(&locations[i]);
+        bool visible = all_fleet;
+        for (int camera_index = 0; camera_index < camera_count;
+             camera_index++) {
+            if (camera_reaches_location(&cameras[camera_index],
+                                        locations[i].uuid)) {
+                visible = true;
+                break;
+            }
+        }
+        if (!visible) continue;
+        camera_location_t filtered = locations[i];
+        if (!all_fleet) {
+            filtered.direct_camera_count = visible_location_camera_count(
+                cameras, camera_count, filtered.uuid);
+            filtered.direct_child_count = 0;
+            for (int child = 0; child < count; child++) {
+                if (strcmp(locations[child].parent_uuid, filtered.uuid) != 0)
+                    continue;
+                for (int camera_index = 0; camera_index < camera_count;
+                     camera_index++) {
+                    if (camera_reaches_location(&cameras[camera_index],
+                                                locations[child].uuid)) {
+                        filtered.direct_child_count++;
+                        break;
+                    }
+                }
+            }
+        }
+        cJSON *item = location_to_json(&filtered);
         if (!item) {
             cJSON_Delete(root);
             free(locations);
+            free(cameras);
             http_response_set_json_error(res, 500,
                                          "Failed to create location response");
             return;
         }
         cJSON_AddItemToArray(items, item);
+        visible_count++;
         if (locations[i].is_system) {
             cJSON_AddStringToObject(root, "unassigned_uuid", locations[i].uuid);
         }
     }
+    cJSON_AddNumberToObject(root, "count", visible_count);
     free(locations);
+    free(cameras);
 
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -238,7 +362,7 @@ void handle_get_locations(const http_request_t *req, http_response_t *res) {
 }
 
 void handle_post_location(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     cJSON *body = httpd_parse_json_body(req);
     if (!body) {
         http_response_set_json_error(res, 400, "Invalid JSON request body");
@@ -265,21 +389,53 @@ void handle_post_location(const http_request_t *req, http_response_t *res) {
 }
 
 void handle_get_location(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_location_uuid(req, uuid, sizeof(uuid), res)) return;
+
+    user_t user;
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    bool all_fleet = false;
+    if (!load_visible_cameras(req, res, &user, &cameras, &camera_count,
+                              &all_fleet)) return;
+    bool visible = all_fleet;
+    for (int i = 0; i < camera_count; i++) {
+        if (camera_reaches_location(&cameras[i], uuid)) {
+            visible = true;
+            break;
+        }
+    }
+    if (!visible) {
+        free(cameras);
+        http_response_set_json_error(res, 403, "Forbidden");
+        return;
+    }
 
     camera_location_t location;
     db_location_result_t result = db_location_get(uuid, &location);
     if (result != DB_LOCATION_OK) {
+        free(cameras);
         set_db_error(res, result, "Location conflict");
         return;
     }
+    if (!all_fleet) {
+        location.direct_camera_count = visible_location_camera_count(
+            cameras, camera_count, location.uuid);
+        location.direct_child_count = visible_direct_child_count(
+            cameras, camera_count, location.uuid);
+        if (location.direct_child_count < 0) {
+            free(cameras);
+            http_response_set_json_error(
+                res, 500, "Failed to evaluate visible child locations");
+            return;
+        }
+    }
+    free(cameras);
     set_location_json(res, 200, &location);
 }
 
 void handle_put_location(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_location_uuid(req, uuid, sizeof(uuid), res)) return;
 
@@ -311,7 +467,7 @@ void handle_put_location(const http_request_t *req, http_response_t *res) {
 }
 
 void handle_delete_location(const http_request_t *req, http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_location_uuid(req, uuid, sizeof(uuid), res)) return;
 
@@ -326,8 +482,6 @@ void handle_delete_location(const http_request_t *req, http_response_t *res) {
 
 void handle_put_camera_location(const http_request_t *req,
                                 http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
-
     char camera_path[MAX_PATH_LENGTH];
     if (http_request_extract_path_param(req, "/api/cameras/", camera_path,
                                         sizeof(camera_path)) != 0) {
@@ -338,6 +492,14 @@ void handle_put_camera_location(const http_request_t *req,
     if (slash) *slash = '\0';
     if (!valid_uuid_string(camera_path)) {
         http_response_set_json_error(res, 400, "Invalid camera UUID");
+        return;
+    }
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_CAMERA_CONFIGURE, camera_path, NULL, &user,
+            &camera, &evaluation)) {
         return;
     }
 

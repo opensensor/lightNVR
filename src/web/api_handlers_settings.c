@@ -333,7 +333,7 @@ void handle_post_settings_go2rtc_validate(const http_request_t *req,
                                           http_response_t *res) {
     log_info("Handling POST /api/settings/go2rtc/validate request");
 
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) {
         return;
     }
 
@@ -388,29 +388,63 @@ void handle_post_settings_go2rtc_validate(const http_request_t *req,
 }
 
 /**
+ * @brief GET /api/client-config
+ *
+ * Browser playback needs a small runtime contract, but the full settings
+ * document contains paths, network topology and integration configuration.
+ * Keep this endpoint authenticated and intentionally limited to values that
+ * are already observable through the viewer UI.
+ */
+void handle_get_client_config(const http_request_t *req, http_response_t *res) {
+    user_t user;
+    if (!httpd_check_action_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+    cJSON *config = cJSON_CreateObject();
+    if (!config) {
+        http_response_set_json_error(res, 500, "Failed to create client config");
+        return;
+    }
+    cJSON_AddBoolToObject(config, "go2rtc_enabled", g_config.go2rtc_enabled);
+    cJSON_AddBoolToObject(config, "web_auth_enabled",
+                          g_config.web_auth_enabled);
+    cJSON_AddBoolToObject(config, "demo_mode", g_config.demo_mode);
+    cJSON_AddBoolToObject(config, "go2rtc_available",
+                          g_config.go2rtc_enabled &&
+                          go2rtc_process_is_running());
+    cJSON_AddNumberToObject(config, "go2rtc_api_port",
+                            g_config.go2rtc_api_port);
+    cJSON_AddBoolToObject(config, "webrtc_disabled", g_config.webrtc_disabled);
+    cJSON_AddBoolToObject(config, "hls_disabled", g_config.hls_disabled);
+    cJSON_AddBoolToObject(config, "mse_disabled", g_config.mse_disabled);
+    cJSON_AddBoolToObject(config, "go2rtc_force_native_hls",
+                          g_config.go2rtc_force_native_hls);
+    cJSON_AddNumberToObject(config, "webrtc_connection_timeout_ms",
+                            g_config.webrtc_connection_timeout_ms);
+    cJSON_AddNumberToObject(config, "webrtc_ice_recovery_timeout_ms",
+                            g_config.webrtc_ice_recovery_timeout_ms);
+    cJSON_AddBoolToObject(config, "generate_thumbnails",
+                          g_config.generate_thumbnails);
+    cJSON_AddNumberToObject(config, "thumbnails_per_recording",
+                            g_config.thumbnails_per_recording);
+    char *json = cJSON_PrintUnformatted(config);
+    cJSON_Delete(config);
+    if (!json) {
+        http_response_set_json_error(res, 500, "Failed to serialize client config");
+        return;
+    }
+    http_response_set_json(res, 200, json);
+    free(json);
+}
+
+/**
  * @brief Direct handler for GET /api/settings
  */
 void handle_get_settings(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/settings request");
 
-    // Check authentication if enabled
-    // In demo mode, allow unauthenticated viewer access to read settings
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (g_config.demo_mode) {
-            if (!httpd_check_viewer_access(req, &user)) {
-                log_error("Authentication failed for GET /api/settings request");
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        } else {
-            if (!httpd_get_authenticated_user(req, &user)) {
-                log_error("Authentication failed for GET /api/settings request");
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        }
-    }
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) return;
 
     // Get global configuration
     // Create JSON object
@@ -634,7 +668,7 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/settings request");
 
     // Check if user has admin privileges to modify settings
-    if (!httpd_check_admin_privileges(req, res)) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) {
         return;  // Error response already sent
     }
 
