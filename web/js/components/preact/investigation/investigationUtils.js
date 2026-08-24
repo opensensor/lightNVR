@@ -66,6 +66,16 @@ export function segmentTrackPosition(segment, startTime, endTime) {
   };
 }
 
+export function adjacentInvestigationResultIndex(results, selectedResultId, direction) {
+  if (!Array.isArray(results) || results.length === 0) return -1;
+  const step = direction < 0 ? -1 : 1;
+  const selectedIndex = results.findIndex((result) =>
+    result.result_id === selectedResultId);
+  if (selectedIndex < 0) return step < 0 ? results.length - 1 : 0;
+  const nextIndex = selectedIndex + step;
+  return nextIndex >= 0 && nextIndex < results.length ? nextIndex : -1;
+}
+
 export function formatDateTimeLocal(timestamp) {
   if (!Number.isFinite(timestamp)) return '';
   const date = new Date(timestamp * 1000);

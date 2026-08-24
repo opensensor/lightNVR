@@ -1255,6 +1255,22 @@ static const char migration_0061_down[] =
     "DROP INDEX IF EXISTS idx_recordings_camera_time;\n"
     "SELECT 1;";
 
+static const char migration_0062_up[] =
+    "CREATE INDEX idx_detections_camera_label_time_id "
+    "ON detections(camera_uuid, label, timestamp DESC, id DESC) "
+    "WHERE camera_uuid IS NOT NULL;\n"
+    "CREATE INDEX idx_detections_camera_zone_time_id "
+    "ON detections(camera_uuid, zone_id, timestamp DESC, id DESC) "
+    "WHERE camera_uuid IS NOT NULL AND zone_id != '';\n"
+    "CREATE INDEX idx_detections_camera_source_time_id "
+    "ON detections(camera_uuid, source, timestamp DESC, id DESC) "
+    "WHERE camera_uuid IS NOT NULL;";
+
+static const char migration_0062_down[] =
+    "DROP INDEX IF EXISTS idx_detections_camera_source_time_id;\n"
+    "DROP INDEX IF EXISTS idx_detections_camera_zone_time_id;\n"
+    "DROP INDEX IF EXISTS idx_detections_camera_label_time_id;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1683,8 +1699,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0061_down,
         .is_embedded = true
     },
+    {
+        .version = "0062",
+        .description = "add_investigation_search_indexes",
+        .sql_up = migration_0062_up,
+        .sql_down = migration_0062_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 61
+#define EMBEDDED_MIGRATIONS_COUNT 62
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

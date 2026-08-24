@@ -1,4 +1,5 @@
 import {
+  adjacentInvestigationResultIndex,
   advanceInvestigationCursor,
   findSegmentAt,
   nextAvailableTimestamp,
@@ -56,4 +57,18 @@ test('segmentTrackPosition clips segments to the visible UTC window', () => {
   expect(segmentTrackPosition(
     { start_time: 90, end_time: 120 }, 100, 200,
   )).toEqual({ left: '0%', width: '20%' });
+});
+
+test('adjacent result navigation is stable by opaque result id', () => {
+  const results = [
+    { result_id: 'detection:9' },
+    { result_id: 'detection:7' },
+    { result_id: 'detection:4' },
+  ];
+  expect(adjacentInvestigationResultIndex(results, null, 1)).toBe(0);
+  expect(adjacentInvestigationResultIndex(results, null, -1)).toBe(2);
+  expect(adjacentInvestigationResultIndex(results, 'detection:7', 1)).toBe(2);
+  expect(adjacentInvestigationResultIndex(results, 'detection:7', -1)).toBe(0);
+  expect(adjacentInvestigationResultIndex(results, 'detection:4', 1)).toBe(-1);
+  expect(adjacentInvestigationResultIndex([], null, 1)).toBe(-1);
 });

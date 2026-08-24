@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
+import { formatUtils } from '../recordings/formatUtils.js';
 import {
   MAX_ACTIVE_INVESTIGATION_PLAYERS,
   MAX_INVESTIGATION_CAMERAS,
+  adjacentInvestigationResultIndex,
   advanceInvestigationCursor,
   findSegmentAt,
   formatCursorTime,
@@ -24,6 +26,21 @@ function initialTimeState() {
   const end = Number.isFinite(parsedEnd) && parsedEnd > start
     ? parsedEnd : now;
   return { start, end };
+}
+
+function initialSearchFilters() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    eventType: params.get('event') || '',
+    location: params.get('location') || '',
+    label: params.get('label') || '',
+    zone: params.get('zone') || '',
+    source: params.get('source') || '',
+    captureMethod: params.get('capture') || '',
+    recordingTag: params.get('tag') || '',
+    protection: params.get('protected') || '',
+    minConfidence: params.get('confidence_min') || '',
+  };
 }
 
 function InvestigationPlayer({
@@ -213,9 +230,99 @@ function InvestigationTrack({
   );
 }
 
+function InvestigationHistogram({ histogram, startTime, endTime, onSeek, t }) {
+  const buckets = histogram?.buckets || [];
+  const duration = Math.max(endTime - startTime, 1);
+  const maximum = Math.max(1, ...buckets.map((bucket) => bucket.count));
+  return (
+    <div className="investigation-histogram">
+      <div className="investigation-histogram-heading">
+        <span>{t('investigation.resultHistogram')}</span>
+        <small>{t('investigation.histogramHelp')}</small>
+      </div>
+      <div className="investigation-histogram-plot" aria-label={t('investigation.resultHistogram')}>
+        {buckets.map((bucket) => {
+          const left = Math.max(0, ((bucket.start_time - startTime) / duration) * 100);
+          const width = Math.max(
+            0.35,
+            ((Math.min(bucket.end_time, endTime) - bucket.start_time) / duration) * 100,
+          );
+          return (
+            <button
+              key={`${bucket.start_time}-${bucket.end_time}`}
+              type="button"
+              style={{
+                left: `${left}%`,
+                width: `${width}%`,
+                height: `${Math.max(10, (bucket.count / maximum) * 100)}%`,
+              }}
+              title={`${bucket.count} · ${formatCursorTime(bucket.start_time)}`}
+              aria-label={`${bucket.count} ${t('investigation.results')} · ${formatCursorTime(bucket.start_time)}`}
+              onClick={() => onSeek(bucket.start_time)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function InvestigationResultCard({ result, selected, onSelect, t }) {
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const thumbnailAvailable = result.thumbnail?.status === 'available' &&
+    result.thumbnail?.url && !thumbnailFailed;
+  const durationSeconds = Math.max(
+    0, Math.round((result.end_time || result.start_time) - result.start_time),
+  );
+  return (
+    <button
+      type="button"
+      className={`investigation-result-card ${selected ? 'is-selected' : ''}`}
+      aria-pressed={selected}
+      onClick={onSelect}
+    >
+      <span className="investigation-result-thumbnail">
+        {thumbnailAvailable ? (
+          <img
+            src={result.thumbnail.url}
+            alt=""
+            loading="lazy"
+            onError={() => setThumbnailFailed(true)}
+          />
+        ) : (
+          <span>{t('investigation.noThumbnail')}</span>
+        )}
+      </span>
+      <span className="investigation-result-copy">
+        <strong>{result.detection?.label || result.event_type}</strong>
+        <span>{result.camera?.name}</span>
+        <time>{formatCursorTime(result.start_time)}</time>
+        <small>
+          {Math.round((result.detection?.confidence || 0) * 100)}%
+          {' · '}{result.detection?.source || t('investigation.localSource')}
+          {result.detection?.zone_uuid ? ` · ${result.detection.zone_uuid}` : ''}
+        </small>
+        <small>
+          {result.known_gap
+            ? t('investigation.noFootage') : t('investigation.mediaAvailable')}
+          {' · '}{t('investigation.durationSeconds', { count: durationSeconds })}
+        </small>
+        {result.recording?.capture_method && (
+          <small>
+            {formatUtils.formatCaptureMethod(result.recording.capture_method, t)}
+            {result.recording.protected
+              ? ` · ${t('investigation.protected')}` : ''}
+          </small>
+        )}
+      </span>
+    </button>
+  );
+}
+
 export function InvestigationView() {
   const { t } = useI18n();
   const initialTimes = useMemo(initialTimeState, []);
+  const initialFilters = useMemo(initialSearchFilters, []);
   const [startTime, setStartTime] = useState(initialTimes.start);
   const [endTime, setEndTime] = useState(initialTimes.end);
   const [selectedCameraUuids, setSelectedCameraUuids] = useState([]);
@@ -228,9 +335,17 @@ export function InvestigationView() {
   const [playbackMode, setPlaybackMode] = useState('wall-clock');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchFilters, setSearchFilters] = useState(initialFilters);
+  const [searchData, setSearchData] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [searchPageCursors, setSearchPageCursors] = useState([null]);
+  const [searchPageIndex, setSearchPageIndex] = useState(0);
+  const [selectedResultId, setSelectedResultId] = useState(null);
   const initialSelectionApplied = useRef(false);
   const initialQueryLoaded = useRef(false);
   const requestController = useRef(null);
+  const searchRequestController = useRef(null);
   const lastUrlCursor = useRef(null);
 
   const { data: streamData, isLoading: streamsLoading, error: streamsError } =
@@ -259,6 +374,93 @@ export function InvestigationView() {
     setSelectedCameraUuids(initial);
     initialSelectionApplied.current = true;
   }, [streams]);
+
+  const loadSearchPage = useCallback(async (
+    pageCursor = null,
+    pageIndex = 0,
+    pageCursors = [null],
+    searchContext = null,
+  ) => {
+    const cameraUuids = searchContext?.cameraUuids ||
+      (timeline?.tracks || []).map((track) => track.camera_uuid);
+    const searchStart = searchContext?.startTime ?? timeline?.start_time;
+    const searchEnd = searchContext?.endTime ?? timeline?.end_time;
+    if (cameraUuids.length === 0 || !Number.isFinite(searchStart) ||
+        !Number.isFinite(searchEnd) || searchEnd <= searchStart) return;
+    const minimumConfidence = searchFilters.minConfidence === ''
+      ? null : Number(searchFilters.minConfidence);
+    if (minimumConfidence !== null &&
+        (!Number.isFinite(minimumConfidence) || minimumConfidence < 0 ||
+         minimumConfidence > 1)) {
+      setSearchError(t('investigation.confidenceError'));
+      return;
+    }
+
+    searchRequestController.current?.abort();
+    const controller = new AbortController();
+    searchRequestController.current = controller;
+    setSearchLoading(true);
+    setSearchError('');
+    try {
+      const filters = {};
+      if (searchFilters.eventType) filters.event_types = [searchFilters.eventType];
+      if (searchFilters.location) filters.locations = [searchFilters.location];
+      if (searchFilters.label) filters.labels = [searchFilters.label];
+      if (searchFilters.zone) filters.zones = [searchFilters.zone];
+      if (searchFilters.source) filters.sources = [searchFilters.source];
+      if (searchFilters.captureMethod) {
+        filters.capture_methods = [searchFilters.captureMethod];
+      }
+      if (searchFilters.recordingTag) {
+        filters.recording_tags = [searchFilters.recordingTag];
+      }
+      if (searchFilters.protection) {
+        filters.protected = searchFilters.protection === 'protected';
+      }
+      if (minimumConfidence !== null) filters.min_confidence = minimumConfidence;
+      const data = await fetchJSON('/api/investigations/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          camera_uuids: cameraUuids,
+          start_time: Math.floor(searchStart),
+          end_time: Math.floor(searchEnd),
+          filters,
+          cursor: pageCursor,
+          limit: 24,
+        }),
+        signal: controller.signal,
+        timeout: 30000,
+        retries: 0,
+      });
+      setSearchData(data);
+      setSearchPageIndex(pageIndex);
+      setSearchPageCursors(pageCursors);
+      setSelectedResultId(null);
+
+      const url = new URL(window.location.href);
+      const filterParams = {
+        event: searchFilters.eventType,
+        location: searchFilters.location,
+        label: searchFilters.label,
+        zone: searchFilters.zone,
+        source: searchFilters.source,
+        capture: searchFilters.captureMethod,
+        tag: searchFilters.recordingTag,
+        protected: searchFilters.protection,
+        confidence_min: searchFilters.minConfidence,
+      };
+      Object.entries(filterParams).forEach(([name, value]) => {
+        if (value) url.searchParams.set(name, value);
+        else url.searchParams.delete(name);
+      });
+      window.history.replaceState({}, '', url);
+    } catch (requestError) {
+      if (!controller.signal.aborted) setSearchError(requestError.message);
+    } finally {
+      if (!controller.signal.aborted) setSearchLoading(false);
+    }
+  }, [timeline, searchFilters, t]);
 
   const loadTimeline = useCallback(async () => {
     if (selectedCameraUuids.length === 0) {
@@ -315,12 +517,17 @@ export function InvestigationView() {
       url.searchParams.set('cursor', String(Math.floor(nextCursor)));
       url.searchParams.delete('stream');
       window.history.replaceState({}, '', url);
+      void loadSearchPage(null, 0, [null], {
+        cameraUuids: selectedCameraUuids,
+        startTime: data.start_time,
+        endTime: data.end_time,
+      });
     } catch (requestError) {
       if (!controller.signal.aborted) setError(requestError.message);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [selectedCameraUuids, startTime, endTime, t]);
+  }, [selectedCameraUuids, startTime, endTime, t, loadSearchPage]);
 
   useEffect(() => {
     if (!initialSelectionApplied.current || initialQueryLoaded.current ||
@@ -329,7 +536,10 @@ export function InvestigationView() {
     void loadTimeline();
   }, [selectedCameraUuids, loadTimeline]);
 
-  useEffect(() => () => requestController.current?.abort(), []);
+  useEffect(() => () => {
+    requestController.current?.abort();
+    searchRequestController.current?.abort();
+  }, []);
 
   const tracks = timeline?.tracks || [];
   const activeTracks = tracks.filter((track) =>
@@ -396,6 +606,75 @@ export function InvestigationView() {
       setError('');
       return [...current, cameraUuid];
     });
+  };
+
+  const searchResults = searchData?.results || [];
+  const selectedResultIndex = searchResults.findIndex((result) =>
+    result.result_id === selectedResultId);
+
+  const selectResult = useCallback((result) => {
+    if (!result || !timeline) return;
+    setSelectedResultId(result.result_id);
+    setPlaying(false);
+    setCursor(Math.max(
+      timeline.start_time,
+      Math.min(timeline.end_time, result.start_time),
+    ));
+    const cameraUuid = result.camera_uuid;
+    const limit = timeline.max_active_decoders || MAX_ACTIVE_INVESTIGATION_PLAYERS;
+    setActiveCameraUuids((current) => {
+      if (current.includes(cameraUuid)) return current;
+      return current.length >= limit
+        ? [...current.slice(0, Math.max(0, limit - 1)), cameraUuid]
+        : [...current, cameraUuid];
+    });
+    setPrimaryCameraUuid(cameraUuid);
+  }, [timeline]);
+
+  const selectAdjacentResult = useCallback((direction) => {
+    const index = adjacentInvestigationResultIndex(
+      searchResults, selectedResultId, direction,
+    );
+    if (index >= 0) selectResult(searchResults[index]);
+  }, [searchResults, selectedResultId, selectResult]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const target = event.target;
+      if (target?.matches?.('input, select, textarea, button') ||
+          target?.isContentEditable) return;
+      if (event.key === '[') {
+        event.preventDefault();
+        selectAdjacentResult(-1);
+      } else if (event.key === ']') {
+        event.preventDefault();
+        selectAdjacentResult(1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectAdjacentResult]);
+
+  const setSearchFilter = (name, value) => {
+    setSearchFilters((current) => ({ ...current, [name]: value }));
+  };
+
+  const loadNextSearchPage = () => {
+    const nextCursor = searchData?.page?.next_cursor;
+    if (!nextCursor) return;
+    const cursors = [
+      ...searchPageCursors.slice(0, searchPageIndex + 1),
+      nextCursor,
+    ];
+    void loadSearchPage(nextCursor, searchPageIndex + 1, cursors);
+  };
+
+  const loadPreviousSearchPage = () => {
+    if (searchPageIndex < 1) return;
+    const previousIndex = searchPageIndex - 1;
+    void loadSearchPage(
+      searchPageCursors[previousIndex], previousIndex, searchPageCursors,
+    );
   };
 
   return (
@@ -469,7 +748,142 @@ export function InvestigationView() {
             </button>
           </div>
         </div>
+        <div className="investigation-search-filters">
+          <label>
+            <span>{t('investigation.eventType')}</span>
+            <select
+              value={searchFilters.eventType}
+              onChange={(event) => setSearchFilter('eventType', event.target.value)}
+            >
+              <option value="">{t('investigation.anyEventType')}</option>
+              {(searchData?.facets?.event_types || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {t(`investigation.eventType.${facet.value}`)} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.location')}</span>
+            <select
+              value={searchFilters.location}
+              onChange={(event) => setSearchFilter('location', event.target.value)}
+            >
+              <option value="">{t('investigation.anyLocation')}</option>
+              {(searchData?.facets?.locations || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {facet.label || facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.objectLabel')}</span>
+            <select
+              value={searchFilters.label}
+              onChange={(event) => setSearchFilter('label', event.target.value)}
+            >
+              <option value="">{t('investigation.anyLabel')}</option>
+              {(searchData?.facets?.labels || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.zone')}</span>
+            <select
+              value={searchFilters.zone}
+              onChange={(event) => setSearchFilter('zone', event.target.value)}
+            >
+              <option value="">{t('investigation.anyZone')}</option>
+              {(searchData?.facets?.zones || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.source')}</span>
+            <select
+              value={searchFilters.source}
+              onChange={(event) => setSearchFilter('source', event.target.value)}
+            >
+              <option value="">{t('investigation.anySource')}</option>
+              {(searchData?.facets?.sources || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.captureMethod')}</span>
+            <select
+              value={searchFilters.captureMethod}
+              onChange={(event) => setSearchFilter('captureMethod', event.target.value)}
+            >
+              <option value="">{t('investigation.anyCaptureMethod')}</option>
+              {(searchData?.facets?.capture_methods || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {formatUtils.formatCaptureMethod(facet.value, t)} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.recordingTag')}</span>
+            <select
+              value={searchFilters.recordingTag}
+              onChange={(event) => setSearchFilter('recordingTag', event.target.value)}
+            >
+              <option value="">{t('investigation.anyRecordingTag')}</option>
+              {(searchData?.facets?.recording_tags || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.protection')}</span>
+            <select
+              value={searchFilters.protection}
+              onChange={(event) => setSearchFilter('protection', event.target.value)}
+            >
+              <option value="">{t('investigation.anyProtection')}</option>
+              {(searchData?.facets?.protection || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {t(`investigation.${facet.value}`)} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.minimumConfidence')}</span>
+            <input
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              placeholder="0.00"
+              value={searchFilters.minConfidence}
+              onInput={(event) => setSearchFilter('minConfidence', event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!timeline || searchLoading}
+            onClick={() => loadSearchPage(null, 0, [null])}
+          >
+            {searchLoading ? t('investigation.searching') : t('investigation.applyFilters')}
+          </button>
+        </div>
         {error && <div className="investigation-error" role="alert">{error}</div>}
+        {searchError && <div className="investigation-error" role="alert">{searchError}</div>}
       </section>
 
       {loading && <LoadingIndicator message={t('investigation.loading')} />}
@@ -509,6 +923,99 @@ export function InvestigationView() {
             <span className="investigation-decoder-count">
               {activeTracks.length}/{timeline.max_active_decoders} {t('investigation.activePlayers')}
             </span>
+          </section>
+
+          <section className="investigation-search-panel" aria-label={t('investigation.searchResults')}>
+            <div className="investigation-results-heading">
+              <div>
+                <h2>{t('investigation.searchResults')}</h2>
+                <p>
+                  {searchData
+                    ? t('investigation.resultCount', { count: searchData.page?.total || 0 })
+                    : t('investigation.searchHelp')}
+                </p>
+              </div>
+              <div className="investigation-result-navigation">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={searchResults.length === 0 || selectedResultIndex === 0}
+                  onClick={() => selectAdjacentResult(-1)}
+                  title={t('investigation.previousResultShortcut')}
+                >
+                  ← {t('investigation.previousResult')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={searchResults.length === 0 ||
+                    selectedResultIndex === searchResults.length - 1}
+                  onClick={() => selectAdjacentResult(1)}
+                  title={t('investigation.nextResultShortcut')}
+                >
+                  {t('investigation.nextResult')} →
+                </button>
+              </div>
+            </div>
+
+            {searchLoading && <LoadingIndicator message={t('investigation.searching')} />}
+            {searchData && !searchLoading && (
+              <>
+                <InvestigationHistogram
+                  histogram={searchData.histogram}
+                  startTime={timeline.start_time}
+                  endTime={timeline.end_time}
+                  onSeek={(value) => {
+                    setPlaying(false);
+                    setCursor(value);
+                  }}
+                  t={t}
+                />
+                {searchData.coverage && !searchData.coverage.complete && (
+                  <div className="investigation-coverage-warning">
+                    {t('investigation.incompleteCoverage', {
+                      count: searchData.coverage.unresolved_legacy_rows,
+                    })}
+                  </div>
+                )}
+                {searchResults.length > 0 ? (
+                  <div className="investigation-result-rail">
+                    {searchResults.map((result) => (
+                      <InvestigationResultCard
+                        key={result.result_id}
+                        result={result}
+                        selected={result.result_id === selectedResultId}
+                        onSelect={() => selectResult(result)}
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="investigation-results-empty">
+                    {t('investigation.noResults')}
+                  </div>
+                )}
+                <div className="investigation-page-navigation">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={searchPageIndex === 0}
+                    onClick={loadPreviousSearchPage}
+                  >
+                    ← {t('common.previous')}
+                  </button>
+                  <span>{t('investigation.pageNumber', { count: searchPageIndex + 1 })}</span>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={!searchData.page?.has_more}
+                    onClick={loadNextSearchPage}
+                  >
+                    {t('common.next')} →
+                  </button>
+                </div>
+              </>
+            )}
           </section>
 
           <input
