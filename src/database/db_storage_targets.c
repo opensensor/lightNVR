@@ -1,4 +1,8 @@
-#define _POSIX_C_SOURCE 200809L
+/*
+ * _XOPEN_SOURCE 700 implies _POSIX_C_SOURCE 200809L and additionally exposes
+ * realpath(), which POSIX alone does not declare on either glibc or musl.
+ */
+#define _XOPEN_SOURCE 700
 
 #include "database/db_storage_targets.h"
 
