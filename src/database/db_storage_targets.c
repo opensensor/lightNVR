@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <sqlite3.h>
 #include <stdarg.h>
@@ -110,7 +111,23 @@ static bool normalize_root_path(char path[MAX_PATH_LENGTH]) {
     }
     size_t length = strlen(path);
     while (length > 1 && path[length - 1] == '/') path[--length] = '\0';
-    return length > 1;
+    if (length <= 1) return false;
+
+    /*
+     * Collapse symlinks and bind mounts so two targets cannot alias the same
+     * directory through different spellings, which would otherwise defeat both
+     * the unique index on root_path and the longest-prefix match in
+     * db_storage_target_classify_path(). A root that does not resolve yet --
+     * a volume that has not been mounted, say -- keeps its literal form and is
+     * reported by the health probe instead of being rejected here.
+     */
+    char resolved[PATH_MAX];
+    if (realpath(path, resolved) != NULL && resolved[0] == '/' &&
+        strcmp(resolved, "/") != 0 && strlen(resolved) < MAX_PATH_LENGTH &&
+        !path_has_unsafe_segment(resolved)) {
+        safe_strcpy(path, resolved, MAX_PATH_LENGTH, 0);
+    }
+    return true;
 }
 
 static bool valid_object_key(const char *key) {

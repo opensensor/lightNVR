@@ -740,8 +740,12 @@ int main(int argc, char *argv[]) {
     char default_storage_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
     if (db_storage_target_bootstrap_default(
             default_recording_root, default_storage_target_uuid) != 0) {
-        log_error("Failed to initialize the default storage target");
-        goto cleanup;
+        // Storage targets are still metadata-only, so a failure here must not
+        // keep the NVR from recording. Rows simply carry a NULL target until
+        // the next start repairs it, which is exactly the pre-migration
+        // behaviour that add_recording_metadata() already handles.
+        log_error("Failed to initialize the default storage target; "
+                  "continuing without storage target attribution");
     }
 
     // Establish the stable installation identity and asynchronous event path

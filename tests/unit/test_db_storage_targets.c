@@ -286,6 +286,33 @@ void test_validation_rejects_root_and_traversal_paths(void) {
         db_storage_target_validate(&target, error, sizeof(error)));
 }
 
+void test_validation_canonicalizes_root_so_aliases_cannot_diverge(void) {
+    char error[STORAGE_TARGET_ERROR_MAX];
+    char link_path[MAX_PATH_LENGTH];
+    snprintf(link_path, sizeof(link_path), "%s/alias", second_root);
+    unlink(link_path);
+    TEST_ASSERT_EQUAL_INT(0, symlink(moved_root, link_path));
+
+    // A target configured through a symlink must be stored as the directory it
+    // really points at, so it collides with the real path on the unique index
+    // instead of silently becoming a second target over the same bytes.
+    storage_target_t target = valid_target("Aliased", link_path);
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_TARGET_OK,
+        db_storage_target_validate(&target, error, sizeof(error)));
+    TEST_ASSERT_EQUAL_STRING(moved_root, target.root_path);
+
+    // A root that does not resolve yet (an unmounted volume) stays literal
+    // rather than being rejected outright.
+    storage_target_t pending = valid_target("Pending", "/srv/not-mounted-yet");
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_TARGET_OK,
+        db_storage_target_validate(&pending, error, sizeof(error)));
+    TEST_ASSERT_EQUAL_STRING("/srv/not-mounted-yet", pending.root_path);
+
+    unlink(link_path);
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(second_root));
@@ -304,6 +331,7 @@ int main(void) {
     RUN_TEST(test_nonempty_target_cannot_be_repointed_or_deleted);
     RUN_TEST(test_unavailable_target_can_be_staged_disabled_but_not_enabled);
     RUN_TEST(test_validation_rejects_root_and_traversal_paths);
+    RUN_TEST(test_validation_canonicalizes_root_so_aliases_cannot_diverge);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
