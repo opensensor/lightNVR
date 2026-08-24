@@ -13,6 +13,7 @@
 
 #include "core/authorization.h"
 #include "database/db_storage_targets.h"
+#include "storage/storage_manager.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
 #include "web/audit_log.h"
@@ -82,6 +83,12 @@ static cJSON *target_to_json(const storage_target_t *target,
         ? target->capacity_bytes - target->available_bytes : 0;
     double used_pct = target->capacity_bytes > 0
         ? 100.0 * (double)used / (double)target->capacity_bytes : 0.0;
+    storage_target_pressure_t pressure =
+        !target->enabled || strcmp(target->health_status, "unavailable") == 0
+        ? STORAGE_TARGET_PRESSURE_UNAVAILABLE
+        : storage_target_pressure_evaluate(
+              target->capacity_bytes, target->available_bytes,
+              target->reserve_bytes, target->high_watermark_pct);
     cJSON_AddStringToObject(health, "status", target->health_status);
     cJSON_AddNumberToObject(health, "capacity_bytes",
                             (double)target->capacity_bytes);
@@ -89,6 +96,13 @@ static cJSON *target_to_json(const storage_target_t *target,
                             (double)target->available_bytes);
     cJSON_AddNumberToObject(health, "used_bytes", (double)used);
     cJSON_AddNumberToObject(health, "used_pct", used_pct);
+    cJSON_AddStringToObject(health, "pressure",
+                            storage_target_pressure_name(pressure));
+    cJSON_AddNumberToObject(
+        health, "cleanup_target_bytes",
+        (double)storage_target_cleanup_goal_bytes(
+            target->capacity_bytes, target->reserve_bytes,
+            target->low_watermark_pct));
     cJSON_AddNumberToObject(health, "filesystem_device",
                             (double)target->filesystem_device);
     cJSON_AddBoolToObject(health, "duplicate_filesystem",

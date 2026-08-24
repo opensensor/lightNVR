@@ -115,6 +115,29 @@ static bool delete_recording_file_and_metadata(const recording_metadata_t *recor
     return true;
 }
 
+static bool delete_pressure_recording_file_and_metadata(
+    const recording_metadata_t *recording, const char *context,
+    uint64_t *freed_bytes) {
+    char resolved[MAX_PATH_LENGTH];
+    if (!recording || recording->storage_target_uuid[0] == '\0' ||
+        recording->object_key[0] == '\0' ||
+        db_storage_target_resolve_path(recording->storage_target_uuid,
+                                       recording->object_key, resolved) != 0 ||
+        strcmp(resolved, recording->file_path) != 0) {
+        log_error("%s: refusing recording with inconsistent target identity "
+                  "(id=%llu, target=%s, object=%s, path=%s)",
+                  context ? context : "Pressure cleanup",
+                  (unsigned long long)(recording ? recording->id : 0),
+                  recording ? recording->storage_target_uuid : "",
+                  recording ? recording->object_key : "",
+                  recording ? recording->file_path : "");
+        if (freed_bytes) *freed_bytes = 0;
+        return false;
+    }
+    return delete_recording_file_and_metadata(recording, context,
+                                               freed_bytes);
+}
+
 // Initialize the storage manager
 int init_storage_manager(const char *storage_path, uint64_t max_size) {
     if (!storage_path) {
@@ -763,9 +786,11 @@ static disk_pressure_level_t evaluate_disk_pressure_level_cfg(double free_pct) {
 /**
  * Current free space as a fraction of total (0-100), or -1.0 on error.
  */
-static double current_free_pct(uint64_t *free_bytes_out, uint64_t *total_bytes_out) {
+static double current_free_pct_at(const char *root_path,
+                                  uint64_t *free_bytes_out,
+                                  uint64_t *total_bytes_out) {
     struct statvfs fs;
-    if (statvfs(storage_manager.storage_path, &fs) != 0) {
+    if (!root_path || statvfs(root_path, &fs) != 0) {
         return -1.0;
     }
     uint64_t total = (uint64_t)fs.f_blocks * fs.f_frsize;
@@ -773,6 +798,12 @@ static double current_free_pct(uint64_t *free_bytes_out, uint64_t *total_bytes_o
     if (free_bytes_out)  *free_bytes_out = avail;
     if (total_bytes_out) *total_bytes_out = total;
     return total > 0 ? ((double)avail / (double)total) * 100.0 : 0.0;
+}
+
+static double current_free_pct(uint64_t *free_bytes_out,
+                               uint64_t *total_bytes_out) {
+    return current_free_pct_at(storage_manager.storage_path, free_bytes_out,
+                               total_bytes_out);
 }
 
 /**
@@ -1081,6 +1112,134 @@ static void heartbeat_check_disk_pressure(void) {
 
 // ---- Emergency Cleanup: Pressure-Driven Deletion ----
 
+static int get_default_pressure_candidates(recording_metadata_t *recordings,
+                                           int max_count) {
+    storage_target_t target;
+    if (db_storage_target_get_default(&target) != DB_STORAGE_TARGET_OK) {
+        log_error("Pressure cleanup: default storage target is unavailable");
+        return -1;
+    }
+    return get_recordings_for_pressure_cleanup_target(
+        target.uuid, recordings, max_count);
+}
+
+int storage_cleanup_target_pressure(
+    const char *storage_target_uuid, storage_target_cleanup_result_t *result) {
+    storage_target_cleanup_result_t local_result;
+    memset(&local_result, 0, sizeof(local_result));
+    local_result.initial_pressure = STORAGE_TARGET_PRESSURE_UNAVAILABLE;
+
+    if (!storage_target_uuid || storage_target_uuid[0] == '\0') {
+        return -1;
+    }
+
+    storage_target_t target;
+    db_storage_target_result_t probe = db_storage_target_probe(
+        storage_target_uuid, false, &target);
+    if (probe != DB_STORAGE_TARGET_OK || !target.enabled ||
+        (target.mount_required &&
+         !db_storage_target_mount_guard_active(&target))) {
+        if (result) *result = local_result;
+        if (probe == DB_STORAGE_TARGET_UNAVAILABLE ||
+            probe == DB_STORAGE_TARGET_OK) return 1;
+        return -1;
+    }
+
+    uint64_t available = 0;
+    uint64_t capacity = 0;
+    if (current_free_pct_at(target.root_path, &available, &capacity) < 0.0) {
+        if (result) *result = local_result;
+        return -1;
+    }
+    local_result.available_bytes_before = available;
+    local_result.available_bytes_after = available;
+    local_result.initial_pressure = storage_target_pressure_evaluate(
+        capacity, available, target.reserve_bytes,
+        target.high_watermark_pct);
+    if (local_result.initial_pressure == STORAGE_TARGET_PRESSURE_NORMAL ||
+        local_result.initial_pressure == STORAGE_TARGET_PRESSURE_UNAVAILABLE) {
+        if (result) *result = local_result;
+        return 1;
+    }
+
+    local_result.target_free_bytes = storage_target_cleanup_goal_bytes(
+        capacity, target.reserve_bytes, target.low_watermark_pct);
+    log_warn("Target pressure cleanup: target=%s (%s), pressure=%s, "
+             "available=%llu MB, goal=%llu MB",
+             target.name, target.uuid,
+             storage_target_pressure_name(local_result.initial_pressure),
+             (unsigned long long)(available / (1024ULL * 1024ULL)),
+             (unsigned long long)(local_result.target_free_bytes /
+                                  (1024ULL * 1024ULL)));
+
+    recording_metadata_t *batch = calloc(
+        MAX_RECORDINGS_PER_STREAM, sizeof(*batch));
+    if (!batch) {
+        if (result) *result = local_result;
+        return -1;
+    }
+
+    while (local_result.deleted_recordings < MAX_EMERGENCY_RECORDINGS &&
+           available < local_result.target_free_bytes) {
+        int remaining = MAX_EMERGENCY_RECORDINGS -
+            local_result.deleted_recordings;
+        int limit = remaining < MAX_RECORDINGS_PER_STREAM
+            ? remaining : MAX_RECORDINGS_PER_STREAM;
+        int count = get_recordings_for_pressure_cleanup_target(
+            target.uuid, batch, limit);
+        if (count <= 0) break;
+
+        int deleted_this_batch = 0;
+        for (int index = 0; index < count; index++) {
+            uint64_t freed = 0;
+            if (delete_pressure_recording_file_and_metadata(
+                    &batch[index], "Target pressure cleanup", &freed)) {
+                local_result.deleted_recordings++;
+                local_result.freed_bytes += freed;
+                deleted_this_batch++;
+            }
+            if ((local_result.deleted_recordings % 16) == 0 &&
+                current_free_pct_at(target.root_path, &available, NULL) >=
+                    0.0 &&
+                available >= local_result.target_free_bytes) {
+                break;
+            }
+        }
+        if (deleted_this_batch == 0 || count < limit) break;
+        memset(batch, 0,
+               (size_t)MAX_RECORDINGS_PER_STREAM * sizeof(*batch));
+        if (current_free_pct_at(target.root_path, &available, NULL) < 0.0) {
+            break;
+        }
+    }
+    free(batch);
+
+    (void)current_free_pct_at(target.root_path, &available, NULL);
+    local_result.available_bytes_after = available;
+    (void)db_storage_target_probe(target.uuid, false, NULL);
+    log_info("Target pressure cleanup complete: target=%s, deleted=%d, "
+             "freed=%llu MB, remaining=%llu MB",
+             target.name, local_result.deleted_recordings,
+             (unsigned long long)(local_result.freed_bytes /
+                                  (1024ULL * 1024ULL)),
+             (unsigned long long)(available / (1024ULL * 1024ULL)));
+    if (result) *result = local_result;
+    return 0;
+}
+
+static void cleanup_pressured_targets(void) {
+    int total = db_storage_target_count();
+    if (total <= 0 || total > STORAGE_TARGET_MAX_COUNT) return;
+    storage_target_t targets[STORAGE_TARGET_MAX_COUNT];
+    int count = db_storage_target_list(targets, STORAGE_TARGET_MAX_COUNT);
+    if (count < 0) return;
+    for (int index = 0; index < count; index++) {
+        if (!targets[index].enabled) continue;
+        storage_target_cleanup_result_t result;
+        (void)storage_cleanup_target_pressure(targets[index].uuid, &result);
+    }
+}
+
 /**
  * Emergency cleanup triggered by Critical/Emergency disk pressure
  * Deletes disk_pressure_eligible recordings starting with ephemeral tier
@@ -1098,7 +1257,7 @@ static void emergency_cleanup(bool aggressive) {
         return;
     }
 
-    int count = get_recordings_for_pressure_cleanup(recordings, max_to_delete);
+    int count = get_default_pressure_candidates(recordings, max_to_delete);
     if (count <= 0) {
         // The database path found nothing to delete (no eligible rows, or the
         // DB is unavailable/corrupt). Fall back to the filesystem reclaimer so a
@@ -1121,9 +1280,8 @@ static void emergency_cleanup(bool aggressive) {
         if (!unified_ctrl.running) break;  // Respect shutdown
 
         uint64_t freed_bytes = 0;
-        if (delete_recording_file_and_metadata(&recordings[i],
-                                              "Emergency cleanup",
-                                              &freed_bytes)) {
+        if (delete_pressure_recording_file_and_metadata(
+                &recordings[i], "Emergency cleanup", &freed_bytes)) {
             freed += freed_bytes;
             deleted++;
 
@@ -1213,12 +1371,16 @@ static void capacity_enforce_cycle(void) {
             uint64_t fb = 0;
             if (current_free_pct(&fb, NULL) >= 0.0 && fb >= target_free) break;
 
-            count = get_recordings_for_pressure_cleanup(batch, MAX_RECORDINGS_PER_STREAM);
+            count = get_default_pressure_candidates(
+                batch, MAX_RECORDINGS_PER_STREAM);
+            int deleted_this_batch = 0;
             for (int i = 0; i < count && unified_ctrl.running; i++) {
                 uint64_t freed_bytes = 0;
-                if (delete_recording_file_and_metadata(&batch[i], "Capacity enforcement", &freed_bytes)) {
+                if (delete_pressure_recording_file_and_metadata(
+                        &batch[i], "Capacity enforcement", &freed_bytes)) {
                     total_freed += freed_bytes;
                     total_deleted++;
+                    deleted_this_batch++;
                 }
                 if ((total_deleted % 32) == 0) {
                     uint64_t fb2 = 0;
@@ -1228,6 +1390,7 @@ static void capacity_enforce_cycle(void) {
                     }
                 }
             }
+            if (deleted_this_batch == 0) count = 0;
         } while (count == MAX_RECORDINGS_PER_STREAM);
         free(batch);
     }
@@ -1457,6 +1620,10 @@ static void* unified_storage_controller_func(void *arg) {
 
     // Initial heartbeat to establish baseline pressure
     heartbeat_check_disk_pressure();
+    if (db_storage_target_refresh_health() < 0) {
+        log_warn("Initial storage target health refresh failed");
+    }
+    cleanup_pressured_targets();
 
     // Reconcile recordings interrupted by an unclean shutdown (finalize survivors,
     // prune phantom rows). Done once on startup, off the main init path.
@@ -1494,6 +1661,7 @@ static void* unified_storage_controller_func(void *arg) {
         if (db_storage_target_refresh_health() < 0) {
             log_warn("Storage target health refresh failed");
         }
+        cleanup_pressured_targets();
         unified_ctrl.last_heartbeat = now;
 
         // Check if forced cleanup was requested

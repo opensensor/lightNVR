@@ -118,6 +118,28 @@ void test_forced_aggressive_cleanup_can_continue_when_initial_pressure_is_normal
                                                        true));
 }
 
+void test_target_pressure_uses_high_watermark_and_reserve(void) {
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_TARGET_PRESSURE_NORMAL,
+        storage_target_pressure_evaluate(1000, 101, 50, 90.0));
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_TARGET_PRESSURE_HIGH,
+        storage_target_pressure_evaluate(1000, 100, 50, 90.0));
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_TARGET_PRESSURE_RESERVE,
+        storage_target_pressure_evaluate(1000, 50, 50, 90.0));
+    TEST_ASSERT_EQUAL_INT(
+        STORAGE_TARGET_PRESSURE_UNAVAILABLE,
+        storage_target_pressure_evaluate(0, 0, 0, 90.0));
+}
+
+void test_target_cleanup_goal_restores_low_watermark_or_reserve(void) {
+    TEST_ASSERT_EQUAL_UINT64(
+        200, storage_target_cleanup_goal_bytes(1000, 50, 80.0));
+    TEST_ASSERT_EQUAL_UINT64(
+        300, storage_target_cleanup_goal_bytes(1000, 300, 80.0));
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -140,7 +162,8 @@ int main(void) {
     RUN_TEST(test_emergency_cleanup_continues_while_pressure_is_still_critical);
     RUN_TEST(test_emergency_cleanup_stops_once_pressure_recovers_below_critical);
     RUN_TEST(test_forced_aggressive_cleanup_can_continue_when_initial_pressure_is_normal);
+    RUN_TEST(test_target_pressure_uses_high_watermark_and_reserve);
+    RUN_TEST(test_target_cleanup_goal_restores_low_watermark_or_reserve);
 
     return UNITY_END();
 }
-

@@ -384,6 +384,58 @@ void test_pressure_cleanup_deprioritizes_overrides_and_detection_within_tier(voi
     TEST_ASSERT_EQUAL_STRING("/rec/pressure-important.mp4", out[3].file_path);
 }
 
+void test_pressure_cleanup_is_scoped_to_storage_target(void) {
+    const char *target_a = "11111111-1111-4111-8111-111111111111";
+    const char *target_b = "22222222-2222-4222-8222-222222222222";
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db,
+        "INSERT OR IGNORE INTO storage_targets"
+        "(uuid,name,target_type,root_path,enabled,is_default,storage_class,"
+        "high_watermark_pct,low_watermark_pct) VALUES"
+        "('11111111-1111-4111-8111-111111111111','Target A','filesystem',"
+        "'/tmp/pressure-a',1,0,'hot',90,80),"
+        "('22222222-2222-4222-8222-222222222222','Target B','filesystem',"
+        "'/tmp/pressure-b',1,0,'hot',90,80);",
+        NULL, NULL, NULL));
+
+    recording_metadata_t a = make_recording(
+        "cam-target-a", "/tmp/pressure-a/a.mp4", time(NULL) - 200,
+        "scheduled", false);
+    recording_metadata_t b = make_recording(
+        "cam-target-b", "/tmp/pressure-b/b.mp4", time(NULL) - 300,
+        "scheduled", false);
+    uint64_t a_id = add_recording_metadata(&a);
+    uint64_t b_id = add_recording_metadata(&b);
+    TEST_ASSERT_NOT_EQUAL(0, a_id);
+    TEST_ASSERT_NOT_EQUAL(0, b_id);
+
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        db, "UPDATE recordings SET storage_target_uuid=? WHERE id=?;",
+        -1, &statement, NULL));
+    sqlite3_bind_text(statement, 1, target_a, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(statement, 2, (sqlite3_int64)a_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    sqlite3_reset(statement);
+    sqlite3_clear_bindings(statement);
+    sqlite3_bind_text(statement, 1, target_b, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(statement, 2, (sqlite3_int64)b_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    sqlite3_finalize(statement);
+
+    recording_metadata_t out[4];
+    int count = get_recordings_for_pressure_cleanup_target(
+        target_a, out, 4);
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_UINT64(a_id, out[0].id);
+    TEST_ASSERT_EQUAL_STRING(target_a, out[0].storage_target_uuid);
+
+    count = get_recordings_for_pressure_cleanup_target(target_b, out, 4);
+    TEST_ASSERT_EQUAL_INT(1, count);
+    TEST_ASSERT_EQUAL_UINT64(b_id, out[0].id);
+}
+
 void test_delete_recording_removes_it(void) {
     time_t now = time(NULL);
     recording_metadata_t m = make_recording("cam1", "/rec/del.mp4",
@@ -434,6 +486,7 @@ int main(void) {
     RUN_TEST(test_tiered_retention_with_null_stream_name_includes_all_streams);
     RUN_TEST(test_pressure_cleanup_filters_and_orders_candidates);
     RUN_TEST(test_pressure_cleanup_deprioritizes_overrides_and_detection_within_tier);
+    RUN_TEST(test_pressure_cleanup_is_scoped_to_storage_target);
     RUN_TEST(test_delete_recording_removes_it);
 
     int result = UNITY_END();
@@ -443,4 +496,3 @@ int main(void) {
 
     return result;
 }
-

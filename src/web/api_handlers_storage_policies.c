@@ -10,8 +10,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "core/authorization.h"
+#include "core/camera_selector.h"
+#include "database/db_fleet_query.h"
 #include "database/db_storage_policies.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
@@ -237,6 +240,278 @@ static void audit_policy(const http_request_t *req, const user_t *user,
                          const char *outcome) {
     audit_log_operation(req, user, "storage.configure", "storage_policy",
                         uuid, operation, outcome, NULL);
+}
+
+static bool policy_precedes(const storage_policy_t *left,
+                            const storage_policy_t *right) {
+    if (!right) return true;
+    if (left->priority != right->priority) {
+        return left->priority > right->priority;
+    }
+    int name_order = strcasecmp(left->name, right->name);
+    if (name_order != 0) return name_order < 0;
+    return strcmp(left->uuid, right->uuid) < 0;
+}
+
+static cJSON *preview_winner_json(const storage_policy_t *policy,
+                                  const storage_policy_t *draft) {
+    if (!policy) return cJSON_CreateNull();
+    cJSON *winner = cJSON_CreateObject();
+    if (!winner) return NULL;
+    bool is_draft = policy == draft;
+    cJSON_AddBoolToObject(winner, "draft", is_draft);
+    if (policy->uuid[0]) {
+        cJSON_AddStringToObject(winner, "policy_uuid", policy->uuid);
+    } else {
+        cJSON_AddNullToObject(winner, "policy_uuid");
+    }
+    cJSON_AddStringToObject(winner, "policy_name", policy->name);
+    cJSON_AddNumberToObject(winner, "priority", policy->priority);
+    cJSON_AddStringToObject(winner, "primary_target_uuid",
+                            policy->primary_target_uuid);
+    cJSON_AddStringToObject(winner, "fallback_mode",
+                            policy->fallback_mode);
+    if (policy->fallback_target_uuid[0]) {
+        cJSON_AddStringToObject(winner, "fallback_target_uuid",
+                                policy->fallback_target_uuid);
+    } else {
+        cJSON_AddNullToObject(winner, "fallback_target_uuid");
+    }
+    return winner;
+}
+
+void handle_post_storage_policy_preview(const http_request_t *req,
+                                        http_response_t *res) {
+    user_t user;
+    if (!authorize_storage(req, res, &user)) return;
+    cJSON *body = httpd_parse_json_body(req);
+    if (!cJSON_IsObject(body)) {
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 400,
+                                     "Request body must be a JSON object");
+        return;
+    }
+
+    storage_policy_t draft;
+    memset(&draft, 0, sizeof(draft));
+    draft.enabled = true;
+    draft.priority = 100;
+    safe_strcpy(draft.fallback_mode, "default",
+                sizeof(draft.fallback_mode), 0);
+    bool editing = false;
+    const cJSON *uuid_item = cJSON_GetObjectItemCaseSensitive(body, "uuid");
+    if (uuid_item) {
+        if (!cJSON_IsString(uuid_item) || !uuid_item->valuestring ||
+            !lightnvr_uuid_is_valid(uuid_item->valuestring)) {
+            cJSON_Delete(body);
+            http_response_set_json_error(res, 400,
+                                         "uuid must be a valid policy UUID");
+            return;
+        }
+        db_storage_policy_result_t loaded = db_storage_policy_get(
+            uuid_item->valuestring, &draft);
+        if (loaded != DB_STORAGE_POLICY_OK) {
+            cJSON_Delete(body);
+            set_db_error(res, loaded, NULL);
+            return;
+        }
+        editing = true;
+    }
+
+    int64_t revision = 0;
+    char validation_error[STORAGE_TARGET_ERROR_MAX] = {0};
+    if (!apply_body(body, &draft, !editing, &revision, validation_error, res)) {
+        cJSON_Delete(body);
+        return;
+    }
+    cJSON_Delete(body);
+
+    cJSON *draft_selector_json = cJSON_Parse(draft.selector_json);
+    char selector_error[FLEET_SELECTOR_ERROR_MAX] = {0};
+    fleet_selector_t *draft_selector = fleet_selector_parse(
+        draft_selector_json, selector_error, sizeof(selector_error));
+    cJSON_Delete(draft_selector_json);
+    if (!draft_selector) {
+        http_response_set_json_error(res, 400,
+            selector_error[0] ? selector_error : "Invalid selector");
+        return;
+    }
+
+    int total = db_storage_policy_count();
+    storage_policy_t *policies = total > 0 && total <= STORAGE_POLICY_MAX_COUNT
+        ? calloc((size_t)total, sizeof(*policies)) : NULL;
+    fleet_selector_t **selectors = total > 0 && total <= STORAGE_POLICY_MAX_COUNT
+        ? calloc((size_t)total, sizeof(*selectors)) : NULL;
+    int *overlaps = total > 0 && total <= STORAGE_POLICY_MAX_COUNT
+        ? calloc((size_t)total, sizeof(*overlaps)) : NULL;
+    if (total < 0 || total > STORAGE_POLICY_MAX_COUNT ||
+        (total > 0 && (!policies || !selectors || !overlaps))) {
+        fleet_selector_free(draft_selector);
+        free(policies);
+        free(selectors);
+        free(overlaps);
+        http_response_set_json_error(res, 500,
+                                     "Failed to load storage policies");
+        return;
+    }
+    int policy_count = total > 0
+        ? db_storage_policy_list(policies, total, true) : 0;
+    if (policy_count < 0) {
+        fleet_selector_free(draft_selector);
+        free(policies);
+        free(selectors);
+        free(overlaps);
+        http_response_set_json_error(res, 500,
+                                     "Failed to load storage policies");
+        return;
+    }
+    for (int index = 0; index < policy_count; index++) {
+        if (editing && strcmp(policies[index].uuid, draft.uuid) == 0) continue;
+        cJSON *json = cJSON_Parse(policies[index].selector_json);
+        selectors[index] = json
+            ? fleet_selector_parse(json, NULL, 0) : NULL;
+        cJSON_Delete(json);
+        if (!selectors[index]) {
+            for (int cleanup = 0; cleanup < policy_count; cleanup++) {
+                fleet_selector_free(selectors[cleanup]);
+            }
+            fleet_selector_free(draft_selector);
+            free(policies);
+            free(selectors);
+            free(overlaps);
+            http_response_set_json_error(
+                res, 500, "Failed to compile existing storage policies");
+            return;
+        }
+    }
+
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    if (db_fleet_camera_load(&cameras, &camera_count) != 0) {
+        for (int index = 0; index < policy_count; index++) {
+            fleet_selector_free(selectors[index]);
+        }
+        fleet_selector_free(draft_selector);
+        free(policies);
+        free(selectors);
+        free(overlaps);
+        http_response_set_json_error(res, 500,
+                                     "Failed to load camera inventory");
+        return;
+    }
+    fleet_camera_enrich_runtime_health(cameras, camera_count);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *samples = cJSON_CreateArray();
+    cJSON *conflicts = cJSON_CreateArray();
+    if (!root || !samples || !conflicts) {
+        cJSON_Delete(root);
+        cJSON_Delete(samples);
+        cJSON_Delete(conflicts);
+        root = NULL;
+    } else {
+        cJSON_AddItemToObject(root, "sample", samples);
+        cJSON_AddItemToObject(root, "conflicts", conflicts);
+    }
+
+    int matched = 0;
+    int effective = 0;
+    int conflict_cameras = 0;
+    for (int camera_index = 0; root && camera_index < camera_count;
+         camera_index++) {
+        if (!fleet_selector_matches(draft_selector, &cameras[camera_index],
+                                    NULL)) continue;
+        matched++;
+        const storage_policy_t *winner = draft.enabled ? &draft : NULL;
+        int camera_overlaps = 0;
+        for (int policy_index = 0; policy_index < policy_count;
+             policy_index++) {
+            if (!selectors[policy_index] ||
+                !fleet_selector_matches(selectors[policy_index],
+                                        &cameras[camera_index], NULL)) {
+                continue;
+            }
+            if (draft.enabled) {
+                overlaps[policy_index]++;
+                camera_overlaps++;
+            }
+            if (policy_precedes(&policies[policy_index], winner)) {
+                winner = &policies[policy_index];
+            }
+        }
+        if (camera_overlaps > 0) conflict_cameras++;
+        if (winner == &draft) effective++;
+        if (cJSON_GetArraySize(samples) < 50) {
+            cJSON *sample = cJSON_CreateObject();
+            cJSON *winner_json = preview_winner_json(winner, &draft);
+            if (!sample || !winner_json) {
+                cJSON_Delete(sample);
+                cJSON_Delete(winner_json);
+                cJSON_Delete(root);
+                root = NULL;
+                break;
+            }
+            cJSON_AddStringToObject(sample, "camera_uuid",
+                                    cameras[camera_index].camera_uuid);
+            cJSON_AddStringToObject(sample, "camera_name",
+                                    cameras[camera_index].name);
+            cJSON_AddNumberToObject(sample, "overlapping_policy_count",
+                                    camera_overlaps);
+            cJSON_AddItemToObject(sample, "effective_policy", winner_json);
+            cJSON_AddItemToArray(samples, sample);
+        }
+    }
+
+    int conflict_policy_count = 0;
+    for (int index = 0; root && index < policy_count; index++) {
+        if (overlaps[index] <= 0) continue;
+        cJSON *conflict = cJSON_CreateObject();
+        if (!conflict) {
+            cJSON_Delete(root);
+            root = NULL;
+            break;
+        }
+        cJSON_AddStringToObject(conflict, "policy_uuid",
+                                policies[index].uuid);
+        cJSON_AddStringToObject(conflict, "policy_name",
+                                policies[index].name);
+        cJSON_AddNumberToObject(conflict, "priority",
+                                policies[index].priority);
+        cJSON_AddNumberToObject(conflict, "overlap_camera_count",
+                                overlaps[index]);
+        cJSON_AddBoolToObject(conflict, "draft_precedes",
+                              policy_precedes(&draft, &policies[index]));
+        cJSON_AddItemToArray(conflicts, conflict);
+        conflict_policy_count++;
+    }
+    if (root) {
+        cJSON_AddBoolToObject(root, "draft_enabled", draft.enabled);
+        cJSON_AddNumberToObject(root, "matched_camera_count", matched);
+        cJSON_AddNumberToObject(root, "effective_camera_count", effective);
+        cJSON_AddNumberToObject(
+            root, "shadowed_camera_count",
+            draft.enabled ? matched - effective : 0);
+        cJSON_AddNumberToObject(root, "conflict_camera_count",
+                                conflict_cameras);
+        cJSON_AddNumberToObject(root, "conflict_policy_count",
+                                conflict_policy_count);
+        cJSON_AddBoolToObject(root, "sample_truncated", matched > 50);
+    }
+
+    free(cameras);
+    for (int index = 0; index < policy_count; index++) {
+        fleet_selector_free(selectors[index]);
+    }
+    fleet_selector_free(draft_selector);
+    free(policies);
+    free(selectors);
+    free(overlaps);
+    if (!root) {
+        http_response_set_json_error(res, 500,
+                                     "Failed to create policy preview");
+        return;
+    }
+    send_json(res, 200, root);
 }
 
 void handle_get_storage_policies(const http_request_t *req,

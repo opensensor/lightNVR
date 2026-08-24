@@ -1314,15 +1314,44 @@ parameter. The explicit probe performs a small temporary write, fsync, and
 unlink and then refreshes cached health.
 
 List and item responses include `health.status`, capacity, available and used
-bytes, last probe/success times, and the last error. They also include indexed
+bytes, `health.pressure`, `health.cleanup_target_bytes`, last probe/success
+times, and the last error. They also include indexed
 recording count/bytes maintained by SQLite triggers rather than scanning the
 recordings table. `health.duplicate_filesystem` warns when two roots have the
 same underlying device ID, preventing later capacity planning from counting one
 filesystem twice.
 
-This foundation does not redirect cameras merely because a target is added.
-Selector-driven camera placement, fallback, and per-target pressure cleanup are
-the next Storage 01 phase.
+An enabled target enters pressure cleanup at its high watermark or when reserved
+headroom is breached. Cleanup selects only complete, unprotected,
+pressure-eligible recordings assigned to that target and works back toward the
+low watermark (or reserve, whichever requires more free bytes). Cleanup is
+bounded per heartbeat and never borrows candidates from another target. The
+legacy global capacity and emergency paths are restricted to the default target.
+
+### Storage Placement Policies
+
+Storage placement policy endpoints also require `storage.configure`:
+
+```
+GET    /api/storage-policies
+POST   /api/storage-policies
+POST   /api/storage-policies/preview
+GET    /api/storage-policies/{policy_uuid}
+PUT    /api/storage-policies/{policy_uuid}
+DELETE /api/storage-policies/{policy_uuid}?revision={last_seen_revision}
+```
+
+Policies use a Fleet selector, integer priority, primary target, and an explicit
+`default`, named `target`, `pause`, or `fail` fallback. Higher priority wins;
+ties are stable by case-insensitive policy name and UUID. Placement is evaluated
+for each newly opened recording segment and does not move existing footage.
+
+The preview endpoint accepts the same draft as create. An edit draft also sends
+its `uuid` and `revision`. It does not mutate policy state. The response reports
+`matched_camera_count`, `effective_camera_count`, `shadowed_camera_count`, and
+conflicts grouped by existing policy, plus a bounded 50-camera sample showing the
+effective winning policy and target. This lets the editor expose overlap and
+effective precedence before save.
 
 ### Event Routes
 

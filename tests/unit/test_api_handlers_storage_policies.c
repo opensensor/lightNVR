@@ -15,6 +15,8 @@
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_streams.h"
+#include "database/db_storage_policies.h"
 #include "database/db_storage_targets.h"
 #include "unity.h"
 #include "utils/strings.h"
@@ -73,7 +75,7 @@ void setUp(void) {
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
         get_db_handle(),
         "DELETE FROM recordings;DELETE FROM storage_policies;"
-        "DELETE FROM storage_targets;DELETE FROM audit_events;",
+        "DELETE FROM streams;DELETE FROM storage_targets;DELETE FROM audit_events;",
         NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
         0, db_storage_target_bootstrap_default(default_root, default_uuid));
@@ -156,6 +158,80 @@ void test_policy_api_rejects_primary_as_named_fallback(void) {
     cJSON_Delete(json);
 }
 
+static void add_camera(const char *name) {
+    stream_config_t stream;
+    memset(&stream, 0, sizeof(stream));
+    safe_strcpy(stream.name, name, sizeof(stream.name), 0);
+    safe_strcpy(stream.url, "rtsp://camera.local/stream",
+                sizeof(stream.url), 0);
+    safe_strcpy(stream.codec, "h264", sizeof(stream.codec), 0);
+    stream.enabled = true;
+    stream.record = true;
+    stream.streaming_enabled = true;
+    stream.width = 1920;
+    stream.height = 1080;
+    stream.fps = 25;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&stream));
+}
+
+void test_policy_preview_reports_conflicts_and_effective_precedence(void) {
+    add_camera("lobby-east");
+    add_camera("lobby-west");
+    char body[1400];
+    snprintf(body, sizeof(body),
+             "{\"name\":\"Existing higher rule\",\"enabled\":true,"
+             "\"priority\":200,\"selector\":{\"version\":1,"
+             "\"expression\":{\"op\":\"all\"}},"
+             "\"primary_target_uuid\":\"%s\","
+             "\"fallback_mode\":\"default\","
+             "\"fallback_target_uuid\":null}", primary_target.uuid);
+    cJSON *json = call(handle_post_storage_policy, HTTP_METHOD_POST,
+                       "/api/storage-policies", NULL, body, 201);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"name\":\"Draft lower rule\",\"enabled\":true,"
+             "\"priority\":100,\"selector\":{\"version\":1,"
+             "\"expression\":{\"op\":\"all\"}},"
+             "\"primary_target_uuid\":\"%s\","
+             "\"fallback_mode\":\"default\","
+             "\"fallback_target_uuid\":null}", primary_target.uuid);
+    json = call(handle_post_storage_policy_preview, HTTP_METHOD_POST,
+                "/api/storage-policies/preview", NULL, body, 200);
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetObjectItemCaseSensitive(
+                                 json, "matched_camera_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetObjectItemCaseSensitive(
+                                 json, "effective_camera_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetObjectItemCaseSensitive(
+                                 json, "shadowed_camera_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItemCaseSensitive(
+                                 json, "conflict_policy_count")->valueint);
+    cJSON *conflict = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(json, "conflicts"), 0);
+    TEST_ASSERT_EQUAL_STRING(
+        "Existing higher rule",
+        cJSON_GetObjectItemCaseSensitive(conflict, "policy_name")->valuestring);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        conflict, "draft_precedes")));
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"name\":\"Draft higher rule\",\"enabled\":true,"
+             "\"priority\":300,\"selector\":{\"version\":1,"
+             "\"expression\":{\"op\":\"all\"}},"
+             "\"primary_target_uuid\":\"%s\","
+             "\"fallback_mode\":\"default\","
+             "\"fallback_target_uuid\":null}", primary_target.uuid);
+    json = call(handle_post_storage_policy_preview, HTTP_METHOD_POST,
+                "/api/storage-policies/preview", NULL, body, 200);
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetObjectItemCaseSensitive(
+                                 json, "effective_camera_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(0, cJSON_GetObjectItemCaseSensitive(
+                                 json, "shadowed_camera_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(1, db_storage_policy_count());
+    cJSON_Delete(json);
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(primary_root));
@@ -167,6 +243,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_policy_api_crud_and_revision_guard);
     RUN_TEST(test_policy_api_rejects_primary_as_named_fallback);
+    RUN_TEST(test_policy_preview_reports_conflicts_and_effective_precedence);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

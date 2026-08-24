@@ -311,6 +311,8 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_get_storage_policies);
     http_server_register_handler(server, "/api/storage-policies", "POST",
                                  handle_post_storage_policy);
+    http_server_register_handler(server, "/api/storage-policies/preview", "POST",
+                                 handle_post_storage_policy_preview);
     http_server_register_handler(server, "/api/storage-policies/#", "GET",
                                  handle_get_storage_policy);
     http_server_register_handler(server, "/api/storage-policies/#", "PUT",

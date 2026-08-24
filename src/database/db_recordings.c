@@ -2138,8 +2138,9 @@ int get_recordings_for_tiered_retention(const char *stream_name,
  * lower retention tier first, then no manual override, then non-detection,
  * then oldest first; protected recordings are excluded.
  */
-int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
-                                        int max_count) {
+static int get_pressure_cleanup_recordings(
+    const char *storage_target_uuid, recording_metadata_t *recordings,
+    int max_count) {
     int rc;
     sqlite3_stmt *stmt;
     int count = 0;
@@ -2152,18 +2153,21 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
         return -1;
     }
 
-    if (!recordings || max_count <= 0) {
+    if (!recordings || max_count <= 0 ||
+        (storage_target_uuid && storage_target_uuid[0] == '\0')) {
         log_error("Invalid parameters for get_recordings_for_pressure_cleanup");
         return -1;
     }
 
     pthread_mutex_lock(db_mutex);
 
-    const char *sql =
+    const char *global_sql =
         "SELECT id, stream_name, file_path, start_time, end_time, "
         "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
         "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
-        "schedule_restricted "
+        "schedule_restricted, COALESCE(storage_target_uuid,''), "
+        "COALESCE(object_key,''), COALESCE(placement_reason,''), "
+        "COALESCE(storage_policy_version,0) "
         "FROM recordings "
         "WHERE protected = 0 "
         "AND disk_pressure_eligible = 1 "
@@ -2173,15 +2177,39 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
         "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
         "start_time ASC "
         "LIMIT ?;";
+    const char *target_sql =
+        "SELECT id, stream_name, file_path, start_time, end_time, "
+        "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
+        "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
+        "schedule_restricted, COALESCE(storage_target_uuid,''), "
+        "COALESCE(object_key,''), COALESCE(placement_reason,''), "
+        "COALESCE(storage_policy_version,0) "
+        "FROM recordings "
+        "WHERE protected = 0 "
+        "AND disk_pressure_eligible = 1 "
+        "AND is_complete = 1 "
+        "AND storage_target_uuid = ? "
+        "ORDER BY retention_tier DESC, "
+        "CASE WHEN retention_override_days IS NULL OR retention_override_days < 0 THEN 0 ELSE 1 END ASC, "
+        "CASE WHEN trigger_type = 'detection' THEN 1 ELSE 0 END ASC, "
+        "start_time ASC "
+        "LIMIT ?;";
 
-    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    rc = sqlite3_prepare_v2(db, storage_target_uuid ? target_sql : global_sql,
+                            -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare pressure cleanup query: %s", sqlite3_errmsg(db));
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
-    sqlite3_bind_int(stmt, 1, max_count);
+    int limit_parameter = 1;
+    if (storage_target_uuid) {
+        sqlite3_bind_text(stmt, 1, storage_target_uuid, -1,
+                          SQLITE_TRANSIENT);
+        limit_parameter = 2;
+    }
+    sqlite3_bind_int(stmt, limit_parameter, max_count);
 
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_count) {
         recordings[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
@@ -2228,6 +2256,22 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
         recordings[count].schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
             ? (sqlite3_column_int(stmt, 16) != 0) : -1;
 
+        const char *target_uuid = (const char *)sqlite3_column_text(stmt, 17);
+        const char *object_key = (const char *)sqlite3_column_text(stmt, 18);
+        const char *placement_reason =
+            (const char *)sqlite3_column_text(stmt, 19);
+        safe_strcpy(recordings[count].storage_target_uuid,
+                    target_uuid ? target_uuid : "",
+                    sizeof(recordings[count].storage_target_uuid), 0);
+        safe_strcpy(recordings[count].object_key,
+                    object_key ? object_key : "",
+                    sizeof(recordings[count].object_key), 0);
+        safe_strcpy(recordings[count].placement_reason,
+                    placement_reason ? placement_reason : "",
+                    sizeof(recordings[count].placement_reason), 0);
+        recordings[count].storage_policy_version =
+            sqlite3_column_int64(stmt, 20);
+
         count++;
     }
 
@@ -2236,6 +2280,18 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
 
     log_info("Found %d recordings eligible for disk pressure cleanup", count);
     return count;
+}
+
+int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
+                                        int max_count) {
+    return get_pressure_cleanup_recordings(NULL, recordings, max_count);
+}
+
+int get_recordings_for_pressure_cleanup_target(
+    const char *storage_target_uuid, recording_metadata_t *recordings,
+    int max_count) {
+    return get_pressure_cleanup_recordings(storage_target_uuid, recordings,
+                                           max_count);
 }
 
 /**

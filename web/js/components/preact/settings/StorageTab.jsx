@@ -38,6 +38,13 @@ function statusClass(status) {
   return 'bg-muted text-muted-foreground';
 }
 
+function pressureClass(pressure) {
+  if (pressure === 'reserve') return 'badge-danger';
+  if (pressure === 'high') return 'badge-warning';
+  if (pressure === 'normal') return 'badge-success';
+  return 'bg-muted text-muted-foreground';
+}
+
 function targetToEditor(target) {
   return {
     uuid: target.uuid,
@@ -216,6 +223,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
                     <h4 class="font-semibold">{target.name}</h4>
                     {target.is_default && <span class="badge-info rounded-full px-2 py-0.5 text-xs font-semibold">{t('settings.storageTargets.default')}</span>}
                     <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass(health.status)}`}>{health.status || 'unknown'}</span>
+                    <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${pressureClass(health.pressure)}`}>{t(`settings.storageTargets.pressure.${health.pressure || 'unavailable'}`)}</span>
                     <span class="rounded-full bg-muted px-2 py-0.5 text-xs">{target.storage_class}</span>
                   </div>
                   <p class="font-mono text-xs break-all mt-1 text-muted-foreground">{target.root_path}</p>
@@ -227,6 +235,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.reserve')}</dt><dd>{formatBytes(target.reserve_bytes)}</dd></div>
                   </dl>
                   {health.duplicate_filesystem && <p class="text-xs text-amber-700 dark:text-amber-300 mt-2">{t('settings.storageTargets.duplicateFilesystem')}</p>}
+                  {(health.pressure === 'high' || health.pressure === 'reserve') && <p class="text-xs text-amber-700 dark:text-amber-300 mt-2">{t('settings.storageTargets.cleanupActive', { target: formatBytes(health.cleanup_target_bytes) })}</p>}
                   {health.last_error && <p class="text-xs text-[hsl(var(--danger))] mt-2">{health.last_error}</p>}
                 </div>
                 {canModifySettings && <div class="flex flex-wrap gap-2 xl:justify-end">
@@ -243,7 +252,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   );
 }
 
-function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCancel, onSave, busy, locations, tags, t }) {
+function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }) {
   const set = (key, next) => onChange({ ...value, [key]: next });
   const fallbackTargets = targets.filter((target) => target.uuid !== value.primary_target_uuid);
   const invalidFallback = value.fallback_mode === 'target' && !value.fallback_target_uuid;
@@ -260,7 +269,14 @@ function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCan
       </div>
       <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
       {value.selector_error && <p class="text-sm text-[hsl(var(--danger))]">{value.selector_error}</p>}
-      <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" onClick={onCancel} disabled={busy}>{t('common.cancel')}</button><button type="button" class="btn-primary" onClick={onSave} disabled={busy || !value.name.trim() || !value.primary_target_uuid || invalidFallback || !!value.selector_error || !value.selector}>{busy ? t('common.saving') : t('common.saveChanges')}</button></div>
+      {value.preview && <div class={`rounded-md border px-3 py-3 text-sm ${value.preview.conflict_policy_count > 0 ? 'border-amber-400/70 bg-amber-50/70 dark:bg-amber-950/20' : 'border-emerald-400/60 bg-emerald-50/70 dark:bg-emerald-950/20'}`}>
+        <p class="font-semibold">{t('settings.storagePolicies.previewSummary', { matched: value.preview.matched_camera_count, effective: value.preview.effective_camera_count })}</p>
+        {value.preview.shadowed_camera_count > 0 && <p class="mt-1">{t('settings.storagePolicies.previewShadowed', { count: value.preview.shadowed_camera_count })}</p>}
+        {value.preview.conflicts?.length > 0 && <ul class="list-disc pl-5 mt-2 space-y-1">{value.preview.conflicts.map((conflict) => <li key={conflict.policy_uuid}>{t(conflict.draft_precedes ? 'settings.storagePolicies.previewWins' : 'settings.storagePolicies.previewLoses', { policy: conflict.policy_name, count: conflict.overlap_camera_count, priority: conflict.priority })}</li>)}</ul>}
+        {value.preview.matched_camera_count === 0 && <p class="mt-1 text-amber-800 dark:text-amber-200">{t('settings.storagePolicies.previewNoMatches')}</p>}
+      </div>}
+      {!value.preview && <p class="text-xs text-muted-foreground">{t('settings.storagePolicies.previewRequired')}</p>}
+      <div class="flex flex-wrap justify-end gap-2"><button type="button" class="btn-secondary" onClick={onCancel} disabled={busy}>{t('common.cancel')}</button><button type="button" class="btn-secondary" onClick={onPreview} disabled={busy || !value.name.trim() || !value.primary_target_uuid || invalidFallback || !!value.selector_error || !value.selector}>{previewing ? t('settings.storagePolicies.previewing') : t('settings.storagePolicies.preview')}</button><button type="button" class="btn-primary" onClick={onSave} disabled={busy || !value.preview || !value.name.trim() || !value.primary_target_uuid || invalidFallback || !!value.selector_error || !value.selector}>{saving ? t('common.saving') : t('common.saveChanges')}</button></div>
     </div>
   );
 }
@@ -276,21 +292,42 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
   const targets = targetsQuery.data?.targets || [];
   const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
   const onSelectorChange = useCallback((selector, error) => {
-    setEditor((current) => current ? { ...current, selector, selector_error: error } : current);
+    setEditor((current) => current ? { ...current, selector, selector_error: error, preview: null, preview_key: '', preview_request_key: '' } : current);
   }, []);
+  const updateEditor = useCallback((next) => setEditor({ ...next, preview: null, preview_key: '', preview_request_key: '' }), []);
 
-  const openNew = () => setEditor({ name: '', enabled: true, priority: '100', selector: ALL_SELECTOR, selector_error: '', primary_target_uuid: targets.find((target) => target.is_default)?.uuid || targets[0]?.uuid || '', fallback_mode: 'default', fallback_target_uuid: '' });
-  const openEdit = (policy) => setEditor({ ...policy, priority: String(policy.priority), fallback_target_uuid: policy.fallback_target_uuid || '', selector_error: '' });
-  const savePolicy = async () => {
+  const openNew = () => setEditor({ name: '', enabled: true, priority: '100', selector: ALL_SELECTOR, selector_error: '', primary_target_uuid: targets.find((target) => target.is_default)?.uuid || targets[0]?.uuid || '', fallback_mode: 'default', fallback_target_uuid: '', preview: null });
+  const openEdit = (policy) => setEditor({ ...policy, priority: String(policy.priority), fallback_target_uuid: policy.fallback_target_uuid || '', selector_error: '', preview: null });
+  const policyPayload = () => {
     const priority = Number(editor.priority);
     if (!Number.isInteger(priority) || priority < -1000000 || priority > 1000000) {
       showStatusMessage(t('settings.storagePolicies.invalidPriority'), 'error');
-      return;
+      return null;
     }
+    const payload = { name: editor.name.trim(), enabled: editor.enabled, priority, selector: editor.selector, primary_target_uuid: editor.primary_target_uuid, fallback_mode: editor.fallback_mode, fallback_target_uuid: editor.fallback_mode === 'target' ? editor.fallback_target_uuid : null };
+    if (editor.uuid) { payload.uuid = editor.uuid; payload.revision = editor.revision; }
+    return payload;
+  };
+  const previewPolicy = async () => {
+    const payload = policyPayload();
+    if (!payload) return;
+    const requestKey = JSON.stringify(payload);
+    setEditor((current) => current ? { ...current, preview: null, preview_key: '', preview_request_key: requestKey } : current);
+    setBusyKey('preview');
+    try {
+      const preview = await fetchJSON('/api/storage-policies/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      setEditor((current) => current?.preview_request_key === requestKey ? { ...current, preview, preview_key: requestKey, preview_request_key: '' } : current);
+    } catch (requestError) {
+      setEditor((current) => current?.preview_request_key === requestKey ? { ...current, preview_request_key: '' } : current);
+      showStatusMessage(requestError.message, 'error', 7000);
+    } finally { setBusyKey(''); }
+  };
+  const savePolicy = async () => {
+    const payload = policyPayload();
+    if (!payload || !editor.preview || editor.preview_key !== JSON.stringify(payload)) return;
     setBusyKey(editor.uuid || 'new');
     try {
-      const payload = { name: editor.name.trim(), enabled: editor.enabled, priority, selector: editor.selector, primary_target_uuid: editor.primary_target_uuid, fallback_mode: editor.fallback_mode, fallback_target_uuid: editor.fallback_mode === 'target' ? editor.fallback_target_uuid : null };
-      if (editor.uuid) payload.revision = editor.revision;
+      delete payload.uuid;
       await fetchJSON(editor.uuid ? `/api/storage-policies/${encodeURIComponent(editor.uuid)}` : '/api/storage-policies', { method: editor.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
       await policiesQuery.refetch();
       setEditor(null);
@@ -315,7 +352,7 @@ function StoragePoliciesPanel({ canModifySettings, t }) {
   return (
     <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storagePolicies.title')}>
       <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storagePolicies.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePolicies.description')}</p></div>{canModifySettings && <button type="button" class="btn-primary shrink-0" onClick={openNew} disabled={!!editor || targets.length === 0}>{t('settings.storagePolicies.add')}</button>}</div>
-      {editor && <StoragePolicyEditor value={editor} targets={targets} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onChange={setEditor} onSelectorChange={onSelectorChange} onCancel={() => setEditor(null)} onSave={savePolicy} busy={busyKey === (editor.uuid || 'new')} t={t} />}
+      {editor && <StoragePolicyEditor value={editor} targets={targets} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onChange={updateEditor} onSelectorChange={onSelectorChange} onCancel={() => setEditor(null)} onPreview={previewPolicy} onSave={savePolicy} busy={!!busyKey} previewing={busyKey === 'preview'} saving={busyKey === (editor.uuid || 'new')} t={t} />}
       {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
       {error && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error.message}</p><button type="button" class="btn-secondary mt-3" onClick={() => Promise.all([policiesQuery.refetch(), targetsQuery.refetch(), locationsQuery.refetch(), tagsQuery.refetch()])}>{t('common.retry')}</button></div>}
       {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => deletePolicy(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}

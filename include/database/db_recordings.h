@@ -299,6 +299,20 @@ int get_recordings_for_pressure_cleanup(recording_metadata_t *recordings,
                                         int max_count);
 
 /**
+ * Get pressure-cleanup candidates belonging to one storage target.
+ * Ordering and protection rules are identical to the global compatibility
+ * query, but candidates from every other target are excluded.
+ *
+ * @param storage_target_uuid Target whose recordings may be returned
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @return Number of recordings found, or -1 on error
+ */
+int get_recordings_for_pressure_cleanup_target(
+    const char *storage_target_uuid, recording_metadata_t *recordings,
+    int max_count);
+
+/**
  * Get recordings still marked incomplete (is_complete = 0) and older than
  * older_than_seconds — i.e. recordings interrupted by an unclean shutdown.
  * The caller inspects the on-disk file to finalize or prune each one.
