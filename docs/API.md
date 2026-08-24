@@ -1522,6 +1522,20 @@ Authenticates a user and creates a session.
 }
 ```
 
+**Success Response:**
+```json
+{
+  "success": true,
+  "redirect": "/index.html",
+  "must_change_password": false
+}
+```
+
+On a fresh installation created with the fallback `admin` password,
+`must_change_password` is `true`. That password-authenticated session can only read
+`/api/auth/verify` and change its own password until the replacement succeeds. MFA is
+deferred until the next login. Demo mode and API-key authentication are unaffected.
+
 #### Login with TOTP
 
 ```
@@ -1554,6 +1568,9 @@ GET /api/auth/verify
 ```
 
 Verifies that the current session is valid.
+
+The response includes `must_change_password`, allowing the blocking first-login flow to
+recover safely after a refresh.
 
 ### User Management
 

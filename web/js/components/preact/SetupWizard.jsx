@@ -62,7 +62,7 @@ function WelcomeStep() {
         {[
           '📁  Storage path & size limits',
           '⚡  Performance limits for your camera count',
-          '🔒  Admin password reminder',
+          '🔒  Secure administrator sign-in',
         ].map(item => (
           <li key={item} class="flex items-center gap-2">{item}</li>
         ))}
@@ -184,10 +184,6 @@ function CompleteStep({ saved, restartRequired }) {
           Restart before adding more cameras or expecting the new capacity limit to apply.
         </div>
       )}
-      <div class="rounded-lg border border-blue-400 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 p-3 text-sm">
-        🔒 <strong>Security reminder:</strong> Make sure to change the default admin
-        password in the <strong>Users</strong> section if you haven't already.
-      </div>
     </div>
   );
 }

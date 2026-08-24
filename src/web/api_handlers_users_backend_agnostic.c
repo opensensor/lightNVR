@@ -44,6 +44,7 @@ static cJSON *user_to_json(const user_t *user, int include_api_key) {
     cJSON_AddNumberToObject(json, "last_login", (double)user->last_login);
     cJSON_AddBoolToObject(json, "is_active", user->is_active);
     cJSON_AddBoolToObject(json, "password_change_locked", user->password_change_locked);
+    cJSON_AddBoolToObject(json, "must_change_password", user->must_change_password);
     cJSON_AddBoolToObject(json, "totp_enabled", user->totp_enabled);
     cJSON_AddStringToObject(
         json, "authorization_mode",
@@ -74,12 +75,14 @@ static int prepare_user_select_stmt(sqlite3 *db, const char *suffix, sqlite3_stm
     bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
     bool has_allowed_login_cidrs = cached_column_exists("users", "allowed_login_cidrs");
     bool has_authorization_mode = cached_column_exists("users", "authorization_mode");
+    bool has_must_change_password = cached_column_exists("users", "must_change_password");
 
     char sql[768];
     int written = snprintf(sql, sizeof(sql),
                            "SELECT id, username, email, role, api_key, created_at, "
-                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s, %s "
+                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s, %s, %s "
                            "FROM users %s;",
+                           has_must_change_password ? "must_change_password" : "0",
                            has_totp ? "totp_enabled" : "0",
                            has_allowed_tags ? "allowed_tags" : "NULL",
                            has_allowed_login_cidrs ? "allowed_login_cidrs" : "NULL",
@@ -115,22 +118,23 @@ static void populate_user_from_stmt(sqlite3_stmt *stmt, user_t *user) {
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
-    user->totp_enabled = sqlite3_column_int(stmt, 10) != 0;
+    user->must_change_password = sqlite3_column_int(stmt, 10) != 0;
+    user->totp_enabled = sqlite3_column_int(stmt, 11) != 0;
 
-    const char *allowed_tags = (const char *)sqlite3_column_text(stmt, 11);
+    const char *allowed_tags = (const char *)sqlite3_column_text(stmt, 12);
     if (allowed_tags && allowed_tags[0] != '\0') {
         safe_strcpy(user->allowed_tags, allowed_tags, sizeof(user->allowed_tags), 0);
         user->has_tag_restriction = true;
     }
 
-    const char *allowed_login_cidrs = (const char *)sqlite3_column_text(stmt, 12);
+    const char *allowed_login_cidrs = (const char *)sqlite3_column_text(stmt, 13);
     if (allowed_login_cidrs && allowed_login_cidrs[0] != '\0') {
         safe_strcpy(user->allowed_login_cidrs, allowed_login_cidrs, sizeof(user->allowed_login_cidrs), 0);
         user->has_login_cidr_restriction = true;
     }
 
     const char *authorization_mode =
-        (const char *)sqlite3_column_text(stmt, 13);
+        (const char *)sqlite3_column_text(stmt, 14);
     safe_strcpy(user->authorization_mode,
                 authorization_mode ? authorization_mode : "legacy",
                 sizeof(user->authorization_mode), 0);
@@ -903,8 +907,13 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
         return;
     }
 
-    // Non-admins must provide old password
-    if (!is_admin) {
+    // The forced first-login flow always verifies the credential that created
+    // the restricted session, even though the bootstrap account is an admin.
+    bool forced_own_change = current_user.must_change_password &&
+                             is_own_password && !g_config.demo_mode;
+
+    // Non-admins and forced first-login sessions must provide old password
+    if (!is_admin || forced_own_change) {
         if (!old_password_json || !cJSON_IsString(old_password_json)) {
             cJSON_Delete(json_req);
             http_response_set_json_error(res, 400, "Current password is required");
@@ -929,6 +938,10 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
         cJSON_Delete(json_req);
         http_response_set_json_error(res, 403, "Password changes are locked for this user");
         return;
+    } else if (rc == -3) {
+        cJSON_Delete(json_req);
+        http_response_set_json_error(res, 400, "New password cannot be the default admin password");
+        return;
     } else if (rc != 0) {
         cJSON_Delete(json_req);
         http_response_set_json_error(res, 500, "Failed to change password");
@@ -943,10 +956,17 @@ void handle_users_change_password(const http_request_t *req, http_response_t *re
     // Create JSON response
     cJSON *response = cJSON_CreateObject();
     cJSON_AddBoolToObject(response, "success", true);
+    cJSON_AddBoolToObject(response, "must_change_password", false);
 
     // Send response
     char *json_str = cJSON_PrintUnformatted(response);
     http_response_set_json(res, 200, json_str);
+    if (is_own_password) {
+        httpd_clear_session_cookie(res);
+    }
+    if (forced_own_change) {
+        httpd_clear_trusted_device_cookie(res);
+    }
 
     // Clean up
     free(json_str);

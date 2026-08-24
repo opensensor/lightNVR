@@ -1271,6 +1271,14 @@ static const char migration_0062_down[] =
     "DROP INDEX IF EXISTS idx_detections_camera_zone_time_id;\n"
     "DROP INDEX IF EXISTS idx_detections_camera_label_time_id;";
 
+static const char migration_0063_up[] =
+    "ALTER TABLE users "
+    "ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0 "
+    "CHECK (must_change_password IN (0, 1));";
+
+static const char migration_0063_down[] =
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1706,8 +1714,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0062_down,
         .is_embedded = true
     },
+    {
+        .version = "0063",
+        .description = "add_must_change_password",
+        .sql_up = migration_0063_up,
+        .sql_down = migration_0063_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 62
+#define EMBEDDED_MIGRATIONS_COUNT 63
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

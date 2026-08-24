@@ -20,6 +20,7 @@
 #include "utils/strings.h"
 #include "database/db_core.h"
 #include "database/db_auth.h"
+#include "core/config.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_auth_test.db"
 
@@ -29,9 +30,14 @@ static void clear_users(void) {
     sqlite3_exec(db, "DELETE FROM users WHERE username != 'admin';", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM sessions;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM trusted_devices;", NULL, NULL, NULL);
+    sqlite3_exec(db, "UPDATE users SET must_change_password = 0;", NULL, NULL, NULL);
 }
 
-void setUp(void)    { clear_users(); }
+void setUp(void) {
+    g_config.web_password[0] = '\0';
+    g_config.demo_mode = false;
+    clear_users();
+}
 void tearDown(void) {}
 
 /* db_auth_init creates default admin */
@@ -43,6 +49,42 @@ void test_auth_init_creates_admin(void) {
     rc = db_auth_get_user_by_username("admin", &user);
     TEST_ASSERT_EQUAL_INT(0, rc);
     TEST_ASSERT_EQUAL_INT(USER_ROLE_ADMIN, user.role);
+}
+
+void test_auth_init_flags_only_fresh_fallback_admin(void) {
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db, "DELETE FROM users WHERE username = 'admin';", NULL, NULL, NULL));
+
+    TEST_ASSERT_EQUAL_INT(0, db_auth_init());
+
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_username("admin", &user));
+    TEST_ASSERT_TRUE(user.must_change_password);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate("admin", "admin", NULL));
+
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db, "UPDATE users SET must_change_password = 0 WHERE username = 'admin';",
+        NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_init());
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_username("admin", &user));
+    TEST_ASSERT_FALSE(user.must_change_password);
+}
+
+void test_auth_init_configured_password_skips_requirement(void) {
+    sqlite3 *db = get_db_handle();
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
+        db, "DELETE FROM users WHERE username = 'admin';", NULL, NULL, NULL));
+    safe_strcpy(g_config.web_password, "operator-password",
+                sizeof(g_config.web_password), 0);
+
+    TEST_ASSERT_EQUAL_INT(0, db_auth_init());
+
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_username("admin", &user));
+    TEST_ASSERT_FALSE(user.must_change_password);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_authenticate("admin", "operator-password", NULL));
 }
 
 /* create_user and get_user_by_username round-trip */
@@ -91,6 +133,33 @@ void test_change_password(void) {
     /* Old password fails */
     rc = db_auth_authenticate("chgpwuser", "oldpass", NULL);
     TEST_ASSERT_NOT_EQUAL(0, rc);
+}
+
+void test_required_password_change_rejects_default_and_clears_on_success(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
+        "requiredpw", "oldpass", NULL, USER_ROLE_ADMIN, true, &uid));
+
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        db, "UPDATE users SET must_change_password = 1 WHERE id = ?;",
+        -1, &stmt, NULL));
+    sqlite3_bind_int64(stmt, 1, uid);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+
+    TEST_ASSERT_EQUAL_INT(-3, db_auth_change_password(uid, "admin"));
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(uid, &user));
+    TEST_ASSERT_TRUE(user.must_change_password);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate("requiredpw", "oldpass", NULL));
+
+    TEST_ASSERT_EQUAL_INT(0, db_auth_change_password(uid, "replacement1"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(uid, &user));
+    TEST_ASSERT_FALSE(user.must_change_password);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_authenticate("requiredpw", "replacement1", NULL));
 }
 
 /* create_session and validate_session */
@@ -419,10 +488,13 @@ int main(void) {
 
     UNITY_BEGIN();
     RUN_TEST(test_auth_init_creates_admin);
+    RUN_TEST(test_auth_init_flags_only_fresh_fallback_admin);
+    RUN_TEST(test_auth_init_configured_password_skips_requirement);
     RUN_TEST(test_create_and_get_user);
     RUN_TEST(test_authenticate_success);
     RUN_TEST(test_authenticate_wrong_password);
     RUN_TEST(test_change_password);
+    RUN_TEST(test_required_password_change_rejects_default_and_clears_on_success);
     RUN_TEST(test_create_and_validate_session);
     RUN_TEST(test_validate_session_throttles_tracking_updates);
     RUN_TEST(test_validate_session_updates_client_context_when_changed);
@@ -440,4 +512,3 @@ int main(void) {
     unlink(TEST_DB_PATH);
     return result;
 }
-

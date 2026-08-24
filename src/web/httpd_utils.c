@@ -356,6 +356,26 @@ void httpd_clear_trusted_device_cookie(http_response_t *res) {
                              "trusted_device=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
 }
 
+static bool request_allowed_during_required_password_change(
+    const http_request_t *req, const user_t *user) {
+    if (!req || !user || !user->must_change_password || g_config.demo_mode) {
+        return true;
+    }
+
+    if (req->method == HTTP_METHOD_GET &&
+        strcmp(req->path, "/api/auth/verify") == 0) {
+        return true;
+    }
+
+    char password_path[128];
+    int written = snprintf(password_path, sizeof(password_path),
+                           "/api/auth/users/%lld/password",
+                           (long long)user->id);
+    return written > 0 && (size_t)written < sizeof(password_path) &&
+           req->method == HTTP_METHOD_PUT &&
+           strcmp(req->path, password_path) == 0;
+}
+
 static int get_authenticated_user(const http_request_t *req, user_t *user,
                                   bool allow_scoped_token) {
     if (!req || !user) return 0;
@@ -389,7 +409,11 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
                 if (rc == 0) {
                     safe_strcpy(user->authentication_method, "session",
                                 sizeof(user->authentication_method), 0);
-                    return 1;
+                    if (request_allowed_during_required_password_change(req, user)) {
+                        return 1;
+                    }
+                    log_warn("Session access restricted pending password change for user '%s'",
+                             user->username);
                 }
             } else if (rc == 0) {
                 log_warn("Session auth blocked by allowed_login_cidrs for user '%s' from IP %s",
@@ -411,7 +435,11 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
                 if (rc == 0 && db_auth_ip_allowed_for_user(user, effective_client_ip)) {
                     safe_strcpy(user->authentication_method, "basic",
                                 sizeof(user->authentication_method), 0);
-                    return 1;
+                    if (request_allowed_during_required_password_change(req, user)) {
+                        return 1;
+                    }
+                    log_warn("Basic auth access restricted pending password change for user '%s'",
+                             user->username);
                 } else if (rc == 0) {
                     log_warn("Basic auth blocked by allowed_login_cidrs for user '%s' from IP %s",
                              user->username, effective_client_ip[0] != '\0' ? effective_client_ip : "(unknown)");

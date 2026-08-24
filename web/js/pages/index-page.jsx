@@ -13,6 +13,7 @@ import { Footer } from "../components/preact/Footer.jsx";
 import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 import { setupSessionValidation } from '../utils/auth-utils.js';
 import { SetupWizard } from '../components/preact/SetupWizard.jsx';
+import { AuthGate } from '../components/preact/AuthGate.jsx';
 import { initI18n } from '../i18n.js';
 
 /**
@@ -114,10 +115,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (container) {
         render(
             <QueryClientProvider client={queryClient}>
-                <Header />
-                <ToastContainer />
-                <App />
-                <Footer />
+                <AuthGate>
+                    <Header />
+                    <ToastContainer />
+                    <App />
+                    <Footer />
+                </AuthGate>
             </QueryClientProvider>,
             container
         );

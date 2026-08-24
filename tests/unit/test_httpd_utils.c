@@ -34,6 +34,9 @@
 #include "utils/strings.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "web/api_handlers_auth.h"
+#include "web/api_handlers.h"
+#include "web/api_handlers_users.h"
 
 /* ---- external globals from lightnvr_lib ---- */
 extern config_t g_config;
@@ -68,7 +71,8 @@ static void clear_auth_data(void) {
     int rc = sqlite3_exec(db,
         "DELETE FROM trusted_devices;"
         "DELETE FROM sessions;"
-        "DELETE FROM users WHERE username != 'admin';",
+        "DELETE FROM users WHERE username != 'admin';"
+        "UPDATE users SET must_change_password = 0 WHERE username = 'admin';",
         NULL, NULL, &errmsg);
     if (rc != SQLITE_OK) {
         if (errmsg) {
@@ -84,10 +88,30 @@ void setUp(void) {
     /* Ensure auth is enabled by default so we control path in each test */
     g_config.web_auth_enabled = true;
     g_config.demo_mode = false;
+    g_config.force_mfa_on_login = false;
+    g_config.web_password[0] = '\0';
     g_config.trusted_proxy_cidrs[0] = '\0';
     clear_auth_data();
 }
 void tearDown(void) {}
+
+static void set_must_change_password(int64_t user_id, bool required) {
+    sqlite3 *db = get_db_handle();
+    sqlite3_stmt *stmt = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        db, "UPDATE users SET must_change_password = ? WHERE id = ?;",
+        -1, &stmt, NULL));
+    sqlite3_bind_int(stmt, 1, required ? 1 : 0);
+    sqlite3_bind_int64(stmt, 2, user_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(stmt));
+    sqlite3_finalize(stmt);
+}
+
+static void add_session_cookie(http_request_t *req, const char *token) {
+    char cookie[192];
+    snprintf(cookie, sizeof(cookie), "session=%s", token);
+    add_header(req, "Cookie", cookie);
+}
 
 /* ================================================================
  * httpd_parse_json_body
@@ -518,6 +542,176 @@ void test_get_authenticated_user_rejects_api_key_with_spoofed_forwarded_ip_from_
     TEST_ASSERT_EQUAL_INT(0, rc);
 }
 
+void test_required_password_change_restricts_password_auth_but_not_api_keys_or_demo(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
+        "gateadmin", "password123", NULL, USER_ROLE_ADMIN, true, &uid));
+
+    char api_key[64] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_generate_api_key(uid, api_key, sizeof(api_key)));
+    set_must_change_password(uid, true);
+
+    char token[128] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(
+        uid, "127.0.0.1", "GateTest", 3600, token, sizeof(token)));
+
+    http_request_t req;
+    http_request_init(&req);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.path, "/api/settings", sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    add_session_cookie(&req, token);
+
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, httpd_get_authenticated_user(&req, &user));
+
+    safe_strcpy(req.path, "/api/auth/verify", sizeof(req.path), 0);
+    TEST_ASSERT_EQUAL_INT(1, httpd_get_authenticated_user(&req, &user));
+    TEST_ASSERT_TRUE(user.must_change_password);
+
+    req.method = HTTP_METHOD_PUT;
+    snprintf(req.path, sizeof(req.path), "/api/auth/users/%lld/password",
+             (long long)uid);
+    TEST_ASSERT_EQUAL_INT(1, httpd_get_authenticated_user(&req, &user));
+
+    safe_strcpy(req.path, "/api/auth/users/999/password", sizeof(req.path), 0);
+    TEST_ASSERT_EQUAL_INT(0, httpd_get_authenticated_user(&req, &user));
+
+    http_request_init(&req);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.path, "/api/settings", sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    char bearer[96];
+    snprintf(bearer, sizeof(bearer), "Bearer %s", api_key);
+    add_header(&req, "Authorization", bearer);
+    TEST_ASSERT_EQUAL_INT(1, httpd_get_authenticated_user(&req, &user));
+    TEST_ASSERT_EQUAL_STRING("legacy_api_key", user.authentication_method);
+
+    http_request_init(&req);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.path, "/api/settings", sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    add_header(&req, "Authorization",
+               "Basic Z2F0ZWFkbWluOnBhc3N3b3JkMTIz");
+    TEST_ASSERT_EQUAL_INT(0, httpd_get_authenticated_user(&req, &user));
+
+    g_config.demo_mode = true;
+    http_request_init(&req);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.path, "/api/settings", sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    add_session_cookie(&req, token);
+    TEST_ASSERT_EQUAL_INT(1, httpd_get_authenticated_user(&req, &user));
+}
+
+void test_forced_password_handler_verifies_current_password_clears_flag_and_session(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
+        "changeadmin", "password123", NULL, USER_ROLE_ADMIN, true, &uid));
+    set_must_change_password(uid, true);
+
+    char token[128] = {0};
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_session(
+        uid, "127.0.0.1", "GateTest", 3600, token, sizeof(token)));
+
+    const char *wrong_body =
+        "{\"old_password\":\"wrong-password\",\"new_password\":\"replacement1\"}";
+    http_request_t req;
+    http_request_init(&req);
+    req.method = HTTP_METHOD_PUT;
+    snprintf(req.path, sizeof(req.path), "/api/auth/users/%lld/password",
+             (long long)uid);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    req.body = (void *)wrong_body;
+    req.body_len = strlen(wrong_body);
+    add_session_cookie(&req, token);
+
+    http_response_t res;
+    http_response_init(&res);
+    handle_users_change_password(&req, &res);
+    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    http_response_free(&res);
+
+    const char *body =
+        "{\"old_password\":\"password123\",\"new_password\":\"replacement1\"}";
+    req.body = (void *)body;
+    req.body_len = strlen(body);
+    http_response_init(&res);
+    handle_users_change_password(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    const char *cleared_cookie = find_response_header(&res, "Set-Cookie");
+    TEST_ASSERT_NOT_NULL(cleared_cookie);
+    TEST_ASSERT_NOT_NULL(strstr(cleared_cookie, "session=;"));
+    http_response_free(&res);
+
+    user_t user;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_get_user_by_id(uid, &user));
+    TEST_ASSERT_FALSE(user.must_change_password);
+    TEST_ASSERT_EQUAL_INT(0, db_auth_authenticate(
+        "changeadmin", "replacement1", NULL));
+    TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(token, NULL));
+}
+
+void test_login_reports_required_password_change_before_mfa_and_verify_recovers_it(void) {
+    int64_t uid = 0;
+    TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
+        "loginadmin", "password123", NULL, USER_ROLE_ADMIN, true, &uid));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_set_totp_secret(uid, "JBSWY3DPEHPK3PXP"));
+    TEST_ASSERT_EQUAL_INT(0, db_auth_enable_totp(uid, true));
+    set_must_change_password(uid, true);
+    g_config.force_mfa_on_login = true;
+
+    const char *body =
+        "{\"username\":\"loginadmin\",\"password\":\"password123\"}";
+    http_request_t req;
+    http_request_init(&req);
+    req.method = HTTP_METHOD_POST;
+    safe_strcpy(req.path, "/api/auth/login", sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    safe_strcpy(req.user_agent, "GateTest", sizeof(req.user_agent), 0);
+    req.body = (void *)body;
+    req.body_len = strlen(body);
+    add_header(&req, "Content-Type", "application/json");
+
+    http_response_t res;
+    http_response_init(&res);
+    handle_auth_login(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *json = cJSON_Parse((const char *)res.body);
+    TEST_ASSERT_NOT_NULL(json);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(json, "must_change_password")));
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(json, "totp_required"));
+    cJSON_Delete(json);
+
+    const char *set_cookie = find_response_header(&res, "Set-Cookie");
+    TEST_ASSERT_NOT_NULL(set_cookie);
+    const char *token_start = strstr(set_cookie, "session=");
+    TEST_ASSERT_NOT_NULL(token_start);
+    token_start += strlen("session=");
+    const char *token_end = strchr(token_start, ';');
+    TEST_ASSERT_NOT_NULL(token_end);
+    char token[128] = {0};
+    size_t token_len = (size_t)(token_end - token_start);
+    TEST_ASSERT_TRUE(token_len < sizeof(token));
+    memcpy(token, token_start, token_len);
+    http_response_free(&res);
+
+    http_request_init(&req);
+    req.method = HTTP_METHOD_GET;
+    safe_strcpy(req.path, "/api/auth/verify", sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    safe_strcpy(req.user_agent, "GateTest", sizeof(req.user_agent), 0);
+    add_session_cookie(&req, token);
+    http_response_init(&res);
+    handle_auth_verify(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    json = cJSON_Parse((const char *)res.body);
+    TEST_ASSERT_NOT_NULL(json);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItem(json, "must_change_password")));
+    cJSON_Delete(json);
+    http_response_free(&res);
+}
+
 /* ================================================================
  * httpd_check_admin_privileges — auth-disabled path
  * ================================================================ */
@@ -605,6 +799,9 @@ int main(void) {
     RUN_TEST(test_get_authenticated_user_rejects_session_from_disallowed_ip);
     RUN_TEST(test_get_authenticated_user_allows_api_key_from_trusted_forwarded_ip);
     RUN_TEST(test_get_authenticated_user_rejects_api_key_with_spoofed_forwarded_ip_from_untrusted_proxy);
+    RUN_TEST(test_required_password_change_restricts_password_auth_but_not_api_keys_or_demo);
+    RUN_TEST(test_forced_password_handler_verifies_current_password_clears_flag_and_session);
+    RUN_TEST(test_login_reports_required_password_change_before_mfa_and_verify_recovers_it);
     RUN_TEST(test_check_admin_privileges_auth_disabled_returns_one);
     RUN_TEST(test_check_admin_privileges_no_auth_returns_zero);
     RUN_TEST(test_sanitize_attachment_filename_removes_path_and_header_bytes);
