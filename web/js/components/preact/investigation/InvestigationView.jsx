@@ -1475,7 +1475,7 @@ export function InvestigationView() {
                 <button
                   type="button"
                   className="btn-secondary"
-                  disabled={!timeline || (!selectedResult && !primaryCameraUuid)}
+                  disabled={!selectedResult && !primaryCameraUuid}
                   onClick={startThumbnailDrilldown}
                 >
                   {selectedResult
