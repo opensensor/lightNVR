@@ -412,6 +412,130 @@
     font-size: 0.75rem;
 }
 
+.investigation-thumbnail-drilldown {
+    margin-top: 0.85rem;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.55rem;
+    background: hsl(var(--muted) / 0.28);
+}
+
+.investigation-thumbnail-drilldown > header,
+.investigation-thumbnail-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.investigation-thumbnail-drilldown h3,
+.investigation-thumbnail-drilldown header p,
+.investigation-thumbnail-help {
+    margin: 0;
+}
+
+.investigation-thumbnail-drilldown h3 {
+    font-size: 0.9rem;
+}
+
+.investigation-thumbnail-drilldown header p,
+.investigation-thumbnail-help {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.72rem;
+}
+
+.investigation-thumbnail-help {
+    margin-top: 0.35rem;
+}
+
+.investigation-thumbnail-actions button,
+.investigation-thumbnail-retry {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.7rem;
+}
+
+.investigation-thumbnail-rail {
+    display: grid;
+    grid-auto-columns: minmax(10rem, 12rem);
+    grid-auto-flow: column;
+    gap: 0.55rem;
+    margin-top: 0.65rem;
+    padding-bottom: 0.35rem;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+}
+
+.investigation-sample-card {
+    overflow: hidden;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.45rem;
+    background: hsl(var(--background));
+    scroll-snap-align: start;
+}
+
+.investigation-sample-target {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    text-align: left;
+}
+
+.investigation-sample-target:hover,
+.investigation-sample-target:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: -2px;
+}
+
+.investigation-sample-image {
+    display: grid;
+    aspect-ratio: 16 / 9;
+    place-items: center;
+    overflow: hidden;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    font-size: 0.68rem;
+    text-align: center;
+}
+
+.investigation-sample-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.investigation-sample-target time {
+    display: block;
+    padding: 0.45rem;
+    overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.67rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.investigation-sample-card.is-gap .investigation-sample-image {
+    background: repeating-linear-gradient(
+        -45deg,
+        hsl(var(--muted)),
+        hsl(var(--muted)) 8px,
+        hsl(var(--background)) 8px,
+        hsl(var(--background)) 16px
+    );
+}
+
+.investigation-thumbnail-retry {
+    width: 100%;
+    border: 0;
+    border-top: 1px solid hsl(var(--border));
+    background: transparent;
+    color: hsl(var(--primary));
+    cursor: pointer;
+}
+
 .investigation-play-button {
     display: inline-flex;
     align-items: center;
@@ -687,6 +811,12 @@
 
     .investigation-result-navigation button {
         flex: 1;
+    }
+
+    .investigation-result-navigation,
+    .investigation-thumbnail-drilldown > header {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .investigation-camera-picker {

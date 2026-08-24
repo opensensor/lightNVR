@@ -3,9 +3,11 @@ import {
   advanceInvestigationCursor,
   findSegmentAt,
   nextAvailableTimestamp,
+  narrowThumbnailWindow,
   normalizedRegionRectangle,
   parseInvestigationRegion,
   segmentTrackPosition,
+  thumbnailWindowForResult,
   videoContentBox,
 } from '../js/components/preact/investigation/investigationUtils.js';
 
@@ -74,6 +76,31 @@ test('adjacent result navigation is stable by opaque result id', () => {
   expect(adjacentInvestigationResultIndex(results, 'detection:7', -1)).toBe(0);
   expect(adjacentInvestigationResultIndex(results, 'detection:4', 1)).toBe(-1);
   expect(adjacentInvestigationResultIndex([], null, 1)).toBe(-1);
+});
+
+test('thumbnail selection narrows to midpoints around the selected sample', () => {
+  const samples = [100, 120, 140, 160, 180]
+    .map((timestamp) => ({ timestamp }));
+  expect(narrowThumbnailWindow(samples, 2, 100, 180)).toEqual({
+    startTime: 130,
+    endTime: 150,
+  });
+  expect(narrowThumbnailWindow(samples, 0, 100, 180)).toEqual({
+    startTime: 100,
+    endTime: 110,
+  });
+  expect(narrowThumbnailWindow(
+    [{ timestamp: 100 }, { timestamp: 101 }], 0, 100, 101,
+  )).toBeNull();
+});
+
+test('selected event thumbnail window is padded and clipped to the timeline', () => {
+  expect(thumbnailWindowForResult(
+    { start_time: 110, end_time: 115 }, 100, 200,
+  )).toEqual({ startTime: 100, endTime: 145 });
+  expect(thumbnailWindowForResult(
+    { start_time: 150, end_time: 190 }, 100, 200,
+  )).toEqual({ startTime: 110, endTime: 200 });
 });
 
 test('videoContentBox accounts for letterboxing and pillarboxing', () => {

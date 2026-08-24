@@ -128,6 +128,37 @@ export function adjacentInvestigationResultIndex(results, selectedResultId, dire
   return nextIndex >= 0 && nextIndex < results.length ? nextIndex : -1;
 }
 
+export function narrowThumbnailWindow(samples, selectedIndex, startTime, endTime) {
+  if (!Array.isArray(samples) || samples.length < 2 ||
+      !Number.isInteger(selectedIndex) || selectedIndex < 0 ||
+      selectedIndex >= samples.length || !Number.isFinite(startTime) ||
+      !Number.isFinite(endTime) || endTime <= startTime) return null;
+  const selected = Number(samples[selectedIndex]?.timestamp);
+  if (!Number.isFinite(selected)) return null;
+  const previous = Number(samples[selectedIndex - 1]?.timestamp);
+  const next = Number(samples[selectedIndex + 1]?.timestamp);
+  const narrowedStart = selectedIndex === 0 || !Number.isFinite(previous)
+    ? startTime : Math.floor((previous + selected) / 2);
+  const narrowedEnd = selectedIndex === samples.length - 1 || !Number.isFinite(next)
+    ? endTime : Math.ceil((selected + next) / 2);
+  if (narrowedStart < startTime || narrowedEnd > endTime ||
+      narrowedEnd - narrowedStart < 1 ||
+      (narrowedStart === startTime && narrowedEnd === endTime)) return null;
+  return { startTime: narrowedStart, endTime: narrowedEnd };
+}
+
+export function thumbnailWindowForResult(result, timelineStart, timelineEnd) {
+  if (!result || !Number.isFinite(timelineStart) ||
+      !Number.isFinite(timelineEnd) || timelineEnd <= timelineStart) return null;
+  const eventStart = Number(result.start_time);
+  const eventEnd = Number(result.end_time ?? result.start_time);
+  if (!Number.isFinite(eventStart) || !Number.isFinite(eventEnd)) return null;
+  const padding = Math.max(30, Math.max(0, eventEnd - eventStart));
+  const startTime = Math.max(timelineStart, Math.floor(eventStart - padding));
+  const endTime = Math.min(timelineEnd, Math.ceil(eventEnd + padding));
+  return endTime > startTime ? { startTime, endTime } : null;
+}
+
 export function formatDateTimeLocal(timestamp) {
   if (!Number.isFinite(timestamp)) return '';
   const date = new Date(timestamp * 1000);
