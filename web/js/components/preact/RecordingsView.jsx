@@ -31,6 +31,8 @@ import { validateSession } from '../../utils/auth-utils.js';
 const RECORDINGS_RETURN_URL_KEY = 'lightnvr_recordings_return_url';
 const RECORDINGS_SELECTED_IDS_KEY = 'lightnvr_selected_recording_ids';
 const RECORDINGS_RESTORE_SELECTION_KEY = 'lightnvr_restore_recording_selection';
+const MAX_INVESTIGATION_CAMERAS = 16;
+const MAX_INVESTIGATION_WINDOW_SECONDS = 31 * 24 * 60 * 60;
 
 function getRestoredSelectedRecordings() {
   try {
@@ -722,6 +724,63 @@ export function RecordingsView() {
     window.location.href = `timeline.html?ids=${selectedIds.join(',')}`;
   };
 
+  const investigateSelected = async () => {
+    const selectedIds = Object.entries(selectedRecordings)
+      .filter(([_, selected]) => selected)
+      .map(([id]) => id);
+    if (selectedIds.length === 0) {
+      showStatusMessage(t('investigation.selectRecordingError'), 'warning');
+      return;
+    }
+
+    try {
+      const visibleById = new Map(recordings.map((recording) =>
+        [String(recording.id), recording]));
+      const selected = await Promise.all(selectedIds.map((id) =>
+        visibleById.get(String(id)) || recordingsAPI.getRecording(id)));
+      const unidentified = selected.filter((recording) => !recording.camera_uuid);
+      if (unidentified.length > 0) {
+        showStatusMessage(t('investigation.missingCameraIdentity', {
+          count: unidentified.length,
+        }), 'warning');
+        return;
+      }
+
+      const cameraUuids = [...new Set(selected.map((recording) => recording.camera_uuid))];
+      if (cameraUuids.length > MAX_INVESTIGATION_CAMERAS) {
+        showStatusMessage(t('investigation.cameraLimit', {
+          count: MAX_INVESTIGATION_CAMERAS,
+        }), 'warning');
+        return;
+      }
+
+      const start = Math.min(...selected.map((recording) =>
+        Number(recording.start_time_unix)));
+      const end = Math.max(...selected.map((recording) =>
+        Number(recording.end_time_unix)));
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        showStatusMessage(t('investigation.recordingTimeError'), 'warning');
+        return;
+      }
+      const paddedStart = Math.max(1, Math.floor(start) - 30);
+      const paddedEnd = Math.ceil(end) + 30;
+      if (paddedEnd - paddedStart > MAX_INVESTIGATION_WINDOW_SECONDS) {
+        showStatusMessage(t('investigation.windowLimit'), 'warning');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        cameras: cameraUuids.join(','),
+        start: String(paddedStart),
+        end: String(paddedEnd),
+        cursor: String(Math.floor(start)),
+      });
+      window.location.href = `investigation.html?${params.toString()}`;
+    } catch (requestError) {
+      showStatusMessage(requestError.message, 'error');
+    }
+  };
+
   // Open download modal
   const openDownloadModal = () => setIsDownloadModalOpen(true);
 
@@ -923,13 +982,22 @@ export function RecordingsView() {
           />
           {/* Contextual action — only shown when recordings are selected */}
           {getSelectedCount() > 0 && (
-            <button
-              onClick={viewSelectedInTimeline}
-              class="btn-primary text-sm"
-              title={t('recordings.viewSelectedCountInTimeline', { count: getSelectedCount() })}
-            >
-              ▶ {t('nav.timeline')} ({getSelectedCount()})
-            </button>
+            <>
+              <button
+                onClick={viewSelectedInTimeline}
+                class="btn-secondary text-sm"
+                title={t('recordings.viewSelectedCountInTimeline', { count: getSelectedCount() })}
+              >
+                ▶ {t('nav.timeline')} ({getSelectedCount()})
+              </button>
+              <button
+                onClick={investigateSelected}
+                class="btn-primary text-sm"
+                title={t('investigation.investigateSelectedCount', { count: getSelectedCount() })}
+              >
+                {t('nav.investigation')} ({getSelectedCount()})
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -971,6 +1039,12 @@ export function RecordingsView() {
             class="rounded-t-lg px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground"
           >
             {t('nav.timeline')}
+          </a>
+          <a
+            href="investigation.html"
+            class="rounded-t-lg px-4 py-2 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground"
+          >
+            {t('nav.investigation')}
           </a>
         </div>
       </div>

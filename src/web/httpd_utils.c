@@ -18,6 +18,7 @@
 #include "database/db_auth.h"
 #include "database/db_api_tokens.h"
 #include "database/db_fleet_query.h"
+#include "database/db_streams.h"
 #include "web/audit_log.h"
 
 cJSON* httpd_parse_json_body(const http_request_t *req) {
@@ -631,6 +632,25 @@ int httpd_authorize_stream_action_with_context(
     audit_log_authorization(req, user, action, camera, evaluation,
                             "allowed");
     return 1;
+}
+
+int httpd_authorize_camera_identity_action_with_context(
+    const http_request_t *req, http_response_t *res,
+    authorization_action_t action, const char *camera_uuid,
+    const char *legacy_stream_name, user_t *user, fleet_camera_t *camera,
+    authorization_evaluation_t *evaluation) {
+    if (camera_uuid && camera_uuid[0] != '\0') {
+        stream_config_t stream;
+        memset(&stream, 0, sizeof(stream));
+        if (get_stream_config_by_uuid(camera_uuid, &stream) != 0) {
+            http_response_set_json_error(res, 404, "Camera not found");
+            return 0;
+        }
+        return httpd_authorize_stream_action_with_context(
+            req, res, action, stream.name, user, camera, evaluation);
+    }
+    return httpd_authorize_stream_action_with_context(
+        req, res, action, legacy_stream_name, user, camera, evaluation);
 }
 
 void httpd_sanitize_attachment_filename(const char *input, char *output,

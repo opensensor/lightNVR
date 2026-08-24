@@ -25,7 +25,8 @@
  * @param recording_id Recording ID to link detections to (0 for no link)
  * @return 0 on success, non-zero on failure
  */
-static int store_detections_with_source(const char *stream_name,
+static int store_detections_with_source(const char *camera_uuid,
+                                        const char *stream_name,
                                         const detection_result_t *result,
                                         time_t timestamp,
                                         uint64_t recording_id,
@@ -83,8 +84,11 @@ static int store_detections_with_source(const char *stream_name,
         return -1;
     }
     
-    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height, track_id, zone_id, recording_id, source, event_end_time) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+    const char *sql = "INSERT INTO detections (stream_name, timestamp, label, confidence, x, y, width, height, track_id, zone_id, recording_id, source, event_end_time, camera_uuid) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                      "COALESCE((SELECT camera_uuid FROM recordings WHERE id = NULLIF(?, 0)), "
+                      "NULLIF(?, ''), "
+                      "(SELECT camera_uuid FROM streams WHERE name = ?)));";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -120,6 +124,10 @@ static int store_detections_with_source(const char *stream_name,
         } else {
             sqlite3_bind_int64(stmt, 13, (sqlite3_int64)timestamp);
         }
+        sqlite3_bind_int64(stmt, 14, (sqlite3_int64)recording_id);
+        sqlite3_bind_text(stmt, 15, camera_uuid ? camera_uuid : "", -1,
+                          SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 16, stream_name, -1, SQLITE_STATIC);
         
         // Execute statement
         rc = sqlite3_step(stmt);
@@ -175,15 +183,23 @@ int store_detections_in_db(const char *stream_name,
                            const detection_result_t *result,
                            time_t timestamp,
                            uint64_t recording_id) {
-    return store_detections_with_source(stream_name, result, timestamp,
+    return store_detections_with_source(NULL, stream_name, result, timestamp,
                                         recording_id, "", false);
+}
+
+int store_detections_in_db_for_camera(
+    const char *camera_uuid, const char *stream_name,
+    const detection_result_t *result, time_t timestamp,
+    uint64_t recording_id) {
+    return store_detections_with_source(camera_uuid, stream_name, result,
+                                        timestamp, recording_id, "", false);
 }
 
 int store_external_motion_detections(const char *stream_name,
                                      const detection_result_t *result,
                                      time_t timestamp,
                                      uint64_t recording_id) {
-    return store_detections_with_source(stream_name, result, timestamp,
+    return store_detections_with_source(NULL, stream_name, result, timestamp,
                                         recording_id, "external_motion", true);
 }
 
@@ -1116,7 +1132,8 @@ int update_detections_recording_id(const char *stream_name, uint64_t recording_i
     // Update detections where recording_id is NULL or 0 for the given stream and time range
     const char *sql =
         "UPDATE detections "
-        "SET recording_id = ? "
+        "SET recording_id = ?, "
+        "camera_uuid = COALESCE((SELECT camera_uuid FROM recordings WHERE id = ?), camera_uuid) "
         "WHERE stream_name = ? AND timestamp >= ? AND (recording_id IS NULL OR recording_id = 0);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -1128,8 +1145,9 @@ int update_detections_recording_id(const char *stream_name, uint64_t recording_i
 
     // Bind parameters
     sqlite3_bind_int64(stmt, 1, (sqlite3_int64)recording_id);
-    sqlite3_bind_text(stmt, 2, stream_name, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(stmt, 3, (sqlite3_int64)since_time);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)recording_id);
+    sqlite3_bind_text(stmt, 3, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 4, (sqlite3_int64)since_time);
 
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {

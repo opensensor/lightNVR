@@ -10,11 +10,13 @@
 typedef struct {
     uint64_t id;
     char stream_name[64];
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
     char file_path[MAX_PATH_LENGTH];
     time_t start_time;
     time_t end_time;
     uint64_t size_bytes;
     bool has_detection;
+    char trigger_type[16];
     int schedule_restricted; // -1 = unknown/legacy, 0 = no, 1 = yes
 } timeline_segment_t;
 
@@ -31,6 +33,15 @@ typedef struct {
  */
 int get_timeline_segments(const char *stream_name, time_t start_time, time_t end_time,
                          timeline_segment_t *segments, int max_segments);
+
+/**
+ * Get timeline segments by immutable capture-time camera UUID. This continues
+ * to find recordings made before a camera was renamed and intentionally omits
+ * unresolved legacy rows whose camera_uuid is NULL.
+ */
+int get_timeline_segments_by_camera_uuid(
+    const char *camera_uuid, time_t start_time, time_t end_time,
+    timeline_segment_t *segments, int max_segments);
 
 /**
  * Handle GET request for timeline segments

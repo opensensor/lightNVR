@@ -1258,6 +1258,17 @@ export function TimelinePage() {
 
   // Get return URL for "Refine Selections" link
   const returnUrl = idsMode ? (sessionStorage.getItem(RECORDINGS_RETURN_URL_KEY) || 'recordings.html') : null;
+  const investigationParams = new URLSearchParams();
+  if (selectedStream) investigationParams.set('stream', selectedStream);
+  const investigationBounds = getLocalDayBounds(selectedDate);
+  if (investigationBounds) {
+    investigationParams.set('start', String(investigationBounds.startTimestamp));
+    investigationParams.set('end', String(investigationBounds.endTimestamp));
+  }
+  if (Number.isFinite(timelineState.currentTime)) {
+    investigationParams.set('cursor', String(Math.floor(timelineState.currentTime)));
+  }
+  const investigationHref = `investigation.html?${investigationParams.toString()}`;
 
   return (
     <div className="timeline-page">
@@ -1294,7 +1305,7 @@ export function TimelinePage() {
           </a>
           <a
             href="timeline.html"
-            className="px-3 py-1 rounded-r-md text-sm"
+            className="px-3 py-1 text-sm"
             style={{
               backgroundColor: idsMode ? 'hsl(var(--secondary))' : 'hsl(var(--primary))',
               color: idsMode ? 'hsl(var(--secondary-foreground))' : 'hsl(var(--primary-foreground))'
@@ -1303,6 +1314,18 @@ export function TimelinePage() {
             onMouseOut={(e) => { if (idsMode) e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'; }}
           >
             {t('nav.timeline')}
+          </a>
+          <a
+            href={investigationHref}
+            className="px-3 py-1 rounded-r-md text-sm"
+            style={{
+              backgroundColor: 'hsl(var(--secondary))',
+              color: 'hsl(var(--secondary-foreground))'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary) / 0.8)'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'hsl(var(--secondary))'}
+          >
+            {t('nav.investigation')}
           </a>
         </div>
       </div>

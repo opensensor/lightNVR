@@ -90,6 +90,15 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 404, "Recording not found");
         return;
     }
+
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_RECORDINGS_REPLAY, recording.camera_uuid,
+            recording.stream_name, &user, &camera, &evaluation)) {
+        return;
+    }
     
     // Create JSON object
     cJSON *recording_obj = cJSON_CreateObject();
@@ -133,6 +142,12 @@ void handle_get_recording(const http_request_t *req, http_response_t *res) {
     // Add recording properties
     cJSON_AddNumberToObject(recording_obj, "id", (double)recording.id);
     cJSON_AddStringToObject(recording_obj, "stream", recording.stream_name);
+    if (recording.camera_uuid[0] != '\0') {
+        cJSON_AddStringToObject(recording_obj, "camera_uuid",
+                                recording.camera_uuid);
+    } else {
+        cJSON_AddNullToObject(recording_obj, "camera_uuid");
+    }
     cJSON_AddStringToObject(recording_obj, "file_path", recording.file_path);
     cJSON_AddStringToObject(recording_obj, "start_time", start_time_str);
     cJSON_AddStringToObject(recording_obj, "end_time", end_time_str);

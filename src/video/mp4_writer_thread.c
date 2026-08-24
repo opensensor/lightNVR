@@ -70,6 +70,8 @@ static void on_segment_started_cb(void *user_ctx) {
         recording_metadata_t metadata;
         memset(&metadata, 0, sizeof(recording_metadata_t));
         safe_strcpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name), 0);
+        safe_strcpy(metadata.camera_uuid, thread_ctx->writer->camera_uuid,
+                    sizeof(metadata.camera_uuid), 0);
         safe_strcpy(metadata.file_path, thread_ctx->writer->output_path, sizeof(metadata.file_path), 0);
         metadata.start_time = time(NULL); // Align to keyframe time
         metadata.end_time = 0;

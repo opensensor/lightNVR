@@ -136,6 +136,7 @@ export default defineConfig({
         streams: resolve(__dirname, 'streams.html'),
         system: resolve(__dirname, 'system.html'),
         timeline: resolve(__dirname, 'timeline.html'),
+        investigation: resolve(__dirname, 'investigation.html'),
         users: resolve(__dirname, 'users.html'),
         hls: resolve(__dirname, 'hls.html'),
       },

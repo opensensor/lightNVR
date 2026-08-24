@@ -111,6 +111,8 @@ uint64_t start_recording(const char *stream_name, const char *output_path) {
     metadata.disk_pressure_eligible = true;
 
     safe_strcpy(metadata.stream_name, stream_name, sizeof(metadata.stream_name), 0);
+    safe_strcpy(metadata.camera_uuid, config.camera_uuid,
+                sizeof(metadata.camera_uuid), 0);
 
     // Format paths for the recording - MAKE SURE THIS POINTS TO REAL FILES
     char mp4_path[MAX_PATH_LENGTH];
