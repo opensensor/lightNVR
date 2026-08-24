@@ -14,15 +14,63 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Build profiles select conservative defaults without removing the individual
+# feature switches.  The full profile remains the default for existing builds.
+option(EMBEDDED_A1_DEVICE "Deprecated alias for LIGHTNVR_PROFILE=embedded" OFF)
+set(LIGHTNVR_PROFILE "full" CACHE STRING "Build profile: full or embedded")
+set_property(CACHE LIGHTNVR_PROFILE PROPERTY STRINGS full embedded)
+string(TOLOWER "${LIGHTNVR_PROFILE}" LIGHTNVR_PROFILE)
+
+if(EMBEDDED_A1_DEVICE)
+    message(DEPRECATION
+        "EMBEDDED_A1_DEVICE is deprecated; use -DLIGHTNVR_PROFILE=embedded")
+    set(LIGHTNVR_PROFILE "embedded")
+endif()
+
+if(NOT LIGHTNVR_PROFILE MATCHES "^(full|embedded)$")
+    message(FATAL_ERROR
+        "Invalid LIGHTNVR_PROFILE='${LIGHTNVR_PROFILE}'; expected full or embedded")
+endif()
+
+if(LIGHTNVR_PROFILE STREQUAL "embedded")
+    set(LIGHTNVR_OPTIONAL_FEATURE_DEFAULT OFF)
+    set(LIGHTNVR_DEFAULT_MAX_STREAMS 16)
+else()
+    set(LIGHTNVR_OPTIONAL_FEATURE_DEFAULT ON)
+    set(LIGHTNVR_DEFAULT_MAX_STREAMS 1024)
+endif()
+
+set(LIGHTNVR_MAX_STREAMS "auto" CACHE STRING
+    "Compile-time stream ceiling (auto, or an integer from 1 to 1024)")
+if(LIGHTNVR_MAX_STREAMS STREQUAL "auto")
+    set(LIGHTNVR_RESOLVED_MAX_STREAMS ${LIGHTNVR_DEFAULT_MAX_STREAMS})
+elseif(LIGHTNVR_MAX_STREAMS MATCHES "^[0-9]+$")
+    set(LIGHTNVR_RESOLVED_MAX_STREAMS ${LIGHTNVR_MAX_STREAMS})
+else()
+    message(FATAL_ERROR
+        "LIGHTNVR_MAX_STREAMS must be 'auto' or an integer from 1 to 1024")
+endif()
+
+if(LIGHTNVR_RESOLVED_MAX_STREAMS LESS 1 OR
+   LIGHTNVR_RESOLVED_MAX_STREAMS GREATER 1024)
+    message(FATAL_ERROR "LIGHTNVR_MAX_STREAMS must be between 1 and 1024")
+endif()
+if(LIGHTNVR_PROFILE STREQUAL "embedded" AND
+   LIGHTNVR_RESOLVED_MAX_STREAMS GREATER 16)
+    message(FATAL_ERROR "The embedded profile is limited to 16 streams")
+endif()
+
+add_definitions(-DLIGHTNVR_MAX_STREAMS=${LIGHTNVR_RESOLVED_MAX_STREAMS})
+
 # Option to enable/disable SOD
-option(ENABLE_SOD "Enable SOD library for object detection" ON)
+option(ENABLE_SOD "Enable SOD library for object detection" ${LIGHTNVR_OPTIONAL_FEATURE_DEFAULT})
 option(SOD_DYNAMIC_LINK "Dynamically link SOD library instead of static linking" OFF)
 
 # In-process LiteRT (TFLite) detection engine. Default ON, but auto-disabled at
 # configure time if the third_party/litert submodule isn't initialized, so a
 # fresh checkout still builds. When ON (and present), the vendored LiteRT
 # submodule is built and linked, and the litert_engine module is compiled.
-option(ENABLE_LITERT "Enable in-process LiteRT (TFLite) detection engine" ON)
+option(ENABLE_LITERT "Enable in-process LiteRT (TFLite) detection engine" ${LIGHTNVR_OPTIONAL_FEATURE_DEFAULT})
 option(LITERT_WITH_XNNPACK "Compile XNNPACK delegate into the LiteRT engine" ON)
 option(LITERT_WITH_GPU "Compile GPU (OpenCL/GLES) delegate into the LiteRT engine" OFF)
 
@@ -45,9 +93,14 @@ option(USE_WOLFSSL "Use WolfSSL instead of OpenSSL (if SSL is enabled)" OFF)
 set(HTTP_BACKEND "libuv" CACHE STRING "HTTP server backend")
 set_property(CACHE HTTP_BACKEND PROPERTY STRINGS libuv)
 
-# Compiler flags for optimization and memory usage
-add_compile_options(-O2 -ffunction-sections -fdata-sections)
+# Compiler flags for optimization and memory usage.  Do not override the
+# toolchain's optimization level (Buildroot supplies -Os for target builds).
+add_compile_options(-ffunction-sections -fdata-sections)
 add_link_options(-Wl,--gc-sections)
+
+if(LIGHTNVR_PROFILE STREQUAL "embedded")
+    add_compile_options(-Os -fomit-frame-pointer)
+endif()
 
 # Security and quality warning flags
 add_compile_options(
@@ -78,16 +131,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     endif()
 endif()
 
-# Option to build for embedded A1 device
-option(EMBEDDED_A1_DEVICE "Build for embedded A1 device with limited memory" OFF)
-if(EMBEDDED_A1_DEVICE)
-    message(STATUS "Building for embedded A1 device with memory optimizations")
-    add_definitions(-DEMBEDDED_A1_DEVICE)
-    # Additional optimizations for embedded devices
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os -fno-exceptions -fomit-frame-pointer")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Os -fno-exceptions -fomit-frame-pointer")
-endif()
-
 # Create project-specific include directory
 set(LIGHTNVR_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -115,7 +158,7 @@ else()
 endif()
 
 # MQTT support (optional, uses libmosquitto)
-option(ENABLE_MQTT "Enable MQTT support for detection event streaming" ON)
+option(ENABLE_MQTT "Enable MQTT support for detection event streaming" ${LIGHTNVR_OPTIONAL_FEATURE_DEFAULT})
 if(ENABLE_MQTT)
     pkg_check_modules(MOSQUITTO QUIET libmosquitto>=2.0)
     if(MOSQUITTO_FOUND)
@@ -781,6 +824,8 @@ add_dependencies(lightnvr generate_version_js)
 
 # Print build information
 message(STATUS "Building LightNVR ${PROJECT_VERSION} with the following configuration:")
+message(STATUS "- Build profile: ${LIGHTNVR_PROFILE}")
+message(STATUS "- Compile-time stream ceiling: ${LIGHTNVR_RESOLVED_MAX_STREAMS}")
 message(STATUS "- HTTP backend: libuv + llhttp")
 message(STATUS "- SOD object detection: ${ENABLE_SOD}")
 if(ENABLE_SOD)
@@ -801,7 +846,6 @@ if(ENABLE_GO2RTC)
     message(STATUS "  - go2rtc config directory: ${GO2RTC_CONFIG_DIR}")
     message(STATUS "  - go2rtc API port: ${GO2RTC_API_PORT}")
 endif()
-message(STATUS "- Embedded A1 device optimizations: ${EMBEDDED_A1_DEVICE}")
 if(YAML_FOUND)
     message(STATUS "- libyaml (YAML validation): ENABLED (${YAML_VERSION})")
 else()

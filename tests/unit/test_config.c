@@ -57,8 +57,11 @@ void test_stream_config_t_size_under_16k(void) {
     TEST_ASSERT_LESS_THAN(16 * 1024, (int)sizeof(stream_config_t));
 }
 
-void test_max_stream_ceiling_is_1024(void) {
-    TEST_ASSERT_EQUAL_INT(1024, MAX_STREAMS);
+void test_max_stream_ceiling_is_valid(void) {
+    TEST_ASSERT_TRUE(MAX_STREAMS >= 1);
+    TEST_ASSERT_TRUE(MAX_STREAMS <= 1024);
+    TEST_ASSERT_EQUAL_INT(MAX_STREAMS < 32 ? MAX_STREAMS : 32,
+                          DEFAULT_MAX_STREAMS);
 }
 
 /* ================================================================
@@ -476,7 +479,7 @@ int main(void) {
     UNITY_BEGIN();
 
     RUN_TEST(test_stream_config_t_size_under_16k);
-    RUN_TEST(test_max_stream_ceiling_is_1024);
+    RUN_TEST(test_max_stream_ceiling_is_valid);
 
     RUN_TEST(test_default_config_web_port);
     RUN_TEST(test_default_config_log_level);

@@ -130,17 +130,19 @@ The A1 SoC has limited memory (256MB RAM), which can cause stack overflow issues
 1. **Heap Allocation**: Motion detection structures are now allocated on the heap instead of the stack
 2. **Reduced Buffer Sizes**: Frame history and grid sizes are automatically reduced
 3. **Increased Downscaling**: Default downscale factor is increased to 3x for A1 devices
-4. **Build with A1 Optimizations**: Use the `EMBEDDED_A1_DEVICE` CMake option
+4. **Build with the Embedded Profile**: Use the `LIGHTNVR_PROFILE` CMake option
 
 To build specifically for the A1 device:
 
 ```bash
 mkdir build && cd build
-cmake -DEMBEDDED_A1_DEVICE=ON ..
+cmake -DLIGHTNVR_PROFILE=embedded ..
 make
 ```
 
-This enables additional compiler optimizations and memory-saving techniques specifically for the A1 device.
+This selects size-oriented compiler flags, a 16-stream compile-time ceiling,
+and lightweight defaults for optional detection and messaging features. The
+older `EMBEDDED_A1_DEVICE=ON` spelling remains available as a deprecated alias.
 
 ## Implementation Details
 

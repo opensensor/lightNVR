@@ -1486,7 +1486,7 @@ bool go2rtc_integration_register_all_streams(void) {
     }
 
     // Get all stream configurations (heap-allocated)
-    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    int ms = configured_stream_slots();
     stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
     if (!streams) return false;
     int count = get_all_stream_configs(streams, ms);
@@ -1571,7 +1571,7 @@ bool go2rtc_sync_streams_from_database(void) {
     }
 
     // Get all stream configurations from database (heap-allocated)
-    int ms2 = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    int ms2 = configured_stream_slots();
     stream_config_t *db_streams = calloc(ms2, sizeof(stream_config_t));
     if (!db_streams) return false;
     int count = get_all_stream_configs(db_streams, ms2);

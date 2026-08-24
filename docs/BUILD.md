@@ -104,6 +104,37 @@ When built without SOD, LightNVR will still function normally but will not have 
 
 For more information about SOD integration, see [SOD Integration](SOD_INTEGRATION.md).
 
+### Embedded build profile
+
+Resource-constrained targets can select the embedded profile without changing
+the defaults used by server-class installations:
+
+```bash
+cmake -S . -B build/embedded \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLIGHTNVR_PROFILE=embedded
+cmake --build build/embedded -- -j$(nproc)
+```
+
+The embedded profile caps compile-time stream storage at 16 streams, optimizes
+for size, and defaults SOD, LiteRT, and MQTT off. The individual feature
+switches remain available when an embedded target needs one of them. Full
+builds remain the default and retain the 1024-stream ceiling.
+
+`LIGHTNVR_MAX_STREAMS` can override the full-profile ceiling. Embedded builds
+accept values from 1 through 16 only. The older `EMBEDDED_A1_DEVICE=ON` option
+is retained as a deprecated alias for `LIGHTNVR_PROFILE=embedded`.
+
+Firmware packagers can also reduce web assets independently:
+
+```bash
+cd web
+LIGHTNVR_WEB_LEGACY=false LIGHTNVR_WEB_LOCALES=en npm run build
+```
+
+The first variable omits legacy-browser bundles. The second accepts a
+comma-separated locale list; English is always retained as the fallback.
+
 The build script will:
 1. Check for required dependencies
 2. Configure the build using CMake
