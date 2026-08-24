@@ -81,6 +81,7 @@ typedef struct {
     // MP4 recording
     mp4_writer_t *mp4_writer;
     char current_recording_path[MAX_PATH_LENGTH];
+    storage_placement_t placement;
     // Written by the main UDT thread (recording start/stop), read by the
     // detection-stream producer thread for API recording_id linkage.
     // _Atomic so those cross-thread reads/writes are race-free on all targets

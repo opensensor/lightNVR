@@ -247,6 +247,7 @@ static void *mp4_recording_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
+    ctx->mp4_writer->placement = ctx->placement;
     safe_strcpy(ctx->mp4_writer->camera_uuid, ctx->config.camera_uuid,
                 sizeof(ctx->mp4_writer->camera_uuid), 0);
 
@@ -710,63 +711,11 @@ int start_mp4_recording(const char *stream_name) {
     // and any month/day directories from it.
     time_t now = time(NULL);
 
-    // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_name[MAX_STREAM_NAME];
-    sanitize_stream_name(stream_name, encoded_name, MAX_STREAM_NAME);
-
-    // Create MP4 directory path
-    char mp4_dir[MAX_PATH_LENGTH];
-    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-        // Use configured MP4 storage path if available
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
-                global_config->mp4_storage_path, encoded_name);
-    } else {
-        // Use mp4 directory parallel to hls, NOT inside it
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
-                global_config->storage_path, encoded_name);
-    }
-
-    // Create MP4 directory if it doesn't exist
-    int ret = mkdir_recursive(mp4_dir);
-    if (ret != 0) {
-        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-
-        // Try to create the parent directory first
-        char parent_dir[MAX_PATH_LENGTH];
-        if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-            safe_strcpy(parent_dir, global_config->mp4_storage_path, MAX_PATH_LENGTH, 0);
-        } else {
-            snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
-        }
-
-        ret = mkdir_recursive(parent_dir);
-        if (ret != 0) {
-            log_error("Failed to create parent MP4 directory: %s (return code: %d)", parent_dir, ret);
-            publish_recording_slot(slot, NULL);
-            free(ctx);
-            return -1;
-        }
-
-        // Try again to create the stream-specific directory
-        ret = mkdir_recursive(mp4_dir);
-        if (ret != 0) {
-            log_error("Still failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-            publish_recording_slot(slot, NULL);
-            free(ctx);
-            return -1;
-        }
-    }
-
-    // Set appropriate permissions for MP4 directory (owner rwx, group/others rx)
-    if (chmod_path(mp4_dir, 0755) != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
-    }
-
-    // Build the configured flat/month/day path. Existing flat recordings stay
-    // valid because playback uses the full path stored in the database.
-    if (prepare_mp4_recording_path(global_config, stream_name, now,
-                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
-        log_error("Failed to prepare MP4 output path for %s", stream_name);
+    if (prepare_placed_mp4_recording_path(
+            global_config, stream_name, now, ctx->output_path,
+            sizeof(ctx->output_path), &ctx->placement) != 0) {
+        log_error("Storage placement blocked MP4 output for %s (reason: %s)",
+                  stream_name, ctx->placement.reason);
         publish_recording_slot(slot, NULL);
         free(ctx);
         return -1;
@@ -885,61 +834,11 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     // and any month/day directories from it.
     time_t now = time(NULL);
 
-    // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_name[MAX_STREAM_NAME];
-    sanitize_stream_name(stream_name, encoded_name, MAX_STREAM_NAME);
-
-    // Create MP4 directory path
-    char mp4_dir[MAX_PATH_LENGTH];
-    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-        // Use configured MP4 storage path if available
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
-                global_config->mp4_storage_path, encoded_name);
-    } else {
-        // Use mp4 directory parallel to hls, NOT inside it
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
-                global_config->storage_path, encoded_name);
-    }
-
-    // Create MP4 directory if it doesn't exist
-    int ret = mkdir_recursive(mp4_dir);
-    if (ret != 0) {
-        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-
-        // Try to create the parent directory first
-        char parent_dir[MAX_PATH_LENGTH];
-        if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-            safe_strcpy(parent_dir, global_config->mp4_storage_path, MAX_PATH_LENGTH, 0);
-        } else {
-            snprintf(parent_dir, MAX_PATH_LENGTH, "%s/mp4", global_config->storage_path);
-        }
-
-        ret = mkdir_recursive(parent_dir);
-        if (ret != 0) {
-            log_error("Failed to create parent MP4 directory: %s (return code: %d)", parent_dir, ret);
-            publish_recording_slot(slot, NULL);
-            free(ctx);
-            return -1;
-        }
-
-        // Try again to create the stream-specific directory
-        ret = mkdir_recursive(mp4_dir);
-        if (ret != 0) {
-            log_error("Still failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-            publish_recording_slot(slot, NULL);
-            free(ctx);
-            return -1;
-        }
-    }
-
-    // Set permissions for MP4 directory (owner rwx, group/others rx)
-    if (chmod_path(mp4_dir, 0755) != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
-    }
-
-    if (prepare_mp4_recording_path(global_config, stream_name, now,
-                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
-        log_error("Failed to prepare MP4 output path for %s", stream_name);
+    if (prepare_placed_mp4_recording_path(
+            global_config, stream_name, now, ctx->output_path,
+            sizeof(ctx->output_path), &ctx->placement) != 0) {
+        log_error("Storage placement blocked MP4 output for %s (reason: %s)",
+                  stream_name, ctx->placement.reason);
         publish_recording_slot(slot, NULL);
         free(ctx);
         return -1;
@@ -1127,37 +1026,11 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     // and any month/day directories from it.
     time_t now = time(NULL);
 
-    // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_name[MAX_STREAM_NAME];
-    sanitize_stream_name(stream_name, encoded_name, MAX_STREAM_NAME);
-
-    // Create MP4 directory path
-    char mp4_dir[MAX_PATH_LENGTH];
-    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
-                global_config->mp4_storage_path, encoded_name);
-    } else {
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
-                global_config->storage_path, encoded_name);
-    }
-
-    // Create MP4 directory if it doesn't exist
-    int ret = mkdir_recursive(mp4_dir);
-    if (ret != 0) {
-        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-        publish_recording_slot(slot, NULL);
-        free(ctx);
-        return -1;
-    }
-
-    // Set permissions for MP4 directory (owner rwx, group/others rx)
-    if (chmod_path(mp4_dir, 0755) != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
-    }
-
-    if (prepare_mp4_recording_path(global_config, stream_name, now,
-                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
-        log_error("Failed to prepare MP4 output path for %s", stream_name);
+    if (prepare_placed_mp4_recording_path(
+            global_config, stream_name, now, ctx->output_path,
+            sizeof(ctx->output_path), &ctx->placement) != 0) {
+        log_error("Storage placement blocked MP4 output for %s (reason: %s)",
+                  stream_name, ctx->placement.reason);
         publish_recording_slot(slot, NULL);
         free(ctx);
         return -1;
@@ -1284,37 +1157,11 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     // and any month/day directories from it.
     time_t now = time(NULL);
 
-    // Sanitize the stream name so that names with spaces work correctly.
-    char encoded_name[MAX_STREAM_NAME];
-    sanitize_stream_name(stream_name, encoded_name, MAX_STREAM_NAME);
-
-    // Create MP4 directory path
-    char mp4_dir[MAX_PATH_LENGTH];
-    if (global_config->record_mp4_directly && global_config->mp4_storage_path[0] != '\0') {
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/%s",
-                global_config->mp4_storage_path, encoded_name);
-    } else {
-        snprintf(mp4_dir, MAX_PATH_LENGTH, "%s/mp4/%s",
-                global_config->storage_path, encoded_name);
-    }
-
-    // Create MP4 directory if it doesn't exist
-    int ret = mkdir_recursive(mp4_dir);
-    if (ret != 0) {
-        log_error("Failed to create MP4 directory: %s (return code: %d)", mp4_dir, ret);
-        publish_recording_slot(slot, NULL);
-        free(ctx);
-        return -1;
-    }
-
-    // Set permissions for MP4 directory (owner rwx, group/others rx)
-    if (chmod_path(mp4_dir, 0755) != 0) {
-        log_warn("Failed to set permissions on MP4 directory: %s", mp4_dir);
-    }
-
-    if (prepare_mp4_recording_path(global_config, stream_name, now,
-                                   ctx->output_path, sizeof(ctx->output_path)) != 0) {
-        log_error("Failed to prepare MP4 output path for %s", stream_name);
+    if (prepare_placed_mp4_recording_path(
+            global_config, stream_name, now, ctx->output_path,
+            sizeof(ctx->output_path), &ctx->placement) != 0) {
+        log_error("Storage placement blocked MP4 output for %s (reason: %s)",
+                  stream_name, ctx->placement.reason);
         publish_recording_slot(slot, NULL);
         free(ctx);
         return -1;

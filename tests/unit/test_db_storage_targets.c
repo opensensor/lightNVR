@@ -24,6 +24,8 @@ static char default_root[] = "/tmp/lightnvr-target-default-XXXXXX";
 static char second_root[] = "/tmp/lightnvr-target-second-XXXXXX";
 static char moved_root[] = "/tmp/lightnvr-target-moved-XXXXXX";
 static char default_uuid[LIGHTNVR_UUID_STRING_SIZE];
+static const char *mountinfo_fixture =
+    "/tmp/lightnvr_unit_storage_mountinfo.txt";
 
 static storage_target_t valid_target(const char *name, const char *root) {
     storage_target_t target;
@@ -102,6 +104,28 @@ void test_resolver_follows_target_root_and_rejects_traversal(void) {
     TEST_ASSERT_EQUAL_INT(
         -1, db_storage_target_resolve_path(default_uuid,
                                            "/absolute.mp4", resolved));
+}
+
+void test_mount_detection_uses_most_specific_non_root_mount(void) {
+    FILE *fixture = fopen(mountinfo_fixture, "w");
+    TEST_ASSERT_NOT_NULL(fixture);
+    fputs("36 25 0:31 / / rw,relatime - overlay overlay rw\n", fixture);
+    fputs("41 36 0:45 / /mnt/nvr\\040hot rw,relatime - nfs server:/nvr rw\n",
+          fixture);
+    fputs("42 41 0:46 / /mnt/nvr\\040hot/archive rw,relatime - nfs server:/archive rw\n",
+          fixture);
+    fclose(fixture);
+
+    char mount_path[MAX_PATH_LENGTH];
+    TEST_ASSERT_EQUAL_INT(
+        0, db_storage_target_detect_mount(
+               "/mnt/nvr hot/archive/camera-1", mountinfo_fixture,
+               mount_path));
+    TEST_ASSERT_EQUAL_STRING("/mnt/nvr hot/archive", mount_path);
+    TEST_ASSERT_EQUAL_INT(
+        -1, db_storage_target_detect_mount(
+                "/var/lib/lightnvr", mountinfo_fixture, mount_path));
+    unlink(mountinfo_fixture);
 }
 
 void test_explicit_recording_identity_must_resolve_to_file_path(void) {
@@ -325,6 +349,7 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_bootstrap_attaches_absolute_paths_without_moving_files);
     RUN_TEST(test_resolver_follows_target_root_and_rejects_traversal);
+    RUN_TEST(test_mount_detection_uses_most_specific_non_root_mount);
     RUN_TEST(test_explicit_recording_identity_must_resolve_to_file_path);
     RUN_TEST(test_configured_root_change_rotates_default_without_orphaning_history);
     RUN_TEST(test_create_probe_revision_and_duplicate_device_detection);

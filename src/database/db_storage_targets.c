@@ -31,7 +31,7 @@
     "t.low_watermark_pct,t.health_status,t.capacity_bytes," \
     "t.available_bytes,t.filesystem_device,t.last_probe_at," \
     "t.last_success_at,t.last_error,t.revision,t.created_at,t.updated_at," \
-    "t.recording_count,t.recording_bytes"
+    "t.recording_count,t.recording_bytes,t.mount_required,t.mount_guard_path"
 
 static void set_error(char *error, size_t error_size,
                       const char *format, ...) {
@@ -77,6 +77,9 @@ static void populate(sqlite3_stmt *statement, storage_target_t *target) {
     target->updated_at = sqlite3_column_int64(statement, 19);
     target->recording_count = (uint64_t)sqlite3_column_int64(statement, 20);
     target->recording_bytes = (uint64_t)sqlite3_column_int64(statement, 21);
+    target->mount_required = sqlite3_column_int(statement, 22) != 0;
+    copy_column(target->mount_guard_path,
+                sizeof(target->mount_guard_path), statement, 23);
 }
 
 static bool valid_text(const char *value, size_t maximum, bool required) {
@@ -143,6 +146,92 @@ static bool valid_object_key(const char *key) {
     return key[length - 1] != '/';
 }
 
+static bool path_is_within(const char *path, const char *root) {
+    if (!path || !root || path[0] != '/' || root[0] != '/') return false;
+    size_t root_length = strlen(root);
+    if (root_length == 1 && root[0] == '/') return true;
+    return strncmp(path, root, root_length) == 0 &&
+        (path[root_length] == '\0' || path[root_length] == '/');
+}
+
+static bool decode_mount_path(const char *encoded, char *decoded,
+                              size_t decoded_size) {
+    if (!encoded || !decoded || decoded_size == 0) return false;
+    size_t encoded_length = strlen(encoded);
+    size_t output = 0;
+    for (size_t input = 0; input < encoded_length; input++) {
+        unsigned char value = (unsigned char)encoded[input];
+        if (value == '\\' && input + 3 < encoded_length &&
+            encoded[input + 1] >= '0' &&
+            encoded[input + 1] <= '7' && encoded[input + 2] >= '0' &&
+            encoded[input + 2] <= '7' && encoded[input + 3] >= '0' &&
+            encoded[input + 3] <= '7') {
+            value = (unsigned char)((encoded[input + 1] - '0') * 64 +
+                                    (encoded[input + 2] - '0') * 8 +
+                                    (encoded[input + 3] - '0'));
+            input += 3;
+        }
+        if (value == '\0' || output + 1 >= decoded_size) return false;
+        decoded[output++] = (char)value;
+    }
+    decoded[output] = '\0';
+    return true;
+}
+
+static int find_mount(const char *root_path, const char *mountinfo_path,
+                      const char *exact_path,
+                      char mount_path[MAX_PATH_LENGTH]) {
+    if (!root_path || root_path[0] != '/' || !mountinfo_path ||
+        !mount_path) return -1;
+    mount_path[0] = '\0';
+    FILE *mountinfo = fopen(mountinfo_path, "r");
+    if (!mountinfo) return -1;
+    char *line = NULL;
+    size_t line_capacity = 0;
+    ssize_t line_length;
+    size_t best_length = 0;
+    while ((line_length = getline(&line, &line_capacity, mountinfo)) >= 0) {
+        (void)line_length;
+        char encoded[MAX_PATH_LENGTH];
+        if (sscanf(line, "%*s %*s %*s %*s %4095s", encoded) != 1) {
+            continue;
+        }
+        char decoded[MAX_PATH_LENGTH];
+        if (!decode_mount_path(encoded, decoded, sizeof(decoded))) continue;
+        if (exact_path) {
+            if (strcmp(decoded, exact_path) == 0) {
+                safe_strcpy(mount_path, decoded, MAX_PATH_LENGTH, 0);
+                best_length = strlen(decoded);
+                break;
+            }
+            continue;
+        }
+        size_t length = strlen(decoded);
+        if (strcmp(decoded, "/") == 0 || length <= best_length ||
+            !path_is_within(root_path, decoded)) continue;
+        safe_strcpy(mount_path, decoded, MAX_PATH_LENGTH, 0);
+        best_length = length;
+    }
+    free(line);
+    fclose(mountinfo);
+    return best_length > 0 ? 0 : -1;
+}
+
+int db_storage_target_detect_mount(
+    const char *root_path, const char *mountinfo_path,
+    char mount_path[MAX_PATH_LENGTH]) {
+    return find_mount(root_path, mountinfo_path, NULL, mount_path);
+}
+
+bool db_storage_target_mount_guard_active(const storage_target_t *target) {
+    if (!target) return false;
+    if (!target->mount_required) return true;
+    if (target->mount_guard_path[0] == '\0') return false;
+    char active_mount[MAX_PATH_LENGTH];
+    return find_mount(target->root_path, "/proc/self/mountinfo",
+                      target->mount_guard_path, active_mount) == 0;
+}
+
 db_storage_target_result_t db_storage_target_validate(
     storage_target_t *target, char *error, size_t error_size) {
     if (error && error_size > 0) error[0] = '\0';
@@ -188,6 +277,15 @@ db_storage_target_result_t db_storage_target_validate(
                   "reserve_bytes exceeds the supported SQLite integer range");
         return DB_STORAGE_TARGET_INVALID;
     }
+    if (target->mount_guard_path[0] != '\0' &&
+        (target->mount_guard_path[0] != '/' ||
+         strcmp(target->mount_guard_path, "/") == 0 ||
+         !path_is_within(target->root_path, target->mount_guard_path))) {
+        set_error(error, error_size,
+                  "mount guard must be a non-root mount containing root_path");
+        return DB_STORAGE_TARGET_INVALID;
+    }
+    if (!target->mount_required) target->mount_guard_path[0] = '\0';
     return DB_STORAGE_TARGET_OK;
 }
 
@@ -267,6 +365,30 @@ db_storage_target_result_t db_storage_target_get(
     return result;
 }
 
+db_storage_target_result_t db_storage_target_get_default(
+    storage_target_t *target) {
+    if (!target) return DB_STORAGE_TARGET_INVALID;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *mutex = get_db_mutex();
+    if (!db || !mutex) return DB_STORAGE_TARGET_ERROR;
+    const char *sql = "SELECT " STORAGE_TARGET_SELECT_FIELDS
+        " FROM storage_targets t WHERE t.is_default=1 LIMIT 1;";
+    pthread_mutex_lock(mutex);
+    sqlite3_stmt *statement = NULL;
+    int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
+    db_storage_target_result_t outcome = DB_STORAGE_TARGET_NOT_FOUND;
+    if (result == SQLITE_OK) result = sqlite3_step(statement);
+    if (result == SQLITE_ROW) {
+        populate(statement, target);
+        outcome = DB_STORAGE_TARGET_OK;
+    } else if (result != SQLITE_DONE) {
+        outcome = DB_STORAGE_TARGET_ERROR;
+    }
+    if (statement) sqlite3_finalize(statement);
+    pthread_mutex_unlock(mutex);
+    return outcome;
+}
+
 static db_storage_target_result_t probe_path(storage_target_t *target,
                                              bool write_test) {
     target->last_probe_at = (int64_t)time(NULL);
@@ -278,6 +400,40 @@ static db_storage_target_result_t probe_path(storage_target_t *target,
         safe_strcpy(target->health_status, "disabled",
                     sizeof(target->health_status), 0);
         return DB_STORAGE_TARGET_OK;
+    }
+
+    if (target->mount_required) {
+        char active_mount[MAX_PATH_LENGTH];
+        int mount_result;
+        if (target->mount_guard_path[0] == '\0') {
+            mount_result = find_mount(target->root_path,
+                                      "/proc/self/mountinfo", NULL,
+                                      active_mount);
+            if (mount_result == 0) {
+                safe_strcpy(target->mount_guard_path, active_mount,
+                            sizeof(target->mount_guard_path), 0);
+            }
+        } else {
+            mount_result = find_mount(target->root_path,
+                                      "/proc/self/mountinfo",
+                                      target->mount_guard_path,
+                                      active_mount);
+        }
+        if (mount_result != 0) {
+            if (target->mount_guard_path[0]) {
+                snprintf(target->last_error, sizeof(target->last_error),
+                         "Required mount is absent: %.200s",
+                         target->mount_guard_path);
+            } else {
+                safe_strcpy(
+                    target->last_error,
+                    "No distinct mounted filesystem contains this target",
+                    sizeof(target->last_error), 0);
+            }
+            safe_strcpy(target->health_status, "unavailable",
+                        sizeof(target->health_status), 0);
+            return DB_STORAGE_TARGET_UNAVAILABLE;
+        }
     }
 
     struct stat info;
@@ -364,7 +520,7 @@ static int persist_health(const storage_target_t *target) {
         "UPDATE storage_targets SET health_status=?,capacity_bytes=?,"
         "available_bytes=?,filesystem_device=?,last_probe_at=?,"
         "last_success_at=CASE WHEN ?>0 THEN ? ELSE last_success_at END,"
-        "last_error=? WHERE uuid=?;";
+        "last_error=?,mount_guard_path=? WHERE uuid=?;";
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
@@ -382,7 +538,9 @@ static int persist_health(const storage_target_t *target) {
         sqlite3_bind_int64(statement, 7, target->last_success_at);
         sqlite3_bind_text(statement, 8, target->last_error, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 9, target->uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 9, target->mount_guard_path, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 10, target->uuid, -1, SQLITE_TRANSIENT);
         result = sqlite3_step(statement);
     }
     if (statement) sqlite3_finalize(statement);
@@ -446,8 +604,9 @@ db_storage_target_result_t db_storage_target_create(storage_target_t *target) {
         "INSERT INTO storage_targets(uuid,name,target_type,root_path,enabled,"
         "is_default,storage_class,reserve_bytes,high_watermark_pct,"
         "low_watermark_pct,health_status,capacity_bytes,available_bytes,"
-        "filesystem_device,last_probe_at,last_success_at,last_error)"
-        " VALUES(?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?);";
+        "filesystem_device,last_probe_at,last_success_at,last_error,"
+        "mount_required,mount_guard_path)"
+        " VALUES(?,?,?,?,?,0,?,?,?,?,?,?,?,?,?,?,?,?,?);";
     pthread_mutex_lock(mutex);
     int count = -1;
     sqlite3_stmt *count_statement = NULL;
@@ -493,6 +652,9 @@ db_storage_target_result_t db_storage_target_create(storage_target_t *target) {
         else sqlite3_bind_null(statement, 15);
         sqlite3_bind_text(statement, 16, target->last_error, -1,
                           SQLITE_TRANSIENT);
+        sqlite3_bind_int(statement, 17, target->mount_required ? 1 : 0);
+        sqlite3_bind_text(statement, 18, target->mount_guard_path, -1,
+                          SQLITE_TRANSIENT);
         result = sqlite3_step(statement);
     }
     if (statement) sqlite3_finalize(statement);
@@ -514,6 +676,9 @@ db_storage_target_result_t db_storage_target_update(
     if (target->is_default != existing.is_default ||
         (existing.is_default && !target->enabled)) {
         return DB_STORAGE_TARGET_INVALID;
+    }
+    if (strcmp(existing.root_path, target->root_path) != 0) {
+        target->mount_guard_path[0] = '\0';
     }
     char validation_error[STORAGE_TARGET_ERROR_MAX] = {0};
     if (db_storage_target_validate(target, validation_error,
@@ -544,7 +709,8 @@ db_storage_target_result_t db_storage_target_update(
         "low_watermark_pct=?,health_status=?,capacity_bytes=?,"
         "available_bytes=?,filesystem_device=?,last_probe_at=?,"
         "last_success_at=CASE WHEN ?>0 THEN ? ELSE last_success_at END,"
-        "last_error=?,revision=revision+1,updated_at=strftime('%s','now')"
+        "last_error=?,mount_required=?,mount_guard_path=?,"
+        "revision=revision+1,updated_at=strftime('%s','now')"
         " WHERE uuid=? AND revision=?"
         " AND (root_path=? OR (is_default=0 AND recording_count=0));";
     pthread_mutex_lock(mutex);
@@ -578,9 +744,12 @@ db_storage_target_result_t db_storage_target_update(
         sqlite3_bind_int64(statement, 15, target->last_success_at);
         sqlite3_bind_text(statement, 16, target->last_error, -1,
                           SQLITE_TRANSIENT);
-        sqlite3_bind_text(statement, 17, target->uuid, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int64(statement, 18, expected_revision);
-        sqlite3_bind_text(statement, 19, target->root_path, -1,
+        sqlite3_bind_int(statement, 17, target->mount_required ? 1 : 0);
+        sqlite3_bind_text(statement, 18, target->mount_guard_path, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 19, target->uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(statement, 20, expected_revision);
+        sqlite3_bind_text(statement, 21, target->root_path, -1,
                           SQLITE_TRANSIENT);
         result = sqlite3_step(statement);
     }
@@ -635,6 +804,7 @@ db_storage_target_result_t db_storage_target_delete(
     int changed = sqlite3_changes(db);
     if (statement) sqlite3_finalize(statement);
     pthread_mutex_unlock(mutex);
+    if (sqlite_result == SQLITE_CONSTRAINT) return DB_STORAGE_TARGET_IN_USE;
     if (sqlite_result != SQLITE_DONE) return DB_STORAGE_TARGET_ERROR;
     if (changed == 1) return DB_STORAGE_TARGET_OK;
     storage_target_t current;

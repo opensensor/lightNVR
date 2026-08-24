@@ -1041,18 +1041,7 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
         }
     }
 
-    // Set output directory
-    if (global_cfg) {
-        if (build_mp4_recording_directory(global_cfg, stream_name, time(NULL),
-                                          ctx->output_dir,
-                                          sizeof(ctx->output_dir)) != 0 ||
-            mkdir_recursive(ctx->output_dir) != 0) {
-            log_error("Failed to create output directory %s: %s", ctx->output_dir, strerror(errno));
-            free(ctx);
-            pthread_mutex_unlock(&contexts_mutex);
-            return -1;
-        }
-    }
+    /* The recording directory is selected lazily when a detection clip starts. */
 
     // If using built-in motion detection, enable the motion stream now so that
     // detect_motion() does not silently return 0 on every call.  New motion
@@ -2325,10 +2314,15 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     if (!ctx) return -1;
 
     time_t now = time(NULL);
-    if (build_mp4_recording_directory(get_streaming_config(), ctx->stream_name,
-                                      now, ctx->output_dir,
-                                      sizeof(ctx->output_dir)) != 0) {
-        log_error("[%s] Failed to build output directory", ctx->stream_name);
+    memset(&ctx->placement, 0, sizeof(ctx->placement));
+    if (storage_placement_select(ctx->stream_name, &ctx->placement) != 0 ||
+        ctx->placement.status != STORAGE_PLACEMENT_READY ||
+        build_mp4_recording_directory_for_placement(
+            get_streaming_config(), &ctx->placement,
+            ctx->stream_name, now, ctx->output_dir,
+            sizeof(ctx->output_dir)) != 0) {
+        log_warn("[%s] Storage placement blocked detection recording (reason: %s)",
+                 ctx->stream_name, ctx->placement.reason);
         return -1;
     }
 
@@ -2349,6 +2343,16 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
 
     snprintf(ctx->current_recording_path, sizeof(ctx->current_recording_path),
              "%s/detection_%s.mp4", ctx->output_dir, timestamp);
+    size_t root_length = strlen(ctx->placement.target_root);
+    if (strncmp(ctx->current_recording_path, ctx->placement.target_root,
+                root_length) != 0 ||
+        ctx->current_recording_path[root_length] != '/') {
+        log_error("[%s] Placed path escaped storage target", ctx->stream_name);
+        return -1;
+    }
+    safe_strcpy(ctx->placement.object_key,
+                ctx->current_recording_path + root_length + 1,
+                sizeof(ctx->placement.object_key), 0);
 
     log_info("[%s] Starting detection recording: %s", ctx->stream_name, ctx->current_recording_path);
 
@@ -2358,6 +2362,7 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
         log_error("[%s] Failed to create MP4 writer", ctx->stream_name);
         return -1;
     }
+    ctx->mp4_writer->placement = ctx->placement;
     safe_strcpy(ctx->mp4_writer->camera_uuid, ctx->camera_uuid,
                 sizeof(ctx->mp4_writer->camera_uuid), 0);
     ctx->mp4_writer->pre_buffer_seconds = ctx->pre_buffer_seconds;
@@ -2445,6 +2450,13 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     safe_strcpy(metadata.stream_name, ctx->stream_name, sizeof(metadata.stream_name), 0);
     safe_strcpy(metadata.camera_uuid, ctx->camera_uuid,
                 sizeof(metadata.camera_uuid), 0);
+    safe_strcpy(metadata.storage_target_uuid, ctx->placement.target_uuid,
+                sizeof(metadata.storage_target_uuid), 0);
+    safe_strcpy(metadata.object_key, ctx->placement.object_key,
+                sizeof(metadata.object_key), 0);
+    safe_strcpy(metadata.placement_reason, ctx->placement.reason,
+                sizeof(metadata.placement_reason), 0);
+    metadata.storage_policy_version = ctx->placement.policy_version;
     metadata.start_time = now;
     metadata.end_time = 0;  // Will be set when recording stops
     metadata.size_bytes = 0;  // Will be set when recording stops
@@ -2529,6 +2541,13 @@ static int udt_stop_recording(unified_detection_ctx_t *ctx) {
         safe_strcpy(metadata.stream_name, ctx->stream_name, sizeof(metadata.stream_name), 0);
         safe_strcpy(metadata.camera_uuid, ctx->camera_uuid,
                     sizeof(metadata.camera_uuid), 0);
+        safe_strcpy(metadata.storage_target_uuid, ctx->placement.target_uuid,
+                    sizeof(metadata.storage_target_uuid), 0);
+        safe_strcpy(metadata.object_key, ctx->placement.object_key,
+                    sizeof(metadata.object_key), 0);
+        safe_strcpy(metadata.placement_reason, ctx->placement.reason,
+                    sizeof(metadata.placement_reason), 0);
+        metadata.storage_policy_version = ctx->placement.policy_version;
         metadata.start_time = start_time;
         metadata.end_time = end_time;
         metadata.size_bytes = file_size;

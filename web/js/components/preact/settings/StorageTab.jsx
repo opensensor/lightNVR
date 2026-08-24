@@ -5,14 +5,18 @@
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
-import { useState } from 'preact/hooks';
+import { useCallback, useState } from 'preact/hooks';
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { showStatusMessage } from '../ToastContainer.jsx';
+import { CollectionSelectorBuilder } from '../fleet/CollectionSelectorBuilder.jsx';
+
+const ALL_SELECTOR = { version: 1, expression: { op: 'all' } };
 
 const EMPTY_TARGET = {
   name: '',
   root_path: '',
   enabled: true,
+  mount_required: true,
   storage_class: 'hot',
   reserve_gb: '0',
   high_watermark_pct: '90',
@@ -43,6 +47,7 @@ function targetToEditor(target) {
     name: target.name,
     root_path: target.root_path,
     enabled: target.enabled,
+    mount_required: target.mount_required,
     storage_class: target.storage_class,
     reserve_gb: String(Math.round((Number(target.reserve_bytes) || 0) / (1024 ** 3) * 100) / 100),
     high_watermark_pct: String(target.high_watermark_pct),
@@ -94,6 +99,10 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
           <input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy || value.is_default} />
           {t('settings.storageTargets.enabled')}
         </label>
+        <label class="flex items-start gap-2 text-sm font-medium md:col-span-2">
+          <input type="checkbox" class="mt-1" checked={value.mount_required} onChange={(event) => set('mount_required', event.currentTarget.checked)} disabled={busy} />
+          <span><span class="block">{t('settings.storageTargets.mountRequired')}</span><span class="block text-xs font-normal text-muted-foreground">{t('settings.storageTargets.mountRequiredHelp')}</span></span>
+        </label>
       </div>
       <div class="flex justify-end gap-2 mt-4">
         <button type="button" class="btn-secondary" onClick={onCancel} disabled={busy}>{t('common.cancel')}</button>
@@ -128,6 +137,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
         name: editor.name.trim(),
         root_path: editor.root_path.trim(),
         enabled: editor.enabled,
+        mount_required: editor.mount_required,
         storage_class: editor.storage_class,
         reserve_bytes: Math.round(reserveGb * (1024 ** 3)),
         low_watermark_pct: low,
@@ -209,6 +219,7 @@ function StorageTargetsPanel({ canModifySettings, t }) {
                     <span class="rounded-full bg-muted px-2 py-0.5 text-xs">{target.storage_class}</span>
                   </div>
                   <p class="font-mono text-xs break-all mt-1 text-muted-foreground">{target.root_path}</p>
+                  {target.mount_required && <p class="text-xs mt-1 text-muted-foreground">{t('settings.storageTargets.mountGuard')}: <span class="font-mono">{target.mount_guard_path || t('settings.storageTargets.mountPending')}</span></p>}
                   <dl class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3 text-sm">
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.capacity')}</dt><dd>{formatBytes(health.capacity_bytes)}</dd></div>
                     <div><dt class="text-xs uppercase tracking-wide text-muted-foreground">{t('settings.storageTargets.available')}</dt><dd>{formatBytes(health.available_bytes)} ({Math.max(0, 100 - (Number(health.used_pct) || 0)).toFixed(1)}%)</dd></div>
@@ -232,10 +243,92 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   );
 }
 
+function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCancel, onSave, busy, locations, tags, t }) {
+  const set = (key, next) => onChange({ ...value, [key]: next });
+  const fallbackTargets = targets.filter((target) => target.uuid !== value.primary_target_uuid);
+  const invalidFallback = value.fallback_mode === 'target' && !value.fallback_target_uuid;
+  return (
+    <div class="rounded-lg border border-primary/40 bg-primary/5 p-4 mt-4 space-y-4">
+      <div><h4 class="font-semibold">{t(value.uuid ? 'settings.storagePolicies.edit' : 'settings.storagePolicies.add')}</h4><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePolicies.editorHelp')}</p></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="text-sm font-medium"><span class="block mb-1">{t('common.name')}</span><input class="w-full p-2 border border-input rounded bg-background" maxLength="127" value={value.name} onInput={(event) => set('name', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.priority')}</span><input type="number" min="-1000000" max="1000000" step="1" class="w-full p-2 border border-input rounded bg-background" value={value.priority} onInput={(event) => set('priority', event.currentTarget.value)} disabled={busy} /></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid }); }} disabled={busy}>{targets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
+        <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.fallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_mode} onChange={(event) => { const mode = event.currentTarget.value; onChange({ ...value, fallback_mode: mode, fallback_target_uuid: mode === 'target' ? value.fallback_target_uuid : '' }); }} disabled={busy}><option value="default">{t('settings.storagePolicies.fallbackDefault')}</option><option value="target">{t('settings.storagePolicies.fallbackTarget')}</option><option value="pause">{t('settings.storagePolicies.fallbackPause')}</option><option value="fail">{t('settings.storagePolicies.fallbackFail')}</option></select></label>
+        {value.fallback_mode === 'target' && <label class="text-sm font-medium md:col-start-2"><span class="block mb-1">{t('settings.storagePolicies.namedFallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_target_uuid} onChange={(event) => set('fallback_target_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{fallbackTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>}
+        <label class="flex items-center gap-2 text-sm font-medium md:col-span-2"><input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy} />{t('settings.storagePolicies.enabled')}</label>
+      </div>
+      <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
+      {value.selector_error && <p class="text-sm text-[hsl(var(--danger))]">{value.selector_error}</p>}
+      <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" onClick={onCancel} disabled={busy}>{t('common.cancel')}</button><button type="button" class="btn-primary" onClick={onSave} disabled={busy || !value.name.trim() || !value.primary_target_uuid || invalidFallback || !!value.selector_error || !value.selector}>{busy ? t('common.saving') : t('common.saveChanges')}</button></div>
+    </div>
+  );
+}
+
+function StoragePoliciesPanel({ canModifySettings, t }) {
+  const policiesQuery = useQuery(['storage-policies'], '/api/storage-policies', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 5000 });
+  const targetsQuery = useQuery(['storage-targets'], '/api/storage-targets', { cache: 'no-store', timeout: 15000, retries: 1 }, { staleTime: 10000 });
+  const locationsQuery = useQuery(['fleet-locations'], '/api/locations', {}, { staleTime: 60000 });
+  const tagsQuery = useQuery(['fleet-tags'], '/api/camera-tags', {}, { staleTime: 60000 });
+  const [editor, setEditor] = useState(null);
+  const [busyKey, setBusyKey] = useState('');
+  const policies = policiesQuery.data?.policies || [];
+  const targets = targetsQuery.data?.targets || [];
+  const targetNames = new Map(targets.map((target) => [target.uuid, target.name]));
+  const onSelectorChange = useCallback((selector, error) => {
+    setEditor((current) => current ? { ...current, selector, selector_error: error } : current);
+  }, []);
+
+  const openNew = () => setEditor({ name: '', enabled: true, priority: '100', selector: ALL_SELECTOR, selector_error: '', primary_target_uuid: targets.find((target) => target.is_default)?.uuid || targets[0]?.uuid || '', fallback_mode: 'default', fallback_target_uuid: '' });
+  const openEdit = (policy) => setEditor({ ...policy, priority: String(policy.priority), fallback_target_uuid: policy.fallback_target_uuid || '', selector_error: '' });
+  const savePolicy = async () => {
+    const priority = Number(editor.priority);
+    if (!Number.isInteger(priority) || priority < -1000000 || priority > 1000000) {
+      showStatusMessage(t('settings.storagePolicies.invalidPriority'), 'error');
+      return;
+    }
+    setBusyKey(editor.uuid || 'new');
+    try {
+      const payload = { name: editor.name.trim(), enabled: editor.enabled, priority, selector: editor.selector, primary_target_uuid: editor.primary_target_uuid, fallback_mode: editor.fallback_mode, fallback_target_uuid: editor.fallback_mode === 'target' ? editor.fallback_target_uuid : null };
+      if (editor.uuid) payload.revision = editor.revision;
+      await fetchJSON(editor.uuid ? `/api/storage-policies/${encodeURIComponent(editor.uuid)}` : '/api/storage-policies', { method: editor.uuid ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), timeout: 20000, retries: 0 });
+      await policiesQuery.refetch();
+      setEditor(null);
+      showStatusMessage(t(editor.uuid ? 'settings.storagePolicies.updated' : 'settings.storagePolicies.created'), 'success');
+    } catch (requestError) {
+      showStatusMessage(requestError.message, 'error', 7000);
+      if (requestError.status === 409) await policiesQuery.refetch();
+    } finally { setBusyKey(''); }
+  };
+  const deletePolicy = async (policy) => {
+    if (!window.confirm(t('settings.storagePolicies.deleteConfirm', { name: policy.name }))) return;
+    setBusyKey(policy.uuid);
+    try {
+      await fetchJSON(`/api/storage-policies/${encodeURIComponent(policy.uuid)}?revision=${encodeURIComponent(policy.revision)}`, { method: 'DELETE', timeout: 15000, retries: 0 });
+      await policiesQuery.refetch();
+      showStatusMessage(t('settings.storagePolicies.deleted'), 'success');
+    } catch (requestError) { showStatusMessage(requestError.message, 'error', 7000); } finally { setBusyKey(''); }
+  };
+  const loading = policiesQuery.isLoading || targetsQuery.isLoading || locationsQuery.isLoading || tagsQuery.isLoading;
+  const error = policiesQuery.error || targetsQuery.error || locationsQuery.error || tagsQuery.error;
+
+  return (
+    <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storagePolicies.title')}>
+      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-3 border-b border-border"><div><h3 class="text-lg font-semibold">{t('settings.storagePolicies.title')}</h3><p class="text-sm text-muted-foreground mt-1">{t('settings.storagePolicies.description')}</p></div>{canModifySettings && <button type="button" class="btn-primary shrink-0" onClick={openNew} disabled={!!editor || targets.length === 0}>{t('settings.storagePolicies.add')}</button>}</div>
+      {editor && <StoragePolicyEditor value={editor} targets={targets} locations={locationsQuery.data?.locations || []} tags={tagsQuery.data?.tags || []} onChange={setEditor} onSelectorChange={onSelectorChange} onCancel={() => setEditor(null)} onSave={savePolicy} busy={busyKey === (editor.uuid || 'new')} t={t} />}
+      {loading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
+      {error && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error.message}</p><button type="button" class="btn-secondary mt-3" onClick={() => Promise.all([policiesQuery.refetch(), targetsQuery.refetch(), locationsQuery.refetch(), tagsQuery.refetch()])}>{t('common.retry')}</button></div>}
+      {!loading && !error && <div class="divide-y divide-border mt-4">{policies.map((policy) => <article key={policy.uuid} class="py-4 first:pt-0 last:pb-0"><div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><h4 class="font-semibold">{policy.name}</h4><span class="rounded-full bg-muted px-2 py-0.5 text-xs">{t('settings.storagePolicies.priorityValue', { priority: policy.priority })}</span><span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${policy.enabled ? 'badge-success' : 'bg-muted text-muted-foreground'}`}>{t(policy.enabled ? 'settings.storagePolicies.active' : 'settings.storagePolicies.inactive')}</span></div><p class="text-sm mt-2">{t('settings.storagePolicies.routesTo', { target: targetNames.get(policy.primary_target_uuid) || policy.primary_target_uuid })}</p><p class="text-xs text-muted-foreground mt-1">{policy.fallback_mode === 'target' ? t('settings.storagePolicies.fallsBackTo', { target: targetNames.get(policy.fallback_target_uuid) || policy.fallback_target_uuid }) : t(`settings.storagePolicies.mode.${policy.fallback_mode}`)}</p></div>{canModifySettings && <div class="flex gap-2"><button type="button" class="btn-secondary" onClick={() => openEdit(policy)} disabled={!!editor || !!busyKey}>{t('common.edit')}</button><button type="button" class="btn-danger" onClick={() => deletePolicy(policy)} disabled={!!busyKey}>{t('common.delete')}</button></div>}</div></article>)}</div>}
+      {!loading && !error && policies.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storagePolicies.empty')}</p>}
+    </div>
+  );
+}
+
 export function StorageTab({ settings, handleInputChange, canModifySettings, t }) {
   return (
     <div class="space-y-6">
       {canModifySettings && <StorageTargetsPanel canModifySettings={canModifySettings} t={t} />}
+      {canModifySettings && <StoragePoliciesPanel canModifySettings={canModifySettings} t={t} />}
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.storage')}</h3>
         <div data-setting-label={t('settings.storagePath')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
