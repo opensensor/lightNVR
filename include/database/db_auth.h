@@ -40,6 +40,7 @@ typedef struct {
     int64_t last_login;      /**< Last login timestamp */
     bool is_active;          /**< Whether the user is active */
     bool password_change_locked; /**< Whether password changes are locked (for demo accounts) */
+    bool must_change_password; /**< Whether password auth is restricted pending a password change */
     bool totp_enabled;       /**< Whether TOTP MFA is enabled */
     char allowed_tags[USER_ALLOWED_TAGS_MAX];  /**< Comma-separated tag whitelist for RBAC (empty = no restriction) */
     bool has_tag_restriction; /**< Whether allowed_tags is set (true) or NULL/unrestricted (false) */

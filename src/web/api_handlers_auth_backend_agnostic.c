@@ -363,8 +363,13 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
         return;
     }
 
+    bool must_change_password =
+        authenticated_user.must_change_password && !g_config.demo_mode;
+
     // Check if user has TOTP enabled (only for API/JSON requests)
-    if (!is_form) {
+    // A bootstrap password must be replaced before MFA is evaluated. The
+    // restricted session created below cannot access any other protected API.
+    if (!is_form && !must_change_password) {
         char totp_secret[64] = {0};
         bool totp_enabled = false;
         if (db_auth_get_totp_info(user_id, totp_secret, sizeof(totp_secret), &totp_enabled) == 0 && totp_enabled) {
@@ -497,6 +502,8 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
         cJSON *response = cJSON_CreateObject();
         cJSON_AddBoolToObject(response, "success", true);
         cJSON_AddStringToObject(response, "redirect", "/index.html");
+        cJSON_AddBoolToObject(response, "must_change_password",
+                              must_change_password);
 
         char *json_str = cJSON_PrintUnformatted(response);
         http_response_set_json(res, 200, json_str);
@@ -566,6 +573,7 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         cJSON_AddBoolToObject(response, "authenticated", true);
         cJSON_AddStringToObject(response, "username", "admin");
         cJSON_AddStringToObject(response, "role", "admin");
+        cJSON_AddBoolToObject(response, "must_change_password", false);
         cJSON_AddBoolToObject(response, "auth_enabled", false);
         cJSON_AddNumberToObject(response, "auth_timeout_hours", g_config.auth_timeout_hours);
         cJSON_AddNumberToObject(response, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
@@ -592,6 +600,8 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         cJSON_AddNumberToObject(response, "role_id", user.role);
         cJSON_AddBoolToObject(response, "is_active", user.is_active);
         cJSON_AddBoolToObject(response, "password_change_locked", user.password_change_locked);
+        cJSON_AddBoolToObject(response, "must_change_password",
+                              user.must_change_password && !g_config.demo_mode);
         cJSON_AddBoolToObject(response, "auth_enabled", true);
         cJSON_AddNumberToObject(response, "auth_timeout_hours", g_config.auth_timeout_hours);
         cJSON_AddNumberToObject(response, "auth_absolute_timeout_hours", g_config.auth_absolute_timeout_hours);
@@ -613,6 +623,7 @@ void handle_auth_verify(const http_request_t *req, http_response_t *res) {
         cJSON_AddBoolToObject(response, "demo_mode", true);
         cJSON_AddStringToObject(response, "username", "demo");
         cJSON_AddStringToObject(response, "role", "viewer");
+        cJSON_AddBoolToObject(response, "must_change_password", false);
 
         char *json_str = cJSON_PrintUnformatted(response);
         http_response_set_json(res, 200, json_str);

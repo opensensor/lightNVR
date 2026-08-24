@@ -289,12 +289,14 @@ static int prepare_user_lookup_stmt(sqlite3 *db, const char *where_clause, sqlit
     bool has_allowed_tags = cached_column_exists("users", "allowed_tags");
     bool has_allowed_login_cidrs = cached_column_exists("users", "allowed_login_cidrs");
     bool has_authorization_mode = cached_column_exists("users", "authorization_mode");
+    bool has_must_change_password = cached_column_exists("users", "must_change_password");
 
     char sql[768];
     int written = snprintf(sql, sizeof(sql),
                            "SELECT id, username, email, role, api_key, created_at, "
-                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s, %s "
+                           "updated_at, last_login, is_active, password_change_locked, %s, %s, %s, %s, %s "
                            "FROM users %s;",
+                           has_must_change_password ? "must_change_password" : "0",
                            has_totp ? "totp_enabled" : "0",
                            has_allowed_tags ? "allowed_tags" : "NULL",
                            has_allowed_login_cidrs ? "allowed_login_cidrs" : "NULL",
@@ -330,21 +332,22 @@ static void populate_user_from_stmt(sqlite3_stmt *stmt, user_t *user) {
     user->last_login = sqlite3_column_int64(stmt, 7);
     user->is_active = sqlite3_column_int(stmt, 8) != 0;
     user->password_change_locked = sqlite3_column_int(stmt, 9) != 0;
-    user->totp_enabled = sqlite3_column_int(stmt, 10) != 0;
+    user->must_change_password = sqlite3_column_int(stmt, 10) != 0;
+    user->totp_enabled = sqlite3_column_int(stmt, 11) != 0;
 
-    const char *allowed_tags = (const char *)sqlite3_column_text(stmt, 11);
+    const char *allowed_tags = (const char *)sqlite3_column_text(stmt, 12);
     if (allowed_tags && allowed_tags[0] != '\0') {
         safe_strcpy(user->allowed_tags, allowed_tags, sizeof(user->allowed_tags), 0);
         user->has_tag_restriction = true;
     }
 
-    const char *allowed_login_cidrs = (const char *)sqlite3_column_text(stmt, 12);
+    const char *allowed_login_cidrs = (const char *)sqlite3_column_text(stmt, 13);
     if (allowed_login_cidrs && allowed_login_cidrs[0] != '\0') {
         safe_strcpy(user->allowed_login_cidrs, allowed_login_cidrs, sizeof(user->allowed_login_cidrs), 0);
         user->has_login_cidr_restriction = true;
     }
 
-    const char *authorization_mode = (const char *)sqlite3_column_text(stmt, 13);
+    const char *authorization_mode = (const char *)sqlite3_column_text(stmt, 14);
     safe_strcpy(user->authorization_mode,
                 authorization_mode ? authorization_mode : "legacy",
                 sizeof(user->authorization_mode), 0);
@@ -534,9 +537,49 @@ int db_auth_init(void) {
         log_info("Creating default admin user with default password");
     }
 
-    rc = db_auth_create_user("admin", initial_password, NULL, USER_ROLE_ADMIN, true, NULL);
+    sqlite3 *db = get_db_handle();
+    if (!db || sqlite3_exec(db, "BEGIN IMMEDIATE;", NULL, NULL, NULL) != SQLITE_OK) {
+        log_error("Failed to begin default administrator creation transaction");
+        return -1;
+    }
+
+    int64_t admin_user_id = 0;
+    rc = db_auth_create_user("admin", initial_password, NULL, USER_ROLE_ADMIN,
+                             true, &admin_user_id);
     if (rc != 0) {
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
         log_error("Failed to create default admin user");
+        return -1;
+    }
+
+    if (!used_config_password) {
+        sqlite3_stmt *stmt = NULL;
+        rc = sqlite3_prepare_v2(
+            db,
+            "UPDATE users SET must_change_password = 1, updated_at = ? WHERE id = ?;",
+            -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            log_error("Failed to prepare default password-change requirement: %s",
+                      sqlite3_errmsg(db));
+            sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+            return -1;
+        }
+        sqlite3_bind_int64(stmt, 1, (sqlite3_int64)time(NULL));
+        sqlite3_bind_int64(stmt, 2, admin_user_id);
+        rc = sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            log_error("Failed to require a default administrator password change: %s",
+                      sqlite3_errmsg(db));
+            sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+            return -1;
+        }
+    }
+
+    if (sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL) != SQLITE_OK) {
+        log_error("Failed to commit default administrator creation: %s",
+                  sqlite3_errmsg(db));
+        sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
         return -1;
     }
 
@@ -551,7 +594,7 @@ int db_auth_init(void) {
         log_info("***    Manage users from Settings -> Users           ***");
     } else {
         log_info("***    Password: admin                               ***");
-        log_info("***    PLEASE CHANGE THIS PASSWORD IMMEDIATELY!      ***");
+        log_info("***    Password change required on first login      ***");
     }
     log_info("********************************************************");
 
@@ -816,7 +859,10 @@ int db_auth_change_password(int64_t user_id, const char *new_password) {
 
     // Check if the user exists and if password changes are locked
     sqlite3_stmt *stmt;
-    int rc = sqlite3_prepare_v2(db, "SELECT id, password_change_locked FROM users WHERE id = ?;", -1, &stmt, NULL);
+    int rc = sqlite3_prepare_v2(
+        db,
+        "SELECT id, password_change_locked, must_change_password FROM users WHERE id = ?;",
+        -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare statement: %s", sqlite3_errmsg(db));
         return -1;
@@ -836,6 +882,14 @@ int db_auth_change_password(int64_t user_id, const char *new_password) {
         log_warn("Password changes are locked for user: %lld", (long long)user_id);
         sqlite3_finalize(stmt);
         return -2; // Special error code for locked password
+    }
+
+    bool must_change_password = sqlite3_column_int(stmt, 2) != 0;
+    if (must_change_password && strcmp(new_password, "admin") == 0) {
+        log_warn("Default password cannot satisfy required password change for user: %lld",
+                 (long long)user_id);
+        sqlite3_finalize(stmt);
+        return -3;
     }
 
     sqlite3_finalize(stmt);
@@ -894,7 +948,8 @@ int db_auth_change_password(int64_t user_id, const char *new_password) {
 
     // Update the password
     rc = sqlite3_prepare_v2(db,
-                           "UPDATE users SET password_hash = ?, salt = ?, updated_at = ? "
+                           "UPDATE users SET password_hash = ?, salt = ?, updated_at = ?, "
+                           "must_change_password = CASE WHEN must_change_password = 1 THEN 0 ELSE must_change_password END "
                            "WHERE id = ?;",
                            -1, &stmt, NULL);
     if (rc != SQLITE_OK) {

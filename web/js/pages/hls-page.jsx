@@ -12,6 +12,7 @@ import { Header } from "../components/preact/Header.jsx";
 import { Footer } from "../components/preact/Footer.jsx";
 import { setupSessionValidation } from '../utils/auth-utils.js';
 import { initI18n } from '../i18n.js';
+import { AuthGate } from '../components/preact/AuthGate.jsx';
 
 /**
  * Main App component that conditionally renders WebRTCView or LiveView
@@ -83,7 +84,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (container) {
         render(
             <QueryClientProvider client={queryClient}>
-                <App />
+                <AuthGate>
+                    <App />
+                </AuthGate>
             </QueryClientProvider>,
             container
         );

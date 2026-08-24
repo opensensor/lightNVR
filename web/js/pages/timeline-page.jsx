@@ -11,6 +11,7 @@ import {Footer} from "../components/preact/Footer.jsx";
 import { ToastContainer } from "../components/preact/ToastContainer.jsx";
 import { setupSessionValidation } from '../utils/auth-utils.js';
 import { initI18n } from '../i18n.js';
+import { AuthGate } from '../components/preact/AuthGate.jsx';
 
 // Render the UsersView component when the DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
@@ -24,10 +25,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (container) {
         render(
             <QueryClientProvider client={queryClient}>
-                <Header />
-                <ToastContainer />
-                <TimelinePage />
-                <Footer />
+                <AuthGate>
+                    <Header />
+                    <ToastContainer />
+                    <TimelinePage />
+                    <Footer />
+                </AuthGate>
             </QueryClientProvider>,
             container
         );

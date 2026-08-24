@@ -39,7 +39,7 @@ export function clearAuthState() {
 
 /**
  * Validate current session by making a lightweight API call
- * @returns {Promise<{valid: boolean, id?: number, username?: string, email?: string, role?: string, role_id?: number, is_active?: boolean, password_change_locked?: boolean, demo_mode?: boolean, authenticated?: boolean}>} - Session info
+ * @returns {Promise<{valid: boolean, id?: number, username?: string, email?: string, role?: string, role_id?: number, is_active?: boolean, password_change_locked?: boolean, must_change_password?: boolean, demo_mode?: boolean, authenticated?: boolean}>} - Session info
  */
 export async function validateSession() {
   try {
@@ -71,6 +71,7 @@ export async function validateSession() {
         role_id: data.role_id,
         is_active: data.is_active,
         password_change_locked: data.password_change_locked,
+        must_change_password: data.must_change_password === true,
         auth_enabled: data.auth_enabled
       };
     }
@@ -104,7 +105,8 @@ export async function getUserInfo() {
       role: session.role,
       role_id: session.role_id,
       is_active: session.is_active,
-      password_change_locked: session.password_change_locked
+      password_change_locked: session.password_change_locked,
+      must_change_password: session.must_change_password
     };
   }
   return null;
@@ -233,4 +235,3 @@ export function setupSessionValidation(intervalMs = 5 * 60 * 1000) {
 
   return intervalId;
 }
-

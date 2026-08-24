@@ -376,7 +376,7 @@ void load_default_config(config_t *config) {
     safe_strcpy(config->web_root, "/var/lib/lightnvr/www", MAX_PATH_LENGTH, 0);
     config->web_auth_enabled = true;
     safe_strcpy(config->web_username, "admin", 32, 0);
-    // No default password - will be generated randomly on first run
+    // Blank means bootstrap admin/admin; db_auth_init requires first-login replacement.
     config->web_password[0] = '\0';
     config->webrtc_disabled = false; // WebRTC is enabled by default
     config->hls_disabled = false;    // HLS is enabled by default (#397)

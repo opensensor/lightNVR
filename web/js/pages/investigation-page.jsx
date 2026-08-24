@@ -7,6 +7,7 @@ import { ToastContainer } from '../components/preact/ToastContainer.jsx';
 import { initI18n } from '../i18n.js';
 import { QueryClientProvider, queryClient } from '../query-client.js';
 import { setupSessionValidation } from '../utils/auth-utils.js';
+import { AuthGate } from '../components/preact/AuthGate.jsx';
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initI18n();
@@ -15,10 +16,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!container) return;
   render(
     <QueryClientProvider client={queryClient}>
-      <Header />
-      <ToastContainer />
-      <InvestigationView />
-      <Footer />
+      <AuthGate>
+        <Header />
+        <ToastContainer />
+        <InvestigationView />
+        <Footer />
+      </AuthGate>
     </QueryClientProvider>,
     container,
   );

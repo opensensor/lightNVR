@@ -483,6 +483,8 @@ CREATE TABLE users (
     api_key TEXT,
     -- Password lock (migration 0019)
     password_change_locked INTEGER DEFAULT 0,
+    -- Fresh fallback-administrator gate (migration 0063)
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     -- TOTP/MFA (migration 0021)
     totp_secret TEXT,
     totp_enabled INTEGER DEFAULT 0

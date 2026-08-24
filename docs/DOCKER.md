@@ -345,14 +345,20 @@ On first container start, the entrypoint script automatically:
 - **Username:** `admin`
 - **Password:** `admin`
 
-⚠️ **Change these immediately after first login.** The web server binds `0.0.0.0` inside
-the container, so once you publish port 8080 these credentials are the only thing in front
-of your cameras and recordings. Change the password under **Settings → Users**.
+⚠️ The web server binds `0.0.0.0` inside the container, so once you publish port 8080
+these credentials are the only thing in front of the first-login flow. LightNVR requires
+the default password to be replaced immediately after login and blocks the rest of the UI
+and password-authenticated APIs until that succeeds. You then sign in again with the new
+password; MFA, when enabled, follows on that sign-in.
 
 To avoid the default ever being valid, set `password` in the `[web]` section of
 `config/lightnvr.ini` *before* the first start — the admin account is then created with
 that password instead. The setting is only read when the account is created; afterwards
 users are managed from the **Users** page.
+
+Existing accounts are not flagged during an upgrade. API-key authentication and demo
+mode remain available while a freshly bootstrapped administrator is awaiting a password
+change.
 
 ## WebRTC Configuration
 
@@ -608,4 +614,3 @@ docker run -d \
 For issues and questions:
 - GitHub Issues: https://github.com/opensensor/lightNVR/issues
 - Documentation: https://github.com/opensensor/lightNVR/tree/main/docs
-

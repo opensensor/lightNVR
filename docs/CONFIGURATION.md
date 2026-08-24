@@ -247,8 +247,15 @@ web_thread_pool_size = 8
 
 > ⚠️ **Default credentials are `admin` / `admin`.** Combined with the default
 > `bind_ip = 0.0.0.0`, anyone who can reach port 8080 can reach your cameras and
-> recordings until you change the password. Either set `password` before the very first
-> start, or log in and change it under **Settings → Users** immediately.
+> recordings if an attacker completes first login before you do. Either set `password`
+> before the very first start, or log in with `admin` / `admin` and complete the mandatory
+> password-change screen. Until the change succeeds, that password-authenticated session
+> can only verify its state and change its own password; MFA is evaluated after the new
+> password is set and the user signs in again.
+>
+> The requirement is added only when a new administrator is created with the fallback
+> password. Existing users are not flagged on upgrade, and API-key authentication and demo
+> mode are unaffected.
 >
 > There is no password-reset flag. If you lose the admin password, stop LightNVR, delete
 > the account row, and restart — it is recreated by the same first-run rules:

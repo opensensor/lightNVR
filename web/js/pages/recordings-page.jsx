@@ -13,6 +13,7 @@ import { BatchDeleteModal } from "../components/preact/BatchDeleteModal.jsx";
 import { ModalProvider } from "../components/preact/UI.jsx";
 import { setupSessionValidation } from '../utils/auth-utils.js';
 import { initI18n } from '../i18n.js';
+import { AuthGate } from '../components/preact/AuthGate.jsx';
 
 // Render the StreamsView component when the DOM is loaded
 document.addEventListener('DOMContentLoaded', async () => {
@@ -26,13 +27,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (container) {
         render(
             <QueryClientProvider client={queryClient}>
-                <ModalProvider>
-                    <Header />
-                    <ToastContainer />
-                    <BatchDeleteModal />
-                    <RecordingsView />
-                    <Footer />
-                </ModalProvider>
+                <AuthGate>
+                    <ModalProvider>
+                        <Header />
+                        <ToastContainer />
+                        <BatchDeleteModal />
+                        <RecordingsView />
+                        <Footer />
+                    </ModalProvider>
+                </AuthGate>
             </QueryClientProvider>,
             container
         );

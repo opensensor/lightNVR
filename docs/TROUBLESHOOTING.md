@@ -346,7 +346,10 @@ when the admin account is first created.
    sudo systemctl start lightnvr
    ```
 
-4. Log back in and set a real password under **Settings → Users**.
+4. Log back in. If the fallback `admin` password was used, complete the mandatory
+   password-change screen and then sign in with the new password. If `[web] password` was
+   supplied before the account was recreated, that operator-selected credential skips the
+   first-login gate.
 
 ## Performance Optimization
 

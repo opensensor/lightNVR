@@ -292,14 +292,11 @@ sudo cat /etc/lightnvr/lightnvr.ini | grep -A 2 "\[web\]"
    - Username: `admin`
    - Password: `admin`
 
-3. If you changed the password and forgot it, reset in config:
-```bash
-sudo nano /etc/lightnvr/lightnvr.ini
-```
-Change the password line under `[web]` section, then:
-```bash
-sudo systemctl restart lightnvr
-```
+3. If you changed the password and forgot it, changing `[web] password` no longer updates
+   an existing database user. Follow the account recreation procedure in
+   [Authentication Issues](TROUBLESHOOTING.md#authentication-issues). An account recreated
+   with fallback `admin` / `admin` must complete the blocking password-change screen;
+   supplying `[web] password` before recreation skips that gate.
 
 ## Getting More Help
 
