@@ -450,6 +450,12 @@ static int get_authenticated_user(const http_request_t *req, user_t *user,
         }
     }
 
+    // API keys and scoped tokens are deliberately exempt from the pending
+    // password-change gate: they are separate credentials with their own
+    // lifecycle, and a bootstrap admin flagged by db_auth_init() would
+    // otherwise take every token-authenticated integration down with it. An
+    // attacker who guesses the default password holds no key, and the gate
+    // blocks the endpoints that would disclose one.
     char api_key[128] = {0};
     if (httpd_get_api_key(req, api_key, sizeof(api_key)) == 0) {
         int rc = db_auth_get_user_by_api_key(api_key, user);

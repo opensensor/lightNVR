@@ -949,7 +949,7 @@ int db_auth_change_password(int64_t user_id, const char *new_password) {
     // Update the password
     rc = sqlite3_prepare_v2(db,
                            "UPDATE users SET password_hash = ?, salt = ?, updated_at = ?, "
-                           "must_change_password = CASE WHEN must_change_password = 1 THEN 0 ELSE must_change_password END "
+                           "must_change_password = 0 "
                            "WHERE id = ?;",
                            -1, &stmt, NULL);
     if (rc != SQLITE_OK) {

@@ -513,7 +513,11 @@ void handle_post_investigation_thumbnail_samples(
         cJSON_AddNumberToObject(sample, "recording_end_time",
                                 (double)match->end_time);
         cJSON_AddNumberToObject(sample, "offset_ms", (double)offset_ms);
-        if (g_config.generate_thumbnails) {
+        // Mirror the drill-down endpoint's own guards: CPU-save mode (#364)
+        // rejects generation, so advertising a URL here would just hand the UI
+        // a set of images that 403.
+        if (g_config.generate_thumbnails &&
+            g_config.thumbnails_per_recording > 1) {
             cJSON_AddStringToObject(thumbnail, "status", "available");
             cJSON_AddStringToObject(thumbnail, "url", thumbnail_url);
         } else {

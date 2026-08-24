@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cjson/cJSON.h>
@@ -27,6 +28,7 @@
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_investigations_test.db"
+#define TEST_STORAGE_PATH "/tmp/lightnvr_unit_investigations_storage"
 
 static stream_config_t create_camera(const char *name) {
     stream_config_t stream;
@@ -214,6 +216,10 @@ void setUp(void) {
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
     g_config.generate_thumbnails = true;
+    // Match the production default (config.c); CPU-save mode is 1.
+    g_config.thumbnails_per_recording = 3;
+    safe_strcpy(g_config.storage_path, TEST_STORAGE_PATH,
+                sizeof(g_config.storage_path), 0);
     sqlite3_exec(db, "DELETE FROM detections;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
@@ -229,6 +235,98 @@ void setUp(void) {
 void tearDown(void) {
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
+    g_config.thumbnails_per_recording = 3;
+}
+
+/**
+ * @brief Issue a drill-down thumbnail GET and return the status code
+ *
+ * There is no libuv connection behind these requests, so a cache hit reports
+ * 500 ("Failed to serve thumbnail") while a miss falls through to the missing
+ * recording file and reports 404. That difference is what lets the offset
+ * quantization be observed without running ffmpeg.
+ */
+static int call_investigation_thumbnail(uint64_t recording_id,
+                                        long long offset_ms) {
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    request.method = HTTP_METHOD_GET;
+    safe_strcpy(request.method_str, "GET", sizeof(request.method_str), 0);
+    snprintf(request.path, sizeof(request.path),
+             "/api/investigations/thumbnail/%llu/%lld",
+             (unsigned long long)recording_id, offset_ms);
+    safe_strcpy(request.client_ip, "127.0.0.1", sizeof(request.client_ip), 0);
+    handle_investigation_thumbnail(&request, &response);
+    int status = response.status_code;
+    http_response_free(&response);
+    return status;
+}
+
+static void seed_cached_thumbnail(uint64_t recording_id, long long offset_ms) {
+    char directory[MAX_PATH_LENGTH];
+    snprintf(directory, sizeof(directory), "%s/thumbnails", TEST_STORAGE_PATH);
+    mkdir(TEST_STORAGE_PATH, 0755);
+    mkdir(directory, 0755);
+    snprintf(directory, sizeof(directory), "%s/thumbnails/investigation",
+             TEST_STORAGE_PATH);
+    mkdir(directory, 0755);
+    snprintf(directory, sizeof(directory),
+             "%s/thumbnails/investigation/%llu", TEST_STORAGE_PATH,
+             (unsigned long long)recording_id);
+    mkdir(directory, 0755);
+
+    char path[MAX_PATH_LENGTH];
+    snprintf(path, sizeof(path), "%s/%lld.jpg", directory, offset_ms);
+    FILE *file = fopen(path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    fwrite("jpeg", 1, 4, file);
+    fclose(file);
+}
+
+void test_investigation_thumbnail_quantizes_offset_to_cache_grid(void) {
+    const time_t range_start = 1700008000;
+    stream_config_t camera = create_camera("Quantize Camera");
+    uint64_t recording_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+    seed_cached_thumbnail(recording_id, 20000);
+
+    // Every offset inside the same second resolves to the seeded 20000.jpg,
+    // so a client walking milliseconds cannot mint new cache entries.
+    TEST_ASSERT_EQUAL_INT(500, call_investigation_thumbnail(recording_id, 20000));
+    TEST_ASSERT_EQUAL_INT(500, call_investigation_thumbnail(recording_id, 20001));
+    TEST_ASSERT_EQUAL_INT(500, call_investigation_thumbnail(recording_id, 20999));
+    // The next second is a genuinely distinct frame and still misses.
+    TEST_ASSERT_EQUAL_INT(404, call_investigation_thumbnail(recording_id, 21000));
+}
+
+void test_investigation_thumbnails_disabled_in_cpu_save_mode(void) {
+    const time_t range_start = 1700009000;
+    stream_config_t camera = create_camera("CPU Save Camera");
+    uint64_t recording_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+    seed_cached_thumbnail(recording_id, 20000);
+    g_config.thumbnails_per_recording = 1;
+
+    TEST_ASSERT_EQUAL_INT(403, call_investigation_thumbnail(recording_id, 20000));
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"sample_count\":3}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60));
+    cJSON *json = call_thumbnail_samples(body, 200);
+    const cJSON *samples = cJSON_GetObjectItemCaseSensitive(json, "samples");
+    const cJSON *thumbnail = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(samples, 0), "thumbnail");
+    // The sample list must not advertise URLs the endpoint would refuse.
+    TEST_ASSERT_EQUAL_STRING(
+        "disabled",
+        cJSON_GetObjectItemCaseSensitive(thumbnail, "status")->valuestring);
+    TEST_ASSERT_NULL(cJSON_GetObjectItemCaseSensitive(thumbnail, "url"));
+    cJSON_Delete(json);
 }
 
 void test_capture_identity_survives_camera_rename_and_drives_timeline(void) {
@@ -789,6 +887,8 @@ int main(void) {
     RUN_TEST(test_timeline_rejects_duplicate_camera_ids);
     RUN_TEST(test_thumbnail_samples_map_even_times_to_recordings_and_gaps);
     RUN_TEST(test_investigation_thumbnail_rejects_offset_outside_recording);
+    RUN_TEST(test_investigation_thumbnail_quantizes_offset_to_cache_grid);
+    RUN_TEST(test_investigation_thumbnails_disabled_in_cpu_save_mode);
     RUN_TEST(test_search_cursor_filters_facets_and_current_camera_context);
     RUN_TEST(test_search_rejects_invalid_cursor);
     RUN_TEST(test_search_includes_spanning_motion_and_reports_legacy_gap);

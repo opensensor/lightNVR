@@ -294,22 +294,23 @@ static bool parse_create_body(
     return true;
 }
 
-static int authorize_cameras(
-    const http_request_t *req, http_response_t *res, const user_t *user,
+/**
+ * @brief Authorize replay on every camera a bookmark references
+ *
+ * Takes the context rather than creating one so a caller looping over many
+ * bookmarks reuses a single grant/collection cache instead of rebuilding it
+ * (and re-reading the same policy rows) once per bookmark.
+ */
+static int authorize_cameras_in_context(
+    authorization_context_t *context, const http_request_t *req,
+    http_response_t *res, const user_t *user,
     char camera_uuids[][CAMERA_UUID_STRING_SIZE], int camera_count,
     bool conceal_denial) {
-    authorization_context_t *context = authorization_context_create();
-    if (!context) {
-        if (res) http_response_set_json_error(res, 500,
-                                              "Authorization context unavailable");
-        return -1;
-    }
     for (int i = 0; i < camera_count; i++) {
         stream_config_t stream = {0};
         fleet_camera_t camera = {0};
         if (get_stream_config_by_uuid(camera_uuids[i], &stream) != 0 ||
             db_fleet_camera_find_by_name(stream.name, &camera) != 0) {
-            authorization_context_free(context);
             if (res && !conceal_denial)
                 http_response_set_json_error(res, 404, "Camera not found");
             return 0;
@@ -321,7 +322,6 @@ static int authorize_cameras(
             if (!conceal_denial)
                 audit_log_authorization(req, user, AUTHZ_RECORDINGS_REPLAY,
                                         &camera, NULL, "error");
-            authorization_context_free(context);
             if (res && !conceal_denial)
                 http_response_set_json_error(
                     res, 500, "Authorization policy evaluation failed");
@@ -331,14 +331,28 @@ static int authorize_cameras(
             if (!conceal_denial)
                 audit_log_authorization(req, user, AUTHZ_RECORDINGS_REPLAY,
                                         &camera, &evaluation, "denied");
-            authorization_context_free(context);
             if (res && !conceal_denial)
                 http_response_set_json_error(res, 403, "Forbidden");
             return 0;
         }
     }
-    authorization_context_free(context);
     return 1;
+}
+
+static int authorize_cameras(
+    const http_request_t *req, http_response_t *res, const user_t *user,
+    char camera_uuids[][CAMERA_UUID_STRING_SIZE], int camera_count,
+    bool conceal_denial) {
+    authorization_context_t *context = authorization_context_create();
+    if (!context) {
+        if (res) http_response_set_json_error(res, 500,
+                                              "Authorization context unavailable");
+        return -1;
+    }
+    int result = authorize_cameras_in_context(
+        context, req, res, user, camera_uuids, camera_count, conceal_denial);
+    authorization_context_free(context);
+    return result;
 }
 
 static bool extract_uuid(const http_request_t *req, char *uuid,
@@ -455,33 +469,46 @@ void handle_get_investigation_bookmarks(const http_request_t *req,
     }
     cJSON_AddItemToObject(root, "bookmarks", items);
     if (!demo_read_only(&user)) {
+        // Read in batches: a whole-page buffer would be ~2 MB, which is a lot
+        // to ask of the low-memory devices this runs on.
         investigation_bookmark_t *bookmarks = calloc(
-            INVESTIGATION_BOOKMARK_MAX_PER_OWNER, sizeof(*bookmarks));
-        if (!bookmarks) {
+            INVESTIGATION_BOOKMARK_LIST_BATCH, sizeof(*bookmarks));
+        authorization_context_t *context = authorization_context_create();
+        if (!bookmarks || !context) {
+            free(bookmarks);
+            authorization_context_free(context);
             cJSON_Delete(root);
             http_response_set_json_error(res, 500, "Out of memory");
             return;
         }
-        int count = db_investigation_bookmark_list(
-            user.id, bookmarks, INVESTIGATION_BOOKMARK_MAX_PER_OWNER);
-        if (count < 0) {
-            free(bookmarks);
-            cJSON_Delete(root);
-            http_response_set_json_error(res, 500, "Failed to list bookmarks");
-            return;
-        }
-        for (int i = 0; i < count; i++) {
-            char cameras[INVESTIGATION_BOOKMARK_MAX_CAMERAS]
-                        [CAMERA_UUID_STRING_SIZE] = {{0}};
-            if (!load_cameras(&bookmarks[i], cameras, NULL) ||
-                authorize_cameras(req, NULL, &user, cameras,
-                                  bookmarks[i].camera_count, true) != 1) {
-                continue;
+        for (int offset = 0; offset < INVESTIGATION_BOOKMARK_MAX_PER_OWNER;
+             offset += INVESTIGATION_BOOKMARK_LIST_BATCH) {
+            int count = db_investigation_bookmark_list(
+                user.id, offset, bookmarks, INVESTIGATION_BOOKMARK_LIST_BATCH);
+            if (count < 0) {
+                free(bookmarks);
+                authorization_context_free(context);
+                cJSON_Delete(root);
+                http_response_set_json_error(res, 500,
+                                             "Failed to list bookmarks");
+                return;
             }
-            cJSON *item = bookmark_json(&bookmarks[i], cameras);
-            if (item) cJSON_AddItemToArray(items, item);
+            for (int i = 0; i < count; i++) {
+                char cameras[INVESTIGATION_BOOKMARK_MAX_CAMERAS]
+                            [CAMERA_UUID_STRING_SIZE] = {{0}};
+                if (!load_cameras(&bookmarks[i], cameras, NULL) ||
+                    authorize_cameras_in_context(
+                        context, req, NULL, &user, cameras,
+                        bookmarks[i].camera_count, true) != 1) {
+                    continue;
+                }
+                cJSON *item = bookmark_json(&bookmarks[i], cameras);
+                if (item) cJSON_AddItemToArray(items, item);
+            }
+            if (count < INVESTIGATION_BOOKMARK_LIST_BATCH) break;
         }
         free(bookmarks);
+        authorization_context_free(context);
     }
     cJSON_AddNumberToObject(root, "count", cJSON_GetArraySize(items));
     send_json(res, 200, root);

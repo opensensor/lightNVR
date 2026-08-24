@@ -11,6 +11,8 @@
 #define INVESTIGATION_BOOKMARK_RESULT_MAX 2048
 #define INVESTIGATION_BOOKMARK_MAX_CAMERAS 16
 #define INVESTIGATION_BOOKMARK_MAX_PER_OWNER 256
+/** Rows read per listing batch, so a full list never needs one 2 MB buffer */
+#define INVESTIGATION_BOOKMARK_LIST_BATCH 16
 
 typedef struct {
     char uuid[CAMERA_UUID_STRING_SIZE];
@@ -39,8 +41,14 @@ typedef enum {
 } db_investigation_bookmark_result_t;
 
 int db_investigation_bookmark_count(int64_t owner_user_id);
+/**
+ * @brief Read one page of an owner's bookmarks, newest first
+ *
+ * @param offset Rows to skip in (updated_at DESC, uuid) order
+ * @return Rows written to @p bookmarks, or -1 on failure
+ */
 int db_investigation_bookmark_list(
-    int64_t owner_user_id, investigation_bookmark_t *bookmarks,
+    int64_t owner_user_id, int offset, investigation_bookmark_t *bookmarks,
     int max_count);
 db_investigation_bookmark_result_t db_investigation_bookmark_get(
     int64_t owner_user_id, const char *uuid,

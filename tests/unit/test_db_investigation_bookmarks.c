@@ -56,7 +56,9 @@ void test_bookmark_crud_preserves_ordered_cameras_and_revision(void) {
 
     investigation_bookmark_t listed[2];
     TEST_ASSERT_EQUAL_INT(
-        1, db_investigation_bookmark_list(0, listed, 2));
+        1, db_investigation_bookmark_list(0, 0, listed, 2));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_investigation_bookmark_list(0, 1, listed, 2));
     TEST_ASSERT_EQUAL_STRING(bookmark.uuid, listed[0].uuid);
 
     char cameras[INVESTIGATION_BOOKMARK_MAX_CAMERAS]

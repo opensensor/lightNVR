@@ -652,7 +652,7 @@ void test_forced_password_handler_verifies_current_password_clears_flag_and_sess
     TEST_ASSERT_NOT_EQUAL(0, db_auth_validate_session(token, NULL));
 }
 
-void test_login_reports_required_password_change_before_mfa_and_verify_recovers_it(void) {
+void test_login_enforces_mfa_before_required_password_change_and_verify_recovers_it(void) {
     int64_t uid = 0;
     TEST_ASSERT_EQUAL_INT(0, db_auth_create_user(
         "loginadmin", "password123", NULL, USER_ROLE_ADMIN, true, &uid));
@@ -673,7 +673,29 @@ void test_login_reports_required_password_change_before_mfa_and_verify_recovers_
     req.body_len = strlen(body);
     add_header(&req, "Content-Type", "application/json");
 
+    // A pending password change must not waive the second factor: knowing the
+    // password alone must not yield even the restricted session, or an
+    // attacker holding factor one could overwrite the account's password.
     http_response_t res;
+    http_response_init(&res);
+    handle_auth_login(&req, &res);
+    TEST_ASSERT_EQUAL_INT(401, res.status_code);
+    TEST_ASSERT_NULL(find_response_header(&res, "Set-Cookie"));
+    http_response_free(&res);
+
+    // The bootstrap account this flag actually ships on has no TOTP, so it
+    // reaches the restricted session directly.
+    TEST_ASSERT_EQUAL_INT(0, db_auth_enable_totp(uid, false));
+
+    http_request_init(&req);
+    req.method = HTTP_METHOD_POST;
+    safe_strcpy(req.path, "/api/auth/login", sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    safe_strcpy(req.user_agent, "GateTest", sizeof(req.user_agent), 0);
+    req.body = (void *)body;
+    req.body_len = strlen(body);
+    add_header(&req, "Content-Type", "application/json");
+
     http_response_init(&res);
     handle_auth_login(&req, &res);
     TEST_ASSERT_EQUAL_INT(200, res.status_code);
@@ -801,7 +823,7 @@ int main(void) {
     RUN_TEST(test_get_authenticated_user_rejects_api_key_with_spoofed_forwarded_ip_from_untrusted_proxy);
     RUN_TEST(test_required_password_change_restricts_password_auth_but_not_api_keys_or_demo);
     RUN_TEST(test_forced_password_handler_verifies_current_password_clears_flag_and_session);
-    RUN_TEST(test_login_reports_required_password_change_before_mfa_and_verify_recovers_it);
+    RUN_TEST(test_login_enforces_mfa_before_required_password_change_and_verify_recovers_it);
     RUN_TEST(test_check_admin_privileges_auth_disabled_returns_one);
     RUN_TEST(test_check_admin_privileges_no_auth_returns_zero);
     RUN_TEST(test_sanitize_attachment_filename_removes_path_and_header_bytes);

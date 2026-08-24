@@ -367,9 +367,11 @@ void handle_auth_login(const http_request_t *req, http_response_t *res) {
         authenticated_user.must_change_password && !g_config.demo_mode;
 
     // Check if user has TOTP enabled (only for API/JSON requests)
-    // A bootstrap password must be replaced before MFA is evaluated. The
-    // restricted session created below cannot access any other protected API.
-    if (!is_form && !must_change_password) {
+    // A pending password change must never weaken MFA: an account carrying
+    // both still completes its TOTP challenge first, and only then gets the
+    // restricted session that can reach nothing but its own password endpoint.
+    // The bootstrap admin has no TOTP, so it falls straight through.
+    if (!is_form) {
         char totp_secret[64] = {0};
         bool totp_enabled = false;
         if (db_auth_get_totp_info(user_id, totp_secret, sizeof(totp_secret), &totp_enabled) == 0 && totp_enabled) {

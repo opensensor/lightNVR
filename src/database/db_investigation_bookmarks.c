@@ -177,18 +177,19 @@ int db_investigation_bookmark_count(int64_t owner_user_id) {
 }
 
 int db_investigation_bookmark_list(
-    int64_t owner_user_id, investigation_bookmark_t *bookmarks,
+    int64_t owner_user_id, int offset, investigation_bookmark_t *bookmarks,
     int max_count) {
     sqlite3 *db = get_db_handle();
     pthread_mutex_t *mutex = get_db_mutex();
-    if (!db || !mutex || !bookmarks || max_count <= 0 || owner_user_id < 0) {
+    if (!db || !mutex || !bookmarks || max_count <= 0 || offset < 0 ||
+        owner_user_id < 0) {
         return -1;
     }
     const char *sql =
         "SELECT " BOOKMARK_SELECT_FIELDS
         "FROM investigation_bookmarks b WHERE "
         "((?=0 AND b.owner_user_id IS NULL) OR b.owner_user_id=?) "
-        "ORDER BY b.updated_at DESC, b.uuid LIMIT ?;";
+        "ORDER BY b.updated_at DESC, b.uuid LIMIT ? OFFSET ?;";
     pthread_mutex_lock(mutex);
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(db, sql, -1, &statement, NULL);
@@ -199,6 +200,7 @@ int db_investigation_bookmark_list(
     owner_predicate_bind(statement, 1, owner_user_id);
     owner_predicate_bind(statement, 2, owner_user_id);
     sqlite3_bind_int(statement, 3, max_count);
+    sqlite3_bind_int(statement, 4, offset);
     int count = 0;
     while (count < max_count &&
            (result = sqlite3_step(statement)) == SQLITE_ROW) {
