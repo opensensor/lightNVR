@@ -6,9 +6,10 @@
 #include <time.h>
 
 #include "core/config.h"
+#include "database/db_recording_tags.h"
 #include "video/detection_result.h"
 
-#define INVESTIGATION_SEARCH_MAX_CAMERAS 16
+#define INVESTIGATION_SEARCH_MAX_CAMERAS 64
 #define INVESTIGATION_SEARCH_MAX_FILTER_VALUES 16
 #define INVESTIGATION_SEARCH_MAX_RESULTS 500
 #define INVESTIGATION_SEARCH_MAX_FACETS 64
@@ -31,6 +32,16 @@ typedef struct {
     char sources[INVESTIGATION_SEARCH_MAX_FILTER_VALUES]
                 [INVESTIGATION_SEARCH_VALUE_MAX];
     int source_count;
+    char event_types[INVESTIGATION_SEARCH_MAX_FILTER_VALUES]
+                    [INVESTIGATION_SEARCH_VALUE_MAX];
+    int event_type_count;
+    char capture_methods[INVESTIGATION_SEARCH_MAX_FILTER_VALUES]
+                        [INVESTIGATION_SEARCH_VALUE_MAX];
+    int capture_method_count;
+    char recording_tags[INVESTIGATION_SEARCH_MAX_FILTER_VALUES]
+                       [MAX_TAG_LENGTH];
+    int recording_tag_count;
+    int protected_filter; /* -1 = all, 0 = unprotected, 1 = protected */
     bool has_min_confidence;
     bool has_max_confidence;
     double min_confidence;
@@ -59,6 +70,8 @@ typedef struct {
     char source[INVESTIGATION_SEARCH_VALUE_MAX];
     uint64_t recording_id;
     bool media_available;
+    char capture_method[INVESTIGATION_SEARCH_VALUE_MAX];
+    bool recording_protected;
 } investigation_search_result_t;
 
 typedef struct {
@@ -75,6 +88,18 @@ typedef struct {
     int zone_count;
     investigation_search_facet_t sources[INVESTIGATION_SEARCH_MAX_FACETS];
     int source_count;
+    investigation_search_facet_t
+        event_types[INVESTIGATION_SEARCH_MAX_FACETS];
+    int event_type_count;
+    investigation_search_facet_t
+        capture_methods[INVESTIGATION_SEARCH_MAX_FACETS];
+    int capture_method_count;
+    investigation_search_facet_t
+        recording_tags[INVESTIGATION_SEARCH_MAX_FACETS];
+    int recording_tag_count;
+    investigation_search_facet_t
+        protection[INVESTIGATION_SEARCH_MAX_FACETS];
+    int protection_count;
 } investigation_search_facets_t;
 
 typedef struct {

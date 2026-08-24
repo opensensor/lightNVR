@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
+import { formatUtils } from '../recordings/formatUtils.js';
 import {
   MAX_ACTIVE_INVESTIGATION_PLAYERS,
   MAX_INVESTIGATION_CAMERAS,
@@ -30,9 +31,14 @@ function initialTimeState() {
 function initialSearchFilters() {
   const params = new URLSearchParams(window.location.search);
   return {
+    eventType: params.get('event') || '',
+    location: params.get('location') || '',
     label: params.get('label') || '',
     zone: params.get('zone') || '',
     source: params.get('source') || '',
+    captureMethod: params.get('capture') || '',
+    recordingTag: params.get('tag') || '',
+    protection: params.get('protected') || '',
     minConfidence: params.get('confidence_min') || '',
   };
 }
@@ -301,6 +307,13 @@ function InvestigationResultCard({ result, selected, onSelect, t }) {
             ? t('investigation.noFootage') : t('investigation.mediaAvailable')}
           {' · '}{t('investigation.durationSeconds', { count: durationSeconds })}
         </small>
+        {result.recording?.capture_method && (
+          <small>
+            {formatUtils.formatCaptureMethod(result.recording.capture_method, t)}
+            {result.recording.protected
+              ? ` · ${t('investigation.protected')}` : ''}
+          </small>
+        )}
       </span>
     </button>
   );
@@ -390,9 +403,20 @@ export function InvestigationView() {
     setSearchError('');
     try {
       const filters = {};
+      if (searchFilters.eventType) filters.event_types = [searchFilters.eventType];
+      if (searchFilters.location) filters.locations = [searchFilters.location];
       if (searchFilters.label) filters.labels = [searchFilters.label];
       if (searchFilters.zone) filters.zones = [searchFilters.zone];
       if (searchFilters.source) filters.sources = [searchFilters.source];
+      if (searchFilters.captureMethod) {
+        filters.capture_methods = [searchFilters.captureMethod];
+      }
+      if (searchFilters.recordingTag) {
+        filters.recording_tags = [searchFilters.recordingTag];
+      }
+      if (searchFilters.protection) {
+        filters.protected = searchFilters.protection === 'protected';
+      }
       if (minimumConfidence !== null) filters.min_confidence = minimumConfidence;
       const data = await fetchJSON('/api/investigations/search', {
         method: 'POST',
@@ -416,9 +440,14 @@ export function InvestigationView() {
 
       const url = new URL(window.location.href);
       const filterParams = {
+        event: searchFilters.eventType,
+        location: searchFilters.location,
         label: searchFilters.label,
         zone: searchFilters.zone,
         source: searchFilters.source,
+        capture: searchFilters.captureMethod,
+        tag: searchFilters.recordingTag,
+        protected: searchFilters.protection,
         confidence_min: searchFilters.minConfidence,
       };
       Object.entries(filterParams).forEach(([name, value]) => {
@@ -721,6 +750,34 @@ export function InvestigationView() {
         </div>
         <div className="investigation-search-filters">
           <label>
+            <span>{t('investigation.eventType')}</span>
+            <select
+              value={searchFilters.eventType}
+              onChange={(event) => setSearchFilter('eventType', event.target.value)}
+            >
+              <option value="">{t('investigation.anyEventType')}</option>
+              {(searchData?.facets?.event_types || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {t(`investigation.eventType.${facet.value}`)} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.location')}</span>
+            <select
+              value={searchFilters.location}
+              onChange={(event) => setSearchFilter('location', event.target.value)}
+            >
+              <option value="">{t('investigation.anyLocation')}</option>
+              {(searchData?.facets?.locations || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {facet.label || facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             <span>{t('investigation.objectLabel')}</span>
             <select
               value={searchFilters.label}
@@ -758,6 +815,48 @@ export function InvestigationView() {
               {(searchData?.facets?.sources || []).map((facet) => (
                 <option key={facet.value} value={facet.value}>
                   {facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.captureMethod')}</span>
+            <select
+              value={searchFilters.captureMethod}
+              onChange={(event) => setSearchFilter('captureMethod', event.target.value)}
+            >
+              <option value="">{t('investigation.anyCaptureMethod')}</option>
+              {(searchData?.facets?.capture_methods || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {formatUtils.formatCaptureMethod(facet.value, t)} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.recordingTag')}</span>
+            <select
+              value={searchFilters.recordingTag}
+              onChange={(event) => setSearchFilter('recordingTag', event.target.value)}
+            >
+              <option value="">{t('investigation.anyRecordingTag')}</option>
+              {(searchData?.facets?.recording_tags || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {facet.value} ({facet.count})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('investigation.protection')}</span>
+            <select
+              value={searchFilters.protection}
+              onChange={(event) => setSearchFilter('protection', event.target.value)}
+            >
+              <option value="">{t('investigation.anyProtection')}</option>
+              {(searchData?.facets?.protection || []).map((facet) => (
+                <option key={facet.value} value={facet.value}>
+                  {t(`investigation.${facet.value}`)} ({facet.count})
                 </option>
               ))}
             </select>

@@ -146,6 +146,95 @@ static int resolve_authorized_cameras(
     return camera_count;
 }
 
+static int resolve_authorized_search_cameras(
+    const cJSON *body, const http_request_t *request,
+    http_response_t *response, fleet_camera_t *cameras, user_t *user,
+    bool *selector_applied) {
+    const cJSON *selector_json =
+        cJSON_GetObjectItemCaseSensitive(body, "selector");
+    const cJSON *camera_uuids =
+        cJSON_GetObjectItemCaseSensitive(body, "camera_uuids");
+    *selector_applied = selector_json != NULL;
+    if (selector_json && camera_uuids) {
+        http_response_set_json_error(
+            response, 400,
+            "Provide either camera_uuids or selector, not both");
+        return -1;
+    }
+    if (!selector_json) {
+        stream_config_t explicit_streams[INVESTIGATION_MAX_CAMERAS] = {0};
+        fleet_camera_t explicit_cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+        int count = resolve_authorized_cameras(
+            body, request, response, explicit_streams, explicit_cameras, user);
+        if (count < 0) return -1;
+        memcpy(cameras, explicit_cameras,
+               (size_t)count * sizeof(*explicit_cameras));
+        return count;
+    }
+
+    if (!httpd_check_action_access(request, user)) {
+        http_response_set_json_error(response, 401, "Unauthorized");
+        return -1;
+    }
+    char selector_error[FLEET_SELECTOR_ERROR_MAX] = {0};
+    fleet_selector_t *selector = fleet_selector_parse(
+        selector_json, selector_error, sizeof(selector_error));
+    if (!selector) {
+        http_response_set_json_error(
+            response, 400,
+            selector_error[0] ? selector_error : "Invalid selector");
+        return -1;
+    }
+    fleet_camera_t *inventory = NULL;
+    int inventory_count = 0;
+    if (db_fleet_camera_load(&inventory, &inventory_count) != 0) {
+        fleet_selector_free(selector);
+        http_response_set_json_error(response, 500,
+                                     "Failed to load fleet cameras");
+        return -1;
+    }
+    authorization_context_t *auth_context = authorization_context_create();
+    if (!auth_context) {
+        free(inventory);
+        fleet_selector_free(selector);
+        http_response_set_json_error(response, 500,
+                                     "Authorization context unavailable");
+        return -1;
+    }
+
+    int allowed_count = 0;
+    for (int i = 0; i < inventory_count; i++) {
+        if (!fleet_selector_matches(selector, &inventory[i], NULL)) continue;
+        authorization_evaluation_t evaluation = {0};
+        if (authorization_evaluate_in_context(
+                auth_context, user, AUTHZ_RECORDINGS_REPLAY,
+                &inventory[i], &evaluation) != 0) {
+            authorization_context_free(auth_context);
+            free(inventory);
+            fleet_selector_free(selector);
+            http_response_set_json_error(
+                response, 500, "Authorization policy evaluation failed");
+            return -1;
+        }
+        /* Broad selectors omit denied cameras before counts or facets. */
+        if (evaluation.decision != AUTHZ_DECISION_ALLOW) continue;
+        if (allowed_count >= INVESTIGATION_SEARCH_MAX_CAMERAS) {
+            authorization_context_free(auth_context);
+            free(inventory);
+            fleet_selector_free(selector);
+            http_response_set_json_error(
+                response, 400,
+                "selector resolves to more than 64 authorized cameras");
+            return -1;
+        }
+        cameras[allowed_count++] = inventory[i];
+    }
+    authorization_context_free(auth_context);
+    free(inventory);
+    fleet_selector_free(selector);
+    return allowed_count;
+}
+
 void handle_post_investigation_timeline(const http_request_t *request,
                                         http_response_t *response) {
     if (!request || !response) return;
@@ -312,6 +401,45 @@ static bool parse_confidence_filter(const cJSON *filters, const char *name,
     return true;
 }
 
+static bool filter_values_allowed(
+    char values[][INVESTIGATION_SEARCH_VALUE_MAX], int count,
+    const char *const *allowed, int allowed_count) {
+    for (int i = 0; i < count; i++) {
+        bool found = false;
+        for (int j = 0; j < allowed_count; j++) {
+            if (strcmp(values[i], allowed[j]) == 0) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return false;
+    }
+    return true;
+}
+
+static bool parse_protected_filter(const cJSON *filters, int *value) {
+    *value = -1;
+    if (!filters) return true;
+    const cJSON *item =
+        cJSON_GetObjectItemCaseSensitive(filters, "protected");
+    if (!item) return true;
+    if (!cJSON_IsBool(item)) return false;
+    *value = cJSON_IsTrue(item) ? 1 : 0;
+    return true;
+}
+
+static bool camera_matches_location_filters(
+    const fleet_camera_t *camera,
+    char locations[][INVESTIGATION_SEARCH_VALUE_MAX], int location_count) {
+    if (location_count == 0) return true;
+    const char *value = camera->location_uuid[0] != '\0'
+        ? camera->location_uuid : "unassigned";
+    for (int i = 0; i < location_count; i++) {
+        if (strcmp(value, locations[i]) == 0) return true;
+    }
+    return false;
+}
+
 static bool parse_search_cursor(const cJSON *body,
                                 investigation_search_query_t *query) {
     const cJSON *cursor = cJSON_GetObjectItemCaseSensitive(body, "cursor");
@@ -359,6 +487,53 @@ static void add_facet_array(cJSON *facets, const char *name,
 }
 
 static const fleet_camera_t *find_camera_context(
+    const fleet_camera_t *cameras, int camera_count, const char *camera_uuid);
+
+static void add_location_facet_array(
+    cJSON *facets, const investigation_search_facet_t *camera_values,
+    int camera_value_count, const fleet_camera_t *cameras,
+    int camera_count) {
+    investigation_search_facet_t values[INVESTIGATION_SEARCH_MAX_FACETS] = {0};
+    char labels[INVESTIGATION_SEARCH_MAX_FACETS]
+               [FLEET_LOCATION_PATH_MAX] = {{0}};
+    int count = 0;
+    for (int i = 0; i < camera_value_count; i++) {
+        const fleet_camera_t *camera = find_camera_context(
+            cameras, camera_count, camera_values[i].value);
+        if (!camera) continue;
+        const char *value = camera->location_uuid[0] != '\0'
+            ? camera->location_uuid : "unassigned";
+        const char *label = camera->location_path[0] != '\0'
+            ? camera->location_path : "Unassigned";
+        int index = -1;
+        for (int j = 0; j < count; j++) {
+            if (strcmp(values[j].value, value) == 0) {
+                index = j;
+                break;
+            }
+        }
+        if (index < 0 && count < INVESTIGATION_SEARCH_MAX_FACETS) {
+            index = count++;
+            safe_strcpy(values[index].value, value,
+                        sizeof(values[index].value), 0);
+            safe_strcpy(labels[index], label, sizeof(labels[index]), 0);
+        }
+        if (index >= 0) values[index].count += camera_values[i].count;
+    }
+
+    cJSON *array = cJSON_AddArrayToObject(facets, "locations");
+    if (!array) return;
+    for (int i = 0; i < count; i++) {
+        cJSON *item = cJSON_CreateObject();
+        if (!item) continue;
+        cJSON_AddStringToObject(item, "value", values[i].value);
+        cJSON_AddStringToObject(item, "label", labels[i]);
+        cJSON_AddNumberToObject(item, "count", (double)values[i].count);
+        cJSON_AddItemToArray(array, item);
+    }
+}
+
+static const fleet_camera_t *find_camera_context(
     const fleet_camera_t *cameras, int camera_count, const char *camera_uuid) {
     for (int i = 0; i < camera_count; i++) {
         if (strcmp(cameras[i].camera_uuid, camera_uuid) == 0) {
@@ -377,7 +552,7 @@ void handle_post_investigation_search(const http_request_t *request,
         return;
     }
 
-    investigation_search_query_t query = {0};
+    investigation_search_query_t query = {.protected_filter = -1};
     if (!parse_epoch_seconds(body, "start_time", &query.start_time) ||
         !parse_epoch_seconds(body, "end_time", &query.end_time) ||
         query.end_time <= query.start_time ||
@@ -389,21 +564,14 @@ void handle_post_investigation_search(const http_request_t *request,
         return;
     }
 
-    stream_config_t cameras[INVESTIGATION_MAX_CAMERAS] = {0};
-    fleet_camera_t fleet_cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+    fleet_camera_t fleet_cameras[INVESTIGATION_SEARCH_MAX_CAMERAS] = {0};
     user_t user = {0};
-    int camera_count = resolve_authorized_cameras(
-        body, request, response, cameras, fleet_cameras, &user);
+    bool selector_applied = false;
+    int camera_count = resolve_authorized_search_cameras(
+        body, request, response, fleet_cameras, &user, &selector_applied);
     if (camera_count < 0) {
         cJSON_Delete(body);
         return;
-    }
-    query.camera_count = camera_count;
-    for (int i = 0; i < camera_count; i++) {
-        safe_strcpy(query.camera_uuids[i], cameras[i].camera_uuid,
-                    sizeof(query.camera_uuids[i]), 0);
-        safe_strcpy(query.legacy_stream_names[i], cameras[i].name,
-                    sizeof(query.legacy_stream_names[i]), 0);
     }
 
     const cJSON *filters = cJSON_GetObjectItemCaseSensitive(body, "filters");
@@ -413,6 +581,15 @@ void handle_post_investigation_search(const http_request_t *request,
                                      "filters must be an object");
         return;
     }
+    char locations[INVESTIGATION_SEARCH_MAX_FILTER_VALUES]
+                  [INVESTIGATION_SEARCH_VALUE_MAX] = {{0}};
+    int location_count = 0;
+    static const char *const allowed_event_types[] = {
+        "detection", "motion"
+    };
+    static const char *const allowed_capture_methods[] = {
+        "continuous", "scheduled", "detection", "motion", "manual"
+    };
     if (!parse_filter_strings(
             filters, "labels", (char *)query.labels,
             sizeof(query.labels[0]), INVESTIGATION_SEARCH_MAX_FILTER_VALUES,
@@ -425,12 +602,41 @@ void handle_post_investigation_search(const http_request_t *request,
             filters, "sources", (char *)query.sources,
             sizeof(query.sources[0]), INVESTIGATION_SEARCH_MAX_FILTER_VALUES,
             &query.source_count) ||
+        !parse_filter_strings(
+            filters, "event_types", (char *)query.event_types,
+            sizeof(query.event_types[0]),
+            INVESTIGATION_SEARCH_MAX_FILTER_VALUES,
+            &query.event_type_count) ||
+        !parse_filter_strings(
+            filters, "capture_methods", (char *)query.capture_methods,
+            sizeof(query.capture_methods[0]),
+            INVESTIGATION_SEARCH_MAX_FILTER_VALUES,
+            &query.capture_method_count) ||
+        !parse_filter_strings(
+            filters, "recording_tags", (char *)query.recording_tags,
+            sizeof(query.recording_tags[0]),
+            INVESTIGATION_SEARCH_MAX_FILTER_VALUES,
+            &query.recording_tag_count) ||
+        !parse_filter_strings(
+            filters, "locations", (char *)locations,
+            sizeof(locations[0]), INVESTIGATION_SEARCH_MAX_FILTER_VALUES,
+            &location_count) ||
         !parse_confidence_filter(filters, "min_confidence",
                                  &query.has_min_confidence,
                                  &query.min_confidence) ||
         !parse_confidence_filter(filters, "max_confidence",
                                  &query.has_max_confidence,
                                  &query.max_confidence) ||
+        !parse_protected_filter(filters, &query.protected_filter) ||
+        !filter_values_allowed(
+            query.event_types, query.event_type_count, allowed_event_types,
+            (int)(sizeof(allowed_event_types) /
+                  sizeof(allowed_event_types[0]))) ||
+        !filter_values_allowed(
+            query.capture_methods, query.capture_method_count,
+            allowed_capture_methods,
+            (int)(sizeof(allowed_capture_methods) /
+                  sizeof(allowed_capture_methods[0]))) ||
         (query.has_min_confidence && query.has_max_confidence &&
          query.min_confidence > query.max_confidence) ||
         !parse_search_cursor(body, &query)) {
@@ -438,6 +644,26 @@ void handle_post_investigation_search(const http_request_t *request,
         http_response_set_json_error(response, 400,
                                      "Invalid investigation search filters");
         return;
+    }
+
+    int filtered_camera_count = 0;
+    for (int i = 0; i < camera_count; i++) {
+        if (!camera_matches_location_filters(
+                &fleet_cameras[i], locations, location_count)) {
+            continue;
+        }
+        if (filtered_camera_count != i) {
+            fleet_cameras[filtered_camera_count] = fleet_cameras[i];
+        }
+        filtered_camera_count++;
+    }
+    camera_count = filtered_camera_count;
+    query.camera_count = camera_count;
+    for (int i = 0; i < camera_count; i++) {
+        safe_strcpy(query.camera_uuids[i], fleet_cameras[i].camera_uuid,
+                    sizeof(query.camera_uuids[i]), 0);
+        safe_strcpy(query.legacy_stream_names[i], fleet_cameras[i].name,
+                    sizeof(query.legacy_stream_names[i]), 0);
     }
 
     query.limit = 100;
@@ -466,13 +692,21 @@ void handle_post_investigation_search(const http_request_t *request,
                                      "Failed to allocate search response");
         return;
     }
-    if (db_investigation_search(&query, results, summary) != 0) {
+    if (query.camera_count > 0 &&
+        db_investigation_search(&query, results, summary) != 0) {
         free(results);
         free(summary);
         cJSON_Delete(body);
         http_response_set_json_error(response, 500,
                                      "Investigation search failed");
         return;
+    }
+    if (query.camera_count == 0) {
+        int64_t range = (int64_t)query.end_time -
+                        (int64_t)query.start_time + 1;
+        summary->histogram_bucket_seconds = (int)(
+            (range + INVESTIGATION_SEARCH_MAX_HISTOGRAM_BUCKETS - 1) /
+            INVESTIGATION_SEARCH_MAX_HISTOGRAM_BUCKETS);
     }
 
     cJSON *root = cJSON_CreateObject();
@@ -486,6 +720,8 @@ void handle_post_investigation_search(const http_request_t *request,
                                      "Failed to create search response");
         return;
     }
+    cJSON_AddNumberToObject(root, "camera_count", camera_count);
+    cJSON_AddBoolToObject(root, "selector_applied", selector_applied);
     for (int i = 0; i < summary->result_count; i++) {
         const investigation_search_result_t *result = &results[i];
         const fleet_camera_t *camera = find_camera_context(
@@ -494,11 +730,14 @@ void handle_post_investigation_search(const http_request_t *request,
         cJSON *camera_context = cJSON_CreateObject();
         cJSON *detection = cJSON_CreateObject();
         cJSON *thumbnail = cJSON_CreateObject();
-        if (!item || !camera_context || !detection || !thumbnail) {
+        cJSON *recording = cJSON_CreateObject();
+        if (!item || !camera_context || !detection || !thumbnail ||
+            !recording) {
             cJSON_Delete(item);
             cJSON_Delete(camera_context);
             cJSON_Delete(detection);
             cJSON_Delete(thumbnail);
+            cJSON_Delete(recording);
             continue;
         }
         char result_id[64];
@@ -526,9 +765,15 @@ void handle_post_investigation_search(const http_request_t *request,
             if (result->media_available) {
                 cJSON_AddStringToObject(thumbnail, "url", thumbnail_url);
             }
+            cJSON_AddStringToObject(recording, "capture_method",
+                                    result->capture_method);
+            cJSON_AddBoolToObject(recording, "protected",
+                                  result->recording_protected);
         } else {
             cJSON_AddNullToObject(item, "recording_id");
             cJSON_AddStringToObject(thumbnail, "status", "unavailable");
+            cJSON_AddNullToObject(recording, "capture_method");
+            cJSON_AddNullToObject(recording, "protected");
         }
         cJSON_AddStringToObject(camera_context, "name",
                                 camera ? camera->name : result->legacy_stream_name);
@@ -574,6 +819,7 @@ void handle_post_investigation_search(const http_request_t *request,
         cJSON_AddItemToObject(item, "camera", camera_context);
         cJSON_AddItemToObject(item, "detection", detection);
         cJSON_AddItemToObject(item, "thumbnail", thumbnail);
+        cJSON_AddItemToObject(item, "recording", recording);
         cJSON_AddItemToArray(items, item);
     }
 
@@ -603,6 +849,19 @@ void handle_post_investigation_search(const http_request_t *request,
                     summary->facets.zone_count, NULL, 0);
     add_facet_array(facets, "sources", summary->facets.sources,
                     summary->facets.source_count, NULL, 0);
+    add_facet_array(facets, "event_types", summary->facets.event_types,
+                    summary->facets.event_type_count, NULL, 0);
+    add_location_facet_array(
+        facets, summary->facets.cameras, summary->facets.camera_count,
+        fleet_cameras, camera_count);
+    add_facet_array(facets, "capture_methods",
+                    summary->facets.capture_methods,
+                    summary->facets.capture_method_count, NULL, 0);
+    add_facet_array(facets, "recording_tags",
+                    summary->facets.recording_tags,
+                    summary->facets.recording_tag_count, NULL, 0);
+    add_facet_array(facets, "protection", summary->facets.protection,
+                    summary->facets.protection_count, NULL, 0);
 
     cJSON *histogram = cJSON_AddObjectToObject(root, "histogram");
     cJSON_AddNumberToObject(histogram, "bucket_seconds",

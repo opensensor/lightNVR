@@ -1395,6 +1395,30 @@ void test_investigation_search_facets_are_camera_scope_authorized(void) {
     cJSON_Delete(json);
 
     snprintf(body, sizeof(body),
+             "{\"selector\":{\"version\":1,\"expression\":{"
+             "\"op\":\"all\"}},\"start_time\":1700000000,"
+             "\"end_time\":1700001000}");
+    json = call_handler_path(
+        handle_post_investigation_search, HTTP_METHOD_POST,
+        "/api/investigations/search", body, api_key, 200);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        json, "selector_applied")));
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "camera_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "page"),
+               "total")->valueint);
+    camera_facets = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(json, "facets"), "cameras");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(camera_facets));
+    TEST_ASSERT_EQUAL_STRING(
+        allowed.camera_uuid,
+        cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(camera_facets, 0),
+                                         "value")->valuestring);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
              "{\"camera_uuids\":[\"%s\",\"%s\"],"
              "\"start_time\":1700000000,\"end_time\":1700001000}",
              allowed.camera_uuid, denied.camera_uuid);

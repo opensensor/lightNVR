@@ -16,6 +16,8 @@
 #include "core/config.h"
 #include "database/db_core.h"
 #include "database/db_detections.h"
+#include "database/db_locations.h"
+#include "database/db_recording_tags.h"
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
 #include "utils/strings.h"
@@ -169,6 +171,13 @@ void setUp(void) {
     sqlite3_exec(db, "DELETE FROM detections;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
+    do {
+        sqlite3_exec(db,
+                     "DELETE FROM camera_locations WHERE is_system = 0 "
+                     "AND NOT EXISTS (SELECT 1 FROM camera_locations child "
+                     "WHERE child.parent_uuid = camera_locations.uuid);",
+                     NULL, NULL, NULL);
+    } while (sqlite3_changes(db) > 0);
 }
 
 void tearDown(void) {
@@ -279,6 +288,17 @@ void test_search_cursor_filters_facets_and_current_camera_context(void) {
     uint64_t recording_id = create_recording(
         camera_uuid, camera.name, range_start);
     TEST_ASSERT_NOT_EQUAL(0, recording_id);
+    camera_location_t location = {0};
+    safe_strcpy(location.name, "Warehouse", sizeof(location.name), 0);
+    safe_strcpy(location.type, "building", sizeof(location.type), 0);
+    safe_strcpy(location.metadata_json, "{}", sizeof(location.metadata_json), 0);
+    TEST_ASSERT_EQUAL_INT(DB_LOCATION_OK, db_location_create(&location));
+    TEST_ASSERT_EQUAL_INT(
+        DB_LOCATION_OK,
+        db_location_assign_camera(camera_uuid, location.uuid));
+    TEST_ASSERT_EQUAL_INT(0, get_stream_config_by_name("Loading Bay", &camera));
+    TEST_ASSERT_EQUAL_INT(0, db_recording_tag_add(recording_id, "reviewed"));
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(recording_id, true));
 
     uint64_t older_id = insert_detection(
         camera_uuid, "Loading Bay", range_start + 100, "person", 0.80,
@@ -341,6 +361,14 @@ void test_search_cursor_filters_facets_and_current_camera_context(void) {
     TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
         cJSON_GetObjectItemCaseSensitive(second_detection, "bounding_box"),
         "normalized")));
+    const cJSON *recording =
+        cJSON_GetObjectItemCaseSensitive(second_result, "recording");
+    TEST_ASSERT_EQUAL_STRING(
+        "continuous",
+        cJSON_GetObjectItemCaseSensitive(
+            recording, "capture_method")->valuestring);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        recording, "protected")));
     TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
         cJSON_GetObjectItemCaseSensitive(first_page, "page"), "has_more")));
     TEST_ASSERT_EQUAL_INT(
@@ -407,6 +435,38 @@ void test_search_cursor_filters_facets_and_current_camera_context(void) {
             detection, "confidence")->valuedouble >= 0.9);
     }
     cJSON_Delete(filtered);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"filters\":{"
+             "\"event_types\":[\"detection\"],"
+             "\"locations\":[\"%s\"],"
+             "\"capture_methods\":[\"continuous\"],"
+             "\"recording_tags\":[\"reviewed\"],"
+             "\"protected\":true}}",
+             camera_uuid, (long long)range_start, (long long)range_end,
+             location.uuid);
+    cJSON *recording_filtered = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(
+        3, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(recording_filtered, "page"),
+               "total")->valueint);
+    TEST_ASSERT_NOT_NULL(find_facet(
+        recording_filtered, "event_types", "detection"));
+    TEST_ASSERT_NOT_NULL(find_facet(
+        recording_filtered, "capture_methods", "continuous"));
+    TEST_ASSERT_NOT_NULL(find_facet(
+        recording_filtered, "recording_tags", "reviewed"));
+    TEST_ASSERT_NOT_NULL(find_facet(
+        recording_filtered, "protection", "protected"));
+    const cJSON *location_facet = find_facet(
+        recording_filtered, "locations", location.uuid);
+    TEST_ASSERT_NOT_NULL(location_facet);
+    TEST_ASSERT_EQUAL_STRING(
+        "Warehouse",
+        cJSON_GetObjectItemCaseSensitive(
+            location_facet, "label")->valuestring);
+    cJSON_Delete(recording_filtered);
 }
 
 void test_search_rejects_invalid_cursor(void) {

@@ -13,6 +13,30 @@
 #include "utils/strings.h"
 
 #define SEARCH_SQL_MAX 16384
+#define EVENT_TYPE_SQL \
+    "CASE WHEN d.source = 'external_motion' THEN 'motion' ELSE 'detection' END"
+#define ASSOCIATED_RECORDING_ID_SQL \
+    "COALESCE(d.recording_id, (SELECT candidate.id FROM recordings candidate " \
+    "WHERE candidate.camera_uuid = d.camera_uuid " \
+    "AND candidate.start_time <= CASE " \
+    "    WHEN d.source = 'external_motion' AND d.event_end_time IS NULL " \
+    "    THEN CAST(strftime('%s','now') AS INTEGER) " \
+    "    ELSE COALESCE(d.event_end_time, d.timestamp) END " \
+    "AND candidate.end_time >= d.timestamp " \
+    "ORDER BY candidate.start_time ASC, candidate.id ASC LIMIT 1))"
+#define CAPTURE_METHOD_FILTER_SQL \
+    "CASE WHEN COALESCE(filter_recording.trigger_type, 'scheduled') = 'scheduled' " \
+    "AND filter_recording.schedule_restricted = 0 THEN 'continuous' " \
+    "ELSE COALESCE(filter_recording.trigger_type, 'scheduled') END"
+#define CAPTURE_METHOD_RESULT_SQL \
+    "CASE WHEN r.id IS NULL THEN '' " \
+    "WHEN COALESCE(r.trigger_type, 'scheduled') = 'scheduled' " \
+    "AND r.schedule_restricted = 0 THEN 'continuous' " \
+    "ELSE COALESCE(r.trigger_type, 'scheduled') END"
+#define CAPTURE_METHOD_FACET_SQL \
+    "CASE WHEN COALESCE(facet_recording.trigger_type, 'scheduled') = 'scheduled' " \
+    "AND facet_recording.schedule_restricted = 0 THEN 'continuous' " \
+    "ELSE COALESCE(facet_recording.trigger_type, 'scheduled') END"
 
 typedef struct {
     char text[SEARCH_SQL_MAX];
@@ -66,6 +90,33 @@ static int build_where(const investigation_search_query_t *query,
         append_placeholders(builder, query->source_count);
         sql_append(builder, ")");
     }
+    if (query->event_type_count > 0) {
+        sql_append(builder, " AND " EVENT_TYPE_SQL " IN (");
+        append_placeholders(builder, query->event_type_count);
+        sql_append(builder, ")");
+    }
+    if (query->capture_method_count > 0) {
+        sql_append(builder, "%s",
+                   " AND EXISTS (SELECT 1 FROM recordings filter_recording "
+                   "WHERE filter_recording.id = " ASSOCIATED_RECORDING_ID_SQL
+                   " AND " CAPTURE_METHOD_FILTER_SQL " IN (");
+        append_placeholders(builder, query->capture_method_count);
+        sql_append(builder, "))");
+    }
+    if (query->recording_tag_count > 0) {
+        sql_append(builder, "%s",
+                   " AND EXISTS (SELECT 1 FROM recording_tags filter_tag "
+                   "WHERE filter_tag.recording_id = "
+                   ASSOCIATED_RECORDING_ID_SQL " AND filter_tag.tag IN (");
+        append_placeholders(builder, query->recording_tag_count);
+        sql_append(builder, "))");
+    }
+    if (query->protected_filter >= 0) {
+        sql_append(builder, "%s",
+                   " AND EXISTS (SELECT 1 FROM recordings filter_recording "
+                   "WHERE filter_recording.id = " ASSOCIATED_RECORDING_ID_SQL
+                   " AND filter_recording.protected = ?)");
+    }
     if (query->has_min_confidence) {
         sql_append(builder, " AND d.confidence >= ?");
     }
@@ -103,6 +154,21 @@ static int bind_where(sqlite3_stmt *statement,
     for (int i = 0; i < query->source_count; i++) {
         sqlite3_bind_text(statement, parameter++, query->sources[i], -1,
                           SQLITE_STATIC);
+    }
+    for (int i = 0; i < query->event_type_count; i++) {
+        sqlite3_bind_text(statement, parameter++, query->event_types[i], -1,
+                          SQLITE_STATIC);
+    }
+    for (int i = 0; i < query->capture_method_count; i++) {
+        sqlite3_bind_text(statement, parameter++, query->capture_methods[i],
+                          -1, SQLITE_STATIC);
+    }
+    for (int i = 0; i < query->recording_tag_count; i++) {
+        sqlite3_bind_text(statement, parameter++, query->recording_tags[i],
+                          -1, SQLITE_STATIC);
+    }
+    if (query->protected_filter >= 0) {
+        sqlite3_bind_int(statement, parameter++, query->protected_filter);
     }
     if (query->has_min_confidence) {
         sqlite3_bind_double(statement, parameter++, query->min_confidence);
@@ -153,16 +219,10 @@ static int load_results(sqlite3 *database,
         "d.label, d.confidence, d.x, d.y, d.width, d.height, "
         "COALESCE(d.zone_id, ''), COALESCE(d.track_id, -1), "
         "CASE WHEN d.source = '' THEN 'local' ELSE d.source END, "
-        "COALESCE(r.id, 0), CASE WHEN r.id IS NULL THEN 0 ELSE 1 END "
-        "FROM detections d LEFT JOIN recordings r ON r.id = COALESCE("
-        "d.recording_id, (SELECT candidate.id FROM recordings candidate "
-        "WHERE candidate.camera_uuid = d.camera_uuid "
-        "AND candidate.start_time <= CASE "
-        "    WHEN d.source = 'external_motion' AND d.event_end_time IS NULL "
-        "    THEN CAST(strftime('%s','now') AS INTEGER) "
-        "    ELSE COALESCE(d.event_end_time, d.timestamp) END "
-        "AND candidate.end_time >= d.timestamp "
-        "ORDER BY candidate.start_time ASC, candidate.id ASC LIMIT 1))";
+        "COALESCE(r.id, 0), CASE WHEN r.id IS NULL THEN 0 ELSE 1 END, "
+        CAPTURE_METHOD_RESULT_SQL ", COALESCE(r.protected, 0) "
+        "FROM detections d LEFT JOIN recordings r ON r.id = "
+        ASSOCIATED_RECORDING_ID_SQL;
     sqlite3_stmt *statement = NULL;
     int next_parameter = prepare_with_where(
         database, prefix, query, true,
@@ -211,6 +271,13 @@ static int load_results(sqlite3 *database,
                     sizeof(result->source), 0);
         result->recording_id = (uint64_t)sqlite3_column_int64(statement, 14);
         result->media_available = sqlite3_column_int(statement, 15) != 0;
+        const char *capture_method =
+            (const char *)sqlite3_column_text(statement, 16);
+        safe_strcpy(result->capture_method,
+                    capture_method ? capture_method : "",
+                    sizeof(result->capture_method), 0);
+        result->recording_protected =
+            sqlite3_column_int(statement, 17) != 0;
     }
     if (step != SQLITE_ROW && step != SQLITE_DONE) {
         log_error("Investigation result query failed: %s",
@@ -241,11 +308,11 @@ static int load_total(sqlite3 *database,
 
 static int load_facet(sqlite3 *database,
                       const investigation_search_query_t *query,
-                      const char *expression,
+                      const char *expression, const char *from_clause,
                       investigation_search_facet_t *facets, int *facet_count) {
     sql_builder_t prefix = {0};
-    sql_append(&prefix, "SELECT %s AS value, COUNT(*) FROM detections d",
-               expression);
+    sql_append(&prefix, "SELECT %s AS value, COUNT(*) %s", expression,
+               from_clause);
     sql_builder_t suffix = {0};
     sql_append(&suffix,
                " GROUP BY value ORDER BY COUNT(*) DESC, value ASC LIMIT %d;",
@@ -353,6 +420,19 @@ int db_investigation_search(
     investigation_search_summary_t *summary) {
     if (!query || !results || !summary || query->camera_count < 1 ||
         query->camera_count > INVESTIGATION_SEARCH_MAX_CAMERAS ||
+        query->label_count < 0 ||
+        query->label_count > INVESTIGATION_SEARCH_MAX_FILTER_VALUES ||
+        query->zone_count < 0 ||
+        query->zone_count > INVESTIGATION_SEARCH_MAX_FILTER_VALUES ||
+        query->source_count < 0 ||
+        query->source_count > INVESTIGATION_SEARCH_MAX_FILTER_VALUES ||
+        query->event_type_count < 0 ||
+        query->event_type_count > INVESTIGATION_SEARCH_MAX_FILTER_VALUES ||
+        query->capture_method_count < 0 ||
+        query->capture_method_count > INVESTIGATION_SEARCH_MAX_FILTER_VALUES ||
+        query->recording_tag_count < 0 ||
+        query->recording_tag_count > INVESTIGATION_SEARCH_MAX_FILTER_VALUES ||
+        query->protected_filter < -1 || query->protected_filter > 1 ||
         query->limit < 1 || query->limit > INVESTIGATION_SEARCH_MAX_RESULTS) {
         return -1;
     }
@@ -365,19 +445,47 @@ int db_investigation_search(
     int result = load_results(database, query, results, summary);
     if (result == 0) result = load_total(database, query, summary);
     if (result == 0) result = load_facet(
-        database, query, "d.camera_uuid", summary->facets.cameras,
+        database, query, "d.camera_uuid", "FROM detections d",
+        summary->facets.cameras,
         &summary->facets.camera_count);
     if (result == 0) result = load_facet(
-        database, query, "d.label", summary->facets.labels,
+        database, query, "d.label", "FROM detections d",
+        summary->facets.labels,
         &summary->facets.label_count);
     if (result == 0) result = load_facet(
         database, query,
         "COALESCE(NULLIF(d.zone_id, ''), 'unassigned')",
+        "FROM detections d",
         summary->facets.zones, &summary->facets.zone_count);
     if (result == 0) result = load_facet(
         database, query,
         "CASE WHEN d.source = '' THEN 'local' ELSE d.source END",
+        "FROM detections d",
         summary->facets.sources, &summary->facets.source_count);
+    if (result == 0) result = load_facet(
+        database, query, EVENT_TYPE_SQL, "FROM detections d",
+        summary->facets.event_types,
+        &summary->facets.event_type_count);
+    if (result == 0) result = load_facet(
+        database, query, CAPTURE_METHOD_FACET_SQL,
+        "FROM detections d JOIN recordings facet_recording "
+        "ON facet_recording.id = " ASSOCIATED_RECORDING_ID_SQL,
+        summary->facets.capture_methods,
+        &summary->facets.capture_method_count);
+    if (result == 0) result = load_facet(
+        database, query, "facet_tag.tag",
+        "FROM detections d JOIN recording_tags facet_tag "
+        "ON facet_tag.recording_id = " ASSOCIATED_RECORDING_ID_SQL,
+        summary->facets.recording_tags,
+        &summary->facets.recording_tag_count);
+    if (result == 0) result = load_facet(
+        database, query,
+        "CASE WHEN facet_recording.protected = 1 "
+        "THEN 'protected' ELSE 'unprotected' END",
+        "FROM detections d JOIN recordings facet_recording "
+        "ON facet_recording.id = " ASSOCIATED_RECORDING_ID_SQL,
+        summary->facets.protection,
+        &summary->facets.protection_count);
     if (result == 0) result = load_histogram(database, query, summary);
     if (result == 0) {
         result = load_unresolved_legacy_count(database, query, summary);
