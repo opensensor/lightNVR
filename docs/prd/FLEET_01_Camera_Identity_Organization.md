@@ -1,6 +1,6 @@
 # PRD — Camera Identity & Organization
 
-**Status**: Draft
+**Status**: Implemented — P0–P3 landed in 0.38.0; follow-up hardening continues
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 1 — foundation

@@ -1,6 +1,8 @@
 # PRD — Fleet Explorer & Bulk Operations
 
-**Status**: Draft
+**Status**: In progress — initial fleet query/table and bulk organization are
+implemented; health queues, saved views, durable jobs, templates/drift, and
+discovery staging remain
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 4 — fleet operator experience

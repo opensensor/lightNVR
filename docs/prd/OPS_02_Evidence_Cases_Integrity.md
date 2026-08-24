@@ -49,7 +49,9 @@ implicitly release its hold.
 
 ### 5.1 Case creation and matching
 
-- Create from the Recordings/Timeline selection or from a blank case form.
+- Create from the Recordings/Timeline selection, the
+  [UXD 05 investigation workspace](UXD_05_Investigation_Workspace_Search.md), or
+  from a blank case form.
 - Selector uses Fleet 01 camera UUIDs, collections, location subtree, or tags.
 - Time intervals are stored in UTC and displayed with the operator's selected zone.
 - Preview lists matching recordings, gaps, alternate sources, and estimated bytes.
@@ -142,6 +144,8 @@ implicitly release its hold.
 ## 9. Dependencies
 
 - Fleet 01 identities/selectors and Fleet 02 permissions/audit.
+- UXD 05 supplies synchronized review, search results, bookmarks, and the exact
+  camera/time/source handoff into a case.
 - Storage 01 hold enforcement and location abstraction.
 - Fleet 03 operational/integrity events.
 - ONVIF 02 provenance for edge imports.

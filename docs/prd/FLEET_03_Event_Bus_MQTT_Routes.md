@@ -1,9 +1,8 @@
 # PRD — Event Bus & MQTT Routes
 
-**Status**: P0/P1 complete; P2 routing in progress — durable route definitions,
-catalog/CRUD API, selector preview, optimistic concurrency, runtime
-type/scope/predicate/schedule evaluation, and durable suppression implemented;
-multiple destinations and UI remain
+**Status**: P0–P2 complete — envelope/registry, durable outbox, multiple MQTT
+destinations, selector/predicate/schedule routing, suppression, and the operator
+UI are implemented; broader P3 producers and media references remain
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation

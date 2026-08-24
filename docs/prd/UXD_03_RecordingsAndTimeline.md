@@ -28,7 +28,8 @@ The Recordings list and the Timeline player are the two surfaces operators touch
 - Universal async feedback for every filter / batch action.
 
 **Non-goals**
-- Cross-stream timeline (multi-camera unified ruler) — separate epic.
+- Cross-stream timeline and synchronized investigation playback — covered by
+  [UXD 05](UXD_05_Investigation_Workspace_Search.md).
 - Server-side persistence of UI filter state — a future "saved views" PRD.
 - Editing/trimming recordings inside lightNVR.
 
