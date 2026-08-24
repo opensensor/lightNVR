@@ -1430,6 +1430,79 @@ void test_investigation_search_facets_are_camera_scope_authorized(void) {
     g_config.web_auth_enabled = false;
 }
 
+void test_investigation_recording_preview_explains_action_permissions(void) {
+    stream_config_t camera = create_camera("Replay Only", "Review");
+
+    int64_t policy_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_get_policy_version(&policy_version));
+    authorization_role_t role;
+    memset(&role, 0, sizeof(role));
+    safe_strcpy(role.name, "Replay only", sizeof(role.name), 0);
+    safe_strcpy(role.description, "Can review but not preserve or export",
+                sizeof(role.description), 0);
+    role.action_mask = authorization_action_bit(AUTHZ_RECORDINGS_REPLAY);
+    int64_t next_version = 0;
+    TEST_ASSERT_EQUAL_INT(
+        DB_AUTHORIZATION_OK,
+        db_authorization_role_create(&role, policy_version, &next_version));
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("replayonly", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_set_user_mode(user_id, "policy"));
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, role.uuid, "all", NULL, grant_uuid);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, camera.name,
+                sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.camera_uuid, camera.camera_uuid,
+                sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, "/tmp/lightnvr-replay-only.mp4",
+                sizeof(recording.file_path), 0);
+    recording.start_time = 1700000000;
+    recording.end_time = 1700000060;
+    recording.is_complete = true;
+    recording.retention_override_days = -1;
+    TEST_ASSERT_NOT_EQUAL(0, add_recording_metadata(&recording));
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],"
+             "\"start_time\":1700000000,\"end_time\":1700000060}",
+             camera.camera_uuid);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(
+        handle_post_investigation_recording_preview, HTTP_METHOD_POST,
+        "/api/investigations/recordings/preview", body, api_key, 200);
+    const cJSON *recordings =
+        cJSON_GetObjectItemCaseSensitive(json, "recordings");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(recordings));
+    const cJSON *item = cJSON_GetArrayItem(recordings, 0);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        item, "can_protect")));
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        item, "can_export")));
+    const cJSON *permissions =
+        cJSON_GetObjectItemCaseSensitive(json, "permissions");
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(permissions, "protect"),
+               "denied_count")->valueint);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(permissions, "export"),
+        "all_allowed")));
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
 /*
  * The effective mask is what stops a policy manager from minting authority it
  * does not hold, so it must reflect grants, legacy roles, and token narrowing.
@@ -1639,6 +1712,7 @@ int main(void) {
     RUN_TEST(test_sensitive_handlers_enforce_camera_scoped_policy);
     RUN_TEST(test_visible_camera_filter_hides_cameras_outside_grant);
     RUN_TEST(test_investigation_search_facets_are_camera_scope_authorized);
+    RUN_TEST(test_investigation_recording_preview_explains_action_permissions);
     RUN_TEST(test_effective_action_mask_reflects_grants_and_tokens);
     RUN_TEST(test_policy_manager_cannot_grant_actions_it_lacks);
     RUN_TEST(test_action_catalog_bit_layout_matches_database);

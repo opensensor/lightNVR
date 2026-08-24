@@ -62,6 +62,8 @@ static cJSON *segment_json(const timeline_segment_t *segment) {
     cJSON_AddStringToObject(item, "capture_method",
                             segment_capture_method(segment));
     cJSON_AddBoolToObject(item, "has_detection", segment->has_detection);
+    cJSON_AddNumberToObject(item, "size_bytes", (double)segment->size_bytes);
+    cJSON_AddBoolToObject(item, "protected", segment->protected);
     cJSON_AddBoolToObject(item, "media_available", true);
     return item;
 }
@@ -350,6 +352,193 @@ void handle_post_investigation_timeline(const http_request_t *request,
 
     free(segments);
     set_json_response(response, root);
+    cJSON_Delete(root);
+    cJSON_Delete(body);
+}
+
+void handle_post_investigation_recording_preview(
+    const http_request_t *request, http_response_t *response) {
+    if (!request || !response) return;
+
+    cJSON *body = httpd_parse_json_body(request);
+    if (!body) {
+        http_response_set_json_error(response, 400, "Invalid JSON body");
+        return;
+    }
+
+    time_t start_time = 0;
+    time_t end_time = 0;
+    if (!parse_epoch_seconds(body, "start_time", &start_time) ||
+        !parse_epoch_seconds(body, "end_time", &end_time) ||
+        end_time <= start_time ||
+        end_time - start_time > INVESTIGATION_MAX_RANGE_SECONDS) {
+        cJSON_Delete(body);
+        http_response_set_json_error(
+            response, 400,
+            "start_time and end_time must define a range of at most 31 days");
+        return;
+    }
+
+    stream_config_t cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+    fleet_camera_t fleet_cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+    user_t user = {0};
+    int camera_count = resolve_authorized_cameras(
+        body, request, response, cameras, fleet_cameras, &user);
+    if (camera_count < 0) {
+        cJSON_Delete(body);
+        return;
+    }
+
+    authorization_context_t *auth_context = authorization_context_create();
+    timeline_segment_t *segments = calloc(
+        INVESTIGATION_MAX_ACTION_RECORDINGS + 1, sizeof(*segments));
+    cJSON *root = cJSON_CreateObject();
+    cJSON *recordings = root
+        ? cJSON_AddArrayToObject(root, "recordings") : NULL;
+    if (!auth_context || !segments || !root || !recordings) {
+        authorization_context_free(auth_context);
+        free(segments);
+        cJSON_Delete(root);
+        cJSON_Delete(body);
+        http_response_set_json_error(response, 500,
+                                     "Failed to allocate recording preview");
+        return;
+    }
+
+    int recording_count = 0;
+    int protected_count = 0;
+    int protect_allowed_count = 0;
+    int protect_denied_count = 0;
+    int protect_actionable_count = 0;
+    int export_allowed_count = 0;
+    int export_denied_count = 0;
+    uint64_t total_bytes = 0;
+
+    for (int i = 0; i < camera_count; i++) {
+        authorization_evaluation_t protect_evaluation = {0};
+        authorization_evaluation_t export_evaluation = {0};
+        if (authorization_evaluate_in_context(
+                auth_context, &user, AUTHZ_EVIDENCE_PROTECT,
+                &fleet_cameras[i], &protect_evaluation) != 0 ||
+            authorization_evaluate_in_context(
+                auth_context, &user, AUTHZ_RECORDINGS_EXPORT,
+                &fleet_cameras[i], &export_evaluation) != 0) {
+            authorization_context_free(auth_context);
+            free(segments);
+            cJSON_Delete(root);
+            cJSON_Delete(body);
+            http_response_set_json_error(
+                response, 500, "Authorization policy evaluation failed");
+            return;
+        }
+        bool can_protect =
+            protect_evaluation.decision == AUTHZ_DECISION_ALLOW;
+        bool can_export = export_evaluation.decision == AUTHZ_DECISION_ALLOW;
+
+        int segment_count = get_timeline_segments_by_camera_uuid(
+            cameras[i].camera_uuid, start_time, end_time, segments,
+            INVESTIGATION_MAX_ACTION_RECORDINGS + 1);
+        if (segment_count < 0) {
+            authorization_context_free(auth_context);
+            free(segments);
+            cJSON_Delete(root);
+            cJSON_Delete(body);
+            http_response_set_json_error(
+                response, 500, "Failed to query overlapping recordings");
+            return;
+        }
+        if (segment_count > INVESTIGATION_MAX_ACTION_RECORDINGS -
+                                recording_count) {
+            authorization_context_free(auth_context);
+            free(segments);
+            cJSON_Delete(root);
+            cJSON_Delete(body);
+            http_response_set_json_error(
+                response, 413,
+                "More than 200 recordings overlap this interval; narrow the time range");
+            return;
+        }
+
+        for (int j = 0; j < segment_count; j++) {
+            const timeline_segment_t *segment = &segments[j];
+            cJSON *item = cJSON_CreateObject();
+            if (!item) {
+                authorization_context_free(auth_context);
+                free(segments);
+                cJSON_Delete(root);
+                cJSON_Delete(body);
+                http_response_set_json_error(
+                    response, 500, "Failed to create recording preview");
+                return;
+            }
+            cJSON_AddNumberToObject(item, "id", (double)segment->id);
+            cJSON_AddStringToObject(item, "camera_uuid",
+                                    cameras[i].camera_uuid);
+            cJSON_AddStringToObject(item, "camera_name", cameras[i].name);
+            cJSON_AddStringToObject(item, "stream_name",
+                                    segment->stream_name);
+            cJSON_AddNumberToObject(item, "start_time",
+                                    (double)segment->start_time);
+            cJSON_AddNumberToObject(item, "end_time",
+                                    (double)segment->end_time);
+            cJSON_AddNumberToObject(item, "size_bytes",
+                                    (double)segment->size_bytes);
+            cJSON_AddBoolToObject(item, "protected", segment->protected);
+            cJSON_AddBoolToObject(item, "can_protect", can_protect);
+            cJSON_AddBoolToObject(item, "can_export", can_export);
+            cJSON_AddItemToArray(recordings, item);
+
+            recording_count++;
+            if (segment->protected) {
+                protected_count++;
+            } else if (can_protect) {
+                protect_actionable_count++;
+            }
+            if (can_protect) protect_allowed_count++;
+            else protect_denied_count++;
+            if (can_export) export_allowed_count++;
+            else export_denied_count++;
+            if (UINT64_MAX - total_bytes < segment->size_bytes) {
+                total_bytes = UINT64_MAX;
+            } else {
+                total_bytes += segment->size_bytes;
+            }
+        }
+    }
+
+    cJSON_AddNumberToObject(root, "start_time", (double)start_time);
+    cJSON_AddNumberToObject(root, "end_time", (double)end_time);
+    cJSON_AddNumberToObject(root, "camera_count", camera_count);
+    cJSON_AddNumberToObject(root, "recording_count", recording_count);
+    cJSON_AddNumberToObject(root, "total_bytes", (double)total_bytes);
+    cJSON_AddNumberToObject(root, "protected_count", protected_count);
+    cJSON_AddNumberToObject(root, "unprotected_count",
+                            recording_count - protected_count);
+    cJSON *permissions = cJSON_AddObjectToObject(root, "permissions");
+    cJSON *protect = permissions
+        ? cJSON_AddObjectToObject(permissions, "protect") : NULL;
+    cJSON *export = permissions
+        ? cJSON_AddObjectToObject(permissions, "export") : NULL;
+    if (protect) {
+        cJSON_AddNumberToObject(protect, "allowed_count",
+                                protect_allowed_count);
+        cJSON_AddNumberToObject(protect, "denied_count",
+                                protect_denied_count);
+        cJSON_AddNumberToObject(protect, "actionable_count",
+                                protect_actionable_count);
+    }
+    if (export) {
+        cJSON_AddNumberToObject(export, "allowed_count",
+                                export_allowed_count);
+        cJSON_AddNumberToObject(export, "denied_count",
+                                export_denied_count);
+        cJSON_AddBoolToObject(export, "all_allowed",
+                              recording_count > 0 && export_denied_count == 0);
+    }
+
+    set_json_response(response, root);
+    authorization_context_free(auth_context);
+    free(segments);
     cJSON_Delete(root);
     cJSON_Delete(body);
 }
