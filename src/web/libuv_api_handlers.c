@@ -46,6 +46,7 @@
 #include "web/api_handlers_audit.h"
 #include "web/api_handlers_event_routes.h"
 #include "web/api_handlers_event_destinations.h"
+#include "web/api_handlers_storage_targets.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "core/config.h"
@@ -291,6 +292,20 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_put_event_destination);
     http_server_register_handler(server, "/api/event-destinations/#", "DELETE",
                                  handle_delete_event_destination);
+
+    // Multi-target storage configuration and safe filesystem probes.
+    http_server_register_handler(server, "/api/storage-targets", "GET",
+                                 handle_get_storage_targets);
+    http_server_register_handler(server, "/api/storage-targets", "POST",
+                                 handle_post_storage_target);
+    http_server_register_handler(server, "/api/storage-targets/#/probe", "POST",
+                                 handle_post_storage_target_probe);
+    http_server_register_handler(server, "/api/storage-targets/#", "GET",
+                                 handle_get_storage_target);
+    http_server_register_handler(server, "/api/storage-targets/#", "PUT",
+                                 handle_put_storage_target);
+    http_server_register_handler(server, "/api/storage-targets/#", "DELETE",
+                                 handle_delete_storage_target);
     http_server_register_handler(server, "/api/event-routes/preview", "POST",
                                  handle_post_event_route_preview);
     http_server_register_handler(server, "/api/event-routes", "GET",

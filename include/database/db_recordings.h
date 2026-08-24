@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "core/config.h"
+#include "database/db_storage_targets.h"
 
 // Recording metadata structure
 typedef struct {
@@ -14,6 +15,10 @@ typedef struct {
     char stream_name[64];
     char camera_uuid[CAMERA_UUID_STRING_SIZE];
     char file_path[MAX_PATH_LENGTH];
+    char storage_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    char object_key[STORAGE_TARGET_OBJECT_KEY_MAX];
+    char placement_reason[64];
+    int64_t storage_policy_version;
     time_t start_time;
     time_t end_time;
     uint64_t size_bytes;

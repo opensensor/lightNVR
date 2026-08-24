@@ -599,10 +599,12 @@ set(REBUILD_RECORDINGS_SOURCES
     src/core/logger.c
     src/core/path_utils.c
     src/utils/strings.c
+    src/utils/uuid.c
     src/database/db_camera_tags.c
     src/database/db_core.c
     src/database/db_streams.c
     src/database/db_recordings.c
+    src/database/db_storage_targets.c
     src/database/db_schema.c
     src/database/db_schema_cache.c
     src/database/db_backup.c
