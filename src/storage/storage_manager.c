@@ -311,17 +311,24 @@ int apply_retention_policy(void) {
     uint64_t total_freed = 0;
     time_t budget_start = time(NULL);
 
-    // Get list of all stream names
-    char stream_names[MAX_STREAMS_BATCH][MAX_STREAM_NAME];
+    // Keep the stream-name batch off worker-thread stacks. At the 1024-stream
+    // ceiling this buffer is 256 KiB by itself.
+    char (*stream_names)[MAX_STREAM_NAME] = calloc(MAX_STREAMS_BATCH, sizeof(*stream_names));
+    if (!stream_names) {
+        log_error("Failed to allocate stream-name buffer for retention policy");
+        return -1;
+    }
     int stream_count = get_all_stream_names(stream_names, MAX_STREAMS_BATCH);
 
     if (stream_count < 0) {
         log_error("Failed to get stream names for retention policy");
+        free(stream_names);
         return -1;
     }
 
     if (stream_count == 0) {
         log_debug("No streams found for retention policy");
+        free(stream_names);
         return 0;
     }
 
@@ -336,6 +343,7 @@ int apply_retention_policy(void) {
     recording_metadata_t *batch = calloc(MAX_RECORDINGS_PER_STREAM, sizeof(recording_metadata_t));
     if (!batch) {
         log_error("Failed to allocate recording batch buffer for retention policy");
+        free(stream_names);
         return -1;
     }
 
@@ -451,6 +459,7 @@ int apply_retention_policy(void) {
     }
 
     free(batch);
+    free(stream_names);
 
     // Phase 3: Clean up orphaned database entries (files that no longer exist)
     // Safety check: verify storage is actually accessible before orphan cleanup.
@@ -1241,7 +1250,7 @@ static void capacity_enforce_cycle(void) {
 
 /**
  * Standard cleanup: tiered retention + quota enforcement + cache refresh
- * Memory budget: <256KB
+ * Working-buffer memory budget: <1MB
  */
 static void standard_cleanup_cycle(void) {
     log_info("Standard cleanup cycle starting");
@@ -1261,9 +1270,17 @@ static void standard_cleanup_cycle(void) {
     uint64_t tier_freed = 0;
     recording_metadata_t *tier_recs = calloc(MAX_RECORDINGS_PER_STREAM, sizeof(recording_metadata_t));
     if (tier_recs) {
-        // Get all stream names
-        char stream_names[MAX_STREAMS_BATCH][MAX_STREAM_NAME];
-        int stream_count = get_all_stream_names(stream_names, MAX_STREAMS_BATCH);
+        // Get all stream names without placing a 256 KiB buffer on the stack.
+        char (*stream_names)[MAX_STREAM_NAME] = calloc(MAX_STREAMS_BATCH, sizeof(*stream_names));
+        if (!stream_names) {
+            log_error("Tiered cleanup: failed to allocate stream-name buffer");
+            free(tier_recs);
+            tier_recs = NULL;
+        }
+
+        int stream_count = stream_names
+            ? get_all_stream_names(stream_names, MAX_STREAMS_BATCH)
+            : -1;
 
         if (stream_count == MAX_STREAMS_BATCH) {
             log_warn("Tiered cleanup: stream count reached batch limit (%d) - some streams may be skipped",
@@ -1325,6 +1342,7 @@ static void standard_cleanup_cycle(void) {
                 }
             } while (count == MAX_RECORDINGS_PER_STREAM);
         }
+        free(stream_names);
         free(tier_recs);
     }
 

@@ -99,7 +99,7 @@ password = admin
 ; web_thread_pool_size = 8
 
 [streams]
-; max_streams: runtime stream slot limit (default 32, ceiling 256). Requires restart.
+; max_streams: runtime stream slot limit (default 32, ceiling 1024). Requires restart.
 max_streams = ${MAX_STREAMS:-32}
 
 [models]

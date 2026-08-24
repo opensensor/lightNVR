@@ -1103,7 +1103,8 @@ int load_stream_configs(config_t *config) {
                  count, max_streams);
     }
 
-    // Heap-allocate temporary buffer (stream_config_t is ~2 KB; stack array at 256 overflows)
+    // Heap-allocate the temporary buffer; stream_config_t is large and the
+    // configured capacity can be as high as MAX_STREAMS.
     stream_config_t *db_streams = calloc(load_capacity, sizeof(stream_config_t));
     if (!db_streams) {
         log_error("load_stream_configs: out of memory allocating %zu stream configs", load_capacity);

@@ -14,7 +14,7 @@
 #define MAX_URL_LENGTH 512
 // Compile-time ceiling for per-stream static arrays (pointer arrays, watchdog trackers, etc.).
 // The actual operational limit is g_config.max_streams (default 32, configurable up to this value).
-#define MAX_STREAMS 256
+#define MAX_STREAMS 1024
 #define WEB_TRUSTED_PROXY_CIDRS_MAX 1024
 
 // Stream protocol enum

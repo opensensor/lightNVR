@@ -110,7 +110,7 @@ static uint64_t pulse_gen_increment(const char *stream_name) {
         g_pulse_gen[i].generation = 1;
         return 1;
     }
-    /* Table full (shouldn't happen with MAX_STREAMS=256 streams).
+    /* Table full (shouldn't happen with at most MAX_STREAMS streams).
      * Return 0 — the reserved "generation tracking disabled" sentinel.
      * The pulse worker treats generation==0 as "always fire the stop",
      * which is safer than leaving the stream permanently in motion-active. */

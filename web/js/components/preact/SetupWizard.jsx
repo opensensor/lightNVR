@@ -111,7 +111,7 @@ function StorageStep({ form, onChange }) {
 
 
 
-function PerformanceStep({ form, onChange, cpuCores }) {
+function PerformanceStep({ form, onChange, cpuCores, maxStreamsCeiling }) {
   const recommended = cpuCores > 0 ? cpuCores * 2 : '?';
   return (
     <div>
@@ -152,12 +152,12 @@ function PerformanceStep({ form, onChange, cpuCores }) {
       </Field>
       <Field
         label="Maximum concurrent streams"
-        hint="How many cameras LightNVR can keep active at once. Default 32, max 256. If you expect 8 cameras, choose at least 8. Requires restart to take effect."
+        hint={`How many cameras LightNVR can keep active at once. Default 32, max ${maxStreamsCeiling}. If you expect 8 cameras, choose at least 8. Requires restart to take effect.`}
       >
         <input
           type="number"
           min="1"
-          max="256"
+          max={maxStreamsCeiling}
           class="w-full p-2 border border-input rounded bg-background text-foreground"
           value={form.maxStreams}
           onInput={e => onChange('maxStreams', e.target.value)}
@@ -199,6 +199,7 @@ export function SetupWizard({ onClose }) {
   const [saved, setSaved] = useState(false);
   const [restartRequired, setRestartRequired] = useState(false);
   const [cpuCores, setCpuCores] = useState(0);
+  const [maxStreamsCeiling, setMaxStreamsCeiling] = useState(1024);
 
   const [form, setForm] = useState({
     storagePath: '',
@@ -221,6 +222,9 @@ export function SetupWizard({ onClose }) {
           threadPoolSize: data.web_thread_pool_size != null ? String(data.web_thread_pool_size) : f.threadPoolSize,
           maxStreams:     data.max_streams     != null ? String(data.max_streams)      : f.maxStreams,
         }));
+        if (data.max_streams_ceiling != null) {
+          setMaxStreamsCeiling(data.max_streams_ceiling);
+        }
       })
       .catch(() => {});
 
@@ -283,7 +287,7 @@ export function SetupWizard({ onClose }) {
       <div class="bg-card text-card-foreground rounded-2xl shadow-2xl w-full max-w-lg p-8">
         {step === 0 && <WelcomeStep />}
         {step === 1 && <StorageStep     form={form} onChange={handleChange} />}
-        {step === 2 && <PerformanceStep form={form} onChange={handleChange} cpuCores={cpuCores} />}
+        {step === 2 && <PerformanceStep form={form} onChange={handleChange} cpuCores={cpuCores} maxStreamsCeiling={maxStreamsCeiling} />}
         {step === 3 && <CompleteStep    saved={saved} restartRequired={restartRequired} />}
 
         <StepDots current={step} total={TOTAL_STEPS} />

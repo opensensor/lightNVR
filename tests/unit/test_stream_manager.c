@@ -44,6 +44,14 @@ void test_init_shutdown_lifecycle(void) {
     TEST_PASS();
 }
 
+/* compile-time ceiling is a usable runtime capacity */
+void test_init_supports_1024_slots(void) {
+    TEST_ASSERT_EQUAL_INT(1024, MAX_STREAMS);
+    TEST_ASSERT_EQUAL_INT(0, init_stream_manager(MAX_STREAMS));
+    TEST_ASSERT_EQUAL_INT(1024, get_stream_capacity());
+    shutdown_stream_manager();
+}
+
 /* double shutdown does not crash */
 void test_double_shutdown(void) {
     init_stream_manager(4);
@@ -224,6 +232,7 @@ void test_independent_recording_schedules_use_current_hour(void) {
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_init_shutdown_lifecycle);
+    RUN_TEST(test_init_supports_1024_slots);
     RUN_TEST(test_double_shutdown);
     RUN_TEST(test_add_stream_returns_handle);
     RUN_TEST(test_get_stream_by_name);

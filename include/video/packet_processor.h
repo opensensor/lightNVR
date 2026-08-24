@@ -4,7 +4,7 @@
 #include <libavformat/avformat.h>
 #include "core/config.h"
 
-// Use MAX_STREAMS from config.h (32)
+// Use MAX_STREAMS from config.h.
 
 // Maximum stream name length (should match the larger of the two definitions)
 #define MAX_STREAM_NAME 256

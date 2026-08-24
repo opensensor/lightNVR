@@ -1643,7 +1643,8 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         // First, stop all HLS streams explicitly to ensure they're properly shut down
         log_info("Stopping all HLS streams before changing database path...");
         
-        // Get a list of all active streams (heap-allocated; 256 * 256 B on stack is too large)
+        // Get a list of all active streams on the heap; MAX_STREAMS entries
+        // would make this unsafe on the stack.
         char (*active_streams)[MAX_STREAM_NAME] = calloc(g_config.max_streams, MAX_STREAM_NAME);
         if (!active_streams) {
             log_error("handle_post_settings: out of memory for active_streams");

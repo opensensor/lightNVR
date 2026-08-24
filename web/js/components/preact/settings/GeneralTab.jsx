@@ -161,7 +161,7 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
               id="setting-max-streams"
               name="maxStreams"
               min="1"
-              max="256"
+              max={settings.maxStreamsCeiling || 1024}
               class="w-full p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               value={settings.maxStreams}
               onChange={handleInputChange}

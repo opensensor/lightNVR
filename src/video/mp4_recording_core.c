@@ -511,63 +511,62 @@ void cleanup_mp4_recording_backend(void) {
     // Set shutdown flag to signal all threads to exit
     shutdown_in_progress = 1;
 
-    // Create a local array to store contexts we need to clean up
-    // This prevents race conditions by ensuring we handle each context safely
-    typedef struct {
-        mp4_recording_ctx_t *ctx;
-        pthread_t thread;
-        char stream_name[MAX_STREAM_NAME];
-        int index;
-    } cleanup_item_t;
+    int capacity = g_config.max_streams;
+    if (capacity < 1 || capacity > MAX_STREAMS) {
+        capacity = MAX_STREAMS;
+    }
 
-    cleanup_item_t items_to_cleanup[MAX_STREAMS];
-    int cleanup_count = 0;
-
-    // Collect all active contexts under the mutex, signal them to stop, and
-    // null their slots.  Joins are performed outside the lock (they can block
-    // up to 15 s each).
+    // Signal every context first so their threads can wind down in parallel.
+    // Extract each context separately below, keeping the MAX_STREAMS-sized
+    // cleanup worklist off the stack while still joining outside the mutex.
     pthread_mutex_lock(&recording_contexts_mutex);
-    for (int i = 0; i < g_config.max_streams; i++) {
+    for (int i = 0; i < capacity; i++) {
         if (recording_contexts[i]) {
             recording_contexts[i]->running = 0;
-
-            items_to_cleanup[cleanup_count].ctx = recording_contexts[i];
-            items_to_cleanup[cleanup_count].thread = recording_contexts[i]->thread;
-            safe_strcpy(items_to_cleanup[cleanup_count].stream_name,
-                    recording_contexts[i]->config.name, MAX_STREAM_NAME, 0);
-            items_to_cleanup[cleanup_count].index = i;
-
-            // Null the slot now so new recordings (if any race) see it as free
-            recording_contexts[i] = NULL;
-
-            cleanup_count++;
         }
     }
     pthread_mutex_unlock(&recording_contexts_mutex);
 
-    // Join threads outside the mutex — each can block up to 15 s (outer thread
-    // needs 10 s for the inner RTSP thread plus margin).
-    for (int i = 0; i < cleanup_count; i++) {
-        log_info("Waiting for MP4 recording thread for %s to exit",
-                items_to_cleanup[i].stream_name);
+    for (int i = 0; i < capacity; i++) {
+        mp4_recording_ctx_t *ctx = NULL;
+        pthread_t thread;
+        char stream_name[MAX_STREAM_NAME];
 
-        int join_result = pthread_join_with_timeout(items_to_cleanup[i].thread, NULL, 15);
+        pthread_mutex_lock(&recording_contexts_mutex);
+        if (recording_contexts[i]) {
+            ctx = recording_contexts[i];
+            thread = ctx->thread;
+            safe_strcpy(stream_name, ctx->config.name, sizeof(stream_name), 0);
+            recording_contexts[i] = NULL;
+        }
+        pthread_mutex_unlock(&recording_contexts_mutex);
+
+        if (!ctx) {
+            continue;
+        }
+
+        // Join outside the mutex — each can block up to 15 s (outer thread
+        // needs 10 s for the inner RTSP thread plus margin).
+        log_info("Waiting for MP4 recording thread for %s to exit",
+                stream_name);
+
+        int join_result = pthread_join_with_timeout(thread, NULL, 15);
         if (join_result != 0) {
             log_warn("Could not join MP4 recording thread for %s within timeout: %s",
-                    items_to_cleanup[i].stream_name, strerror(join_result));
+                    stream_name, strerror(join_result));
 
             // Do NOT free the context — the detached thread still references it.
             // Accept the small memory leak; the OS reclaims on process exit.
-            pthread_detach(items_to_cleanup[i].thread);
+            pthread_detach(thread);
             log_warn("Detached MP4 recording thread for %s, skipping context free to avoid use-after-free",
-                    items_to_cleanup[i].stream_name);
+                    stream_name);
         } else {
             log_info("Successfully joined MP4 recording thread for %s",
-                    items_to_cleanup[i].stream_name);
+                    stream_name);
             // Thread has exited — safe to free the context.
             // The slot was already nulled above under the lock.
-            free(items_to_cleanup[i].ctx);
-            log_info("Freed MP4 recording context for %s", items_to_cleanup[i].stream_name);
+            free(ctx);
+            log_info("Freed MP4 recording context for %s", stream_name);
         }
     }
 

@@ -290,7 +290,10 @@ web_thread_pool_size = 8
 max_streams = 32
 ```
 
-- `max_streams`: Maximum number of streams to support (default: 32)
+- `max_streams`: Runtime stream capacity for one LightNVR instance (default: 32,
+  maximum: 1024). Changing it requires a restart. Higher values reserve more
+  memory; the number of cameras a host can actively record, relay, or analyze
+  still depends on its CPU, memory, storage, network, and enabled workloads.
 
 **Note:** Stream configurations are stored in the SQLite database and managed via the API or web UI. They are no longer configured in the INI file.
 
