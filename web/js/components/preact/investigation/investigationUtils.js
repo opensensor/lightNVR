@@ -7,6 +7,127 @@ function roundedRegionValue(value) {
   return Math.round(value * 10000) / 10000;
 }
 
+export function bookmarkFiltersFromState(filters = {}) {
+  const saved = {};
+  const fields = [
+    ['eventType', 'event_type'],
+    ['location', 'location'],
+    ['label', 'label'],
+    ['zone', 'zone'],
+    ['source', 'source'],
+    ['captureMethod', 'capture_method'],
+    ['recordingTag', 'recording_tag'],
+    ['protection', 'protection'],
+  ];
+  fields.forEach(([stateKey, savedKey]) => {
+    if (filters[stateKey]) saved[savedKey] = filters[stateKey];
+  });
+  if (filters.minConfidence !== '' && filters.minConfidence !== null &&
+      filters.minConfidence !== undefined) {
+    const value = Number(filters.minConfidence);
+    if (Number.isFinite(value) && value >= 0 && value <= 1) {
+      saved.min_confidence = value;
+    }
+  }
+  if (filters.region) {
+    const region = filters.region;
+    saved.region = {
+      camera_uuid: region.cameraUuid,
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+      match: region.match,
+      min_intersection: region.minIntersection,
+    };
+  }
+  return saved;
+}
+
+export function bookmarkRepresentativeResult(result) {
+  if (!result) return null;
+  const saved = {};
+  [
+    'result_id', 'camera_uuid', 'start_time', 'end_time', 'event_type',
+    'recording_id', 'detection_id', 'label',
+  ].forEach((key) => {
+    if (typeof result[key] === 'string' || Number.isFinite(result[key])) {
+      saved[key] = result[key];
+    }
+  });
+  return Object.keys(saved).length > 0 ? saved : null;
+}
+
+export function buildInvestigationBookmarkPayload({
+  title,
+  note,
+  timeline,
+  cursor,
+  primaryCameraUuid,
+  searchFilters,
+  selectedResult,
+}) {
+  if (!timeline || !Array.isArray(timeline.tracks) ||
+      timeline.tracks.length === 0 || !primaryCameraUuid) return null;
+  return {
+    title: String(title || '').trim(),
+    note: String(note || '').trim(),
+    camera_uuids: timeline.tracks.map((track) => track.camera_uuid),
+    start_time: Math.floor(timeline.start_time),
+    end_time: Math.floor(timeline.end_time),
+    cursor_time: Math.floor(cursor),
+    primary_camera_uuid: primaryCameraUuid,
+    filters: bookmarkFiltersFromState(searchFilters),
+    representative_result: bookmarkRepresentativeResult(selectedResult),
+  };
+}
+
+export function investigationBookmarkUrl(bookmark, baseUrl) {
+  const url = new URL(baseUrl || window.location.href);
+  [
+    'stream', 'cameras', 'start', 'end', 'cursor', 'primary',
+    'event', 'location', 'label', 'zone', 'source', 'capture', 'tag',
+    'protected', 'confidence_min', 'region_camera', 'region_rect',
+    'region_match', 'region_min', 'drill_camera', 'drill_start', 'drill_end',
+  ].forEach((name) => url.searchParams.delete(name));
+  url.searchParams.set('cameras', (bookmark.camera_uuids || []).join(','));
+  url.searchParams.set('start', String(bookmark.start_time));
+  url.searchParams.set('end', String(bookmark.end_time));
+  url.searchParams.set('cursor', String(bookmark.cursor_time));
+  url.searchParams.set('primary', bookmark.primary_camera_uuid);
+  const filters = bookmark.filters || {};
+  const queryFields = {
+    event: filters.event_type,
+    location: filters.location,
+    label: filters.label,
+    zone: filters.zone,
+    source: filters.source,
+    capture: filters.capture_method,
+    tag: filters.recording_tag,
+    protected: filters.protection,
+    confidence_min: filters.min_confidence,
+  };
+  Object.entries(queryFields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  if (filters.region) {
+    url.searchParams.set('region_camera', filters.region.camera_uuid);
+    url.searchParams.set('region_rect', [
+      filters.region.x,
+      filters.region.y,
+      filters.region.width,
+      filters.region.height,
+    ].join(','));
+    url.searchParams.set('region_match', filters.region.match || 'center');
+    url.searchParams.set(
+      'region_min', String(filters.region.min_intersection ?? 0.25),
+    );
+  }
+  return url.toString();
+}
+
 export function videoContentBox(containerWidth, containerHeight, videoWidth, videoHeight) {
   if (![containerWidth, containerHeight, videoWidth, videoHeight]
     .every((value) => Number.isFinite(value) && value > 0)) {

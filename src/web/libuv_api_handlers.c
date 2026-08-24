@@ -27,6 +27,7 @@
 #include "web/api_handlers_recordings_batch_download.h"
 #include "web/api_handlers_timeline.h"
 #include "web/api_handlers_investigations.h"
+#include "web/api_handlers_investigation_bookmarks.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_users.h"
 #include "web/api_handlers_totp.h"
@@ -353,6 +354,11 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/investigations/search", "POST", handle_post_investigation_search);
     http_server_register_handler(server, "/api/investigations/thumbnail-samples", "POST", handle_post_investigation_thumbnail_samples);
     http_server_register_handler(server, "/api/investigations/thumbnail/#/#", "GET", handle_investigation_thumbnail);
+    http_server_register_handler(server, "/api/investigation-bookmarks/#", "GET", handle_get_investigation_bookmark);
+    http_server_register_handler(server, "/api/investigation-bookmarks/#", "PUT", handle_put_investigation_bookmark);
+    http_server_register_handler(server, "/api/investigation-bookmarks/#", "DELETE", handle_delete_investigation_bookmark);
+    http_server_register_handler(server, "/api/investigation-bookmarks", "GET", handle_get_investigation_bookmarks);
+    http_server_register_handler(server, "/api/investigation-bookmarks", "POST", handle_post_investigation_bookmark);
 
     // HLS Streaming (backend-agnostic handler)
     // Pattern uses # for single-segment wildcards: /hls/{stream_name}/{filename}
