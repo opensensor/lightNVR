@@ -147,8 +147,18 @@ int prepare_mp4_recording_path(const config_t *config,
 int prepare_placed_mp4_recording_path(
     const config_t *config, const char *stream_name, time_t timestamp,
     char *output, size_t output_size, storage_placement_t *placement) {
-    if (!config || !placement ||
-        storage_placement_select(stream_name, placement) != 0 ||
+    if (!placement) return -1;
+    /*
+     * Callers log placement->reason on failure, and storage_placement_select()
+     * rejects a blank stream name before it clears the struct, so seed the
+     * whole thing here rather than letting them read an uninitialised stack
+     * buffer.
+     */
+    memset(placement, 0, sizeof(*placement));
+    placement->status = STORAGE_PLACEMENT_ERROR;
+    safe_strcpy(placement->reason, "invalid-request",
+                sizeof(placement->reason), 0);
+    if (!config || storage_placement_select(stream_name, placement) != 0 ||
         placement->status != STORAGE_PLACEMENT_READY) return -1;
     char root[MAX_PATH_LENGTH];
     if (effective_placement_root(config, placement, root) != 0 ||

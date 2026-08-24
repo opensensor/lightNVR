@@ -1230,14 +1230,20 @@ int storage_cleanup_target_pressure(
 static void cleanup_pressured_targets(void) {
     int total = db_storage_target_count();
     if (total <= 0 || total > STORAGE_TARGET_MAX_COUNT) return;
-    storage_target_t targets[STORAGE_TARGET_MAX_COUNT];
-    int count = db_storage_target_list(targets, STORAGE_TARGET_MAX_COUNT);
-    if (count < 0) return;
+    // ~1.6 KB per target: keep the inventory off this thread's stack for the
+    // same reason as the stream-name buffers above.
+    storage_target_t *targets = calloc((size_t)total, sizeof(*targets));
+    if (!targets) {
+        log_error("Failed to allocate storage target list for pressure cleanup");
+        return;
+    }
+    int count = db_storage_target_list(targets, total);
     for (int index = 0; index < count; index++) {
         if (!targets[index].enabled) continue;
         storage_target_cleanup_result_t result;
         (void)storage_cleanup_target_pressure(targets[index].uuid, &result);
     }
+    free(targets);
 }
 
 /**

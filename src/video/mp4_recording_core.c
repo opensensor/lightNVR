@@ -693,6 +693,10 @@ int start_mp4_recording(const char *stream_name) {
     // Create context
     mp4_recording_ctx_t *ctx = malloc(sizeof(mp4_recording_ctx_t));
     if (!ctx) {
+        // Hand the reservation back: leaking it would retire the slot for the
+        // life of the process, so repeated allocation failures would leave the
+        // NVR unable to record even after memory recovers.
+        publish_recording_slot(slot, NULL);
         log_error("Memory allocation failed for MP4 recording context");
         return -1;
     }
@@ -812,6 +816,10 @@ int start_mp4_recording_with_url(const char *stream_name, const char *url) {
     // Create context
     mp4_recording_ctx_t *ctx = malloc(sizeof(mp4_recording_ctx_t));
     if (!ctx) {
+        // Hand the reservation back: leaking it would retire the slot for the
+        // life of the process, so repeated allocation failures would leave the
+        // NVR unable to record even after memory recovers.
+        publish_recording_slot(slot, NULL);
         log_error("Memory allocation failed for MP4 recording context");
         return -1;
     }
@@ -1007,6 +1015,10 @@ int start_mp4_recording_with_trigger(const char *stream_name, const char *trigge
     // Create context
     mp4_recording_ctx_t *ctx = malloc(sizeof(mp4_recording_ctx_t));
     if (!ctx) {
+        // Hand the reservation back: leaking it would retire the slot for the
+        // life of the process, so repeated allocation failures would leave the
+        // NVR unable to record even after memory recovers.
+        publish_recording_slot(slot, NULL);
         log_error("Memory allocation failed for MP4 recording context");
         return -1;
     }
@@ -1138,6 +1150,10 @@ int start_mp4_recording_with_url_and_trigger(const char *stream_name, const char
     // Create context
     mp4_recording_ctx_t *ctx = malloc(sizeof(mp4_recording_ctx_t));
     if (!ctx) {
+        // Hand the reservation back: leaking it would retire the slot for the
+        // life of the process, so repeated allocation failures would leave the
+        // NVR unable to record even after memory recovers.
+        publish_recording_slot(slot, NULL);
         log_error("Memory allocation failed for MP4 recording context");
         return -1;
     }

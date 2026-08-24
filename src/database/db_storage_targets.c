@@ -178,6 +178,15 @@ static bool decode_mount_path(const char *encoded, char *decoded,
     return true;
 }
 
+/*
+ * Largest mount-point field find_mount() can store, as a scanf width literal.
+ * Kept as a literal because the preprocessor cannot stringify arithmetic; the
+ * assertion below fails the build if MAX_PATH_LENGTH ever moves.
+ */
+#define MOUNTINFO_FIELD_WIDTH "511"
+_Static_assert(MAX_PATH_LENGTH == 512,
+               "MOUNTINFO_FIELD_WIDTH must stay at MAX_PATH_LENGTH - 1");
+
 static int find_mount(const char *root_path, const char *mountinfo_path,
                       const char *exact_path,
                       char mount_path[MAX_PATH_LENGTH]) {
@@ -193,7 +202,15 @@ static int find_mount(const char *root_path, const char *mountinfo_path,
     while ((line_length = getline(&line, &line_capacity, mountinfo)) >= 0) {
         (void)line_length;
         char encoded[MAX_PATH_LENGTH];
-        if (sscanf(line, "%*s %*s %*s %*s %4095s", encoded) != 1) {
+        /*
+         * Field 5 of a mountinfo line is the mount point. The scanf width must
+         * track the buffer exactly -- a wider one overflows the stack on any
+         * host with a long mount path, which is attacker-influenced inside a
+         * container. Mount points longer than the buffer are truncated here and
+         * simply fail to match a target root, which is the safe outcome.
+         */
+        if (sscanf(line, "%*s %*s %*s %*s %" MOUNTINFO_FIELD_WIDTH "s",
+                   encoded) != 1) {
             continue;
         }
         char decoded[MAX_PATH_LENGTH];
@@ -564,9 +581,19 @@ int db_storage_target_refresh_health(void) {
     int total = db_storage_target_count();
     if (total < 0 || total > STORAGE_TARGET_MAX_COUNT) return -1;
     if (total == 0) return 0;
-    storage_target_t targets[STORAGE_TARGET_MAX_COUNT];
-    int count = db_storage_target_list(targets, STORAGE_TARGET_MAX_COUNT);
-    if (count < 0) return -1;
+    /*
+     * storage_target_t is ~1.6 KB, so the full-count array is ~200 KB. This
+     * runs on the storage controller thread, whose stack is 128 KB under musl,
+     * and the same worklist reasoning applies here as to the stream-name
+     * buffers in storage_manager.c.
+     */
+    storage_target_t *targets = calloc((size_t)total, sizeof(*targets));
+    if (!targets) return -1;
+    int count = db_storage_target_list(targets, total);
+    if (count < 0) {
+        free(targets);
+        return -1;
+    }
     int failures = 0;
     for (int index = 0; index < count; index++) {
         db_storage_target_result_t result = db_storage_target_probe(
@@ -576,6 +603,7 @@ int db_storage_target_refresh_health(void) {
             failures++;
         }
     }
+    free(targets);
     return failures == 0 ? count : -1;
 }
 

@@ -243,7 +243,12 @@ int storage_placement_select(const char *stream_name,
 
     storage_policy_t policy;
     bool matched = false;
-    if (resolve_policy(stream_name, &policy, &matched) != 0) return -1;
+    if (resolve_policy(stream_name, &policy, &matched) != 0) {
+        /* Callers log this, so name the failure instead of an empty string. */
+        safe_strcpy(placement->reason, "policy-lookup-failed",
+                    sizeof(placement->reason), 0);
+        return -1;
+    }
 
     storage_target_t target;
     if (!matched) {
