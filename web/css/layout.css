@@ -10,7 +10,7 @@
  */
 
 /* Header styles */
-header {
+.app-header {
     @apply py-2 px-4 flex flex-col justify-between items-center shadow-md;
     background-color: hsl(var(--card));
     color: hsl(var(--card-foreground));
@@ -105,7 +105,7 @@ th {
 
 /* Responsive layout styles */
 @media (max-width: 768px) {
-    header {
+    .app-header {
         @apply flex-col items-start;
     }
 

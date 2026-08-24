@@ -82,14 +82,15 @@ th {
   @apply w-full h-full object-contain;
 }
 
-/* Ensure header is always clickable */
-header, header *, nav, nav * {
+/* Ensure the application header is always clickable without overriding
+   semantic headers inside dialogs and page content. */
+.app-header, .app-header *, nav, nav * {
   pointer-events: auto !important;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  header {
+  .app-header {
     @apply flex-col items-start;
   }
 
