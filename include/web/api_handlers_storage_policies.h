@@ -7,6 +7,8 @@ void handle_get_storage_policies(const http_request_t *req,
                                  http_response_t *res);
 void handle_post_storage_policy(const http_request_t *req,
                                 http_response_t *res);
+void handle_post_storage_policy_preview(const http_request_t *req,
+                                        http_response_t *res);
 void handle_get_storage_policy(const http_request_t *req,
                                http_response_t *res);
 void handle_put_storage_policy(const http_request_t *req,

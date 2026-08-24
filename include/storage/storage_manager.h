@@ -65,6 +65,23 @@ typedef struct {
     uint64_t last_cleanup_freed; // Bytes freed in last cleanup
 } storage_health_t;
 
+/** Target-local pressure state. Watermarks are percentages used. */
+typedef enum {
+    STORAGE_TARGET_PRESSURE_UNAVAILABLE = 0,
+    STORAGE_TARGET_PRESSURE_NORMAL,
+    STORAGE_TARGET_PRESSURE_HIGH,
+    STORAGE_TARGET_PRESSURE_RESERVE
+} storage_target_pressure_t;
+
+typedef struct {
+    storage_target_pressure_t initial_pressure;
+    uint64_t target_free_bytes;
+    uint64_t available_bytes_before;
+    uint64_t available_bytes_after;
+    int deleted_recordings;
+    uint64_t freed_bytes;
+} storage_target_cleanup_result_t;
+
 /**
  * Initialize the storage manager
  *
@@ -280,6 +297,52 @@ int storage_reconcile_incomplete_recordings(void);
  * of spinning on ENOSPC while the cleanup thread races to free space.
  */
 bool storage_should_pause_recording(void);
+
+/**
+ * Enforce one configured target's high/low watermark hysteresis. Only rows
+ * assigned to storage_target_uuid are considered for deletion.
+ *
+ * @return 0 when evaluated, 1 when no cleanup was needed, or -1 on error
+ */
+int storage_cleanup_target_pressure(
+    const char *storage_target_uuid, storage_target_cleanup_result_t *result);
+
+static inline storage_target_pressure_t storage_target_pressure_evaluate(
+    uint64_t capacity_bytes, uint64_t available_bytes,
+    uint64_t reserve_bytes, double high_watermark_pct) {
+    if (capacity_bytes == 0 || available_bytes > capacity_bytes) {
+        return STORAGE_TARGET_PRESSURE_UNAVAILABLE;
+    }
+    if (available_bytes <= reserve_bytes) {
+        return STORAGE_TARGET_PRESSURE_RESERVE;
+    }
+    double used_pct = 100.0 *
+        (double)(capacity_bytes - available_bytes) / (double)capacity_bytes;
+    return used_pct >= high_watermark_pct
+        ? STORAGE_TARGET_PRESSURE_HIGH : STORAGE_TARGET_PRESSURE_NORMAL;
+}
+
+static inline uint64_t storage_target_cleanup_goal_bytes(
+    uint64_t capacity_bytes, uint64_t reserve_bytes,
+    double low_watermark_pct) {
+    if (capacity_bytes == 0) return reserve_bytes;
+    double free_pct = 100.0 - low_watermark_pct;
+    if (free_pct < 0.0) free_pct = 0.0;
+    if (free_pct > 100.0) free_pct = 100.0;
+    uint64_t watermark_goal =
+        (uint64_t)((double)capacity_bytes * free_pct / 100.0);
+    return reserve_bytes > watermark_goal ? reserve_bytes : watermark_goal;
+}
+
+static inline const char *storage_target_pressure_name(
+    storage_target_pressure_t pressure) {
+    switch (pressure) {
+        case STORAGE_TARGET_PRESSURE_NORMAL: return "normal";
+        case STORAGE_TARGET_PRESSURE_HIGH: return "high";
+        case STORAGE_TARGET_PRESSURE_RESERVE: return "reserve";
+        default: return "unavailable";
+    }
+}
 
 /**
  * Get human-readable string for a disk pressure level.

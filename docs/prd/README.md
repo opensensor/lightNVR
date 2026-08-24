@@ -32,7 +32,7 @@ and policy primitives established earlier.
 | 2 | [Fleet 02 — Scoped Authorization & Audit](FLEET_02_Scoped_Authorization_Audit.md) | Action-level permissions over reusable fleet scopes | Now; SSO deferred |
 | 3 | [Fleet 03 — Event Bus & MQTT Routes](FLEET_03_Event_Bus_MQTT_Routes.md) | Durable provider-neutral events for cloud and automation consumers | Now |
 | 4 | [Fleet 04 — Fleet Explorer & Bulk Operations](FLEET_04_Fleet_Explorer_Bulk_Operations.md) | Operate hundreds of cameras through search, queues, templates, and jobs | Next |
-| 5 | [Storage 01 — Multi-Target Storage Lifecycle](STORAGE_01_Multi_Target_Lifecycle.md) | Policy-driven placement, migration, retention, and capacity management | In progress — P1a placement implemented |
+| 5 | [Storage 01 — Multi-Target Storage Lifecycle](STORAGE_01_Multi_Target_Lifecycle.md) | Policy-driven placement, migration, retention, and capacity management | In progress — P1b target pressure and policy simulation implemented |
 | 6 | [ONVIF 01 — Capability Onboarding & Events](ONVIF_01_Capability_Onboarding_Events.md) | Reliable discovery, profile pairing, capability inventory, and normalized events | Next |
 | 7 | [ONVIF 02 — Metadata & Edge Recovery](ONVIF_02_Metadata_Edge_Recovery.md) | Profile M analytics and Profile G recording backfill | Later |
 | 8a | [Operations 01 — Backup & Restore](OPS_01_Backup_Restore.md) | Complete, verified, operator-safe system recovery | Later |

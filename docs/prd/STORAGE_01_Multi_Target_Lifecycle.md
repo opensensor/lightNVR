@@ -1,6 +1,6 @@
 # PRD — Multi-Target Storage Lifecycle
 
-**Status**: In progress — P0 and mount-safe P1a placement implemented
+**Status**: In progress — P0, P1a, and P1b implemented
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 5 — storage scale and resilience
@@ -164,7 +164,7 @@ These are examples, not hard-coded product defaults.
 | --- | --- |
 | P0 | Implemented: target schema/resolver, default-target migration, target health, and administration UI/API |
 | P1a | Implemented: selector-driven per-segment placement, named/default/pause/fail fallback, applied-policy audit metadata, policy administration UI/API, and mount-loss guards |
-| P1b | Per-target pressure evaluation and cleanup; richer policy conflict/effective-precedence simulation |
+| P1b | Implemented: per-target pressure evaluation and cleanup; policy conflict/effective-precedence simulation |
 | P2 | Persistent migration/copy jobs, checksums, bandwidth limits |
 | P3 | Pools, replication, capacity forecast, policy compliance dashboard |
 | P4 | External storage adapter interface, only when a concrete integration is chosen |
@@ -207,6 +207,20 @@ immediately by policy CRUD, while target health is checked at every placement;
 mount-guarded targets also re-read the live mount table before a segment path is
 created. Existing files are never moved by a policy edit.
 
-This slice does not implement target pools, automatic spillover, recording
-migration, or per-target pressure cleanup. A named or default fallback is a
-single explicit alternate, and an unavailable alternate safely pauses placement.
+P1b evaluates each enabled target independently. A high watermark or reserve
+breach deletes only complete, unprotected, pressure-eligible rows assigned to
+that target, in existing retention-tier order, until the low-watermark/reserve
+goal is reached or the bounded heartbeat batch is exhausted. The default
+target's compatibility capacity/emergency queries are now target-filtered as
+well. Target health responses expose the current pressure state and cleanup
+goal.
+
+Policy drafts can be simulated against the current camera inventory before save.
+The preview reports camera overlap with each enabled policy and shows the
+effective winner using the same priority/name/UUID ordering as recording
+placement.
+
+This slice still does not implement target pools, automatic spillover,
+recording migration, policy minimum-retention/copy-count guarantees, or
+capacity forecasting. A named or default fallback is a single explicit
+alternate, and an unavailable alternate safely pauses placement.
