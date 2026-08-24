@@ -24,11 +24,11 @@ static const authorization_action_metadata_t action_catalog[] = {
     {AUTHZ_AUDIO_TALK, "audio.talk", "Live video",
      "Transmit audio to a camera", true, false, false},
     {AUTHZ_RECORDINGS_REPLAY, "recordings.replay", "Recordings",
-     "Replay recorded video", true, false, false},
+     "Replay recorded video", true, false, true},
     {AUTHZ_RECORDINGS_EXPORT, "recordings.export", "Recordings",
      "Download or export recorded video", true, false, true},
     {AUTHZ_SNAPSHOT_CREATE, "snapshot.create", "Recordings",
-     "Create or download a camera snapshot", true, false, false},
+     "Create or download a camera snapshot", true, false, true},
     {AUTHZ_PTZ_CONTROL, "ptz.control", "Camera operation",
      "Move PTZ cameras and manage presets", true, false, true},
     {AUTHZ_EVIDENCE_PROTECT, "evidence.protect", "Recordings",
@@ -36,13 +36,13 @@ static const authorization_action_metadata_t action_catalog[] = {
     {AUTHZ_RECORDING_DELETE, "recording.delete", "Recordings",
      "Permanently delete recordings", true, true, true},
     {AUTHZ_CAMERA_CONFIGURE, "camera.configure", "Camera administration",
-     "Add, change, or remove camera configuration", true, true, false},
+     "Add, change, or remove camera configuration", true, true, true},
     {AUTHZ_FLEET_EXECUTE_JOB, "fleet.execute_job", "Camera administration",
      "Execute a bulk fleet operation", true, true, false},
     {AUTHZ_STORAGE_CONFIGURE, "storage.configure", "System administration",
      "Change storage and retention configuration", false, true, true},
     {AUTHZ_EVENTS_CONFIGURE, "events.configure", "System administration",
-     "Change event routes and destinations", false, true, false},
+     "Change event routes and destinations", false, true, true},
     {AUTHZ_USERS_MANAGE, "users.manage", "System administration",
      "Manage users, roles, and grants", false, true, true},
     {AUTHZ_SYSTEM_ADMIN, "system.admin", "System administration",
@@ -308,20 +308,7 @@ static int evaluate_legacy(const user_t *user,
                  db_auth_get_role_name(user->role), metadata->key);
         return 0;
     }
-    if (metadata->camera_scoped && user->has_tag_restriction) {
-        if (!camera) {
-            safe_strcpy(evaluation->explanation,
-                        "A camera is required to evaluate the legacy tag scope",
-                        sizeof(evaluation->explanation), 0);
-            return 0;
-        }
-        if (!db_auth_stream_allowed_for_user(user, camera->legacy_tags)) {
-            safe_strcpy(evaluation->explanation,
-                        "Camera is outside the user's legacy allowed-tags scope",
-                        sizeof(evaluation->explanation), 0);
-            return 0;
-        }
-    }
+    (void)camera;
     evaluation->decision = AUTHZ_DECISION_ALLOW;
     snprintf(evaluation->explanation, sizeof(evaluation->explanation),
              "Allowed by compatibility mapping for legacy %s role",
@@ -491,9 +478,13 @@ int authorization_evaluate(const user_t *user, authorization_action_t action,
                                              evaluation);
 }
 
-int authorization_filter_visible_cameras(const user_t *user,
-                                         fleet_camera_t *cameras, int *count) {
+int authorization_filter_cameras(const user_t *user,
+                                 authorization_action_t action,
+                                 fleet_camera_t *cameras, int *count) {
     if (!user || !count) return -1;
+    const authorization_action_metadata_t *metadata =
+        authorization_action_metadata(action);
+    if (!metadata || !metadata->camera_scoped) return -1;
     if (!cameras || *count <= 0) return 0;
     /* With authentication off there is no principal to evaluate: handlers on
      * that path never populate a user, and the rest of the codebase treats the
@@ -509,7 +500,7 @@ int authorization_filter_visible_cameras(const user_t *user,
     int visible = 0;
     for (int i = 0; i < *count; i++) {
         authorization_evaluation_t evaluation;
-        if (authorization_evaluate_in_context(context, user, AUTHZ_LIVE_VIEW,
+        if (authorization_evaluate_in_context(context, user, action,
                                               &cameras[i], &evaluation) != 0) {
             authorization_context_free(context);
             return -1;
@@ -521,6 +512,11 @@ int authorization_filter_visible_cameras(const user_t *user,
     authorization_context_free(context);
     *count = visible;
     return 0;
+}
+
+int authorization_filter_visible_cameras(const user_t *user,
+                                         fleet_camera_t *cameras, int *count) {
+    return authorization_filter_cameras(user, AUTHZ_LIVE_VIEW, cameras, count);
 }
 
 int authorization_effective_action_mask(const user_t *user, uint64_t *mask) {

@@ -814,8 +814,10 @@ int get_recording_count(time_t start_time, time_t end_time,
             safe_strcat(sql, "?", sizeof(sql));
         }
         safe_strcat(sql, ")", sizeof(sql));
-    } else if (allowed_streams && allowed_streams_count > 0) {
-        // Tag-based RBAC: restrict to the user's whitelisted streams via IN clause
+    }
+    if (allowed_streams && allowed_streams_count > 0) {
+        // Server-resolved policy/collection scope intersects any explicit
+        // stream predicate; one must never replace the other.
         safe_strcat(sql, " AND r.stream_name IN (", sizeof(sql));
         for (int i = 0; i < allowed_streams_count; i++) {
             if (i > 0) safe_strcat(sql, ",", sizeof(sql));
@@ -902,7 +904,8 @@ int get_recording_count(time_t start_time, time_t end_time,
         for (int i = 0; i < stream_filter_count; i++) {
             sqlite3_bind_text(stmt, param_index++, stream_filters[i], -1, SQLITE_TRANSIENT);
         }
-    } else if (allowed_streams && allowed_streams_count > 0) {
+    }
+    if (allowed_streams && allowed_streams_count > 0) {
         for (int i = 0; i < allowed_streams_count; i++) {
             sqlite3_bind_text(stmt, param_index++, allowed_streams[i], -1, SQLITE_STATIC);
         }
@@ -1079,8 +1082,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             safe_strcat(sql, "?", sizeof(sql));
         }
         safe_strcat(sql, ")", sizeof(sql));
-    } else if (allowed_streams && allowed_streams_count > 0) {
-        // Tag-based RBAC: restrict to the user's whitelisted streams via IN clause
+    }
+    if (allowed_streams && allowed_streams_count > 0) {
+        // Server-resolved policy/collection scope intersects any explicit
+        // stream predicate; one must never replace the other.
         safe_strcat(sql, " AND r.stream_name IN (", sizeof(sql));
         for (int i = 0; i < allowed_streams_count; i++) {
             if (i > 0) safe_strcat(sql, ",", sizeof(sql));
@@ -1177,7 +1182,8 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
         for (int i = 0; i < stream_filter_count; i++) {
             sqlite3_bind_text(stmt, param_index++, stream_filters[i], -1, SQLITE_TRANSIENT);
         }
-    } else if (allowed_streams && allowed_streams_count > 0) {
+    }
+    if (allowed_streams && allowed_streams_count > 0) {
         for (int i = 0; i < allowed_streams_count; i++) {
             sqlite3_bind_text(stmt, param_index++, allowed_streams[i], -1, SQLITE_STATIC);
         }
@@ -1557,6 +1563,57 @@ int get_protected_recordings_count(const char *stream_name) {
     pthread_mutex_unlock(db_mutex);
 
     return count;
+}
+
+int get_protected_recordings_count_for_streams(
+    const char *const *stream_names, int stream_count) {
+    if (!stream_names || stream_count <= 0) return 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    if (!db || !db_mutex) return -1;
+    pthread_mutex_lock(db_mutex);
+    int variable_limit = sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
+    int batch_limit = variable_limit > 0 ? variable_limit : 1;
+    if (batch_limit > 256) batch_limit = 256;
+    int total = 0;
+    bool failed = false;
+    for (int offset = 0; offset < stream_count; offset += batch_limit) {
+        int batch_count = stream_count - offset;
+        if (batch_count > batch_limit) batch_count = batch_limit;
+        size_t sql_size = 128 + (size_t)batch_count * 3;
+        char *sql = calloc(sql_size, 1);
+        if (!sql) {
+            failed = true;
+            break;
+        }
+        safe_strcpy(sql,
+                    "SELECT COUNT(*) FROM recordings WHERE protected=1 "
+                    "AND stream_name IN (", sql_size, 0);
+        for (int i = 0; i < batch_count; i++) {
+            safe_strcat(sql, i == 0 ? "?" : ",?", sql_size);
+        }
+        safe_strcat(sql, ");", sql_size);
+        sqlite3_stmt *stmt = NULL;
+        int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        free(sql);
+        if (rc == SQLITE_OK) {
+            for (int i = 0; i < batch_count; i++) {
+                sqlite3_bind_text(stmt, i + 1, stream_names[offset + i], -1,
+                                  SQLITE_TRANSIENT);
+            }
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                total += sqlite3_column_int(stmt, 0);
+            } else {
+                failed = true;
+            }
+        } else {
+            failed = true;
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        if (failed) break;
+    }
+    pthread_mutex_unlock(db_mutex);
+    return failed ? -1 : total;
 }
 
 

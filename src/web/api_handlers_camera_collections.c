@@ -35,16 +35,30 @@ static bool valid_uuid(const char *value) {
 static bool authenticate(const http_request_t *req, http_response_t *res,
                          user_t *user) {
     memset(user, 0, sizeof(*user));
-    if (!httpd_check_viewer_access(req, user)) {
+    if (!httpd_check_action_access(req, user)) {
         http_response_set_json_error(res, 401, "Unauthorized");
         return false;
     }
     return true;
 }
 
+static bool principal_can_manage_collections(const user_t *user) {
+    authorization_evaluation_t evaluation;
+    return authorization_evaluate(user, AUTHZ_CAMERA_CONFIGURE, NULL,
+                                  &evaluation) == 0 &&
+           evaluation.decision == AUTHZ_DECISION_ALLOW;
+}
+
+static bool owns_collection(const user_t *user,
+                            const camera_collection_t *collection) {
+    return collection->owner_user_id > 0 &&
+           collection->owner_user_id == user->id;
+}
+
 static bool can_view_collection(const user_t *user,
-                                const camera_collection_t *collection) {
-    return user->role == USER_ROLE_ADMIN || collection->is_shared ||
+                                const camera_collection_t *collection,
+                                bool can_manage) {
+    return can_manage || collection->is_shared ||
            (collection->owner_user_id > 0 &&
             collection->owner_user_id == user->id);
 }
@@ -304,7 +318,8 @@ static bool apply_fields(cJSON *body, camera_collection_t *collection,
 
 static void set_collection_response(http_response_t *res, int status,
                                     const camera_collection_t *collection,
-                                    const user_t *user) {
+                                    const user_t *user,
+                                    bool reject_empty_scoped) {
     fleet_camera_t *cameras = NULL;
     int camera_count = 0;
     if (!load_authorized_fleet(user, &cameras, &camera_count)) {
@@ -321,13 +336,15 @@ static void set_collection_response(http_response_t *res, int status,
                                      "Failed to evaluate collection");
         return;
     }
-    bool include_selector = user->role == USER_ROLE_ADMIN ||
-        (collection->owner_user_id > 0 &&
-         collection->owner_user_id == user->id);
-    int member_count = user->has_tag_restriction &&
-        strcmp(collection->collection_type, "static") == 0 ?
-        effective_count : collection->member_count;
-    cJSON *object = collection_to_json(collection, member_count,
+    bool can_manage = principal_can_manage_collections(user);
+    bool owner = owns_collection(user, collection);
+    if (reject_empty_scoped && effective_count == 0 &&
+        !can_manage && !owner) {
+        http_response_set_json_error(res, 404, "Collection not found");
+        return;
+    }
+    bool include_selector = can_manage || owner;
+    cJSON *object = collection_to_json(collection, effective_count,
                                        effective_count, include_selector);
     char *json = object ? cJSON_PrintUnformatted(object) : NULL;
     cJSON_Delete(object);
@@ -367,6 +384,7 @@ void handle_get_camera_collections(const http_request_t *req,
         http_response_set_json_error(res, 500, "Failed to load fleet cameras");
         return;
     }
+    bool can_manage = principal_can_manage_collections(&user);
     cJSON *root = cJSON_CreateObject();
     cJSON *items = cJSON_CreateArray();
     if (!root || !items) {
@@ -380,7 +398,7 @@ void handle_get_camera_collections(const http_request_t *req,
     cJSON_AddItemToObject(root, "collections", items);
     int visible_count = 0;
     for (int i = 0; i < count; i++) {
-        if (!can_view_collection(&user, &collections[i])) continue;
+        if (!can_view_collection(&user, &collections[i], can_manage)) continue;
         fleet_camera_t **matched = NULL;
         int effective_count = collection_matches(
             &collections[i], cameras, camera_count, &matched);
@@ -393,13 +411,10 @@ void handle_get_camera_collections(const http_request_t *req,
                                          "Failed to evaluate collection");
             return;
         }
-        bool include_selector = user.role == USER_ROLE_ADMIN ||
-            (collections[i].owner_user_id > 0 &&
-             collections[i].owner_user_id == user.id);
-        int member_count = user.has_tag_restriction &&
-            strcmp(collections[i].collection_type, "static") == 0 ?
-            effective_count : collections[i].member_count;
-        cJSON *item = collection_to_json(&collections[i], member_count,
+        bool owner = owns_collection(&user, &collections[i]);
+        if (effective_count == 0 && !can_manage && !owner) continue;
+        bool include_selector = can_manage || owner;
+        cJSON *item = collection_to_json(&collections[i], effective_count,
                                          effective_count, include_selector);
         if (!item) {
             cJSON_Delete(root);
@@ -427,7 +442,7 @@ void handle_get_camera_collections(const http_request_t *req,
 
 void handle_post_camera_collection(const http_request_t *req,
                                    http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     user_t user;
     if (!authenticate(req, res, &user)) return;
     cJSON *body = httpd_parse_json_body(req);
@@ -446,7 +461,7 @@ void handle_post_camera_collection(const http_request_t *req,
         set_db_error(res, result);
         return;
     }
-    set_collection_response(res, 201, &collection, &user);
+    set_collection_response(res, 201, &collection, &user, false);
 }
 
 void handle_get_camera_collection(const http_request_t *req,
@@ -462,16 +477,17 @@ void handle_get_camera_collection(const http_request_t *req,
         set_db_error(res, result);
         return;
     }
-    if (!can_view_collection(&user, &collection)) {
+    bool can_manage = principal_can_manage_collections(&user);
+    if (!can_view_collection(&user, &collection, can_manage)) {
         http_response_set_json_error(res, 404, "Collection not found");
         return;
     }
-    set_collection_response(res, 200, &collection, &user);
+    set_collection_response(res, 200, &collection, &user, true);
 }
 
 void handle_put_camera_collection(const http_request_t *req,
                                   http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     user_t user;
     if (!authenticate(req, res, &user)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
@@ -494,12 +510,12 @@ void handle_put_camera_collection(const http_request_t *req,
         set_db_error(res, result);
         return;
     }
-    set_collection_response(res, 200, &collection, &user);
+    set_collection_response(res, 200, &collection, &user, false);
 }
 
 void handle_delete_camera_collection(const http_request_t *req,
                                      http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_collection_uuid(req, uuid, sizeof(uuid), res)) return;
     db_camera_collection_result_t result = db_camera_collection_delete(uuid);
@@ -523,7 +539,8 @@ void handle_get_camera_collection_members(const http_request_t *req,
         set_db_error(res, result);
         return;
     }
-    if (!can_view_collection(&user, &collection)) {
+    bool can_manage = principal_can_manage_collections(&user);
+    if (!can_view_collection(&user, &collection, can_manage)) {
         http_response_set_json_error(res, 404, "Collection not found");
         return;
     }
@@ -543,6 +560,13 @@ void handle_get_camera_collection_members(const http_request_t *req,
     if (matched_count < 0) {
         free(cameras);
         http_response_set_json_error(res, 500, "Failed to list members");
+        return;
+    }
+    if (matched_count == 0 && !can_manage &&
+        !owns_collection(&user, &collection)) {
+        free(matched);
+        free(cameras);
+        http_response_set_json_error(res, 404, "Collection not found");
         return;
     }
     cJSON *root = cJSON_CreateObject();
@@ -576,7 +600,7 @@ void handle_get_camera_collection_members(const http_request_t *req,
 
 void handle_put_camera_collection_members(const http_request_t *req,
                                           http_response_t *res) {
-    if (!httpd_check_admin_privileges(req, res)) return;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
     char uuid[CAMERA_UUID_STRING_SIZE];
     if (!extract_collection_uuid(req, uuid, sizeof(uuid), res)) return;
     cJSON *body = httpd_parse_json_body(req);
@@ -644,7 +668,8 @@ void handle_post_camera_collection_preview(const http_request_t *req,
         set_db_error(res, result);
         return;
     }
-    if (!can_view_collection(&user, &collection)) {
+    bool can_manage = principal_can_manage_collections(&user);
+    if (!can_view_collection(&user, &collection, can_manage)) {
         http_response_set_json_error(res, 404, "Collection not found");
         return;
     }
@@ -661,6 +686,13 @@ void handle_post_camera_collection_preview(const http_request_t *req,
         free(cameras);
         http_response_set_json_error(res, 500,
                                      "Failed to evaluate collection");
+        return;
+    }
+    if (matched_count == 0 && !can_manage &&
+        !owns_collection(&user, &collection)) {
+        free(matched);
+        free(cameras);
+        http_response_set_json_error(res, 404, "Collection not found");
         return;
     }
     cJSON *root = cJSON_CreateObject();

@@ -1105,6 +1105,77 @@ int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_lab
     return count;
 }
 
+int get_unique_detection_labels_for_streams(
+    const char *const *stream_names, int stream_count,
+    char labels[][MAX_LABEL_LENGTH], int max_labels) {
+    if (!stream_names || stream_count <= 0 || !labels || max_labels <= 0) return 0;
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+    if (!db || !db_mutex) return -1;
+    memset(labels, 0, (size_t)max_labels * MAX_LABEL_LENGTH);
+    pthread_mutex_lock(db_mutex);
+    int variable_limit = sqlite3_limit(db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
+    int batch_limit = variable_limit > 1 ? variable_limit - 1 : 1;
+    if (batch_limit > 256) batch_limit = 256;
+    int count = 0;
+    int final_rc = SQLITE_DONE;
+    for (int offset = 0; offset < stream_count; offset += batch_limit) {
+        int batch_count = stream_count - offset;
+        if (batch_count > batch_limit) batch_count = batch_limit;
+        size_t sql_size = 256 + (size_t)batch_count * 3;
+        char *sql = calloc(sql_size, 1);
+        if (!sql) {
+            final_rc = SQLITE_NOMEM;
+            break;
+        }
+        safe_strcpy(sql,
+            "SELECT DISTINCT label FROM detections WHERE label IS NOT NULL "
+            "AND TRIM(label)<>'' AND stream_name IN (", sql_size, 0);
+        for (int i = 0; i < batch_count; i++) {
+            safe_strcat(sql, i == 0 ? "?" : ",?", sql_size);
+        }
+        safe_strcat(sql, ") ORDER BY label ASC LIMIT ?;", sql_size);
+
+        sqlite3_stmt *stmt = NULL;
+        int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+        free(sql);
+        if (rc == SQLITE_OK) {
+            for (int i = 0; i < batch_count; i++) {
+                sqlite3_bind_text(stmt, i + 1, stream_names[offset + i], -1,
+                                  SQLITE_TRANSIENT);
+            }
+            sqlite3_bind_int(stmt, batch_count + 1, max_labels);
+        }
+        while (rc == SQLITE_OK && (rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+            const char *label = (const char *)sqlite3_column_text(stmt, 0);
+            if (!label) continue;
+            int insert_at = 0;
+            while (insert_at < count &&
+                   strcmp(labels[insert_at], label) < 0) insert_at++;
+            if (insert_at < count && strcmp(labels[insert_at], label) == 0) {
+                continue;
+            }
+            if (insert_at < max_labels) {
+                int move_count = count < max_labels ? count - insert_at
+                                                    : max_labels - insert_at - 1;
+                if (move_count > 0) {
+                    memmove(labels[insert_at + 1], labels[insert_at],
+                            (size_t)move_count * MAX_LABEL_LENGTH);
+                }
+                safe_strcpy(labels[insert_at], label, MAX_LABEL_LENGTH, 0);
+                if (count < max_labels) count++;
+            }
+        }
+        if (stmt) sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            final_rc = rc;
+            break;
+        }
+    }
+    pthread_mutex_unlock(db_mutex);
+    return final_rc == SQLITE_DONE ? count : -1;
+}
+
 /**
  * Update recent detections with a recording_id
  * This links detections that were stored before the recording was created to the recording.

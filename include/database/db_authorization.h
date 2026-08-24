@@ -104,6 +104,18 @@ int db_authorization_create_user_grant(
  */
 int db_authorization_verify_action_catalog(void);
 
+/*
+ * Atomically convert every remaining legacy-role principal to an equivalent
+ * built-in policy grant. Legacy allowed_tags labels are resolved through the
+ * normalized tag dictionary and stored as a tag_any selector. The obsolete
+ * users.allowed_tags value is cleared only when the whole conversion commits.
+ *
+ * The operation is idempotent: users already in policy mode are untouched.
+ * Stale grants on a legacy principal are replaced, because they were not part
+ * of the active legacy decision and retaining them could widen access.
+ */
+int db_authorization_migrate_legacy_users(int *migrated_count);
+
 /* Switch a user only after valid grants have been created and previewed. */
 int db_authorization_set_user_mode(int64_t user_id, const char *mode);
 

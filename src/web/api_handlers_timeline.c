@@ -281,6 +281,8 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
         http_response_set_json_error(res, 400, "Missing required parameter: stream");
         return;
     }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
+                                       stream_name)) return;
 
     // Extract start and end parameters (optional)
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -514,6 +516,8 @@ void handle_timeline_manifest(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "Missing required parameter: stream");
         return;
     }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
+                                       stream_name)) return;
 
     // Extract start and end parameters (optional)
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -599,6 +603,8 @@ void handle_timeline_playback(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 400, "Missing required parameter: stream");
         return;
     }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
+                                       stream_name)) return;
 
     // Extract start parameter
     http_request_get_query_param(req, "start", start_time_str, sizeof(start_time_str));
@@ -797,13 +803,10 @@ int create_timeline_manifest(const timeline_segment_t *segments, int segment_cou
 void handle_get_timeline_segments_by_ids(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/timeline/segments-by-ids request");
 
-    /* optional auth check */
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (!httpd_check_viewer_access(req, &user)) {
-            http_response_set_json_error(res, 401, "Unauthorized");
-            return;
-        }
+    user_t user;
+    if (!httpd_check_action_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
     }
 
     /* ---- Parse "ids" parameter ---- */
@@ -853,6 +856,16 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
             log_warn("Recording ID %llu not found, skipping", (unsigned long long)ids[i]);
             continue;
         }
+        authorization_evaluation_t replay_evaluation;
+        if (httpd_evaluate_stream_action(&user, AUTHZ_RECORDINGS_REPLAY,
+                                         rec.stream_name,
+                                         &replay_evaluation) != 0) {
+            cJSON_Delete(response);
+            http_response_set_json_error(
+                res, 500, "Authorization policy evaluation failed");
+            return;
+        }
+        if (replay_evaluation.decision != AUTHZ_DECISION_ALLOW) continue;
 
         /* Check for detections */
         bool has_det = false;

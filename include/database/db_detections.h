@@ -171,6 +171,9 @@ int get_recording_detection_summaries(
  * @return Number of unique labels found, or -1 on error
  */
 int get_all_unique_detection_labels(char labels[][MAX_LABEL_LENGTH], int max_labels);
+int get_unique_detection_labels_for_streams(
+    const char *const *stream_names, int stream_count,
+    char labels[][MAX_LABEL_LENGTH], int max_labels);
 
 /**
  * Update recent detections with a recording_id

@@ -31,7 +31,7 @@ function App() {
         // forces WebRTC+MSE off regardless of the user's configuration.
         async function loadViewFlags() {
             try {
-                const response = await fetch('/api/settings');
+                const response = await fetch('/api/client-config');
                 if (!response.ok) {
                     console.error('Failed to fetch settings:', response.status, response.statusText);
                     setIsLoading(false);

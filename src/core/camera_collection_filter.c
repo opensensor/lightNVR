@@ -29,9 +29,17 @@ static camera_collection_filter_result_t load_filter(
     camera_collection_t collection;
     db_camera_collection_result_t result =
         db_camera_collection_get(collection_uuid, &collection);
+    bool can_manage = false;
+    if (result == DB_CAMERA_COLLECTION_OK && user && !shared_only) {
+        authorization_evaluation_t evaluation;
+        can_manage =
+            authorization_evaluate(user, AUTHZ_CAMERA_CONFIGURE, NULL,
+                                   &evaluation) == 0 &&
+            evaluation.decision == AUTHZ_DECISION_ALLOW;
+    }
     bool visible = result == DB_CAMERA_COLLECTION_OK &&
         (shared_only ? collection.is_shared :
-         (user->role == USER_ROLE_ADMIN || collection.is_shared ||
+         (can_manage || collection.is_shared ||
           (collection.owner_user_id > 0 &&
            collection.owner_user_id == user->id)));
     if (!visible) return CAMERA_COLLECTION_FILTER_NOT_FOUND;
@@ -95,10 +103,12 @@ bool camera_collection_filter_matches(
     return false;
 }
 
-camera_collection_filter_result_t camera_collection_filter_resolve_stream_names(
-    const char *collection_uuid, const user_t *user, char ***stream_names,
-    int *stream_count) {
-    if (!collection_uuid || !collection_uuid[0] || !user || !stream_names ||
+static camera_collection_filter_result_t resolve_stream_names(
+    const char *collection_uuid, const user_t *user,
+    authorization_action_t action, bool shared_authorization_boundary,
+    char ***stream_names, int *stream_count) {
+    if (!collection_uuid || !collection_uuid[0] ||
+        (!user && !shared_authorization_boundary) || !stream_names ||
         !stream_count) {
         return CAMERA_COLLECTION_FILTER_DATABASE_ERROR;
     }
@@ -107,7 +117,10 @@ camera_collection_filter_result_t camera_collection_filter_resolve_stream_names(
 
     camera_collection_filter_t filter;
     camera_collection_filter_result_t result =
-        camera_collection_filter_load(collection_uuid, user, &filter);
+        shared_authorization_boundary
+            ? camera_collection_filter_load_for_authorization(collection_uuid,
+                                                               &filter)
+            : camera_collection_filter_load(collection_uuid, user, &filter);
     if (result != CAMERA_COLLECTION_FILTER_OK) return result;
 
     fleet_camera_t *cameras = NULL;
@@ -123,9 +136,12 @@ camera_collection_filter_result_t camera_collection_filter_resolve_stream_names(
         camera_collection_filter_free(&filter);
         return CAMERA_COLLECTION_FILTER_OUT_OF_MEMORY;
     }
-    /* Resolving a collection to stream names hands the caller the cameras it
-     * will act on, so it is subject to the same live.view decision as a list. */
-    if (authorization_filter_visible_cameras(user, cameras, &camera_count) != 0) {
+    /* Public resolution is filtered by the action the caller will perform.
+     * Internal resolution is only allowed for shared collections after the
+     * caller has already proved an all-fleet authorization boundary. */
+    if (!shared_authorization_boundary &&
+        authorization_filter_cameras(user, action, cameras,
+                                     &camera_count) != 0) {
         free(names);
         free(cameras);
         camera_collection_filter_free(&filter);
@@ -148,6 +164,28 @@ camera_collection_filter_result_t camera_collection_filter_resolve_stream_names(
     camera_collection_filter_free(&filter);
     *stream_names = names;
     return CAMERA_COLLECTION_FILTER_OK;
+}
+
+camera_collection_filter_result_t camera_collection_filter_resolve_stream_names(
+    const char *collection_uuid, const user_t *user, char ***stream_names,
+    int *stream_count) {
+    return resolve_stream_names(collection_uuid, user, AUTHZ_LIVE_VIEW, false,
+                                stream_names, stream_count);
+}
+
+camera_collection_filter_result_t
+camera_collection_filter_resolve_stream_names_for_action(
+    const char *collection_uuid, const user_t *user,
+    authorization_action_t action, char ***stream_names, int *stream_count) {
+    return resolve_stream_names(collection_uuid, user, action, false,
+                                stream_names, stream_count);
+}
+
+camera_collection_filter_result_t
+camera_collection_filter_resolve_stream_names_for_authorization(
+    const char *collection_uuid, char ***stream_names, int *stream_count) {
+    return resolve_stream_names(collection_uuid, NULL, AUTHZ_ACTION_INVALID,
+                                true, stream_names, stream_count);
 }
 
 void camera_collection_filter_free_stream_names(char **stream_names,

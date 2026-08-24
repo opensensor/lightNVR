@@ -171,8 +171,8 @@ export function UsersTable({ users, onEdit, onDelete, onApiKey, onMfa, onAccess 
                 </span>
               </td>
               <td className="py-3 px-6 border-b border-border">
-                <span className={`inline-block whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold ${user.authorization_mode === 'policy' ? 'badge-warning' : 'badge-info'}`}>
-                  {t(user.authorization_mode === 'policy' ? 'access.policy.scopedShort' : 'access.policy.legacyShort')}
+                <span className="badge-warning inline-block whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold">
+                  {t('access.policy.scopedShort')}
                 </span>
               </td>
               <td className="py-3 px-6 border-b border-border">{user.last_login ? formatLocalDateTime(user.last_login) : t('common.never')}</td>

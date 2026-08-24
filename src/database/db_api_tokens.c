@@ -359,13 +359,14 @@ db_api_token_result_t db_api_token_revoke(int64_t user_id,
 
 db_api_token_result_t db_api_token_authenticate(
     const char *secret, int64_t *user_id,
-    char token_uuid[CAMERA_UUID_STRING_SIZE]) {
+    char token_uuid[CAMERA_UUID_STRING_SIZE], bool *usage_audit_due) {
     if (!secret || strlen(secret) != 5 + TOKEN_RANDOM_BYTES * 2 ||
         strncmp(secret, "lnvr_", 5) != 0 || !user_id || !token_uuid) {
         return DB_API_TOKEN_NOT_FOUND;
     }
     *user_id = 0;
     token_uuid[0] = '\0';
+    if (usage_audit_due) *usage_audit_due = false;
     char hash[TOKEN_HASH_HEX_SIZE];
     if (hash_secret(secret, hash) != 0) return DB_API_TOKEN_ERROR;
     sqlite3 *db = get_db_handle();
@@ -375,21 +376,42 @@ db_api_token_result_t db_api_token_authenticate(
     sqlite3_stmt *stmt = NULL;
     int rc = sqlite3_prepare_v2(
         db,
-        "SELECT t.uuid,t.user_id FROM authz_api_tokens t "
+        "SELECT t.uuid,t.user_id,COALESCE(t.revoked_at,0),t.expires_at,"
+        "COALESCE(t.last_used_at,0),u.is_active "
+        "FROM authz_api_tokens t "
         "JOIN users u ON u.id=t.user_id "
-        "WHERE t.token_hash=? AND t.revoked_at IS NULL "
-        "AND t.expires_at>strftime('%s','now') AND u.is_active=1 LIMIT 1;",
+        "WHERE t.token_hash=? LIMIT 1;",
         -1, &stmt, NULL);
     if (rc == SQLITE_OK) {
         sqlite3_bind_text(stmt, 1, hash, -1, SQLITE_TRANSIENT);
         rc = sqlite3_step(stmt);
     }
+    db_api_token_result_t result = DB_API_TOKEN_NOT_FOUND;
+    int64_t now = (int64_t)time(NULL);
     if (rc == SQLITE_ROW) {
         copy_column(token_uuid, CAMERA_UUID_STRING_SIZE, stmt, 0);
         *user_id = sqlite3_column_int64(stmt, 1);
+        int64_t revoked_at = sqlite3_column_int64(stmt, 2);
+        int64_t expires_at = sqlite3_column_int64(stmt, 3);
+        int64_t last_used_at = sqlite3_column_int64(stmt, 4);
+        bool owner_active = sqlite3_column_int(stmt, 5) != 0;
+        if (revoked_at > 0) {
+            result = DB_API_TOKEN_REVOKED;
+        } else if (expires_at <= now) {
+            result = DB_API_TOKEN_EXPIRED;
+        } else if (!owner_active) {
+            result = DB_API_TOKEN_INACTIVE_OWNER;
+        } else {
+            result = DB_API_TOKEN_OK;
+            if (usage_audit_due) {
+                *usage_audit_due = last_used_at == 0 || last_used_at < now - 60;
+            }
+        }
+    } else if (rc != SQLITE_DONE) {
+        result = DB_API_TOKEN_ERROR;
     }
     if (stmt) sqlite3_finalize(stmt);
-    if (*user_id > 0) {
+    if (result == DB_API_TOKEN_OK) {
         rc = sqlite3_prepare_v2(
             db,
             "UPDATE authz_api_tokens SET last_used_at=strftime('%s','now') "
@@ -404,7 +426,7 @@ db_api_token_result_t db_api_token_authenticate(
     }
     pthread_mutex_unlock(mutex);
     secure_zero_memory(hash, sizeof(hash));
-    if (*user_id <= 0) return DB_API_TOKEN_NOT_FOUND;
+    if (result != DB_API_TOKEN_OK) return result;
     return rc == SQLITE_DONE ? DB_API_TOKEN_OK : DB_API_TOKEN_ERROR;
 }
 

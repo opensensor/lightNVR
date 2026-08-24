@@ -228,45 +228,6 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm font-bold mb-2" htmlFor="allowed_tags">
-                {t('users.allowedStreamTags')} <span className="font-normal text-muted-foreground">(RBAC)</span>
-              </label>
-              <input
-                className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                id="allowed_tags"
-                type="text"
-                name="allowed_tags"
-                value={formData.allowed_tags || ''}
-                onChange={handleInputChange}
-                placeholder={t('users.allowedTagsPlaceholder')}
-                maxLength={255}
-                aria-describedby="allowed-tags-description"
-              />
-              <p id="allowed-tags-description" className="text-xs text-muted-foreground mt-1">
-                {t('users.allowedTagsHelp')}
-              </p>
-              {(() => {
-                const parsedAllowedTags = (formData.allowed_tags || '')
-                  .split(',')
-                  .map(t => t.trim())
-                  .filter(Boolean);
-                return parsedAllowedTags.length > 0 ? (
-                  <ul
-                    className="mt-2 flex flex-wrap gap-1"
-                    role="list"
-                    aria-label={t('users.currentAllowedStreamTags')}
-                  >
-                    {parsedAllowedTags.map(tag => (
-                      <li key={tag} className="badge-info">
-                        #{tag}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null;
-              })()}
-            </div>
-
-            <div className="mb-4">
               <label className="block text-sm font-bold mb-2" htmlFor="allowed_login_cidrs">
                 {t('users.allowedLoginIpRanges')} <span className="font-normal text-muted-foreground">(CIDR)</span>
               </label>

@@ -40,26 +40,10 @@
 static bool check_stream_write_access(const http_request_t *req,
                                       http_response_t *res,
                                       const stream_config_t *config) {
-    if (!g_config.web_auth_enabled) {
-        return true;
-    }
-
-    user_t user;
-    memset(&user, 0, sizeof(user));
-    if (!httpd_get_authenticated_user(req, &user)) {
-        http_response_set_json_error(res, 401, "Unauthorized");
-        return false;
-    }
-    if (user.role == USER_ROLE_VIEWER) {
-        http_response_set_json_error(res, 403,
-                                     "Viewer role cannot modify streams");
-        return false;
-    }
-    if (config && !db_auth_stream_allowed_for_user(&user, config->tags)) {
-        http_response_set_json_error(res, 403, "Stream access denied");
-        return false;
-    }
-    return true;
+    return config
+        ? httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                        config->name) != 0
+        : httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE) != 0;
 }
 
 
@@ -2523,6 +2507,9 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
     if (suffix) {
         *suffix = '\0';
     }
+
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                       stream_name)) return;
 
     log_info("Refreshing go2rtc registration for stream: %s", stream_name);
 

@@ -34,7 +34,7 @@ function App() {
         async function init() {
             try {
                 const [settingsRes, setupRes] = await Promise.all([
-                    fetch('/api/settings'),
+                    fetch('/api/client-config'),
                     fetch('/api/setup/status'),
                 ]);
 

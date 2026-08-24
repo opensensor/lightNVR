@@ -4,8 +4,13 @@
 
 import dayjs from 'dayjs';
 
-export const MIN_TIMELINE_VIEW_HOURS = 0.5;
+// One minute is the finest useful scale promised by UXD 03 P3.
+export const MIN_TIMELINE_VIEW_HOURS = 1 / 60;
 export const MAX_TIMELINE_VIEW_HOURS = 24;
+export const TIMELINE_EDGE_SNAP_THRESHOLD_SECONDS = 0.5;
+export const TIMELINE_FLING_DECAY_PER_MILLISECOND = 0.005;
+export const TIMELINE_FLING_SAMPLE_WINDOW_MILLISECONDS = 100;
+export const TIMELINE_FLING_MAX_SAMPLE_AGE_MILLISECONDS = 120;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -59,6 +64,202 @@ export function panTimelineRange(startHour, endHour, deltaHours, maxHours = MAX_
     startHour: nextStart,
     endHour: nextStart + range
   };
+}
+
+/**
+ * Advance an inertial timeline pan by one animation frame.
+ *
+ * Velocity is expressed in timeline-hours per millisecond. Exponential decay
+ * makes the travelled distance independent of the display refresh rate, while
+ * stopping immediately at a day boundary avoids wasting animation frames
+ * pushing against an already-clamped range.
+ */
+export function advanceTimelineFling(
+  startHour,
+  endHour,
+  velocityHoursPerMillisecond,
+  elapsedMilliseconds,
+  maxHours = MAX_TIMELINE_VIEW_HOURS,
+  decayPerMillisecond = TIMELINE_FLING_DECAY_PER_MILLISECOND
+) {
+  const normalized = normalizeTimelineRange(startHour, endHour, maxHours);
+  if (
+    !Number.isFinite(velocityHoursPerMillisecond) ||
+    velocityHoursPerMillisecond === 0 ||
+    !Number.isFinite(elapsedMilliseconds) ||
+    !Number.isFinite(decayPerMillisecond) ||
+    decayPerMillisecond <= 0
+  ) {
+    return { ...normalized, velocityHoursPerMillisecond: 0 };
+  }
+
+  if (elapsedMilliseconds <= 0) {
+    return { ...normalized, velocityHoursPerMillisecond };
+  }
+
+  const decay = Math.exp(-decayPerMillisecond * elapsedMilliseconds);
+  const requestedDeltaHours = velocityHoursPerMillisecond *
+    ((1 - decay) / decayPerMillisecond);
+  const nextRange = panTimelineRange(
+    normalized.startHour,
+    normalized.endHour,
+    requestedDeltaHours,
+    maxHours
+  );
+  const actualDeltaHours = nextRange.startHour - normalized.startHour;
+  const hitBoundary = Math.abs(actualDeltaHours - requestedDeltaHours) > 1e-9;
+
+  return {
+    ...nextRange,
+    velocityHoursPerMillisecond: hitBoundary
+      ? 0
+      : velocityHoursPerMillisecond * decay
+  };
+}
+
+/**
+ * Resolve launch velocity from timestamped drag samples. The position at the
+ * start of the sampling window is interpolated, so devices that emit touchmove
+ * at different rates produce the same velocity for the same physical motion.
+ */
+export function calculateTimelineFlingVelocity(
+  samples,
+  releaseTime,
+  releasePosition,
+  sampleWindowMilliseconds = TIMELINE_FLING_SAMPLE_WINDOW_MILLISECONDS,
+  maxSampleAgeMilliseconds = TIMELINE_FLING_MAX_SAMPLE_AGE_MILLISECONDS
+) {
+  if (
+    !Array.isArray(samples) ||
+    !Number.isFinite(releaseTime) ||
+    !Number.isFinite(releasePosition) ||
+    !Number.isFinite(sampleWindowMilliseconds) ||
+    sampleWindowMilliseconds <= 0 ||
+    !Number.isFinite(maxSampleAgeMilliseconds) ||
+    maxSampleAgeMilliseconds < 0
+  ) {
+    return 0;
+  }
+
+  const points = samples
+    .filter(sample => Number.isFinite(sample?.time) && Number.isFinite(sample?.position))
+    .filter(sample => sample.time <= releaseTime)
+    .sort((a, b) => a.time - b.time);
+  if (points.length === 0) {
+    return 0;
+  }
+
+  const latestInput = points[points.length - 1];
+  if (releaseTime - latestInput.time > maxSampleAgeMilliseconds) {
+    return 0;
+  }
+
+  if (latestInput.time === releaseTime) {
+    points[points.length - 1] = { time: releaseTime, position: releasePosition };
+  } else {
+    points.push({ time: releaseTime, position: releasePosition });
+  }
+
+  const windowStart = releaseTime - sampleWindowMilliseconds;
+  let startTime = points[0].time;
+  let startPosition = points[0].position;
+
+  if (points[0].time < windowStart) {
+    for (let index = 1; index < points.length; index++) {
+      const previous = points[index - 1];
+      const current = points[index];
+      if (current.time < windowStart) {
+        continue;
+      }
+
+      if (current.time > previous.time) {
+        const ratio = (windowStart - previous.time) / (current.time - previous.time);
+        startTime = windowStart;
+        startPosition = previous.position + ((current.position - previous.position) * ratio);
+      } else {
+        startTime = current.time;
+        startPosition = current.position;
+      }
+      break;
+    }
+  }
+
+  const elapsed = releaseTime - startTime;
+  return elapsed > 0 ? (releasePosition - startPosition) / elapsed : 0;
+}
+
+/**
+ * Snap a cursor timestamp to the nearest recording boundary when it is within
+ * the mobile gesture tolerance. Ties resolve to the earlier edge so the result
+ * stays deterministic even for adjacent recordings.
+ */
+export function snapTimestampToRecordingEdge(
+  timestamp,
+  segments,
+  options = {}
+) {
+  const {
+    thresholdSeconds = TIMELINE_EDGE_SNAP_THRESHOLD_SECONDS,
+    selectedDate = null
+  } = options;
+  if (
+    !Number.isFinite(timestamp) ||
+    !Array.isArray(segments) ||
+    segments.length === 0 ||
+    !Number.isFinite(thresholdSeconds) ||
+    thresholdSeconds < 0
+  ) {
+    return { timestamp, snapped: false };
+  }
+
+  let nearestEdge = null;
+  let nearestDistance = Infinity;
+  const dayBounds = selectedDate ? getLocalDayBounds(selectedDate) : null;
+
+  segments.forEach((segment) => {
+    if (!Number.isFinite(segment?.start_timestamp) || !Number.isFinite(segment?.end_timestamp)) {
+      return;
+    }
+
+    let visibleStart = segment.start_timestamp;
+    let visibleEnd = segment.end_timestamp;
+    if (selectedDate) {
+      if (!dayBounds) {
+        return;
+      }
+      visibleStart = Math.max(visibleStart, dayBounds.startTimestamp);
+      visibleEnd = Math.min(visibleEnd, dayBounds.endTimestamp);
+      if (visibleEnd <= visibleStart) {
+        return;
+      }
+      // The selected local day is a half-open interval. Keep a clipped right
+      // edge inside that day rather than snapping the cursor to next midnight.
+      if (visibleEnd === dayBounds.endTimestamp) {
+        visibleEnd -= 0.001;
+      }
+    }
+
+    [visibleStart, visibleEnd].forEach((edge) => {
+      if (!Number.isFinite(edge)) {
+        return;
+      }
+      const distance = Math.abs(timestamp - edge);
+      if (
+        distance < nearestDistance ||
+        (Math.abs(distance - nearestDistance) <= Number.EPSILON &&
+          (nearestEdge === null || edge < nearestEdge))
+      ) {
+        nearestEdge = edge;
+        nearestDistance = distance;
+      }
+    });
+  });
+
+  if (nearestEdge === null || nearestDistance > thresholdSeconds) {
+    return { timestamp, snapped: false };
+  }
+
+  return { timestamp: nearestEdge, snapped: true };
 }
 
 export function zoomTimelineRange(startHour, endHour, zoomFactor, anchorHour = null, maxHours = MAX_TIMELINE_VIEW_HOURS) {

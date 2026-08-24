@@ -154,22 +154,6 @@ void handle_get_detection_snapshot(const http_request_t *req, http_response_t *r
         return;
     }
 
-    // Check authentication if enabled (same policy as recording thumbnails)
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (g_config.demo_mode) {
-            if (!httpd_check_viewer_access(req, &user)) {
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        } else {
-            if (!httpd_get_authenticated_user(req, &user)) {
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        }
-    }
-
     // Extract "{stream}/{file}.jpg"
     char param_buf[512];
     if (http_request_extract_path_param(req, "/api/snapshots/",
@@ -186,6 +170,9 @@ void handle_get_detection_snapshot(const http_request_t *req, http_response_t *r
     *slash = '\0';
     const char *stream_part = param_buf;
     const char *file_part = slash + 1;
+
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_SNAPSHOT_CREATE,
+                                       stream_part)) return;
 
     // Both components must be plain filenames: no traversal, no separators,
     // only characters sanitize_stream_name / the snapshot writer produce.

@@ -180,7 +180,7 @@ export function RecordingsView() {
 
   // Fetch generate_thumbnails + thumbnails_per_recording settings
   useEffect(() => {
-    fetch('/api/settings')
+    fetch('/api/client-config')
       .then(res => res.json())
       .then(data => {
         if (data && typeof data.generate_thumbnails !== 'undefined') {

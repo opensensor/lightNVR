@@ -1,6 +1,6 @@
 # PRD — Scoped Authorization & Audit
 
-**Status**: In progress — P0/P1, durable audit/history UI, and initial sensitive-operation outcomes implemented; broader endpoint enforcement continues
+**Status**: In progress — user grants, selector scopes, scoped tokens, protected-route enforcement, legacy migration, and sensitive audit outcomes implemented; local groups, grant schedules, and the direct-go2rtc audio boundary remain
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 2 — access-control foundation
@@ -12,8 +12,9 @@ deferred, customer-triggered phase.
 
 ## 1. Problem
 
-The current admin/user/viewer roles and allowed-tag filtering provide a useful
-baseline, but institutional deployments need to distinguish viewing video from
+The original admin/user/viewer roles and allowed-tag filtering provided a useful
+baseline. Upgrades now translate that state into selector-backed policy grants,
+but institutional deployments still need to distinguish viewing video from
 listening, talking, exporting, operating PTZ, deleting evidence, or changing a
 camera. A per-camera checkbox matrix would become unmanageable at hundreds of
 cameras and would drift as cameras move or are added.
@@ -44,6 +45,10 @@ and sensitive actions need an auditable record.
 ## 4. Authorization model
 
 `principal/group -> grant -> role(actions) + resource selector + optional schedule`
+
+User grants and selector/collection scopes are implemented. Local groups and
+grant schedules remain schema/product gaps and must not be represented as
+enforced capabilities yet.
 
 Initial actions:
 
@@ -78,12 +83,14 @@ v1; absence of an allow is deny.
 ### 5.2 Migration and built-in roles
 
 - Map existing admins to every action over all cameras.
-- Map existing viewers to safe read-only actions within their `allowed_tags`.
+- Map existing viewers to safe read-only actions within their legacy
+  `allowed_tags` scope during the one-way upgrade migration.
 - Map existing users to a documented compatibility role within their current
   scope; call out any newly restricted destructive action during upgrade.
 - Keep built-in roles immutable but cloneable.
-- Migrate `allowed_tags` into selector-backed grants and deprecate it only after
-  all handlers use the new evaluator.
+- Migrate legacy `allowed_tags` labels into normalized tag-UUID selector grants.
+  The column remains only as an upgrade tombstone: runtime structs/evaluation,
+  public APIs, and the administration UI no longer accept or use it.
 
 ### 5.3 API tokens
 
@@ -138,6 +145,23 @@ defer useful access-control work.
 | P1 | Selector grants, migration, scoped API tokens | After Fleet 01 selector API |
 | P2 | Audit log, policy administration UI, and sensitive-operation outcomes | After P0/P1 |
 | P3 | OIDC/SSO and group mapping | Committed organizational customer only |
+
+Current implementation notes:
+
+- Protected camera, recording, taxonomy, configuration, storage, event, user,
+  settings, and system routes use centralized action evaluation. List totals,
+  facets, collection expansion, and job status are filtered or principal-bound.
+- High-volume HLS media authorization is cached for 30 seconds and does not
+  append a durable success decision for every segment; denials and errors remain
+  auditable. This bounds database load and revocation latency.
+- Required camera configuration and evidence operation families emit redacted
+  success/failure/error audit outcomes with stable camera/target identity.
+- `audio.listen` and `audio.talk` are still reported unenforced because browser
+  WebRTC signaling can connect directly to go2rtc. A tokenized or lightNVR-
+  mediated signaling boundary is required before those actions are trustworthy.
+- Local groups and grant schedules are not implemented. `fleet.execute_job`
+  remains reserved for the future bulk-job surface.
+- P3 OIDC/SSO remains deliberately deferred as described above.
 
 ## 7. Acceptance criteria
 

@@ -149,6 +149,13 @@ int httpd_authorize_action(const http_request_t *req, http_response_t *res,
                            const fleet_camera_t *camera, user_t *user,
                            authorization_evaluation_t *evaluation);
 
+/* Authorize a system-wide action when the handler does not need principal
+ * context after the decision. Camera-scoped actions passed here require an
+ * all-fleet grant, which is appropriate for fleet-wide metadata mutations. */
+int httpd_authorize_global_action(const http_request_t *req,
+                                  http_response_t *res,
+                                  authorization_action_t action);
+
 /**
  * Resolve a stream to its immutable fleet camera and authorize a camera-scoped
  * action. Missing streams return 404, query failures return 500, and policy
@@ -158,6 +165,22 @@ int httpd_authorize_stream_action(const http_request_t *req,
                                   http_response_t *res,
                                   authorization_action_t action,
                                   const char *stream_name);
+
+/**
+ * Authorize a high-volume media request with a short-lived, bounded decision
+ * cache. Allowed decisions are reused for at most 30 seconds and therefore do
+ * not append one durable audit row per HLS segment. Denials and evaluation
+ * errors always take the normal audited path.
+ */
+int httpd_authorize_media_stream_action(const http_request_t *req,
+                                        http_response_t *res,
+                                        authorization_action_t action,
+                                        const char *stream_name);
+
+/** Hash the request's presented authentication material for in-process cache
+ * binding. The raw credential is never retained or logged. */
+int httpd_request_auth_fingerprint(const http_request_t *req,
+                                   char fingerprint[65]);
 
 /**
  * Resolve and authorize a camera-scoped action while returning the trusted

@@ -17,8 +17,10 @@
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "web/go2rtc_proxy_thread.h"
+#include "web/api_handlers_go2rtc_proxy.h"
 #include "web/api_handlers_health.h"
 #include "web/httpd_utils.h"
+#include "web/audit_log.h"
 #define LOG_COMPONENT "HTTP"
 #include "core/logger.h"
 #include "utils/strings.h"
@@ -491,6 +493,7 @@ typedef struct {
     libuv_connection_t *conn;           // Connection being handled
     request_handler_t handler;          // Handler function to call
     write_complete_action_t action;     // Post-response action (keep-alive/close)
+    audit_sensitive_operation_context_t audit_context;
 } handler_work_t;
 
 /**
@@ -501,7 +504,12 @@ typedef struct {
  */
 static void handler_work_cb(uv_work_t *req) {
     handler_work_t *hw = (handler_work_t *)req->data;
+    audit_log_sensitive_operation_begin(&hw->conn->request,
+                                        &hw->audit_context);
     hw->handler(&hw->conn->request, &hw->conn->response);
+    audit_log_sensitive_operation_end(&hw->conn->request,
+                                      &hw->conn->response,
+                                      &hw->audit_context);
 }
 
 /**
@@ -659,6 +667,11 @@ static int on_message_complete(llhttp_t *parser) {
     // shared libuv thread pool with 30-second blocking curl calls.
     if (go2rtc_proxy_path_matches(conn->request.path)) {
         uv_read_stop((uv_stream_t *)&conn->handle);
+        if (!go2rtc_proxy_authorize_request(&conn->request,
+                                            &conn->response)) {
+            libuv_send_response_ex(conn, &conn->response, action);
+            return HPE_OK;
+        }
         if (go2rtc_proxy_thread_submit(conn, action) == 0) {
             return HPE_PAUSED;
         }

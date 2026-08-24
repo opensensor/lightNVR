@@ -57,6 +57,9 @@ void handle_post_stream_refresh(const http_request_t *req, http_response_t *res)
  */
 void handle_get_settings(const http_request_t *req, http_response_t *res);
 
+/** Return the non-sensitive browser playback/runtime configuration. */
+void handle_get_client_config(const http_request_t *req, http_response_t *res);
+
 /**
  * @brief Handler for POST /api/settings
  */

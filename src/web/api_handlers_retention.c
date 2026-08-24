@@ -19,6 +19,7 @@
 #include "core/logger.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
+#include "database/db_fleet_query.h"
 
 static int authorize_recording_action(const http_request_t *req,
                                       http_response_t *res, uint64_t id,
@@ -94,6 +95,9 @@ void handle_get_stream_retention(const http_request_t *req, http_response_t *res
         *suffix = '\0';
     }
 
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                       stream_name)) return;
+
     // Get retention config
     stream_retention_config_t config;
     if (get_stream_retention_config(stream_name, &config) != 0) {
@@ -134,6 +138,9 @@ void handle_put_stream_retention(const http_request_t *req, http_response_t *res
     if (suffix) {
         *suffix = '\0';
     }
+
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_CAMERA_CONFIGURE,
+                                       stream_name)) return;
 
     // Parse JSON body
     cJSON *json = httpd_parse_json_body(req);
@@ -387,8 +394,39 @@ void handle_get_protected_recordings(const http_request_t *req, http_response_t 
     char stream_name[64] = {0};
     http_request_get_query_param(req, "stream", stream_name, sizeof(stream_name));
 
-    // Get protected count
-    int count = get_protected_recordings_count(stream_name[0] ? stream_name : NULL);
+    int count = -1;
+    if (stream_name[0]) {
+        if (!httpd_authorize_stream_action(req, res, AUTHZ_RECORDINGS_REPLAY,
+                                           stream_name)) return;
+        count = get_protected_recordings_count(stream_name);
+    } else {
+        user_t user;
+        if (!httpd_check_action_access(req, &user)) {
+            http_response_set_json_error(res, 401, "Unauthorized");
+            return;
+        }
+        fleet_camera_t *cameras = NULL;
+        int camera_count = 0;
+        if (db_fleet_camera_load(&cameras, &camera_count) != 0 ||
+            authorization_filter_cameras(&user, AUTHZ_RECORDINGS_REPLAY,
+                                         cameras, &camera_count) != 0) {
+            free(cameras);
+            http_response_set_json_error(
+                res, 500, "Authorization policy evaluation failed");
+            return;
+        }
+        const char **names = camera_count > 0
+            ? calloc((size_t)camera_count, sizeof(*names)) : NULL;
+        if (camera_count > 0 && !names) {
+            free(cameras);
+            http_response_set_json_error(res, 500, "Out of memory");
+            return;
+        }
+        for (int i = 0; i < camera_count; i++) names[i] = cameras[i].name;
+        count = get_protected_recordings_count_for_streams(names, camera_count);
+        free(names);
+        free(cameras);
+    }
     if (count < 0) {
         http_response_set_json_error(res, 500, "Failed to get protected recordings count");
         return;

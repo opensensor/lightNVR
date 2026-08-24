@@ -18,7 +18,9 @@ export function createDraftGrant(roleUuid = '', scopeType = 'all') {
 
 export function policyResponseToDraft(response) {
   return {
-    mode: response?.mode === 'policy' ? 'policy' : 'legacy',
+    // Legacy principals are migrated server-side at startup. Treat an old or
+    // incomplete response as policy so the editor cannot recreate legacy mode.
+    mode: 'policy',
     policyVersion: Number(response?.policy_version || 0),
     grants: (response?.grants || []).map((grant) => ({
       ...createDraftGrant(grant.role_uuid, grant.scope?.type || 'all'),
@@ -34,7 +36,7 @@ export function policyResponseToDraft(response) {
 }
 
 export function validatePolicyDraft(mode, grants, roleUuids = null, collectionUuids = null) {
-  if (mode !== 'legacy' && mode !== 'policy') return 'invalid_mode';
+  if (mode !== 'policy') return 'invalid_mode';
   const seen = new Set();
   for (const grant of grants || []) {
     if (!grant.roleUuid || (roleUuids && !roleUuids.has(grant.roleUuid))) {

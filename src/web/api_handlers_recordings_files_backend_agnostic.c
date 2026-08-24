@@ -60,6 +60,20 @@ void handle_check_recording_file(const http_request_t *req, http_response_t *res
         return;
     }
 
+    recording_metadata_t recording;
+    if (get_recording_metadata_by_path(path, &recording) != 0) {
+        http_response_set_json_error(res, 404, "Recording not found");
+        return;
+    }
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_stream_action_with_context(
+            req, res, AUTHZ_RECORDINGS_REPLAY, recording.stream_name, &user,
+            &camera, &evaluation)) {
+        return;
+    }
+
     log_info("Checking file: %s", path);
     
     // Check if file exists

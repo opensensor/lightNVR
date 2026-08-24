@@ -12,7 +12,7 @@ Each PRD is self-contained: problem, goals, requirements, phasing, acceptance, r
 | --- | --- | --- |
 | [UXD 01 — Mobile-First UX Foundation](UXD_01_MobileFirstFoundation.md) | Cross-cutting: async feedback, settings restructure, mobile chrome, theme polish, streams page layout | [#399](https://github.com/opensensor/lightNVR/issues/399) |
 | [UXD 02 — Live View Ergonomics](UXD_02_LiveViewErgonomics.md) | Per-stream playback transport, unified grid placement, mobile gestures, badge clarity | [#326](https://github.com/opensensor/lightNVR/issues/326), [#397](https://github.com/opensensor/lightNVR/issues/397), [#399](https://github.com/opensensor/lightNVR/issues/399) |
-| [UXD 03 — Recordings & Timeline UX](UXD_03_RecordingsAndTimeline.md) | Scrub continuity, ruler set-diff sync, refresh affordances, mobile timeline gestures | [#331](https://github.com/opensensor/lightNVR/issues/331), [#399](https://github.com/opensensor/lightNVR/issues/399) |
+| [UXD 03 — Recordings & Timeline UX](UXD_03_RecordingsAndTimeline.md) | Scrub continuity, ruler set-diff sync, refresh affordances, mobile timeline gestures (P3 gestures implemented) | [#331](https://github.com/opensensor/lightNVR/issues/331), [#399](https://github.com/opensensor/lightNVR/issues/399) |
 
 ### Features
 

@@ -1,6 +1,7 @@
 #ifndef LIGHTNVR_DB_API_TOKENS_H
 #define LIGHTNVR_DB_API_TOKENS_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "core/config.h"
@@ -18,7 +19,10 @@ typedef enum {
     DB_API_TOKEN_ERROR = -1,
     DB_API_TOKEN_NOT_FOUND = -2,
     DB_API_TOKEN_INVALID = -3,
-    DB_API_TOKEN_LIMIT = -4
+    DB_API_TOKEN_LIMIT = -4,
+    DB_API_TOKEN_EXPIRED = -5,
+    DB_API_TOKEN_REVOKED = -6,
+    DB_API_TOKEN_INACTIVE_OWNER = -7
 } db_api_token_result_t;
 
 typedef struct {
@@ -60,7 +64,7 @@ db_api_token_result_t db_api_token_revoke(int64_t user_id,
 /* Resolve a secret to an active token owner. The secret is never persisted. */
 db_api_token_result_t db_api_token_authenticate(
     const char *secret, int64_t *user_id,
-    char token_uuid[CAMERA_UUID_STRING_SIZE]);
+    char token_uuid[CAMERA_UUID_STRING_SIZE], bool *usage_audit_due);
 
 /* Reload one active token so authorization observes revocation and expiry. */
 db_api_token_result_t db_api_token_get_active(const char *token_uuid,

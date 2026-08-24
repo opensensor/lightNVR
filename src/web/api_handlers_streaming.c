@@ -68,6 +68,8 @@ void handle_direct_hls_request(const http_request_t *req, http_response_t *res) 
 
     // Make sure we're using a valid path.
     sanitize_stream_name(stream_name, stream_path, MAX_STREAM_NAME);
+    if (!httpd_authorize_media_stream_action(req, res, AUTHZ_LIVE_VIEW,
+                                             stream_name)) return;
 
     // Extract file name (everything after the stream name)
     const char *file_name = file_part + 1; // Skip "/"

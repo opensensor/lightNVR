@@ -10,7 +10,9 @@
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/config.h"
+#include "database/db_fleet_query.h"
 #define LOG_COMPONENT "WebAPI"
 #include "core/logger.h"
 
@@ -21,6 +23,27 @@
  */
 void handle_get_ice_servers(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/ice-servers request");
+    user_t user;
+    memset(&user, 0, sizeof(user));
+    if (!httpd_check_action_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+    fleet_camera_t *cameras = NULL;
+    int camera_count = 0;
+    if (db_fleet_camera_load(&cameras, &camera_count) != 0 ||
+        authorization_filter_cameras(&user, AUTHZ_LIVE_VIEW, cameras,
+                                     &camera_count) != 0) {
+        free(cameras);
+        http_response_set_json_error(
+            res, 500, "Authorization policy evaluation failed");
+        return;
+    }
+    free(cameras);
+    if (camera_count == 0) {
+        http_response_set_json_error(res, 403, "Forbidden");
+        return;
+    }
     
     // Create response object
     cJSON *response = cJSON_CreateObject();
@@ -112,4 +135,3 @@ void handle_get_ice_servers(const http_request_t *req, http_response_t *res) {
     
     log_info("Successfully returned ICE servers configuration");
 }
-

@@ -9,6 +9,7 @@
 #define LOG_COMPONENT "Audit"
 #include "core/logger.h"
 #include "database/db_audit.h"
+#include "database/db_fleet_query.h"
 #include "utils/strings.h"
 #include "web/audit_log.h"
 #include "web/httpd_utils.h"
@@ -227,4 +228,221 @@ void audit_log_login(const http_request_t *req, const user_t *user,
                      target_user_id[0] ? target_user_id : NULL,
                      outcome, details);
     cJSON_Delete(details);
+}
+
+static bool path_segment(const char *path, const char *prefix,
+                         char *value, size_t value_size) {
+    if (!path || !prefix || !value || value_size == 0 ||
+        strncmp(path, prefix, strlen(prefix)) != 0) return false;
+    const char *start = path + strlen(prefix);
+    const char *end = strchr(start, '/');
+    size_t length = end ? (size_t)(end - start) : strlen(start);
+    if (length == 0 || length >= value_size) return false;
+    char encoded[MAX_STREAM_NAME] = {0};
+    if (length >= sizeof(encoded)) return false;
+    memcpy(encoded, start, length);
+    encoded[length] = '\0';
+    return url_decode(encoded, value, value_size) == 0;
+}
+
+static bool json_string_field(const http_request_t *req, const char *key,
+                              char *value, size_t value_size) {
+    cJSON *body = httpd_parse_json_body(req);
+    if (!body) return false;
+    const cJSON *field = cJSON_GetObjectItemCaseSensitive(body, key);
+    bool copied = cJSON_IsString(field) && field->valuestring &&
+                  safe_strcpy(value, field->valuestring, value_size, 0) == 0;
+    cJSON_Delete(body);
+    return copied;
+}
+
+static const char *camera_configuration_operation(
+    const http_request_t *req, char *target_type, size_t target_type_size,
+    char *identity, size_t identity_size, bool *identity_is_camera_uuid,
+    authorization_action_t *action) {
+    const char *path = req->path;
+    const char *method = req->method_str;
+    *identity_is_camera_uuid = false;
+    *action = AUTHZ_CAMERA_CONFIGURE;
+    safe_strcpy(target_type, "camera", target_type_size, 0);
+
+    if (strcmp(path, "/api/system/logs/clear") == 0 &&
+        strcmp(method, "POST") == 0) {
+        *action = AUTHZ_SYSTEM_ADMIN;
+        safe_strcpy(target_type, "system_logs", target_type_size, 0);
+        return "system.logs.clear";
+    }
+    if (strcmp(path, "/api/settings") == 0 && strcmp(method, "POST") == 0) {
+        *action = AUTHZ_SYSTEM_ADMIN;
+        safe_strcpy(target_type, "settings", target_type_size, 0);
+        return "settings.update";
+    }
+
+    if (strcmp(path, "/api/streams/test") == 0 && strcmp(method, "POST") == 0)
+        return "stream.test";
+    if (strcmp(path, "/api/streams") == 0 && strcmp(method, "POST") == 0) {
+        (void)json_string_field(req, "name", identity, identity_size);
+        return "stream.create";
+    }
+    if (strcmp(path, "/api/motion/trigger") == 0 && strcmp(method, "POST") == 0) {
+        (void)json_string_field(req, "stream", identity, identity_size);
+        return "motion.trigger";
+    }
+    if (strncmp(path, "/api/onvif/", 11) == 0 && strcmp(method, "POST") == 0) {
+        if (strstr(path, "/discovery/discover")) return "onvif.discovery";
+        if (strstr(path, "/device/add")) return "onvif.add";
+        if (strstr(path, "/device/test")) return "onvif.test";
+    }
+    if (strncmp(path, "/api/streams/", 13) == 0 &&
+        path_segment(path, "/api/streams/", identity, identity_size)) {
+        if (strstr(path, "/refresh") && strcmp(method, "POST") == 0)
+            return "stream.refresh";
+        if (strstr(path, "/recording") && strcmp(method, "POST") == 0)
+            return "manual_recording.update";
+        if (strstr(path, "/retention") && strcmp(method, "PUT") == 0)
+            return "stream.retention.update";
+        if (strstr(path, "/zones") && strcmp(method, "POST") == 0)
+            return "zones.update";
+        if (strstr(path, "/zones") && strcmp(method, "DELETE") == 0)
+            return "zones.delete";
+        if (strstr(path, "/imaging/settings") && strcmp(method, "PUT") == 0)
+            return "imaging.update";
+        if (strstr(path, "/daynight") && strcmp(method, "PUT") == 0)
+            return "daynight.update";
+        if (!strchr(path + 13, '/') && strcmp(method, "PUT") == 0)
+            return "stream.update";
+        if (!strchr(path + 13, '/') && strcmp(method, "DELETE") == 0)
+            return "stream.delete";
+    }
+    if (strncmp(path, "/api/cameras/", 13) == 0 &&
+        path_segment(path, "/api/cameras/", identity, identity_size)) {
+        *identity_is_camera_uuid = true;
+        if (strstr(path, "/location") && strcmp(method, "PUT") == 0)
+            return "camera.location.assign";
+        if (strstr(path, "/tags") && strcmp(method, "PUT") == 0)
+            return "camera.tags.assign";
+    }
+    if (strncmp(path, "/api/locations", 14) == 0) {
+        safe_strcpy(target_type, "location", target_type_size, 0);
+        if (strcmp(path, "/api/locations") == 0 && strcmp(method, "POST") == 0)
+            return "location.create";
+        (void)path_segment(path, "/api/locations/", identity, identity_size);
+        if (strcmp(method, "PUT") == 0) return "location.update";
+        if (strcmp(method, "DELETE") == 0) return "location.delete";
+    }
+    if (strncmp(path, "/api/camera-tags", 16) == 0) {
+        safe_strcpy(target_type, "camera_tag", target_type_size, 0);
+        if (strcmp(path, "/api/camera-tags") == 0 && strcmp(method, "POST") == 0)
+            return "camera_tag.create";
+        (void)path_segment(path, "/api/camera-tags/", identity, identity_size);
+        if (strstr(path, "/merge") && strcmp(method, "POST") == 0)
+            return "camera_tag.merge";
+        if (strcmp(method, "PUT") == 0) return "camera_tag.update";
+        if (strcmp(method, "DELETE") == 0) return "camera_tag.delete";
+    }
+    if (strncmp(path, "/api/camera-collections", 23) == 0) {
+        safe_strcpy(target_type, "camera_collection", target_type_size, 0);
+        if (strcmp(path, "/api/camera-collections") == 0 &&
+            strcmp(method, "POST") == 0) return "camera_collection.create";
+        (void)path_segment(path, "/api/camera-collections/", identity,
+                           identity_size);
+        if (strstr(path, "/members") && strcmp(method, "PUT") == 0)
+            return "camera_collection.members.update";
+        if (strcmp(method, "PUT") == 0) return "camera_collection.update";
+        if (strcmp(method, "DELETE") == 0) return "camera_collection.delete";
+    }
+    return NULL;
+}
+
+void audit_log_sensitive_operation_begin(
+    const http_request_t *req, audit_sensitive_operation_context_t *context) {
+    if (!context) return;
+    memset(context, 0, sizeof(*context));
+    if (!req) return;
+    const char *operation = camera_configuration_operation(
+        req, context->target_type, sizeof(context->target_type),
+        context->identity, sizeof(context->identity),
+        &context->identity_is_camera_uuid, &context->action);
+    if (!operation) return;
+    context->applicable = true;
+    safe_strcpy(context->operation, operation, sizeof(context->operation), 0);
+    context->has_user = httpd_check_action_access(req, &context->user) != 0;
+    if (context->identity_is_camera_uuid) {
+        safe_strcpy(context->target_uuid, context->identity,
+                    sizeof(context->target_uuid), 0);
+    } else if (strcmp(context->target_type, "camera") == 0 &&
+               context->identity[0] != '\0') {
+        fleet_camera_t camera;
+        if (db_fleet_camera_find_by_name(context->identity, &camera) == 0) {
+            safe_strcpy(context->target_uuid, camera.camera_uuid,
+                        sizeof(context->target_uuid), 0);
+        }
+    } else if (context->identity[0] != '\0') {
+        safe_strcpy(context->target_uuid, context->identity,
+                    sizeof(context->target_uuid), 0);
+    }
+}
+
+static void sensitive_target_from_response(
+    const http_response_t *res, audit_sensitive_operation_context_t *context) {
+    if (!res || !context || context->target_uuid[0] != '\0' ||
+        res->status_code < 200 || res->status_code >= 400 || !res->body ||
+        res->body_length == 0) return;
+    cJSON *body = cJSON_ParseWithLength((const char *)res->body,
+                                       res->body_length);
+    if (!cJSON_IsObject(body)) {
+        cJSON_Delete(body);
+        return;
+    }
+    const cJSON *uuid = cJSON_GetObjectItemCaseSensitive(body, "camera_uuid");
+    if (!cJSON_IsString(uuid)) {
+        uuid = cJSON_GetObjectItemCaseSensitive(body, "uuid");
+    }
+    if (cJSON_IsString(uuid) && uuid->valuestring &&
+        strlen(uuid->valuestring) == CAMERA_UUID_STRING_SIZE - 1) {
+        safe_strcpy(context->target_uuid, uuid->valuestring,
+                    sizeof(context->target_uuid), 0);
+    }
+    const cJSON *stream_name =
+        cJSON_GetObjectItemCaseSensitive(body, "stream_name");
+    if (context->target_uuid[0] == '\0' && cJSON_IsString(stream_name) &&
+        stream_name->valuestring) {
+        fleet_camera_t camera;
+        if (db_fleet_camera_find_by_name(stream_name->valuestring, &camera) == 0) {
+            safe_strcpy(context->target_uuid, camera.camera_uuid,
+                        sizeof(context->target_uuid), 0);
+        }
+    }
+    cJSON_Delete(body);
+}
+
+void audit_log_sensitive_operation_end(
+    const http_request_t *req, const http_response_t *res,
+    audit_sensitive_operation_context_t *context) {
+    if (!req || !res || !context || !context->applicable ||
+        !context->has_user || res->status_code <= 0 ||
+        res->status_code == 401 || res->status_code == 403) return;
+    sensitive_target_from_response(res, context);
+
+    const char *outcome = res->status_code >= 200 && res->status_code < 400
+        ? "success" : (res->status_code >= 500 ? "error" : "failure");
+    cJSON *audit_details = cJSON_CreateObject();
+    if (audit_details) {
+        cJSON_AddNumberToObject(audit_details, "http_status", res->status_code);
+    }
+    const authorization_action_metadata_t *metadata =
+        authorization_action_metadata(context->action);
+    audit_log_operation(req, &context->user,
+                        metadata ? metadata->key : "unknown",
+                        context->target_type,
+                        context->target_uuid[0] ? context->target_uuid : NULL,
+                        context->operation, outcome, audit_details);
+    cJSON_Delete(audit_details);
+}
+
+void audit_log_sensitive_operation_outcome(const http_request_t *req,
+                                           const http_response_t *res) {
+    audit_sensitive_operation_context_t context;
+    audit_log_sensitive_operation_begin(req, &context);
+    audit_log_sensitive_operation_end(req, res, &context);
 }

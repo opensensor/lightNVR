@@ -135,6 +135,8 @@ cleanup:
 void handle_test_stream(const http_request_t *req, http_response_t *res) {
     log_info("Handling POST /api/streams/test request");
 
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
+
     // Parse JSON from request body
     cJSON *test_json = httpd_parse_json_body(req);
     if (!test_json) {

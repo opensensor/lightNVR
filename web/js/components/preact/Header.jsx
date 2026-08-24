@@ -21,7 +21,6 @@ const buildProfileFormData = (user = {}) => ({
   role: user.role_id ?? 1,
   is_active: user.is_active ?? true,
   password_change_locked: user.password_change_locked ?? false,
-  allowed_tags: '',
   allowed_login_cidrs: '',
 });
 

@@ -717,7 +717,6 @@ int main(int argc, char *argv[]) {
         log_error("Authorization action catalog does not match this build");
         goto cleanup;
     }
-
     // Initialize schema cache
     log_info("Initializing schema cache...");
     init_schema_cache();
@@ -914,7 +913,10 @@ int main(int argc, char *argv[]) {
     // Initialize authentication system
     if (init_auth_system() != 0) {
         log_error("Failed to initialize authentication system");
-        // Continue anyway, will fall back to config-based authentication
+        /* Authorization initialization includes the one-way legacy policy
+         * migration. Serving after it fails would evaluate a legacy account
+         * without its retired allowed_tags restriction, so fail closed. */
+        goto cleanup;
     } else {
         log_info("Authentication system initialized successfully");
     }

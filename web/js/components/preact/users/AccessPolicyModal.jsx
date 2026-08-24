@@ -159,8 +159,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
   const [collections, setCollections] = useState([]);
   const [locations, setLocations] = useState([]);
   const [tags, setTags] = useState([]);
-  const [mode, setMode] = useState('legacy');
-  const [loadedMode, setLoadedMode] = useState('legacy');
+  const [mode, setMode] = useState('policy');
   const [policyVersion, setPolicyVersion] = useState(0);
   const [grants, setGrants] = useState([]);
   const [savedFingerprint, setSavedFingerprint] = useState('');
@@ -168,7 +167,6 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
   const applyPolicyResponse = useCallback((response) => {
     const draft = policyResponseToDraft(response);
     setMode(draft.mode);
-    setLoadedMode(draft.mode);
     setPolicyVersion(draft.policyVersion);
     setGrants(draft.grants);
     setSavedFingerprint(policyFingerprint(draft.mode, draft.grants));
@@ -237,9 +235,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
       showStatusMessage(t(`access.policy.validation.${validationCode}`), 'error', 7000);
       return;
     }
-    if (loadedMode !== 'policy' && mode === 'policy' &&
-        !window.confirm(t('access.policy.activateConfirm', { username: user.username }))) return;
-    if (mode === 'policy' && grants.length === 0 &&
+    if (grants.length === 0 &&
         !window.confirm(t('access.policy.emptyConfirm', { username: user.username }))) return;
     setSaving(true);
     try {
@@ -275,15 +271,7 @@ export function AccessPolicyModal({ user, onClose, getAuthHeaders }) {
           {error && <div className="rounded-md badge-danger p-3">{error} <button type="button" className="ml-2 underline" onClick={load}>{t('common.retry')}</button></div>}
           {loading && grants.length === 0 ? <div className="p-10 text-center">{t('common.loading')}</div> : tab === 'grants' ? (
             <div className="space-y-4">
-              <div className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-[minmax(0,1fr)_18rem] sm:items-start">
-                <div><h3 className="font-semibold">{t('access.policy.mode')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('access.policy.modeDescription')}</p></div>
-                <select className={fieldClasses} value={mode} onChange={(event) => setMode(event.currentTarget.value)}>
-                  <option value="legacy">{t('access.policy.legacy')}</option>
-                  <option value="policy">{t('access.policy.scoped')}</option>
-                </select>
-              </div>
-              {mode === 'legacy' && <p className="rounded-md bg-[hsl(var(--info)/0.12)] p-3 text-sm">{t('access.policy.legacyHelp')}</p>}
-              {mode === 'policy' && <p className="rounded-md bg-[hsl(var(--warning)/0.13)] p-3 text-sm">{t('access.policy.scopedWarning')}</p>}
+              <p className="rounded-md bg-[hsl(var(--warning)/0.13)] p-3 text-sm">{t('access.policy.scopedWarning')}</p>
 
               <div className="flex items-center justify-between gap-3"><div><h3 className="text-lg font-semibold">{t('access.policy.grants')}</h3><p className="text-sm text-muted-foreground">{t('access.policy.grantsDescription')}</p></div><button type="button" className="btn-secondary whitespace-nowrap" onClick={addGrant} disabled={roles.length === 0}>{t('access.policy.addGrant')}</button></div>
               <div className="space-y-3">

@@ -10,9 +10,12 @@
 
 #include "web/api_handlers.h"
 #include "web/request_response.h"
+#include "web/httpd_utils.h"
 #define LOG_COMPONENT "DetectionAPI"
 #include "core/logger.h"
 #include "core/config.h"
+#include "core/authorization.h"
+#include "database/db_fleet_query.h"
 #include "video/detection.h"
 #include "video/api_detection.h"
 #include "video/onvif_detection.h"
@@ -26,7 +29,33 @@
  * This handler returns a list of available detection models
  */
 void handle_get_detection_models(const http_request_t *req, http_response_t *res) {
-    (void)req;
+    user_t user;
+    if (!httpd_check_action_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+    authorization_evaluation_t global_evaluation;
+    bool globally_allowed =
+        authorization_evaluate(&user, AUTHZ_CAMERA_CONFIGURE, NULL,
+                               &global_evaluation) == 0 &&
+        global_evaluation.decision == AUTHZ_DECISION_ALLOW;
+    if (!globally_allowed) {
+        fleet_camera_t *cameras = NULL;
+        int camera_count = 0;
+        if (db_fleet_camera_load(&cameras, &camera_count) != 0 ||
+            authorization_filter_cameras(&user, AUTHZ_CAMERA_CONFIGURE,
+                                         cameras, &camera_count) != 0) {
+            free(cameras);
+            http_response_set_json_error(
+                res, 500, "Authorization policy evaluation failed");
+            return;
+        }
+        free(cameras);
+        if (camera_count == 0) {
+            http_response_set_json_error(res, 403, "Forbidden");
+            return;
+        }
+    }
     log_info("Handling GET /api/detection/models request");
 
     // Get models directory from config or use default

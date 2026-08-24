@@ -15,6 +15,7 @@
 
 #include "web/api_handlers_metrics.h"
 #include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "telemetry/stream_metrics.h"
 #include "telemetry/player_telemetry.h"
 #include "video/stream_manager.h"
@@ -142,7 +143,9 @@ static uint64_t get_go2rtc_rss_bytes(void) {
 /* ------------------------------------------------------------------ */
 
 void handle_get_metrics(const http_request_t *req, http_response_t *res) {
-    (void)req;
+    if (!httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN)) {
+        return;
+    }
 
     int max = metrics_get_max_streams();
     if (max <= 0) {
@@ -332,6 +335,13 @@ void handle_post_player_telemetry(const http_request_t *req, http_response_t *re
     event.timestamp = time(NULL);
 
     cJSON_Delete(json);
+
+    if (event.stream_name[0] == '\0') {
+        res->status_code = 204;
+        return;
+    }
+    if (!httpd_authorize_stream_action(req, res, AUTHZ_LIVE_VIEW,
+                                       event.stream_name)) return;
 
     player_telemetry_record(&event);
 

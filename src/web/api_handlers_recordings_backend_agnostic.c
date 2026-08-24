@@ -562,12 +562,9 @@ static void *batch_delete_worker_thread(void *arg) {
         char **collection_streams = NULL;
         int collection_stream_count = 0;
         if (collection_uuid[0]) {
-            user_t admin_user;
-            memset(&admin_user, 0, sizeof(admin_user));
-            admin_user.role = USER_ROLE_ADMIN;
             camera_collection_filter_result_t result =
-                camera_collection_filter_resolve_stream_names(
-                    collection_uuid, &admin_user, &collection_streams,
+                camera_collection_filter_resolve_stream_names_for_authorization(
+                    collection_uuid, &collection_streams,
                     &collection_stream_count);
             if (result != CAMERA_COLLECTION_FILTER_OK) {
                 batch_delete_progress_error(job_id,
@@ -882,7 +879,10 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
 
     // Create a batch delete job
     char job_id[64];
-    if (batch_delete_progress_create_job(total_count, job_id) != 0) {
+    const char *owner_token_uuid = user.authenticated_via_scoped_token
+        ? user.api_token_uuid : NULL;
+    if (batch_delete_progress_create_job_for_principal(
+            total_count, user.id, owner_token_uuid, job_id) != 0) {
         log_error("Failed to create batch delete job");
         cJSON_Delete(json);
         http_response_set_json_error(res, 500, "Failed to create batch delete job");
@@ -972,6 +972,12 @@ void handle_batch_delete_recordings(const http_request_t *req, http_response_t *
 void handle_batch_delete_progress(const http_request_t *req, http_response_t *res) {
     log_info("Handling GET /api/recordings/batch-delete/progress request");
 
+    user_t user;
+    if (!httpd_check_action_access(req, &user)) {
+        http_response_set_json_error(res, 401, "Unauthorized");
+        return;
+    }
+
     // Extract job ID from URL
     // URL format: /api/recordings/batch-delete/progress/:job_id
     char job_id[64] = {0};
@@ -987,6 +993,13 @@ void handle_batch_delete_progress(const http_request_t *req, http_response_t *re
     batch_delete_progress_t progress;
     if (batch_delete_progress_get(job_id, &progress) != 0) {
         log_error("Job not found: %s", job_id);
+        http_response_set_json_error(res, 404, "Job not found");
+        return;
+    }
+    const char *request_token_uuid = user.authenticated_via_scoped_token
+        ? user.api_token_uuid : "";
+    if (progress.owner_user_id != user.id ||
+        strcmp(progress.owner_api_token_uuid, request_token_uuid) != 0) {
         http_response_set_json_error(res, 404, "Job not found");
         return;
     }

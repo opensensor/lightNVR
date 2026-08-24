@@ -50,6 +50,97 @@ async function mockTimelineApis(page: Page, stream: string, segments: Segment[],
   });
 }
 
+async function readTimelineRange(page: Page): Promise<{ start: number; end: number }> {
+  return page.locator('.timeline-ruler').evaluate(element => ({
+    start: Number(element.getAttribute('data-timeline-start-hour')),
+    end: Number(element.getAttribute('data-timeline-end-hour'))
+  }));
+}
+
+async function dispatchTouchGesture(
+  page: Page,
+  start: { x: number; y: number },
+  moved: { x: number; y: number },
+  finish: 'touchend' | 'touchcancel'
+): Promise<{ start: number; end: number }> {
+  return page.locator('#timeline-container').evaluate(async (element, gesture) => {
+    const dispatch = (type: 'touchstart' | 'touchmove' | 'touchend' | 'touchcancel', point: { x: number; y: number }) => {
+      const touch = new Touch({
+        identifier: 1,
+        target: element,
+        clientX: point.x,
+        clientY: point.y,
+        screenX: point.x,
+        screenY: point.y,
+        radiusX: 2,
+        radiusY: 2,
+        force: 1
+      });
+      const active = type === 'touchstart' || type === 'touchmove';
+      element.dispatchEvent(new TouchEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        touches: active ? [touch] : [],
+        targetTouches: active ? [touch] : [],
+        changedTouches: [touch]
+      }));
+    };
+
+    dispatch('touchstart', gesture.start);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    dispatch('touchmove', gesture.moved);
+    // Let Preact commit the range produced directly by touchmove, but keep the
+    // sample/release interval inside the launch-velocity window.
+    await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
+    const ruler = element.querySelector('.timeline-ruler');
+    const rangeAfterMove = {
+      start: Number(ruler?.getAttribute('data-timeline-start-hour')),
+      end: Number(ruler?.getAttribute('data-timeline-end-hour'))
+    };
+    dispatch(gesture.finish, gesture.moved);
+    return rangeAfterMove;
+  }, {
+    start,
+    moved,
+    finish
+  });
+}
+
+async function dispatchTwoFingerGesture(
+  page: Page,
+  starts: [{ x: number; y: number }, { x: number; y: number }],
+  moves: [{ x: number; y: number }, { x: number; y: number }]
+): Promise<void> {
+  await page.locator('#timeline-container').evaluate(async (element, gesture) => {
+    const makeTouch = (identifier: number, point: { x: number; y: number }) => new Touch({
+      identifier,
+      target: element,
+      clientX: point.x,
+      clientY: point.y,
+      screenX: point.x,
+      screenY: point.y,
+      radiusX: 2,
+      radiusY: 2,
+      force: 1
+    });
+    const dispatch = (type: 'touchstart' | 'touchmove' | 'touchend', points: Array<{ x: number; y: number }>) => {
+      const touches = points.map((point, index) => makeTouch(index + 1, point));
+      element.dispatchEvent(new TouchEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        touches: type === 'touchend' ? [] : touches,
+        targetTouches: type === 'touchend' ? [] : touches,
+        changedTouches: touches
+      }));
+    };
+
+    dispatch('touchstart', gesture.starts);
+    dispatch('touchmove', gesture.moves);
+    await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
+    dispatch('touchend', gesture.moves);
+  }, { starts, moves });
+}
+
 test.describe('Timeline boundary flows @ui @timeline', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, USERS.admin);
@@ -297,6 +388,8 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
     if (!playheadBox) {
       throw new Error('Expected timeline playhead to have a bounding box');
     }
+    expect(playheadBox.width).toBeGreaterThanOrEqual(36);
+    expect(playheadBox.height).toBeGreaterThanOrEqual(36);
 
     await page.mouse.move(playheadBox.x + (playheadBox.width / 2), playheadBox.y + (playheadBox.height / 2));
     await page.mouse.down();
@@ -306,6 +399,244 @@ test.describe('Timeline boundary flows @ui @timeline', () => {
 
     await page.mouse.up();
     await expect(timelinePage.timeDisplay).toContainText(`${stream} -`);
+  });
+
+  test('rebinds gestures and clears cursor locks when loading remounts the same-size timeline', async ({ page }) => {
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 811, stream: 'front_door', start_timestamp: localTimestamp(date, '09:00:00'), end_timestamp: localTimestamp(date, '10:00:00') }
+    ];
+
+    await mockTimelineApis(page, 'front_door', segments);
+    await page.route('**/api/streams', route => route.fulfill({ json: [
+      { name: 'front_door' },
+      { name: 'garage' }
+    ] }));
+    await page.route('**/api/timeline/segments?**', async route => {
+      const stream = new URL(route.request().url()).searchParams.get('stream');
+      if (stream === 'garage') {
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      await route.fulfill({ json: { segments: segments.map(segment => ({ ...segment, stream: stream || segment.stream })) } });
+    });
+
+    await page.goto(`/timeline.html?stream=front_door&date=${date}&time=09:10:00`, { waitUntil: 'domcontentloaded' });
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+
+    const oldContainer = await timelinePage.timelineContainer.elementHandle();
+    const oldPlayheadBox = await timelinePage.playhead.boundingBox();
+    if (!oldContainer || !oldPlayheadBox) {
+      throw new Error('Expected mounted timeline and playhead before remount');
+    }
+
+    // Keep a cursor drag active while the loading branch removes the timeline.
+    await page.mouse.move(
+      oldPlayheadBox.x + (oldPlayheadBox.width / 2),
+      oldPlayheadBox.y + (oldPlayheadBox.height / 2)
+    );
+    await page.mouse.down();
+    await page.locator('#stream-selector').selectOption('garage');
+    await expect(page.getByText('Loading timeline data...')).toBeVisible();
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    expect(await oldContainer.evaluate(element => element.isConnected)).toBe(false);
+    await page.mouse.up();
+
+    // If unmount cleanup left userControllingCursor latched, this seek would
+    // update global time but the newly-mounted playhead would stay in place.
+    const beforeSeek = await timelinePage.playhead.boundingBox();
+    const track = page.locator('.timeline-segments');
+    const trackBox = await track.boundingBox();
+    if (!beforeSeek || !trackBox) {
+      throw new Error('Expected remounted timeline geometry');
+    }
+    await track.click({ position: { x: trackBox.width * 0.8, y: trackBox.height / 2 } });
+    await expect.poll(async () => (await timelinePage.playhead.boundingBox())?.x ?? 0)
+      .toBeGreaterThan(beforeSeek.x + 20);
+
+    // Wheel zoom must be owned by the new node rather than the detached one.
+    const beforeWheel = await readTimelineRange(page);
+    const containerBox = await timelinePage.timelineContainer.boundingBox();
+    if (!containerBox) {
+      throw new Error('Expected remounted timeline bounding box');
+    }
+    await timelinePage.timelineContainer.dispatchEvent('wheel', {
+      clientX: containerBox.x + (containerBox.width / 2),
+      clientY: containerBox.y + 10,
+      deltaY: -100,
+      ctrlKey: true
+    });
+    await expect.poll(async () => {
+      const range = await readTimelineRange(page);
+      return range.end - range.start;
+    }).toBeLessThan(beforeWheel.end - beforeWheel.start);
+  });
+
+  test('handles browser touch fling and cancel while honoring the explicit reduced-motion override', async ({ page }) => {
+    const stream = 'mobile_cam';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 821, stream, start_timestamp: localTimestamp(date, '09:00:00'), end_timestamp: localTimestamp(date, '10:00:00') }
+    ];
+
+    await page.evaluate(() => localStorage.setItem('lightnvr.reduceMotion', 'off'));
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${date}&time=09:10:00`, { waitUntil: 'domcontentloaded' });
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    const box = await timelinePage.timelineContainer.boundingBox();
+    if (!box) {
+      throw new Error('Expected timeline geometry for touch test');
+    }
+    const start = { x: box.x + (box.width * 0.65), y: box.y + (box.height * 0.75) };
+    const moved = { x: start.x - 90, y: start.y };
+
+    // This project runs in a desktop Chromium context, where CDP touch input is
+    // not delivered consistently. Constructed browser TouchEvents still cover
+    // the component's real listener/state-machine path deterministically; the
+    // physical-device acceptance pass remains a separate manual check.
+    await timelinePage.timelineContainer.evaluate((element) => {
+      ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(type => {
+        element.addEventListener(type, () => {
+          const key = `test-${type}`;
+          element.setAttribute(key, String(Number(element.getAttribute(key) || '0') + 1));
+        });
+      });
+    });
+
+    const afterDrag = await dispatchTouchGesture(page, start, moved, 'touchend');
+    await expect(timelinePage.timelineContainer).toHaveAttribute('test-touchmove', '1');
+    await page.waitForTimeout(220);
+    const afterFling = await readTimelineRange(page);
+    expect(afterFling.start).toBeGreaterThan(afterDrag.start + 0.01);
+
+    // A cancelled touch may pan directly, but must never launch inertia.
+    await page.waitForTimeout(700);
+    const cancelPoint = { x: start.x + 60, y: start.y };
+    const beforeCancel = await dispatchTouchGesture(page, start, cancelPoint, 'touchcancel');
+    await page.waitForTimeout(220);
+    const afterCancel = await readTimelineRange(page);
+    expect(afterCancel.start).toBeCloseTo(beforeCancel.start, 9);
+    expect(afterCancel.end - afterCancel.start)
+      .toBeCloseTo(beforeCancel.end - beforeCancel.start, 9);
+
+    // LightNVR's explicit preference must win over the OS media query.
+    await page.evaluate(() => localStorage.setItem('lightnvr.reduceMotion', 'on'));
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    const reducedBox = await timelinePage.timelineContainer.boundingBox();
+    if (!reducedBox) {
+      throw new Error('Expected timeline geometry after reduced-motion reload');
+    }
+    const reducedStart = {
+      x: reducedBox.x + (reducedBox.width * 0.65),
+      y: reducedBox.y + (reducedBox.height * 0.75)
+    };
+    const reducedMoved = { x: reducedStart.x - 90, y: reducedStart.y };
+    const reducedAfterDrag = await dispatchTouchGesture(page, reducedStart, reducedMoved, 'touchend');
+    await page.waitForTimeout(220);
+    const reducedAfterRelease = await readTimelineRange(page);
+    expect(reducedAfterRelease.start).toBeCloseTo(reducedAfterDrag.start, 9);
+    expect(reducedAfterRelease.end - reducedAfterRelease.start)
+      .toBeCloseTo(reducedAfterDrag.end - reducedAfterDrag.start, 9);
+  });
+
+  test('handles browser two-finger pinch zoom and pan', async ({ page }) => {
+    const stream = 'pinch_cam';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 825, stream, start_timestamp: localTimestamp(date, '11:00:00'), end_timestamp: localTimestamp(date, '13:00:00') }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${date}&time=12:00:00`, { waitUntil: 'domcontentloaded' });
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+    const box = await timelinePage.timelineContainer.boundingBox();
+    if (!box) throw new Error('Expected timeline geometry for pinch test');
+
+    const y = box.y + (box.height * 0.75);
+    const center = box.x + (box.width / 2);
+    const beforePinch = await readTimelineRange(page);
+    await dispatchTwoFingerGesture(
+      page,
+      [{ x: center - 30, y }, { x: center + 30, y }],
+      [{ x: center - 90, y }, { x: center + 90, y }]
+    );
+    const afterPinch = await readTimelineRange(page);
+    expect(afterPinch.end - afterPinch.start).toBeLessThan(beforePinch.end - beforePinch.start);
+
+    await dispatchTwoFingerGesture(
+      page,
+      [{ x: center - 60, y }, { x: center + 60, y }],
+      [{ x: center - 10, y }, { x: center + 110, y }]
+    );
+    const afterPan = await readTimelineRange(page);
+    expect(afterPan.start).toBeLessThan(afterPinch.start);
+    expect(afterPan.end - afterPan.start).toBeCloseTo(afterPinch.end - afterPinch.start, 9);
+  });
+
+  test('keeps the accessible playhead target inside the day edge and preserves keyboard navigation', async ({ page }) => {
+    const stream = 'edge_cam';
+    const date = '2026-03-08';
+    const segments: Segment[] = [
+      { id: 831, stream, start_timestamp: localTimestamp(date, '23:40:00'), end_timestamp: localTimestamp(date, '23:45:00') },
+      { id: 832, stream, start_timestamp: localTimestamp(date, '23:50:00'), end_timestamp: localTimestamp('2026-03-09', '00:02:00') }
+    ];
+
+    await mockTimelineApis(page, stream, segments);
+    await page.goto(`/timeline.html?stream=${stream}&date=${date}&time=23:59:59`, { waitUntil: 'domcontentloaded' });
+    const timelinePage = new TimelinePage(page);
+    await expect(timelinePage.timelineContainer).toBeVisible();
+
+    const slider = page.getByRole('slider');
+    await expect(slider).toHaveAttribute('aria-orientation', 'horizontal');
+    await expect(slider).toHaveAttribute('aria-valuetext', /edge_cam - 23:59:59/);
+    await expect(slider).toHaveAttribute('tabindex', '0');
+
+    const [containerBox, sliderBox] = await Promise.all([
+      timelinePage.timelineContainer.boundingBox(),
+      slider.boundingBox()
+    ]);
+    if (!containerBox || !sliderBox) {
+      throw new Error('Expected accessible edge geometry');
+    }
+    expect(sliderBox.width).toBeGreaterThanOrEqual(36);
+    expect(sliderBox.x).toBeGreaterThanOrEqual(containerBox.x);
+    expect(sliderBox.x + sliderBox.width).toBeLessThanOrEqual(containerBox.x + containerBox.width + 0.5);
+
+    // The clamped target is offset from the exact line near an edge. A grab
+    // and release at its center must preserve the timestamp rather than seek
+    // backward by half the hit-target width.
+    const valueBeforeTap = await slider.getAttribute('aria-valuenow');
+    await page.mouse.move(sliderBox.x + (sliderBox.width / 2), sliderBox.y + (sliderBox.height / 2));
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(slider).toHaveAttribute('aria-valuenow', valueBeforeTap || '');
+
+    // Zooming around the opposite edge pans the current timestamp out of the
+    // viewport. All three cursor layers must disappear together.
+    await timelinePage.timelineContainer.dispatchEvent('wheel', {
+      clientX: containerBox.x + 1,
+      clientY: containerBox.y + 10,
+      deltaY: -100,
+      ctrlKey: true
+    });
+    await expect(slider).toBeHidden();
+    await expect(page.getByTestId('timeline-cursor-line')).toBeHidden();
+    await expect(page.getByTestId('timeline-cursor-thumb')).toBeHidden();
+
+    // Restore the full day before checking the existing keyboard behavior.
+    await timelinePage.timelineContainer.dispatchEvent('wheel', {
+      clientX: containerBox.x + 1,
+      clientY: containerBox.y + 10,
+      deltaY: 100,
+      ctrlKey: true
+    });
+    await expect(slider).toBeVisible();
+    await slider.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(timelinePage.timeDisplay).toHaveText('edge_cam - 23:40:00');
   });
 });
 

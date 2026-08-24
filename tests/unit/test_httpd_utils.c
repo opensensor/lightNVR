@@ -34,7 +34,9 @@
 #include "utils/strings.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_streams.h"
 #include "web/api_handlers_auth.h"
+#include "web/api_handlers_go2rtc_proxy.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_users.h"
 
@@ -779,6 +781,58 @@ void test_sanitize_attachment_filename_removes_path_and_header_bytes(void) {
     TEST_ASSERT_EQUAL_STRING("", filename);
 }
 
+void test_go2rtc_hls_session_is_credential_bound_and_followups_do_not_use_filename_as_camera(void) {
+    g_config.web_auth_enabled = false;
+    stream_config_t stream;
+    memset(&stream, 0, sizeof(stream));
+    safe_strcpy(stream.name, "media-cache-camera", sizeof(stream.name), 0);
+    safe_strcpy(stream.url, "rtsp://camera/live", sizeof(stream.url), 0);
+    stream.enabled = true;
+    TEST_ASSERT_NOT_EQUAL(0, add_stream_config(&stream));
+
+    http_request_t manifest_req;
+    http_request_init(&manifest_req);
+    safe_strcpy(manifest_req.path, "/go2rtc/api/stream.m3u8",
+                sizeof(manifest_req.path), 0);
+    safe_strcpy(manifest_req.query_string, "src=media-cache-camera",
+                sizeof(manifest_req.query_string), 0);
+    safe_strcpy(manifest_req.client_ip, "192.0.2.10",
+                sizeof(manifest_req.client_ip), 0);
+    http_response_t manifest_res;
+    http_response_init(&manifest_res);
+    TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&manifest_req,
+                                                     &manifest_res));
+    const char *manifest =
+        "#EXTM3U\n/api/hls/playlist.m3u8?id=unit-session-1\n";
+    go2rtc_proxy_capture_hls_sessions(&manifest_req, manifest,
+                                       strlen(manifest));
+
+    http_request_t segment_req;
+    http_request_init(&segment_req);
+    safe_strcpy(segment_req.path, "/go2rtc/api/hls/segment.m4s",
+                sizeof(segment_req.path), 0);
+    safe_strcpy(segment_req.query_string, "id=unit-session-1",
+                sizeof(segment_req.query_string), 0);
+    safe_strcpy(segment_req.client_ip, "192.0.2.10",
+                sizeof(segment_req.client_ip), 0);
+    http_response_t segment_res;
+    http_response_init(&segment_res);
+    TEST_ASSERT_TRUE(go2rtc_proxy_authorize_request(&segment_req,
+                                                     &segment_res));
+    TEST_ASSERT_EQUAL_INT(200, segment_res.status_code);
+
+    safe_strcpy(segment_req.client_ip, "192.0.2.11",
+                sizeof(segment_req.client_ip), 0);
+    TEST_ASSERT_FALSE(go2rtc_proxy_authorize_request(&segment_req,
+                                                      &segment_res));
+    TEST_ASSERT_EQUAL_INT(403, segment_res.status_code);
+    http_response_free(&segment_res);
+    http_response_free(&manifest_res);
+    TEST_ASSERT_EQUAL_INT(0,
+                          delete_stream_config_internal("media-cache-camera",
+                                                        true));
+}
+
 /* ================================================================
  * main
  * ================================================================ */
@@ -827,6 +881,7 @@ int main(void) {
     RUN_TEST(test_check_admin_privileges_auth_disabled_returns_one);
     RUN_TEST(test_check_admin_privileges_no_auth_returns_zero);
     RUN_TEST(test_sanitize_attachment_filename_removes_path_and_header_bytes);
+    RUN_TEST(test_go2rtc_hls_session_is_credential_bound_and_followups_do_not_use_filename_as_camera);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

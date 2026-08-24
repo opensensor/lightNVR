@@ -14,14 +14,18 @@
 #include <curl/curl.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <ctype.h>
+#include <time.h>
 
 #include "web/api_handlers_go2rtc_proxy.h"
 #include "web/request_response.h"
+#include "web/httpd_utils.h"
 #include "core/config.h"
 #define LOG_COMPONENT "go2rtcAPI"
 #include "core/logger.h"
 #include "utils/memory.h"
 #include "utils/strings.h"
+#include "web/audit_log.h"
 
 #ifdef HTTP_BACKEND_LIBUV
 #include "web/libuv_connection.h"
@@ -31,6 +35,23 @@
 // Concurrency limiter
 static sem_t *g_proxy_semaphore = NULL;
 static pthread_once_t g_proxy_init_once = PTHREAD_ONCE_INIT;
+
+#define HLS_SESSION_CACHE_CAPACITY \
+    ((MAX_STREAMS * 2 < 64) ? 64 : ((MAX_STREAMS * 2 > 1024) ? 1024 : MAX_STREAMS * 2))
+#define HLS_SESSION_AUTH_TTL_SECONDS 30
+#define HLS_SESSION_ID_MAX 128
+
+typedef struct {
+    bool occupied;
+    char session_id[HLS_SESSION_ID_MAX];
+    char auth_fingerprint[65];
+    char stream_name[MAX_STREAM_NAME];
+    time_t authorized_until;
+    time_t last_used;
+} hls_session_auth_t;
+
+static hls_session_auth_t g_hls_sessions[HLS_SESSION_CACHE_CAPACITY];
+static pthread_mutex_t g_hls_sessions_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Buffered proxy context
 typedef struct {
@@ -122,6 +143,191 @@ static bool should_proxy_path(const char *path) {
     return false;
 }
 
+static void audit_hls_session_denial(const http_request_t *req) {
+    user_t user;
+    user_t *principal = NULL;
+    memset(&user, 0, sizeof(user));
+    if (httpd_check_action_access(req, &user)) principal = &user;
+    cJSON *details = cJSON_CreateObject();
+    if (details) {
+        cJSON_AddStringToObject(details, "event_type",
+                                "authorization.media_session_denied");
+        cJSON_AddStringToObject(details, "reason",
+                                "missing, expired, or credential-mismatched HLS session");
+    }
+    audit_log_append(req, principal, "live.view", "camera", NULL,
+                     "denied", details);
+    cJSON_Delete(details);
+}
+
+static bool authorize_hls_session_request(const http_request_t *req,
+                                          http_response_t *res) {
+    char session_id[HLS_SESSION_ID_MAX] = {0};
+    char fingerprint[65] = {0};
+    if (http_request_get_query_param(req, "id", session_id,
+                                     sizeof(session_id)) < 0 ||
+        httpd_request_auth_fingerprint(req, fingerprint) != 0) {
+        audit_hls_session_denial(req);
+        http_response_set_json_error(res, 401, "Unauthorized HLS session");
+        return false;
+    }
+
+    time_t now = time(NULL);
+    char stream_name[MAX_STREAM_NAME] = {0};
+    bool found = false;
+    bool current = false;
+    pthread_mutex_lock(&g_hls_sessions_mutex);
+    for (int i = 0; i < HLS_SESSION_CACHE_CAPACITY; i++) {
+        hls_session_auth_t *entry = &g_hls_sessions[i];
+        if (!entry->occupied || strcmp(entry->session_id, session_id) != 0 ||
+            strcmp(entry->auth_fingerprint, fingerprint) != 0) continue;
+        found = true;
+        current = entry->authorized_until >= now;
+        entry->last_used = now;
+        safe_strcpy(stream_name, entry->stream_name,
+                    sizeof(stream_name), 0);
+        break;
+    }
+    pthread_mutex_unlock(&g_hls_sessions_mutex);
+
+    if (!found) {
+        audit_hls_session_denial(req);
+        http_response_set_json_error(res, 403, "Forbidden HLS session");
+        return false;
+    }
+    if (current) return true;
+
+    // Re-check policy at a bounded interval. This retains long-running HLS
+    // sessions while limiting role, selector, token, and session revocation
+    // staleness to the media authorization window.
+    if (!httpd_authorize_media_stream_action(req, res, AUTHZ_LIVE_VIEW,
+                                             stream_name)) return false;
+    pthread_mutex_lock(&g_hls_sessions_mutex);
+    for (int i = 0; i < HLS_SESSION_CACHE_CAPACITY; i++) {
+        hls_session_auth_t *entry = &g_hls_sessions[i];
+        if (entry->occupied && strcmp(entry->session_id, session_id) == 0 &&
+            strcmp(entry->auth_fingerprint, fingerprint) == 0) {
+            entry->authorized_until = now + HLS_SESSION_AUTH_TTL_SECONDS;
+            entry->last_used = now;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_hls_sessions_mutex);
+    return true;
+}
+
+bool go2rtc_proxy_authorize_request(const http_request_t *req,
+                                    http_response_t *res) {
+    if (strstr(req->path, "/api/streams") ||
+        strstr(req->path, "/api/reload")) {
+        return httpd_authorize_global_action(req, res, AUTHZ_SYSTEM_ADMIN) != 0;
+    }
+    char stream_name[MAX_STREAM_NAME] = {0};
+    authorization_action_t action = AUTHZ_LIVE_VIEW;
+    if (strstr(req->path, "/api/frame.jpeg")) {
+        action = AUTHZ_SNAPSHOT_CREATE;
+        if (http_request_get_query_param(req, "src", stream_name,
+                                         sizeof(stream_name)) < 0) {
+            http_response_set_json_error(res, 400, "Missing src camera");
+            return false;
+        }
+    } else if (strstr(req->path, "/api/stream.m3u8")) {
+        if (http_request_get_query_param(req, "src", stream_name,
+                                         sizeof(stream_name)) < 0) {
+            http_response_set_json_error(res, 400, "Missing src camera");
+            return false;
+        }
+    } else {
+        if (!strstr(req->path, "/api/hls/")) {
+            http_response_set_json_error(res, 404, "Not found");
+            return false;
+        }
+        return authorize_hls_session_request(req, res);
+    }
+    return httpd_authorize_media_stream_action(req, res, action,
+                                               stream_name) != 0;
+}
+
+static void cache_hls_session(const char *session_id,
+                              const char *fingerprint,
+                              const char *stream_name) {
+    if (!session_id || !fingerprint || !stream_name ||
+        session_id[0] == '\0' || stream_name[0] == '\0') return;
+    time_t now = time(NULL);
+    pthread_mutex_lock(&g_hls_sessions_mutex);
+    int selected = 0;
+    time_t oldest = g_hls_sessions[0].last_used;
+    for (int i = 0; i < HLS_SESSION_CACHE_CAPACITY; i++) {
+        hls_session_auth_t *entry = &g_hls_sessions[i];
+        if (entry->occupied &&
+            strcmp(entry->session_id, session_id) == 0 &&
+            strcmp(entry->auth_fingerprint, fingerprint) == 0) {
+            selected = i;
+            break;
+        }
+        if (!entry->occupied) {
+            selected = i;
+            break;
+        }
+        if (i == 0 || entry->last_used < oldest) {
+            selected = i;
+            oldest = entry->last_used;
+        }
+    }
+    hls_session_auth_t *entry = &g_hls_sessions[selected];
+    memset(entry, 0, sizeof(*entry));
+    entry->occupied = true;
+    safe_strcpy(entry->session_id, session_id, sizeof(entry->session_id), 0);
+    safe_strcpy(entry->auth_fingerprint, fingerprint,
+                sizeof(entry->auth_fingerprint), 0);
+    safe_strcpy(entry->stream_name, stream_name,
+                sizeof(entry->stream_name), 0);
+    entry->authorized_until = now + HLS_SESSION_AUTH_TTL_SECONDS;
+    entry->last_used = now;
+    pthread_mutex_unlock(&g_hls_sessions_mutex);
+}
+
+void go2rtc_proxy_capture_hls_sessions(const http_request_t *req,
+                                       const void *manifest,
+                                       size_t manifest_size) {
+    if (!req || !manifest || manifest_size == 0 ||
+        !strstr(req->path, "/api/stream.m3u8")) return;
+    char stream_name[MAX_STREAM_NAME] = {0};
+    char fingerprint[65] = {0};
+    if (http_request_get_query_param(req, "src", stream_name,
+                                     sizeof(stream_name)) < 0 ||
+        httpd_request_auth_fingerprint(req, fingerprint) != 0) return;
+
+    go2rtc_proxy_capture_hls_sessions_for(stream_name, fingerprint, manifest,
+                                           manifest_size);
+}
+
+void go2rtc_proxy_capture_hls_sessions_for(const char *stream_name,
+                                           const char *auth_fingerprint,
+                                           const void *manifest,
+                                           size_t manifest_size) {
+    if (!stream_name || !auth_fingerprint || !manifest ||
+        manifest_size == 0) return;
+    const unsigned char *bytes = manifest;
+    for (size_t i = 0; i + 3 < manifest_size; i++) {
+        if (bytes[i] != 'i' || bytes[i + 1] != 'd' || bytes[i + 2] != '=') {
+            continue;
+        }
+        char session_id[HLS_SESSION_ID_MAX] = {0};
+        size_t written = 0;
+        for (size_t j = i + 3; j < manifest_size &&
+             written + 1 < sizeof(session_id); j++) {
+            unsigned char ch = bytes[j];
+            if (!(isalnum(ch) || ch == '-' || ch == '_' || ch == '.' ||
+                  ch == '~')) break;
+            session_id[written++] = (char)ch;
+        }
+        if (written > 0) {
+            cache_hls_session(session_id, auth_fingerprint, stream_name);
+        }
+    }
+}
+
 void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     // Check if this path should be proxied
     if (!should_proxy_path(req->path)) {
@@ -129,6 +335,7 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
         http_response_set_json_error(res, 404, "Not found");
         return;
     }
+    if (!go2rtc_proxy_authorize_request(req, res)) return;
 
     // Initialize semaphore on first use
     pthread_once(&g_proxy_init_once, init_proxy_semaphore);
@@ -259,6 +466,8 @@ void handle_go2rtc_proxy(const http_request_t *req, http_response_t *res) {
     res->body = ctx.buffer;
     res->body_length = ctx.buffer_size;
     res->body_allocated = true;
+
+    go2rtc_proxy_capture_hls_sessions(req, ctx.buffer, ctx.buffer_size);
 
     log_debug("go2rtc proxy: %s %s -> %ld (%zu bytes, type: %s)",
               req->method_str, req->path, ctx.http_code, ctx.buffer_size,
