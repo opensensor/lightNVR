@@ -33,8 +33,14 @@ int init_packet_buffer_pool(size_t memory_limit_mb) {
         return 0;
     }
     
-    memset(&buffer_pool, 0, sizeof(packet_buffer_pool_t));
-    
+    // Clear only the configured buffer slots. buffers[] is sized at the
+    // MAX_STREAMS ceiling, and zeroing all of it would fault in every page
+    // even on an instance running a handful of streams. Every other member of
+    // the pool is assigned explicitly just below, so the full-struct clear
+    // bought nothing.
+    memset(buffer_pool.buffers, 0,
+           (size_t)configured_stream_slots() * sizeof(buffer_pool.buffers[0]));
+
     if (pthread_mutex_init(&buffer_pool.pool_mutex, NULL) != 0) {
         log_error("Failed to initialize buffer pool mutex");
         return -1;

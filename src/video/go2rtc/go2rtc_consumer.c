@@ -278,9 +278,12 @@ bool go2rtc_consumer_init(void) {
         return true;
     }
     
-    // Initialize consumer state arrays
-    memset(g_recording_consumers, 0, sizeof(g_recording_consumers));
-    memset(g_hls_consumers, 0, sizeof(g_hls_consumers));
+    // Initialize consumer state arrays. Bounded to the configured slot count
+    // so an instance running few streams does not fault in the whole ceiling.
+    const size_t consumer_slots =
+        (size_t)configured_stream_slots() * sizeof(g_recording_consumers[0]);
+    memset(g_recording_consumers, 0, consumer_slots);
+    memset(g_hls_consumers, 0, consumer_slots);
     
     g_initialized = true;
     log_info("go2rtc consumer module initialized");

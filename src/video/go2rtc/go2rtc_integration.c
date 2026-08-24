@@ -1091,8 +1091,10 @@ bool go2rtc_integration_init(void) {
         return false;
     }
 
-    // Initialize tracking array
-    memset(g_tracked_streams, 0, sizeof(g_tracked_streams));
+    // Initialize tracking array, bounded to the configured slot count so the
+    // clear does not fault in the whole compile-time ceiling.
+    memset(g_tracked_streams, 0,
+           (size_t)configured_stream_slots() * sizeof(g_tracked_streams[0]));
 
     // Start the unified health monitor (replaces separate stream and process monitors)
     if (!start_unified_health_monitor()) {

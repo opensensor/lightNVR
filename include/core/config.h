@@ -408,4 +408,24 @@ const char* get_loaded_config_path(void);
 // Global configuration variable
 extern config_t g_config;
 
+/**
+ * @brief Number of per-stream slots this instance can actually use.
+ *
+ * The static per-stream arrays are sized at the MAX_STREAMS compile-time
+ * ceiling, but only the first g_config.max_streams entries are ever indexed.
+ * Use this to bound whole-array clears: touching a page of BSS makes it
+ * resident even when the value written is zero, so clearing all MAX_STREAMS
+ * entries would fault in the entire array on an instance configured for far
+ * fewer streams.
+ *
+ * Falls back to the full ceiling when the configuration has not been loaded
+ * yet or holds an out-of-range value, so callers keep the conservative
+ * clear-everything behaviour rather than silently skipping a reset.
+ */
+static inline int configured_stream_slots(void) {
+    int slots = g_config.max_streams;
+    if (slots <= 0 || slots > MAX_STREAMS) return MAX_STREAMS;
+    return slots;
+}
+
 #endif /* LIGHTNVR_CONFIG_H */

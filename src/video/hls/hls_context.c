@@ -175,11 +175,15 @@ void unmark_stream_stopping(const char *stream_name) {
  * Initialize the HLS context management
  */
 void init_hls_contexts(void) {
-    // Initialize contexts array
-    memset((void *)streaming_contexts, 0, sizeof(streaming_contexts));
+    // Initialize contexts array. Both clears are bounded to the configured
+    // slot count: zeroing the full ceiling would make every page of these
+    // arrays resident even on an instance running a handful of streams.
+    const int slots = configured_stream_slots();
+    memset((void *)streaming_contexts, 0,
+           (size_t)slots * sizeof(streaming_contexts[0]));
 
     // Initialize stopping streams array
-    memset(stopping_streams, 0, sizeof(stopping_streams));
+    memset(stopping_streams, 0, (size_t)slots * sizeof(stopping_streams[0]));
     stopping_stream_count = 0;
 
     log_info("HLS context management initialized");
@@ -237,7 +241,8 @@ void cleanup_hls_contexts(void) {
 
     // Lock the stopping mutex to reset the stopping streams array
     pthread_mutex_lock(&stopping_mutex);
-    memset(stopping_streams, 0, sizeof(stopping_streams));
+    memset(stopping_streams, 0,
+           (size_t)configured_stream_slots() * sizeof(stopping_streams[0]));
     stopping_stream_count = 0;
     pthread_mutex_unlock(&stopping_mutex);
 

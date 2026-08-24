@@ -30,7 +30,10 @@ active_recording_t active_recordings[MAX_STREAMS];
  * Initialize the active recordings array
  */
 void init_recordings(void) {
-    memset(active_recordings, 0, sizeof(active_recordings));
+    // Clear only the configured slots: writing zeros over the full ceiling
+    // would fault in the whole array on an instance running far fewer streams.
+    memset(active_recordings, 0,
+           (size_t)configured_stream_slots() * sizeof(active_recordings[0]));
 }
 
 /**
