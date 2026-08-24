@@ -352,6 +352,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/timeline/play", "GET", handle_timeline_playback);
     http_server_register_handler(server, "/api/investigations/timeline", "POST", handle_post_investigation_timeline);
     http_server_register_handler(server, "/api/investigations/search", "POST", handle_post_investigation_search);
+    http_server_register_handler(server, "/api/investigations/recordings/preview", "POST", handle_post_investigation_recording_preview);
     http_server_register_handler(server, "/api/investigations/thumbnail-samples", "POST", handle_post_investigation_thumbnail_samples);
     http_server_register_handler(server, "/api/investigations/thumbnail/#/#", "GET", handle_investigation_thumbnail);
     http_server_register_handler(server, "/api/investigation-bookmarks/#", "GET", handle_get_investigation_bookmark);

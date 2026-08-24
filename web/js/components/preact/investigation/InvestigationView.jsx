@@ -5,6 +5,7 @@ import { useI18n } from '../../../i18n.js';
 import { Priority, queueThumbnailLoad } from '../../../request-queue.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { formatUtils } from '../recordings/formatUtils.js';
+import { InvestigationActions } from './InvestigationActions.jsx';
 import { InvestigationBookmarks } from './InvestigationBookmarks.jsx';
 import {
   MAX_ACTIVE_INVESTIGATION_PLAYERS,
@@ -1128,6 +1129,11 @@ export function InvestigationView() {
           <p>{t('investigation.description')}</p>
         </div>
         <div className="investigation-heading-actions">
+          <InvestigationActions
+            timeline={timeline}
+            selectedResult={selectedResult}
+            t={t}
+          />
           <InvestigationBookmarks
             timeline={timeline}
             cursor={cursor}

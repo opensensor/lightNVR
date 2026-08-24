@@ -117,6 +117,28 @@ static cJSON *call_search(const char *body, int expected_status) {
     return json;
 }
 
+static cJSON *call_recording_preview(const char *body, int expected_status) {
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    request.method = HTTP_METHOD_POST;
+    safe_strcpy(request.method_str, "POST", sizeof(request.method_str), 0);
+    safe_strcpy(request.path, "/api/investigations/recordings/preview",
+                sizeof(request.path), 0);
+    safe_strcpy(request.client_ip, "127.0.0.1",
+                sizeof(request.client_ip), 0);
+    request.body = (void *)body;
+    request.body_len = strlen(body);
+    handle_post_investigation_recording_preview(&request, &response);
+    TEST_ASSERT_EQUAL_INT(expected_status, response.status_code);
+    cJSON *json = response.body
+        ? cJSON_Parse((const char *)response.body) : NULL;
+    TEST_ASSERT_NOT_NULL(json);
+    http_response_free(&response);
+    return json;
+}
+
 static cJSON *call_thumbnail_samples(const char *body, int expected_status) {
     http_request_t request;
     http_response_t response;
@@ -419,6 +441,89 @@ void test_timeline_rejects_duplicate_camera_ids(void) {
              "\"start_time\":100,\"end_time\":200}",
              camera.camera_uuid, camera.camera_uuid);
     cJSON *json = call_timeline(body, 400);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+}
+
+void test_recording_action_preview_is_exact_and_bounded(void) {
+    const time_t range_start = 1700003000;
+    stream_config_t camera = create_camera("Action Camera");
+    stream_config_t empty_camera = create_camera("Empty Action Camera");
+    TEST_ASSERT_NOT_EQUAL(
+        0, create_recording(camera.camera_uuid, camera.name,
+                            range_start - 120));
+    uint64_t first_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+    uint64_t second_id = create_recording(
+        camera.camera_uuid, camera.name, range_start + 100);
+    TEST_ASSERT_NOT_EQUAL(0, first_id);
+    TEST_ASSERT_NOT_EQUAL(0, second_id);
+    TEST_ASSERT_EQUAL_INT(0, set_recording_protected(second_id, true));
+
+    char body[768];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\",\"%s\"],"
+             "\"start_time\":%lld,\"end_time\":%lld}",
+             camera.camera_uuid, empty_camera.camera_uuid,
+             (long long)(range_start + 30),
+             (long long)(range_start + 120));
+    cJSON *json = call_recording_preview(body, 200);
+    TEST_ASSERT_EQUAL_INT(
+        2, cJSON_GetObjectItemCaseSensitive(json,
+                                            "recording_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json,
+                                            "protected_count")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json,
+                                            "unprotected_count")->valueint);
+    const cJSON *recordings =
+        cJSON_GetObjectItemCaseSensitive(json, "recordings");
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(recordings));
+    TEST_ASSERT_EQUAL_UINT64(
+        first_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetArrayItem(recordings, 0), "id")->valuedouble);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(recordings, 0), "protected")));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(recordings, 0), "can_protect")));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(recordings, 0), "can_export")));
+    TEST_ASSERT_EQUAL_UINT64(
+        second_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetArrayItem(recordings, 1), "id")->valuedouble);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(recordings, 1), "protected")));
+    const cJSON *permissions =
+        cJSON_GetObjectItemCaseSensitive(json, "permissions");
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(permissions, "protect"),
+               "actionable_count")->valueint);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(permissions, "export"),
+        "all_allowed")));
+    cJSON_Delete(json);
+}
+
+void test_recording_action_preview_rejects_more_than_export_limit(void) {
+    const time_t range_start = 1700003000;
+    stream_config_t camera = create_camera("Bounded Action Camera");
+    for (int i = 0; i <= INVESTIGATION_MAX_ACTION_RECORDINGS; i++) {
+        TEST_ASSERT_NOT_EQUAL(
+            0, create_recording(camera.camera_uuid, camera.name,
+                                range_start + i));
+    }
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + INVESTIGATION_MAX_ACTION_RECORDINGS +
+                         60));
+    cJSON *json = call_recording_preview(body, 413);
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
     cJSON_Delete(json);
 }
@@ -885,6 +990,8 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_capture_identity_survives_camera_rename_and_drives_timeline);
     RUN_TEST(test_timeline_rejects_duplicate_camera_ids);
+    RUN_TEST(test_recording_action_preview_is_exact_and_bounded);
+    RUN_TEST(test_recording_action_preview_rejects_more_than_export_limit);
     RUN_TEST(test_thumbnail_samples_map_even_times_to_recordings_and_gaps);
     RUN_TEST(test_investigation_thumbnail_rejects_offset_outside_recording);
     RUN_TEST(test_investigation_thumbnail_quantizes_offset_to_cache_grid);

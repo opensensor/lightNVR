@@ -82,6 +82,57 @@ export function buildInvestigationBookmarkPayload({
   };
 }
 
+export function investigationActionSelection(timeline, selectedResult, scope) {
+  if (!timeline || !Array.isArray(timeline.tracks) ||
+      !Number.isFinite(timeline.start_time) ||
+      !Number.isFinite(timeline.end_time) ||
+      timeline.end_time <= timeline.start_time) return null;
+  if (scope === 'result' && selectedResult?.camera_uuid &&
+      Number.isFinite(selectedResult.start_time)) {
+    const startTime = Math.max(
+      Math.floor(timeline.start_time), Math.floor(selectedResult.start_time),
+    );
+    const rawEnd = Number.isFinite(selectedResult.end_time)
+      ? Math.ceil(selectedResult.end_time) : startTime + 1;
+    const endTime = Math.min(
+      Math.ceil(timeline.end_time), Math.max(startTime + 1, rawEnd),
+    );
+    if (endTime > startTime) {
+      return {
+        cameraUuids: [selectedResult.camera_uuid],
+        startTime,
+        endTime,
+      };
+    }
+  }
+  const cameraUuids = timeline.tracks
+    .map((track) => track.camera_uuid)
+    .filter(Boolean);
+  return cameraUuids.length > 0 ? {
+    cameraUuids,
+    startTime: Math.floor(timeline.start_time),
+    endTime: Math.ceil(timeline.end_time),
+  } : null;
+}
+
+export function summarizeInvestigationActionPreview(preview) {
+  const recordings = Array.isArray(preview?.recordings)
+    ? preview.recordings : [];
+  const unprotected = recordings.filter((recording) => !recording.protected);
+  const protectable = unprotected.filter((recording) => recording.can_protect);
+  const protectDenied = unprotected.filter((recording) => !recording.can_protect);
+  const exportDenied = recordings.filter((recording) => !recording.can_export);
+  return {
+    recordingCount: recordings.length,
+    unprotectedIds: unprotected.map((recording) => recording.id),
+    protectableCount: protectable.length,
+    protectDeniedCount: protectDenied.length,
+    exportDeniedCount: exportDenied.length,
+    canProtect: protectable.length > 0,
+    canExport: recordings.length > 0 && exportDenied.length === 0,
+  };
+}
+
 export function investigationBookmarkUrl(bookmark, baseUrl) {
   const url = new URL(baseUrl || window.location.href);
   [
@@ -280,11 +331,12 @@ export function thumbnailWindowForResult(result, timelineStart, timelineEnd) {
   return endTime > startTime ? { startTime, endTime } : null;
 }
 
-export function formatDateTimeLocal(timestamp) {
+export function formatDateTimeLocal(timestamp, includeSeconds = false) {
   if (!Number.isFinite(timestamp)) return '';
   const date = new Date(timestamp * 1000);
   const offset = date.getTimezoneOffset() * 60 * 1000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  return new Date(date.getTime() - offset).toISOString()
+    .slice(0, includeSeconds ? 19 : 16);
 }
 
 export function parseDateTimeLocal(value) {

@@ -4,12 +4,16 @@ import {
   bookmarkFiltersFromState,
   buildInvestigationBookmarkPayload,
   findSegmentAt,
+  formatDateTimeLocal,
   nextAvailableTimestamp,
   narrowThumbnailWindow,
   normalizedRegionRectangle,
   investigationBookmarkUrl,
+  investigationActionSelection,
+  parseDateTimeLocal,
   parseInvestigationRegion,
   segmentTrackPosition,
+  summarizeInvestigationActionPreview,
   thumbnailWindowForResult,
   videoContentBox,
 } from '../js/components/preact/investigation/investigationUtils.js';
@@ -202,6 +206,52 @@ test('bookmark payload keeps navigation state but excludes arbitrary result fiel
       camera_uuid: 'camera-b',
       label: 'person',
     },
+  });
+});
+
+test('investigation actions default to the exact loaded window and cameras', () => {
+  expect(investigationActionSelection({
+    start_time: 100.8,
+    end_time: 300.2,
+    tracks: [{ camera_uuid: 'a' }, { camera_uuid: 'b' }],
+  }, null, 'investigation')).toEqual({
+    cameraUuids: ['a', 'b'],
+    startTime: 100,
+    endTime: 301,
+  });
+});
+
+test('selected-result actions use one camera and a non-empty bounded interval', () => {
+  const timeline = {
+    start_time: 100,
+    end_time: 300,
+    tracks: [{ camera_uuid: 'a' }, { camera_uuid: 'b' }],
+  };
+  expect(investigationActionSelection(timeline, {
+    camera_uuid: 'b', start_time: 150, end_time: 150,
+  }, 'result')).toEqual({
+    cameraUuids: ['b'], startTime: 150, endTime: 151,
+  });
+});
+
+test('action datetime values retain seconds for one-second result windows', () => {
+  expect(formatDateTimeLocal(150, true)).toMatch(/:30$/);
+  expect(parseDateTimeLocal(formatDateTimeLocal(150, true))).toBe(150);
+});
+
+test('action preview summary separates partial protection from all-or-nothing export', () => {
+  expect(summarizeInvestigationActionPreview({ recordings: [
+    { id: 1, protected: false, can_protect: true, can_export: true },
+    { id: 2, protected: false, can_protect: false, can_export: false },
+    { id: 3, protected: true, can_protect: true, can_export: true },
+  ] })).toEqual({
+    recordingCount: 3,
+    unprotectedIds: [1, 2],
+    protectableCount: 1,
+    protectDeniedCount: 1,
+    exportDeniedCount: 1,
+    canProtect: true,
+    canExport: false,
   });
 });
 

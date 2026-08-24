@@ -96,7 +96,7 @@ static int get_timeline_segments_for_identity(
         "                    AND d.timestamp <= r.end_time "
         "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
         "     ELSE 0 END AS has_detection, "
-        "r.trigger_type, r.schedule_restricted "
+        "r.trigger_type, r.schedule_restricted, r.protected "
         "FROM recordings r "
         "WHERE r.is_complete = 1 "
         "  AND r.end_time IS NOT NULL "
@@ -123,7 +123,7 @@ static int get_timeline_segments_for_identity(
         "                    AND d.timestamp <= r.end_time "
         "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
         "     ELSE 0 END AS has_detection, "
-        "r.trigger_type, r.schedule_restricted "
+        "r.trigger_type, r.schedule_restricted, r.protected "
         "FROM recordings r "
         "WHERE r.is_complete = 1 "
         "  AND r.end_time IS NOT NULL "
@@ -175,6 +175,7 @@ static int get_timeline_segments_for_identity(
         segments[count].schedule_restricted =
             (sqlite3_column_type(stmt, 9) != SQLITE_NULL)
                 ? (sqlite3_column_int(stmt, 9) != 0) : -1;
+        segments[count].protected = sqlite3_column_int(stmt, 10) != 0;
 
         count++;
     }
