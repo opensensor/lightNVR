@@ -1009,6 +1009,42 @@ bounding boxes. Rows without boxes are not searched spatially, and
 `spatial_metadata_missing` appears in `incomplete_reasons` so an empty result is
 not presented as proof that nothing crossed the selected area.
 
+#### Iterative thumbnail samples
+
+```
+POST /api/investigations/thumbnail-samples
+```
+
+Returns evenly spaced, authorized sample moments for one camera and a UTC
+window. `sample_count` is optional (default 7) and must be from 3 through 12.
+Windows use the same 31-day maximum as the investigation timeline. For windows
+shorter than the requested count, the response omits duplicate seconds.
+
+```json
+{
+  "camera_uuids": ["0192a7f0-4f43-4a1d-9e1c-d6947677f145"],
+  "start_time": 1787529600,
+  "end_time": 1787529720,
+  "sample_count": 7
+}
+```
+
+Each response sample has a `timestamp` and `media_status`. Samples covered by a
+recording also contain its ID and bounds, an `offset_ms`, and a lazy thumbnail
+URL. Gap samples remain useful for metadata-only time navigation and do not
+have a URL. `coverage.segments_truncated` warns when the interval should be
+narrowed before treating sample coverage as complete.
+
+```
+GET /api/investigations/thumbnail/{recording_id}/{offset_ms}
+```
+
+Generates an authorized JPEG at the requested recording offset and caches it
+under the recording. The existing thumbnail worker limit and browser request
+queue bound concurrent generation; a busy server returns `503` with
+`Retry-After: 2`. Deleting a recording also removes its arbitrary-offset cache
+entries.
+
 ### Fleet Query and Selectors
 
 #### Query Cameras

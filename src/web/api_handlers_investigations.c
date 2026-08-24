@@ -26,6 +26,9 @@
 
 #define INVESTIGATION_MAX_RANGE_SECONDS (31 * 24 * 60 * 60)
 #define INVESTIGATION_ACTIVE_DECODER_LIMIT 4
+#define INVESTIGATION_DEFAULT_THUMBNAIL_SAMPLES 7
+#define INVESTIGATION_MIN_THUMBNAIL_SAMPLES 3
+#define INVESTIGATION_MAX_THUMBNAIL_SAMPLES 12
 
 static bool parse_epoch_seconds(const cJSON *body, const char *name,
                                 time_t *value) {
@@ -348,6 +351,188 @@ void handle_post_investigation_timeline(const http_request_t *request,
     free(segments);
     set_json_response(response, root);
     cJSON_Delete(root);
+    cJSON_Delete(body);
+}
+
+void handle_post_investigation_thumbnail_samples(
+    const http_request_t *request, http_response_t *response) {
+    if (!request || !response) return;
+
+    cJSON *body = httpd_parse_json_body(request);
+    if (!body) {
+        http_response_set_json_error(response, 400, "Invalid JSON body");
+        return;
+    }
+    const cJSON *camera_uuids =
+        cJSON_GetObjectItemCaseSensitive(body, "camera_uuids");
+    if (!cJSON_IsArray(camera_uuids) ||
+        cJSON_GetArraySize(camera_uuids) != 1) {
+        cJSON_Delete(body);
+        http_response_set_json_error(
+            response, 400,
+            "camera_uuids must contain exactly one camera");
+        return;
+    }
+
+    time_t start_time = 0;
+    time_t end_time = 0;
+    if (!parse_epoch_seconds(body, "start_time", &start_time) ||
+        !parse_epoch_seconds(body, "end_time", &end_time) ||
+        end_time <= start_time ||
+        end_time - start_time > INVESTIGATION_MAX_RANGE_SECONDS) {
+        cJSON_Delete(body);
+        http_response_set_json_error(
+            response, 400,
+            "start_time and end_time must define a range of at most 31 days");
+        return;
+    }
+
+    int requested_count = INVESTIGATION_DEFAULT_THUMBNAIL_SAMPLES;
+    const cJSON *sample_count =
+        cJSON_GetObjectItemCaseSensitive(body, "sample_count");
+    if (sample_count) {
+        if (!cJSON_IsNumber(sample_count) ||
+            !isfinite(sample_count->valuedouble) ||
+            floor(sample_count->valuedouble) != sample_count->valuedouble ||
+            sample_count->valuedouble < INVESTIGATION_MIN_THUMBNAIL_SAMPLES ||
+            sample_count->valuedouble > INVESTIGATION_MAX_THUMBNAIL_SAMPLES) {
+            cJSON_Delete(body);
+            http_response_set_json_error(
+                response, 400, "sample_count must be an integer from 3 to 12");
+            return;
+        }
+        requested_count = sample_count->valueint;
+    }
+
+    stream_config_t cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+    fleet_camera_t fleet_cameras[INVESTIGATION_MAX_CAMERAS] = {0};
+    user_t user = {0};
+    int camera_count = resolve_authorized_cameras(
+        body, request, response, cameras, fleet_cameras, &user);
+    if (camera_count < 0) {
+        cJSON_Delete(body);
+        return;
+    }
+
+    timeline_segment_t *segments = calloc(
+        INVESTIGATION_MAX_SEGMENTS_PER_CAMERA, sizeof(*segments));
+    if (!segments) {
+        cJSON_Delete(body);
+        http_response_set_json_error(response, 500,
+                                     "Failed to allocate thumbnail samples");
+        return;
+    }
+    int segment_count = get_timeline_segments_by_camera_uuid(
+        cameras[0].camera_uuid, start_time, end_time, segments,
+        INVESTIGATION_MAX_SEGMENTS_PER_CAMERA);
+    if (segment_count < 0) {
+        free(segments);
+        cJSON_Delete(body);
+        http_response_set_json_error(response, 500,
+                                     "Failed to query recording coverage");
+        return;
+    }
+
+    int actual_count = requested_count;
+    time_t range_seconds = end_time - start_time;
+    if ((time_t)(actual_count - 1) > range_seconds) {
+        actual_count = (int)range_seconds + 1;
+    }
+    cJSON *root = cJSON_CreateObject();
+    cJSON *camera = cJSON_CreateObject();
+    cJSON *samples = cJSON_CreateArray();
+    cJSON *coverage = cJSON_CreateObject();
+    if (!root || !camera || !samples || !coverage) {
+        cJSON_Delete(root);
+        cJSON_Delete(camera);
+        cJSON_Delete(samples);
+        cJSON_Delete(coverage);
+        free(segments);
+        cJSON_Delete(body);
+        http_response_set_json_error(response, 500,
+                                     "Failed to create thumbnail samples");
+        return;
+    }
+
+    cJSON_AddNumberToObject(root, "start_time", (double)start_time);
+    cJSON_AddNumberToObject(root, "end_time", (double)end_time);
+    cJSON_AddNumberToObject(root, "sample_count", actual_count);
+    cJSON_AddStringToObject(camera, "camera_uuid", cameras[0].camera_uuid);
+    cJSON_AddStringToObject(camera, "name", cameras[0].name);
+    cJSON_AddItemToObject(root, "camera", camera);
+    cJSON_AddItemToObject(root, "samples", samples);
+    cJSON_AddItemToObject(root, "coverage", coverage);
+
+    int available_count = 0;
+    for (int i = 0; i < actual_count; i++) {
+        time_t timestamp = start_time;
+        if (actual_count > 1) {
+            timestamp += (time_t)(((int64_t)range_seconds * i) /
+                                  (actual_count - 1));
+        }
+        const timeline_segment_t *match = NULL;
+        for (int j = 0; j < segment_count; j++) {
+            if (timestamp >= segments[j].start_time &&
+                timestamp <= segments[j].end_time) {
+                match = &segments[j];
+                break;
+            }
+        }
+
+        cJSON *sample = cJSON_CreateObject();
+        cJSON *thumbnail = cJSON_CreateObject();
+        if (!sample || !thumbnail) {
+            cJSON_Delete(sample);
+            cJSON_Delete(thumbnail);
+            cJSON_Delete(root);
+            free(segments);
+            cJSON_Delete(body);
+            http_response_set_json_error(
+                response, 500, "Failed to create thumbnail samples");
+            return;
+        }
+        cJSON_AddNumberToObject(sample, "timestamp", (double)timestamp);
+        cJSON_AddItemToObject(sample, "thumbnail", thumbnail);
+        if (!match) {
+            cJSON_AddStringToObject(sample, "media_status", "gap");
+            cJSON_AddStringToObject(thumbnail, "status", "unavailable");
+            cJSON_AddItemToArray(samples, sample);
+            continue;
+        }
+
+        int64_t offset_ms =
+            (int64_t)(timestamp - match->start_time) * 1000;
+        char thumbnail_url[160];
+        snprintf(thumbnail_url, sizeof(thumbnail_url),
+                 "/api/investigations/thumbnail/%llu/%lld",
+                 (unsigned long long)match->id, (long long)offset_ms);
+        cJSON_AddStringToObject(sample, "media_status", "available");
+        cJSON_AddNumberToObject(sample, "recording_id", (double)match->id);
+        cJSON_AddNumberToObject(sample, "recording_start_time",
+                                (double)match->start_time);
+        cJSON_AddNumberToObject(sample, "recording_end_time",
+                                (double)match->end_time);
+        cJSON_AddNumberToObject(sample, "offset_ms", (double)offset_ms);
+        if (g_config.generate_thumbnails) {
+            cJSON_AddStringToObject(thumbnail, "status", "available");
+            cJSON_AddStringToObject(thumbnail, "url", thumbnail_url);
+        } else {
+            cJSON_AddStringToObject(thumbnail, "status", "disabled");
+        }
+        cJSON_AddItemToArray(samples, sample);
+        available_count++;
+    }
+
+    cJSON_AddBoolToObject(
+        coverage, "segments_truncated",
+        segment_count == INVESTIGATION_MAX_SEGMENTS_PER_CAMERA);
+    cJSON_AddNumberToObject(coverage, "available_samples", available_count);
+    cJSON_AddNumberToObject(coverage, "gap_samples",
+                            actual_count - available_count);
+
+    set_json_response(response, root);
+    cJSON_Delete(root);
+    free(segments);
     cJSON_Delete(body);
 }
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 
 import { fetchJSON, useQuery } from '../../../query-client.js';
 import { useI18n } from '../../../i18n.js';
+import { Priority, queueThumbnailLoad } from '../../../request-queue.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { formatUtils } from '../recordings/formatUtils.js';
 import {
@@ -13,9 +14,11 @@ import {
   formatCursorTime,
   formatDateTimeLocal,
   normalizedRegionRectangle,
+  narrowThumbnailWindow,
   parseDateTimeLocal,
   parseInvestigationRegion,
   segmentTrackPosition,
+  thumbnailWindowForResult,
   videoContentBox,
 } from './investigationUtils.js';
 
@@ -405,6 +408,128 @@ function InvestigationResultCard({ result, selected, onSelect, t }) {
   );
 }
 
+function InvestigationSampleThumbnail({ sample, onSelect, t }) {
+  const url = sample.thumbnail?.url || '';
+  const [loadState, setLoadState] = useState(url ? 'loading' : 'unavailable');
+  const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    if (!url) {
+      setLoadState(sample.media_status === 'gap' ? 'gap' : 'unavailable');
+      return () => { active = false; };
+    }
+    setLoadState('loading');
+    queueThumbnailLoad(
+      url,
+      retryCount > 0 ? Priority.HIGH : Priority.NORMAL,
+      retryCount > 0 ? 1 : 3,
+    ).then(() => {
+      if (active) setLoadState('ready');
+    }).catch(() => {
+      if (active) setLoadState('error');
+    });
+    return () => { active = false; };
+  }, [url, retryCount, sample.media_status]);
+
+  const timeLabel = formatCursorTime(sample.timestamp);
+  return (
+    <article className={`investigation-sample-card is-${loadState}`}>
+      <button
+        type="button"
+        className="investigation-sample-target"
+        onClick={onSelect}
+        aria-label={t('investigation.selectThumbnailSample', { time: timeLabel })}
+      >
+        <span className="investigation-sample-image">
+          {loadState === 'ready' ? (
+            <img src={url} alt="" />
+          ) : loadState === 'loading' ? (
+            <span>{t('investigation.loadingThumbnail')}</span>
+          ) : loadState === 'gap' ? (
+            <span>{t('investigation.noFootage')}</span>
+          ) : (
+            <span>{t('investigation.thumbnailUnavailable')}</span>
+          )}
+        </span>
+        <time>{timeLabel}</time>
+      </button>
+      {loadState === 'error' && (
+        <button
+          type="button"
+          className="investigation-thumbnail-retry"
+          onClick={() => setRetryCount((count) => count + 1)}
+        >
+          {t('common.retry')}
+        </button>
+      )}
+    </article>
+  );
+}
+
+function InvestigationThumbnailDrilldown({
+  drilldown,
+  data,
+  loading,
+  error,
+  onSelect,
+  onBack,
+  onClose,
+  t,
+}) {
+  return (
+    <section className="investigation-thumbnail-drilldown">
+      <header>
+        <div>
+          <h3>{t('investigation.thumbnailDrilldown')}</h3>
+          <p>
+            {data?.camera?.name || ''}
+            {' · '}{formatCursorTime(drilldown.startTime)}
+            {' – '}{formatCursorTime(drilldown.endTime)}
+          </p>
+        </div>
+        <div className="investigation-thumbnail-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={loading || drilldown.history.length === 0}
+            onClick={onBack}
+          >
+            ← {t('investigation.backOneLevel')}
+          </button>
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            {t('common.close')}
+          </button>
+        </div>
+      </header>
+      <p className="investigation-thumbnail-help">
+        {t('investigation.thumbnailDrilldownHelp')}
+      </p>
+      {loading && <LoadingIndicator message={t('investigation.loadingSamples')} />}
+      {error && <div className="investigation-coverage-warning">{error}</div>}
+      {data && !loading && (
+        <>
+          <div className="investigation-thumbnail-rail">
+            {(data.samples || []).map((sample, index) => (
+              <InvestigationSampleThumbnail
+                key={`${sample.timestamp}-${sample.recording_id || 'gap'}`}
+                sample={sample}
+                onSelect={() => onSelect(sample, index)}
+                t={t}
+              />
+            ))}
+          </div>
+          {data.coverage?.segments_truncated && (
+            <div className="investigation-coverage-warning">
+              {t('investigation.thumbnailCoverageTruncated')}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function InvestigationView() {
   const { t } = useI18n();
   const initialTimes = useMemo(initialTimeState, []);
@@ -429,10 +554,15 @@ export function InvestigationView() {
   const [searchPageIndex, setSearchPageIndex] = useState(0);
   const [selectedResultId, setSelectedResultId] = useState(null);
   const [drawingRegion, setDrawingRegion] = useState(false);
+  const [thumbnailDrilldown, setThumbnailDrilldown] = useState(null);
+  const [thumbnailData, setThumbnailData] = useState(null);
+  const [thumbnailLoading, setThumbnailLoading] = useState(false);
+  const [thumbnailError, setThumbnailError] = useState('');
   const initialSelectionApplied = useRef(false);
   const initialQueryLoaded = useRef(false);
   const requestController = useRef(null);
   const searchRequestController = useRef(null);
+  const thumbnailRequestController = useRef(null);
   const lastUrlCursor = useRef(null);
 
   const { data: streamData, isLoading: streamsLoading, error: streamsError } =
@@ -587,6 +717,11 @@ export function InvestigationView() {
     requestController.current?.abort();
     const controller = new AbortController();
     requestController.current = controller;
+    thumbnailRequestController.current?.abort();
+    setThumbnailDrilldown(null);
+    setThumbnailData(null);
+    setThumbnailLoading(false);
+    setThumbnailError('');
     setLoading(true);
     setError('');
     setPlaying(false);
@@ -652,6 +787,7 @@ export function InvestigationView() {
   useEffect(() => () => {
     requestController.current?.abort();
     searchRequestController.current?.abort();
+    thumbnailRequestController.current?.abort();
   }, []);
 
   const tracks = timeline?.tracks || [];
@@ -736,6 +872,8 @@ export function InvestigationView() {
   const searchResults = searchData?.results || [];
   const selectedResultIndex = searchResults.findIndex((result) =>
     result.result_id === selectedResultId);
+  const selectedResult = selectedResultIndex >= 0
+    ? searchResults[selectedResultIndex] : null;
 
   const selectResult = useCallback((result) => {
     if (!result || !timeline) return;
@@ -826,6 +964,141 @@ export function InvestigationView() {
       searchPageCursors[previousIndex], previousIndex, searchPageCursors,
     );
   };
+
+  const loadThumbnailSamples = useCallback(async (
+    cameraUuid, sampleStart, sampleEnd, history = [],
+  ) => {
+    thumbnailRequestController.current?.abort();
+    const controller = new AbortController();
+    thumbnailRequestController.current = controller;
+    const nextDrilldown = {
+      cameraUuid,
+      startTime: Math.floor(sampleStart),
+      endTime: Math.ceil(sampleEnd),
+      history,
+    };
+    setThumbnailDrilldown(nextDrilldown);
+    setThumbnailData(null);
+    setThumbnailLoading(true);
+    setThumbnailError('');
+    try {
+      const data = await fetchJSON('/api/investigations/thumbnail-samples', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          camera_uuids: [cameraUuid],
+          start_time: nextDrilldown.startTime,
+          end_time: nextDrilldown.endTime,
+          sample_count: 7,
+        }),
+        signal: controller.signal,
+        timeout: 30000,
+        retries: 0,
+      });
+      setThumbnailData(data);
+      const url = new URL(window.location.href);
+      url.searchParams.set('drill_camera', cameraUuid);
+      url.searchParams.set('drill_start', String(nextDrilldown.startTime));
+      url.searchParams.set('drill_end', String(nextDrilldown.endTime));
+      window.history.replaceState({}, '', url);
+    } catch (requestError) {
+      if (!controller.signal.aborted) setThumbnailError(requestError.message);
+    } finally {
+      if (!controller.signal.aborted) setThumbnailLoading(false);
+    }
+  }, []);
+
+  const startThumbnailDrilldown = () => {
+    if (!timeline) return;
+    const cameraUuid = selectedResult?.camera_uuid || primaryCameraUuid;
+    if (!cameraUuid) return;
+    const selectedWindow = selectedResult
+      ? thumbnailWindowForResult(
+        selectedResult, timeline.start_time, timeline.end_time,
+      ) : null;
+    const sampleWindow = selectedWindow || {
+      startTime: timeline.start_time,
+      endTime: timeline.end_time,
+    };
+    setPlaying(false);
+    setPrimaryCameraUuid(cameraUuid);
+    void loadThumbnailSamples(
+      cameraUuid, sampleWindow.startTime, sampleWindow.endTime, [],
+    );
+  };
+
+  const selectThumbnailSample = (sample, index) => {
+    if (!thumbnailDrilldown || !thumbnailData || !timeline) return;
+    setPlaying(false);
+    setCursor(Math.max(
+      timeline.start_time,
+      Math.min(timeline.end_time, sample.timestamp),
+    ));
+    const nextWindow = narrowThumbnailWindow(
+      thumbnailData.samples, index,
+      thumbnailDrilldown.startTime, thumbnailDrilldown.endTime,
+    );
+    if (!nextWindow) {
+      setThumbnailError(t('investigation.thumbnailMinimumWindow'));
+      return;
+    }
+    void loadThumbnailSamples(
+      thumbnailDrilldown.cameraUuid,
+      nextWindow.startTime,
+      nextWindow.endTime,
+      [
+        ...thumbnailDrilldown.history,
+        {
+          startTime: thumbnailDrilldown.startTime,
+          endTime: thumbnailDrilldown.endTime,
+        },
+      ],
+    );
+  };
+
+  const backThumbnailDrilldown = () => {
+    if (!thumbnailDrilldown || thumbnailDrilldown.history.length === 0) return;
+    const previous = thumbnailDrilldown.history[thumbnailDrilldown.history.length - 1];
+    void loadThumbnailSamples(
+      thumbnailDrilldown.cameraUuid,
+      previous.startTime,
+      previous.endTime,
+      thumbnailDrilldown.history.slice(0, -1),
+    );
+  };
+
+  const closeThumbnailDrilldown = () => {
+    thumbnailRequestController.current?.abort();
+    setThumbnailDrilldown(null);
+    setThumbnailData(null);
+    setThumbnailLoading(false);
+    setThumbnailError('');
+    const url = new URL(window.location.href);
+    ['drill_camera', 'drill_start', 'drill_end']
+      .forEach((name) => url.searchParams.delete(name));
+    window.history.replaceState({}, '', url);
+  };
+
+  useEffect(() => {
+    if (!timeline) return;
+    const params = new URLSearchParams(window.location.search);
+    const cameraUuid = params.get('drill_camera');
+    const sampleStart = Number(params.get('drill_start'));
+    const sampleEnd = Number(params.get('drill_end'));
+    if (!cameraUuid && !params.has('drill_start') && !params.has('drill_end')) return;
+    const validCamera = tracks.some((track) => track.camera_uuid === cameraUuid);
+    if (validCamera && Number.isFinite(sampleStart) &&
+        Number.isFinite(sampleEnd) && sampleEnd > sampleStart &&
+        sampleStart >= timeline.start_time && sampleEnd <= timeline.end_time) {
+      setPrimaryCameraUuid(cameraUuid);
+      void loadThumbnailSamples(cameraUuid, sampleStart, sampleEnd, []);
+      return;
+    }
+    const url = new URL(window.location.href);
+    ['drill_camera', 'drill_start', 'drill_end']
+      .forEach((name) => url.searchParams.delete(name));
+    window.history.replaceState({}, '', url);
+  }, [timeline]);
 
   return (
     <div className="investigation-page">
@@ -1202,6 +1475,16 @@ export function InvestigationView() {
                 <button
                   type="button"
                   className="btn-secondary"
+                  disabled={!timeline || (!selectedResult && !primaryCameraUuid)}
+                  onClick={startThumbnailDrilldown}
+                >
+                  {selectedResult
+                    ? t('investigation.exploreSelectedThumbnails')
+                    : t('investigation.exploreThumbnails')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
                   disabled={searchResults.length === 0 || selectedResultIndex === 0}
                   onClick={() => selectAdjacentResult(-1)}
                   title={t('investigation.previousResultShortcut')}
@@ -1221,6 +1504,18 @@ export function InvestigationView() {
               </div>
             </div>
 
+            {thumbnailDrilldown && (
+              <InvestigationThumbnailDrilldown
+                drilldown={thumbnailDrilldown}
+                data={thumbnailData}
+                loading={thumbnailLoading}
+                error={thumbnailError}
+                onSelect={selectThumbnailSample}
+                onBack={backThumbnailDrilldown}
+                onClose={closeThumbnailDrilldown}
+                t={t}
+              />
+            )}
             {searchLoading && <LoadingIndicator message={t('investigation.searching')} />}
             {searchData && !searchLoading && (
               <>

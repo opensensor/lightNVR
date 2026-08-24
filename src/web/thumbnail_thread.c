@@ -47,7 +47,7 @@
  */
 typedef struct thumbnail_work {
     uint64_t recording_id;
-    int index;
+    int64_t sample_key;
     char input_path[MAX_PATH_LENGTH];
     char output_path[MAX_PATH_LENGTH];
     double seek_seconds;
@@ -343,8 +343,9 @@ static void thumbnail_async_cb(uv_async_t *handle) {
     while (work) {
         thumbnail_work_t *next = work->next;
 
-        log_debug("Thumbnail generation completed for recording %llu index %d: %s",
-                  (unsigned long long)work->recording_id, work->index,
+        log_debug("Thumbnail generation completed for recording %llu sample %lld: %s",
+                  (unsigned long long)work->recording_id,
+                  (long long)work->sample_key,
                   work->result == 0 ? "success" : "failure");
 
         // Invoke the callback to send the response
@@ -423,7 +424,7 @@ void thumbnail_thread_shutdown(void) {
     log_info("thumbnail_thread_shutdown: Shutdown complete");
 }
 
-int thumbnail_thread_submit(uint64_t recording_id, int index,
+int thumbnail_thread_submit(uint64_t recording_id, int64_t sample_key,
                             const char *input_path, const char *output_path,
                             double seek_seconds, deferred_action_handle_t deferred_action,
                             deferred_response_callback_t callback) {
@@ -446,7 +447,7 @@ int thumbnail_thread_submit(uint64_t recording_id, int index,
     }
 
     work->recording_id = recording_id;
-    work->index = index;
+    work->sample_key = sample_key;
     safe_strcpy(work->input_path, input_path, sizeof(work->input_path), 0);
     safe_strcpy(work->output_path, output_path, sizeof(work->output_path), 0);
     work->seek_seconds = seek_seconds;
@@ -471,12 +472,11 @@ int thumbnail_thread_submit(uint64_t recording_id, int index,
     }
 
     pthread_attr_destroy(&attr);
-    log_debug("thumbnail_thread_submit: Submitted thumbnail generation for recording %llu index %d",
-              (unsigned long long)recording_id, index);
+    log_debug("thumbnail_thread_submit: Submitted thumbnail generation for recording %llu sample %lld",
+              (unsigned long long)recording_id, (long long)sample_key);
     return 0;
 }
 
 int thumbnail_thread_get_active_count(void) {
     return __sync_fetch_and_add(&g_thumbnail_state.active_count, 0);
 }
-

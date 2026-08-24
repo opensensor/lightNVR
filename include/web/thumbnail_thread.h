@@ -62,7 +62,7 @@ void thumbnail_thread_shutdown(void);
  * uv_async callback will invoke the callback to send the response.
  *
  * @param recording_id Recording ID
- * @param index Thumbnail index (0, 1, or 2)
+ * @param sample_key Stable thumbnail cache/sample key used for diagnostics
  * @param input_path Path to the recording file
  * @param output_path Path where the thumbnail should be saved
  * @param seek_seconds Seek time in the video
@@ -70,7 +70,7 @@ void thumbnail_thread_shutdown(void);
  * @param callback Function to call when generation completes
  * @return 0 on success (request submitted), -1 on error
  */
-int thumbnail_thread_submit(uint64_t recording_id, int index,
+int thumbnail_thread_submit(uint64_t recording_id, int64_t sample_key,
                             const char *input_path, const char *output_path,
                             double seek_seconds, deferred_action_handle_t deferred_action,
                             deferred_response_callback_t callback);
@@ -85,4 +85,3 @@ int thumbnail_thread_submit(uint64_t recording_id, int index,
 int thumbnail_thread_get_active_count(void);
 
 #endif /* THUMBNAIL_THREAD_H */
-

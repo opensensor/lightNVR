@@ -23,6 +23,7 @@
 #include "utils/strings.h"
 #include "video/detection_result.h"
 #include "web/api_handlers_investigations.h"
+#include "web/api_handlers_recordings_thumbnail.h"
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_investigations_test.db"
@@ -114,6 +115,28 @@ static cJSON *call_search(const char *body, int expected_status) {
     return json;
 }
 
+static cJSON *call_thumbnail_samples(const char *body, int expected_status) {
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    request.method = HTTP_METHOD_POST;
+    safe_strcpy(request.method_str, "POST", sizeof(request.method_str), 0);
+    safe_strcpy(request.path, "/api/investigations/thumbnail-samples",
+                sizeof(request.path), 0);
+    safe_strcpy(request.client_ip, "127.0.0.1",
+                sizeof(request.client_ip), 0);
+    request.body = (void *)body;
+    request.body_len = strlen(body);
+    handle_post_investigation_thumbnail_samples(&request, &response);
+    TEST_ASSERT_EQUAL_INT(expected_status, response.status_code);
+    cJSON *json = response.body
+        ? cJSON_Parse((const char *)response.body) : NULL;
+    TEST_ASSERT_NOT_NULL(json);
+    http_response_free(&response);
+    return json;
+}
+
 static uint64_t insert_detection(const char *camera_uuid,
                                  const char *stream_name,
                                  time_t timestamp, const char *label,
@@ -190,6 +213,7 @@ void setUp(void) {
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
+    g_config.generate_thumbnails = true;
     sqlite3_exec(db, "DELETE FROM detections;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
@@ -299,6 +323,102 @@ void test_timeline_rejects_duplicate_camera_ids(void) {
     cJSON *json = call_timeline(body, 400);
     TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
     cJSON_Delete(json);
+}
+
+void test_thumbnail_samples_map_even_times_to_recordings_and_gaps(void) {
+    const time_t range_start = 1700005000;
+    stream_config_t camera = create_camera("Sample Camera");
+    uint64_t first_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+    uint64_t second_id = create_recording(
+        camera.camera_uuid, camera.name, range_start + 100);
+    TEST_ASSERT_NOT_EQUAL(0, first_id);
+    TEST_ASSERT_NOT_EQUAL(0, second_id);
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"sample_count\":5}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 120));
+    cJSON *json = call_thumbnail_samples(body, 200);
+    const cJSON *samples =
+        cJSON_GetObjectItemCaseSensitive(json, "samples");
+    TEST_ASSERT_EQUAL_INT(5, cJSON_GetArraySize(samples));
+    TEST_ASSERT_EQUAL_INT64(
+        range_start + 30,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetArrayItem(samples, 1), "timestamp")->valuedouble);
+    TEST_ASSERT_EQUAL_STRING(
+        "gap", cJSON_GetObjectItemCaseSensitive(
+                   cJSON_GetArrayItem(samples, 3),
+                   "media_status")->valuestring);
+    const cJSON *last = cJSON_GetArrayItem(samples, 4);
+    TEST_ASSERT_EQUAL_UINT64(
+        second_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            last, "recording_id")->valuedouble);
+    TEST_ASSERT_EQUAL_INT64(
+        20000,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            last, "offset_ms")->valuedouble);
+    const cJSON *thumbnail =
+        cJSON_GetObjectItemCaseSensitive(last, "thumbnail");
+    TEST_ASSERT_EQUAL_STRING(
+        "available",
+        cJSON_GetObjectItemCaseSensitive(thumbnail, "status")->valuestring);
+    char expected_url[160];
+    snprintf(expected_url, sizeof(expected_url),
+             "/api/investigations/thumbnail/%llu/20000",
+             (unsigned long long)second_id);
+    TEST_ASSERT_EQUAL_STRING(
+        expected_url,
+        cJSON_GetObjectItemCaseSensitive(thumbnail, "url")->valuestring);
+    const cJSON *coverage =
+        cJSON_GetObjectItemCaseSensitive(json, "coverage");
+    TEST_ASSERT_EQUAL_INT(
+        4, cJSON_GetObjectItemCaseSensitive(
+               coverage, "available_samples")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               coverage, "gap_samples")->valueint);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"sample_count\":2}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 120));
+    json = call_thumbnail_samples(body, 400);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+}
+
+void test_investigation_thumbnail_rejects_offset_outside_recording(void) {
+    const time_t range_start = 1700007000;
+    stream_config_t camera = create_camera("Offset Camera");
+    uint64_t recording_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    request.method = HTTP_METHOD_GET;
+    safe_strcpy(request.method_str, "GET", sizeof(request.method_str), 0);
+    snprintf(request.path, sizeof(request.path),
+             "/api/investigations/thumbnail/%llu/60001",
+             (unsigned long long)recording_id);
+    safe_strcpy(request.client_ip, "127.0.0.1",
+                sizeof(request.client_ip), 0);
+    handle_investigation_thumbnail(&request, &response);
+    TEST_ASSERT_EQUAL_INT(400, response.status_code);
+    cJSON *json = response.body
+        ? cJSON_Parse((const char *)response.body) : NULL;
+    TEST_ASSERT_NOT_NULL(json);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+    http_response_free(&response);
 }
 
 void test_search_cursor_filters_facets_and_current_camera_context(void) {
@@ -667,6 +787,8 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_capture_identity_survives_camera_rename_and_drives_timeline);
     RUN_TEST(test_timeline_rejects_duplicate_camera_ids);
+    RUN_TEST(test_thumbnail_samples_map_even_times_to_recordings_and_gaps);
+    RUN_TEST(test_investigation_thumbnail_rejects_offset_outside_recording);
     RUN_TEST(test_search_cursor_filters_facets_and_current_camera_context);
     RUN_TEST(test_search_rejects_invalid_cursor);
     RUN_TEST(test_search_includes_spanning_motion_and_reports_legacy_gap);

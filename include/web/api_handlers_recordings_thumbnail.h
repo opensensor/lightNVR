@@ -23,6 +23,14 @@
 void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Serve a cached thumbnail at an arbitrary recording offset
+ *
+ * Endpoint: GET /api/investigations/thumbnail/:id/:offset_ms
+ */
+void handle_investigation_thumbnail(const http_request_t *req,
+                                    http_response_t *res);
+
+/**
  * @brief Delete thumbnail files associated with a recording
  * 
  * Called when a recording is deleted to clean up associated thumbnails.
@@ -32,4 +40,3 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
 void delete_recording_thumbnails(uint64_t recording_id);
 
 #endif /* API_HANDLERS_RECORDINGS_THUMBNAIL_H */
-
