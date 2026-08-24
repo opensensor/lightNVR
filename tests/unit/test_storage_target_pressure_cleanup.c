@@ -229,6 +229,27 @@ void test_default_target_query_includes_unattributed_recordings(void) {
     TEST_ASSERT_TRUE(saw_legacy);
 }
 
+/*
+ * The pressure loops watch one filesystem's free space, so this is what keeps
+ * them from evicting recordings that live somewhere else -- which would delete
+ * footage without ever moving the number they are waiting on.
+ */
+void test_paths_share_filesystem_detects_same_and_missing_roots(void) {
+    TEST_ASSERT_TRUE(storage_paths_share_filesystem(root_a, root_a));
+    /* Sibling mkdtemp() directories are on one filesystem by construction. */
+    TEST_ASSERT_TRUE(storage_paths_share_filesystem(root_a, root_b));
+
+    char missing[MAX_PATH_LENGTH];
+    snprintf(missing, sizeof(missing), "%s/absent", root_a);
+    TEST_ASSERT_FALSE(storage_paths_share_filesystem(root_a, missing));
+    TEST_ASSERT_FALSE(storage_paths_share_filesystem(missing, root_a));
+
+    /* A path we cannot stat is never assumed to be safe to delete from. */
+    TEST_ASSERT_FALSE(storage_paths_share_filesystem(root_a, ""));
+    TEST_ASSERT_FALSE(storage_paths_share_filesystem(NULL, root_a));
+    TEST_ASSERT_FALSE(storage_paths_share_filesystem(root_a, NULL));
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(root_a));
     TEST_ASSERT_NOT_NULL(mkdtemp(root_b));
@@ -239,6 +260,7 @@ int main(void) {
     RUN_TEST(test_cleanup_deletes_only_recordings_on_pressured_target);
     RUN_TEST(test_target_cleanup_ignores_unattributed_recordings);
     RUN_TEST(test_default_target_query_includes_unattributed_recordings);
+    RUN_TEST(test_paths_share_filesystem_detects_same_and_missing_roots);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

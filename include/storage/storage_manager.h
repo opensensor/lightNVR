@@ -307,6 +307,20 @@ bool storage_should_pause_recording(void);
 int storage_cleanup_target_pressure(
     const char *storage_target_uuid, storage_target_cleanup_result_t *result);
 
+/**
+ * Report whether two paths resolve to the same mounted filesystem.
+ *
+ * Deleting a file only relieves pressure on the filesystem that holds it, so
+ * the pressure paths use this to check that the recordings they are about to
+ * evict live on the volume whose free space they measured. Returns false when
+ * either path cannot be stat'd, which callers treat as "do not delete".
+ *
+ * @param first First absolute path
+ * @param second Second absolute path
+ * @return true when both exist and share a device
+ */
+bool storage_paths_share_filesystem(const char *first, const char *second);
+
 static inline storage_target_pressure_t storage_target_pressure_evaluate(
     uint64_t capacity_bytes, uint64_t available_bytes,
     uint64_t reserve_bytes, double high_watermark_pct) {

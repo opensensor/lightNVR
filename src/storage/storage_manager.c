@@ -159,6 +159,27 @@ static bool delete_pressure_recording_file_and_metadata(
             return false;
         }
     } else {
+        /*
+         * An unattributed row was never classified against any target root, so
+         * its file could sit on any volume. Only the legacy pressure paths ask
+         * for these, and they measure storage_manager.storage_path, so reclaim
+         * it only when it is on that filesystem. A row whose file is already
+         * gone still passes: dropping the stale metadata frees nothing on
+         * either volume.
+         */
+        struct stat file_info;
+        struct stat measured_info;
+        if (stat(recording->file_path, &file_info) == 0 &&
+            (stat(storage_manager.storage_path, &measured_info) != 0 ||
+             file_info.st_dev != measured_info.st_dev)) {
+            log_warn("%s: skipping unattributed recording %llu; %s is not on "
+                     "the filesystem being relieved (%s)",
+                     context ? context : "Pressure cleanup",
+                     (unsigned long long)recording->id, recording->file_path,
+                     storage_manager.storage_path);
+            if (freed_bytes) *freed_bytes = 0;
+            return false;
+        }
         log_debug("%s: recording %llu predates storage target attribution; "
                   "deleting by path %s",
                   context ? context : "Pressure cleanup",
@@ -1142,12 +1163,58 @@ static void heartbeat_check_disk_pressure(void) {
 
 // ---- Emergency Cleanup: Pressure-Driven Deletion ----
 
+bool storage_paths_share_filesystem(const char *first, const char *second) {
+    struct stat first_info;
+    struct stat second_info;
+    if (!first || !second || first[0] == '\0' || second[0] == '\0') {
+        return false;
+    }
+    if (stat(first, &first_info) != 0 || stat(second, &second_info) != 0) {
+        return false;
+    }
+    return first_info.st_dev == second_info.st_dev;
+}
+
+/*
+ * emergency_cleanup() and capacity_enforce_cycle() both measure free space at
+ * storage_manager.storage_path, so they may only evict recordings that live on
+ * that filesystem. When record_mp4_directly points MP4 storage at a separate
+ * volume, the default target's root is that other volume: deleting from it
+ * would never move the number these loops are watching, so they would keep
+ * going and retire the entire archive without relieving the pressure that
+ * started them. Leave that volume to cleanup_pressured_targets(), which
+ * measures and evicts against the same root, and let the filesystem reclaimer
+ * -- which scans storage_manager.storage_path -- relieve the measured one.
+ */
+static bool default_target_holds_measured_filesystem(
+    const storage_target_t *target) {
+    static time_t last_warning = 0;
+    if (storage_paths_share_filesystem(storage_manager.storage_path,
+                                       target->root_path)) {
+        return true;
+    }
+    time_t now = time(NULL);
+    if (now - last_warning >= 300) {
+        last_warning = now;
+        log_warn("Pressure cleanup: default target \"%s\" (%s) is not on the "
+                 "filesystem being relieved (%s); evicting from it could not "
+                 "free space there, so its recordings are left to per-target "
+                 "cleanup",
+                 target->name, target->root_path,
+                 storage_manager.storage_path);
+    }
+    return false;
+}
+
 static int get_default_pressure_candidates(recording_metadata_t *recordings,
                                            int max_count) {
     storage_target_t target;
     if (db_storage_target_get_default(&target) != DB_STORAGE_TARGET_OK) {
         log_error("Pressure cleanup: default storage target is unavailable");
         return -1;
+    }
+    if (!default_target_holds_measured_filesystem(&target)) {
+        return 0;
     }
     // Include rows that were never attributed to a target. They would
     // otherwise be invisible to every disk-pressure path, which on an upgraded

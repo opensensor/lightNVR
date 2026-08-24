@@ -215,6 +215,17 @@ target's compatibility capacity/emergency queries are now target-filtered as
 well. Target health responses expose the current pressure state and cleanup
 goal.
 
+The legacy capacity/emergency loops measure free space at `storage_path`, so
+they evict only from the filesystem holding it. They additionally consider rows
+that carry no target attribution -- footage written before targets existed, or
+whose path the bootstrap backfill could not classify -- because those are
+otherwise invisible to every pressure path; such a row is skipped when its file
+turns out to live on another volume. When `record_mp4_directly` points
+`mp4_storage_path` at a separate filesystem, the default target's root is that
+other volume, and per-target cleanup owns its pressure instead: evicting from it
+could not free space at `storage_path`, and doing so anyway would drain the
+archive without ever clearing the condition that triggered the cleanup.
+
 Policy drafts can be simulated against the current camera inventory before save.
 The preview reports camera overlap with each enabled policy and shows the
 effective winner using the same priority/name/UUID ordering as recording
