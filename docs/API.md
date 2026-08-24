@@ -939,6 +939,76 @@ GET /api/timeline/play
 
 Streams video for timeline playback at a specified point in time.
 
+### Investigation
+
+#### Multi-camera timeline
+
+```
+POST /api/investigations/timeline
+```
+
+Returns aligned recording tracks for up to 16 authorized camera UUIDs in a UTC
+window. Each track includes recording intervals, capture methods, media
+availability, and explicit gaps used by the synchronized investigation player.
+
+#### Event and metadata search
+
+```
+POST /api/investigations/search
+```
+
+Searches persisted detection metadata with stable cursor pagination. Camera
+scope is either `camera_uuids` or a Fleet selector, never both. Explicit camera
+lists fail if any requested camera is unauthorized; broad selectors omit
+unauthorized matches before totals, facets, and histograms are calculated.
+
+```json
+{
+  "camera_uuids": ["0192a7f0-4f43-4a1d-9e1c-d6947677f145"],
+  "start_time": 1787529600,
+  "end_time": 1787533200,
+  "filters": {
+    "event_types": ["detection"],
+    "labels": ["person"],
+    "zones": ["loading-area"],
+    "sources": ["local"],
+    "capture_methods": ["continuous"],
+    "recording_tags": ["reviewed"],
+    "locations": ["03852a50-1254-4a0f-894c-cbc660fa6726"],
+    "protected": true,
+    "min_confidence": 0.75,
+    "max_confidence": 1.0
+  },
+  "limit": 100,
+  "cursor": null
+}
+```
+
+The optional top-level `region` performs a metadata-only rectangular search on
+one camera. Coordinates are normalized to the source image. Matching modes are
+`center`, `intersects`, and `minimum_intersection`; the latter accepts a
+`min_intersection` fraction greater than zero and at most one.
+
+```json
+{
+  "region": {
+    "camera_uuid": "0192a7f0-4f43-4a1d-9e1c-d6947677f145",
+    "x": 0.1,
+    "y": 0.2,
+    "width": 0.4,
+    "height": 0.5,
+    "match": "minimum_intersection",
+    "min_intersection": 0.25
+  }
+}
+```
+
+Region search never decodes historical video. The response
+`coverage.spatial_metadata` reports rows with and without valid normalized
+bounding boxes. Rows without boxes are not searched spatially, and
+`spatial_metadata_missing` appears in `incomplete_reasons` so an empty result is
+not presented as proof that nothing crossed the selected area.
+
 ### Fleet Query and Selectors
 
 #### Query Cameras

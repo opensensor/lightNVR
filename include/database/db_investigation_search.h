@@ -16,6 +16,13 @@
 #define INVESTIGATION_SEARCH_MAX_HISTOGRAM_BUCKETS 48
 #define INVESTIGATION_SEARCH_VALUE_MAX 128
 
+typedef enum {
+    INVESTIGATION_REGION_NONE = 0,
+    INVESTIGATION_REGION_CENTER,
+    INVESTIGATION_REGION_INTERSECTS,
+    INVESTIGATION_REGION_MIN_INTERSECTION
+} investigation_region_match_t;
+
 typedef struct {
     char camera_uuids[INVESTIGATION_SEARCH_MAX_CAMERAS]
                      [CAMERA_UUID_STRING_SIZE];
@@ -42,6 +49,14 @@ typedef struct {
                        [MAX_TAG_LENGTH];
     int recording_tag_count;
     int protected_filter; /* -1 = all, 0 = unprotected, 1 = protected */
+    bool has_region;
+    char region_camera_uuid[CAMERA_UUID_STRING_SIZE];
+    double region_x;
+    double region_y;
+    double region_width;
+    double region_height;
+    investigation_region_match_t region_match;
+    double region_min_intersection;
     bool has_min_confidence;
     bool has_max_confidence;
     double min_confidence;
@@ -113,6 +128,8 @@ typedef struct {
     bool has_more;
     int64_t total_count;
     int64_t unresolved_legacy_count;
+    int64_t spatial_metadata_rows;
+    int64_t spatial_missing_rows;
     int histogram_bucket_seconds;
     int histogram_count;
     investigation_search_histogram_bucket_t

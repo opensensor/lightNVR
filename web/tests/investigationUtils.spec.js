@@ -3,7 +3,10 @@ import {
   advanceInvestigationCursor,
   findSegmentAt,
   nextAvailableTimestamp,
+  normalizedRegionRectangle,
+  parseInvestigationRegion,
   segmentTrackPosition,
+  videoContentBox,
 } from '../js/components/preact/investigation/investigationUtils.js';
 
 const tracks = [
@@ -71,4 +74,41 @@ test('adjacent result navigation is stable by opaque result id', () => {
   expect(adjacentInvestigationResultIndex(results, 'detection:7', -1)).toBe(0);
   expect(adjacentInvestigationResultIndex(results, 'detection:4', 1)).toBe(-1);
   expect(adjacentInvestigationResultIndex([], null, 1)).toBe(-1);
+});
+
+test('videoContentBox accounts for letterboxing and pillarboxing', () => {
+  expect(videoContentBox(16, 9, 4, 3)).toEqual({
+    left: 0.125, top: 0, width: 0.75, height: 1,
+  });
+  const letterboxed = videoContentBox(16, 9, 21, 9);
+  expect(letterboxed.left).toBe(0);
+  expect(letterboxed.width).toBe(1);
+  expect(letterboxed.top).toBeCloseTo(0.119047619);
+  expect(letterboxed.height).toBeCloseTo(0.761904762);
+});
+
+test('normalizedRegionRectangle supports reverse drag and clamps to the image', () => {
+  expect(normalizedRegionRectangle(
+    { x: 0.8, y: 0.7 }, { x: -0.1, y: 1.2 },
+  )).toEqual({ x: 0, y: 0.7, width: 0.8, height: 0.3 });
+});
+
+test('parseInvestigationRegion accepts only bounded navigation-safe state', () => {
+  const valid = new URLSearchParams({
+    region_camera: '11111111-1111-1111-1111-111111111111',
+    region_rect: '0.1,0.2,0.3,0.4',
+    region_match: 'minimum_intersection',
+    region_min: '0.2',
+  });
+  expect(parseInvestigationRegion(valid)).toEqual({
+    cameraUuid: '11111111-1111-1111-1111-111111111111',
+    x: 0.1,
+    y: 0.2,
+    width: 0.3,
+    height: 0.4,
+    match: 'minimum_intersection',
+    minIntersection: 0.2,
+  });
+  valid.set('region_rect', '0.9,0.2,0.3,0.4');
+  expect(parseInvestigationRegion(valid)).toBeNull();
 });

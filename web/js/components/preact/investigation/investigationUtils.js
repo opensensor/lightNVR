@@ -1,6 +1,58 @@
 export const MAX_INVESTIGATION_CAMERAS = 16;
 export const MAX_ACTIVE_INVESTIGATION_PLAYERS = 4;
 
+const REGION_MATCHES = new Set(['center', 'intersects', 'minimum_intersection']);
+
+function roundedRegionValue(value) {
+  return Math.round(value * 10000) / 10000;
+}
+
+export function videoContentBox(containerWidth, containerHeight, videoWidth, videoHeight) {
+  if (![containerWidth, containerHeight, videoWidth, videoHeight]
+    .every((value) => Number.isFinite(value) && value > 0)) {
+    return { left: 0, top: 0, width: 1, height: 1 };
+  }
+  const containerAspect = containerWidth / containerHeight;
+  const videoAspect = videoWidth / videoHeight;
+  if (videoAspect >= containerAspect) {
+    const height = containerAspect / videoAspect;
+    return { left: 0, top: (1 - height) / 2, width: 1, height };
+  }
+  const width = videoAspect / containerAspect;
+  return { left: (1 - width) / 2, top: 0, width, height: 1 };
+}
+
+export function normalizedRegionRectangle(anchor, point) {
+  if (!anchor || !point ||
+      ![anchor.x, anchor.y, point.x, point.y].every(Number.isFinite)) return null;
+  const x = Math.max(0, Math.min(1, Math.min(anchor.x, point.x)));
+  const y = Math.max(0, Math.min(1, Math.min(anchor.y, point.y)));
+  const maxX = Math.max(0, Math.min(1, Math.max(anchor.x, point.x)));
+  const maxY = Math.max(0, Math.min(1, Math.max(anchor.y, point.y)));
+  return {
+    x: roundedRegionValue(x),
+    y: roundedRegionValue(y),
+    width: roundedRegionValue(maxX - x),
+    height: roundedRegionValue(maxY - y),
+  };
+}
+
+export function parseInvestigationRegion(params) {
+  if (!params?.get) return null;
+  const cameraUuid = params.get('region_camera') || '';
+  const values = (params.get('region_rect') || '').split(',').map(Number);
+  const match = params.get('region_match') || 'center';
+  const minIntersection = Number(params.get('region_min') || 0.25);
+  if (cameraUuid.length !== 36 || values.length !== 4 ||
+      !values.every(Number.isFinite) || !REGION_MATCHES.has(match) ||
+      !Number.isFinite(minIntersection) || minIntersection <= 0 ||
+      minIntersection > 1) return null;
+  const [x, y, width, height] = values;
+  if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
+      x + width > 1 || y + height > 1) return null;
+  return { cameraUuid, x, y, width, height, match, minIntersection };
+}
+
 export function findSegmentAt(segments, timestamp) {
   if (!Array.isArray(segments) || !Number.isFinite(timestamp)) return null;
   let low = 0;

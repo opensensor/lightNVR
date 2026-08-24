@@ -428,6 +428,85 @@ static bool parse_protected_filter(const cJSON *filters, int *value) {
     return true;
 }
 
+static bool parse_region_filter(const cJSON *body,
+                                investigation_search_query_t *query) {
+    const cJSON *region =
+        cJSON_GetObjectItemCaseSensitive(body, "region");
+    if (!region) return true;
+    if (!cJSON_IsObject(region)) return false;
+
+    const cJSON *camera_uuid =
+        cJSON_GetObjectItemCaseSensitive(region, "camera_uuid");
+    const cJSON *x = cJSON_GetObjectItemCaseSensitive(region, "x");
+    const cJSON *y = cJSON_GetObjectItemCaseSensitive(region, "y");
+    const cJSON *width =
+        cJSON_GetObjectItemCaseSensitive(region, "width");
+    const cJSON *height =
+        cJSON_GetObjectItemCaseSensitive(region, "height");
+    const cJSON *match =
+        cJSON_GetObjectItemCaseSensitive(region, "match");
+    const cJSON *minimum =
+        cJSON_GetObjectItemCaseSensitive(region, "min_intersection");
+    if (!cJSON_IsString(camera_uuid) || !camera_uuid->valuestring ||
+        strlen(camera_uuid->valuestring) != CAMERA_UUID_STRING_SIZE - 1 ||
+        !cJSON_IsNumber(x) || !isfinite(x->valuedouble) ||
+        !cJSON_IsNumber(y) || !isfinite(y->valuedouble) ||
+        !cJSON_IsNumber(width) || !isfinite(width->valuedouble) ||
+        !cJSON_IsNumber(height) || !isfinite(height->valuedouble) ||
+        x->valuedouble < 0.0 || y->valuedouble < 0.0 ||
+        width->valuedouble <= 0.0 || height->valuedouble <= 0.0 ||
+        x->valuedouble + width->valuedouble > 1.0 ||
+        y->valuedouble + height->valuedouble > 1.0 ||
+        (match && (!cJSON_IsString(match) || !match->valuestring))) {
+        return false;
+    }
+
+    const char *match_value = match ? match->valuestring : "center";
+    investigation_region_match_t match_type = INVESTIGATION_REGION_NONE;
+    if (strcmp(match_value, "center") == 0) {
+        match_type = INVESTIGATION_REGION_CENTER;
+    } else if (strcmp(match_value, "intersects") == 0) {
+        match_type = INVESTIGATION_REGION_INTERSECTS;
+    } else if (strcmp(match_value, "minimum_intersection") == 0) {
+        match_type = INVESTIGATION_REGION_MIN_INTERSECTION;
+    } else {
+        return false;
+    }
+    double min_intersection = 0.25;
+    if (minimum) {
+        if (!cJSON_IsNumber(minimum) || !isfinite(minimum->valuedouble) ||
+            minimum->valuedouble <= 0.0 || minimum->valuedouble > 1.0) {
+            return false;
+        }
+        min_intersection = minimum->valuedouble;
+    }
+
+    query->has_region = true;
+    safe_strcpy(query->region_camera_uuid, camera_uuid->valuestring,
+                sizeof(query->region_camera_uuid), 0);
+    query->region_x = x->valuedouble;
+    query->region_y = y->valuedouble;
+    query->region_width = width->valuedouble;
+    query->region_height = height->valuedouble;
+    query->region_match = match_type;
+    query->region_min_intersection = min_intersection;
+    return true;
+}
+
+static const char *region_match_name(investigation_region_match_t match) {
+    switch (match) {
+        case INVESTIGATION_REGION_CENTER:
+            return "center";
+        case INVESTIGATION_REGION_INTERSECTS:
+            return "intersects";
+        case INVESTIGATION_REGION_MIN_INTERSECTION:
+            return "minimum_intersection";
+        case INVESTIGATION_REGION_NONE:
+            return "none";
+    }
+    return "none";
+}
+
 static bool camera_matches_location_filters(
     const fleet_camera_t *camera,
     char locations[][INVESTIGATION_SEARCH_VALUE_MAX], int location_count) {
@@ -639,6 +718,7 @@ void handle_post_investigation_search(const http_request_t *request,
                   sizeof(allowed_capture_methods[0]))) ||
         (query.has_min_confidence && query.has_max_confidence &&
          query.min_confidence > query.max_confidence) ||
+        !parse_region_filter(body, &query) ||
         !parse_search_cursor(body, &query)) {
         cJSON_Delete(body);
         http_response_set_json_error(response, 400,
@@ -658,6 +738,15 @@ void handle_post_investigation_search(const http_request_t *request,
         filtered_camera_count++;
     }
     camera_count = filtered_camera_count;
+    if (query.has_region &&
+        !find_camera_context(fleet_cameras, camera_count,
+                             query.region_camera_uuid)) {
+        cJSON_Delete(body);
+        http_response_set_json_error(
+            response, 400,
+            "region camera must be in the authorized search scope");
+        return;
+    }
     query.camera_count = camera_count;
     for (int i = 0; i < camera_count; i++) {
         safe_strcpy(query.camera_uuids[i], fleet_cameras[i].camera_uuid,
@@ -890,13 +979,42 @@ void handle_post_investigation_search(const http_request_t *request,
                             (double)query.end_time);
     cJSON_AddNumberToObject(coverage, "unresolved_legacy_rows",
                             (double)summary->unresolved_legacy_count);
+    cJSON *spatial = cJSON_AddObjectToObject(coverage, "spatial_metadata");
+    cJSON_AddBoolToObject(spatial, "requested", query.has_region);
+    if (query.has_region) {
+        cJSON_AddStringToObject(spatial, "search_type", "metadata_search");
+        cJSON_AddStringToObject(spatial, "camera_uuid",
+                                query.region_camera_uuid);
+        cJSON_AddStringToObject(spatial, "match",
+                                region_match_name(query.region_match));
+        cJSON_AddNumberToObject(spatial, "rows_with_boxes",
+                                (double)summary->spatial_metadata_rows);
+        cJSON_AddNumberToObject(spatial, "rows_without_boxes",
+                                (double)summary->spatial_missing_rows);
+        cJSON_AddBoolToObject(spatial, "complete",
+                              summary->spatial_missing_rows == 0);
+        cJSON *rectangle = cJSON_AddObjectToObject(spatial, "rectangle");
+        cJSON_AddNumberToObject(rectangle, "x", query.region_x);
+        cJSON_AddNumberToObject(rectangle, "y", query.region_y);
+        cJSON_AddNumberToObject(rectangle, "width", query.region_width);
+        cJSON_AddNumberToObject(rectangle, "height", query.region_height);
+        if (query.region_match == INVESTIGATION_REGION_MIN_INTERSECTION) {
+            cJSON_AddNumberToObject(spatial, "min_intersection",
+                                    query.region_min_intersection);
+        }
+    }
     cJSON *reasons = cJSON_AddArrayToObject(coverage, "incomplete_reasons");
     if (summary->unresolved_legacy_count > 0) {
         cJSON_AddItemToArray(
             reasons, cJSON_CreateString("legacy_camera_identity_unresolved"));
     }
+    if (query.has_region && summary->spatial_missing_rows > 0) {
+        cJSON_AddItemToArray(
+            reasons, cJSON_CreateString("spatial_metadata_missing"));
+    }
     cJSON_AddBoolToObject(coverage, "complete",
-                          summary->unresolved_legacy_count == 0);
+                          summary->unresolved_legacy_count == 0 &&
+                          summary->spatial_missing_rows == 0);
 
     set_json_response(response, root);
     cJSON_Delete(root);
