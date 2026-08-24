@@ -1,10 +1,13 @@
 import {
   adjacentInvestigationResultIndex,
   advanceInvestigationCursor,
+  bookmarkFiltersFromState,
+  buildInvestigationBookmarkPayload,
   findSegmentAt,
   nextAvailableTimestamp,
   narrowThumbnailWindow,
   normalizedRegionRectangle,
+  investigationBookmarkUrl,
   parseInvestigationRegion,
   segmentTrackPosition,
   thumbnailWindowForResult,
@@ -138,4 +141,104 @@ test('parseInvestigationRegion accepts only bounded navigation-safe state', () =
   });
   valid.set('region_rect', '0.9,0.2,0.3,0.4');
   expect(parseInvestigationRegion(valid)).toBeNull();
+});
+
+test('bookmark payload keeps navigation state but excludes arbitrary result fields', () => {
+  const payload = buildInvestigationBookmarkPayload({
+    title: '  Shift handoff  ',
+    note: ' private note ',
+    timeline: {
+      start_time: 100.8,
+      end_time: 300.9,
+      tracks: [{ camera_uuid: 'camera-a' }, { camera_uuid: 'camera-b' }],
+    },
+    cursor: 155.9,
+    primaryCameraUuid: 'camera-b',
+    searchFilters: {
+      eventType: 'detection',
+      label: 'person',
+      minConfidence: '0.75',
+      region: {
+        cameraUuid: 'camera-b',
+        x: 0.1,
+        y: 0.2,
+        width: 0.3,
+        height: 0.4,
+        match: 'intersects',
+        minIntersection: 0.25,
+      },
+    },
+    selectedResult: {
+      result_id: 'detection:9',
+      camera_uuid: 'camera-b',
+      label: 'person',
+      thumbnail_url: '/secret-ish/path',
+    },
+  });
+  expect(payload).toEqual({
+    title: 'Shift handoff',
+    note: 'private note',
+    camera_uuids: ['camera-a', 'camera-b'],
+    start_time: 100,
+    end_time: 300,
+    cursor_time: 155,
+    primary_camera_uuid: 'camera-b',
+    filters: {
+      event_type: 'detection',
+      label: 'person',
+      min_confidence: 0.75,
+      region: {
+        camera_uuid: 'camera-b',
+        x: 0.1,
+        y: 0.2,
+        width: 0.3,
+        height: 0.4,
+        match: 'intersects',
+        min_intersection: 0.25,
+      },
+    },
+    representative_result: {
+      result_id: 'detection:9',
+      camera_uuid: 'camera-b',
+      label: 'person',
+    },
+  });
+});
+
+test('bookmark filters ignore invalid confidence instead of persisting it', () => {
+  expect(bookmarkFiltersFromState({
+    source: 'local',
+    minConfidence: 'not-a-number',
+  })).toEqual({ source: 'local' });
+});
+
+test('bookmark URL contains only navigation-safe state and restores primary camera', () => {
+  const url = new URL(investigationBookmarkUrl({
+    camera_uuids: ['one', 'two'],
+    start_time: 100,
+    end_time: 200,
+    cursor_time: 150,
+    primary_camera_uuid: 'two',
+    note: 'must never enter the URL',
+    filters: {
+      label: 'person',
+      protection: 'protected',
+      region: {
+        camera_uuid: 'two',
+        x: 0.1,
+        y: 0.2,
+        width: 0.3,
+        height: 0.4,
+        match: 'center',
+        min_intersection: 0.25,
+      },
+    },
+  }, 'https://nvr.test/investigation.html?drill_camera=old&event=motion'));
+  expect(url.searchParams.get('cameras')).toBe('one,two');
+  expect(url.searchParams.get('primary')).toBe('two');
+  expect(url.searchParams.get('label')).toBe('person');
+  expect(url.searchParams.get('protected')).toBe('protected');
+  expect(url.searchParams.get('region_rect')).toBe('0.1,0.2,0.3,0.4');
+  expect(url.searchParams.has('drill_camera')).toBe(false);
+  expect(url.search).not.toContain('must+never');
 });

@@ -1045,6 +1045,59 @@ queue bound concurrent generation; a busy server returns `503` with
 `Retry-After: 2`. Deleting a recording also removes its arbitrary-offset cache
 entries.
 
+#### Durable investigation bookmarks
+
+```
+GET    /api/investigation-bookmarks
+POST   /api/investigation-bookmarks
+GET    /api/investigation-bookmarks/{bookmark_uuid}
+PUT    /api/investigation-bookmarks/{bookmark_uuid}
+DELETE /api/investigation-bookmarks/{bookmark_uuid}
+```
+
+Bookmarks are private to the authenticated user and restore an investigation's
+camera order, UTC window, shared cursor, primary camera, filters, region, and an
+optional representative result. They are navigation aids only:
+`holds_recordings` is always `false`, so saving a bookmark does not protect
+media from retention or deletion. Use the recording protection endpoints when
+media must be retained.
+
+Create accepts one through 16 camera UUIDs and a window of at most 31 days:
+
+```json
+{
+  "title": "Loading bay handoff",
+  "note": "Review before the morning shift",
+  "camera_uuids": ["0192a7f0-4f43-4a1d-9e1c-d6947677f145"],
+  "start_time": 1787529600,
+  "end_time": 1787533200,
+  "cursor_time": 1787531400,
+  "primary_camera_uuid": "0192a7f0-4f43-4a1d-9e1c-d6947677f145",
+  "filters": {
+    "event_type": "detection",
+    "label": "person",
+    "min_confidence": 0.75
+  },
+  "representative_result": {
+    "result_id": "detection:482",
+    "camera_uuid": "0192a7f0-4f43-4a1d-9e1c-d6947677f145",
+    "start_time": 1787531400
+  }
+}
+```
+
+The service stores only a bounded whitelist of investigation fields; request
+credentials, media URLs, and arbitrary result data are not retained. Every
+list, read, update, delete, and reopen re-evaluates `recordings.replay` for all
+saved cameras using current policy. List responses omit bookmarks that are no
+longer fully visible. Direct access returns `403` for a current policy denial
+or `404` if a saved camera no longer exists.
+
+`PUT` changes only `title` and `note` and requires the last observed positive
+`revision`. `DELETE` accepts a JSON body containing the same `revision`.
+Stale changes return `409`. Create, update, and delete outcomes are written to
+the audit history. Demo mode returns an empty list and rejects mutations.
+
 ### Fleet Query and Selectors
 
 #### Query Cameras

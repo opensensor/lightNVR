@@ -26,6 +26,132 @@
     color: hsl(var(--muted-foreground));
 }
 
+.investigation-heading-actions,
+.investigation-bookmark-actions,
+.investigation-bookmark-dialog-actions,
+.investigation-bookmark-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.investigation-heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.investigation-bookmark-actions > button,
+.investigation-bookmark-dialog button,
+.investigation-bookmark-dialog input,
+.investigation-bookmark-dialog textarea {
+    min-height: 2.75rem;
+}
+
+.investigation-bookmark-backdrop {
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgb(0 0 0 / 0.66);
+}
+
+.investigation-bookmark-dialog {
+    width: min(42rem, 100%);
+    max-height: min(42rem, calc(100vh - 2rem));
+    overflow: auto;
+    padding: 1rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.35);
+}
+
+.investigation-bookmark-dialog > header,
+.investigation-bookmark-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.investigation-bookmark-dialog h2,
+.investigation-bookmark-dialog h3,
+.investigation-bookmark-dialog header p,
+.investigation-bookmark-card p {
+    margin: 0;
+}
+
+.investigation-bookmark-dialog header p,
+.investigation-bookmark-card time,
+.investigation-bookmark-card small {
+    color: hsl(var(--muted-foreground));
+}
+
+.investigation-bookmark-dialog header p {
+    margin-top: 0.25rem;
+}
+
+.investigation-bookmark-form,
+.investigation-bookmark-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.investigation-bookmark-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.investigation-bookmark-form input,
+.investigation-bookmark-form textarea {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid hsl(var(--input));
+    border-radius: 0.5rem;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+}
+
+.investigation-bookmark-dialog-actions {
+    justify-content: flex-end;
+}
+
+.investigation-bookmark-card {
+    padding: 0.85rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.6rem;
+}
+
+.investigation-bookmark-card > div:first-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.investigation-bookmark-card p {
+    margin-top: 0.35rem;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.investigation-bookmark-card-actions {
+    flex: 0 0 auto;
+}
+
+.investigation-bookmark-empty {
+    padding: 1.5rem;
+    color: hsl(var(--muted-foreground));
+    text-align: center;
+}
+
 .investigation-eyebrow {
     display: inline-block;
     margin-bottom: 0.25rem;
@@ -770,6 +896,11 @@
         flex-direction: column;
     }
 
+    .investigation-heading-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
     .investigation-query-grid,
     .investigation-search-filters,
     .investigation-player-grid {
@@ -817,6 +948,19 @@
     .investigation-thumbnail-drilldown > header {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .investigation-heading-actions,
+    .investigation-bookmark-card,
+    .investigation-bookmark-card-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .investigation-bookmark-actions,
+    .investigation-bookmark-actions > button,
+    .investigation-bookmark-card-actions > button {
+        width: 100%;
     }
 
     .investigation-camera-picker {

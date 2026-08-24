@@ -5,6 +5,7 @@ import { useI18n } from '../../../i18n.js';
 import { Priority, queueThumbnailLoad } from '../../../request-queue.js';
 import { LoadingIndicator } from '../LoadingIndicator.jsx';
 import { formatUtils } from '../recordings/formatUtils.js';
+import { InvestigationBookmarks } from './InvestigationBookmarks.jsx';
 import {
   MAX_ACTIVE_INVESTIGATION_PLAYERS,
   MAX_INVESTIGATION_CAMERAS,
@@ -740,12 +741,20 @@ export function InvestigationView() {
       });
       setTimeline(data);
       const tracks = data.tracks || [];
-      const nextActive = tracks
+      let nextActive = tracks
         .slice(0, data.max_active_decoders || MAX_ACTIVE_INVESTIGATION_PLAYERS)
         .map((track) => track.camera_uuid);
-      setActiveCameraUuids(nextActive);
-      setPrimaryCameraUuid(nextActive[0] || null);
       const params = new URLSearchParams(window.location.search);
+      const requestedPrimary = params.get('primary');
+      const requestedPrimaryExists = tracks.some((track) =>
+        track.camera_uuid === requestedPrimary);
+      if (requestedPrimaryExists && !nextActive.includes(requestedPrimary)) {
+        nextActive = [...nextActive.slice(0, -1), requestedPrimary];
+      }
+      setActiveCameraUuids(nextActive);
+      const nextPrimary = requestedPrimaryExists
+        ? requestedPrimary : nextActive[0] || null;
+      setPrimaryCameraUuid(nextPrimary);
       const requestedCursor = Number(params.get('cursor'));
       const firstSegmentStart = tracks
         .flatMap((track) => track.segments || [])
@@ -763,6 +772,8 @@ export function InvestigationView() {
       url.searchParams.set('start', String(Math.floor(startTime)));
       url.searchParams.set('end', String(Math.floor(endTime)));
       url.searchParams.set('cursor', String(Math.floor(nextCursor)));
+      if (nextPrimary) url.searchParams.set('primary', nextPrimary);
+      else url.searchParams.delete('primary');
       url.searchParams.delete('stream');
       window.history.replaceState({}, '', url);
       void loadSearchPage(null, 0, [null], {
@@ -832,6 +843,14 @@ export function InvestigationView() {
     url.searchParams.set('cursor', String(roundedCursor));
     window.history.replaceState({}, '', url);
   }, [cursor, timeline]);
+
+  useEffect(() => {
+    if (!timeline || !primaryCameraUuid) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('primary') === primaryCameraUuid) return;
+    url.searchParams.set('primary', primaryCameraUuid);
+    window.history.replaceState({}, '', url);
+  }, [primaryCameraUuid, timeline]);
 
   const toggleSelectedCamera = (cameraUuid) => {
     if (selectedCameraUuids.includes(cameraUuid) &&
@@ -1108,13 +1127,23 @@ export function InvestigationView() {
           <h1>{t('investigation.title')}</h1>
           <p>{t('investigation.description')}</p>
         </div>
-        <nav className="investigation-subnav" aria-label={t('recordings.views')}>
-          <a href="recordings.html">{t('nav.recordings')}</a>
-          <a href="timeline.html">{t('nav.timeline')}</a>
-          <a className="is-active" href="investigation.html" aria-current="page">
-            {t('nav.investigation')}
-          </a>
-        </nav>
+        <div className="investigation-heading-actions">
+          <InvestigationBookmarks
+            timeline={timeline}
+            cursor={cursor}
+            primaryCameraUuid={primaryCameraUuid}
+            searchFilters={searchFilters}
+            selectedResult={selectedResult}
+            t={t}
+          />
+          <nav className="investigation-subnav" aria-label={t('recordings.views')}>
+            <a href="recordings.html">{t('nav.recordings')}</a>
+            <a href="timeline.html">{t('nav.timeline')}</a>
+            <a className="is-active" href="investigation.html" aria-current="page">
+              {t('nav.investigation')}
+            </a>
+          </nav>
+        </div>
       </div>
 
       <section className="investigation-query-card" aria-labelledby="investigation-query-heading">
