@@ -20,6 +20,12 @@
 int store_detections_in_db(const char *stream_name, const detection_result_t *result,
                            time_t timestamp, uint64_t recording_id);
 
+/** Store detections with an immutable capture-time camera identity. */
+int store_detections_in_db_for_camera(
+    const char *camera_uuid, const char *stream_name,
+    const detection_result_t *result, time_t timestamp,
+    uint64_t recording_id);
+
 /** Store detections as one open external-motion interval. */
 int store_external_motion_detections(const char *stream_name,
                                      const detection_result_t *result,

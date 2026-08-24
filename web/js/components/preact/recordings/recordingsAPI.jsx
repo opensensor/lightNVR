@@ -160,6 +160,12 @@ const buildFilterObject = (filters) => {
 export const recordingsAPI = {
   parseRecordingTimestamp,
 
+  getRecording: async (recordingId) => fetchJSON(`/api/recordings/${recordingId}`, {
+    timeout: DEFAULT_TIMEOUT,
+    retries: 1,
+    retryDelay: DEFAULT_RETRY_DELAY,
+  }),
+
   /**
    * Custom hooks for preact-query
    */

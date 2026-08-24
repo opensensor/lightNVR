@@ -210,6 +210,8 @@ static void *mp4_recording_thread(void *arg) {
         ctx->running = 0;
         return NULL;
     }
+    safe_strcpy(ctx->mp4_writer->camera_uuid, ctx->config.camera_uuid,
+                sizeof(ctx->mp4_writer->camera_uuid), 0);
 
     // Configure audio recording based on stream config BEFORE anything else uses the writer
     mp4_writer_set_audio(ctx->mp4_writer, ctx->config.record_audio ? 1 : 0);

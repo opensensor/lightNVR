@@ -171,6 +171,17 @@ int httpd_authorize_stream_action_with_context(
     fleet_camera_t *camera, authorization_evaluation_t *evaluation);
 
 /**
+ * Authorize historical media using its immutable capture-time camera UUID.
+ * legacy_stream_name is consulted only for pre-migration rows whose UUID is
+ * unresolved. This prevents a camera rename from orphaning authorized media.
+ */
+int httpd_authorize_camera_identity_action_with_context(
+    const http_request_t *req, http_response_t *res,
+    authorization_action_t action, const char *camera_uuid,
+    const char *legacy_stream_name, user_t *user, fleet_camera_t *camera,
+    authorization_evaluation_t *evaluation);
+
+/**
  * Evaluate an already-authenticated user against a server-resolved stream.
  * Returns 0 with an allow/deny evaluation, 1 if the stream does not exist, and
  * -1 on a database or policy evaluation error. Useful for batch operations.

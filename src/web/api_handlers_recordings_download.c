@@ -88,9 +88,9 @@ void handle_recordings_download(const http_request_t *req, http_response_t *res)
     }
     fleet_camera_t camera;
     authorization_evaluation_t evaluation;
-    if (!httpd_authorize_stream_action_with_context(
-            req, res, AUTHZ_RECORDINGS_EXPORT, recording.stream_name, &user,
-            &camera, &evaluation)) {
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_RECORDINGS_EXPORT, recording.camera_uuid,
+            recording.stream_name, &user, &camera, &evaluation)) {
         return;
     }
 

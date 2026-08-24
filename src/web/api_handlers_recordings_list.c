@@ -529,6 +529,12 @@ void handle_get_recordings(const http_request_t *req, http_response_t *res) {
 
         cJSON_AddNumberToObject(recording, "id", (double)recordings[i].id);
         cJSON_AddStringToObject(recording, "stream", recordings[i].stream_name);
+        if (recordings[i].camera_uuid[0] != '\0') {
+            cJSON_AddStringToObject(recording, "camera_uuid",
+                                    recordings[i].camera_uuid);
+        } else {
+            cJSON_AddNullToObject(recording, "camera_uuid");
+        }
         cJSON_AddStringToObject(recording, "file_path", recordings[i].file_path);
         cJSON_AddStringToObject(recording, "start_time", start_time_formatted);
         cJSON_AddStringToObject(recording, "end_time", end_time_formatted);

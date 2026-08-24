@@ -79,8 +79,10 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
 
     const char *sql = "INSERT INTO recordings (stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-                      "retention_tier, disk_pressure_eligible, schedule_restricted) "
-                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+                      "retention_tier, disk_pressure_eligible, schedule_restricted, camera_uuid) "
+                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
+                      "COALESCE(NULLIF(?, ''), "
+                      "(SELECT camera_uuid FROM streams WHERE name = ?)));";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -134,6 +136,8 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
     } else {
         sqlite3_bind_int(stmt, 14, metadata->schedule_restricted ? 1 : 0);
     }
+    sqlite3_bind_text(stmt, 15, metadata->camera_uuid, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 16, metadata->stream_name, -1, SQLITE_STATIC);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -276,7 +280,7 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
                       "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
-                      "schedule_restricted "
+                      "schedule_restricted, camera_uuid "
                       "FROM recordings WHERE id = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -352,6 +356,9 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
             ? (sqlite3_column_int(stmt, 15) != 0) : true;
         metadata->schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
             ? (sqlite3_column_int(stmt, 16) != 0) : -1;
+        const char *camera_uuid = (const char *)sqlite3_column_text(stmt, 17);
+        safe_strcpy(metadata->camera_uuid, camera_uuid ? camera_uuid : "",
+                    sizeof(metadata->camera_uuid), 0);
 
         result = 0; // Success
     }
@@ -387,7 +394,7 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
     const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
                       "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
-                      "schedule_restricted "
+                      "schedule_restricted, camera_uuid "
                       "FROM recordings WHERE file_path = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -459,6 +466,9 @@ int get_recording_metadata_by_path(const char *file_path, recording_metadata_t *
             ? (sqlite3_column_int(stmt, 15) != 0) : true;
         metadata->schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
             ? (sqlite3_column_int(stmt, 16) != 0) : -1;
+        const char *camera_uuid = (const char *)sqlite3_column_text(stmt, 17);
+        safe_strcpy(metadata->camera_uuid, camera_uuid ? camera_uuid : "",
+                    sizeof(metadata->camera_uuid), 0);
 
         result = 0; // Success
     }
@@ -497,7 +507,7 @@ int get_recording_metadata(time_t start_time, time_t end_time,
     snprintf(sql, sizeof(sql), "SELECT id, stream_name, file_path, start_time, end_time, "
                  "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
                  "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
-                 "schedule_restricted "
+                 "schedule_restricted, camera_uuid "
                  "FROM recordings WHERE is_complete = 1 AND end_time IS NOT NULL"); // Only complete recordings with end_time set
 
     if (start_time > 0) {
@@ -604,6 +614,10 @@ int get_recording_metadata(time_t start_time, time_t end_time,
                 ? (sqlite3_column_int(stmt, 15) != 0) : true;
             metadata[count].schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
                 ? (sqlite3_column_int(stmt, 16) != 0) : -1;
+            const char *camera_uuid = (const char *)sqlite3_column_text(stmt, 17);
+            safe_strcpy(metadata[count].camera_uuid,
+                        camera_uuid ? camera_uuid : "",
+                        sizeof(metadata[count].camera_uuid), 0);
 
             count++;
         }
@@ -917,7 +931,7 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
             "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
             "r.size_bytes, r.width, r.height, r.fps, r.codec, r.is_complete, r.trigger_type, "
             "r.protected, r.retention_override_days, r.retention_tier, r.disk_pressure_eligible, "
-            "r.schedule_restricted "
+            "r.schedule_restricted, r.camera_uuid "
             "FROM recordings r WHERE r.is_complete = 1 AND r.end_time IS NOT NULL");
 
     if (has_detection == 1) {
@@ -1173,6 +1187,10 @@ int get_recording_metadata_paginated(time_t start_time, time_t end_time,
                 ? (sqlite3_column_int(stmt, 15) != 0) : true;
             metadata[count].schedule_restricted = (sqlite3_column_type(stmt, 16) != SQLITE_NULL)
                 ? (sqlite3_column_int(stmt, 16) != 0) : -1;
+            const char *camera_uuid = (const char *)sqlite3_column_text(stmt, 17);
+            safe_strcpy(metadata[count].camera_uuid,
+                        camera_uuid ? camera_uuid : "",
+                        sizeof(metadata[count].camera_uuid), 0);
 
             count++;
         }

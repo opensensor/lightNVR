@@ -1229,6 +1229,32 @@ static const char migration_0060_down[] =
     "DROP TABLE IF EXISTS event_destinations;\n"
     "SELECT 1;";
 
+static const char migration_0061_up[] =
+    "ALTER TABLE recordings ADD COLUMN camera_uuid TEXT;\n"
+    "ALTER TABLE detections ADD COLUMN camera_uuid TEXT;\n"
+    "UPDATE recordings SET camera_uuid = ("
+    "SELECT streams.camera_uuid FROM streams "
+    "WHERE streams.name = recordings.stream_name) "
+    "WHERE camera_uuid IS NULL AND EXISTS ("
+    "SELECT 1 FROM streams WHERE streams.name = recordings.stream_name);\n"
+    "UPDATE detections SET camera_uuid = COALESCE(("
+    "SELECT recordings.camera_uuid FROM recordings "
+    "WHERE recordings.id = detections.recording_id), ("
+    "SELECT streams.camera_uuid FROM streams "
+    "WHERE streams.name = detections.stream_name)) "
+    "WHERE camera_uuid IS NULL;\n"
+    "CREATE INDEX idx_recordings_camera_time "
+    "ON recordings(camera_uuid, start_time, end_time) "
+    "WHERE camera_uuid IS NOT NULL;\n"
+    "CREATE INDEX idx_detections_camera_time_id "
+    "ON detections(camera_uuid, timestamp, id) "
+    "WHERE camera_uuid IS NOT NULL;";
+
+static const char migration_0061_down[] =
+    "DROP INDEX IF EXISTS idx_detections_camera_time_id;\n"
+    "DROP INDEX IF EXISTS idx_recordings_camera_time;\n"
+    "SELECT 1;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1650,8 +1676,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0060_down,
         .is_embedded = true
     },
+    {
+        .version = "0061",
+        .description = "add_capture_camera_identity",
+        .sql_up = migration_0061_up,
+        .sql_down = migration_0061_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 60
+#define EMBEDDED_MIGRATIONS_COUNT 61
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

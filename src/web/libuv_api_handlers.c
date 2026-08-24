@@ -26,6 +26,7 @@
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_recordings_batch_download.h"
 #include "web/api_handlers_timeline.h"
+#include "web/api_handlers_investigations.h"
 #include "web/api_handlers_onvif.h"
 #include "web/api_handlers_users.h"
 #include "web/api_handlers_totp.h"
@@ -348,6 +349,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/timeline/segments", "GET", handle_get_timeline_segments);
     http_server_register_handler(server, "/api/timeline/manifest", "GET", handle_timeline_manifest);
     http_server_register_handler(server, "/api/timeline/play", "GET", handle_timeline_playback);
+    http_server_register_handler(server, "/api/investigations/timeline", "POST", handle_post_investigation_timeline);
 
     // HLS Streaming (backend-agnostic handler)
     // Pattern uses # for single-segment wildcards: /hls/{stream_name}/{filename}

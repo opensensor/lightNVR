@@ -45,12 +45,10 @@
 // Mutex for manifest creation
 static pthread_mutex_t manifest_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/**
- * Get timeline segments for a specific stream and time range
- */
-int get_timeline_segments(const char *stream_name, time_t start_time, time_t end_time,
-                         timeline_segment_t *segments, int max_segments) {
-    if (!stream_name || !segments || max_segments <= 0) {
+static int get_timeline_segments_for_identity(
+    const char *identity, bool by_camera_uuid, time_t start_time,
+    time_t end_time, timeline_segment_t *segments, int max_segments) {
+    if (!identity || identity[0] == '\0' || !segments || max_segments <= 0) {
         log_error("Invalid parameters for get_timeline_segments");
         return -1;
     }
@@ -77,23 +75,28 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
      *
      * Also populate has_detection by checking trigger_type or the detections table.
      */
-    const char *sql =
-        "SELECT r.id, r.stream_name, r.file_path, r.start_time, r.end_time, "
+    const char *stream_sql =
+        "SELECT r.id, r.stream_name, r.camera_uuid, r.file_path, "
+        "r.start_time, r.end_time, "
         "r.size_bytes, "
         "CASE WHEN r.trigger_type = 'detection' THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id) THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d "
-        "                  WHERE d.stream_name = r.stream_name "
+        "                  WHERE ((r.camera_uuid IS NOT NULL AND d.camera_uuid = r.camera_uuid) "
+        "                     OR (r.camera_uuid IS NULL AND d.camera_uuid IS NULL "
+        "                         AND d.stream_name = r.stream_name)) "
         "                    AND d.source != 'external_motion' "
         "                    AND d.timestamp >= r.start_time "
         "                    AND d.timestamp <= r.end_time) THEN 1 "
         "     WHEN EXISTS (SELECT 1 FROM detections d "
-        "                  WHERE d.stream_name = r.stream_name "
+        "                  WHERE ((r.camera_uuid IS NOT NULL AND d.camera_uuid = r.camera_uuid) "
+        "                     OR (r.camera_uuid IS NULL AND d.camera_uuid IS NULL "
+        "                         AND d.stream_name = r.stream_name)) "
         "                    AND d.source = 'external_motion' "
         "                    AND d.timestamp <= r.end_time "
         "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
         "     ELSE 0 END AS has_detection, "
-        "r.schedule_restricted "
+        "r.trigger_type, r.schedule_restricted "
         "FROM recordings r "
         "WHERE r.is_complete = 1 "
         "  AND r.end_time IS NOT NULL "
@@ -103,36 +106,75 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
         "ORDER BY r.start_time ASC "
         "LIMIT ?;";
 
+    const char *camera_sql =
+        "SELECT r.id, r.stream_name, r.camera_uuid, r.file_path, "
+        "r.start_time, r.end_time, "
+        "r.size_bytes, "
+        "CASE WHEN r.trigger_type = 'detection' THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d WHERE d.recording_id = r.id) THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d "
+        "                  WHERE d.camera_uuid = r.camera_uuid "
+        "                    AND d.source != 'external_motion' "
+        "                    AND d.timestamp >= r.start_time "
+        "                    AND d.timestamp <= r.end_time) THEN 1 "
+        "     WHEN EXISTS (SELECT 1 FROM detections d "
+        "                  WHERE d.camera_uuid = r.camera_uuid "
+        "                    AND d.source = 'external_motion' "
+        "                    AND d.timestamp <= r.end_time "
+        "                    AND COALESCE(d.event_end_time, CAST(strftime('%s','now') AS INTEGER)) >= r.start_time) THEN 1 "
+        "     ELSE 0 END AS has_detection, "
+        "r.trigger_type, r.schedule_restricted "
+        "FROM recordings r "
+        "WHERE r.is_complete = 1 "
+        "  AND r.end_time IS NOT NULL "
+        "  AND r.camera_uuid = ? "
+        "  AND r.start_time <= ? "
+        "  AND r.end_time >= ? "
+        "ORDER BY r.start_time ASC "
+        "LIMIT ?;";
+
     sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    int rc = sqlite3_prepare_v2(
+        db, by_camera_uuid ? camera_sql : stream_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         log_error("Failed to prepare timeline segments query: %s", sqlite3_errmsg(db));
         pthread_mutex_unlock(db_mutex);
         return -1;
     }
 
-    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 1, identity, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 2, (sqlite3_int64)end_time);
     sqlite3_bind_int64(stmt, 3, (sqlite3_int64)start_time);
     sqlite3_bind_int(stmt, 4, max_segments);
 
     int count = 0;
     while (sqlite3_step(stmt) == SQLITE_ROW && count < max_segments) {
+        memset(&segments[count], 0, sizeof(segments[count]));
         segments[count].id = (uint64_t)sqlite3_column_int64(stmt, 0);
 
         const char *sname = (const char *)sqlite3_column_text(stmt, 1);
         if (sname) safe_strcpy(segments[count].stream_name, sname, sizeof(segments[count].stream_name), 0);
 
-        const char *fpath = (const char *)sqlite3_column_text(stmt, 2);
+        const char *camera_uuid = (const char *)sqlite3_column_text(stmt, 2);
+        if (camera_uuid) {
+            safe_strcpy(segments[count].camera_uuid, camera_uuid,
+                        sizeof(segments[count].camera_uuid), 0);
+        }
+
+        const char *fpath = (const char *)sqlite3_column_text(stmt, 3);
         if (fpath) safe_strcpy(segments[count].file_path, fpath, sizeof(segments[count].file_path), 0);
 
-        segments[count].start_time  = (time_t)sqlite3_column_int64(stmt, 3);
-        segments[count].end_time    = (time_t)sqlite3_column_int64(stmt, 4);
-        segments[count].size_bytes  = (uint64_t)sqlite3_column_int64(stmt, 5);
-        segments[count].has_detection = sqlite3_column_int(stmt, 6) != 0;
+        segments[count].start_time  = (time_t)sqlite3_column_int64(stmt, 4);
+        segments[count].end_time    = (time_t)sqlite3_column_int64(stmt, 5);
+        segments[count].size_bytes  = (uint64_t)sqlite3_column_int64(stmt, 6);
+        segments[count].has_detection = sqlite3_column_int(stmt, 7) != 0;
+        const char *trigger_type = (const char *)sqlite3_column_text(stmt, 8);
+        safe_strcpy(segments[count].trigger_type,
+                    trigger_type ? trigger_type : "scheduled",
+                    sizeof(segments[count].trigger_type), 0);
         segments[count].schedule_restricted =
-            (sqlite3_column_type(stmt, 7) != SQLITE_NULL)
-                ? (sqlite3_column_int(stmt, 7) != 0) : -1;
+            (sqlite3_column_type(stmt, 9) != SQLITE_NULL)
+                ? (sqlite3_column_int(stmt, 9) != 0) : -1;
 
         count++;
     }
@@ -140,9 +182,37 @@ int get_timeline_segments(const char *stream_name, time_t start_time, time_t end
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
 
-    log_info("get_timeline_segments: found %d segments for stream '%s' in range [%ld, %ld]",
-             count, stream_name, (long)start_time, (long)end_time);
+    log_info("get_timeline_segments: found %d segments for %s '%s' in range [%ld, %ld]",
+             count, by_camera_uuid ? "camera" : "stream", identity,
+             (long)start_time, (long)end_time);
     return count;
+}
+
+/**
+ * Get timeline segments for a specific stream and time range.
+ */
+int get_timeline_segments(const char *stream_name, time_t start_time,
+                          time_t end_time, timeline_segment_t *segments,
+                          int max_segments) {
+    return get_timeline_segments_for_identity(
+        stream_name, false, start_time, end_time, segments, max_segments);
+}
+
+int get_timeline_segments_by_camera_uuid(
+    const char *camera_uuid, time_t start_time, time_t end_time,
+    timeline_segment_t *segments, int max_segments) {
+    return get_timeline_segments_for_identity(
+        camera_uuid, true, start_time, end_time, segments, max_segments);
+}
+
+static const char *timeline_segment_capture_method(
+    const timeline_segment_t *segment) {
+    if (!segment || segment->trigger_type[0] == '\0') return "scheduled";
+    if (strcmp(segment->trigger_type, "scheduled") == 0 &&
+        segment->schedule_restricted == 0) {
+        return "continuous";
+    }
+    return segment->trigger_type;
 }
 
 /**
@@ -373,10 +443,18 @@ void handle_get_timeline_segments(const http_request_t *req, http_response_t *re
 
         cJSON_AddNumberToObject(segment, "id", (double)segments[i].id);
         cJSON_AddStringToObject(segment, "stream", segments[i].stream_name);
+        if (segments[i].camera_uuid[0] != '\0') {
+            cJSON_AddStringToObject(segment, "camera_uuid",
+                                    segments[i].camera_uuid);
+        } else {
+            cJSON_AddNullToObject(segment, "camera_uuid");
+        }
         cJSON_AddStringToObject(segment, "start_time", segment_start_time);
         cJSON_AddStringToObject(segment, "end_time", segment_end_time);
         cJSON_AddNumberToObject(segment, "duration", duration);
         cJSON_AddStringToObject(segment, "size", size_str);
+        cJSON_AddStringToObject(segment, "capture_method",
+                                timeline_segment_capture_method(&segments[i]));
         cJSON_AddBoolToObject(segment, "has_detection", segments[i].has_detection);
         if (segments[i].schedule_restricted < 0) {
             cJSON_AddNullToObject(segment, "schedule_restricted");
@@ -815,10 +893,17 @@ void handle_get_timeline_segments_by_ids(const http_request_t *req, http_respons
 
         cJSON_AddNumberToObject(segment, "id", (double)rec.id);
         cJSON_AddStringToObject(segment, "stream", rec.stream_name);
+        if (rec.camera_uuid[0] != '\0') {
+            cJSON_AddStringToObject(segment, "camera_uuid", rec.camera_uuid);
+        } else {
+            cJSON_AddNullToObject(segment, "camera_uuid");
+        }
         cJSON_AddStringToObject(segment, "start_time", seg_start);
         cJSON_AddStringToObject(segment, "end_time", seg_end);
         cJSON_AddNumberToObject(segment, "duration", duration);
         cJSON_AddStringToObject(segment, "size", size_str);
+        cJSON_AddStringToObject(segment, "capture_method",
+                                recording_capture_method(&rec));
         cJSON_AddBoolToObject(segment, "has_detection", has_det);
         if (rec.schedule_restricted < 0) {
             cJSON_AddNullToObject(segment, "schedule_restricted");

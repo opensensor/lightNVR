@@ -2358,6 +2358,8 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
         log_error("[%s] Failed to create MP4 writer", ctx->stream_name);
         return -1;
     }
+    safe_strcpy(ctx->mp4_writer->camera_uuid, ctx->camera_uuid,
+                sizeof(ctx->mp4_writer->camera_uuid), 0);
     ctx->mp4_writer->pre_buffer_seconds = ctx->pre_buffer_seconds;
 
     // Configure audio recording based on stream settings
@@ -2441,6 +2443,8 @@ static int udt_start_recording(unified_detection_ctx_t *ctx) {
     recording_metadata_t metadata = {0};
     safe_strcpy(metadata.file_path, ctx->current_recording_path, sizeof(metadata.file_path), 0);
     safe_strcpy(metadata.stream_name, ctx->stream_name, sizeof(metadata.stream_name), 0);
+    safe_strcpy(metadata.camera_uuid, ctx->camera_uuid,
+                sizeof(metadata.camera_uuid), 0);
     metadata.start_time = now;
     metadata.end_time = 0;  // Will be set when recording stops
     metadata.size_bytes = 0;  // Will be set when recording stops
@@ -2523,6 +2527,8 @@ static int udt_stop_recording(unified_detection_ctx_t *ctx) {
         recording_metadata_t metadata = {0};
         safe_strcpy(metadata.file_path, ctx->current_recording_path, sizeof(metadata.file_path), 0);
         safe_strcpy(metadata.stream_name, ctx->stream_name, sizeof(metadata.stream_name), 0);
+        safe_strcpy(metadata.camera_uuid, ctx->camera_uuid,
+                    sizeof(metadata.camera_uuid), 0);
         metadata.start_time = start_time;
         metadata.end_time = end_time;
         metadata.size_bytes = file_size;
@@ -2868,7 +2874,8 @@ static void report_detections(unified_detection_ctx_t *ctx,
     if (!is_api_detection(ctx->model_path)) {
         uint64_t rec_id = detection_link_recording_id(ctx);
 
-        if (store_detections_in_db(ctx->stream_name, result, now, rec_id) != 0)
+        if (store_detections_in_db_for_camera(
+                ctx->camera_uuid, ctx->stream_name, result, now, rec_id) != 0)
             log_warn("[%s] Failed to store detections in database", ctx->stream_name);
 
         // API backends enqueue from detect_objects_api / *_snapshot. Local

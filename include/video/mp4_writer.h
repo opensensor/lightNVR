@@ -30,6 +30,7 @@ typedef struct {
 struct mp4_writer {
     char output_path[MAX_PATH_LENGTH];
     char stream_name[MAX_STREAM_NAME];
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
     AVFormatContext *output_ctx;
     int video_stream_idx;
     int has_audio;            // Flag indicating if audio is enabled

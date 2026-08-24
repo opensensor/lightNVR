@@ -83,22 +83,6 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
         return;
     }
 
-    // Check authentication if enabled
-    if (g_config.web_auth_enabled) {
-        user_t user;
-        if (g_config.demo_mode) {
-            if (!httpd_check_viewer_access(req, &user)) {
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        } else {
-            if (!httpd_get_authenticated_user(req, &user)) {
-                http_response_set_json_error(res, 401, "Unauthorized");
-                return;
-            }
-        }
-    }
-
     // Check if thumbnails are enabled
     if (!g_config.generate_thumbnails) {
         http_response_set_json_error(res, 403, "Thumbnail generation is disabled");
@@ -143,6 +127,20 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
         return;
     }
 
+    recording_metadata_t recording = {0};
+    if (get_recording_metadata_by_id(id, &recording) != 0) {
+        http_response_set_json_error(res, 404, "Recording not found");
+        return;
+    }
+    user_t user;
+    fleet_camera_t camera;
+    authorization_evaluation_t evaluation;
+    if (!httpd_authorize_camera_identity_action_with_context(
+            req, res, AUTHZ_RECORDINGS_REPLAY, recording.camera_uuid,
+            recording.stream_name, &user, &camera, &evaluation)) {
+        return;
+    }
+
     // Build thumbnail path
     char thumb_path[MAX_PATH_LENGTH];
     snprintf(thumb_path, sizeof(thumb_path), "%s/thumbnails/%llu_%d.jpg",
@@ -161,13 +159,6 @@ void handle_recordings_thumbnail(const http_request_t *req, http_response_t *res
     }
 
     // Thumbnail doesn't exist - need to generate it
-    // Get recording metadata
-    recording_metadata_t recording = {0};
-    if (get_recording_metadata_by_id(id, &recording) != 0) {
-        http_response_set_json_error(res, 404, "Recording not found");
-        return;
-    }
-
     // Check recording file exists
     if (stat(recording.file_path, &st) != 0) {
         http_response_set_json_error(res, 404, "Recording file not found");
@@ -251,4 +242,3 @@ void delete_recording_thumbnails(uint64_t recording_id) {
         // Silently ignore if thumbnail doesn't exist (ENOENT)
     }
 }
-

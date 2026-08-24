@@ -12,6 +12,7 @@
 typedef struct {
     uint64_t id;
     char stream_name[64];
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
     char file_path[MAX_PATH_LENGTH];
     time_t start_time;
     time_t end_time;
