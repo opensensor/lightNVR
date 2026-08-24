@@ -73,6 +73,17 @@ static void on_segment_started_cb(void *user_ctx) {
         safe_strcpy(metadata.camera_uuid, thread_ctx->writer->camera_uuid,
                     sizeof(metadata.camera_uuid), 0);
         safe_strcpy(metadata.file_path, thread_ctx->writer->output_path, sizeof(metadata.file_path), 0);
+        safe_strcpy(metadata.storage_target_uuid,
+                    thread_ctx->writer->placement.target_uuid,
+                    sizeof(metadata.storage_target_uuid), 0);
+        safe_strcpy(metadata.object_key,
+                    thread_ctx->writer->placement.object_key,
+                    sizeof(metadata.object_key), 0);
+        safe_strcpy(metadata.placement_reason,
+                    thread_ctx->writer->placement.reason,
+                    sizeof(metadata.placement_reason), 0);
+        metadata.storage_policy_version =
+            thread_ctx->writer->placement.policy_version;
         metadata.start_time = time(NULL); // Align to keyframe time
         metadata.end_time = 0;
         metadata.size_bytes = 0;
@@ -329,10 +340,12 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 // Re-evaluate the configured directory for every segment so a
                 // long-running stream rolls into the correct month/day.
                 char new_path[MAX_PATH_LENGTH];
-                if (prepare_mp4_recording_path(get_streaming_config(), stream_name,
-                                               current_time, new_path,
-                                               sizeof(new_path)) != 0) {
-                    log_error("Failed to prepare rotated MP4 path for %s", stream_name);
+                storage_placement_t new_placement;
+                if (prepare_placed_mp4_recording_path(
+                        get_streaming_config(), stream_name, current_time,
+                        new_path, sizeof(new_path), &new_placement) != 0) {
+                    log_warn("Storage placement blocked rotated MP4 path for %s (reason: %s)",
+                             stream_name, new_placement.reason);
                     continue;
                 }
 
@@ -380,6 +393,7 @@ static void *mp4_writer_rtsp_thread(void *arg) {
                 // Update the output path
                 safe_strcpy(thread_ctx->writer->output_path, new_path, MAX_PATH_LENGTH, 0);
                 update_writer_directory_from_path(thread_ctx->writer, new_path);
+                thread_ctx->writer->placement = new_placement;
 
                 // Reset current recording ID; new ID will be assigned on first keyframe of next segment
                 thread_ctx->writer->current_recording_id = 0;
@@ -573,16 +587,20 @@ static void *mp4_writer_rtsp_thread(void *arg) {
             if (thread_ctx->writer && thread_ctx->writer->output_dir[0] != '\0') {
                 time_t retry_ts = time(NULL);
                 char retry_path[MAX_PATH_LENGTH];
-                if (prepare_mp4_recording_path(get_streaming_config(), stream_name,
-                                               retry_ts, retry_path,
-                                               sizeof(retry_path)) == 0) {
+                storage_placement_t retry_placement;
+                if (prepare_placed_mp4_recording_path(
+                        get_streaming_config(), stream_name, retry_ts,
+                        retry_path, sizeof(retry_path),
+                        &retry_placement) == 0) {
                     safe_strcpy(thread_ctx->writer->output_path, retry_path,
                                 sizeof(thread_ctx->writer->output_path), 0);
                     update_writer_directory_from_path(thread_ctx->writer, retry_path);
+                    thread_ctx->writer->placement = retry_placement;
                     log_debug("Updated output path for retry attempt: %s",
                               thread_ctx->writer->output_path);
                 } else {
-                    log_error("Failed to prepare retry MP4 path for %s", stream_name);
+                    log_warn("Storage placement blocked retry MP4 path for %s (reason: %s)",
+                             stream_name, retry_placement.reason);
                 }
             }
 

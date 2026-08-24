@@ -1,6 +1,6 @@
 # PRD — Multi-Target Storage Lifecycle
 
-**Status**: In progress — P0 foundation implemented
+**Status**: In progress — P0 and mount-safe P1a placement implemented
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 5 — storage scale and resilience
@@ -163,7 +163,8 @@ These are examples, not hard-coded product defaults.
 | Phase | Scope |
 | --- | --- |
 | P0 | Implemented: target schema/resolver, default-target migration, target health, and administration UI/API |
-| P1 | Selector policies, placement, per-target pressure behavior |
+| P1a | Implemented: selector-driven per-segment placement, named/default/pause/fail fallback, applied-policy audit metadata, policy administration UI/API, and mount-loss guards |
+| P1b | Per-target pressure evaluation and cleanup; richer policy conflict/effective-precedence simulation |
 | P2 | Persistent migration/copy jobs, checksums, bandwidth limits |
 | P3 | Pools, replication, capacity forecast, policy compliance dashboard |
 | P4 | External storage adapter interface, only when a concrete integration is chosen |
@@ -197,3 +198,15 @@ These are examples, not hard-coded product defaults.
 - Fleet 03 is required for policy and target events before P2 is considered done.
 - Fleet 04 provides bulk assignment and compliance queues.
 - OPS 02 adds evidence holds that override lifecycle policy.
+
+## 11. Current implementation boundary
+
+P1a routes newly created continuous, rotated, retried, and detection MP4 files.
+Policy assignment is cached per camera for up to 60 seconds and invalidated
+immediately by policy CRUD, while target health is checked at every placement;
+mount-guarded targets also re-read the live mount table before a segment path is
+created. Existing files are never moved by a policy edit.
+
+This slice does not implement target pools, automatic spillover, recording
+migration, or per-target pressure cleanup. A named or default fallback is a
+single explicit alternate, and an unavailable alternate safely pauses placement.

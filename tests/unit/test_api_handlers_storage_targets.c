@@ -174,11 +174,15 @@ void test_unavailable_target_must_be_staged_disabled(void) {
     cJSON_Delete(json);
     snprintf(body, sizeof(body),
              "{\"name\":\"Future NAS\",\"root_path\":\"%s\","
-             "\"enabled\":false}", missing);
+             "\"enabled\":false,\"mount_required\":true}", missing);
     json = call(handle_post_storage_target, HTTP_METHOD_POST,
                 "/api/storage-targets", NULL, body, NULL, 201);
     TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
         json, "enabled")));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        json, "mount_required")));
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItemCaseSensitive(
+        json, "mount_guard_path")));
     TEST_ASSERT_EQUAL_STRING(
         "disabled", cJSON_GetObjectItemCaseSensitive(
             cJSON_GetObjectItemCaseSensitive(json, "health"),

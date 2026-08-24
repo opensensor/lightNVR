@@ -26,6 +26,7 @@ typedef struct {
     int running;               // Flag indicating if the thread is running
     pthread_t thread;          // Recording thread
     char output_path[MAX_PATH_LENGTH]; // Path to the output MP4 file
+    storage_placement_t placement; // Initial target identity and policy audit
     mp4_writer_t *mp4_writer;  // MP4 writer instance
     char trigger_type[16];     // Type of trigger ('continuous', 'scheduled', 'detection', 'motion', 'manual')
 } mp4_recording_ctx_t;

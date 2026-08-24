@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include "core/config.h"  // For MAX_PATH_LENGTH and MAX_STREAM_NAME
 #include "video/mp4_writer_thread.h"
+#include "storage/storage_placement.h"
 
 /**
  * MP4 writer structure
@@ -44,6 +45,7 @@ struct mp4_writer {
     mp4_audio_state_t audio;  // Audio state - completely separate from video
     pthread_mutex_t mutex;    // Mutex to protect video state
     uint64_t current_recording_id; // ID of the current recording in the database
+    storage_placement_t placement; // Target identity chosen for this segment
 
     // Segment-related fields
     int segment_duration;     // Duration of each segment in seconds

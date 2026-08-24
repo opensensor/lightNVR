@@ -54,6 +54,13 @@ static cJSON *target_to_json(const storage_target_t *target,
     cJSON_AddStringToObject(object, "root_path", target->root_path);
     cJSON_AddBoolToObject(object, "enabled", target->enabled);
     cJSON_AddBoolToObject(object, "is_default", target->is_default);
+    cJSON_AddBoolToObject(object, "mount_required", target->mount_required);
+    if (target->mount_guard_path[0]) {
+        cJSON_AddStringToObject(object, "mount_guard_path",
+                               target->mount_guard_path);
+    } else {
+        cJSON_AddNullToObject(object, "mount_guard_path");
+    }
     cJSON_AddStringToObject(object, "storage_class", target->storage_class);
     cJSON_AddNumberToObject(object, "reserve_bytes",
                             (double)target->reserve_bytes);
@@ -240,7 +247,9 @@ static bool apply_body(const cJSON *body, storage_target_t *target,
                      sizeof(target->root_path), create, res) ||
         !json_string(body, "storage_class", target->storage_class,
                      sizeof(target->storage_class), false, res) ||
-        !json_bool(body, "enabled", &target->enabled, false, res)) {
+        !json_bool(body, "enabled", &target->enabled, false, res) ||
+        !json_bool(body, "mount_required", &target->mount_required,
+                   false, res)) {
         return false;
     }
     double number = 0.0;

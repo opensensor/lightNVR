@@ -39,6 +39,8 @@ typedef struct {
     int64_t updated_at;
     uint64_t recording_count;
     uint64_t recording_bytes;
+    bool mount_required;
+    char mount_guard_path[MAX_PATH_LENGTH];
 } storage_target_t;
 
 typedef enum {
@@ -59,6 +61,8 @@ int db_storage_target_count(void);
 int db_storage_target_list(storage_target_t *targets, int max_count);
 db_storage_target_result_t db_storage_target_get(
     const char *uuid, storage_target_t *target);
+db_storage_target_result_t db_storage_target_get_default(
+    storage_target_t *target);
 db_storage_target_result_t db_storage_target_create(storage_target_t *target);
 db_storage_target_result_t db_storage_target_update(
     storage_target_t *target, int64_t expected_revision);
@@ -87,5 +91,16 @@ int db_storage_target_classify_path(
 int db_storage_target_resolve_path(
     const char *target_uuid, const char *object_key,
     char absolute_path[MAX_PATH_LENGTH]);
+
+/*
+ * Find the most-specific non-root mount containing root_path. mountinfo_path is
+ * injectable for tests and should normally be /proc/self/mountinfo.
+ */
+int db_storage_target_detect_mount(
+    const char *root_path, const char *mountinfo_path,
+    char mount_path[MAX_PATH_LENGTH]);
+
+/* Fast mount-table-only check used on the recording hot path. */
+bool db_storage_target_mount_guard_active(const storage_target_t *target);
 
 #endif /* LIGHTNVR_DB_STORAGE_TARGETS_H */
