@@ -12,8 +12,11 @@ import {
   findSegmentAt,
   formatCursorTime,
   formatDateTimeLocal,
+  normalizedRegionRectangle,
   parseDateTimeLocal,
+  parseInvestigationRegion,
   segmentTrackPosition,
+  videoContentBox,
 } from './investigationUtils.js';
 
 function initialTimeState() {
@@ -40,6 +43,7 @@ function initialSearchFilters() {
     recordingTag: params.get('tag') || '',
     protection: params.get('protected') || '',
     minConfidence: params.get('confidence_min') || '',
+    region: parseInvestigationRegion(params),
   };
 }
 
@@ -49,13 +53,19 @@ function InvestigationPlayer({
   playing,
   speed,
   primary,
+  region,
+  drawingRegion,
+  onRegionChange,
+  onRegionComplete,
   onMakePrimary,
   t,
 }) {
   const videoRef = useRef(null);
   const cursorRef = useRef(cursor);
+  const regionAnchorRef = useRef(null);
   const segment = findSegmentAt(track.segments, cursor);
   const [status, setStatus] = useState(segment ? 'loading' : 'gap');
+  const [videoDimensions, setVideoDimensions] = useState({ width: 16, height: 9 });
 
   useEffect(() => {
     cursorRef.current = cursor;
@@ -95,6 +105,9 @@ function InvestigationPlayer({
 
     setStatus('loading');
     const loaded = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+      }
       seekToCursor();
       video.playbackRate = speed;
       if (playing) {
@@ -121,6 +134,30 @@ function InvestigationPlayer({
       video.pause();
     }
   }, [playing, speed, segment?.id]);
+
+  const regionContent = videoContentBox(
+    16, 9, videoDimensions.width, videoDimensions.height,
+  );
+  const pointFromEvent = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return null;
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+    };
+  };
+  const finishRegion = (event) => {
+    if (!regionAnchorRef.current) return;
+    const point = pointFromEvent(event);
+    const rectangle = normalizedRegionRectangle(regionAnchorRef.current, point);
+    regionAnchorRef.current = null;
+    if (!rectangle || rectangle.width < 0.01 || rectangle.height < 0.01) {
+      onRegionChange(null);
+    } else {
+      onRegionChange(rectangle);
+    }
+    onRegionComplete();
+  };
 
   return (
     <article className="investigation-player" data-status={segment ? status : 'gap'}>
@@ -157,6 +194,55 @@ function InvestigationPlayer({
           <div className="investigation-gap-state">
             <span>{t('investigation.noFootageAtTime')}</span>
             <time>{formatCursorTime(cursor)}</time>
+          </div>
+        )}
+        {segment && (drawingRegion || region) && (
+          <div
+            className={`investigation-region-layer ${drawingRegion ? 'is-drawing' : ''}`}
+            style={{
+              left: `${regionContent.left * 100}%`,
+              top: `${regionContent.top * 100}%`,
+              width: `${regionContent.width * 100}%`,
+              height: `${regionContent.height * 100}%`,
+            }}
+            aria-label={drawingRegion ? t('investigation.drawRegionPrompt') : undefined}
+            onPointerDown={(event) => {
+              if (!drawingRegion || (event.button !== undefined && event.button !== 0)) return;
+              event.preventDefault();
+              const point = pointFromEvent(event);
+              if (!point) return;
+              regionAnchorRef.current = point;
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (!drawingRegion || !regionAnchorRef.current) return;
+              const rectangle = normalizedRegionRectangle(
+                regionAnchorRef.current, pointFromEvent(event),
+              );
+              if (rectangle) onRegionChange(rectangle);
+            }}
+            onPointerUp={finishRegion}
+            onPointerCancel={() => {
+              regionAnchorRef.current = null;
+              onRegionComplete();
+            }}
+          >
+            {region && (
+              <span
+                className="investigation-region-rectangle"
+                style={{
+                  left: `${region.x * 100}%`,
+                  top: `${region.y * 100}%`,
+                  width: `${region.width * 100}%`,
+                  height: `${region.height * 100}%`,
+                }}
+              />
+            )}
+            {drawingRegion && !region && (
+              <span className="investigation-region-prompt">
+                {t('investigation.drawRegionPrompt')}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -342,6 +428,7 @@ export function InvestigationView() {
   const [searchPageCursors, setSearchPageCursors] = useState([null]);
   const [searchPageIndex, setSearchPageIndex] = useState(0);
   const [selectedResultId, setSelectedResultId] = useState(null);
+  const [drawingRegion, setDrawingRegion] = useState(false);
   const initialSelectionApplied = useRef(false);
   const initialQueryLoaded = useRef(false);
   const requestController = useRef(null);
@@ -418,6 +505,17 @@ export function InvestigationView() {
         filters.protected = searchFilters.protection === 'protected';
       }
       if (minimumConfidence !== null) filters.min_confidence = minimumConfidence;
+      const activeRegion = searchFilters.region &&
+        searchFilters.region.width > 0 && searchFilters.region.height > 0
+        ? {
+          camera_uuid: searchFilters.region.cameraUuid,
+          x: searchFilters.region.x,
+          y: searchFilters.region.y,
+          width: searchFilters.region.width,
+          height: searchFilters.region.height,
+          match: searchFilters.region.match,
+          min_intersection: searchFilters.region.minIntersection,
+        } : undefined;
       const data = await fetchJSON('/api/investigations/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -426,6 +524,7 @@ export function InvestigationView() {
           start_time: Math.floor(searchStart),
           end_time: Math.floor(searchEnd),
           filters,
+          region: activeRegion,
           cursor: pageCursor,
           limit: 24,
         }),
@@ -454,6 +553,20 @@ export function InvestigationView() {
         if (value) url.searchParams.set(name, value);
         else url.searchParams.delete(name);
       });
+      if (activeRegion) {
+        url.searchParams.set('region_camera', activeRegion.camera_uuid);
+        url.searchParams.set('region_rect', [
+          activeRegion.x,
+          activeRegion.y,
+          activeRegion.width,
+          activeRegion.height,
+        ].join(','));
+        url.searchParams.set('region_match', activeRegion.match);
+        url.searchParams.set('region_min', String(activeRegion.min_intersection));
+      } else {
+        ['region_camera', 'region_rect', 'region_match', 'region_min']
+          .forEach((name) => url.searchParams.delete(name));
+      }
       window.history.replaceState({}, '', url);
     } catch (requestError) {
       if (!controller.signal.aborted) setSearchError(requestError.message);
@@ -544,6 +657,13 @@ export function InvestigationView() {
   const tracks = timeline?.tracks || [];
   const activeTracks = tracks.filter((track) =>
     activeCameraUuids.includes(track.camera_uuid));
+  const primaryTrack = tracks.find((track) =>
+    track.camera_uuid === primaryCameraUuid) || null;
+  const regionTrack = tracks.find((track) =>
+    track.camera_uuid === searchFilters.region?.cameraUuid) || null;
+  const primaryHasFootage = Boolean(
+    primaryTrack && findSegmentAt(primaryTrack.segments, cursor),
+  );
   const activeKey = activeCameraUuids.join(',');
 
   useEffect(() => {
@@ -578,6 +698,11 @@ export function InvestigationView() {
   }, [cursor, timeline]);
 
   const toggleSelectedCamera = (cameraUuid) => {
+    if (selectedCameraUuids.includes(cameraUuid) &&
+        searchFilters.region?.cameraUuid === cameraUuid) {
+      setDrawingRegion(false);
+      setSearchFilter('region', null);
+    }
     setSelectedCameraUuids((current) => {
       if (current.includes(cameraUuid)) {
         return current.filter((uuid) => uuid !== cameraUuid);
@@ -614,6 +739,7 @@ export function InvestigationView() {
 
   const selectResult = useCallback((result) => {
     if (!result || !timeline) return;
+    setDrawingRegion(false);
     setSelectedResultId(result.result_id);
     setPlaying(false);
     setCursor(Math.max(
@@ -657,6 +783,30 @@ export function InvestigationView() {
 
   const setSearchFilter = (name, value) => {
     setSearchFilters((current) => ({ ...current, [name]: value }));
+  };
+
+  const setRegionRectangle = useCallback((rectangle) => {
+    setSearchFilters((current) => ({
+      ...current,
+      region: rectangle ? {
+        ...rectangle,
+        cameraUuid: primaryCameraUuid,
+        match: current.region?.match || 'center',
+        minIntersection: current.region?.minIntersection || 0.25,
+      } : null,
+    }));
+  }, [primaryCameraUuid]);
+
+  const setRegionCoordinate = (name, percentValue) => {
+    const value = Number(percentValue) / 100;
+    if (!Number.isFinite(value)) return;
+    setSearchFilters((current) => {
+      if (!current.region) return current;
+      const next = { ...current.region, [name]: value };
+      if (next.x < 0 || next.y < 0 || next.width <= 0 || next.height <= 0 ||
+          next.x + next.width > 1 || next.y + next.height > 1) return current;
+      return { ...current, region: next };
+    });
   };
 
   const loadNextSearchPage = () => {
@@ -882,6 +1032,119 @@ export function InvestigationView() {
             {searchLoading ? t('investigation.searching') : t('investigation.applyFilters')}
           </button>
         </div>
+        {timeline && (
+          <div className="investigation-region-controls">
+            <div className="investigation-region-copy">
+              <strong>{t('investigation.metadataRegionSearch')}</strong>
+              <small>
+                {searchFilters.region
+                  ? t('investigation.regionActive', {
+                    camera: regionTrack?.name || searchFilters.region.cameraUuid,
+                  })
+                  : t('investigation.regionSearchHelp')}
+              </small>
+            </div>
+            {searchFilters.region && (
+              <>
+                {[
+                  ['x', 'investigation.regionLeft', 0,
+                    (1 - searchFilters.region.width) * 100],
+                  ['y', 'investigation.regionTop', 0,
+                    (1 - searchFilters.region.height) * 100],
+                  ['width', 'investigation.regionWidth', 1,
+                    (1 - searchFilters.region.x) * 100],
+                  ['height', 'investigation.regionHeight', 1,
+                    (1 - searchFilters.region.y) * 100],
+                ].map(([name, label, minimum, maximum]) => (
+                  <label className="investigation-region-coordinate" key={name}>
+                    <span>{t(label)}</span>
+                    <input
+                      type="number"
+                      min={minimum}
+                      max={maximum}
+                      step="0.1"
+                      value={Math.round(searchFilters.region[name] * 1000) / 10}
+                      onInput={(event) => setRegionCoordinate(name, event.target.value)}
+                    />
+                  </label>
+                ))}
+                <label>
+                  <span>{t('investigation.regionMatch')}</span>
+                  <select
+                    value={searchFilters.region.match}
+                    onChange={(event) => setSearchFilter('region', {
+                      ...searchFilters.region,
+                      match: event.target.value,
+                    })}
+                  >
+                    <option value="center">{t('investigation.regionMatch.center')}</option>
+                    <option value="intersects">{t('investigation.regionMatch.intersects')}</option>
+                    <option value="minimum_intersection">
+                      {t('investigation.regionMatch.minimumIntersection')}
+                    </option>
+                  </select>
+                </label>
+                {searchFilters.region.match === 'minimum_intersection' && (
+                  <label>
+                    <span>{t('investigation.regionMinimumOverlap')}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      value={Math.round(searchFilters.region.minIntersection * 100)}
+                      onInput={(event) => {
+                        const value = Number(event.target.value);
+                        if (Number.isFinite(value) && value >= 1 && value <= 100) {
+                          setSearchFilter('region', {
+                            ...searchFilters.region,
+                            minIntersection: value / 100,
+                          });
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </>
+            )}
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={!primaryTrack || !primaryHasFootage}
+              onClick={() => {
+                setPlaying(false);
+                setDrawingRegion(true);
+              }}
+            >
+              {drawingRegion
+                ? t('investigation.drawingRegion')
+                : t('investigation.drawRegion')}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={!primaryTrack}
+              onClick={() => {
+                setDrawingRegion(false);
+                setRegionRectangle({ x: 0, y: 0, width: 1, height: 1 });
+              }}
+            >
+              {t('investigation.useFullFrame')}
+            </button>
+            {searchFilters.region && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setDrawingRegion(false);
+                  setSearchFilter('region', null);
+                }}
+              >
+                {t('investigation.clearRegion')}
+              </button>
+            )}
+          </div>
+        )}
         {error && <div className="investigation-error" role="alert">{error}</div>}
         {searchError && <div className="investigation-error" role="alert">{searchError}</div>}
       </section>
@@ -971,10 +1234,17 @@ export function InvestigationView() {
                   }}
                   t={t}
                 />
-                {searchData.coverage && !searchData.coverage.complete && (
+                {(searchData.coverage?.unresolved_legacy_rows || 0) > 0 && (
                   <div className="investigation-coverage-warning">
                     {t('investigation.incompleteCoverage', {
                       count: searchData.coverage.unresolved_legacy_rows,
+                    })}
+                  </div>
+                )}
+                {(searchData.coverage?.spatial_metadata?.rows_without_boxes || 0) > 0 && (
+                  <div className="investigation-coverage-warning">
+                    {t('investigation.spatialCoverageGap', {
+                      count: searchData.coverage.spatial_metadata.rows_without_boxes,
                     })}
                   </div>
                 )}
@@ -992,7 +1262,10 @@ export function InvestigationView() {
                   </div>
                 ) : (
                   <div className="investigation-results-empty">
-                    {t('investigation.noResults')}
+                    {searchData.coverage?.spatial_metadata?.requested &&
+                      searchData.coverage.spatial_metadata.rows_with_boxes === 0
+                      ? t('investigation.noSpatialMetadata')
+                      : t('investigation.noResults')}
                   </div>
                 )}
                 <div className="investigation-page-navigation">
@@ -1061,7 +1334,16 @@ export function InvestigationView() {
                   playing={playing}
                   speed={speed}
                   primary={primaryCameraUuid === track.camera_uuid}
-                  onMakePrimary={() => setPrimaryCameraUuid(track.camera_uuid)}
+                  region={searchFilters.region?.cameraUuid === track.camera_uuid
+                    ? searchFilters.region : null}
+                  drawingRegion={drawingRegion &&
+                    primaryCameraUuid === track.camera_uuid}
+                  onRegionChange={setRegionRectangle}
+                  onRegionComplete={() => setDrawingRegion(false)}
+                  onMakePrimary={() => {
+                    setDrawingRegion(false);
+                    setPrimaryCameraUuid(track.camera_uuid);
+                  }}
                   t={t}
                 />
               ))}

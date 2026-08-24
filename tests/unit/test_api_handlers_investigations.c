@@ -147,6 +147,28 @@ static uint64_t insert_detection(const char *camera_uuid,
     return (uint64_t)sqlite3_last_insert_rowid(get_db_handle());
 }
 
+static void set_detection_box(uint64_t detection_id, bool available,
+                              double x, double y, double width,
+                              double height) {
+    sqlite3_stmt *statement = NULL;
+    const char *sql = available
+        ? "UPDATE detections SET x=?, y=?, width=?, height=? WHERE id=?;"
+        : "UPDATE detections SET x=NULL, y=NULL, width=NULL, height=NULL "
+          "WHERE id=?;";
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(), sql, -1, &statement, NULL));
+    int parameter = 1;
+    if (available) {
+        sqlite3_bind_double(statement, parameter++, x);
+        sqlite3_bind_double(statement, parameter++, y);
+        sqlite3_bind_double(statement, parameter++, width);
+        sqlite3_bind_double(statement, parameter++, height);
+    }
+    sqlite3_bind_int64(statement, parameter, (sqlite3_int64)detection_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    sqlite3_finalize(statement);
+}
+
 static const cJSON *find_facet(const cJSON *json, const char *facet_name,
                                const char *value) {
     const cJSON *facets = cJSON_GetObjectItemCaseSensitive(json, "facets");
@@ -544,6 +566,98 @@ void test_search_includes_spanning_motion_and_reports_legacy_gap(void) {
     cJSON_Delete(json);
 }
 
+void test_region_search_filters_boxes_and_explains_missing_metadata(void) {
+    const time_t range_start = 1700020000;
+    stream_config_t camera = create_camera("Region Camera");
+    uint64_t inside_id = insert_detection(
+        camera.camera_uuid, camera.name, range_start + 10, "person", 0.9,
+        "", "", 0);
+    uint64_t crossing_id = insert_detection(
+        camera.camera_uuid, camera.name, range_start + 20, "vehicle", 0.8,
+        "", "", 0);
+    uint64_t missing_id = insert_detection(
+        camera.camera_uuid, camera.name, range_start + 30, "person", 0.7,
+        "", "", 0);
+    set_detection_box(inside_id, true, 0.1, 0.1, 0.2, 0.2);
+    set_detection_box(crossing_id, true, 0.4, 0.4, 0.4, 0.4);
+    set_detection_box(missing_id, false, 0.0, 0.0, 0.0, 0.0);
+
+    char body[1024];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"region\":{\"camera_uuid\":\"%s\","
+             "\"x\":0,\"y\":0,\"width\":0.5,\"height\":0.5,"
+             "\"match\":\"center\"}}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60), camera.camera_uuid);
+    cJSON *json = call_search(body, 200);
+    const cJSON *results = cJSON_GetObjectItemCaseSensitive(json, "results");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(results));
+    TEST_ASSERT_EQUAL_UINT64(
+        inside_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(results, 0),
+                                             "detection"),
+            "id")->valuedouble);
+    const cJSON *coverage =
+        cJSON_GetObjectItemCaseSensitive(json, "coverage");
+    const cJSON *spatial =
+        cJSON_GetObjectItemCaseSensitive(coverage, "spatial_metadata");
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        spatial, "requested")));
+    TEST_ASSERT_EQUAL_STRING(
+        "metadata_search",
+        cJSON_GetObjectItemCaseSensitive(spatial, "search_type")->valuestring);
+    TEST_ASSERT_EQUAL_INT(
+        2, cJSON_GetObjectItemCaseSensitive(spatial,
+                                            "rows_with_boxes")->valueint);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(spatial,
+                                            "rows_without_boxes")->valueint);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        coverage, "complete")));
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"region\":{\"camera_uuid\":\"%s\","
+             "\"x\":0,\"y\":0,\"width\":0.5,\"height\":0.5,"
+             "\"match\":\"intersects\"}}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60), camera.camera_uuid);
+    json = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(
+        2, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "page"),
+               "total")->valueint);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"region\":{\"camera_uuid\":\"%s\","
+             "\"x\":0,\"y\":0,\"width\":0.5,\"height\":0.5,"
+             "\"match\":\"minimum_intersection\","
+             "\"min_intersection\":0.1}}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60), camera.camera_uuid);
+    json = call_search(body, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "page"),
+               "total")->valueint);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"region\":{\"camera_uuid\":\"%s\","
+             "\"x\":0.9,\"y\":0,\"width\":0.2,\"height\":0.5}}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60), camera.camera_uuid);
+    json = call_search(body, 400);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -556,6 +670,7 @@ int main(void) {
     RUN_TEST(test_search_cursor_filters_facets_and_current_camera_context);
     RUN_TEST(test_search_rejects_invalid_cursor);
     RUN_TEST(test_search_includes_spanning_motion_and_reports_legacy_gap);
+    RUN_TEST(test_region_search_filters_boxes_and_explains_missing_metadata);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

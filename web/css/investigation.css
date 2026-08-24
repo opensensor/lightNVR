@@ -174,6 +174,66 @@
     white-space: nowrap;
 }
 
+.investigation-region-controls {
+    display: flex;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    background: hsl(var(--muted) / 0.35);
+}
+
+.investigation-region-copy {
+    display: flex;
+    min-width: 14rem;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.investigation-region-copy small {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+}
+
+.investigation-region-controls label {
+    display: flex;
+    min-width: 9rem;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.investigation-region-controls .investigation-region-coordinate {
+    min-width: 5.25rem;
+    width: 5.25rem;
+}
+
+.investigation-region-controls label > span {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.investigation-region-controls input,
+.investigation-region-controls select,
+.investigation-region-controls button {
+    min-height: 2.75rem;
+}
+
+.investigation-region-controls input,
+.investigation-region-controls select {
+    padding: 0.45rem 0.6rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.4rem;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+}
+
 .investigation-error {
     margin-top: 0.75rem;
     padding: 0.65rem 0.75rem;
@@ -512,9 +572,11 @@
 }
 
 .investigation-video-frame {
+    position: relative;
     display: grid;
     aspect-ratio: 16 / 9;
     place-items: center;
+    overflow: hidden;
     background: #000;
 }
 
@@ -522,6 +584,41 @@
     width: 100%;
     height: 100%;
     object-fit: contain;
+}
+
+.investigation-region-layer {
+    position: absolute;
+    z-index: 4;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.investigation-region-layer.is-drawing {
+    background: hsl(var(--primary) / 0.08);
+    cursor: crosshair;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+.investigation-region-rectangle {
+    position: absolute;
+    box-sizing: border-box;
+    border: 2px solid hsl(var(--primary));
+    background: hsl(var(--primary) / 0.16);
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.65);
+}
+
+.investigation-region-prompt {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.35rem;
+    background: rgb(0 0 0 / 0.78);
+    color: #fff;
+    font-size: 0.75rem;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
 }
 
 .investigation-gap-state {
@@ -553,6 +650,11 @@
     .investigation-search-filters,
     .investigation-player-grid {
         grid-template-columns: 1fr;
+    }
+
+    .investigation-region-controls {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     .investigation-subnav {
