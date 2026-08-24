@@ -33,6 +33,12 @@
 static mp4_writer_t *mp4_writers[MAX_STREAMS] = {0};
 static char mp4_writer_stream_names[MAX_STREAMS][64] = {{0}};
 
+// Guards both arrays above. Recording threads register and unregister writers
+// concurrently, so an unsynchronized scan can observe a slot mid-update and
+// hand back a writer that another thread is closing. Never held across
+// mp4_writer_close(), which does blocking file I/O.
+static pthread_mutex_t mp4_writers_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /**
  * Register an MP4 writer for a stream
  * 
@@ -54,32 +60,36 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     safe_strcpy(local_stream_name, stream_name, MAX_STREAM_NAME, 0);
 
     // Find empty slot or existing entry for this stream
+    mp4_writer_t *old_writer = NULL;
     int slot = -1;
+    pthread_mutex_lock(&mp4_writers_mutex);
     for (int i = 0; i < g_config.max_streams; i++) {
         if (!mp4_writers[i]) {
             slot = i;
             break;
-        } else if (mp4_writer_stream_names[i][0] != '\0' && 
+        } else if (mp4_writer_stream_names[i][0] != '\0' &&
                   strcmp(mp4_writer_stream_names[i], local_stream_name) == 0) {
             // Stream already has a writer, replace it
             log_info("Replacing existing MP4 writer for stream %s", local_stream_name);
-            
+
             // Store the old writer to close after releasing the lock
-            mp4_writer_t *old_writer = mp4_writers[i];
-            
+            old_writer = mp4_writers[i];
+
             // Replace with the new writer
             mp4_writers[i] = writer;
-            
+            pthread_mutex_unlock(&mp4_writers_mutex);
+
             // Close the old writer
             if (old_writer) {
                 mp4_writer_close(old_writer);
             }
-            
+
             return 0;
         }
     }
 
     if (slot == -1) {
+        pthread_mutex_unlock(&mp4_writers_mutex);
         log_error("No available slots for MP4 writer registration");
         return -1;
     }
@@ -87,7 +97,8 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     // Register the new writer
     mp4_writers[slot] = writer;
     safe_strcpy(mp4_writer_stream_names[slot], local_stream_name, sizeof(mp4_writer_stream_names[0]), 0);
-    
+    pthread_mutex_unlock(&mp4_writers_mutex);
+
     log_info("Registered MP4 writer for stream %s in slot %d", local_stream_name, slot);
 
     return 0;
@@ -114,14 +125,16 @@ mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name) {
     // Use a local variable to store the writer pointer
     mp4_writer_t *writer_copy = NULL;
 
+    pthread_mutex_lock(&mp4_writers_mutex);
     for (int i = 0; i < g_config.max_streams; i++) {
-        if (mp4_writers[i] && 
-            mp4_writer_stream_names[i][0] != '\0' && 
+        if (mp4_writers[i] &&
+            mp4_writer_stream_names[i][0] != '\0' &&
             strcmp(mp4_writer_stream_names[i], local_stream_name) == 0) {
             writer_copy = mp4_writers[i];
             break;
         }
     }
+    pthread_mutex_unlock(&mp4_writers_mutex);
 
     return writer_copy;
 }
@@ -166,24 +179,27 @@ void unregister_mp4_writer_for_stream(const char *stream_name) {
 
     // Find the writer for this stream
     int writer_idx = -1;
+    pthread_mutex_lock(&mp4_writers_mutex);
     for (int i = 0; i < g_config.max_streams; i++) {
-        if (mp4_writers[i] && 
-            mp4_writer_stream_names[i][0] != '\0' && 
+        if (mp4_writers[i] &&
+            mp4_writer_stream_names[i][0] != '\0' &&
             strcmp(mp4_writer_stream_names[i], local_stream_name) == 0) {
             writer_idx = i;
             break;
         }
     }
-    
+
     // If we found a writer, unregister it
     if (writer_idx >= 0) {
         // Don't close the writer here, just unregister it
         // The caller is responsible for closing the writer if needed
         mp4_writers[writer_idx] = NULL;
         mp4_writer_stream_names[writer_idx][0] = '\0';
-        
+        pthread_mutex_unlock(&mp4_writers_mutex);
+
         log_info("Unregistered MP4 writer for stream %s", local_stream_name);
     } else {
+        pthread_mutex_unlock(&mp4_writers_mutex);
         log_warn("No MP4 writer found for stream %s", local_stream_name);
     }
 }
@@ -215,6 +231,10 @@ void close_all_mp4_writers(void) {
     }
     int num_writers_to_close = 0;
 
+    // Claim every registered writer atomically so a concurrent register or
+    // unregister cannot hand the same writer to two closers. The stat() calls
+    // below run under the lock, which is acceptable on the shutdown path.
+    pthread_mutex_lock(&mp4_writers_mutex);
     for (int i = 0; i < capacity; i++) {
         if (mp4_writers[i] && mp4_writer_stream_names[i][0] != '\0') {
             // Store the writer pointer
@@ -266,6 +286,7 @@ void close_all_mp4_writers(void) {
             num_writers_to_close++;
         }
     }
+    pthread_mutex_unlock(&mp4_writers_mutex);
 
     // Now close each writer
     for (int i = 0; i < num_writers_to_close; i++) {

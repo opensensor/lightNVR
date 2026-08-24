@@ -108,6 +108,18 @@ test('selected event thumbnail window is padded and clipped to the timeline', ()
   expect(thumbnailWindowForResult(
     { start_time: 150, end_time: 190 }, 100, 200,
   )).toEqual({ startTime: 110, endTime: 200 });
+  // A result with no end_time is a point event: it falls back to start_time
+  // and gets the minimum 30s padding on each side.
+  expect(thumbnailWindowForResult(
+    { start_time: 150 }, 100, 200,
+  )).toEqual({ startTime: 120, endTime: 180 });
+  // A degenerate or inverted timeline yields no window at all.
+  expect(thumbnailWindowForResult(
+    { start_time: 150, end_time: 151 }, 100, 100,
+  )).toBeNull();
+  expect(thumbnailWindowForResult(
+    { start_time: 150, end_time: 151 }, 200, 100,
+  )).toBeNull();
 });
 
 test('videoContentBox accounts for letterboxing and pillarboxing', () => {
@@ -288,6 +300,12 @@ test('bookmark URL contains only navigation-safe state and restores primary came
   }, 'https://nvr.test/investigation.html?drill_camera=old&event=motion'));
   expect(url.searchParams.get('cameras')).toBe('one,two');
   expect(url.searchParams.get('primary')).toBe('two');
+  expect(url.searchParams.get('start')).toBe('100');
+  expect(url.searchParams.get('end')).toBe('200');
+  expect(url.searchParams.get('cursor')).toBe('150');
+  // No confidence filter was saved, so the parameter must be absent rather
+  // than serialized as an empty or undefined value.
+  expect(url.searchParams.has('confidence_min')).toBe(false);
   expect(url.searchParams.get('label')).toBe('person');
   expect(url.searchParams.get('protected')).toBe('protected');
   expect(url.searchParams.get('region_rect')).toBe('0.1,0.2,0.3,0.4');

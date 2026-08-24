@@ -591,9 +591,9 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Setting log level from config: %d\n", config.log_level);
     set_log_level(config.log_level);
 
-    // Use log_error instead of log_info to ensure this message is always logged
-    // regardless of the configured log level
-    log_error("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
+    // Log configured log level as informational startup context
+    // (severity should match message semantics)
+    log_info("Log level set to %d (%s)", config.log_level, get_log_level_string(config.log_level));
 
     // Enable syslog if configured
     if (config.syslog_enabled) {

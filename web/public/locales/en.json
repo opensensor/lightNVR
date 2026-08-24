@@ -1662,6 +1662,7 @@
   "settings.setupWizard": "Setup Wizard",
   "settings.resetWizardError": "Failed to reset wizard: {message}",
   "settings.rerunSetupWizard": "Re-run Setup Wizard",
+  "settings.resetWizardPending": "Starting wizard…",
   "settings.setupWizardHelp": "Resets the first-run wizard so it appears again on the dashboard.",
   "settings.sessionAndDeviceManagement": "Session & Device Management",
   "settings.activeSessions": "Active Sessions",

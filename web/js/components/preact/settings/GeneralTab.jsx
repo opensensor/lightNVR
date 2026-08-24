@@ -5,9 +5,12 @@
  * Part of PRD UXD_01 §5.2 / T2 settings restructure (#399).
  */
 
+import { useState } from 'preact/hooks';
+
 import { showStatusMessage } from '../ToastContainer.jsx';
 
 export function GeneralTab({ settings, handleInputChange, canModifySettings, restartNotice, t }) {
+  const [isResettingWizard, setIsResettingWizard] = useState(false);
   return (
     <div class="space-y-6">
       {/* Logging */}
@@ -179,8 +182,10 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
             <button
               type="button"
               class="px-4 py-2 rounded border border-input text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-              disabled={!canModifySettings}
+              disabled={!canModifySettings || isResettingWizard}
               onClick={async () => {
+                if (isResettingWizard) return;
+                setIsResettingWizard(true);
                 try {
                   const res = await fetch('/api/setup/status', {
                     method: 'POST',
@@ -191,10 +196,13 @@ export function GeneralTab({ settings, handleInputChange, canModifySettings, res
                   window.location.href = 'index.html';
                 } catch (err) {
                   showStatusMessage(t('settings.resetWizardError', { message: err.message }), 'error');
+                  setIsResettingWizard(false);
                 }
               }}
             >
-              {t('settings.rerunSetupWizard')}
+              {isResettingWizard
+                ? t('settings.resetWizardPending')
+                : t('settings.rerunSetupWizard')}
             </button>
             <p class="text-xs text-muted-foreground mt-1">
               {t('settings.setupWizardHelp')}
