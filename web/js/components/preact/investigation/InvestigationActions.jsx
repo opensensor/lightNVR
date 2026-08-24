@@ -130,7 +130,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ids: summary.unprotectedIds,
+          ids: summary.protectableIds,
           protected: true,
         }),
         timeout: 30000,
@@ -405,7 +405,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                     {busyAction === 'protect'
                       ? t('investigation.actions.protecting')
                       : t('investigation.actions.protectButton', {
-                        count: summary.unprotectedIds.length,
+                        count: summary.protectableCount,
                       })}
                   </button>
                   <button

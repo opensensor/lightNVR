@@ -246,7 +246,9 @@ test('action preview summary separates partial protection from all-or-nothing ex
     { id: 3, protected: true, can_protect: true, can_export: true },
   ] })).toEqual({
     recordingCount: 3,
-    unprotectedIds: [1, 2],
+    // Recording 2 is unprotected but out of scope, so it is never submitted;
+    // recording 3 is already protected and needs no action.
+    protectableIds: [1],
     protectableCount: 1,
     protectDeniedCount: 1,
     exportDeniedCount: 1,

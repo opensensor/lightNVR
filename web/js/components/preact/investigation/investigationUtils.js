@@ -124,7 +124,10 @@ export function summarizeInvestigationActionPreview(preview) {
   const exportDenied = recordings.filter((recording) => !recording.can_export);
   return {
     recordingCount: recordings.length,
-    unprotectedIds: unprotected.map((recording) => recording.id),
+    // Only the recordings the caller may actually protect. Submitting the
+    // out-of-scope ones would just have the server refuse them and report
+    // failures the preview already warned about.
+    protectableIds: protectable.map((recording) => recording.id),
     protectableCount: protectable.length,
     protectDeniedCount: protectDenied.length,
     exportDeniedCount: exportDenied.length,

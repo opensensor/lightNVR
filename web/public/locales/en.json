@@ -1916,7 +1916,7 @@
   "investigation.actions.recordingCount": "{count} overlapping recording(s)",
   "investigation.actions.protectedCount": "{count} already protected",
   "investigation.actions.noRecordings": "No completed recordings overlap this camera and time selection.",
-  "investigation.actions.protectDenied": "{count} unprotected recording(s) are outside your protection scope. They will be skipped and reported as failures.",
+  "investigation.actions.protectDenied": "{count} unprotected recording(s) are outside your protection scope and are excluded from this action.",
   "investigation.actions.exportDenied": "Export permission is missing for {count} recording(s). Downloads are all-or-nothing, so this selection cannot be exported.",
   "investigation.actions.camera": "Camera",
   "investigation.actions.recording": "Recording",
