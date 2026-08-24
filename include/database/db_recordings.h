@@ -313,6 +313,25 @@ int get_recordings_for_pressure_cleanup_target(
     int max_count);
 
 /**
+ * Get pressure-cleanup candidates for the default storage target.
+ *
+ * Identical to get_recordings_for_pressure_cleanup_target() except that rows
+ * with no target attribution are also returned. Those are recordings written
+ * before storage targets existed, or whose path the bootstrap backfill could
+ * not classify; without this the legacy disk-pressure paths can never reclaim
+ * them. Only the default target may ask for them, since an unattributed row
+ * carries no evidence that any other target holds it.
+ *
+ * @param storage_target_uuid Default target whose recordings may be returned
+ * @param recordings Array to fill with recording metadata
+ * @param max_count Maximum number of recordings to return
+ * @return Number of recordings found, or -1 on error
+ */
+int get_recordings_for_pressure_cleanup_default_target(
+    const char *storage_target_uuid, recording_metadata_t *recordings,
+    int max_count);
+
+/**
  * Get recordings still marked incomplete (is_complete = 0) and older than
  * older_than_seconds — i.e. recordings interrupted by an unclean shutdown.
  * The caller inspects the on-disk file to finalize or prune each one.

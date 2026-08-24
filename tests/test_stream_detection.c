@@ -10,10 +10,52 @@
 #include "video/detection_model.h"
 #include "video/detection_integration.h"
 #include "video/hls_writer.h"
+#include "video/stream_manager.h"
 #include "video/stream_state.h"
+#include "core/config.h"
 #include "core/logger.h"
+#include "utils/strings.h"
 
 // No mock implementations needed anymore
+
+/**
+ * Register the stream this test drives.
+ *
+ * start_unified_detection_thread() resolves its subject through the stream
+ * manager, so without this the test could only ever report "Stream test_stream
+ * not found" -- which is what it did on any machine that did not already have a
+ * provisioned /var/lib/lightnvr database. The URL never has to resolve: the
+ * detection thread's connect attempt failing is orthogonal to the thread
+ * lifecycle these assertions cover.
+ */
+static int provision_test_stream(const char *stream_name) {
+    if (init_stream_state_manager(MAX_STREAMS) != 0) {
+        log_error("Failed to initialize stream state manager");
+        return -1;
+    }
+    if (init_stream_manager(MAX_STREAMS) != 0) {
+        log_error("Failed to initialize stream manager");
+        return -1;
+    }
+
+    stream_config_t config;
+    memset(&config, 0, sizeof(config));
+    safe_strcpy(config.name, stream_name, sizeof(config.name), 0);
+    safe_strcpy(config.url, "rtsp://127.0.0.1:1/unit-test",
+                sizeof(config.url), 0);
+    config.enabled = true;
+    config.width = 640;
+    config.height = 480;
+    config.fps = 15;
+    config.protocol = STREAM_PROTOCOL_TCP;
+    config.detection_based_recording = true;
+
+    if (!add_stream(&config)) {
+        log_error("Failed to register stream %s", stream_name);
+        return -1;
+    }
+    return 0;
+}
 
 /**
  * Simple test for the unified detection system
@@ -36,6 +78,11 @@ int main(int argc, char **argv) {
     const char *stream_name = "test_stream";
     assert(!is_unified_detection_running(stream_name));
     log_info("Initial state: no thread running for test stream");
+
+    if (provision_test_stream(stream_name) != 0) {
+        return 1;
+    }
+    log_info("Registered stream %s for the test", stream_name);
 
     // Test parameters
     const char *model_path = "/var/lib/lightnvr/models/tiny20.sod";
@@ -90,6 +137,10 @@ int main(int argc, char **argv) {
     // Shutdown the detection model system
     shutdown_detection_model_system();
     log_info("Detection model system shutdown");
+
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    log_info("Stream manager shutdown");
 
     log_info("Unified detection test completed successfully");
     return 0;

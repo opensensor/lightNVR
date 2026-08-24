@@ -59,33 +59,42 @@ int register_mp4_writer_for_stream(const char *stream_name, mp4_writer_t *writer
     char local_stream_name[MAX_STREAM_NAME];
     safe_strcpy(local_stream_name, stream_name, MAX_STREAM_NAME, 0);
 
-    // Find empty slot or existing entry for this stream
+    // Scan for this stream's existing entry before looking at free slots. A
+    // single pass that breaks on the first free slot would miss an entry sitting
+    // above it and register the stream twice, after which lookups and
+    // unregistration would only ever see the first copy and the second would
+    // hold its writer open forever.
     mp4_writer_t *old_writer = NULL;
     int slot = -1;
+    int existing = -1;
     pthread_mutex_lock(&mp4_writers_mutex);
     for (int i = 0; i < g_config.max_streams; i++) {
         if (!mp4_writers[i]) {
-            slot = i;
-            break;
+            if (slot == -1) slot = i;
         } else if (mp4_writer_stream_names[i][0] != '\0' &&
                   strcmp(mp4_writer_stream_names[i], local_stream_name) == 0) {
-            // Stream already has a writer, replace it
-            log_info("Replacing existing MP4 writer for stream %s", local_stream_name);
-
-            // Store the old writer to close after releasing the lock
-            old_writer = mp4_writers[i];
-
-            // Replace with the new writer
-            mp4_writers[i] = writer;
-            pthread_mutex_unlock(&mp4_writers_mutex);
-
-            // Close the old writer
-            if (old_writer) {
-                mp4_writer_close(old_writer);
-            }
-
-            return 0;
+            existing = i;
+            break;
         }
+    }
+
+    if (existing >= 0) {
+        // Stream already has a writer, replace it
+        log_info("Replacing existing MP4 writer for stream %s", local_stream_name);
+
+        // Store the old writer to close after releasing the lock
+        old_writer = mp4_writers[existing];
+
+        // Replace with the new writer
+        mp4_writers[existing] = writer;
+        pthread_mutex_unlock(&mp4_writers_mutex);
+
+        // Close the old writer
+        if (old_writer) {
+            mp4_writer_close(old_writer);
+        }
+
+        return 0;
     }
 
     if (slot == -1) {

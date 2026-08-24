@@ -115,24 +115,54 @@ static bool delete_recording_file_and_metadata(const recording_metadata_t *recor
     return true;
 }
 
+/*
+ * Delete a pressure-cleanup candidate, cross-checking its storage identity
+ * first. A row that carries a target UUID and object key must resolve back to
+ * exactly its file_path; a mismatch means the two representations disagree
+ * about which file this row owns, and deleting either one risks destroying an
+ * unrelated recording.
+ *
+ * A row with no attribution at all is a different case: it predates storage
+ * targets, or the bootstrap backfill could not classify its path. There is no
+ * second representation to disagree with, so it is deleted by path exactly the
+ * way tiered retention already deletes it. Only the default target's cleanup
+ * asks for such rows -- see
+ * get_recordings_for_pressure_cleanup_default_target().
+ */
 static bool delete_pressure_recording_file_and_metadata(
     const recording_metadata_t *recording, const char *context,
     uint64_t *freed_bytes) {
-    char resolved[MAX_PATH_LENGTH];
-    if (!recording || recording->storage_target_uuid[0] == '\0' ||
-        recording->object_key[0] == '\0' ||
-        db_storage_target_resolve_path(recording->storage_target_uuid,
-                                       recording->object_key, resolved) != 0 ||
-        strcmp(resolved, recording->file_path) != 0) {
-        log_error("%s: refusing recording with inconsistent target identity "
-                  "(id=%llu, target=%s, object=%s, path=%s)",
-                  context ? context : "Pressure cleanup",
-                  (unsigned long long)(recording ? recording->id : 0),
-                  recording ? recording->storage_target_uuid : "",
-                  recording ? recording->object_key : "",
-                  recording ? recording->file_path : "");
+    if (!recording) {
+        log_error("%s: refusing NULL recording",
+                  context ? context : "Pressure cleanup");
         if (freed_bytes) *freed_bytes = 0;
         return false;
+    }
+
+    bool has_identity = recording->storage_target_uuid[0] != '\0' ||
+        recording->object_key[0] != '\0';
+    if (has_identity) {
+        char resolved[MAX_PATH_LENGTH];
+        if (recording->storage_target_uuid[0] == '\0' ||
+            recording->object_key[0] == '\0' ||
+            db_storage_target_resolve_path(recording->storage_target_uuid,
+                                           recording->object_key,
+                                           resolved) != 0 ||
+            strcmp(resolved, recording->file_path) != 0) {
+            log_error("%s: refusing recording with inconsistent target identity "
+                      "(id=%llu, target=%s, object=%s, path=%s)",
+                      context ? context : "Pressure cleanup",
+                      (unsigned long long)recording->id,
+                      recording->storage_target_uuid,
+                      recording->object_key, recording->file_path);
+            if (freed_bytes) *freed_bytes = 0;
+            return false;
+        }
+    } else {
+        log_debug("%s: recording %llu predates storage target attribution; "
+                  "deleting by path %s",
+                  context ? context : "Pressure cleanup",
+                  (unsigned long long)recording->id, recording->file_path);
     }
     return delete_recording_file_and_metadata(recording, context,
                                                freed_bytes);
@@ -1119,7 +1149,10 @@ static int get_default_pressure_candidates(recording_metadata_t *recordings,
         log_error("Pressure cleanup: default storage target is unavailable");
         return -1;
     }
-    return get_recordings_for_pressure_cleanup_target(
+    // Include rows that were never attributed to a target. They would
+    // otherwise be invisible to every disk-pressure path, which on an upgraded
+    // install is most of the footage until the next bootstrap backfill lands.
+    return get_recordings_for_pressure_cleanup_default_target(
         target.uuid, recordings, max_count);
 }
 
