@@ -1045,6 +1045,26 @@ queue bound concurrent generation; a busy server returns `503` with
 `Retry-After: 2`. Deleting a recording also removes its arbitrary-offset cache
 entries.
 
+#### Recording action preview
+
+```
+POST /api/investigations/recordings/preview
+```
+
+Resolves the completed recordings that overlap a fixed list of authorized
+camera UUIDs and UTC interval before a protection or convenience-export action.
+The request uses the same `camera_uuids`, `start_time`, and `end_time` fields as
+the timeline endpoint. The response contains each recording ID, camera, bounds,
+size, current protection state, and the caller's `can_protect` and `can_export`
+decision for that camera. Aggregate permission counts allow the UI to explain a
+partial protection result before it occurs; ZIP export remains all-or-nothing.
+
+The preview and existing mutation endpoints independently re-authorize the
+request. A preview is therefore advisory and never grants later access. At most
+200 overlapping recordings are returned, matching the batch-download limit. A
+larger result returns `413` and requires a narrower interval rather than
+silently truncating the action set.
+
 #### Durable investigation bookmarks
 
 ```

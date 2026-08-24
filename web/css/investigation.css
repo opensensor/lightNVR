@@ -29,7 +29,8 @@
 .investigation-heading-actions,
 .investigation-bookmark-actions,
 .investigation-bookmark-dialog-actions,
-.investigation-bookmark-card-actions {
+.investigation-bookmark-card-actions,
+.investigation-action-dialog-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -41,13 +42,17 @@
 }
 
 .investigation-bookmark-actions > button,
+.investigation-action-trigger > button,
 .investigation-bookmark-dialog button,
 .investigation-bookmark-dialog input,
-.investigation-bookmark-dialog textarea {
+.investigation-bookmark-dialog textarea,
+.investigation-action-dialog button,
+.investigation-action-dialog input {
     min-height: 2.75rem;
 }
 
-.investigation-bookmark-backdrop {
+.investigation-bookmark-backdrop,
+.investigation-action-backdrop {
     position: fixed;
     z-index: 1000;
     inset: 0;
@@ -57,7 +62,8 @@
     background: rgb(0 0 0 / 0.66);
 }
 
-.investigation-bookmark-dialog {
+.investigation-bookmark-dialog,
+.investigation-action-dialog {
     width: min(42rem, 100%);
     max-height: min(42rem, calc(100vh - 2rem));
     overflow: auto;
@@ -70,6 +76,7 @@
 }
 
 .investigation-bookmark-dialog > header,
+.investigation-action-dialog > header,
 .investigation-bookmark-card {
     display: flex;
     align-items: flex-start;
@@ -80,17 +87,21 @@
 .investigation-bookmark-dialog h2,
 .investigation-bookmark-dialog h3,
 .investigation-bookmark-dialog header p,
+.investigation-action-dialog h2,
+.investigation-action-dialog header p,
 .investigation-bookmark-card p {
     margin: 0;
 }
 
 .investigation-bookmark-dialog header p,
+.investigation-action-dialog header p,
 .investigation-bookmark-card time,
 .investigation-bookmark-card small {
     color: hsl(var(--muted-foreground));
 }
 
-.investigation-bookmark-dialog header p {
+.investigation-bookmark-dialog header p,
+.investigation-action-dialog header p {
     margin-top: 0.25rem;
 }
 
@@ -119,8 +130,152 @@
     color: hsl(var(--foreground));
 }
 
-.investigation-bookmark-dialog-actions {
+.investigation-bookmark-dialog-actions,
+.investigation-action-dialog-actions {
     justify-content: flex-end;
+}
+
+.investigation-action-dialog {
+    width: min(68rem, 100%);
+}
+
+.investigation-action-scope {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.investigation-action-scope fieldset {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    margin: 0;
+    padding: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.6rem;
+}
+
+.investigation-action-scope legend {
+    padding: 0 0.35rem;
+    font-weight: 600;
+}
+
+.investigation-action-scope fieldset label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.investigation-action-time-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 0.75rem;
+}
+
+.investigation-action-time-fields label {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.investigation-action-time-fields input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid hsl(var(--input));
+    border-radius: 0.5rem;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+}
+
+.investigation-action-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-top: 1rem;
+    padding: 0.75rem;
+    border-radius: 0.6rem;
+    background: hsl(var(--muted) / 0.55);
+}
+
+.investigation-action-summary span,
+.investigation-action-empty {
+    color: hsl(var(--muted-foreground));
+}
+
+.investigation-action-warning,
+.investigation-action-outcome,
+.investigation-action-empty {
+    margin: 0.75rem 0 0;
+    padding: 0.7rem 0.8rem;
+    border-radius: 0.5rem;
+}
+
+.investigation-action-warning {
+    border: 1px solid hsl(var(--warning) / 0.45);
+    background: hsl(var(--warning) / 0.1);
+}
+
+.investigation-action-outcome {
+    border: 1px solid hsl(var(--primary) / 0.35);
+    background: hsl(var(--primary) / 0.1);
+}
+
+.investigation-action-empty {
+    text-align: center;
+}
+
+.investigation-action-recordings {
+    max-height: 19rem;
+    margin-top: 0.75rem;
+    overflow: auto;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.6rem;
+}
+
+.investigation-action-recordings table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+
+.investigation-action-recordings th,
+.investigation-action-recordings td {
+    padding: 0.55rem 0.65rem;
+    border-bottom: 1px solid hsl(var(--border));
+    text-align: left;
+}
+
+.investigation-action-recordings th {
+    position: sticky;
+    z-index: 1;
+    top: 0;
+    background: hsl(var(--card));
+}
+
+.investigation-action-recordings tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.investigation-action-progress {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.4rem 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.investigation-action-progress progress {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
+.investigation-action-dialog-actions {
+    margin-top: 1rem;
 }
 
 .investigation-bookmark-card {
@@ -952,15 +1107,23 @@
 
     .investigation-heading-actions,
     .investigation-bookmark-card,
-    .investigation-bookmark-card-actions {
+    .investigation-bookmark-card-actions,
+    .investigation-action-dialog-actions {
         align-items: stretch;
         flex-direction: column;
     }
 
     .investigation-bookmark-actions,
     .investigation-bookmark-actions > button,
-    .investigation-bookmark-card-actions > button {
+    .investigation-bookmark-card-actions > button,
+    .investigation-action-trigger,
+    .investigation-action-trigger > button,
+    .investigation-action-dialog-actions > button {
         width: 100%;
+    }
+
+    .investigation-action-time-fields {
+        grid-template-columns: 1fr;
     }
 
     .investigation-camera-picker {

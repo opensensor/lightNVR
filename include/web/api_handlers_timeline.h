@@ -16,6 +16,7 @@ typedef struct {
     time_t end_time;
     uint64_t size_bytes;
     bool has_detection;
+    bool protected;
     char trigger_type[16];
     int schedule_restricted; // -1 = unknown/legacy, 0 = no, 1 = yes
 } timeline_segment_t;
