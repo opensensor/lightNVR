@@ -90,6 +90,78 @@ static cJSON *call_timeline(const char *body, int expected_status) {
     return json;
 }
 
+static cJSON *call_search(const char *body, int expected_status) {
+    http_request_t request;
+    http_response_t response;
+    http_request_init(&request);
+    http_response_init(&response);
+    request.method = HTTP_METHOD_POST;
+    safe_strcpy(request.method_str, "POST", sizeof(request.method_str), 0);
+    safe_strcpy(request.path, "/api/investigations/search",
+                sizeof(request.path), 0);
+    safe_strcpy(request.client_ip, "127.0.0.1",
+                sizeof(request.client_ip), 0);
+    request.body = (void *)body;
+    request.body_len = strlen(body);
+    handle_post_investigation_search(&request, &response);
+    TEST_ASSERT_EQUAL_INT(expected_status, response.status_code);
+    cJSON *json = response.body
+        ? cJSON_Parse((const char *)response.body) : NULL;
+    TEST_ASSERT_NOT_NULL(json);
+    http_response_free(&response);
+    return json;
+}
+
+static uint64_t insert_detection(const char *camera_uuid,
+                                 const char *stream_name,
+                                 time_t timestamp, const char *label,
+                                 double confidence, const char *zone,
+                                 const char *source, uint64_t recording_id) {
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "INSERT INTO detections "
+        "(camera_uuid, stream_name, timestamp, label, confidence, "
+        " x, y, width, height, recording_id, track_id, zone_id, source, "
+        " event_end_time) "
+        "VALUES (?, ?, ?, ?, ?, 0.1, 0.2, 0.3, 0.4, ?, 7, ?, ?, ?);",
+        -1, &statement, NULL));
+    sqlite3_bind_text(statement, 1, camera_uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(statement, 2, stream_name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(statement, 3, (sqlite3_int64)timestamp);
+    sqlite3_bind_text(statement, 4, label, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(statement, 5, confidence);
+    if (recording_id > 0) {
+        sqlite3_bind_int64(statement, 6, (sqlite3_int64)recording_id);
+    } else {
+        sqlite3_bind_null(statement, 6);
+    }
+    sqlite3_bind_text(statement, 7, zone ? zone : "", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(statement, 8, source ? source : "", -1,
+                      SQLITE_TRANSIENT);
+    sqlite3_bind_int64(statement, 9, (sqlite3_int64)timestamp);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    sqlite3_finalize(statement);
+    return (uint64_t)sqlite3_last_insert_rowid(get_db_handle());
+}
+
+static const cJSON *find_facet(const cJSON *json, const char *facet_name,
+                               const char *value) {
+    const cJSON *facets = cJSON_GetObjectItemCaseSensitive(json, "facets");
+    const cJSON *array = facets
+        ? cJSON_GetObjectItemCaseSensitive(facets, facet_name) : NULL;
+    const cJSON *item = NULL;
+    cJSON_ArrayForEach(item, array) {
+        const cJSON *item_value =
+            cJSON_GetObjectItemCaseSensitive(item, "value");
+        if (cJSON_IsString(item_value) &&
+            strcmp(item_value->valuestring, value) == 0) {
+            return item;
+        }
+    }
+    return NULL;
+}
+
 void setUp(void) {
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
@@ -198,6 +270,220 @@ void test_timeline_rejects_duplicate_camera_ids(void) {
     cJSON_Delete(json);
 }
 
+void test_search_cursor_filters_facets_and_current_camera_context(void) {
+    const time_t range_start = 1700000000;
+    const time_t range_end = range_start + 600;
+    stream_config_t camera = create_camera("Loading Bay");
+    char camera_uuid[CAMERA_UUID_STRING_SIZE];
+    safe_strcpy(camera_uuid, camera.camera_uuid, sizeof(camera_uuid), 0);
+    uint64_t recording_id = create_recording(
+        camera_uuid, camera.name, range_start);
+    TEST_ASSERT_NOT_EQUAL(0, recording_id);
+
+    uint64_t older_id = insert_detection(
+        camera_uuid, "Loading Bay", range_start + 100, "person", 0.80,
+        "zone-a", "", recording_id);
+    uint64_t same_time_person_id = insert_detection(
+        camera_uuid, "Loading Bay", range_start + 200, "person", 0.91,
+        "zone-a", "", recording_id);
+    uint64_t same_time_vehicle_id = insert_detection(
+        camera_uuid, "Loading Bay", range_start + 200, "vehicle", 0.70,
+        "", "external_motion", 0);
+    TEST_ASSERT_TRUE(same_time_vehicle_id > same_time_person_id);
+
+    safe_strcpy(camera.name, "West Loading Bay", sizeof(camera.name), 0);
+    TEST_ASSERT_EQUAL_INT(0, update_stream_config("Loading Bay", &camera));
+
+    char body[768];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"limit\":2}",
+             camera_uuid, (long long)range_start, (long long)range_end);
+    cJSON *first_page = call_search(body, 200);
+    const cJSON *results =
+        cJSON_GetObjectItemCaseSensitive(first_page, "results");
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(results));
+    TEST_ASSERT_EQUAL_UINT64(
+        same_time_vehicle_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(results, 0),
+                                             "detection"),
+            "id")->valuedouble);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetArrayItem(results, 0), "known_gap")));
+    const cJSON *second_result = cJSON_GetArrayItem(results, 1);
+    const cJSON *second_detection =
+        cJSON_GetObjectItemCaseSensitive(second_result, "detection");
+    TEST_ASSERT_EQUAL_UINT64(
+        same_time_person_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            second_detection, "id")->valuedouble);
+    TEST_ASSERT_EQUAL_STRING(
+        "West Loading Bay",
+        cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(second_result, "camera"),
+            "name")->valuestring);
+    TEST_ASSERT_EQUAL_UINT64(
+        recording_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            second_result, "recording_id")->valuedouble);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        second_result, "media_available")));
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        second_result, "known_gap")));
+    const cJSON *thumbnail =
+        cJSON_GetObjectItemCaseSensitive(second_result, "thumbnail");
+    TEST_ASSERT_EQUAL_STRING(
+        "available",
+        cJSON_GetObjectItemCaseSensitive(thumbnail, "status")->valuestring);
+    TEST_ASSERT_NOT_NULL(
+        cJSON_GetObjectItemCaseSensitive(thumbnail, "url"));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(second_detection, "bounding_box"),
+        "normalized")));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(first_page, "page"), "has_more")));
+    TEST_ASSERT_EQUAL_INT(
+        3, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(first_page, "page"),
+               "total")->valueint);
+    const cJSON *person_facet = find_facet(first_page, "labels", "person");
+    TEST_ASSERT_NOT_NULL(person_facet);
+    TEST_ASSERT_EQUAL_INT(
+        2, cJSON_GetObjectItemCaseSensitive(person_facet, "count")->valueint);
+    const cJSON *camera_facet = find_facet(
+        first_page, "cameras", camera_uuid);
+    TEST_ASSERT_NOT_NULL(camera_facet);
+    TEST_ASSERT_EQUAL_STRING(
+        "West Loading Bay",
+        cJSON_GetObjectItemCaseSensitive(camera_facet, "label")->valuestring);
+    const cJSON *histogram =
+        cJSON_GetObjectItemCaseSensitive(first_page, "histogram");
+    TEST_ASSERT_TRUE(cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(
+        histogram, "buckets")) > 0);
+    const cJSON *next_cursor = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(first_page, "page"), "next_cursor");
+    TEST_ASSERT_TRUE(cJSON_IsString(next_cursor));
+    char cursor[96];
+    safe_strcpy(cursor, next_cursor->valuestring, sizeof(cursor), 0);
+    cJSON_Delete(first_page);
+
+    /* A newly-arrived result must not shift or duplicate the next page. */
+    insert_detection(camera_uuid, "Loading Bay", range_start + 300,
+                     "person", 0.99, "zone-a", "", recording_id);
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"limit\":2,\"cursor\":\"%s\"}",
+             camera_uuid, (long long)range_start, (long long)range_end,
+             cursor);
+    cJSON *second_page = call_search(body, 200);
+    results = cJSON_GetObjectItemCaseSensitive(second_page, "results");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(results));
+    TEST_ASSERT_EQUAL_UINT64(
+        older_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(results, 0),
+                                             "detection"),
+            "id")->valuedouble);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(second_page, "page"), "has_more")));
+    cJSON_Delete(second_page);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld,\"filters\":{\"labels\":[\"person\"],"
+             "\"min_confidence\":0.9}}",
+             camera_uuid, (long long)range_start, (long long)range_end);
+    cJSON *filtered = call_search(body, 200);
+    results = cJSON_GetObjectItemCaseSensitive(filtered, "results");
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(results));
+    for (int i = 0; i < cJSON_GetArraySize(results); i++) {
+        const cJSON *detection = cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetArrayItem(results, i), "detection");
+        TEST_ASSERT_EQUAL_STRING(
+            "person",
+            cJSON_GetObjectItemCaseSensitive(detection, "label")->valuestring);
+        TEST_ASSERT_TRUE(cJSON_GetObjectItemCaseSensitive(
+            detection, "confidence")->valuedouble >= 0.9);
+    }
+    cJSON_Delete(filtered);
+}
+
+void test_search_rejects_invalid_cursor(void) {
+    stream_config_t camera = create_camera("Search Camera");
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":100,"
+             "\"end_time\":200,\"cursor\":\"offset:100\"}",
+             camera.camera_uuid);
+    cJSON *json = call_search(body, 400);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+}
+
+void test_search_includes_spanning_motion_and_reports_legacy_gap(void) {
+    const time_t range_start = 1700010000;
+    stream_config_t camera = create_camera("Perimeter");
+    uint64_t recording_id = create_recording(
+        camera.camera_uuid, camera.name, range_start);
+    TEST_ASSERT_NOT_EQUAL(0, recording_id);
+    uint64_t event_id = insert_detection(
+        camera.camera_uuid, camera.name, range_start - 20, "motion", 1.0,
+        "", "external_motion", 0);
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_prepare_v2(
+        get_db_handle(),
+        "UPDATE detections SET event_end_time=? WHERE id=?;", -1,
+        &statement, NULL));
+    sqlite3_bind_int64(statement, 1, (sqlite3_int64)(range_start + 10));
+    sqlite3_bind_int64(statement, 2, (sqlite3_int64)event_id);
+    TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    sqlite3_finalize(statement);
+
+    /* An old unresolved row is excluded from results but surfaced as an
+     * explicit coverage gap for this currently-named camera. */
+    insert_detection(NULL, camera.name, range_start + 5, "person", 0.8,
+                     "", "", 0);
+
+    char body[512];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":%lld,"
+             "\"end_time\":%lld}",
+             camera.camera_uuid, (long long)range_start,
+             (long long)(range_start + 60));
+    cJSON *json = call_search(body, 200);
+    const cJSON *results = cJSON_GetObjectItemCaseSensitive(json, "results");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(results));
+    const cJSON *result = cJSON_GetArrayItem(results, 0);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        result, "known_gap")));
+    TEST_ASSERT_EQUAL_UINT64(
+        recording_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            result, "recording_id")->valuedouble);
+    TEST_ASSERT_EQUAL_UINT64(
+        event_id,
+        (uint64_t)cJSON_GetObjectItemCaseSensitive(
+            cJSON_GetObjectItemCaseSensitive(result, "detection"),
+            "id")->valuedouble);
+    TEST_ASSERT_EQUAL_INT64(
+        range_start - 20,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            result, "start_time")->valuedouble);
+    TEST_ASSERT_EQUAL_INT64(
+        range_start + 10,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            result, "end_time")->valuedouble);
+    const cJSON *coverage =
+        cJSON_GetObjectItemCaseSensitive(json, "coverage");
+    TEST_ASSERT_FALSE(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(
+        coverage, "complete")));
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               coverage, "unresolved_legacy_rows")->valueint);
+    cJSON_Delete(json);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -207,6 +493,9 @@ int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_capture_identity_survives_camera_rename_and_drives_timeline);
     RUN_TEST(test_timeline_rejects_duplicate_camera_ids);
+    RUN_TEST(test_search_cursor_filters_facets_and_current_camera_context);
+    RUN_TEST(test_search_rejects_invalid_cursor);
+    RUN_TEST(test_search_includes_spanning_motion_and_reports_legacy_gap);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

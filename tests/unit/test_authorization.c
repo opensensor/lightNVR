@@ -30,6 +30,7 @@
 #include "utils/strings.h"
 #include "web/api_handlers.h"
 #include "web/api_handlers_authorization.h"
+#include "web/api_handlers_investigations.h"
 #include "web/api_handlers_ptz.h"
 #include "web/api_handlers_recordings.h"
 #include "web/api_handlers_recordings_batch_download.h"
@@ -207,6 +208,7 @@ void setUp(void) {
     sqlite3_exec(db, "DELETE FROM authz_grants;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM authz_roles WHERE is_builtin=0;", NULL, NULL,
                  NULL);
+    sqlite3_exec(db, "DELETE FROM detections;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM camera_tags;", NULL, NULL, NULL);
@@ -1325,6 +1327,85 @@ void test_visible_camera_filter_hides_cameras_outside_grant(void) {
     free(cameras);
 }
 
+void test_investigation_search_facets_are_camera_scope_authorized(void) {
+    stream_config_t allowed = create_camera("Search Allowed", "Search");
+    stream_config_t denied = create_camera("Search Denied", "Search");
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("searchscoped", "password123", NULL,
+                               USER_ROLE_USER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             allowed.camera_uuid);
+    char grant_uuid[CAMERA_UUID_STRING_SIZE];
+    create_grant(user_id, OPERATOR_ROLE_UUID, "selector", selector,
+                 grant_uuid);
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+
+    sqlite3_stmt *statement = NULL;
+    TEST_ASSERT_EQUAL_INT(
+        SQLITE_OK,
+        sqlite3_prepare_v2(
+            get_db_handle(),
+            "INSERT INTO detections "
+            "(camera_uuid,stream_name,timestamp,label,confidence,source) "
+            "VALUES (?,?,?,?,0.9,'');",
+            -1, &statement, NULL));
+    const stream_config_t *test_cameras[] = {&allowed, &denied};
+    for (int i = 0; i < 2; i++) {
+        sqlite3_reset(statement);
+        sqlite3_clear_bindings(statement);
+        sqlite3_bind_text(statement, 1, test_cameras[i]->camera_uuid, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_text(statement, 2, test_cameras[i]->name, -1,
+                          SQLITE_TRANSIENT);
+        sqlite3_bind_int64(statement, 3, 1700000100 + i);
+        sqlite3_bind_text(statement, 4, i == 0 ? "person" : "vehicle", -1,
+                          SQLITE_STATIC);
+        TEST_ASSERT_EQUAL_INT(SQLITE_DONE, sqlite3_step(statement));
+    }
+    sqlite3_finalize(statement);
+
+    char body[768];
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\"],\"start_time\":1700000000,"
+             "\"end_time\":1700001000}",
+             allowed.camera_uuid);
+    g_config.web_auth_enabled = true;
+    cJSON *json = call_handler_path(
+        handle_post_investigation_search, HTTP_METHOD_POST,
+        "/api/investigations/search", body, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(
+               cJSON_GetObjectItemCaseSensitive(json, "page"),
+               "total")->valueint);
+    const cJSON *camera_facets = cJSON_GetObjectItemCaseSensitive(
+        cJSON_GetObjectItemCaseSensitive(json, "facets"), "cameras");
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(camera_facets));
+    TEST_ASSERT_EQUAL_STRING(
+        allowed.camera_uuid,
+        cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(camera_facets, 0),
+                                         "value")->valuestring);
+    cJSON_Delete(json);
+
+    snprintf(body, sizeof(body),
+             "{\"camera_uuids\":[\"%s\",\"%s\"],"
+             "\"start_time\":1700000000,\"end_time\":1700001000}",
+             allowed.camera_uuid, denied.camera_uuid);
+    json = call_handler_path(
+        handle_post_investigation_search, HTTP_METHOD_POST,
+        "/api/investigations/search", body, api_key, 403);
+    TEST_ASSERT_NOT_NULL(cJSON_GetObjectItemCaseSensitive(json, "error"));
+    cJSON_Delete(json);
+    g_config.web_auth_enabled = false;
+}
+
 /*
  * The effective mask is what stops a policy manager from minting authority it
  * does not hold, so it must reflect grants, legacy roles, and token narrowing.
@@ -1533,6 +1614,7 @@ int main(void) {
     RUN_TEST(test_users_api_reports_authorization_mode);
     RUN_TEST(test_sensitive_handlers_enforce_camera_scoped_policy);
     RUN_TEST(test_visible_camera_filter_hides_cameras_outside_grant);
+    RUN_TEST(test_investigation_search_facets_are_camera_scope_authorized);
     RUN_TEST(test_effective_action_mask_reflects_grants_and_tokens);
     RUN_TEST(test_policy_manager_cannot_grant_actions_it_lacks);
     RUN_TEST(test_action_catalog_bit_layout_matches_database);

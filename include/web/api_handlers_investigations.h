@@ -10,4 +10,8 @@
 void handle_post_investigation_timeline(const http_request_t *request,
                                         http_response_t *response);
 
+/** POST /api/investigations/search */
+void handle_post_investigation_search(const http_request_t *request,
+                                      http_response_t *response);
+
 #endif /* API_HANDLERS_INVESTIGATIONS_H */
