@@ -112,7 +112,8 @@ they may not trust a client-supplied collection expansion.
 | Restart, shutdown, clear logs, backup | `system.admin` | Existing administrator checks |
 | go2rtc reload and administrative proxy operations | `system.admin` | Existing proxy checks |
 | ICE server configuration reads | `system.admin` | Existing endpoint checks |
-| Storage health | `storage.configure` for sensitive target details; non-sensitive summary may remain operational read | Existing endpoint checks |
+| Storage target list/CRUD and explicit write probe | `storage.configure` | Central evaluator; mutations and probes are audited and writes use optimistic revisions |
+| Legacy storage health | `storage.configure` for sensitive target details; non-sensitive summary may remain operational read | Existing endpoint checks |
 | Storage cleanup | `storage.configure` | Existing administrator checks |
 | Event catalog and route CRUD/preview | `events.configure` | Central evaluator; mutation outcomes are audited and writes use optimistic revisions |
 | Event destination profile CRUD | `events.configure` | Central evaluator; broker credentials are write-only and mutation outcomes are audited |

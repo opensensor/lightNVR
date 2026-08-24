@@ -1246,6 +1246,64 @@ POST /api/camera-collections/{collection_uuid}/preview
 Returns the authorized `matched_count` and a sample of at most 50 camera UUIDs,
 names, and location paths.
 
+### Storage Targets
+
+Storage target endpoints require the global `storage.configure` action. They
+register local directories or administrator-mounted filesystems as stable,
+revisioned recording destinations and return cached capacity/health data.
+
+```
+GET    /api/storage-targets
+POST   /api/storage-targets
+GET    /api/storage-targets/{target_uuid}
+PUT    /api/storage-targets/{target_uuid}
+DELETE /api/storage-targets/{target_uuid}?revision={last_seen_revision}
+POST   /api/storage-targets/{target_uuid}/probe
+```
+
+An upgrade automatically creates one default target from the active recording
+root. Existing recording rows below that root gain a target UUID and relative
+object key without moving files. Absolute `file_path` remains a compatibility
+cache during the transition. The default target cannot be disabled, deleted, or
+repointed. Any other target that owns recording rows also keeps an immutable
+root and cannot be deleted until a future lifecycle operation relocates those
+rows.
+
+Create accepts the following shape. v1 target type is always `filesystem`;
+`root_path` must be an absolute path other than `/` and cannot contain traversal
+segments. Enabled targets must already exist and pass a write/fsync/unlink test.
+An unavailable future mount may be saved with `enabled: false` and enabled
+later.
+
+```json
+{
+  "name": "Campus NAS hot 01",
+  "root_path": "/mnt/lightnvr/hot-01",
+  "enabled": true,
+  "storage_class": "hot",
+  "reserve_bytes": 107374182400,
+  "low_watermark_pct": 80,
+  "high_watermark_pct": 90
+}
+```
+
+`storage_class` is `hot`, `warm`, or `cold`. Watermarks describe percent used
+and must satisfy `0 <= low < high < 100`. Updates are partial but require the
+last observed positive `revision`; deletes use that revision as a query
+parameter. The explicit probe performs a small temporary write, fsync, and
+unlink and then refreshes cached health.
+
+List and item responses include `health.status`, capacity, available and used
+bytes, last probe/success times, and the last error. They also include indexed
+recording count/bytes maintained by SQLite triggers rather than scanning the
+recordings table. `health.duplicate_filesystem` warns when two roots have the
+same underlying device ID, preventing later capacity planning from counting one
+filesystem twice.
+
+This foundation does not redirect cameras merely because a target is added.
+Selector-driven camera placement, fallback, and per-target pressure cleanup are
+the next Storage 01 phase.
+
 ### Event Routes
 
 Event route endpoints require the global `events.configure` action (legacy

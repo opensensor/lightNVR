@@ -40,7 +40,7 @@ static const authorization_action_metadata_t action_catalog[] = {
     {AUTHZ_FLEET_EXECUTE_JOB, "fleet.execute_job", "Camera administration",
      "Execute a bulk fleet operation", true, true, false},
     {AUTHZ_STORAGE_CONFIGURE, "storage.configure", "System administration",
-     "Change storage and retention configuration", false, true, false},
+     "Change storage and retention configuration", false, true, true},
     {AUTHZ_EVENTS_CONFIGURE, "events.configure", "System administration",
      "Change event routes and destinations", false, true, false},
     {AUTHZ_USERS_MANAGE, "users.manage", "System administration",

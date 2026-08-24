@@ -13,6 +13,7 @@
 
 #include "database/db_recordings.h"
 #include "database/db_core.h"
+#include "database/db_storage_targets.h"
 #include "core/logger.h"
 #include "utils/strings.h"
 
@@ -75,14 +76,43 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
         return 0;
     }
 
+    char target_uuid[LIGHTNVR_UUID_STRING_SIZE] = {0};
+    char object_key[STORAGE_TARGET_OBJECT_KEY_MAX] = {0};
+    const char *placement_reason = metadata->placement_reason[0]
+        ? metadata->placement_reason : "default-target";
+    int64_t policy_version = metadata->storage_policy_version;
+    bool has_target_uuid = metadata->storage_target_uuid[0] != '\0';
+    bool has_object_key = metadata->object_key[0] != '\0';
+    if (has_target_uuid != has_object_key) {
+        log_error("Recording storage identity requires both target UUID and object key");
+        return 0;
+    }
+    if (has_target_uuid) {
+        char resolved_path[MAX_PATH_LENGTH];
+        if (db_storage_target_resolve_path(metadata->storage_target_uuid,
+                                           metadata->object_key,
+                                           resolved_path) != 0 ||
+            strcmp(resolved_path, metadata->file_path) != 0) {
+            log_error("Recording storage identity does not resolve to its file path");
+            return 0;
+        }
+        safe_strcpy(target_uuid, metadata->storage_target_uuid,
+                    sizeof(target_uuid), 0);
+        safe_strcpy(object_key, metadata->object_key, sizeof(object_key), 0);
+    } else {
+        (void)db_storage_target_classify_path(metadata->file_path, target_uuid,
+                                              object_key);
+    }
+
     pthread_mutex_lock(db_mutex);
 
     const char *sql = "INSERT INTO recordings (stream_name, file_path, start_time, end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
-                      "retention_tier, disk_pressure_eligible, schedule_restricted, camera_uuid) "
+                      "retention_tier, disk_pressure_eligible, schedule_restricted, camera_uuid, "
+                      "storage_target_uuid, object_key, placement_reason, storage_policy_version) "
                       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                       "COALESCE(NULLIF(?, ''), "
-                      "(SELECT camera_uuid FROM streams WHERE name = ?)));";
+                      "(SELECT camera_uuid FROM streams WHERE name = ?)), ?, ?, ?, ?);";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -138,6 +168,17 @@ uint64_t add_recording_metadata(const recording_metadata_t *metadata) {
     }
     sqlite3_bind_text(stmt, 15, metadata->camera_uuid, -1, SQLITE_STATIC);
     sqlite3_bind_text(stmt, 16, metadata->stream_name, -1, SQLITE_STATIC);
+    if (target_uuid[0]) {
+        sqlite3_bind_text(stmt, 17, target_uuid, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 18, object_key, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 19, placement_reason, -1, SQLITE_TRANSIENT);
+    } else {
+        sqlite3_bind_null(stmt, 17);
+        sqlite3_bind_null(stmt, 18);
+        sqlite3_bind_null(stmt, 19);
+    }
+    if (policy_version > 0) sqlite3_bind_int64(stmt, 20, policy_version);
+    else sqlite3_bind_null(stmt, 20);
 
     // Execute statement
     rc = sqlite3_step(stmt);
@@ -277,11 +318,13 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
 
     pthread_mutex_lock(db_mutex);
 
-    const char *sql = "SELECT id, stream_name, file_path, start_time, end_time, "
+    const char *sql = "SELECT r.id, r.stream_name, r.file_path, "
+                      "r.start_time, r.end_time, "
                       "size_bytes, width, height, fps, codec, is_complete, trigger_type, "
                       "protected, retention_override_days, retention_tier, disk_pressure_eligible, "
-                      "schedule_restricted, camera_uuid "
-                      "FROM recordings WHERE id = ?;";
+                      "schedule_restricted, camera_uuid, r.storage_target_uuid, "
+                      "r.object_key, r.placement_reason, r.storage_policy_version "
+                      "FROM recordings r WHERE r.id = ?;";
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -359,6 +402,21 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
         const char *camera_uuid = (const char *)sqlite3_column_text(stmt, 17);
         safe_strcpy(metadata->camera_uuid, camera_uuid ? camera_uuid : "",
                     sizeof(metadata->camera_uuid), 0);
+        const char *target_uuid = (const char *)sqlite3_column_text(stmt, 18);
+        safe_strcpy(metadata->storage_target_uuid,
+                    target_uuid ? target_uuid : "",
+                    sizeof(metadata->storage_target_uuid), 0);
+        const char *object_key = (const char *)sqlite3_column_text(stmt, 19);
+        safe_strcpy(metadata->object_key, object_key ? object_key : "",
+                    sizeof(metadata->object_key), 0);
+        const char *placement_reason =
+            (const char *)sqlite3_column_text(stmt, 20);
+        safe_strcpy(metadata->placement_reason,
+                    placement_reason ? placement_reason : "",
+                    sizeof(metadata->placement_reason), 0);
+        metadata->storage_policy_version =
+            sqlite3_column_type(stmt, 21) == SQLITE_NULL
+                ? 0 : sqlite3_column_int64(stmt, 21);
 
         result = 0; // Success
     }
@@ -366,6 +424,20 @@ int get_recording_metadata_by_id(uint64_t id, recording_metadata_t *metadata) {
     // Finalize the prepared statement
     sqlite3_finalize(stmt);
     pthread_mutex_unlock(db_mutex);
+
+    if (result == 0 && metadata->storage_target_uuid[0] &&
+        metadata->object_key[0]) {
+        char resolved_path[MAX_PATH_LENGTH];
+        if (db_storage_target_resolve_path(metadata->storage_target_uuid,
+                                           metadata->object_key,
+                                           resolved_path) == 0) {
+            safe_strcpy(metadata->file_path, resolved_path,
+                        sizeof(metadata->file_path), 0);
+        } else {
+            log_warn("Could not resolve storage identity for recording %llu; using compatibility path",
+                     (unsigned long long)id);
+        }
+    }
 
     return result;
 }

@@ -1,6 +1,6 @@
 # PRD — Multi-Target Storage Lifecycle
 
-**Status**: Draft
+**Status**: In progress — P0 foundation implemented
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 5 — storage scale and resilience
@@ -162,7 +162,7 @@ These are examples, not hard-coded product defaults.
 
 | Phase | Scope |
 | --- | --- |
-| P0 | Target schema/resolver, default-target migration, target health |
+| P0 | Implemented: target schema/resolver, default-target migration, target health, and administration UI/API |
 | P1 | Selector policies, placement, per-target pressure behavior |
 | P2 | Persistent migration/copy jobs, checksums, bandwidth limits |
 | P3 | Pools, replication, capacity forecast, policy compliance dashboard |

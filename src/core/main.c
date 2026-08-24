@@ -65,6 +65,7 @@ void init_recordings_system(void);
 #include "database/db_schema_cache.h"
 #include "database/db_core.h"
 #include "database/db_authorization.h"
+#include "database/db_storage_targets.h"
 #include "database/db_recordings_sync.h"
 #include <sqlite3.h>
 #include "web/http_server.h"
@@ -731,6 +732,18 @@ int main(int argc, char *argv[]) {
     // Copy configuration to global config
     memcpy(&g_config, &config, sizeof(config_t));
 
+    // Register the legacy recording root as a stable storage target and attach
+    // existing rows by relative key. This is metadata-only; no footage moves.
+    const char *default_recording_root =
+        config.record_mp4_directly && config.mp4_storage_path[0] != '\0'
+            ? config.mp4_storage_path : config.storage_path;
+    char default_storage_target_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    if (db_storage_target_bootstrap_default(
+            default_recording_root, default_storage_target_uuid) != 0) {
+        log_error("Failed to initialize the default storage target");
+        goto cleanup;
+    }
+
     // Establish the stable installation identity and asynchronous event path
     // before any camera producer threads can start.
     if (event_identity_init() != 0) {
@@ -749,6 +762,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     set_retention_days(config.retention_days);
+    (void)db_storage_target_refresh_health();
     log_info("Storage manager initialized");
 
     // Start recording sync thread to ensure database file sizes are accurate

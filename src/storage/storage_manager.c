@@ -17,6 +17,7 @@
 #include "database/db_auth.h"
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
+#include "database/db_storage_targets.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "core/config.h"
 #include "core/logger.h"
@@ -24,8 +25,8 @@
 #include "core/path_utils.h"
 #include "utils/strings.h"
 
-// Maximum number of streams to process at once
-#define MAX_STREAMS_BATCH 64
+// Retention must consider every stream supported by this NVR instance.
+#define MAX_STREAMS_BATCH MAX_STREAMS
 // Maximum recordings to delete per stream per batch (loop fetches multiple batches)
 #define MAX_RECORDINGS_PER_STREAM 100
 
@@ -1472,6 +1473,9 @@ static void* unified_storage_controller_func(void *arg) {
 
         // Always run heartbeat (disk pressure detection)
         heartbeat_check_disk_pressure();
+        if (db_storage_target_refresh_health() < 0) {
+            log_warn("Storage target health refresh failed");
+        }
         unified_ctrl.last_heartbeat = now;
 
         // Check if forced cleanup was requested

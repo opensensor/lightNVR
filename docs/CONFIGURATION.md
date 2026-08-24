@@ -121,6 +121,25 @@ discovery_interval = 300
 discovery_network = auto
 ```
 
+### Multiple Recording Storage Targets
+
+The `[storage]` path remains the compatibility/default recording root. After the
+database initializes, lightNVR registers the effective MP4 recording root as a
+stable default target and attaches existing recording metadata by relative key;
+it does not move footage.
+
+Additional local or administrator-mounted NFS/SMB roots are managed under
+**Settings → Storage → Recording storage targets** or through
+`/api/storage-targets`. Each target has its own stable UUID, enabled state,
+performance class, reserved headroom, watermarks, cached capacity, and health.
+Enabled roots must already be mounted and writable. lightNVR does not mount
+remote shares or store share credentials.
+
+In the foundation phase, the default target continues receiving all new
+recordings. Registering another target prepares it for the next phase's camera
+placement and spillover policies; it does not redirect cameras or migrate files
+by itself.
+
 The INI format offers several advantages:
 - Simple and widely used format
 - Easy to read and edit
