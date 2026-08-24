@@ -99,7 +99,7 @@ void debug_dump_detection_results(void) {
     log_debug("DEBUG: Current detection results (from database):");
 
     // Get all stream names (heap-allocated)
-    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    int ms = configured_stream_slots();
     stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
     if (!streams) return;
     int stream_count = get_all_stream_configs(streams, ms);

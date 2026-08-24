@@ -13,8 +13,13 @@
 // Maximum length for URLs
 #define MAX_URL_LENGTH 512
 // Compile-time ceiling for per-stream static arrays (pointer arrays, watchdog trackers, etc.).
-// The actual operational limit is g_config.max_streams (default 32, configurable up to this value).
-#define MAX_STREAMS 1024
+// The actual operational limit is g_config.max_streams (default 32 or this
+// ceiling, whichever is lower; configurable up to this value).
+#ifndef LIGHTNVR_MAX_STREAMS
+#define LIGHTNVR_MAX_STREAMS 1024
+#endif
+#define MAX_STREAMS LIGHTNVR_MAX_STREAMS
+#define DEFAULT_MAX_STREAMS ((MAX_STREAMS < 32) ? MAX_STREAMS : 32)
 #define WEB_TRUSTED_PROXY_CIDRS_MAX 1024
 
 // Stream protocol enum
@@ -244,7 +249,7 @@ typedef struct {
     char onvif_discovery_network[64]; // Network to scan for ONVIF devices (e.g., "192.168.1.0/24")
     
     // Stream settings
-    int max_streams;            // Runtime operational limit (default 32, max MAX_STREAMS, requires restart)
+    int max_streams;            // Runtime operational limit (default DEFAULT_MAX_STREAMS, max MAX_STREAMS, requires restart)
     stream_config_t *streams;   // Dynamically allocated array of max_streams entries
     
     // Memory optimization

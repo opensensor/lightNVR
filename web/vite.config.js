@@ -14,6 +14,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const MISSING_APP_JS_IMPORTERS = ['streams.html'];
 const MIN_COMPRESSION_SIZE_BYTES = 1024;
+const legacyBrowserSupport = process.env.LIGHTNVR_WEB_LEGACY !== 'false';
+const configuredLocales = new Set(
+  (process.env.LIGHTNVR_WEB_LOCALES || '')
+    .split(',')
+    .map((locale) => locale.trim())
+    .filter(Boolean)
+);
+
+if (configuredLocales.size > 0) {
+  // English is the runtime fallback and must always be present.
+  configuredLocales.add('en');
+}
 
 /**
  * Check whether the given filesystem path exists.
@@ -85,6 +97,44 @@ const removeUseClientDirective = () => {
     }
   };
 };
+
+const filterLocalesPlugin = () => ({
+  name: 'filter-locales',
+  async writeBundle() {
+    const localesDir = resolve(__dirname, 'dist/locales');
+    if (!(await pathExists(localesDir))) {
+      throw new Error(`Locale output directory not found: ${localesDir}`);
+    }
+
+    const manifestPath = resolve(localesDir, 'manifest.json');
+    const manifest = JSON.parse(await fsPromises.readFile(manifestPath, 'utf8'));
+    const availableCodes = new Set(
+      (manifest.locales || []).map((locale) => locale.code)
+    );
+    const unknownLocales = [...configuredLocales].filter(
+      (locale) => !availableCodes.has(locale)
+    );
+    if (unknownLocales.length > 0) {
+      throw new Error(`Unknown LIGHTNVR_WEB_LOCALES: ${unknownLocales.join(', ')}`);
+    }
+
+    manifest.locales = manifest.locales.filter(
+      (locale) => configuredLocales.has(locale.code)
+    );
+    await fsPromises.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+    const entries = await fsPromises.readdir(localesDir, { withFileTypes: true });
+    await Promise.all(entries.map(async (entry) => {
+      if (!entry.isFile() || entry.name === 'manifest.json') {
+        return;
+      }
+      const localeCode = entry.name.replace(/\.(json|png)(\.gz)?$/, '');
+      if (localeCode !== entry.name && !configuredLocales.has(localeCode)) {
+        await fsPromises.unlink(resolve(localesDir, entry.name));
+      }
+    }));
+  },
+});
 
 export default defineConfig({
   // Vite 8 uses Oxc for JSX transforms. Target Preact directly so the build
@@ -169,11 +219,12 @@ export default defineConfig({
     removeUseClientDirective(),
     // Theme injection plugin - reads COLOR_THEMES from theme-init.js and injects into HTML
     themeInjectPlugin(),
-    // Add legacy browser support with explicit targets
-    legacy({
+    // Add legacy browser support with explicit targets unless a constrained
+    // package requests a modern-only bundle.
+    ...(legacyBrowserSupport ? [legacy({
       targets: ['defaults', 'not IE 11'],
       modernPolyfills: true
-    }),
+    })] : []),
     // Custom plugin to handle non-module scripts
     {
       name: 'handle-non-module-scripts',
@@ -307,6 +358,7 @@ export default defineConfig({
         }
       }
     },
+    ...(configuredLocales.size > 0 ? [filterLocalesPlugin()] : []),
     // Gzip compression for static assets - generates .gz files alongside originals
     viteCompression({
       verbose: true,

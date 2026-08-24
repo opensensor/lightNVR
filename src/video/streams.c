@@ -75,7 +75,7 @@ config_t* get_streaming_config(void) {
     memcpy(&db_config, &g_config, sizeof(config_t));
     
     // Load stream configurations from database
-    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    int ms = configured_stream_slots();
     stream_config_t *db_streams = calloc(ms, sizeof(stream_config_t));
     if (db_streams) {
         int count = get_all_stream_configs(db_streams, ms);

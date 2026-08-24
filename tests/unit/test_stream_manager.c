@@ -45,10 +45,9 @@ void test_init_shutdown_lifecycle(void) {
 }
 
 /* compile-time ceiling is a usable runtime capacity */
-void test_init_supports_1024_slots(void) {
-    TEST_ASSERT_EQUAL_INT(1024, MAX_STREAMS);
+void test_init_supports_compile_time_ceiling(void) {
     TEST_ASSERT_EQUAL_INT(0, init_stream_manager(MAX_STREAMS));
-    TEST_ASSERT_EQUAL_INT(1024, get_stream_capacity());
+    TEST_ASSERT_EQUAL_INT(MAX_STREAMS, get_stream_capacity());
     shutdown_stream_manager();
 }
 
@@ -232,7 +231,7 @@ void test_independent_recording_schedules_use_current_hour(void) {
 int main(void) {
     UNITY_BEGIN();
     RUN_TEST(test_init_shutdown_lifecycle);
-    RUN_TEST(test_init_supports_1024_slots);
+    RUN_TEST(test_init_supports_compile_time_ceiling);
     RUN_TEST(test_double_shutdown);
     RUN_TEST(test_add_stream_returns_handle);
     RUN_TEST(test_get_stream_by_name);

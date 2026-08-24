@@ -1195,7 +1195,7 @@ static int write_stream_overrides(FILE *fp) {
     if (!fp) return 0;
     if (get_db_handle() == NULL) return 0;
 
-    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    int ms = configured_stream_slots();
     stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
     if (!streams) return 0;
 
@@ -1263,7 +1263,7 @@ static int write_publish_config(FILE *fp) {
     if (!fp) return 0;
     if (get_db_handle() == NULL) return 0;
 
-    int ms = g_config.max_streams > 0 ? g_config.max_streams : 32;
+    int ms = configured_stream_slots();
     stream_config_t *streams = calloc(ms, sizeof(stream_config_t));
     if (!streams) return 0;
 

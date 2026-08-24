@@ -280,7 +280,7 @@ void load_default_config(config_t *config) {
     memset(config, 0, sizeof(config_t));
 
     // --- Runtime stream limit ---
-    config->max_streams = 32; // default; overridden by [streams] max_streams in INI
+    config->max_streams = DEFAULT_MAX_STREAMS; // overridden by [streams] max_streams in INI
     config->streams = calloc(config->max_streams, sizeof(stream_config_t));
     if (!config->streams) {
         // Fatal: we can't run without a streams array. Caller will detect NULL.
@@ -1721,8 +1721,8 @@ int save_config(const config_t *config, const char *path) {
 
     // Write stream settings
     fprintf(file, "[streams]\n");
-    fprintf(file, "max_streams = %d  ; Runtime stream slot limit (default: 32, ceiling: %d; requires restart)\n\n",
-            config->max_streams, MAX_STREAMS);
+    fprintf(file, "max_streams = %d  ; Runtime stream slot limit (default: %d, ceiling: %d; requires restart)\n\n",
+            config->max_streams, DEFAULT_MAX_STREAMS, MAX_STREAMS);
     
     // Write memory optimization settings
     fprintf(file, "[memory]\n");
