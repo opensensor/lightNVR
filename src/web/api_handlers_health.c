@@ -446,21 +446,32 @@ static bool restart_web_server(void) {
     log_info("Stopping web server before restart...");
     http_server_stop(http_server);
 
-    // Wait for the event loop thread to exit
-    // The thread is detached, so we can't join it, but we can wait a bit
+    // Wait for the event loop thread to exit.
+    //
+    // If it has not exited, the loop is still live and in-flight thread-pool
+    // work still points at the server. Restarting on top of that re-initializes
+    // handles the old loop still owns, and the process dies with SIGSEGV once
+    // that work completes. A restart cannot fix the usual cause anyway -- a
+    // saturated handler pool -- so abandon this attempt and let the next health
+    // interval retry, by which point the pool has normally drained.
     log_info("Waiting for web server thread to exit...");
+    bool thread_exited = false;
     for (int i = 0; i < 30; i++) {  // Wait up to 3 seconds
         usleep(100000);  // 100ms
 
-        // Check if thread is still running
         if (!is_web_server_thread_running()) {
             log_info("Web server thread has exited");
+            thread_exited = true;
             break;
         }
+    }
 
-        if (i == 29) {
-            log_warn("Web server thread did not exit after 3 seconds, proceeding anyway");
-        }
+    if (!thread_exited) {
+        log_warn("Web server thread still running after 3 seconds - aborting restart. "
+                 "Handlers are most likely blocked on the thread pool; a restart would "
+                 "abandon a live event loop. Will retry on the next health check.");
+        g_restart_attempts--;  // Not a real attempt; do not burn the budget
+        return false;
     }
 
     // Small delay to ensure resources are released

@@ -22,6 +22,19 @@
 #define DEFAULT_MAX_STREAMS ((MAX_STREAMS < 32) ? MAX_STREAMS : 32)
 #define WEB_TRUSTED_PROXY_CIDRS_MAX 1024
 
+// Consistency check run against an existing database at startup.
+//
+// FULL is `PRAGMA integrity_check`, which cross-verifies every index against
+// its table. That cost scales with total index size, not row count, so on a
+// database carrying many secondary indexes it can take minutes -- minutes with
+// no HTTP listener bound, which reads to a proxy as a gateway error. QUICK is
+// `PRAGMA quick_check`: same page-level structural validation, without the
+// index cross-check, and the corruption modes actually seen in the field
+// (truncated writes, torn pages) show up in both.
+#define DB_STARTUP_CHECK_OFF   0
+#define DB_STARTUP_CHECK_QUICK 1
+#define DB_STARTUP_CHECK_FULL  2
+
 // Stream protocol enum
 typedef enum {
     STREAM_PROTOCOL_TCP = 0,
@@ -209,6 +222,7 @@ typedef struct {
     int db_backup_interval_minutes;        // Periodic backup cadence in minutes (0 = disabled)
     int db_backup_retention_count;         // Number of timestamped backups to retain (0 = latest .bak only)
     char db_post_backup_script[MAX_PATH_LENGTH]; // Optional executable path run after a verified backup
+    int db_startup_check;                  // Boot consistency check: see DB_STARTUP_CHECK_*
     
     // Web server settings
     int web_thread_pool_size; // libuv UV_THREADPOOL_SIZE (default: 2x CPU cores, requires restart)

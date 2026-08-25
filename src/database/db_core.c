@@ -48,6 +48,10 @@ static time_t last_backup_time = 0;
 // Flag to indicate if WAL mode is enabled
 static bool wal_mode_enabled = false;
 
+// Flags this database was initialized with (see db_init_flags_t). Retained so
+// shutdown_database() knows whether the caller opted out of the exit backup.
+static unsigned db_init_flags = DB_INIT_DEFAULT;
+
 // No longer tracking prepared statements - each function is responsible for finalizing its own statements
 
 static int sync_path_if_exists(const char *path) {
@@ -496,11 +500,17 @@ int maybe_run_scheduled_database_backup(void) {
 
 // Initialize the database
 int init_database(const char *db_path) {
+    return init_database_ex(db_path, DB_INIT_DEFAULT);
+}
+
+int init_database_ex(const char *db_path, unsigned flags) {
     int rc;
     char *err_msg = NULL;
     bool is_new_database = false;
     sqlite3 *test_db = NULL;
     sqlite3_stmt *stmt = NULL;
+
+    db_init_flags = flags;
 
     log_info("Initializing database at path: %s", db_path);
 
@@ -578,13 +588,38 @@ int init_database(const char *db_path) {
                 log_warn("No backup database file found, will create a new database");
             }
         } else {
-            // Run integrity check on the database
-            rc = sqlite3_prepare_v2(test_db, "PRAGMA integrity_check;", -1, &stmt, NULL);
-            if (rc == SQLITE_OK) {
+            // Run the consistency check on the database.
+            //
+            // This runs before the HTTP listener is bound, so its cost is dead
+            // time during which a proxy in front of us can only return a
+            // gateway error. Default to quick_check and let an operator opt
+            // into the full index cross-check; skip it entirely for read-only
+            // one-shot callers that are about to exit anyway.
+            int check_mode = g_config.db_startup_check;
+            if (check_mode < DB_STARTUP_CHECK_OFF || check_mode > DB_STARTUP_CHECK_FULL) {
+                check_mode = DB_STARTUP_CHECK_QUICK;
+            }
+            if (db_init_flags & DB_INIT_NO_CHECK) {
+                check_mode = DB_STARTUP_CHECK_OFF;
+            }
+
+            const char *check_sql = (check_mode == DB_STARTUP_CHECK_FULL)
+                                  ? "PRAGMA integrity_check;"
+                                  : "PRAGMA quick_check;";
+            const char *check_label = (check_mode == DB_STARTUP_CHECK_FULL) ? "full" : "quick";
+
+            rc = (check_mode == DB_STARTUP_CHECK_OFF)
+               ? SQLITE_DONE  /* sentinel: nothing prepared, skip the block below */
+               : sqlite3_prepare_v2(test_db, check_sql, -1, &stmt, NULL);
+
+            if (check_mode == DB_STARTUP_CHECK_OFF) {
+                log_info("Skipping database startup consistency check");
+            } else if (rc == SQLITE_OK) {
+                time_t check_started = time(NULL);
                 if (sqlite3_step(stmt) == SQLITE_ROW) {
                     const char *result = (const char *)sqlite3_column_text(stmt, 0);
                     if (result && strcmp(result, "ok") != 0) {
-                        log_error("Database integrity check failed: %s", result);
+                        log_error("Database %s check failed: %s", check_label, result);
 
                         // Try to restore from backup
                         if (stmt) {
@@ -612,12 +647,15 @@ int init_database(const char *db_path) {
                             log_warn("No backup database file found, will attempt to repair");
                         }
                     } else {
-                        log_info("Database integrity check passed");
+                        log_info("Database %s check passed (%ld s)", check_label,
+                                 (long)(time(NULL) - check_started));
                     }
                 }
             }
-            sqlite3_finalize(stmt);
-            stmt = NULL;
+            if (stmt) {
+                sqlite3_finalize(stmt);
+                stmt = NULL;
+            }
 
             if (test_db) {
                 // Release any cached schema before closing
@@ -785,8 +823,17 @@ int init_database(const char *db_path) {
     // compiled into the binary. See db_embedded_migrations.h and db_migrations.c.
 
     // Run database migrations (creates all tables, indexes, etc.)
-    log_info("Running database migrations");
-    rc = run_database_migrations();
+    //
+    // Read-only one-shot callers skip this: they only SELECT from a schema a
+    // server process already migrated, and running the pass here would make a
+    // throwaway invocation take a write lock on the live database.
+    if (db_init_flags & DB_INIT_NO_MIGRATE) {
+        log_info("Skipping database migrations (read-only initialization)");
+        rc = 0;
+    } else {
+        log_info("Running database migrations");
+        rc = run_database_migrations();
+    }
     if (rc != 0) {
         log_error("Failed to run database migrations");
         // Finalize any remaining statements before closing
@@ -865,8 +912,15 @@ static void reset_sqlite_internal_state(void) {
 void shutdown_database(void) {
     log_info("Starting database shutdown process");
 
-    // Create a final backup before shutting down
-    if (db != NULL && db_file_path[0] != '\0') {
+    // Create a final backup before shutting down.
+    //
+    // Skipped for read-only one-shot callers: the backup copies the whole
+    // database and verifies the copy, so a process that only read a few rows
+    // would otherwise spend minutes on exit writing a duplicate of a database
+    // it never modified.
+    if (db_init_flags & DB_INIT_NO_BACKUP) {
+        log_info("Skipping shutdown backup (read-only initialization)");
+    } else if (db != NULL && db_file_path[0] != '\0') {
         log_info("Creating final backup before shutdown");
         if (perform_database_backup_cycle("shutdown", true) == 0) {
             log_info("Final backup created successfully");

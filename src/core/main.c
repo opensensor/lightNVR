@@ -615,9 +615,15 @@ int main(int argc, char *argv[]) {
             return EXIT_FAILURE;
         }
 
+        // This is a one-shot invocation that reads stream rows and exits, so it
+        // opens the database in the cheapest mode available. A full open here
+        // would run the startup consistency check, the migration pass, and a
+        // whole-database backup on exit -- and the server process that follows
+        // repeats all of it, doubling an already long window in which nothing
+        // is listening on the HTTP port.
         bool db_initialized_for_generation = false;
         if (config.db_path[0] != '\0') {
-            if (init_database(config.db_path) == 0) {
+            if (init_database_ex(config.db_path, DB_INIT_READ_ONLY) == 0) {
                 db_initialized_for_generation = true;
                 if (load_stream_configs(&config) < 0) {
                     log_warn("Failed to load stream configurations while generating go2rtc config");

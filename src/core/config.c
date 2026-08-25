@@ -128,8 +128,9 @@ static const env_config_mapping_t env_config_mappings[] = {
     // Database settings
     {"DB_PATH",            CONFIG_TYPE_STRING, CONFIG_OFFSET(db_path),            MAX_PATH_LENGTH, "/var/lib/lightnvr/lightnvr.db", 0, false},
     {"DB_BACKUP_INTERVAL_MINUTES", CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_interval_minutes), 0, NULL, 60, false},
-    {"DB_BACKUP_RETENTION_COUNT",  CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_retention_count),  0, NULL, 24, false},
+    {"DB_BACKUP_RETENTION_COUNT",  CONFIG_TYPE_INT, CONFIG_OFFSET(db_backup_retention_count),  0, NULL, 6, false},
     {"DB_POST_BACKUP_SCRIPT",      CONFIG_TYPE_STRING, CONFIG_OFFSET(db_post_backup_script),    MAX_PATH_LENGTH, "", 0, false},
+    {"DB_STARTUP_CHECK",           CONFIG_TYPE_INT, CONFIG_OFFSET(db_startup_check),           0, NULL, DB_STARTUP_CHECK_QUICK, false},
 
     // Sentinel to mark end of array
     {NULL, CONFIG_TYPE_BOOL, 0, 0, NULL, 0, false}
@@ -367,8 +368,9 @@ void load_default_config(config_t *config) {
     // Database settings
     safe_strcpy(config->db_path, "/var/lib/lightnvr/lightnvr.db", MAX_PATH_LENGTH, 0);
     config->db_backup_interval_minutes = 60;
-    config->db_backup_retention_count = 24;
+    config->db_backup_retention_count = 6;
     config->db_post_backup_script[0] = '\0';
+    config->db_startup_check = DB_STARTUP_CHECK_QUICK;
     
     // Web server settings
     config->web_port = 8080;
@@ -592,6 +594,13 @@ int validate_config(config_t *config) {
         config->db_backup_retention_count = 0;
     }
 
+    if (config->db_startup_check < DB_STARTUP_CHECK_OFF ||
+        config->db_startup_check > DB_STARTUP_CHECK_FULL) {
+        log_warn("db startup_check (%d) out of range [%d,%d]; using quick",
+                 config->db_startup_check, DB_STARTUP_CHECK_OFF, DB_STARTUP_CHECK_FULL);
+        config->db_startup_check = DB_STARTUP_CHECK_QUICK;
+    }
+
     // Clamp capacity/pressure settings to sane ranges. min_free_pct must leave
     // room to actually record; anything above ~90% would evict everything.
     if (config->storage_min_free_pct < 0 || config->storage_min_free_pct > 90) {
@@ -803,6 +812,16 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->db_backup_retention_count = safe_atoi(value, 0);
         } else if (strcmp(name, "post_backup_script") == 0) {
             safe_strcpy(config->db_post_backup_script, value, MAX_PATH_LENGTH, 0);
+        } else if (strcmp(name, "startup_check") == 0) {
+            if (strcasecmp(value, "off") == 0 || strcasecmp(value, "none") == 0) {
+                config->db_startup_check = DB_STARTUP_CHECK_OFF;
+            } else if (strcasecmp(value, "full") == 0) {
+                config->db_startup_check = DB_STARTUP_CHECK_FULL;
+            } else if (strcasecmp(value, "quick") == 0) {
+                config->db_startup_check = DB_STARTUP_CHECK_QUICK;
+            } else {
+                config->db_startup_check = safe_atoi(value, DB_STARTUP_CHECK_QUICK);
+            }
         }
     }
     // Web server settings
@@ -1693,6 +1712,9 @@ int save_config(const config_t *config, const char *path) {
             config->db_backup_interval_minutes);
     fprintf(file, "backup_retention_count = %d  ; Number of timestamped backups to keep\n",
             config->db_backup_retention_count);
+    fprintf(file, "startup_check = %s  ; Boot consistency check: off, quick (default), or full\n",
+            config->db_startup_check == DB_STARTUP_CHECK_OFF ? "off" :
+            config->db_startup_check == DB_STARTUP_CHECK_FULL ? "full" : "quick");
     fprintf(file, "post_backup_script = %s  ; Optional absolute path to executable hook\n\n",
             config->db_post_backup_script);
     
@@ -1840,6 +1862,9 @@ void print_config(const config_t *config) {
     printf("    Database Path: %s\n", config->db_path);
     printf("    Backup Interval: %d minutes\n", config->db_backup_interval_minutes);
     printf("    Backup Retention Count: %d\n", config->db_backup_retention_count);
+    printf("    Startup Check: %s\n",
+           config->db_startup_check == DB_STARTUP_CHECK_OFF ? "off" :
+           config->db_startup_check == DB_STARTUP_CHECK_FULL ? "full" : "quick");
     printf("    Post-backup Script: %s\n",
            config->db_post_backup_script[0] ? config->db_post_backup_script : "(disabled)");
     

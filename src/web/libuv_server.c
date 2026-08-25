@@ -202,28 +202,44 @@ uv_loop_t *libuv_server_get_loop(http_server_handle_t handle) {
  * @return 0 on success, -1 on failure
  */
 static int libuv_server_reset_loop(libuv_server_t *server) {
-    log_warn("libuv_server_reset_loop: Abandoning dirty event loop, creating fresh one");
+    log_info("libuv_server_reset_loop: Attempting to recycle the event loop");
 
-    // Try to close the old loop (may fail if handles are stuck, that's OK)
+    // uv_loop_close() is the authoritative "is anything still referencing this
+    // loop" test: it returns UV_EBUSY while any handle OR request is still
+    // outstanding, including thread-pool work queued by uv_queue_work().
+    //
+    // A busy loop must NOT be abandoned. Every in-flight uv_work_t holds a
+    // pointer to this server and completes by scheduling its after-work
+    // callback on the loop it was submitted to. Replacing server->loop and
+    // re-running uv_tcp_init()/uv_async_init() over the embedded listener and
+    // stop_async handles -- which the old loop still has queued -- leaves two
+    // loops sharing one handle. When the stuck worker finally finishes it
+    // writes through freed state and the process dies with SIGSEGV.
+    //
+    // Blocked handlers are the common cause, and the common cause of *those*
+    // is a saturated thread pool, which restarting cannot fix. Report the
+    // condition and fail; the caller retries on the next health interval,
+    // by which time the pool has usually drained.
     int close_result = uv_loop_close(server->loop);
     if (close_result != 0) {
-        log_warn("libuv_server_reset_loop: Old loop close returned %d (%s) - "
-                 "forcing new allocation", close_result, uv_strerror(close_result));
-        // Allocate a new loop structure since we can't cleanly close the old one
-        server->loop = safe_malloc(sizeof(uv_loop_t));
-        if (!server->loop) {
-            log_error("libuv_server_reset_loop: Failed to allocate new event loop");
-            return -1;
-        }
-    }
-
-    // Initialize the fresh loop
-    if (uv_loop_init(server->loop) != 0) {
-        log_error("libuv_server_reset_loop: Failed to initialize new event loop");
+        int active_handles = 0;
+        uv_walk(server->loop, count_handles_cb, &active_handles);
+        log_error("libuv_server_reset_loop: Refusing to abandon a busy event loop "
+                  "(close returned %d (%s); %d active handles). In-flight thread-pool "
+                  "work still references it -- recycling now would crash the process "
+                  "when that work completes. Leaving the loop intact.",
+                  close_result, uv_strerror(close_result), active_handles);
         return -1;
     }
 
-    log_info("libuv_server_reset_loop: Fresh event loop created successfully");
+    // The loop closed cleanly, so nothing references it any more and the same
+    // allocation can be re-initialized in place.
+    if (uv_loop_init(server->loop) != 0) {
+        log_error("libuv_server_reset_loop: Failed to re-initialize event loop");
+        return -1;
+    }
+
+    log_info("libuv_server_reset_loop: Event loop recycled successfully");
     return 0;
 }
 
@@ -513,8 +529,19 @@ void libuv_server_stop(http_server_handle_t handle) {
     if (elapsed_ms >= max_wait_ms) {
         int handle_count = 0;
         uv_walk(server->loop, count_handles_cb, &handle_count);
-        log_warn("libuv_server_stop: Timeout waiting for handles to close, %d handles still active",
-                 handle_count);
+        if (handle_count == 0) {
+            // uv_run() counts active requests as well as handles, so "still
+            // active with zero handles" means outstanding thread-pool work:
+            // handlers are blocked in uv_queue_work() and have not returned.
+            // The loop cannot be recycled until they drain.
+            log_warn("libuv_server_stop: Timeout with no open handles - handler work is "
+                     "still in flight on the thread pool (web_thread_pool_size=%d). "
+                     "The event loop stays alive until it drains.",
+                     g_config.web_thread_pool_size);
+        } else {
+            log_warn("libuv_server_stop: Timeout waiting for handles to close, %d handles still active",
+                     handle_count);
+        }
     }
 
     log_info("libuv_server_stop: Server stopped");

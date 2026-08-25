@@ -18,6 +18,7 @@
 #include "database/db_streams.h"
 #include "database/db_recordings.h"
 #include "database/db_storage_targets.h"
+#include "database/db_detections.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "core/config.h"
 #include "core/logger.h"
@@ -29,6 +30,9 @@
 #define MAX_STREAMS_BATCH MAX_STREAMS
 // Maximum recordings to delete per stream per batch (loop fetches multiple batches)
 #define MAX_RECORDINGS_PER_STREAM 100
+// Rows per detections-prune statement. Bounded so a large backlog is worked
+// off across cycles instead of holding the database mutex for one huge delete.
+#define MAX_DETECTIONS_PER_BATCH 5000
 
 // Maximum orphaned recordings to process per run
 #define MAX_ORPHANED_BATCH 500
@@ -491,6 +495,36 @@ int apply_retention_policy(void) {
 
             if (stream_deleted > 0) {
                 log_info("Stream %s: deleted %d recordings past retention", stream_name, stream_deleted);
+            }
+        }
+
+        // Phase 1b: Prune the detections rows themselves.
+        //
+        // Recording retention above only removes rows from `recordings`; the
+        // per-detection rows outlive the footage they describe and are written
+        // continuously (one row per detected object, every detection interval).
+        // Without this they grow without bound, and the secondary indexes on
+        // them grow faster than the table -- which is what makes the database
+        // large enough for the startup consistency check to become an outage.
+        if (config.detection_retention_days > 0) {
+            uint64_t detection_max_age =
+                (uint64_t)config.detection_retention_days * 86400ULL;
+            int detections_deleted = 0;
+            int pruned;
+            do {
+                if (time(NULL) - budget_start >= RETENTION_TIME_BUDGET_SEC) break;
+
+                pruned = delete_old_detections_for_stream(stream_name,
+                                                          detection_max_age,
+                                                          MAX_DETECTIONS_PER_BATCH);
+                if (pruned > 0) {
+                    detections_deleted += pruned;
+                }
+            } while (pruned == MAX_DETECTIONS_PER_BATCH);
+
+            if (detections_deleted > 0) {
+                log_info("Stream %s: deleted %d detections past %d-day retention",
+                         stream_name, detections_deleted, config.detection_retention_days);
             }
         }
 

@@ -833,6 +833,72 @@ int delete_old_detections(uint64_t max_age) {
     return deleted_count;
 }
 
+int delete_old_detections_for_stream(const char *stream_name, uint64_t max_age, int batch_limit) {
+    int rc;
+    sqlite3_stmt *stmt;
+    int deleted_count = 0;
+
+    if (!stream_name || stream_name[0] == '\0' || batch_limit <= 0) {
+        return -1;
+    }
+
+    sqlite3 *db = get_db_handle();
+    pthread_mutex_t *db_mutex = get_db_mutex();
+
+    if (!db) {
+        log_error("Database not initialized");
+        return -1;
+    }
+
+    pthread_mutex_lock(db_mutex);
+
+    // Selecting the ids first keeps the delete on idx_detections_stream_timestamp
+    // and lets LIMIT bound the batch without depending on SQLite being built
+    // with SQLITE_ENABLE_UPDATE_DELETE_LIMIT.
+    //
+    // An external_motion row with no event_end_time is an interval still open,
+    // so it is measured from now and never expires mid-event -- matching the
+    // age expression delete_old_detections() uses.
+    const char *sql =
+        "DELETE FROM detections WHERE id IN ("
+        "  SELECT id FROM detections"
+        "  WHERE stream_name = ?"
+        "    AND CASE WHEN source = 'external_motion' AND event_end_time IS NULL"
+        "             THEN CAST(strftime('%s','now') AS INTEGER)"
+        "             ELSE COALESCE(event_end_time, timestamp) END < ?"
+        "  LIMIT ?"
+        ");";
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        log_error("Failed to prepare detection prune statement: %s", sqlite3_errmsg(db));
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    time_t cutoff_time = time(NULL) - (time_t)max_age;
+
+    sqlite3_bind_text(stmt, 1, stream_name, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, (sqlite3_int64)cutoff_time);
+    sqlite3_bind_int(stmt, 3, batch_limit);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        log_error("Failed to prune detections for stream %s: %s",
+                  stream_name, sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        pthread_mutex_unlock(db_mutex);
+        return -1;
+    }
+
+    deleted_count = sqlite3_changes(db);
+
+    sqlite3_finalize(stmt);
+    pthread_mutex_unlock(db_mutex);
+
+    return deleted_count;
+}
+
 /**
  * Get a summary of detection labels for a stream within a time range
  * Returns unique labels with their counts, sorted by count descending

@@ -112,6 +112,20 @@ int has_detections_in_time_range(const char *stream_name, time_t start_time, tim
 int delete_old_detections(uint64_t max_age);
 
 /**
+ * Delete one stream's detections past its retention window
+ *
+ * Deletes in bounded batches so a large backlog does not hold the database
+ * mutex for the length of a single multi-million-row statement. Call in a loop
+ * until it returns fewer rows than the batch size.
+ *
+ * @param stream_name Stream whose detections should be pruned
+ * @param max_age Maximum age in seconds
+ * @param batch_limit Maximum rows to delete in this call (must be > 0)
+ * @return Number of detections deleted, or -1 on error
+ */
+int delete_old_detections_for_stream(const char *stream_name, uint64_t max_age, int batch_limit);
+
+/**
  * Maximum number of unique labels to return in a summary
  */
 #define MAX_DETECTION_LABELS 10
