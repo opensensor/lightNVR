@@ -44,6 +44,29 @@ static cJSON *camera_offline_fixture(void) {
     return data;
 }
 
+static cJSON *camera_recovered_fixture(void) {
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddStringToObject(data, "previous_state", "offline");
+    cJSON_AddNumberToObject(data, "downtime_ms", 15000);
+    return data;
+}
+
+static cJSON *stream_degraded_fixture(void) {
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddStringToObject(data, "reason", "low_fps");
+    cJSON_AddNumberToObject(data, "observed_fps", 7.5);
+    cJSON_AddNumberToObject(data, "expected_fps", 25.0);
+    return data;
+}
+
+static cJSON *stream_recovered_fixture(void) {
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddStringToObject(data, "previous_state", "degraded");
+    cJSON_AddNumberToObject(data, "observed_fps", 24.5);
+    cJSON_AddNumberToObject(data, "expected_fps", 25.0);
+    return data;
+}
+
 static cJSON *recording_gap_fixture(void) {
     cJSON *data = cJSON_CreateObject();
     cJSON_AddStringToObject(data, "started_at", "2026-08-23T06:30:00Z");
@@ -59,11 +82,19 @@ static cJSON *storage_pressure_fixture(void) {
     return data;
 }
 
+static cJSON *storage_recovered_fixture(void) {
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddStringToObject(data, "previous_level", "critical");
+    cJSON_AddNumberToObject(data, "used_percent", 72.0);
+    cJSON_AddNumberToObject(data, "free_bytes", 3221225472.0);
+    return data;
+}
+
 void test_registry_is_stable_and_versioned(void) {
     int count = 0;
     const event_type_definition_t *registry = event_registry_all(&count);
     TEST_ASSERT_NOT_NULL(registry);
-    TEST_ASSERT_EQUAL_INT(4, count);
+    TEST_ASSERT_EQUAL_INT(8, count);
     for (int index = 0; index < count; index++) {
         TEST_ASSERT_NOT_NULL(strstr(registry[index].type, "io.lightnvr."));
         size_t length = strlen(registry[index].type);
@@ -95,10 +126,18 @@ void test_required_fixtures_create_and_validate(void) {
          detection_fixture},
         {"io.lightnvr.camera.offline.v1", CAMERA_SUBJECT,
          camera_offline_fixture},
+        {"io.lightnvr.camera.recovered.v1", CAMERA_SUBJECT,
+         camera_recovered_fixture},
+        {"io.lightnvr.stream.degraded.v1", CAMERA_SUBJECT,
+         stream_degraded_fixture},
+        {"io.lightnvr.stream.recovered.v1", CAMERA_SUBJECT,
+         stream_recovered_fixture},
         {"io.lightnvr.stream.recording_gap.v1", CAMERA_SUBJECT,
          recording_gap_fixture},
         {"io.lightnvr.storage.pressure.v1", "system/storage",
          storage_pressure_fixture},
+        {"io.lightnvr.storage.recovered.v1", "system/storage",
+         storage_recovered_fixture},
     };
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
         cJSON *data = cases[index].fixture();

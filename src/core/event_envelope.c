@@ -37,6 +37,39 @@ static const event_type_definition_t EVENT_TYPES[] = {
         .default_expiry_seconds = 86400,
     },
     {
+        .type = "io.lightnvr.camera.recovered.v1",
+        .family = "camera",
+        .description = "Camera connectivity recovered after an offline state",
+        .severity = EVENT_SEVERITY_INFO,
+        .sensitivity = EVENT_SENSITIVITY_OPERATIONAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_CAMERA,
+        .default_expiry_seconds = 86400,
+    },
+    {
+        .type = "io.lightnvr.stream.degraded.v1",
+        .family = "stream",
+        .description = "A camera stream crossed a degraded health threshold",
+        .severity = EVENT_SEVERITY_WARNING,
+        .sensitivity = EVENT_SENSITIVITY_OPERATIONAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_CAMERA,
+        .default_expiry_seconds = 86400,
+    },
+    {
+        .type = "io.lightnvr.stream.recovered.v1",
+        .family = "stream",
+        .description = "A degraded camera stream returned to healthy",
+        .severity = EVENT_SEVERITY_INFO,
+        .sensitivity = EVENT_SENSITIVITY_OPERATIONAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_CAMERA,
+        .default_expiry_seconds = 86400,
+    },
+    {
         .type = "io.lightnvr.stream.recording_gap.v1",
         .family = "stream",
         .description = "A gap was detected in a camera recording",
@@ -52,6 +85,17 @@ static const event_type_definition_t EVENT_TYPES[] = {
         .family = "storage",
         .description = "Storage usage crossed an operational threshold",
         .severity = EVENT_SEVERITY_CRITICAL,
+        .sensitivity = EVENT_SENSITIVITY_INTERNAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_STORAGE,
+        .default_expiry_seconds = 604800,
+    },
+    {
+        .type = "io.lightnvr.storage.recovered.v1",
+        .family = "storage",
+        .description = "Storage returned to normal after pressure",
+        .severity = EVENT_SEVERITY_INFO,
         .sensitivity = EVENT_SENSITIVITY_INTERNAL,
         .media_policy = EVENT_MEDIA_FORBIDDEN,
         .expected_rate = EVENT_RATE_LOW,
@@ -303,8 +347,48 @@ static int validate_type_data(const char *type, const cJSON *data,
         const cJSON *failures = required_field(
             data, "consecutive_failures", cJSON_Number, error, error_size);
         if (!reason || !failures) return -1;
-        if (!reason->valuestring[0] || failures->valueint < 1) {
+        if (!reason->valuestring[0] || failures->valueint < 1 ||
+            failures->valuedouble != (double)failures->valueint) {
             set_error(error, error_size, "camera offline data is invalid");
+            return -1;
+        }
+    } else if (strcmp(type, "io.lightnvr.camera.recovered.v1") == 0) {
+        const cJSON *previous = required_field(
+            data, "previous_state", cJSON_String, error, error_size);
+        const cJSON *downtime = required_field(
+            data, "downtime_ms", cJSON_Number, error, error_size);
+        if (!previous || !downtime) return -1;
+        if (strcmp(previous->valuestring, "offline") != 0 ||
+            downtime->valuedouble < 0) {
+            set_error(error, error_size, "camera recovered data is invalid");
+            return -1;
+        }
+    } else if (strcmp(type, "io.lightnvr.stream.degraded.v1") == 0) {
+        const cJSON *reason = required_field(data, "reason", cJSON_String,
+                                             error, error_size);
+        const cJSON *observed = required_field(
+            data, "observed_fps", cJSON_Number, error, error_size);
+        const cJSON *expected = required_field(
+            data, "expected_fps", cJSON_Number, error, error_size);
+        if (!reason || !observed || !expected) return -1;
+        bool valid_reason = strcmp(reason->valuestring, "low_fps") == 0 ||
+            strcmp(reason->valuestring, "stale_frames") == 0;
+        if (!valid_reason || observed->valuedouble < 0 ||
+            expected->valuedouble < 0) {
+            set_error(error, error_size, "stream degraded data is invalid");
+            return -1;
+        }
+    } else if (strcmp(type, "io.lightnvr.stream.recovered.v1") == 0) {
+        const cJSON *previous = required_field(
+            data, "previous_state", cJSON_String, error, error_size);
+        const cJSON *observed = required_field(
+            data, "observed_fps", cJSON_Number, error, error_size);
+        const cJSON *expected = required_field(
+            data, "expected_fps", cJSON_Number, error, error_size);
+        if (!previous || !observed || !expected) return -1;
+        if (strcmp(previous->valuestring, "degraded") != 0 ||
+            observed->valuedouble < 0 || expected->valuedouble < 0) {
+            set_error(error, error_size, "stream recovered data is invalid");
             return -1;
         }
     } else if (strcmp(type, "io.lightnvr.stream.recording_gap.v1") == 0) {
@@ -330,6 +414,20 @@ static int validate_type_data(const char *type, const cJSON *data,
         if (!valid_level || used->valuedouble < 0 ||
             used->valuedouble > 100) {
             set_error(error, error_size, "storage pressure data is invalid");
+            return -1;
+        }
+    } else if (strcmp(type, "io.lightnvr.storage.recovered.v1") == 0) {
+        const cJSON *previous = required_field(
+            data, "previous_level", cJSON_String, error, error_size);
+        const cJSON *used = required_field(data, "used_percent", cJSON_Number,
+                                           error, error_size);
+        if (!previous || !used) return -1;
+        bool valid_previous = strcmp(previous->valuestring, "warning") == 0 ||
+            strcmp(previous->valuestring, "critical") == 0 ||
+            strcmp(previous->valuestring, "emergency") == 0;
+        if (!valid_previous || used->valuedouble < 0 ||
+            used->valuedouble > 100) {
+            set_error(error, error_size, "storage recovered data is invalid");
             return -1;
         }
     }

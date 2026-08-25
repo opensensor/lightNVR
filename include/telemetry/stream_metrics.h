@@ -83,6 +83,8 @@ typedef struct {
     /* Health status (recomputed by sampler thread) */
     atomic_int health_status;             /* stream_health_status_t */
     atomic_int stream_up;                 /* 1 if UP, 0 otherwise */
+    bool health_observed;                 /* initial health sample completed */
+    time_t health_changed_at;             /* start of current health state */
 
     /* Gauges */
     atomic_int_fast64_t last_frame_ts;    /* unix epoch seconds of last frame */

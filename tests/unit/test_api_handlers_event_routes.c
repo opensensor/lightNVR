@@ -157,7 +157,7 @@ void tearDown(void) {
 void test_catalog_and_route_crud_are_versioned_and_audited(void) {
     cJSON *json = call(handle_get_event_catalog, HTTP_METHOD_GET,
                        "/api/events/catalog", NULL, NULL, NULL, 200);
-    TEST_ASSERT_EQUAL_INT(4,
+    TEST_ASSERT_EQUAL_INT(8,
         cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
     cJSON_Delete(json);
 

@@ -47,8 +47,12 @@ Every event uses a CloudEvents-inspired JSON envelope:
 | --- | --- | --- | ---: | --- | --- |
 | `io.lightnvr.detection.object.v1` | info | operational | 1 hour | high | reference allowed |
 | `io.lightnvr.camera.offline.v1` | warning | operational | 1 day | low | forbidden |
+| `io.lightnvr.camera.recovered.v1` | info | operational | 1 day | low | forbidden |
+| `io.lightnvr.stream.degraded.v1` | warning | operational | 1 day | low | forbidden |
+| `io.lightnvr.stream.recovered.v1` | info | operational | 1 day | low | forbidden |
 | `io.lightnvr.stream.recording_gap.v1` | warning | operational | 7 days | low | reference allowed |
 | `io.lightnvr.storage.pressure.v1` | critical | internal | 7 days | low | forbidden |
+| `io.lightnvr.storage.recovered.v1` | info | internal | 7 days | low | forbidden |
 
 Expiry is internal delivery metadata and is intentionally not part of the JSON
 payload. MQTT 5 delivery may carry it as a message-expiry property; the durable
@@ -100,6 +104,42 @@ and an authorization-aware `snapshot_url` are optional.
 `reason` is a stable machine-readable value and `consecutive_failures` is at
 least one.
 
+### `io.lightnvr.camera.recovered.v1`
+
+```json
+{
+  "previous_state": "offline",
+  "downtime_ms": 15000
+}
+```
+
+`downtime_ms` measures the observed offline interval and is non-negative.
+
+### `io.lightnvr.stream.degraded.v1`
+
+```json
+{
+  "reason": "low_fps",
+  "observed_fps": 7.5,
+  "expected_fps": 25.0
+}
+```
+
+`reason` is `low_fps` or `stale_frames`. FPS values are non-negative.
+
+### `io.lightnvr.stream.recovered.v1`
+
+```json
+{
+  "previous_state": "degraded",
+  "observed_fps": 24.5,
+  "expected_fps": 25.0
+}
+```
+
+This fact is emitted only when a previously degraded stream returns to the
+healthy threshold.
+
 ### `io.lightnvr.stream.recording_gap.v1`
 
 ```json
@@ -124,6 +164,19 @@ least one.
 `level` is `warning`, `critical`, or `emergency`; `used_percent` is between zero
 and 100. `free_bytes` is optional.
 
+### `io.lightnvr.storage.recovered.v1`
+
+```json
+{
+  "previous_level": "critical",
+  "used_percent": 72.0,
+  "free_bytes": 3221225472
+}
+```
+
+`previous_level` is `warning`, `critical`, or `emergency`. The event is emitted
+when the monitored recording filesystem returns to normal pressure.
+
 ## Producer API
 
 The installation source is a UUID generated once and persisted in
@@ -139,6 +192,13 @@ the immutable camera UUID, or
 `event_producer_publish_detection_for_stream()` at legacy name-only call sites.
 Both normalize and enqueue only; neither performs MQTT, snapshot, or other
 network work on the caller thread.
+
+The same producer module exposes camera offline/recovered, stream
+degraded/recovered, recording-gap, and storage pressure/recovered facts. Stream
+producers resolve the current stream name to its immutable camera UUID. The
+health sampler and storage heartbeat emit only on observed state transitions;
+the recording producer runs only after the segment continuity detector finds a
+gap greater than five seconds.
 
 ## Asynchronous in-process bus
 

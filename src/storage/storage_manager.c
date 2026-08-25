@@ -21,6 +21,7 @@
 #include "database/db_detections.h"
 #include "web/api_handlers_recordings_thumbnail.h"
 #include "core/config.h"
+#include "core/event_producers.h"
 #include "core/logger.h"
 #include "core/mqtt_client.h"
 #include "core/path_utils.h"
@@ -868,6 +869,16 @@ static disk_pressure_level_t evaluate_disk_pressure_level_cfg(double free_pct) {
     return DISK_PRESSURE_NORMAL;
 }
 
+static const char *disk_pressure_event_level(disk_pressure_level_t level) {
+    switch (level) {
+        case DISK_PRESSURE_WARNING: return "warning";
+        case DISK_PRESSURE_CRITICAL: return "critical";
+        case DISK_PRESSURE_EMERGENCY: return "emergency";
+        case DISK_PRESSURE_NORMAL: return "normal";
+    }
+    return "normal";
+}
+
 /**
  * Current free space as a fraction of total (0-100), or -1.0 on error.
  */
@@ -1172,6 +1183,24 @@ static void heartbeat_check_disk_pressure(void) {
             log_info("Disk pressure decreased: %s -> %s (%.1f%% free)",
                      disk_pressure_level_str(old_level), disk_pressure_level_str(new_level),
                      free_pct);
+        }
+
+        char event_error[256] = {0};
+        double used_pct = 100.0 - free_pct;
+        int event_result;
+        if (new_level == DISK_PRESSURE_NORMAL) {
+            event_result = event_producer_publish_storage_recovered(
+                disk_pressure_event_level(old_level), used_pct, avail,
+                time(NULL), event_error, sizeof(event_error));
+        } else {
+            event_result = event_producer_publish_storage_pressure(
+                disk_pressure_event_level(new_level),
+                disk_pressure_event_level(old_level), used_pct, avail,
+                time(NULL), event_error, sizeof(event_error));
+        }
+        if (event_result != 0) {
+            log_warn("Could not enqueue normalized storage pressure event: %s",
+                     event_error[0] ? event_error : "unknown error");
         }
 
         // Publish pressure change to MQTT: {prefix}/storage/pressure
