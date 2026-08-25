@@ -1,5 +1,9 @@
 import { useI18n } from '../../i18n.js';
-import { healthStateForStream, recordingModesForStream } from './liveTileStatus.js';
+import {
+  healthStateForStream,
+  recordingModesForStream,
+  shouldShowLiveTileStatus,
+} from './liveTileStatus.js';
 
 function RecordingGlyph({ modes }) {
   const hasConstant = modes.includes('constant');
@@ -58,8 +62,11 @@ function HealthGlyph({ state }) {
   );
 }
 
-export function LiveTileStatus({ stream, isPlaying, isLoading, error }) {
+export function LiveTileStatus({ stream, isPlaying, isLoading, error, showLabels = true }) {
   const { t } = useI18n();
+
+  if (!shouldShowLiveTileStatus(showLabels)) return null;
+
   const modes = recordingModesForStream(stream);
   const health = healthStateForStream(stream, { isPlaying, isLoading, error });
   const recordingLabel = modes.length > 0
