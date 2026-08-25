@@ -28,6 +28,21 @@ static bool g_initialized = false;
 // RTSP URLs, causing truncation and failed stream-existence checks.
 #define HTTP_RESPONSE_SIZE 65536   // For holding complete HTTP responses (64KB)
 #define URL_BUFFER_SIZE   1024
+#define GO2RTC_API_READ_TIMEOUT_SECONDS 5L
+#define GO2RTC_API_MUTATION_TIMEOUT_SECONDS 10L
+#define GO2RTC_API_CONNECT_TIMEOUT_SECONDS 2L
+
+/*
+ * Every request in this module targets the local go2rtc process.  These calls
+ * are sometimes made while the caller owns the global go2rtc lifecycle guard,
+ * so an unbounded request can stop every other lifecycle user indefinitely.
+ */
+static void configure_curl_timeouts(CURL *curl, long timeout_seconds) {
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT,
+                     GO2RTC_API_CONNECT_TIMEOUT_SECONDS);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+}
 
 bool go2rtc_api_init(const char *api_host, int api_port) {
     if (g_initialized) {
@@ -147,9 +162,7 @@ bool go2rtc_api_add_stream(const char *stream_id, const char *stream_url) {
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
+    configure_curl_timeouts(curl, GO2RTC_API_MUTATION_TIMEOUT_SECONDS);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -256,9 +269,7 @@ bool go2rtc_api_add_stream_multi(const char *stream_id, const char **sources, in
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
+    configure_curl_timeouts(curl, GO2RTC_API_MUTATION_TIMEOUT_SECONDS);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -332,6 +343,7 @@ bool go2rtc_api_remove_stream(const char *stream_id) {
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    configure_curl_timeouts(curl, GO2RTC_API_READ_TIMEOUT_SECONDS);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -442,9 +454,7 @@ bool go2rtc_api_publish_stream(const char *stream_id, const char *destination) {
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);        // 10s total request timeout
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);  // 5s connect timeout
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);        // Thread-safe: no SIGALRM
+    configure_curl_timeouts(curl, GO2RTC_API_MUTATION_TIMEOUT_SECONDS);
 
     res = curl_easy_perform(curl);
 
@@ -505,6 +515,7 @@ bool go2rtc_api_stream_exists(const char *stream_id) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &chunk);
+    configure_curl_timeouts(curl, GO2RTC_API_READ_TIMEOUT_SECONDS);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -593,6 +604,7 @@ bool go2rtc_api_update_config(void) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    configure_curl_timeouts(curl, GO2RTC_API_READ_TIMEOUT_SECONDS);
 
     res = curl_easy_perform(curl);
 
@@ -651,6 +663,7 @@ bool go2rtc_api_get_streams(char *buffer, size_t buffer_size) {
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    configure_curl_timeouts(curl, GO2RTC_API_READ_TIMEOUT_SECONDS);
 
     res = curl_easy_perform(curl);
 
@@ -707,9 +720,7 @@ bool go2rtc_api_get_application_info(int *rtsp_port,
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    configure_curl_timeouts(curl, GO2RTC_API_READ_TIMEOUT_SECONDS);
 
     // Perform the request
     res = curl_easy_perform(curl);
@@ -814,9 +825,7 @@ static bool preload_attempt(const char *stream_id, const char *query, long timeo
     curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, PerRequestWriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_sec);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5L);
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    configure_curl_timeouts(curl, timeout_sec);
 
     bool success = false;
     CURLcode res = curl_easy_perform(curl);

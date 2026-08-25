@@ -410,9 +410,21 @@ void handle_get_client_config(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(config, "web_auth_enabled",
                           g_config.web_auth_enabled);
     cJSON_AddBoolToObject(config, "demo_mode", g_config.demo_mode);
-    cJSON_AddBoolToObject(config, "go2rtc_available",
-                          g_config.go2rtc_enabled &&
-                          go2rtc_process_is_running());
+    bool go2rtc_available = false;
+    if (g_config.go2rtc_enabled) {
+        int go2rtc_pid = -1;
+        if (go2rtc_process_try_get_pid(&go2rtc_pid)) {
+            go2rtc_available = go2rtc_pid > 0;
+        } else {
+            /*
+             * A reload/start/stop currently owns the lifecycle guard.  API
+             * workers must never wait behind it: the browser can keep using
+             * its existing playback path while the transition completes.
+             */
+            go2rtc_available = true;
+        }
+    }
+    cJSON_AddBoolToObject(config, "go2rtc_available", go2rtc_available);
     cJSON_AddNumberToObject(config, "go2rtc_api_port",
                             g_config.go2rtc_api_port);
     cJSON_AddBoolToObject(config, "webrtc_disabled", g_config.webrtc_disabled);
