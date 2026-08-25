@@ -1494,7 +1494,7 @@ export function StreamsView() {
               still work the same way over the new card grid. */}
           {canModifyStreams && selectionMode && (
             <div className="flex flex-wrap items-center gap-3 px-3 py-2 mb-3 rounded-md bg-card border border-border">
-              <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <label className="touch-target inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
                   className="w-4 h-4 rounded cursor-pointer"

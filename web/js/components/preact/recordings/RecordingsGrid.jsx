@@ -276,13 +276,16 @@ function RecordingCard({
         {/* Selection checkbox — only visible in selection mode */}
         {canDelete && selectionMode && (
           <div class="absolute top-2 left-2" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => toggleRecordingSelection(recording.id)}
-              class="w-4 h-4 rounded focus:ring-2 cursor-pointer"
-              style={{ accentColor: 'hsl(var(--primary))' }}
-            />
+            <label class="inline-flex cursor-pointer items-center justify-center">
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => toggleRecordingSelection(recording.id)}
+                class="w-4 h-4 rounded focus:ring-2 cursor-pointer"
+                style={{ accentColor: 'hsl(var(--primary))' }}
+                aria-label={t('recordings.selectRecording')}
+              />
+            </label>
           </div>
         )}
 
@@ -492,7 +495,7 @@ export function RecordingsGrid({
           <>
             {selectionMode ? (
               <>
-                <div class="flex items-center gap-2 mr-2">
+                <label class="flex cursor-pointer items-center gap-2 mr-2">
                   <input
                     type="checkbox"
                     checked={selectAll}
@@ -505,7 +508,7 @@ export function RecordingsGrid({
                       ? t('recordings.recordingsSelectedCount', { count: getSelectedCount() })
                       : t('recordings.selectAll')}
                   </span>
-                </div>
+                </label>
                 <button
                   class="btn-danger text-xs px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={getSelectedCount() === 0}
@@ -611,4 +614,3 @@ export function RecordingsGrid({
     </div>
   );
 }
-

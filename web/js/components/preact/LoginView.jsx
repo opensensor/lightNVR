@@ -359,7 +359,7 @@ export function LoginView() {
               </div>
             )}
             {rememberDeviceEnabled && (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <label className="touch-target flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={rememberDevice}
@@ -403,7 +403,7 @@ export function LoginView() {
               />
             </div>
             {rememberDeviceEnabled && (
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <label className="touch-target flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
                   checked={rememberDevice}

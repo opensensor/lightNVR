@@ -221,7 +221,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
           {showActiveField && (
             <div className="mb-4">
-              <label className="flex items-center">
+              <label className="touch-target flex cursor-pointer items-center">
                 <input
                   type="checkbox"
                   name="is_active"
@@ -236,7 +236,7 @@ ${t('users.allowedLoginCidrsPlaceholderTail')}`;
 
           {showPasswordLockField && (
             <div className="mb-6">
-              <label className="flex items-center">
+              <label className="touch-target flex cursor-pointer items-center">
                 <input
                   type="checkbox"
                   name="password_change_locked"

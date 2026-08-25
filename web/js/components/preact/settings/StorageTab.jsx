@@ -109,11 +109,11 @@ function StorageTargetEditor({ value, onChange, onCancel, onSave, busy, t }) {
             <input type="number" min="1" max="99" step="0.5" class="w-full p-2 border border-input rounded bg-background" value={value.high_watermark_pct} onInput={(event) => set('high_watermark_pct', event.currentTarget.value)} disabled={busy} />
           </label>
         </div>
-        <label class="flex items-center gap-2 text-sm font-medium">
+        <label class="touch-target flex cursor-pointer items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy || value.is_default} />
           {t('settings.storageTargets.enabled')}
         </label>
-        <label class="flex items-start gap-2 text-sm font-medium md:col-span-2">
+        <label class="touch-target flex cursor-pointer items-start gap-2 text-sm font-medium md:col-span-2">
           <input type="checkbox" class="mt-1" checked={value.mount_required} onChange={(event) => set('mount_required', event.currentTarget.checked)} disabled={busy} />
           <span><span class="block">{t('settings.storageTargets.mountRequired')}</span><span class="block text-xs font-normal text-muted-foreground">{t('settings.storageTargets.mountRequiredHelp')}</span></span>
         </label>
@@ -318,7 +318,7 @@ function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCan
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.primary')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.primary_target_uuid} onChange={(event) => { const primary = event.currentTarget.value; onChange({ ...value, primary_target_uuid: primary, fallback_target_uuid: value.fallback_target_uuid === primary ? '' : value.fallback_target_uuid }); }} disabled={busy}>{targets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>
         <label class="text-sm font-medium"><span class="block mb-1">{t('settings.storagePolicies.fallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_mode} onChange={(event) => { const mode = event.currentTarget.value; onChange({ ...value, fallback_mode: mode, fallback_target_uuid: mode === 'target' ? value.fallback_target_uuid : '' }); }} disabled={busy}><option value="default">{t('settings.storagePolicies.fallbackDefault')}</option><option value="target">{t('settings.storagePolicies.fallbackTarget')}</option><option value="pause">{t('settings.storagePolicies.fallbackPause')}</option><option value="fail">{t('settings.storagePolicies.fallbackFail')}</option></select></label>
         {value.fallback_mode === 'target' && <label class="text-sm font-medium md:col-start-2"><span class="block mb-1">{t('settings.storagePolicies.namedFallback')}</span><select class="w-full p-2 border border-input rounded bg-background" value={value.fallback_target_uuid} onChange={(event) => set('fallback_target_uuid', event.currentTarget.value)} disabled={busy}><option value="">{t('settings.storagePolicies.chooseTarget')}</option>{fallbackTargets.map((target) => <option key={target.uuid} value={target.uuid}>{target.name}{target.enabled ? '' : ` — ${t('settings.storagePolicies.disabledTarget')}`}</option>)}</select></label>}
-        <label class="flex items-center gap-2 text-sm font-medium md:col-span-2"><input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy} />{t('settings.storagePolicies.enabled')}</label>
+        <label class="touch-target flex cursor-pointer items-center gap-2 text-sm font-medium md:col-span-2"><input type="checkbox" checked={value.enabled} onChange={(event) => set('enabled', event.currentTarget.checked)} disabled={busy} />{t('settings.storagePolicies.enabled')}</label>
       </div>
       <div><h5 class="text-sm font-semibold mb-2">{t('settings.storagePolicies.selector')}</h5><CollectionSelectorBuilder key={value.uuid || 'new-storage-policy'} initialSelector={value.selector || ALL_SELECTOR} locations={locations} tags={tags} allowCameraSelection idPrefix={`storage-policy-${value.uuid || 'new'}`} onChange={onSelectorChange} t={t} /></div>
       {value.selector_error && <p class="text-sm text-[hsl(var(--danger))]">{value.selector_error}</p>}

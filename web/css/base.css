@@ -63,6 +63,7 @@
   --input: 240 32% 92%;
   --ring: 240 32% 50%;
   --radius: 0.5rem;
+  --touch-target-min: 2.75rem;
 
   /* Semantic color variables - adapt to theme */
   --success: 142 76% 36%;
@@ -129,6 +130,53 @@
   body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     overflow-y: scroll;
+  }
+
+  /* Keep form controls comfortably tappable even when a callsite only adds
+     colour and typography utilities. Checkboxes and radios keep their native
+     glyph size; their labels own the larger touch target below. */
+  :where(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+    select,
+    textarea
+  ) {
+    min-height: var(--touch-target-min);
+  }
+
+  /* A visible, theme-aware fallback for controls that do not define their own
+     focus-visible treatment. Deliberately use an outline so it remains visible
+     even when a component clips box shadows. */
+  :where(
+    button,
+    a[href],
+    input,
+    select,
+    textarea,
+    [role="button"]
+  ):focus-visible {
+    outline: 2px solid hsl(var(--ring)) !important;
+    outline-offset: 2px !important;
+  }
+
+  @media (max-width: 639px) {
+    :where(
+      button,
+      a[href],
+      [role="button"],
+      input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+      select,
+      textarea
+    ) {
+      min-height: var(--touch-target-min);
+      min-width: var(--touch-target-min);
+    }
+
+    :where(label[for], label.cursor-pointer, label.touch-target) {
+      min-height: var(--touch-target-min);
+      min-width: var(--touch-target-min);
+      display: inline-flex;
+      align-items: center;
+    }
   }
 }
 

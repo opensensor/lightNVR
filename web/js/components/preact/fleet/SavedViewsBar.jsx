@@ -103,7 +103,7 @@ export function SavedViewsBar({ data, state, onApply, onRefresh, t }) {
             />
           </label>
           {data?.can_share && (
-            <label className="flex min-h-11 items-center gap-2 text-sm">
+            <label className="touch-target flex min-h-11 cursor-pointer items-center gap-2 text-sm">
               <input type="checkbox" className="h-4 w-4 rounded" checked={shared} onChange={(event) => setShared(event.currentTarget.checked)} />
               {t('fleet.views.share')}
             </label>

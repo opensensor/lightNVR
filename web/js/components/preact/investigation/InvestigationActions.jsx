@@ -240,7 +240,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
             <form className="investigation-action-scope" onSubmit={refreshPreview}>
               <fieldset>
                 <legend>{t('investigation.actions.scope')}</legend>
-                <label>
+                <label className="touch-target cursor-pointer">
                   <input
                     type="radio"
                     name="investigation-action-scope"
@@ -251,7 +251,7 @@ export function InvestigationActions({ timeline, selectedResult, t }) {
                   />
                   <span>{t('investigation.actions.selectedResult')}</span>
                 </label>
-                <label>
+                <label className="touch-target cursor-pointer">
                   <input
                     type="radio"
                     name="investigation-action-scope"

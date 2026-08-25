@@ -905,7 +905,7 @@ export function StreamConfigModal({
                     </label>
                   </div>
                   <label
-                    className={`mt-3 flex items-center space-x-2 ${currentStream.recordAudio ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
+                    className={`touch-target mt-3 flex items-center space-x-2 ${currentStream.recordAudio ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}
                   >
                     <input
                       type="checkbox"

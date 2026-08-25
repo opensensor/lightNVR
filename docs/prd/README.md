@@ -14,7 +14,7 @@ or hardware acceptance may still remain where the individual PRD says so.
 
 | PRD | Topic | Driving issues |
 | --- | --- | --- |
-| [UXD 01 — Mobile-First UX Foundation](UXD_01_MobileFirstFoundation.md) | T1–T5 implemented; T6 touch-target/spacing audit remains | [#399](https://github.com/opensensor/lightNVR/issues/399) |
+| [UXD 01 — Mobile-First UX Foundation](UXD_01_MobileFirstFoundation.md) | T1–T6 implemented; beta, Lighthouse, and final cross-device/manual outcome validation remains | [#399](https://github.com/opensensor/lightNVR/issues/399) |
 | [UXD 02 — Live View Ergonomics](UXD_02_LiveViewErgonomics.md) | In progress: per-stream transport/fallback and shared grid order are implemented; remaining gesture, glyph/PiP, and fullscreen-preference work is open | [#326](https://github.com/opensensor/lightNVR/issues/326), [#397](https://github.com/opensensor/lightNVR/issues/397), [#399](https://github.com/opensensor/lightNVR/issues/399) |
 | [UXD 03 — Recordings & Timeline UX](UXD_03_RecordingsAndTimeline.md) | P0–P3 implementation present; manual/beta acceptance reconciliation remains | [#331](https://github.com/opensensor/lightNVR/issues/331), [#399](https://github.com/opensensor/lightNVR/issues/399) |
 

@@ -181,7 +181,7 @@ export function EventRouteEditor({ route, catalog, destinations, locations, tags
               </Field>
               <div className="md:col-span-2"><Field label={t('common.description')}><textarea className={`${fieldClasses} min-h-20`} value={draft.description} maxLength="511" onInput={(event) => update({ description: event.currentTarget.value })}></textarea></Field></div>
             </div>
-            <label className="mt-4 inline-flex items-center gap-3 rounded-md border border-border bg-muted/15 px-3 py-2 text-sm"><input type="checkbox" checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} /><span><span className="font-medium">{t('events.route.enabled')}</span> <span className="text-muted-foreground">— {t('events.route.enabledHelp')}</span></span></label>
+            <label className="touch-target mt-4 inline-flex cursor-pointer items-center gap-3 rounded-md border border-border bg-muted/15 px-3 py-2 text-sm"><input type="checkbox" checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} /><span><span className="font-medium">{t('events.route.enabled')}</span> <span className="text-muted-foreground">— {t('events.route.enabledHelp')}</span></span></label>
           </section>
 
           <section className="border-t border-border pt-5">
@@ -201,7 +201,7 @@ export function EventRouteEditor({ route, catalog, destinations, locations, tags
 
           {detectionSelected && (
             <section className="border-t border-border pt-5">
-              <label className="flex items-start gap-3"><input className="mt-1" type="checkbox" checked={draft.detectionFilterEnabled} onChange={(event) => update({ detectionFilterEnabled: event.currentTarget.checked })} /><span><span className="block font-semibold">{t('events.route.detectionFilters')}</span><span className="block text-sm text-muted-foreground">{t('events.route.detectionFiltersHelp')}</span></span></label>
+              <label className="touch-target flex cursor-pointer items-start gap-3"><input className="mt-1" type="checkbox" checked={draft.detectionFilterEnabled} onChange={(event) => update({ detectionFilterEnabled: event.currentTarget.checked })} /><span><span className="block font-semibold">{t('events.route.detectionFilters')}</span><span className="block text-sm text-muted-foreground">{t('events.route.detectionFiltersHelp')}</span></span></label>
               {draft.detectionFilterEnabled && (
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <Field label={t('events.route.labels')} help={t('events.route.listHelp')}><input className={fieldClasses} value={draft.labels} placeholder="person, vehicle" onInput={(event) => update({ labels: event.currentTarget.value })} /></Field>
@@ -218,7 +218,7 @@ export function EventRouteEditor({ route, catalog, destinations, locations, tags
           </section>
 
           <section className="border-t border-border pt-5">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{t('events.route.schedule')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.scheduleHelp')}</p></div><label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.scheduleEnabled} onChange={(event) => setScheduled(event.currentTarget.checked)} />{t('events.route.restrictSchedule')}</label></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{t('events.route.schedule')}</h3><p className="mt-1 text-sm text-muted-foreground">{t('events.route.scheduleHelp')}</p></div><label className="touch-target inline-flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={draft.scheduleEnabled} onChange={(event) => setScheduled(event.currentTarget.checked)} />{t('events.route.restrictSchedule')}</label></div>
             <div className="mt-4 max-w-sm"><Field label={t('events.schedule.timezone')} help={t('events.schedule.timezoneHelp')}><input className={fieldClasses} value={draft.timezone} placeholder="America/New_York" onInput={(event) => update({ timezone: event.currentTarget.value })} /></Field></div>
             {draft.scheduleEnabled && <div className="mt-4 space-y-3">{draft.windows.map((window, index) => <ScheduleWindow key={index} window={window} index={index} onChange={(nextWindow) => updateWindow(index, nextWindow)} onRemove={() => removeWindow(index)} t={t} />)}<button type="button" className="btn-secondary" onClick={() => update({ windows: [...draft.windows, { ...DEFAULT_SCHEDULE_WINDOW, days: [...DEFAULT_SCHEDULE_WINDOW.days] }] })}>{t('events.schedule.addWindow')}</button></div>}
           </section>

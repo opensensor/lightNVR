@@ -64,7 +64,7 @@ export function StaticCollectionMembers({ selectedUuids, onChange, t }) {
         <input type="search" className="rounded-md border border-input bg-background px-3 py-2 text-sm" value={search} placeholder={t('collections.members.search')} onInput={(event) => { setSearch(event.currentTarget.value); setPage(1); }} />
       </div>
       <div className="max-h-72 overflow-y-auto rounded-md border border-border">
-        <label className="sticky top-0 z-[1] flex items-center gap-2 border-b border-border bg-muted px-3 py-2 text-sm font-medium">
+        <label className="touch-target sticky top-0 z-[1] flex cursor-pointer items-center gap-2 border-b border-border bg-muted px-3 py-2 text-sm font-medium">
           <input type="checkbox" className="h-4 w-4" checked={allOnPage} ref={(element) => { if (element) element.indeterminate = selectedOnPage > 0 && !allOnPage; }} onChange={(event) => togglePage(event.currentTarget.checked)} />
           {t('collections.members.selectPage')}
         </label>
