@@ -1,9 +1,7 @@
 # PRD — Live View Ergonomics
 
-**Status**: In progress — P0 fullscreen/badge polish, P1 per-stream playback
-transport, and P2 shared cross-renderer camera order are implemented. P3 still
-needs tap chrome, long-press actions, pull refresh, fullscreen cycling/exit,
-gesture tips, and acceptance reconciliation
+**Status**: Implementation complete — P0–P3 are present. Manual coarse-pointer,
+iOS/Android fullscreen, and cross-device acceptance remains to reconcile
 **Created**: 2026-04-22
 **Owner**: TBD
 **Driving signal**: [#326 (CDx4f3kCAf3Y)](https://github.com/opensensor/lightNVR/issues/326), [#397 (AndyIsHereBoi)](https://github.com/opensensor/lightNVR/issues/397), and the Live View / mobile items from [#399](https://github.com/opensensor/lightNVR/issues/399).
@@ -132,7 +130,7 @@ Migration: run-once on boot (similar to T14 from the go2rtc work) — merges leg
 | P0 — Glyph badges + fullscreen polish | Implemented: accessible recording/health glyphs, double-click fullscreen, digital zoom, native PiP, and persisted single-tap fullscreen preference | 2 days |
 | P1 — Per-stream transport (#397) | Implemented: migration 0069, stream API and defaults UI, global offering gates, mixed per-tile routing, ordered runtime fallback, fallback badges, and unavailable-profile warnings | 3–5 days |
 | P2 — Unified grid model (#326) | Implemented: renderers share one persisted camera order | 3 days |
-| P3 — Mobile gestures | Partially implemented: pinch zoom exists; tap chrome, long-press menu, pull refresh, fullscreen cycling/exit, and discovery tips remain | 4–5 days |
+| P3 — Mobile gestures | Implemented: timed tap chrome, long-press actions, pull-to-refresh with player reload, fullscreen cycling/exit swipes, pinch zoom, and a persisted contextual tip | 4–5 days |
 
 Implementation note (2026-08-25): P0 now renders the same compact status pill
 for WebRTC, MSE, and HLS tiles. Recording flags remain independently visible in
@@ -141,6 +139,16 @@ and unavailable states. Native Picture-in-Picture uses the standard API with a
 Safari presentation-mode fallback. The off-by-default single-tap fullscreen
 preference is shared across both Live entry points and disabled during reorder
 mode; double-click remains the default interaction.
+
+Implementation note (2026-08-25): P3 uses small pointer/touch recognizers rather
+than a gesture dependency. The HLS, MSE, and WebRTC tiles share a four-second
+mobile chrome window and long-press menu for exclusive audio, snapshots,
+stream-scoped recordings, and reorder mode. Pull-to-refresh refetches the
+stream inventory and remounts active players so manifests/connections reload.
+Native fullscreen supports horizontal grid-order cycling and swipe-down exit;
+swipes are ignored while digitally zoomed, and a reversible CSS fullscreen
+fallback covers browsers that reject element fullscreen. The manual fullscreen
+button shows the one-time double-tap tip after its third use.
 
 ## 7. Acceptance criteria
 

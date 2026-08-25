@@ -25,6 +25,8 @@ import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbo
 import { LiveTileStatus } from './LiveTileStatus.jsx';
 import { PictureInPictureButton } from './PictureInPictureButton.jsx';
 import { shouldEnterFullscreenFromTap } from './useAlwaysFullscreenOnTap.js';
+import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
+import { TileAudioButton } from './TileAudioButton.jsx';
 
 /**
  * MSEVideoCell component
@@ -43,6 +45,8 @@ export function MSEVideoCell({
   showControls = true,
   globalShowDetections = true,
   alwaysFullscreenOnTap = false,
+  onRequestReorder,
+  mobileGesturesDisabled = false,
   onTransportFailure
 }) {
   const { t } = useI18n();
@@ -52,6 +56,7 @@ export function MSEVideoCell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
   // Auto-retry tracking (separate from manual retryCount to avoid infinite loops)
@@ -94,11 +99,31 @@ export function MSEVideoCell({
   const gateSettleRef = useRef(null);
   // Cell-scoped abort: cancels a queued/in-flight gated attempt on unmount
   const cellAbortRef = useRef(null);
-  const alwaysFullscreenOnTapRef = useRef(alwaysFullscreenOnTap);
-
-  useEffect(() => {
-    alwaysFullscreenOnTapRef.current = alwaysFullscreenOnTap;
-  }, [alwaysFullscreenOnTap]);
+  const handleMobileAudioToggle = () => {
+    const nextEnabled = !audioEnabled;
+    setAudioEnabled(nextEnabled);
+    if (videoRef.current) {
+      videoRef.current.muted = !nextEnabled;
+      if (nextEnabled) videoRef.current.play().catch(() => {
+        if (videoRef.current) videoRef.current.muted = true;
+        setAudioEnabled(false);
+      });
+    }
+    if (nextEnabled) {
+      window.dispatchEvent(new CustomEvent('lightnvr:tile-audio-enabled', {
+        detail: { streamName: stream.name },
+      }));
+    }
+  };
+  const mobileGestures = useMobileTileGestures({
+    streamName: stream.name,
+    cellRef,
+    videoRef,
+    audioEnabled,
+    onToggleAudio: handleMobileAudioToggle,
+    onRequestReorder,
+    disabled: zoom.isZoomed || mobileGesturesDisabled,
+  });
 
   // Constants from go2rtc's video-rtc.js
   const RECONNECT_TIMEOUT = 15000;
@@ -214,10 +239,6 @@ export function MSEVideoCell({
           videoRef.current.src = URL.createObjectURL(ms);
           videoRef.current.srcObject = null;
         }
-
-        videoRef.current.ondblclick = (e) => {
-          if (!alwaysFullscreenOnTapRef.current) onToggleFullscreen(stream.name, e, cellRef.current);
-        };
 
         // Start playback
         videoRef.current.play().catch(() => {
@@ -679,8 +700,21 @@ export function MSEVideoCell({
       data-stream-id={streamId}
       data-sub-stream={useSubStream ? 'true' : 'false'}
       data-zoom-scale={zoom.isZoomed ? zoom.scale.toFixed(2) : undefined}
+      data-mobile-chrome={mobileGestures.chromeVisible ? 'visible' : 'hidden'}
+      onPointerDown={mobileGestures.onPointerDown}
+      onPointerMove={mobileGestures.onPointerMove}
+      onPointerUp={mobileGestures.onPointerUp}
+      onPointerCancel={mobileGestures.onPointerCancel}
+      onContextMenu={mobileGestures.onContextMenu}
       onClick={(event) => {
+        if (mobileGestures.onClick(event)) return;
         if (shouldEnterFullscreenFromTap(event, alwaysFullscreenOnTap, zoom.isZoomed)) {
+          onToggleFullscreen(stream.name, event, cellRef.current);
+        }
+      }}
+      onDblClick={(event) => {
+        if (!alwaysFullscreenOnTap
+            && shouldEnterFullscreenFromTap(event, true, zoom.isZoomed)) {
           onToggleFullscreen(stream.name, event, cellRef.current);
         }
       }}
@@ -702,7 +736,7 @@ export function MSEVideoCell({
         className="video-element"
         ref={videoRef}
         autoPlay
-        muted
+        muted={!audioEnabled}
         playsInline
         style={{
           width: '100%',
@@ -714,6 +748,8 @@ export function MSEVideoCell({
       />
 
       <LiveTileStatus stream={stream} isPlaying={isPlaying} isLoading={isLoading} error={error} />
+
+      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
 
       {/* Detection overlay component */}
       {stream.detection_based_recording && stream.detection_model && showDetections && !zoom.isZoomed && (
@@ -1006,6 +1042,12 @@ export function MSEVideoCell({
           </button>
 
           <PictureInPictureButton videoRef={videoRef} disabled={!isPlaying} />
+
+          <TileAudioButton
+            enabled={audioEnabled}
+            onToggle={handleMobileAudioToggle}
+            disabled={!isPlaying}
+          />
 
           {/* Fullscreen button */}
           <button

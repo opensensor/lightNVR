@@ -27,6 +27,7 @@ import { shouldFallbackFullscreenToSubStream } from './liveStreamPolicy.js';
 import { LiveTileStatus } from './LiveTileStatus.jsx';
 import { PictureInPictureButton } from './PictureInPictureButton.jsx';
 import { shouldEnterFullscreenFromTap } from './useAlwaysFullscreenOnTap.js';
+import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
 import 'webrtc-adapter';
 
 // Retry configuration for sending WebRTC offers to go2rtc.
@@ -81,6 +82,8 @@ export function WebRTCVideoCell({
   showControls = true,
   globalShowDetections = true,
   alwaysFullscreenOnTap = false,
+  onRequestReorder,
+  mobileGesturesDisabled = false,
   onTransportFailure
 }) {
   const { t } = useI18n();
@@ -110,12 +113,6 @@ export function WebRTCVideoCell({
   const [connectionQuality, setConnectionQuality] = useState('unknown'); // 'unknown', 'good', 'fair', 'poor', 'bad'
   const [retryCount, setRetryCount] = useState(0); // Used to trigger WebRTC re-initialization
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
-  const alwaysFullscreenOnTapRef = useRef(alwaysFullscreenOnTap);
-
-  useEffect(() => {
-    alwaysFullscreenOnTapRef.current = alwaysFullscreenOnTap;
-  }, [alwaysFullscreenOnTap]);
-
   // Sub-stream fallback (#468). Entering fullscreen flips the `useSubStream`
   // prop to false so the cell upgrades to the full-resolution main stream. On a
   // LAN that is exactly what you want, but over a remote/proxied link the main
@@ -217,6 +214,12 @@ export function WebRTCVideoCell({
     setAudioEnabled(nextEnabled);
     applyAudioPlaybackState(nextEnabled);
 
+    if (nextEnabled) {
+      window.dispatchEvent(new CustomEvent('lightnvr:tile-audio-enabled', {
+        detail: { streamName: stream.name },
+      }));
+    }
+
     if (!nextEnabled) return;
 
     const videoElement = videoRef.current;
@@ -241,6 +244,16 @@ export function WebRTCVideoCell({
       });
     }
   }, [applyAudioPlaybackState, stream?.name, t]);
+
+  const mobileGestures = useMobileTileGestures({
+    streamName: stream.name,
+    cellRef,
+    videoRef,
+    audioEnabled,
+    onToggleAudio: handleAudioToggle,
+    onRequestReorder,
+    disabled: zoom.isZoomed || mobileGesturesDisabled,
+  });
 
   // Clear the sub-stream fallback whenever the cell is no longer being forced
   // onto the main stream (i.e. it left fullscreen and the grid asked for the
@@ -587,10 +600,6 @@ export function WebRTCVideoCell({
             clearTimeout(playRetryTimeout);
             playRetryTimeout = null;
           }
-        };
-
-        videoElement.ondblclick = (e) => {
-          if (!alwaysFullscreenOnTapRef.current) onToggleFullscreen(stream.name, e, cellRef.current);
         };
 
         // Start initial playback attempt
@@ -1341,8 +1350,21 @@ export function WebRTCVideoCell({
       data-stream-id={streamId}
       data-sub-stream={effectiveUseSubStream ? 'true' : 'false'}
       data-zoom-scale={zoom.isZoomed ? zoom.scale.toFixed(2) : undefined}
+      data-mobile-chrome={mobileGestures.chromeVisible ? 'visible' : 'hidden'}
+      onPointerDown={mobileGestures.onPointerDown}
+      onPointerMove={mobileGestures.onPointerMove}
+      onPointerUp={mobileGestures.onPointerUp}
+      onPointerCancel={mobileGestures.onPointerCancel}
+      onContextMenu={mobileGestures.onContextMenu}
       onClick={(event) => {
+        if (mobileGestures.onClick(event)) return;
         if (shouldEnterFullscreenFromTap(event, alwaysFullscreenOnTap, zoom.isZoomed)) {
+          onToggleFullscreen(stream.name, event, cellRef.current);
+        }
+      }}
+      onDblClick={(event) => {
+        if (!alwaysFullscreenOnTap
+            && shouldEnterFullscreenFromTap(event, true, zoom.isZoomed)) {
           onToggleFullscreen(stream.name, event, cellRef.current);
         }
       }}
@@ -1380,6 +1402,8 @@ export function WebRTCVideoCell({
       />
 
       <LiveTileStatus stream={stream} isPlaying={isPlaying} isLoading={isLoading} error={error} />
+
+      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
 
       {/* Detection overlay component.
           Hidden while zoomed: the canvas is sized to the cell, not to the
