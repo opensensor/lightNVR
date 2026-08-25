@@ -12,6 +12,32 @@ export const TIMELINE_FLING_DECAY_PER_MILLISECOND = 0.005;
 export const TIMELINE_FLING_SAMPLE_WINDOW_MILLISECONDS = 100;
 export const TIMELINE_FLING_MAX_SAMPLE_AGE_MILLISECONDS = 120;
 
+export function timelineSegmentIdentity(segment) {
+  if (segment?.id !== null && segment?.id !== undefined && String(segment.id) !== '') {
+    return `id:${String(segment.id)}`;
+  }
+  const streamName = segment?.stream_name ?? segment?.stream ?? '';
+  return `range:${streamName}:${segment?.start_timestamp ?? ''}:${segment?.end_timestamp ?? ''}`;
+}
+
+export function reconcileTimelineSegments(existing = [], incoming = []) {
+  const existingKeys = new Set(existing.map(timelineSegmentIdentity));
+  const incomingKeys = new Set(incoming.map(timelineSegmentIdentity));
+  return {
+    added: incoming.filter((segment) => !existingKeys.has(timelineSegmentIdentity(segment))),
+    removed: existing.filter((segment) => !incomingKeys.has(timelineSegmentIdentity(segment))),
+    authoritative: [...incoming],
+  };
+}
+
+export function getTimelinePreviewFrameIndex(segment, timestamp, frameCount = 3) {
+  if (!Number.isFinite(timestamp) || !Number.isFinite(segment?.start_timestamp)
+      || !Number.isFinite(segment?.end_timestamp) || frameCount <= 1) return 0;
+  const duration = Math.max(segment.end_timestamp - segment.start_timestamp, 0.001);
+  const progress = clamp((timestamp - segment.start_timestamp) / duration, 0, 1);
+  return Math.round(progress * (frameCount - 1));
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }

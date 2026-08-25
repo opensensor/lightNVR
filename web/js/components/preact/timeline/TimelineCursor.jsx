@@ -10,6 +10,7 @@ import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
   formatPlaybackTimeLabel,
+  getTimelinePreviewFrameIndex,
   getLocalDayBounds,
   getTimelineDayLengthHours,
   resolvePlaybackStreamName,
@@ -30,6 +31,7 @@ export function TimelineCursor() {
   const [endHour, setEndHour] = useState(24);
   const [currentTime, setCurrentTime] = useState(timelineState.currentTime);
   const [selectedDate, setSelectedDate] = useState(timelineState.selectedDate);
+  const [dragPreview, setDragPreview] = useState(null);
 
   // Refs — use refs for values read inside event-handler closures so they
   // always see the latest value without needing to re-attach listeners.
@@ -46,6 +48,31 @@ export function TimelineCursor() {
   startHourRef.current = startHour;
   endHourRef.current = endHour;
   positionRef.current = position;
+
+  const updateDragPreview = (timestamp) => {
+    if (!Number.isFinite(timestamp)) {
+      setDragPreview(null);
+      return;
+    }
+    const segments = timelineState.timelineSegments || [];
+    const containingIndex = findContainingSegmentIndex(segments, timestamp);
+    const segmentIndex = containingIndex !== -1
+      ? containingIndex
+      : findNearestSegmentIndex(segments, timestamp);
+    const segment = segments[segmentIndex];
+    if (!segment || segment.id === null || segment.id === undefined) {
+      setDragPreview(null);
+      return;
+    }
+    const frameIndex = getTimelinePreviewFrameIndex(segment, timestamp, 3);
+    const streamName = segment.stream_name || segment.stream || '';
+    setDragPreview({
+      frameIndex,
+      label: formatPlaybackTimeLabel(timestamp, streamName),
+      recordingId: segment.id,
+      url: `/api/recordings/thumbnail/${encodeURIComponent(segment.id)}/${frameIndex}`,
+    });
+  };
 
   // Subscribe to timeline state changes
   useEffect(() => {
@@ -134,6 +161,7 @@ export function TimelineCursor() {
         preserveCursorPosition: true,
         cursorPositionLocked: true
       });
+      updateDragPreview(timelineState.currentTime);
 
       try {
         cursor.focus({ preventScroll: true });
@@ -174,6 +202,7 @@ export function TimelineCursor() {
 
       // Update time display
       updateTimeDisplay(timestamp);
+      updateDragPreview(timestamp);
     };
 
     const finishPointerDrag = (e, cancelled = false) => {
@@ -191,6 +220,7 @@ export function TimelineCursor() {
       releaseActivePointer(pointerId);
 
       if (cancelled) {
+        setDragPreview(null);
         wasPlayingAtDragStartRef.current = false;
         pointerGrabOffsetRef.current = 0;
         resetCursorControl();
@@ -199,6 +229,7 @@ export function TimelineCursor() {
 
       const container = cursor.parentElement;
       if (!container) {
+        setDragPreview(null);
         wasPlayingAtDragStartRef.current = false;
         pointerGrabOffsetRef.current = 0;
         resetCursorControl();
@@ -243,6 +274,7 @@ export function TimelineCursor() {
 
       const shouldResume = wasPlayingAtDragStartRef.current;
       wasPlayingAtDragStartRef.current = false;
+      setDragPreview(null);
 
       timelineState.setState({
         currentTime: targetTimestamp,
@@ -390,6 +422,35 @@ export function TimelineCursor() {
           touchAction: 'none'
         }}
       />
+
+      {dragPreview && (
+        <div
+          className="pointer-events-none absolute top-[18px] z-[60] rounded-md bg-black/85 p-1 text-center text-white shadow-lg"
+          style={{
+            left: `clamp(0px, calc(${position}% - 52px), calc(100% - 104px))`,
+            width: '104px',
+          }}
+          aria-hidden="true"
+        >
+          <img
+            src={dragPreview.url}
+            alt=""
+            className="h-[54px] w-24 rounded object-cover"
+            onError={(event) => {
+              if (dragPreview.frameIndex !== 0) {
+                setDragPreview((current) => current && ({
+                  ...current,
+                  frameIndex: 0,
+                  url: `/api/recordings/thumbnail/${encodeURIComponent(current.recordingId)}/0`,
+                }));
+              } else {
+                event.currentTarget.style.visibility = 'hidden';
+              }
+            }}
+          />
+          <span className="block truncate text-[10px] leading-3">{dragPreview.label}</span>
+        </div>
+      )}
 
       {/* Visible line stays on the exact timestamp while the hit target above
           clamps inside the container at the start and end of the day. */}

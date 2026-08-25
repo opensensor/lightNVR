@@ -20,14 +20,17 @@ import {
   getClippedSegmentHourRange,
   getLocalDayBounds,
   getTimelineDayLengthHours,
+  getTimelinePreviewFrameIndex,
   localClockTimeToTimestamp,
   normalizeTimelineRange,
   panTimelineRange,
+  reconcileTimelineSegments,
   timelineOffsetToTimestamp,
   timestampToTimelineOffset,
   zoomTimelineRange,
   segmentIntersectsDay,
-  snapTimestampToRecordingEdge
+  snapTimestampToRecordingEdge,
+  timelineSegmentIdentity
 } from '../js/components/preact/timeline/timelineUtils.js';
 
 dayjs.extend(utc);
@@ -646,6 +649,28 @@ describe('timelineUtils', () => {
       timestamp: 110.5001,
       snapped: false
     });
+  });
+
+  test('reconciles timeline polls by id with a range fallback', () => {
+    const retained = { id: 2, stream_name: 'garage', start_timestamp: 20, end_timestamp: 30 };
+    const removed = { stream_name: 'door', start_timestamp: 10, end_timestamp: 15 };
+    const added = { stream_name: 'yard', start_timestamp: 40, end_timestamp: 50 };
+    const incomingRetained = { ...retained, has_detection: true };
+
+    expect(timelineSegmentIdentity(removed)).toBe('range:door:10:15');
+    expect(reconcileTimelineSegments([removed, retained], [incomingRetained, added])).toEqual({
+      added: [added],
+      removed: [removed],
+      authoritative: [incomingRetained, added],
+    });
+  });
+
+  test('selects the nearest available scrub preview frame', () => {
+    const segment = { start_timestamp: 100, end_timestamp: 130 };
+    expect(getTimelinePreviewFrameIndex(segment, 100)).toBe(0);
+    expect(getTimelinePreviewFrameIndex(segment, 116)).toBe(1);
+    expect(getTimelinePreviewFrameIndex(segment, 129)).toBe(2);
+    expect(getTimelinePreviewFrameIndex(segment, 500, 1)).toBe(0);
   });
 
   test('resolves equidistant recording edges deterministically to the earlier edge', () => {
