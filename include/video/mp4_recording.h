@@ -11,6 +11,7 @@
 #define MP4_RECORDING_H
 
 #include <pthread.h>
+#include <stdbool.h>
 #include "core/config.h"
 #include "video/mp4_writer.h"
 
@@ -129,6 +130,20 @@ mp4_writer_t *get_mp4_writer_for_stream(const char *stream_name);
  * @return Recording ID (>0) if a continuous recording is active, 0 if not recording
  */
 uint64_t get_current_recording_id_for_stream(const char *stream_name);
+
+/**
+ * Check whether a continuous recording writer is registered for a stream.
+ *
+ * Unlike get_current_recording_id_for_stream(), this does not depend on a
+ * segment being open at this instant. The writer stays registered for the
+ * whole life of the continuous recording thread, across segment rotations and
+ * RTSP reconnects, and is unregistered only when that thread stops. Annotation
+ * mode uses it to decide whether a stream has continuous recording to annotate.
+ *
+ * @param stream_name Name of the stream
+ * @return true if a continuous MP4 writer is registered for the stream
+ */
+bool stream_has_continuous_writer(const char *stream_name);
 
 /**
  * Copy the current recording state without exposing a mutable writer pointer.

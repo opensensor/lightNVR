@@ -185,8 +185,39 @@ static uint64_t detection_link_recording_id(unified_detection_ctx_t *ctx) {
 }
 
 static bool should_annotate_continuous(unified_detection_ctx_t *ctx) {
-    return ctx && atomic_load(&ctx->current_recording_id) == 0 &&
-           get_current_recording_id_for_stream(ctx->stream_name) != 0;
+    if (!ctx) {
+        return false;
+    }
+
+    /* Detection already owns an MP4 of its own, so there is nothing to
+     * annotate — keep writing into that clip. */
+    if (atomic_load(&ctx->current_recording_id) != 0) {
+        return false;
+    }
+
+    /* Annotation mode is a per-stream configuration: record=1 together with
+     * detection_based_recording=1. A stream without continuous recording has
+     * nothing to annotate, so detection keeps writing its own clips. This is
+     * the flag's only read in production code; without it the decision rested
+     * entirely on the runtime probe below (issue #547). */
+    if (!ctx->annotation_only) {
+        return false;
+    }
+
+    /* Continuous recording is configured for this stream, so annotate for as
+     * long as its writer is registered — including while it is between
+     * segments or reconnecting.
+     *
+     * Sampling current_recording_id here instead is what produced the
+     * duplicate clips: that ID drops to 0 on every segment rotation and stays
+     * 0 for the whole of an RTSP reconnect, which is precisely when a flaky
+     * camera fires detections. A single sample landing in one of those gaps
+     * committed a full-length detection MP4 running alongside the continuous
+     * recording for the rest of the motion event. The writer registration is
+     * the durable "continuous recording is running" signal: it is dropped only
+     * when the recording thread itself stops (e.g. a recording schedule turns
+     * it off), which is when detection legitimately owns its own clips. */
+    return stream_has_continuous_writer(ctx->stream_name);
 }
 
 /**
@@ -1025,8 +1056,9 @@ int start_unified_detection_thread(const char *stream_name, const char *model_pa
     atomic_store(&ctx->last_detection_check_time, (long long)time(NULL));
 
     if (annotation_only) {
-        log_info("[%s] Detection will annotate continuous recordings and create "
-                 "detection clips while continuous recording is inactive",
+        log_info("[%s] Detection will annotate continuous recordings instead of "
+                 "writing separate detection clips; clips are only created while "
+                 "continuous recording is stopped",
                  stream_name);
     }
 

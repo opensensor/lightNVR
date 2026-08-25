@@ -226,5 +226,6 @@ add_layer3_test(test_api_handlers_system)
 add_layer1_test(test_external_motion_trigger)    # Layer 1: external_motion_trigger state-machine (PR #356)
 add_layer2_test(test_motion_trigger_parse)       # Layer 2: motion trigger body parsing (#466)
 add_layer3_test(test_cross_stream_motion_trigger)
+add_layer3_test(test_annotation_writer_registry)  # Layer 3: continuous-writer probe behind annotation mode (#547)
 
 message(STATUS "Building Unity unit tests (Layer 1 + Layer 2 + Layer 3)")

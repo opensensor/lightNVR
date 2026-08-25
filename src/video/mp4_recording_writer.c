@@ -166,6 +166,21 @@ uint64_t get_current_recording_id_for_stream(const char *stream_name) {
 }
 
 /**
+ * Check whether a continuous recording writer is registered for a stream
+ *
+ * The writer is registered once when the continuous recording thread starts
+ * and unregistered when it stops, so this stays true across segment rotations
+ * and RTSP reconnects — unlike current_recording_id, which drops to 0 during
+ * both. See stream_has_continuous_writer() in mp4_recording.h.
+ *
+ * @param stream_name Name of the stream
+ * @return true if a continuous MP4 writer is registered for the stream
+ */
+bool stream_has_continuous_writer(const char *stream_name) {
+    return get_mp4_writer_for_stream(stream_name) != NULL;
+}
+
+/**
  * Unregister an MP4 writer for a stream
  *
  * This function unregisters an MP4 writer for a stream.
