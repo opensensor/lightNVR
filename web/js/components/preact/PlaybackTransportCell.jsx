@@ -26,6 +26,7 @@ export function PlaybackTransportCell({
   stream,
   offerings,
   defaultTransport = 'webrtc',
+  forcedTransport = null,
   fullscreenUpgraded = false,
   ...cellProps
 }) {
@@ -34,17 +35,18 @@ export function PlaybackTransportCell({
     () => buildPlaybackTransportPlan(
       stream?.playback_transport,
       offerings,
-      defaultTransport
+      defaultTransport,
+      forcedTransport
     ),
     [stream?.playback_transport, offerings?.webrtc, offerings?.mse,
-      offerings?.hls, defaultTransport]
+      offerings?.hls, defaultTransport, forcedTransport]
   );
   const [transportIndex, setTransportIndex] = useState(0);
 
   useEffect(() => {
     setTransportIndex(0);
   }, [stream?.name, stream?.playback_transport, offerings?.webrtc,
-    offerings?.mse, offerings?.hls, defaultTransport]);
+    offerings?.mse, offerings?.hls, defaultTransport, forcedTransport]);
 
   const activeTransport = plan.available[transportIndex];
   const hasRuntimeFallback = transportIndex + 1 < plan.available.length;

@@ -13,7 +13,7 @@ import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
 import { useI18n } from '../../i18n.js';
-import { buildLiveViewHref } from '../../utils/live-view-url.js';
+import { buildLiveViewHref, resolveForcedLiveTransport } from '../../utils/live-view-url.js';
 import { useCollectionMembership } from './fleet/collectionMembership.js';
 import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
@@ -41,6 +41,10 @@ function legacyLayoutToColsRowsHLS(layout) {
  */
 export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled = false}) {
   const { t } = useI18n();
+  const forcedTransport = resolveForcedLiveTransport(
+    window.location.pathname,
+    window.location.search
+  );
   const [alwaysFullscreenOnTap, setAlwaysFullscreenOnTap] = useAlwaysFullscreenOnTap();
   // Use the snapshot manager hook
   useSnapshotManager();
@@ -97,16 +101,6 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
 
   // State for go2rtc availability
   const [go2rtcAvailable, setGo2rtcAvailable] = useState(false);
-
-  // State for go2rtc mode - determines whether to use MSE or HLS.
-  // Initialize from URL param, but if HLS is disabled via settings (#397)
-  // force MSE as the initial mode so the page has something to render.
-  const [useMSE, setUseMSE] = useState(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('mode') === 'mse') return true;
-    if (isHlsDisabled && !isMseDisabled) return true;
-    return false;
-  });
 
   // Initialize cols/rows from URL params, shared localStorage key, or legacy per-view keys.
   // All live views (WebRTC / HLS / MSE) share 'lightnvr-live-cols' / 'lightnvr-live-rows'
@@ -207,15 +201,9 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
         const go2rtcEnabled = await isGo2rtcEnabled();
         console.log(`[LiveView] go2rtc enabled: ${go2rtcEnabled}`);
         setGo2rtcAvailable(go2rtcEnabled);
-        // If user requested MSE via URL but go2rtc is not enabled, fall back to HLS
-        if (useMSE && !go2rtcEnabled) {
-          console.log('[LiveView] MSE requested but go2rtc not enabled, falling back to HLS');
-          setUseMSE(false);
-        }
       } catch (error) {
         console.error('[LiveView] Error checking go2rtc status:', error);
         setGo2rtcAvailable(false);
-        setUseMSE(false);
       }
     };
     checkGo2rtcMode();
@@ -578,49 +566,65 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
       />
 
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold whitespace-nowrap">{t('live.liveView')}</h2>
-          {/* View-mode tab strip: WebRTC | HLS | MSE — each tab only
-              renders if the corresponding method is enabled in settings
+          {/* Auto honors per-stream precedence; explicit modes force every
+              tile. Each transport only renders if enabled in settings
               (#397). MSE additionally requires go2rtc to be reachable. */}
           <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
-            {!isWebRTCDisabled && (
+            {forcedTransport === null ? (
+              <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                Auto
+              </span>
+            ) : (
               <a
                 href={buildLiveViewHref('/index.html', window.location.search)}
                 className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
               >
-                WebRTC
+                Auto
               </a>
             )}
+            {!isWebRTCDisabled && (
+              forcedTransport === 'webrtc' ? (
+                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  WebRTC
+                </span>
+              ) : (
+                <a
+                  href={buildLiveViewHref('/index.html', window.location.search, 'webrtc')}
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                >
+                  WebRTC
+                </a>
+              )
+            )}
             {!isHlsDisabled && (
-              <button
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors focus:outline-none ${!useMSE ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'}`}
-                onClick={() => {
-                  if (useMSE) {
-                    setUseMSE(false);
-                    const url = new URL(window.location);
-                    url.searchParams.delete('mode');
-                    window.history.replaceState({}, '', url);
-                  }
-                }}
-              >
-                {t('live.hlsShort')}
-              </button>
+              forcedTransport === 'hls' ? (
+                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  {t('live.hlsShort')}
+                </span>
+              ) : (
+                <a
+                  href={buildLiveViewHref('/hls.html', window.location.search)}
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                >
+                  {t('live.hlsShort')}
+                </a>
+              )
             )}
             {!isMseDisabled && go2rtcAvailable && (
-              <button
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors focus:outline-none ${useMSE ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-background hover:text-foreground'}`}
-                onClick={() => {
-                  if (!useMSE) {
-                    setUseMSE(true);
-                    const url = new URL(window.location);
-                    url.searchParams.set('mode', 'mse');
-                    window.history.replaceState({}, '', url);
-                  }
-                }}
-              >
-                {t('live.mseShort')}
-              </button>
+              forcedTransport === 'mse' ? (
+                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  {t('live.mseShort')}
+                </span>
+              ) : (
+                <a
+                  href={buildLiveViewHref('/hls.html', window.location.search, 'mse')}
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                >
+                  {t('live.mseShort')}
+                </a>
+              )
             )}
           </div>
         </div>
@@ -898,7 +902,8 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
                       mse: !isMseDisabled,
                       hls: !isHlsDisabled,
                     }}
-                    defaultTransport={useMSE ? 'mse' : 'hls'}
+                    defaultTransport="webrtc"
+                    forcedTransport={forcedTransport}
                     useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}
