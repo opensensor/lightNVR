@@ -83,7 +83,7 @@ function CollectionEditor({ spec, locations, tags, onSaved, onCancel, t }) {
           {t('collections.description')}
           <textarea className={`${fieldClasses} mt-1`} rows="2" maxLength={511} value={form.description} onInput={(event) => setForm({ ...form, description: event.currentTarget.value })}></textarea>
         </label>
-        <label className="flex items-start gap-2 text-sm sm:col-span-2">
+        <label className="touch-target flex cursor-pointer items-start gap-2 text-sm sm:col-span-2">
           <input type="checkbox" className="mt-1 h-4 w-4" checked={form.shared} onChange={(event) => setForm({ ...form, shared: event.currentTarget.checked })} />
           <span><span className="block font-medium">{t('collections.shared')}</span><span className="block text-xs text-muted-foreground">{t('collections.sharedHelp')}</span></span>
         </label>

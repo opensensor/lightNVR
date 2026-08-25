@@ -68,7 +68,7 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
               <Field label={t('common.name')}>
                 <input className={fieldClasses} value={draft.name} maxLength="127" autoFocus onInput={(event) => update({ name: event.currentTarget.value })} />
               </Field>
-              <label className="flex items-center gap-3 self-end rounded-md border border-border bg-muted/20 px-3 py-2.5 text-sm">
+              <label className="touch-target flex cursor-pointer items-center gap-3 self-end rounded-md border border-border bg-muted/20 px-3 py-2.5 text-sm">
                 <input type="checkbox" checked={draft.enabled} onChange={(event) => update({ enabled: event.currentTarget.checked })} />
                 <span><span className="block font-medium">{t('events.destination.enabled')}</span><span className="block text-xs text-muted-foreground">{t('events.destination.enabledHelp')}</span></span>
               </label>
@@ -125,7 +125,7 @@ export function EventDestinationEditor({ destination, onSave, onClose, t }) {
               </Field>
             </div>
             {!creating && draft.passwordConfigured && (
-              <label className="mt-3 inline-flex items-center gap-2 text-sm text-muted-foreground">
+              <label className="touch-target mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                 <input type="checkbox" checked={draft.clearPassword} onChange={(event) => update({ clearPassword: event.currentTarget.checked, password: '' })} />
                 {t('events.destination.clearPassword')}
               </label>

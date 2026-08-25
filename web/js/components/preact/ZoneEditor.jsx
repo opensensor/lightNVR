@@ -615,13 +615,14 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
                 </div>
 
                 <div className="flex items-center space-x-2 mb-2">
-                  <input
-                    type="checkbox"
-                    checked={zone.enabled}
-                    onChange={(e) => updateZoneProperty(index, 'enabled', e.target.checked)}
-                    id={`zone-enabled-${index}`}
-                  />
-                  <label htmlFor={`zone-enabled-${index}`} className="text-sm">{t('common.enabled')}</label>
+                  <label className="inline-flex cursor-pointer items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={zone.enabled}
+                      onChange={(e) => updateZoneProperty(index, 'enabled', e.target.checked)}
+                    />
+                    <span className="text-sm">{t('common.enabled')}</span>
+                  </label>
                 </div>
 
                 <p className="text-xs text-muted-foreground">
@@ -645,4 +646,3 @@ export function ZoneEditor({ streamName, zones = [], onZonesChange, onClose }) {
     </div>
   );
 }
-

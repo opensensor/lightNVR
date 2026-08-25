@@ -225,13 +225,16 @@ export function StreamCard({
         {/* Bulk-select checkbox overlay */}
         {canModifyStreams && selectionMode && (
           <div class="absolute top-2 right-2">
-            <input
-              type="checkbox"
-              class="w-5 h-5 rounded cursor-pointer accent-primary"
-              checked={!!isSelected}
-              onChange={(e) => onToggleSelect(e, stream.name)}
-              onClick={(e) => e.stopPropagation()}
-            />
+            <label class="inline-flex cursor-pointer items-center justify-center">
+              <input
+                type="checkbox"
+                class="w-5 h-5 rounded cursor-pointer accent-primary"
+                checked={!!isSelected}
+                onChange={(e) => onToggleSelect(e, stream.name)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={t('streams.selectStream', { name: stream.name })}
+              />
+            </label>
           </div>
         )}
       </div>

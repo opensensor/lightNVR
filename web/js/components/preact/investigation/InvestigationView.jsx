@@ -280,7 +280,7 @@ function InvestigationTrack({
   return (
     <div className={`investigation-track ${active ? 'is-active' : ''}`}>
       <div className="investigation-track-label">
-        <label>
+        <label className="touch-target cursor-pointer">
           <input type="checkbox" checked={active} onChange={onToggleActive} />
           <span>{track.name}</span>
         </label>
@@ -1166,7 +1166,7 @@ export function InvestigationView() {
             {streamsLoading && <LoadingIndicator message={t('common.loading')} />}
             {streamsError && <p className="text-destructive">{streamsError.message}</p>}
             {!streamsLoading && streams.map((stream) => (
-              <label key={stream.camera_uuid}>
+              <label key={stream.camera_uuid} className="touch-target cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selectedCameraUuids.includes(stream.camera_uuid)}

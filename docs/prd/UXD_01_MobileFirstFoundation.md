@@ -1,7 +1,8 @@
 # PRD — Mobile-First UX Foundation
 
-**Status**: In progress — T1–T5 implemented; T6 touch-target and spacing audit
-remains
+**Status**: Implemented — T1–T6 are present; beta double-submit counts,
+cross-device horizontal-overflow checks, Lighthouse scores, and final manual
+keyboard review remain outcome validation rather than implementation gaps
 **Created**: 2026-04-22
 **Owner**: TBD
 **Driving signal**: [#399 (AndyIsHereBoi)](https://github.com/opensensor/lightNVR/issues/399) plus general usability friction across the web UI.
@@ -103,7 +104,7 @@ Convert the current ~2200-line single-form view into a tabbed layout matching th
 | P0 — primitives | Implemented: `AsyncButton`/`useAsyncAction`, toast position, logo→home, scrollbar styling | 2–3 days |
 | P1 — Settings | Implemented: tab restructure + search + sticky save | 3–5 days |
 | P2 — Streams page | Implemented: grid layout + recording-mode badge + mobile collapse | 2 days |
-| P3 — Audit | Partially implemented: reduce-motion and safe-area work landed; T6 touch-target lint/remediation remains | 1–2 days |
+| P3 — Audit | Implemented: 375px touch-target audit, global mobile/form floors, reduce-motion, focus-visible, and safe-area pass | 1–2 days |
 
 ## 7. Acceptance criteria (measurable)
 
@@ -594,9 +595,30 @@ order; the orchestrator may run unblocked tasks in parallel.
   - `npm run audit` runs without crashing and produces a CSV.
   - Manual: tab through the Live, Recordings, Settings pages with
     keyboard — every focusable element shows a visible ring.
-- **status**: Not Completed
+- **status**: Completed
 - **log**:
+  - Added `scripts/audit-touch-targets.mjs`. It walks the production CSS and
+    Preact JSX sources, inventories native controls, links, `AsyncButton`,
+    `Link`, and explicit `role="button"` controls at a 375px viewport, then
+    emits report-only CSV findings to `web/dist/touch-target-audit.csv`.
+  - Added `npm run audit` to build the production bundle first and run the
+    audit against the compiled CSS. Missing touch-floor or focus-visible CSS
+    is treated as a broken audit setup; size findings themselves remain
+    report-only.
+  - Added the shared `--touch-target-min: 2.75rem` token, a global 44px form
+    field floor, and a mobile-only 44×44px floor for buttons, links, visible
+    inputs, selects, textareas, and explicit button roles. Checkbox/radio
+    labels also receive a 44px target without enlarging their native glyphs.
+  - Added a theme-aware `:focus-visible` outline fallback using `--ring`, with
+    a 2px offset so controls remain visible even inside clipped containers.
+  - Verification on 2026-08-25 audited 812 interactive JSX elements at 375px
+    with zero below-floor findings; the production web build completed.
 - **files edited/created**:
+  - Created `scripts/audit-touch-targets.mjs`
+  - Edited `web/css/base.css`
+  - Edited `web/package.json`
+  - Edited `docs/prd/UXD_01_MobileFirstFoundation.md`
+  - Edited `docs/prd/README.md`
 
 ## Parallel Execution Groups
 

@@ -255,14 +255,16 @@ export function RecordingsTable({
             <tr>
               {canDelete && (
                 <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={selectAll}
-                    onChange={toggleSelectAll}
-                    aria-label={t('recordings.selectAll')}
-                    className="w-4 h-4 rounded focus:ring-2"
-                    style={{accentColor: 'hsl(var(--primary))'}}
-                  />
+                  <label className="inline-flex cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      checked={selectAll}
+                      onChange={toggleSelectAll}
+                      aria-label={t('recordings.selectAll')}
+                      className="w-4 h-4 rounded focus:ring-2"
+                      style={{accentColor: 'hsl(var(--primary))'}}
+                    />
+                  </label>
                 </th>
               )}
               {isColumnVisible('stream') && (
@@ -334,12 +336,15 @@ export function RecordingsTable({
               <tr key={recording.id} className={"hover:bg-muted/50" + (!!selectedRecordings[recording.id] ? " table-row-selected-recording" : "")}>
                 {canDelete && (
                   <td className="px-4 py-4 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={!!selectedRecordings[recording.id]}
-                      onChange={() => toggleRecordingSelection(recording.id)}
-                      className="w-4 h-4 rounded focus:ring-2" style={{accentColor: 'hsl(var(--primary))'}}
-                    />
+                    <label className="inline-flex cursor-pointer items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedRecordings[recording.id]}
+                        onChange={() => toggleRecordingSelection(recording.id)}
+                        aria-label={t('recordings.selectRecording')}
+                        className="w-4 h-4 rounded focus:ring-2" style={{accentColor: 'hsl(var(--primary))'}}
+                      />
+                    </label>
                   </td>
                 )}
                 {isColumnVisible('stream') && (

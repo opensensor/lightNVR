@@ -183,7 +183,7 @@ export function RoleManagerModal({ onClose, getAuthHeaders }) {
                       {group.actions.map((action) => {
                         const checked = draft.actions.includes(action.key);
                         return (
-                          <label key={action.key} className={`flex gap-3 rounded-md border p-3 ${checked ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.06)]' : 'border-border'} ${draft.builtin ? 'cursor-default' : 'cursor-pointer'}`}>
+                          <label key={action.key} className={`touch-target flex gap-3 rounded-md border p-3 ${checked ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.06)]' : 'border-border'} ${draft.builtin ? 'cursor-default' : 'cursor-pointer'}`}>
                             <input type="checkbox" className="mt-1 h-4 w-4" checked={checked} disabled={draft.builtin} onChange={() => toggleAction(action.key)} />
                             <span><span className="block text-sm font-medium">{action.key}</span><span className="mt-0.5 block text-xs text-muted-foreground">{action.description}</span>{action.destructive && <span className="mt-1 block text-xs font-medium text-[hsl(var(--danger))]">{t('access.roles.destructive')}</span>}{!actionIsEnforced(action) && <span className="mt-1 block text-xs font-medium text-[hsl(var(--warning))]">{t('access.roles.notEnforced')}</span>}</span>
                           </label>
