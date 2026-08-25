@@ -171,6 +171,16 @@ void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(voi
     TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
         "batch_cam", &unlinked, now - 30, 0));
 
+    /*
+     * Annotation detections can retain the preceding segment's ID across a
+     * writer rotation/reconnect. The recording list must preserve the legacy
+     * time-range behavior and show the object on the segment that contains its
+     * timestamp, even though the foreign key points at another recording.
+     */
+    detection_result_t stale_link = make_result("bottle", 0.7f);
+    TEST_ASSERT_EQUAL_INT(0, store_detections_in_db(
+        "batch_cam", &stale_link, now - 20, recordings[0].id));
+
     detection_result_t interval = make_result("motion", 1.0f);
     TEST_ASSERT_EQUAL_INT(0, store_external_motion_detections(
         "batch_cam", &interval, now - 100, recordings[0].id));
@@ -183,12 +193,14 @@ void test_get_recording_detection_summaries_batches_linked_and_fallback_rows(voi
 
     TEST_ASSERT_TRUE(summaries[0].has_detection);
     TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[0], "person"));
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[0], "bottle"));
     TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[0], "motion"));
     TEST_ASSERT_EQUAL_INT(0, summary_count_for_label(&summaries[0], "vehicle"));
 
     TEST_ASSERT_TRUE(summaries[1].has_detection);
     TEST_ASSERT_EQUAL_INT(0, summary_count_for_label(&summaries[1], "person"));
     TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[1], "vehicle"));
+    TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[1], "bottle"));
     TEST_ASSERT_EQUAL_INT(1, summary_count_for_label(&summaries[1], "motion"));
 }
 
