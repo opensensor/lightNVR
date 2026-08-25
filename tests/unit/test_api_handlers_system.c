@@ -24,9 +24,11 @@
 #include "utils/strings.h"
 #include "database/db_core.h"
 #include "database/db_auth.h"
+#include "database/db_onvif_discovery_inventory.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
 #include "web/api_handlers.h"
+#include "web/api_handlers_onvif.h"
 #include "web/api_handlers_recording_control.h"
 #include "web/api_handlers_system.h"
 #include "web/api_handlers_setup.h"
@@ -68,6 +70,13 @@ static cJSON *find_version_item(cJSON *items, const char *name) {
 static void clear_db_streams(void) {
     sqlite3 *db = get_db_handle();
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
+}
+
+static void clear_onvif_inventory(void) {
+    sqlite3_exec(get_db_handle(),
+                 "DELETE FROM onvif_discovery_addresses;"
+                 "DELETE FROM onvif_discovery_inventory;",
+                 NULL, NULL, NULL);
 }
 
 static stream_config_t make_test_stream(const char *name) {
@@ -778,6 +787,138 @@ void test_stream_retention_routes_require_camera_configure(void) {
     g_config.web_auth_enabled = prior_auth;
 }
 
+void test_handle_post_stream_persists_playback_transport(void) {
+    clear_db_streams();
+    init_stream_state_manager(16);
+    init_stream_manager(16);
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    static const char json_body[] =
+        "{\"name\":\"cam_transport_post\",\"url\":\"rtsp://localhost/stream\","
+        "\"playback_transport\":\"webrtc_then_mse\"}";
+    req.body = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream(&req, &res);
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0,
+                          get_stream_config_by_name("cam_transport_post", &got));
+    TEST_ASSERT_EQUAL_STRING("webrtc_then_mse", got.playback_transport);
+
+    usleep(200000);
+    http_response_free(&res);
+    shutdown_stream_manager();
+    shutdown_stream_state_manager();
+    clear_db_streams();
+}
+
+void test_handle_post_stream_rejects_invalid_playback_transport(void) {
+    clear_db_streams();
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    static const char json_body[] =
+        "{\"name\":\"cam_transport_bad\",\"url\":\"rtsp://localhost/stream\","
+        "\"playback_transport\":\"rtsp_magic\"}";
+    req.body = (uint8_t *)json_body;
+    req.body_len = sizeof(json_body) - 1;
+
+    handle_post_stream(&req, &res);
+
+    TEST_ASSERT_EQUAL_INT(400, res.status_code);
+    stream_config_t got;
+    TEST_ASSERT_NOT_EQUAL(0,
+                          get_stream_config_by_name("cam_transport_bad", &got));
+    http_response_free(&res);
+}
+
+void test_get_onvif_devices_returns_persisted_inventory_metadata(void) {
+    clear_onvif_inventory();
+    onvif_device_info_t observed;
+    memset(&observed, 0, sizeof(observed));
+    safe_strcpy(observed.endpoint,
+                "urn:uuid:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                sizeof(observed.endpoint), 0);
+    safe_strcpy(observed.device_service,
+                "http://192.0.2.80/onvif/device_service",
+                sizeof(observed.device_service), 0);
+    safe_strcpy(observed.ip_address, "192.0.2.80",
+                sizeof(observed.ip_address), 0);
+    safe_strcpy(observed.serial_number, "API-SERIAL",
+                sizeof(observed.serial_number), 0);
+    TEST_ASSERT_EQUAL_INT(
+        1, db_onvif_inventory_record_scan(
+               "192.0.2.0/24", &observed, 1, 1234));
+
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    handle_get_discovered_onvif_devices(&req, &res);
+    TEST_ASSERT_EQUAL_INT(200, res.status_code);
+    cJSON *root = parse_response_json(&res);
+    cJSON *devices = cJSON_GetObjectItemCaseSensitive(root, "devices");
+    TEST_ASSERT_TRUE(cJSON_IsArray(devices));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(devices));
+    cJSON *device_json = cJSON_GetArrayItem(devices, 0);
+    TEST_ASSERT_EQUAL_STRING(observed.inventory_uuid,
+        cJSON_GetObjectItemCaseSensitive(
+            device_json, "inventory_uuid")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("unclaimed",
+        cJSON_GetObjectItemCaseSensitive(
+            device_json, "claim_state")->valuestring);
+    TEST_ASSERT_EQUAL_INT64(1234,
+        (int64_t)cJSON_GetObjectItemCaseSensitive(
+            device_json, "first_seen_at")->valuedouble);
+    TEST_ASSERT_TRUE(cJSON_IsArray(cJSON_GetObjectItemCaseSensitive(
+        device_json, "addresses")));
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(
+        3, cJSON_GetArraySize(cJSON_GetObjectItemCaseSensitive(
+               device_json, "addresses")));
+    cJSON_Delete(root);
+    http_response_free(&res);
+    clear_onvif_inventory();
+}
+
+void test_claim_onvif_device_api_requires_existing_stream(void) {
+    clear_onvif_inventory();
+    clear_db_streams();
+    onvif_device_info_t observed;
+    memset(&observed, 0, sizeof(observed));
+    safe_strcpy(observed.endpoint,
+                "urn:uuid:bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+                sizeof(observed.endpoint), 0);
+    safe_strcpy(observed.device_service,
+                "http://192.0.2.81/onvif/device_service",
+                sizeof(observed.device_service), 0);
+    safe_strcpy(observed.ip_address, "192.0.2.81",
+                sizeof(observed.ip_address), 0);
+    TEST_ASSERT_EQUAL_INT(
+        1, db_onvif_inventory_record_scan(
+               "192.0.2.0/24", &observed, 1, 1235));
+
+    char json_body[256];
+    snprintf(json_body, sizeof(json_body),
+             "{\"inventory_uuid\":\"%s\",\"stream_name\":\"missing\"}",
+             observed.inventory_uuid);
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    req.body = (uint8_t *)json_body;
+    req.body_len = strlen(json_body);
+    handle_post_claim_onvif_device(&req, &res);
+    TEST_ASSERT_EQUAL_INT(404, res.status_code);
+    http_response_free(&res);
+    clear_onvif_inventory();
+}
+
 int main(void) {
     init_logger();
     load_default_config(&g_config);
@@ -818,6 +959,10 @@ int main(void) {
     RUN_TEST(test_manual_start_rejects_continuous_config_before_runtime_starts);
     RUN_TEST(test_completed_setup_post_requires_system_admin);
     RUN_TEST(test_stream_retention_routes_require_camera_configure);
+    RUN_TEST(test_handle_post_stream_persists_playback_transport);
+    RUN_TEST(test_handle_post_stream_rejects_invalid_playback_transport);
+    RUN_TEST(test_get_onvif_devices_returns_persisted_inventory_metadata);
+    RUN_TEST(test_claim_onvif_device_api_requires_existing_stream);
     int result = UNITY_END();
 
     shutdown_database();

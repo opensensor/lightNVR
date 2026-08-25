@@ -1,6 +1,7 @@
 # PRD — Recordings & Timeline UX
 
-**Status**: In progress — P3 mobile gestures implemented; earlier phase acceptance reconciliation and beta/manual outcome metrics remain
+**Status**: In progress — P0–P3 implementation is present; manual acceptance,
+large/busy-day behavior, and beta outcome metrics remain to reconcile
 **Created**: 2026-04-22
 **Owner**: TBD
 **Driving signal**: [#331 (CDx4f3kCAf3Y)](https://github.com/opensensor/lightNVR/issues/331), the Recordings/Timeline items from [#399 (AndyIsHereBoi)](https://github.com/opensensor/lightNVR/issues/399).
@@ -89,10 +90,10 @@ Every list-mutating action goes through the `<AsyncButton>` / `useAsyncAction` p
 
 | Phase | Scope | Estimate |
 |---|---|---|
-| P0 — Scrub continuity | TimelineCursor + TimelinePlayer; pure-frontend | 2 days |
-| P1 — Set-diff sync | TimelinePage data layer; closes #331 | 1–2 days |
-| P2 — Refresh + async feedback | Wire the AsyncButton primitive; assumes PRD 01 P0 has shipped | 1 day |
-| P3 — Mobile gestures | Pinch/fling/snap on the ruler | 3–4 days |
+| P0 — Scrub continuity | Implementation present: TimelineCursor + TimelinePlayer | 2 days |
+| P1 — Set-diff sync | Implementation present: TimelinePage data layer | 1–2 days |
+| P2 — Refresh + async feedback | Implementation present: refresh, AsyncButton wiring, and batch progress surfaces | 1 day |
+| P3 — Mobile gestures | Implemented: pinch/fling/pan/snap on the ruler | 3–4 days |
 
 Implementation note (2026-08-24): P3 owns touch input explicitly rather than
 depending on synthesized mouse events. It includes anchored pinch zoom,

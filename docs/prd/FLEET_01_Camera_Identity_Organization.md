@@ -1,6 +1,8 @@
 # PRD — Camera Identity & Organization
 
-**Status**: Draft
+**Status**: P0–P3 implemented — UUIDs, locations, normalized tags, selector/query
+APIs, collections, and organization/workflow UI are present; large-fixture
+performance and camera-replacement acceptance remain to reconcile
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 1 — foundation
@@ -110,10 +112,10 @@ detection URLs are profiles of the same logical camera.
 
 | Phase | Scope |
 | --- | --- |
-| P0 | UUID schema, migration, UUID-capable camera APIs |
-| P1 | Location hierarchy and tag normalization |
-| P2 | Selector evaluator and fleet query API |
-| P3 | Static/smart collections and organization management UI |
+| P0 | Implemented: UUID schema, migration, UUID-capable camera APIs |
+| P1 | Implemented: location hierarchy and tag normalization |
+| P2 | Implemented: selector evaluator and fleet query API |
+| P3 | Implemented: static/smart collections and organization management UI/workflow integration |
 
 ## 7. Acceptance criteria
 

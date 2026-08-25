@@ -27,6 +27,7 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/curl_init.h"
+#include "database/db_onvif_discovery_inventory.h"
 #include "utils/strings.h"
 
 // Maximum number of networks to detect
@@ -49,9 +50,11 @@ int init_onvif_discovery(void) {
     // started at the same second (cert-msc32-c / cert-msc51-cpp).
     srand((unsigned int)time(NULL) ^ ((unsigned int)getpid() << 16));
     
-    // Initialize discovered devices array
+    // Initialize the in-memory cache from the durable staging inventory.
     memset(g_discovered_devices, 0, sizeof(g_discovered_devices));
-    g_discovered_device_count = 0;
+    g_discovered_device_count = db_onvif_inventory_list(
+        g_discovered_devices, MAX_DISCOVERED_DEVICES);
+    if (g_discovered_device_count < 0) g_discovered_device_count = 0;
     
     log_info("ONVIF discovery module initialized");
     
@@ -93,7 +96,17 @@ int get_discovered_onvif_devices(onvif_device_info_t *devices, int max_devices) 
         return -1;
     }
     
+    onvif_device_info_t persisted[MAX_DISCOVERED_DEVICES];
+    int persisted_count = db_onvif_inventory_list(
+        persisted, MAX_DISCOVERED_DEVICES);
+
     pthread_mutex_lock(&g_discovery_mutex);
+
+    if (persisted_count >= 0) {
+        memcpy(g_discovered_devices, persisted,
+               (size_t)persisted_count * sizeof(onvif_device_info_t));
+        g_discovered_device_count = persisted_count;
+    }
     
     count = g_discovered_device_count < max_devices ? g_discovered_device_count : max_devices;
     
@@ -397,27 +410,51 @@ int discover_onvif_devices(const char *network, onvif_device_info_t *devices,
         }
     }
 
-    // Store the discovered devices for later retrieval
-    pthread_mutex_lock(&g_discovery_mutex);
-    g_discovered_device_count = 0;
-    
-    for (int i = 0; i < count && i < MAX_DISCOVERED_DEVICES; i++) {
-        memcpy(&g_discovered_devices[i], &devices[i], sizeof(onvif_device_info_t));
-        g_discovered_device_count++;
-    }
-    
-    pthread_mutex_unlock(&g_discovery_mutex);
-
     // If we didn't find any devices with WS-Discovery, try direct HTTP probing
     if (count == 0 && candidate_count > 0) {
         log_info("No devices found with WS-Discovery, trying direct HTTP probing");
         count = try_direct_http_discovery(candidate_ips, candidate_count, devices, max_devices);
     }
 
-    log_info("ONVIF discovery completed, found %d devices", count);
+    if (count < 0) count = 0;
 
-    // Return 0 instead of -1 when no devices are found
-    return count < 0 ? 0 : count;
+    /*
+     * A scan result is a staging observation, not a claim. Persist it only
+     * after all discovery fallbacks have run, then return the complete durable
+     * inbox (including prior devices that are now offline).
+     */
+    int64_t observed_at = (int64_t)time(NULL);
+    if (db_onvif_inventory_record_scan(network, devices, count, observed_at) < 0) {
+        log_error("Failed to persist ONVIF discovery inventory");
+    }
+
+    onvif_device_info_t persisted[MAX_DISCOVERED_DEVICES];
+    int persisted_count = db_onvif_inventory_list(
+        persisted, MAX_DISCOVERED_DEVICES);
+    pthread_mutex_lock(&g_discovery_mutex);
+    g_discovered_device_count = 0;
+    if (persisted_count >= 0) {
+        for (int i = 0; i < persisted_count; i++) {
+            g_discovered_devices[i] = persisted[i];
+            g_discovered_device_count++;
+        }
+    } else {
+        for (int i = 0; i < count && i < MAX_DISCOVERED_DEVICES; i++) {
+            g_discovered_devices[i] = devices[i];
+            g_discovered_device_count++;
+        }
+    }
+    int return_count = g_discovered_device_count < max_devices
+        ? g_discovered_device_count : max_devices;
+    for (int i = 0; i < return_count; i++) {
+        devices[i] = g_discovered_devices[i];
+    }
+    pthread_mutex_unlock(&g_discovery_mutex);
+
+    log_info("ONVIF discovery completed, observed %d devices; %d staged", count,
+             return_count);
+
+    return return_count;
 }
 
 // Forward declaration of the callback function

@@ -1,5 +1,9 @@
 # PRD: Sophisticated Per-Stream Recording Retention Policies
 
+**Status**: Implemented — retained here as the design record; see the
+[implementation summary](../internal/SUMMARY_Recording_Retention.md) and
+[API quick reference](../QUICKREF_Retention_API.md)
+
 ## Executive Summary
 Implement comprehensive, per-stream recording retention and deletion policies for lightNVR that provide fine-grained control over recording lifecycle management while maintaining the project's core principles of lightweight design and C best practices.
 
@@ -375,5 +379,4 @@ int apply_retention_policy_per_stream(const char *stream_name) {
    - **Recommendation**: 3650 days (10 years), 0 = indefinite
 4. Should we support retention by file size in addition to time?
    - **Recommendation**: Phase 2 feature, not MVP
-
 

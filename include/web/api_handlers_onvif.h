@@ -45,6 +45,11 @@ void handle_get_onvif_device_profiles(const http_request_t *req, http_response_t
 void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_response_t *res);
 
 /**
+ * @brief Mark a persisted discovery record claimed by an existing stream
+ */
+void handle_post_claim_onvif_device(const http_request_t *req, http_response_t *res);
+
+/**
  * @brief Backend-agnostic handler for POST /api/onvif/device/test
  *
  * @param req HTTP request

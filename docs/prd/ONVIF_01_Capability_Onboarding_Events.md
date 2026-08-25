@@ -1,6 +1,10 @@
 # PRD — ONVIF Capability Onboarding & Events
 
-**Status**: Draft
+**Status**: In progress — the P0 persistent discovery inventory, stable
+EndpointReference/serial/MAC deduplication, address history, explicit claim
+state, and durable discovery UI are implemented. Time/auth error classification,
+capability snapshots/Media2 pairing, generalized topic discovery, and the full
+Fleet 04 batch staging contract remain
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 6 — camera interoperability
@@ -70,6 +74,15 @@ silently rewrite a working stream configuration.
   authorized operator confirms.
 - Feed the Fleet 04 discovery staging inbox.
 
+Implementation status (2026-08-25): migration `0070` stores identity, address
+history, scan scope, first/last seen, online state, explicit claim association,
+and duplicate suspicion without credential fields. WS-Discovery now preserves
+the stable EndpointReference address separately from the routable service URL.
+Repeated scans update the durable inbox exposed by `GET /api/onvif/devices`, and
+adding a stream explicitly claims its inventory record. The current discovery
+modal is the first staging surface; Fleet 04 batch credential/probe/organization
+work remains P3.
+
 ### 5.2 Authentication and time
 
 - Query device time and calculate clock offset before authenticated calls where
@@ -134,7 +147,7 @@ silently rewrite a working stream configuration.
 
 | Phase | Scope |
 | --- | --- |
-| P0 | Persistent discovery inventory, identity/deduplication, time/auth diagnostics |
+| P0 | Partially implemented: persistent inventory, address history, stable identity/deduplication, online state, and explicit claim workflow are present; categorized time/auth diagnostics remain |
 | P1 | Capability snapshot and Media/Media2 profile pairing |
 | P2 | Event topic discovery, resilient PullPoint manager, normalized events |
 | P3 | Fleet staging UI, bulk probes, fixtures, published compatibility matrix |
