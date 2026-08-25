@@ -30,7 +30,7 @@ and policy primitives established earlier.
 | --- | --- | --- | --- |
 | 1 | [Fleet 01 — Camera Identity & Organization](FLEET_01_Camera_Identity_Organization.md) | Stable camera identity, location hierarchy, tags, and smart collections | Now |
 | 2 | [Fleet 02 — Scoped Authorization & Audit](FLEET_02_Scoped_Authorization_Audit.md) | Action-level permissions over reusable fleet scopes | Now; SSO deferred |
-| 3 | [Fleet 03 — Event Bus & MQTT Routes](FLEET_03_Event_Bus_MQTT_Routes.md) | Durable provider-neutral events for cloud and automation consumers | Now |
+| 3 | [Fleet 03 — Event Bus & MQTT Routes](FLEET_03_Event_Bus_MQTT_Routes.md) | Durable provider-neutral events for cloud and automation consumers | Now — P3 producer expansion in progress |
 | 4 | [Fleet 04 — Fleet Explorer & Bulk Operations](FLEET_04_Fleet_Explorer_Bulk_Operations.md) | Operate hundreds of cameras through search, queues, templates, and jobs | Next |
 | 5 | [Storage 01 — Multi-Target Storage Lifecycle](STORAGE_01_Multi_Target_Lifecycle.md) | Policy-driven placement, migration, retention, and capacity management | In progress — P1b target pressure and policy simulation implemented |
 | 6 | [ONVIF 01 — Capability Onboarding & Events](ONVIF_01_Capability_Onboarding_Events.md) | Reliable discovery, profile pairing, capability inventory, and normalized events | Next |

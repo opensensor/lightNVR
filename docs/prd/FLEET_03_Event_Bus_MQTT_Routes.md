@@ -1,9 +1,9 @@
 # PRD — Event Bus & MQTT Routes
 
-**Status**: P0/P1 complete; P2 routing in progress — durable route definitions,
-catalog/CRUD API, selector preview, optimistic concurrency, runtime
-type/scope/predicate/schedule evaluation, and durable suppression implemented;
-multiple destinations and UI remain
+**Status**: P0/P1/P2 complete; P3 in progress — camera offline/recovered,
+stream degraded/recovered and recording-gap, and storage pressure/recovered
+producers are wired to observed transitions. Target-health, security, ONVIF,
+and media-reference producers remain.
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation
@@ -161,13 +161,15 @@ producer thread and enforces event type, Fleet selector, detection predicate,
 and occurrence-time schedule before durable enqueue. Durable suppression now
 preserves the first event and enforces debounce, cooldown, grouping, and fixed
 per-minute limits by route/type/subject, committing allowed state only after
-outbox acceptance. The remaining slices add destination profiles and expose the
-workflow in the Streams-area UI.
+outbox acceptance. Destination profiles, delivery controls, and the
+Streams-area routing UI are implemented. P3 now broadens the producer catalog
+without changing the durable routing and delivery path.
 
 ## 8. Acceptance criteria
 
-- Detection, camera-offline, recording-gap, and storage-pressure fixtures validate
-  against documented schemas.
+- Detection, camera offline/recovered, stream degraded/recovered and
+  recording-gap, and storage pressure/recovered fixtures validate against
+  documented schemas.
 - A broker outage during 1,000 generated critical events does not block recording;
   eligible events deliver after reconnection with unchanged IDs.
 - Duplicate delivery is safely recognizable by `source + id`.

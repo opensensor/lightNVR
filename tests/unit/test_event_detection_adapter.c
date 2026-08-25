@@ -26,6 +26,7 @@
 #include "database/db_event_outbox.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
+#include "telemetry/stream_metrics.h"
 #include "unity.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
@@ -45,6 +46,14 @@ typedef struct {
 static capture_t capture;
 static config_t mqtt_adapter_config;
 
+typedef struct {
+    int calls;
+    char types[8][EVENT_TYPE_MAX];
+    char subjects[8][EVENT_SUBJECT_MAX];
+} operational_capture_t;
+
+static operational_capture_t operational_capture;
+
 static int capture_event(const event_envelope_t *event, void *context) {
     capture_t *result = context;
     result->calls++;
@@ -55,6 +64,18 @@ static int capture_event(const event_envelope_t *event, void *context) {
     return mqtt_event_adapter_decode_detection(
         event, result->stream_name, sizeof(result->stream_name),
         &result->detections);
+}
+
+static int capture_operational_event(const event_envelope_t *event,
+                                     void *context) {
+    operational_capture_t *result = context;
+    if (result->calls >= 8) return -1;
+    safe_strcpy(result->types[result->calls], event->type,
+                sizeof(result->types[result->calls]), 0);
+    safe_strcpy(result->subjects[result->calls], event->subject,
+                sizeof(result->subjects[result->calls]), 0);
+    result->calls++;
+    return 0;
 }
 
 static stream_config_t create_camera(const char *name) {
@@ -141,8 +162,10 @@ static int outbox_topic_count(const char *destination, const char *topic) {
 #endif
 
 void setUp(void) {
+    metrics_shutdown();
     event_bus_shutdown(false);
     event_bus_unsubscribe("capture-detection");
+    event_bus_unsubscribe("capture-operational");
     mqtt_event_adapter_unregister();
     event_identity_shutdown();
     event_router_shutdown();
@@ -156,6 +179,7 @@ void setUp(void) {
                  "WHERE key='event_installation_uuid';",
                  NULL, NULL, NULL);
     memset(&capture, 0, sizeof(capture));
+    memset(&operational_capture, 0, sizeof(operational_capture));
     memset(&mqtt_adapter_config, 0, sizeof(mqtt_adapter_config));
     mqtt_adapter_config.mqtt_enabled = true;
     safe_strcpy(mqtt_adapter_config.mqtt_topic_prefix, "lightnvr",
@@ -163,8 +187,10 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    metrics_shutdown();
     event_bus_shutdown(false);
     event_bus_unsubscribe("capture-detection");
+    event_bus_unsubscribe("capture-operational");
     mqtt_event_adapter_unregister();
     event_identity_shutdown();
     event_router_shutdown();
@@ -278,6 +304,139 @@ void test_producer_fails_closed_without_identity_or_running_bus(void) {
                 "11111111-1111-4111-8111-111111111111", "camera",
                 &detections, 0, error, sizeof(error)));
     TEST_ASSERT_NOT_NULL(strstr(error, "not running"));
+}
+
+void test_operational_producers_use_registered_schemas_and_stable_subjects(void) {
+    stream_config_t camera = create_camera("Operational Camera");
+    TEST_ASSERT_EQUAL_INT(0, event_identity_init());
+    TEST_ASSERT_EQUAL_INT(
+        0, event_bus_subscribe("capture-operational",
+                               capture_operational_event,
+                               &operational_capture));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_init(0, 0));
+
+    const time_t occurred_at = 1787466600;
+    char error[256] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_camera_offline_for_stream(
+               camera.name, "frame_timeout", 3, occurred_at,
+               error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_camera_recovered_for_stream(
+               camera.name, 15000, occurred_at, error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_stream_degraded_for_stream(
+               camera.name, "low_fps", 7.5, 25.0, occurred_at,
+               error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_stream_recovered_for_stream(
+               camera.name, 24.5, 25.0, occurred_at,
+               error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_recording_gap_for_stream(
+               camera.name, occurred_at - 12, 12000, occurred_at,
+               error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_storage_pressure(
+               "critical", "warning", 94.5, 1073741824,
+               occurred_at, error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_storage_recovered(
+               "critical", 72.0, 3221225472ULL, occurred_at,
+               error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+
+    TEST_ASSERT_EQUAL_INT(7, operational_capture.calls);
+    const char *expected_types[] = {
+        "io.lightnvr.camera.offline.v1",
+        "io.lightnvr.camera.recovered.v1",
+        "io.lightnvr.stream.degraded.v1",
+        "io.lightnvr.stream.recovered.v1",
+        "io.lightnvr.stream.recording_gap.v1",
+        "io.lightnvr.storage.pressure.v1",
+        "io.lightnvr.storage.recovered.v1",
+    };
+    char camera_subject[EVENT_SUBJECT_MAX];
+    snprintf(camera_subject, sizeof(camera_subject), "camera/%s",
+             camera.camera_uuid);
+    for (int index = 0; index < 7; index++) {
+        TEST_ASSERT_EQUAL_STRING(expected_types[index],
+                                 operational_capture.types[index]);
+        TEST_ASSERT_EQUAL_STRING(index < 5 ? camera_subject : "system/storage",
+                                 operational_capture.subjects[index]);
+    }
+
+    TEST_ASSERT_EQUAL_INT(
+        -1, event_producer_publish_stream_degraded_for_stream(
+                camera.name, "unstable", 1.0, 25.0, occurred_at,
+                error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "stream degraded data is invalid"));
+}
+
+void test_operational_event_route_persists_to_outbox(void) {
+#ifdef ENABLE_MQTT
+    stream_config_t camera = create_camera("Offline Route Camera");
+    event_route_t route;
+    memset(&route, 0, sizeof(route));
+    safe_strcpy(route.name, "Offline route", sizeof(route.name), 0);
+    route.enabled = true;
+    safe_strcpy(route.destination_key, EVENT_ROUTE_DEFAULT_DESTINATION,
+                sizeof(route.destination_key), 0);
+    safe_strcpy(route.scope_type, "all", sizeof(route.scope_type), 0);
+    safe_strcpy(route.predicate_json, "{\"version\":1}",
+                sizeof(route.predicate_json), 0);
+    safe_strcpy(route.schedule_json,
+                "{\"version\":1,\"timezone\":\"UTC\",\"windows\":[]}",
+                sizeof(route.schedule_json), 0);
+    safe_strcpy(route.event_types[0], "io.lightnvr.camera.offline.v1",
+                sizeof(route.event_types[0]), 0);
+    route.event_type_count = 1;
+    TEST_ASSERT_EQUAL_INT(DB_EVENT_ROUTE_OK, db_event_route_create(&route));
+
+    TEST_ASSERT_EQUAL_INT(0, event_identity_init());
+    TEST_ASSERT_EQUAL_INT(0,
+                          mqtt_event_adapter_register(&mqtt_adapter_config));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_init(0, 0));
+    char error[256] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_camera_offline_for_stream(
+               camera.name, "frame_timeout", 3, time(NULL),
+               error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+
+    event_outbox_stats_t stats;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_event_outbox_get_stats(MQTT_EVENT_OUTBOX_DESTINATION,
+                                     (int64_t)time(NULL), &stats));
+    TEST_ASSERT_EQUAL_INT64(1, stats.pending_rows);
+#endif
+}
+
+void test_recording_gap_hook_ignores_deliberate_session_boundaries(void) {
+    stream_config_t camera = create_camera("Gap Camera");
+    TEST_ASSERT_EQUAL_INT(0, event_identity_init());
+    TEST_ASSERT_EQUAL_INT(
+        0, event_bus_subscribe("capture-operational",
+                               capture_operational_event,
+                               &operational_capture));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_init(0, 0));
+    TEST_ASSERT_EQUAL_INT(0, metrics_init(8));
+
+    metrics_set_recording_active(camera.name, true);
+    metrics_record_segment_complete(camera.name, 100, 110, 1024);
+    metrics_record_segment_complete(camera.name, 120, 130, 2048);
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+    TEST_ASSERT_EQUAL_INT(1, operational_capture.calls);
+    TEST_ASSERT_EQUAL_STRING("io.lightnvr.stream.recording_gap.v1",
+                             operational_capture.types[0]);
+
+    metrics_set_recording_active(camera.name, false);
+    metrics_set_recording_active(camera.name, true);
+    metrics_record_segment_complete(camera.name, 1000, 1010, 4096);
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+    TEST_ASSERT_EQUAL_INT(1, operational_capture.calls);
+
+    metrics_shutdown();
 }
 
 void test_enabled_routes_gate_the_normalized_outbox(void) {
@@ -435,6 +594,9 @@ int main(void) {
     RUN_TEST(test_installation_identity_is_persisted_across_reinitialization);
     RUN_TEST(test_detection_producer_uses_camera_uuid_and_dispatches_off_thread);
     RUN_TEST(test_producer_fails_closed_without_identity_or_running_bus);
+    RUN_TEST(test_operational_producers_use_registered_schemas_and_stable_subjects);
+    RUN_TEST(test_operational_event_route_persists_to_outbox);
+    RUN_TEST(test_recording_gap_hook_ignores_deliberate_session_boundaries);
     RUN_TEST(test_enabled_routes_gate_the_normalized_outbox);
     RUN_TEST(test_managed_routes_fan_out_with_per_destination_suppression);
     int result = UNITY_END();
