@@ -1,4 +1,8 @@
-import { healthStateForStream, recordingModesForStream } from '../js/components/preact/liveTileStatus.js';
+import {
+  healthStateForStream,
+  recordingModesForStream,
+  shouldShowLiveTileStatus,
+} from '../js/components/preact/liveTileStatus.js';
 
 describe('live tile status helpers', () => {
   test('preserves every recording mode in display order', () => {
@@ -13,5 +17,11 @@ describe('live tile status helpers', () => {
     expect(healthStateForStream({ status: 'Running' }, { isPlaying: true })).toBe('healthy');
     expect(healthStateForStream({ status: 'Reconnecting' }, { isLoading: true })).toBe('degraded');
     expect(healthStateForStream({ status: 'Running' }, { error: 'no frames' })).toBe('offline');
+  });
+
+  test('follows the stream-label visibility preference', () => {
+    expect(shouldShowLiveTileStatus()).toBe(true);
+    expect(shouldShowLiveTileStatus(true)).toBe(true);
+    expect(shouldShowLiveTileStatus(false)).toBe(false);
   });
 });

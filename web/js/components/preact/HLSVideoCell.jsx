@@ -766,7 +766,13 @@ export function HLSVideoCell({
         }}
       />
 
-      <LiveTileStatus stream={stream} isPlaying={isPlaying} isLoading={isLoading} error={error} />
+      <LiveTileStatus
+        stream={stream}
+        isPlaying={isPlaying}
+        isLoading={isLoading}
+        error={error}
+        showLabels={showLabels}
+      />
 
       <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
 

@@ -6,6 +6,10 @@ export function recordingModesForStream(stream = {}) {
   return modes;
 }
 
+export function shouldShowLiveTileStatus(showLabels = true) {
+  return showLabels !== false;
+}
+
 export function healthStateForStream(stream = {}, playback = {}) {
   const status = String(stream.status || stream.state || '').toLowerCase();
   if (playback.error || ['error', 'failed', 'stopped', 'offline'].includes(status)) {
