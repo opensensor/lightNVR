@@ -52,6 +52,9 @@ Add a new field to `stream_config_t` (and `db_streams`) and a UI control on the 
 - **`playback_transport`** enum: `auto` (default), `webrtc_only`, `mse_only`, `hls_only`, `webrtc_then_mse`, `mse_then_hls`.
 - **`auto`** behavior matches today's: try WebRTC if globally enabled, else MSE, else HLS.
 - The Live View tile reads the per-stream value and only attempts the listed transports in order, surfacing a "fallback used" badge when it had to drop down.
+- The default **Auto** viewer honors those per-stream chains. Selecting the
+  WebRTC, HLS, or MSE viewer tab is an operator override that forces every tile
+  to that one transport; it does not silently substitute another renderer.
 
 UI:
 - Stream edit modal grows a "Playback transport" select, default Auto.

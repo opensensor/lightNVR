@@ -14,7 +14,7 @@ import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
 import { useI18n } from '../../i18n.js';
-import { buildLiveViewHref } from '../../utils/live-view-url.js';
+import { buildLiveViewHref, resolveForcedLiveTransport } from '../../utils/live-view-url.js';
 import { useCollectionMembership } from './fleet/collectionMembership.js';
 import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
@@ -42,6 +42,10 @@ function legacyLayoutToColsRowsWebRTC(layout) {
  */
 export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   const { t } = useI18n();
+  const forcedTransport = resolveForcedLiveTransport(
+    window.location.pathname,
+    window.location.search
+  );
   const [alwaysFullscreenOnTap, setAlwaysFullscreenOnTap] = useAlwaysFullscreenOnTap();
 
   // Use the snapshot manager hook
@@ -579,32 +583,66 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
       />
 
       <div className="page-header flex justify-between items-center mb-4 p-4 bg-card text-card-foreground rounded-lg shadow" style={{ position: 'relative', zIndex: 10, pointerEvents: 'auto' }}>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-xl font-bold whitespace-nowrap">{t('live.liveView')}</h2>
-          {/* View-mode tab strip: WebRTC | HLS | MSE */}
+          {/* Auto honors per-stream precedence; explicit modes force every tile. */}
           <div className="inline-flex items-center bg-muted rounded-lg p-1 gap-1" style={{ position: 'relative', zIndex: 50 }}>
-            <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
-              WebRTC
-            </span>
+            {forcedTransport === null ? (
+              <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                Auto
+              </span>
+            ) : (
+              <a
+                href={buildLiveViewHref('/index.html', window.location.search)}
+                className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+              >
+                Auto
+              </a>
+            )}
+
+            {forcedTransport === 'webrtc' ? (
+              <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                WebRTC
+              </span>
+            ) : (
+              <a
+                href={buildLiveViewHref('/index.html', window.location.search, 'webrtc')}
+                className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+              >
+                WebRTC
+              </a>
+            )}
 
             {/* Tab HLS */}
             {!isHlsDisabled && (
-              <a
-                href={buildLiveViewHref('/hls.html', window.location.search)}
-                className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
-              >
-                {t('live.hlsShort')}
-              </a>
+              forcedTransport === 'hls' ? (
+                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  {t('live.hlsShort')}
+                </span>
+              ) : (
+                <a
+                  href={buildLiveViewHref('/hls.html', window.location.search)}
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                >
+                  {t('live.hlsShort')}
+                </a>
+              )
             )}
-    
+
             {/* Tab MSE */}
             {go2rtcAvailable && !isMseDisabled && (
-              <a
-                href={buildLiveViewHref('/hls.html', window.location.search, 'mse')}
-                className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
-              >
-                {t('live.mseShort')}
-              </a>
+              forcedTransport === 'mse' ? (
+                <span className="px-3 py-1.5 rounded text-sm font-medium bg-primary text-primary-foreground select-none">
+                  {t('live.mseShort')}
+                </span>
+              ) : (
+                <a
+                  href={buildLiveViewHref('/hls.html', window.location.search, 'mse')}
+                  className="px-3 py-1.5 rounded text-sm font-medium transition-colors no-underline text-muted-foreground hover:bg-background hover:text-foreground focus:outline-none"
+                >
+                  {t('live.mseShort')}
+                </a>
+              )
             )}
           </div>
         </div>
@@ -882,6 +920,7 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
                       hls: !isHlsDisabled,
                     }}
                     defaultTransport="webrtc"
+                    forcedTransport={forcedTransport}
                     useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     fullscreenUpgraded={!isSingleStream && fullscreenCellStream === stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     onToggleFullscreen={toggleStreamFullscreen}

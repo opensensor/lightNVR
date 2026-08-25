@@ -21,16 +21,22 @@ export function normalizePlaybackTransport(value) {
 export function buildPlaybackTransportPlan(
   preference,
   offerings = { webrtc: true, mse: true, hls: true },
-  defaultTransport = 'webrtc'
+  defaultTransport = 'webrtc',
+  forcedTransport = null
 ) {
   const profile = normalizePlaybackTransport(preference);
-  const requested = profile === 'auto'
-    ? [...(AUTO_CHAINS[defaultTransport] || AUTO_CHAINS.webrtc)]
-    : [...PLAYBACK_TRANSPORT_CHAINS[profile]];
+  const viewerOverride = Object.hasOwn(AUTO_CHAINS, forcedTransport)
+    ? forcedTransport
+    : null;
+  const requested = viewerOverride
+    ? [viewerOverride]
+    : profile === 'auto'
+      ? [...(AUTO_CHAINS[defaultTransport] || AUTO_CHAINS.webrtc)]
+      : [...PLAYBACK_TRANSPORT_CHAINS[profile]];
   const available = requested.filter((transport) => offerings[transport] !== false);
   const unavailable = requested.filter((transport) => offerings[transport] === false);
 
-  return { profile, requested, available, unavailable };
+  return { profile, forcedTransport: viewerOverride, requested, available, unavailable };
 }
 
 export function isPlaybackFallback(plan, activeTransport, runtimeFallbackIndex = 0) {

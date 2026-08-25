@@ -45,6 +45,43 @@ describe('per-stream playback transport', () => {
       .toEqual(['hls']);
   });
 
+  test.each(['webrtc', 'mse', 'hls'])(
+    'forces every stream to the explicit %s viewer transport',
+    (forcedTransport) => {
+      const plan = buildPlaybackTransportPlan(
+        'webrtc_then_mse',
+        all,
+        'webrtc',
+        forcedTransport
+      );
+      expect(plan.forcedTransport).toBe(forcedTransport);
+      expect(plan.requested).toEqual([forcedTransport]);
+      expect(plan.available).toEqual([forcedTransport]);
+    }
+  );
+
+  test('does not degrade an explicit viewer mode when it is unavailable', () => {
+    const plan = buildPlaybackTransportPlan(
+      'webrtc_then_mse',
+      { ...all, hls: false },
+      'webrtc',
+      'hls'
+    );
+    expect(plan.available).toEqual([]);
+    expect(plan.unavailable).toEqual(['hls']);
+  });
+
+  test('default viewer mode retains configured precedence after filtering offerings', () => {
+    expect(buildPlaybackTransportPlan(
+      'auto',
+      { webrtc: false, mse: true, hls: true }
+    ).available).toEqual(['mse', 'hls']);
+    expect(buildPlaybackTransportPlan(
+      'mse_then_hls',
+      all
+    ).available).toEqual(['mse', 'hls']);
+  });
+
   test('does not change transports when the camera source is unavailable', () => {
     const options = {
       streamStatus: 'Running',

@@ -79,11 +79,7 @@ function App() {
     // HLS / MSE remain. The LiveView component itself handles HLS↔MSE
     // tab switching and will hide tabs for disabled methods. #397
     const useWebRTC = !viewFlags.webrtcDisabled;
-    if (!useWebRTC) {
-        document.title = 'HLS View - LightNVR';
-    } else {
-        document.title = 'Live View - LightNVR';
-    }
+    document.title = 'Live View - LightNVR';
 
     return (
         <>
