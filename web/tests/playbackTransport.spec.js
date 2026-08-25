@@ -2,6 +2,7 @@ import {
   buildPlaybackTransportPlan,
   isPlaybackFallback,
   normalizePlaybackTransport,
+  shouldFallbackPlaybackTransport,
 } from '../js/utils/playback-transport.js';
 
 describe('per-stream playback transport', () => {
@@ -42,5 +43,37 @@ describe('per-stream playback transport', () => {
       .toEqual(['mse', 'hls']);
     expect(buildPlaybackTransportPlan('auto', all, 'hls').available)
       .toEqual(['hls']);
+  });
+
+  test('does not change transports when the camera source is unavailable', () => {
+    const options = {
+      streamStatus: 'Running',
+      sourceUnavailableMessage: 'Cannot connect to camera source',
+    };
+
+    expect(shouldFallbackPlaybackTransport('Cannot connect to camera source', options))
+      .toBe(false);
+    expect(shouldFallbackPlaybackTransport(
+      'streams: dial tcp 192.0.2.10:554: connect: no route to host',
+      options
+    )).toBe(false);
+    expect(shouldFallbackPlaybackTransport(
+      { kind: 'source-unavailable', message: 'camera unavailable' },
+      options
+    )).toBe(false);
+  });
+
+  test('does not change transports for a stream already in a terminal state', () => {
+    expect(shouldFallbackPlaybackTransport('WebSocket error', { streamStatus: 'Error' }))
+      .toBe(false);
+    expect(shouldFallbackPlaybackTransport('WebSocket error', { streamStatus: 'Stopped' }))
+      .toBe(false);
+  });
+
+  test('still falls back for a transport-specific runtime failure', () => {
+    expect(shouldFallbackPlaybackTransport('Unsupported WebRTC codec', {
+      streamStatus: 'Running',
+      sourceUnavailableMessage: 'Cannot connect to camera source',
+    })).toBe(true);
   });
 });
