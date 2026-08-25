@@ -2260,6 +2260,102 @@ static bool go2rtc_process_start_locked(int api_port) {
         g_created_config_symlink = true;
     }
 
+    // Prepare everything the child needs BEFORE forking.
+    //
+    // LightNVR is heavily multi-threaded and fork() clones only the calling
+    // thread. Any lock held by another thread at the instant of the fork stays
+    // locked forever in the child, with no owner left to release it. The child
+    // must therefore restrict itself to async-signal-safe calls between fork()
+    // and execv() -- in particular it must not call log_info(), which takes
+    // logger.mutex and then fprintf()s (a FILE lock of its own).
+    //
+    // A log_info() used to sit immediately before the execv() below and would
+    // deadlock the child before it ever exec'd: go2rtc never started, its API
+    // never came up, and the parent rejected the "candidate" ten seconds later.
+    // The stuck child was still a LightNVR image, so when the parent killed it
+    // the inherited SIGTERM handler wrote LightNVR's own shutdown line into
+    // go2rtc.log -- the only trace the failure left behind. Path resolution,
+    // argv construction and every log call now happen in the parent, where
+    // taking a lock is safe.
+
+    // Build the go2rtc log path from g_config.log_file so go2rtc's output lands
+    // in the same directory as the main log file.
+    char log_path[PATH_MAX]; // Use PATH_MAX to accommodate full filesystem paths
+    if (g_config.log_file[0] != '\0') {
+        char log_dir[PATH_MAX];
+        safe_strcpy(log_dir, g_config.log_file, sizeof(log_dir), 0);
+
+        // Find the last slash to get the directory
+        char *last_slash = strrchr(log_dir, '/');
+        if (last_slash) {
+            // Truncate at the last slash to get just the directory
+            *(last_slash + 1) = '\0';
+            // Create the go2rtc log path in the same directory as the main log file
+            snprintf(log_path, sizeof(log_path), "%sgo2rtc.log", log_dir);
+        } else {
+            // No directory in the path, fall back to g_config_dir
+            snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", g_config_dir);
+        }
+    } else {
+        // If g_config.log_file is empty, fall back to g_config_dir
+        snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", g_config_dir);
+    }
+
+    // Resolve the binary path to a canonical absolute path to prevent
+    // path traversal or symlink attacks (CWE-426 / CWE-78).
+    char resolved_binary[PATH_MAX];
+    if (realpath(g_binary_path, resolved_binary) == NULL) {
+        log_error("Failed to resolve go2rtc binary path '%s': %s",
+                  g_binary_path, strerror(errno));
+        return false;
+    }
+
+    struct stat binary_stat;
+    if (stat(resolved_binary, &binary_stat) != 0) {
+        // This really shouldn't happen except in a race condition or if something else
+        // really nasty is happening, but we'll cover the case anyway.
+        log_error("go2rtc path no longer exists? %s (%s)",
+                  resolved_binary, strerror(errno));
+        return false;
+    }
+    if (!S_ISREG(binary_stat.st_mode)) {
+        log_error("go2rtc path is not a file: %s", resolved_binary);
+        return false;
+    }
+
+    // Build argv with one or two --config files. Always use "go2rtc" as
+    // argv[0] (the process name visible in /proc/<pid>/cmdline and
+    // /proc/<pid>/comm) regardless of the actual binary path, so that
+    // scan_proc_for_argv0_basename("go2rtc") can reliably find the process
+    // even when g_binary_path is a full path or an alternate filename. The
+    // override file is only added if the parent successfully wrote it AND it
+    // exists on disk; go2rtc's internal/app/config.go calls yaml.Unmarshal
+    // once per --config so passing two files lets go2rtc merge with its own
+    // native semantics (issue #394).
+    bool have_override = (override_path
+                          && override_path[0] != '\0'
+                          && access(override_path, R_OK) == 0);
+
+    char *argv[6];
+    int ai = 0;
+    argv[ai++] = (char *)"go2rtc";
+    argv[ai++] = (char *)"--config";
+    argv[ai++] = g_config_path;
+    if (have_override) {
+        argv[ai++] = (char *)"--config";
+        argv[ai++] = (char *)override_path;
+    }
+    argv[ai] = NULL;
+
+    if (have_override) {
+        log_info("Executing go2rtc with command: %s --config %s --config %s",
+                 resolved_binary, g_config_path, override_path);
+    } else {
+        log_info("Executing go2rtc with command: %s --config %s",
+                 resolved_binary, g_config_path);
+    }
+    log_info("Using go2rtc log file: %s", log_path);
+
     // Fork a new process
     pid_t pid = fork();
 
@@ -2268,14 +2364,12 @@ static bool go2rtc_process_start_locked(int api_port) {
         log_error("Failed to fork process for go2rtc: %s", strerror(errno));
         return false;
     } else if (pid == 0) {
-        // Child process
+        // Child process -- async-signal-safe calls ONLY until execv().
+        // See the note above the fork: no logging, no stdio, no allocation.
 
         // Put go2rtc and any ffmpeg children it creates in their own process
         // group so a targeted stop never signals LightNVR or another go2rtc.
-        if (setpgid(0, 0) != 0) {
-            fprintf(stderr, "Warning: Failed to create go2rtc process group: %s\n",
-                    strerror(errno));
-        }
+        (void)setpgid(0, 0);
 
         /* Do not use PR_SET_PDEATHSIG here. On Linux it is triggered when the
          * particular thread that called fork() exits. A short-lived stream
@@ -2283,101 +2377,37 @@ static bool go2rtc_process_start_locked(int api_port) {
          * go2rtc process as soon as that worker returned. Normal shutdown is
          * handled by go2rtc_process_cleanup() and container teardown. */
 
-        // Redirect stdout and stderr to log files
-        char log_path[PATH_MAX]; // Use PATH_MAX to accommodate full filesystem paths
-
-        // Extract directory from g_config->log_file
-        if (g_config.log_file[0] != '\0') {
-            char log_dir[PATH_MAX];
-            safe_strcpy(log_dir, g_config.log_file, sizeof(log_dir), 0);
-
-            // Find the last slash to get the directory
-            char *last_slash = strrchr(log_dir, '/');
-            if (last_slash) {
-                // Truncate at the last slash to get just the directory
-                *(last_slash + 1) = '\0';
-                // Create the go2rtc log path in the same directory as the main log file
-                snprintf(log_path, sizeof(log_path), "%sgo2rtc.log", log_dir);
-            } else {
-                // No directory in the path, fall back to g_config_dir
-                snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", g_config_dir);
-            }
-        } else {
-            // If g_config.log_file is empty, fall back to g_config_dir
-            snprintf(log_path, sizeof(log_path), "%s/go2rtc.log", g_config_dir);
+        /* Drop LightNVR's inherited signal handlers and unblock every signal,
+         * so a child that dies before execv() dies quietly instead of running
+         * LightNVR's shutdown path inside a half-cloned address space. */
+        for (int sig = 1; sig < NSIG; sig++) {
+            signal(sig, SIG_DFL);
         }
+        sigset_t empty_mask;
+        sigemptyset(&empty_mask);
+        sigprocmask(SIG_SETMASK, &empty_mask, NULL);
 
-        // Resolve the binary path to a canonical absolute path to prevent
-        // path traversal or symlink attacks (CWE-426 / CWE-78).
-        char resolved_binary[PATH_MAX];
-        if (realpath(g_binary_path, resolved_binary) == NULL) {
-            fprintf(stderr, "Failed to resolve go2rtc binary path '%s': %s\n",
-                    g_binary_path, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-
-        struct stat st;
-        if (stat(resolved_binary, &st) == 0) {
-            if (!S_ISREG(st.st_mode)) {
-                fprintf(stderr, "go2rtc path is not a file: %s\n", resolved_binary);
-                exit(EXIT_FAILURE);
-            }
-        } else {
-            // This really shouldn't happen except in a race condition or if something else
-            // really nasty is happening, but we'll cover the case anyway.
-            fprintf(stderr, "go2rtc path no longer exists? %s (%s)\n", resolved_binary, strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-
-        // Log the path we're using for the log file
-        fprintf(stderr, "Using go2rtc log file: %s\n", log_path);
-
+        // Redirect stdout and stderr to the go2rtc log file
         int log_fd = open(log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (log_fd == -1) {
-            fprintf(stderr, "Failed to open log file: %s\n", log_path);
-            exit(EXIT_FAILURE);
+            _exit(EXIT_FAILURE);
         }
-
         dup2(log_fd, STDOUT_FILENO);
         dup2(log_fd, STDERR_FILENO);
-        close(log_fd);
-
-        // Execute go2rtc with one or two --config files. Always use "go2rtc"
-        // as argv[0] (the process name visible in /proc/<pid>/cmdline and
-        // /proc/<pid>/comm) regardless of the actual binary path, so that
-        // scan_proc_for_argv0_basename("go2rtc") can reliably find the
-        // process even when g_binary_path is a full path or an alternate
-        // filename. The override file is only added if the parent successfully
-        // wrote it AND it exists on disk; go2rtc's internal/app/config.go
-        // calls yaml.Unmarshal once per --config so passing two files lets
-        // go2rtc merge with its own native semantics (issue #394).
-        bool have_override = (override_path
-                              && override_path[0] != '\0'
-                              && access(override_path, R_OK) == 0);
-
-        char *argv[6];
-        int ai = 0;
-        argv[ai++] = (char *)"go2rtc";
-        argv[ai++] = (char *)"--config";
-        argv[ai++] = g_config_path;
-        if (have_override) {
-            argv[ai++] = (char *)"--config";
-            argv[ai++] = (char *)override_path;
+        if (log_fd > STDERR_FILENO) {
+            close(log_fd);
         }
-        argv[ai] = NULL;
 
-        if (have_override) {
-            log_info("Executing go2rtc with command: %s --config %s --config %s",
-                     resolved_binary, g_config_path, override_path);
-        } else {
-            log_info("Executing go2rtc with command: %s --config %s",
-                     resolved_binary, g_config_path);
-        }
         execv(resolved_binary, argv);
 
-        // If execv returns, it failed
-        fprintf(stderr, "Failed to execute go2rtc: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
+        // If execv returns, it failed. write() is async-signal-safe; the parent
+        // already logged the full command line, so a bare marker is enough to
+        // tell "exec failed" apart from "go2rtc started and then died".
+        static const char exec_fail_msg[] = "Failed to execute go2rtc\n";
+        ssize_t exec_fail_written =
+            write(STDERR_FILENO, exec_fail_msg, sizeof(exec_fail_msg) - 1);
+        (void)exec_fail_written;
+        _exit(EXIT_FAILURE);
     } else {
         // Parent process
         // Close the fork/setpgid race from the parent side too. EACCES means
