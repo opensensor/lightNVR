@@ -25,6 +25,8 @@ import { streamConnectionGate, priorityForStreamStatus, isGateTimeout, isGateAbo
 import { LiveTileStatus } from './LiveTileStatus.jsx';
 import { PictureInPictureButton } from './PictureInPictureButton.jsx';
 import { shouldEnterFullscreenFromTap } from './useAlwaysFullscreenOnTap.js';
+import { MobileTileContextMenu, useMobileTileGestures } from './MobileTileGestures.jsx';
+import { TileAudioButton } from './TileAudioButton.jsx';
 import Hls from 'hls.js';
 
 /**
@@ -44,6 +46,8 @@ export function HLSVideoCell({
   showControls = true,
   globalShowDetections = true,
   alwaysFullscreenOnTap = false,
+  onRequestReorder,
+  mobileGesturesDisabled = false,
   onTransportFailure
 }) {
   const { t } = useI18n();
@@ -53,6 +57,7 @@ export function HLSVideoCell({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showRefreshConfirm, setShowRefreshConfirm] = useState(false);
 
@@ -92,11 +97,31 @@ export function HLSVideoCell({
   const hlsUrlRef = useRef(null);        // Master manifest URL — stored for session-expiry recovery
   const prevStatusRef = useRef(stream.status); // Track previous stream status for transition detection
   const cellAbortRef = useRef(null);     // Cancels a queued/in-flight gated preflight on unmount
-  const alwaysFullscreenOnTapRef = useRef(alwaysFullscreenOnTap);
-
-  useEffect(() => {
-    alwaysFullscreenOnTapRef.current = alwaysFullscreenOnTap;
-  }, [alwaysFullscreenOnTap]);
+  const handleMobileAudioToggle = () => {
+    const nextEnabled = !audioEnabled;
+    setAudioEnabled(nextEnabled);
+    if (videoRef.current) {
+      videoRef.current.muted = !nextEnabled;
+      if (nextEnabled) videoRef.current.play().catch(() => {
+        if (videoRef.current) videoRef.current.muted = true;
+        setAudioEnabled(false);
+      });
+    }
+    if (nextEnabled) {
+      window.dispatchEvent(new CustomEvent('lightnvr:tile-audio-enabled', {
+        detail: { streamName: stream.name },
+      }));
+    }
+  };
+  const mobileGestures = useMobileTileGestures({
+    streamName: stream.name,
+    cellRef,
+    videoRef,
+    audioEnabled,
+    onToggleAudio: handleMobileAudioToggle,
+    onRequestReorder,
+    disabled: zoom.isZoomed || mobileGesturesDisabled,
+  });
 
   /**
    * Refresh the stream's go2rtc registration
@@ -330,10 +355,6 @@ export function HLSVideoCell({
         hls.loadSource(hlsStreamUrl);
         hls.attachMedia(videoRef.current);
 
-        videoRef.current.ondblclick = (e) => {
-          if (!alwaysFullscreenOnTapRef.current) onToggleFullscreen(stream.name, e, cellRef.current);
-        };
-
         hls.on(Hls.Events.MANIFEST_PARSED, function() {
           if (!isMounted) return;
           if (!recoveringRef.current) {
@@ -453,10 +474,6 @@ export function HLSVideoCell({
         console.log(`Using native HLS support for stream ${stream.name}`);
         // Native HLS support (Safari)
         videoRef.current.src = hlsStreamUrl;
-
-        videoRef.current.ondblclick = (e) => {
-          if (!alwaysFullscreenOnTapRef.current) onToggleFullscreen(stream.name, e, cellRef.current);
-        };
 
         // Store handlers for cleanup
         nativeLoadedHandler = function() {
@@ -699,8 +716,21 @@ export function HLSVideoCell({
       data-stream-id={streamId}
       data-sub-stream={useSubStream ? 'true' : 'false'}
       data-zoom-scale={zoom.isZoomed ? zoom.scale.toFixed(2) : undefined}
+      data-mobile-chrome={mobileGestures.chromeVisible ? 'visible' : 'hidden'}
+      onPointerDown={mobileGestures.onPointerDown}
+      onPointerMove={mobileGestures.onPointerMove}
+      onPointerUp={mobileGestures.onPointerUp}
+      onPointerCancel={mobileGestures.onPointerCancel}
+      onContextMenu={mobileGestures.onContextMenu}
       onClick={(event) => {
+        if (mobileGestures.onClick(event)) return;
         if (shouldEnterFullscreenFromTap(event, alwaysFullscreenOnTap, zoom.isZoomed)) {
+          onToggleFullscreen(stream.name, event, cellRef.current);
+        }
+      }}
+      onDblClick={(event) => {
+        if (!alwaysFullscreenOnTap
+            && shouldEnterFullscreenFromTap(event, true, zoom.isZoomed)) {
           onToggleFullscreen(stream.name, event, cellRef.current);
         }
       }}
@@ -725,7 +755,7 @@ export function HLSVideoCell({
         className="video-element"
         ref={videoRef}
         autoPlay
-        muted
+        muted={!audioEnabled}
         playsInline
         style={{
           width: '100%',
@@ -737,6 +767,8 @@ export function HLSVideoCell({
       />
 
       <LiveTileStatus stream={stream} isPlaying={isPlaying} isLoading={isLoading} error={error} />
+
+      <MobileTileContextMenu gestures={mobileGestures} audioEnabled={audioEnabled} />
 
       {/* Detection overlay component.
           Hidden while zoomed — the canvas is sized to the cell, not to the
@@ -1045,6 +1077,11 @@ export function HLSVideoCell({
           </svg>
         </button>
         <PictureInPictureButton videoRef={videoRef} disabled={!isPlaying} />
+        <TileAudioButton
+          enabled={audioEnabled}
+          onToggle={handleMobileAudioToggle}
+          disabled={!isPlaying}
+        />
         <button
           className="fullscreen-btn"
           title={t('live.toggleFullscreen')}

@@ -71,6 +71,7 @@ export function useCameraOrder(streams, _viewType) {
 
   // Refs used during a drag gesture to avoid stale closure issues
   const dragIndexRef = useRef(null);  // index in orderedStreams being dragged
+  const pointerDragRef = useRef(null);
   const orderRef = useRef(orderMap);  // latest order map
   orderRef.current = orderMap;
 
@@ -84,37 +85,37 @@ export function useCameraOrder(streams, _viewType) {
     setReorderMode(prev => !prev);
   }, []);
 
+  const enterReorderMode = useCallback(() => {
+    setReorderMode(true);
+  }, []);
+
   // ---- Drag handlers ----
 
   const handleDragStart = useCallback((index) => {
     dragIndexRef.current = index;
   }, []);
 
-  const handleDragOver = useCallback((e, index) => {
-    e.preventDefault();  // required to allow drop
+  const moveCameraToIndex = useCallback((index) => {
     const fromIndex = dragIndexRef.current;
     if (fromIndex === null || fromIndex === index) return;
 
-    // Reorder in-place
     setOrderMap(prev => {
-      // Build a names array from the current sorted order
       const current = applyOrder(streams, prev);
       const names = current.map(s => s.name);
-
-      // Splice
       const [moved] = names.splice(fromIndex, 1);
       names.splice(index, 0, moved);
-
-      // Rebuild map
       const newMap = {};
       names.forEach((name, i) => { newMap[name] = i; });
-
-      // Update the drag index so further enters work correctly
       dragIndexRef.current = index;
-
+      orderRef.current = newMap;
       return newMap;
     });
   }, [streams]);
+
+  const handleDragOver = useCallback((e, index) => {
+    e.preventDefault();  // required to allow drop
+    moveCameraToIndex(index);
+  }, [moveCameraToIndex]);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -128,6 +129,31 @@ export function useCameraOrder(streams, _viewType) {
     dragIndexRef.current = null;
   }, []);
 
+  const handleReorderPointerDown = useCallback((event, index) => {
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+    dragIndexRef.current = index;
+    pointerDragRef.current = event.pointerId;
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* optional */ }
+    event.preventDefault();
+  }, []);
+
+  const handleReorderPointerMove = useCallback((event) => {
+    if (pointerDragRef.current !== event.pointerId) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest?.('[data-camera-order-index]');
+    const nextIndex = Number.parseInt(target?.dataset?.cameraOrderIndex ?? '', 10);
+    if (Number.isInteger(nextIndex)) moveCameraToIndex(nextIndex);
+    event.preventDefault();
+  }, [moveCameraToIndex]);
+
+  const finishReorderPointer = useCallback((event) => {
+    if (pointerDragRef.current !== event.pointerId) return;
+    const current = applyOrder(streams, orderRef.current);
+    saveOrder(current.map(s => s.name));
+    pointerDragRef.current = null;
+    dragIndexRef.current = null;
+  }, [streams]);
+
   /** Clear persisted order and reset to server default */
   const resetOrder = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
@@ -139,11 +165,15 @@ export function useCameraOrder(streams, _viewType) {
     orderedStreams,
     reorderMode,
     toggleReorderMode,
+    enterReorderMode,
     resetOrder,
     handleDragStart,
     handleDragOver,
     handleDrop,
     handleDragEnd,
+    handleReorderPointerDown,
+    handleReorderPointerMove,
+    handleReorderPointerUp: finishReorderPointer,
+    handleReorderPointerCancel: finishReorderPointer,
   };
 }
-

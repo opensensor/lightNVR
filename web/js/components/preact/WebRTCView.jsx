@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 // Note: useCallback is still used by getStreamsToShow
 import { showStatusMessage } from './ToastContainer.jsx';
-import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream } from './FullscreenManager.jsx';
+import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream, getNativeFullscreenElement, requestNativeFullscreen, exitNativeFullscreen } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';
 import { PlaybackTransportCell } from './PlaybackTransportCell.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
@@ -18,6 +18,8 @@ import { buildLiveViewHref } from '../../utils/live-view-url.js';
 import { useCollectionMembership } from './fleet/collectionMembership.js';
 import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
 import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
+import { usePullToRefresh } from './usePullToRefresh.js';
+import { shouldShowGestureTip } from './mobileLiveGestures.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -55,6 +57,7 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
 
   // State for streams and layout
   const [streams, setStreams] = useState([]);
+  const [refreshGeneration, setRefreshGeneration] = useState(0);
 
   // Tag filter: '' means "All tags", or a single tag value to filter by
   const [tagFilter, setTagFilter] = useState(() => {
@@ -209,7 +212,8 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   const {
     data: streamsData,
     isLoading: isLoadingStreams,
-    error: streamsError
+    error: streamsError,
+    refetch: refetchStreams,
   } = useQuery(
     'streams',
     '/api/streams',
@@ -222,6 +226,18 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
       refetchInterval: 30000 // Re-poll stream list (and status) every 30 s
     }
   );
+
+  const refreshLiveGrid = useCallback(async () => {
+    try {
+      const result = await refetchStreams();
+      if (result?.error) throw result.error;
+      setRefreshGeneration((generation) => generation + 1);
+      showStatusMessage(t('live.streamsRefreshed'), 'success', 2000);
+    } catch (error) {
+      showStatusMessage(t('live.refreshStreamsFailed', { message: error.message }), 'error', 5000);
+    }
+  }, [refetchStreams, t]);
+  const pullToRefresh = usePullToRefresh(refreshLiveGrid, { disabled: isFullscreen });
 
   // Update loading state based on streams query status
   useEffect(() => {
@@ -456,11 +472,16 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
     orderedStreams,
     reorderMode,
     toggleReorderMode,
+    enterReorderMode,
     resetOrder,
     handleDragStart,
     handleDragOver,
     handleDrop,
     handleDragEnd,
+    handleReorderPointerDown,
+    handleReorderPointerMove,
+    handleReorderPointerUp,
+    handleReorderPointerCancel,
   } = useCameraOrder(tagFilteredStreams, 'webrtc');
 
   // Ensure current page is valid when orderedStreams or maxStreams changes
@@ -492,6 +513,10 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
    * @param {HTMLElement} cellElement - The video cell element
    */
   const toggleStreamFullscreen = (streamName, event, cellElement) => {
+    if (event?.currentTarget?.classList?.contains('fullscreen-btn')
+        && shouldShowGestureTip('double-tap-fullscreen', 3)) {
+      showStatusMessage(t('live.tipDoubleTapFullscreen'), 'info', 5000);
+    }
     // Prevent default button behavior
     if (event) {
       event.preventDefault();
@@ -510,15 +535,17 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
       return;
     }
 
-    if (!document.fullscreenElement) {
+    if (!getNativeFullscreenElement()) {
       console.log('Entering fullscreen mode for video cell');
-      cellElement.requestFullscreen().catch(err => {
+      requestNativeFullscreen(cellElement).catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
         showStatusMessage(`Could not enable fullscreen mode: ${err.message}`);
       });
     } else {
       console.log('Exiting fullscreen mode');
-      document.exitFullscreen();
+      exitNativeFullscreen().catch(err => {
+        console.error(`Error attempting to exit fullscreen: ${err.message}`);
+      });
     }
 
     // Prevent event propagation
@@ -747,7 +774,23 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
         </div>
       </div>
 
-      <div className="live-grid-frame flex flex-col space-y-4 h-full">
+      <div
+        className="live-grid-frame flex flex-col space-y-4 h-full"
+        {...pullToRefresh.bind}
+      >
+        {(pullToRefresh.distance > 0 || pullToRefresh.refreshing) && (
+          <div
+            className={`mobile-pull-refresh ${pullToRefresh.ready ? 'ready' : ''}`}
+            style={{ '--pull-distance': `${pullToRefresh.distance}px` }}
+            role="status"
+          >
+            {pullToRefresh.refreshing
+              ? t('live.refreshingStreams')
+              : pullToRefresh.ready
+                ? t('live.releaseToRefresh')
+                : t('live.pullToRefresh')}
+          </div>
+        )}
         <div
           id="video-grid"
           className="video-container"
@@ -801,13 +844,18 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
               const globalIndex = currentPage * maxStreams + index;
               return (
                 <div
-                  key={stream.name}
-                  style={{ position: 'relative' }}
+                  key={`${stream.name}:${refreshGeneration}`}
+                  data-camera-order-index={globalIndex}
+                  style={{ position: 'relative', touchAction: reorderMode ? 'none' : undefined }}
                   draggable={reorderMode}
                   onDragStart={reorderMode ? () => handleDragStart(globalIndex) : undefined}
                   onDragOver={reorderMode ? (e) => handleDragOver(e, globalIndex) : undefined}
                   onDrop={reorderMode ? handleDrop : undefined}
                   onDragEnd={reorderMode ? handleDragEnd : undefined}
+                  onPointerDown={reorderMode ? (event) => handleReorderPointerDown(event, globalIndex) : undefined}
+                  onPointerMove={reorderMode ? handleReorderPointerMove : undefined}
+                  onPointerUp={reorderMode ? handleReorderPointerUp : undefined}
+                  onPointerCancel={reorderMode ? handleReorderPointerCancel : undefined}
                 >
                   {reorderMode && (
                     <div
@@ -842,6 +890,8 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
                     showControls={showControls}
                     globalShowDetections={showDetections}
                     alwaysFullscreenOnTap={alwaysFullscreenOnTap && !reorderMode}
+                    onRequestReorder={orderedStreams.length > 1 ? enterReorderMode : undefined}
+                    mobileGesturesDisabled={reorderMode}
                   />
                 </div>
               );

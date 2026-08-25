@@ -4,7 +4,36 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 import { tinykeys } from 'tinykeys';
+import { fullscreenSwipeAction, shouldIgnoreTileGestureTarget } from './mobileLiveGestures.js';
+import {
+  PSEUDO_FULLSCREEN_EVENT,
+  exitNativeFullscreen,
+  getNativeFullscreenElement,
+  isPseudoFullscreenActive,
+  requestNativeFullscreen,
+} from './fullscreenApi.js';
 
+export { exitNativeFullscreen, getNativeFullscreenElement, requestNativeFullscreen } from './fullscreenApi.js';
+
+function onNextFullscreenChange(handler) {
+  let handled = false;
+  const wrapped = (event) => {
+    if (handled) return;
+    handled = true;
+    document.removeEventListener('fullscreenchange', wrapped);
+    document.removeEventListener('webkitfullscreenchange', wrapped);
+    document.removeEventListener(PSEUDO_FULLSCREEN_EVENT, wrapped);
+    handler(event);
+  };
+  document.addEventListener('fullscreenchange', wrapped);
+  document.addEventListener('webkitfullscreenchange', wrapped);
+  document.addEventListener(PSEUDO_FULLSCREEN_EVENT, wrapped);
+  return () => {
+    document.removeEventListener('fullscreenchange', wrapped);
+    document.removeEventListener('webkitfullscreenchange', wrapped);
+    document.removeEventListener(PSEUDO_FULLSCREEN_EVENT, wrapped);
+  };
+}
 
 /**
  * Show a brief grid-position overlay inside the newly-fullscreen cell so the
@@ -81,10 +110,10 @@ function showGridOverlay(nextCell, nextStreamName, streamsToShow, cols, rows) {
 
   // Auto-remove after 3 s; also clean up when fullscreen changes (nav or exit).
   const hideTimer = setTimeout(() => overlay.remove(), 3000);
-  document.addEventListener('fullscreenchange', () => {
+  onNextFullscreenChange(() => {
     clearTimeout(hideTimer);
     overlay.remove();
-  }, { once: true });
+  });
 }
 
 /**
@@ -100,7 +129,7 @@ function showGridOverlay(nextCell, nextStreamName, streamsToShow, cols, rows) {
  * requestFullscreen() on the next cell.  A guard flag prevents overlapping
  * transitions from rapid key presses.
  *
- * @param {'ArrowLeft'|'ArrowRight'|'ArrowUp'|'ArrowDown'} direction
+ * @param {'ArrowLeft'|'ArrowRight'|'ArrowUp'|'ArrowDown'|'Next'|'Previous'} direction
  * @param {Array}  streamsToShow - streams visible in the current page
  * @param {number} cols          - grid column count
  * @param {number} rows          - grid row count
@@ -112,7 +141,7 @@ let _fsNavBusy = false;
 function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
   if (_fsNavBusy) return; // drop key if transition already underway
 
-  const fullscreenEl = document.fullscreenElement;
+  const fullscreenEl = getNativeFullscreenElement();
   if (!fullscreenEl) return;
 
   // The fullscreen element is the .video-cell div (data-stream-name is on it)
@@ -130,7 +159,20 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
   const maxAttempts = cols * rows;
   let nextCell = null;
   let nextStreamName = null;
-  for (let i = 0; i < maxAttempts; i++) {
+  if ((direction === 'Next' || direction === 'Previous') && streamsToShow.length > 1) {
+    const step = direction === 'Next' ? 1 : -1;
+    const nextIndex = (currentIndex + step + streamsToShow.length) % streamsToShow.length;
+    const nextStream = streamsToShow[nextIndex];
+    const candidate = document.querySelector(
+      `[data-stream-name="${CSS.escape(nextStream.name)}"].video-cell`
+    );
+    if (candidate && candidate !== fullscreenEl) {
+      nextCell = candidate;
+      nextStreamName = nextStream.name;
+    }
+  }
+
+  for (let i = 0; !nextCell && direction !== 'Next' && direction !== 'Previous' && i < maxAttempts; i++) {
     if (direction === 'ArrowRight') {
       nextCol = (nextCol + 1) % cols;
     } else if (direction === 'ArrowLeft') {
@@ -165,24 +207,24 @@ function navigateFullscreenGrid(direction, streamsToShow, cols, rows) {
   // enter fullscreen for the next cell.  This prevents the "reverse-order exit"
   // bug caused by browsers that implement exitFullscreen() as a single-pop.
   const drainAndEnter = () => {
-    if (!document.fullscreenElement) {
+    if (!getNativeFullscreenElement()) {
       // Stack is fully empty — enter fullscreen for the next cell.
-      nextCell.requestFullscreen()
+      requestNativeFullscreen(nextCell)
         .then(() => showGridOverlay(nextCell, nextStreamName, streamsToShow, cols, rows))
         .catch(err => console.warn(`Grid nav fullscreen switch failed: ${err.message}`))
         .finally(() => { _fsNavBusy = false; });
     } else {
       // Stack still has entries — keep draining.
-      document.addEventListener('fullscreenchange', drainAndEnter, { once: true });
-      document.exitFullscreen().catch(err => {
+      onNextFullscreenChange(drainAndEnter);
+      exitNativeFullscreen().catch(err => {
         console.warn(`Grid nav fullscreen drain failed: ${err.message}`);
         _fsNavBusy = false;
       });
     }
   };
 
-  document.addEventListener('fullscreenchange', drainAndEnter, { once: true });
-  document.exitFullscreen().catch(err => {
+  onNextFullscreenChange(drainAndEnter);
+  exitNativeFullscreen().catch(err => {
     console.warn(`Grid nav fullscreen exit failed: ${err.message}`);
     _fsNavBusy = false;
   });
@@ -201,12 +243,18 @@ export function useFullscreenCellStream() {
 
   useEffect(() => {
     const update = () => {
-      const el = document.fullscreenElement;
+      const el = getNativeFullscreenElement();
       setFullscreenStream(el && el.dataset ? (el.dataset.streamName || null) : null);
     };
     update();
     document.addEventListener('fullscreenchange', update);
-    return () => document.removeEventListener('fullscreenchange', update);
+    document.addEventListener('webkitfullscreenchange', update);
+    document.addEventListener(PSEUDO_FULLSCREEN_EVENT, update);
+    return () => {
+      document.removeEventListener('fullscreenchange', update);
+      document.removeEventListener('webkitfullscreenchange', update);
+      document.removeEventListener(PSEUDO_FULLSCREEN_EVENT, update);
+    };
   }, []);
 
   return fullscreenStream;
@@ -236,8 +284,14 @@ export function useFullscreenGridNav(streamsToShow, cols, rows) {
     // event as defaultPrevented (tinykeys v3 skips events that are already
     // defaultPrevented, which caused arrow keys to be silently ignored).
     const handler = (e) => {
-      if (!document.fullscreenElement) return; // only act when a cell is in native fullscreen
+      if (!getNativeFullscreenElement()) return; // only act when a cell is in native fullscreen
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+      if (e.key === 'Escape' && isPseudoFullscreenActive()) {
+        e.preventDefault();
+        exitNativeFullscreen();
+        return;
+      }
 
       let direction;
       switch (e.key) {
@@ -253,8 +307,60 @@ export function useFullscreenGridNav(streamsToShow, cols, rows) {
       navigateFullscreenGrid(direction, streamsRef.current, colsRef.current, rowsRef.current);
     };
 
+    let touchStart = null;
+    const handleTouchStart = (event) => {
+      const fullscreenElement = getNativeFullscreenElement();
+      if (!fullscreenElement?.classList?.contains('video-cell') || event.touches?.length !== 1
+          || shouldIgnoreTileGestureTarget(event.target)) {
+        touchStart = null;
+        return;
+      }
+      touchStart = {
+        x: event.touches[0].clientX,
+        y: event.touches[0].clientY,
+        element: fullscreenElement,
+      };
+    };
+
+    const handleTouchEnd = (event) => {
+      if (!touchStart || event.changedTouches?.length !== 1) {
+        touchStart = null;
+        return;
+      }
+      const end = event.changedTouches[0];
+      const action = fullscreenSwipeAction(
+        end.clientX - touchStart.x,
+        end.clientY - touchStart.y,
+        touchStart.element.dataset?.zoomScale || 1
+      );
+      touchStart = null;
+      if (!action) return;
+
+      event.preventDefault();
+      if (action === 'exit') {
+        exitNativeFullscreen().catch((error) => console.warn(`Fullscreen swipe exit failed: ${error.message}`));
+        return;
+      }
+      navigateFullscreenGrid(
+        action === 'next' ? 'Next' : 'Previous',
+        streamsRef.current,
+        colsRef.current,
+        rowsRef.current
+      );
+    };
+
+    const handleTouchCancel = () => { touchStart = null; };
+
     window.addEventListener('keydown', handler, { capture: true });
-    return () => window.removeEventListener('keydown', handler, { capture: true });
+    window.addEventListener('touchstart', handleTouchStart, { capture: true, passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { capture: true, passive: false });
+    window.addEventListener('touchcancel', handleTouchCancel, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener('keydown', handler, { capture: true });
+      window.removeEventListener('touchstart', handleTouchStart, { capture: true });
+      window.removeEventListener('touchend', handleTouchEnd, { capture: true });
+      window.removeEventListener('touchcancel', handleTouchCancel, { capture: true });
+    };
   }, []); // empty deps: refs keep values current
 }
 

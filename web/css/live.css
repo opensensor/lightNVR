@@ -398,6 +398,131 @@
     }
 }
 
+/* Mobile tile chrome and gesture surfaces. Desktop controls keep their
+ * existing hover behavior; coarse pointers get a predictable four-second
+ * reveal window managed by MobileTileGestures. */
+.mobile-tile-menu-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+.mobile-tile-menu {
+    display: flex;
+    width: min(250px, 100%);
+    max-height: 100%;
+    flex-direction: column;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.96);
+    color: white;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-tile-menu button {
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    background: transparent;
+    color: inherit;
+    text-align: left;
+}
+
+.mobile-tile-menu button:last-child {
+    border-bottom: 0;
+}
+
+.mobile-tile-menu button:active,
+.mobile-tile-menu button:focus-visible {
+    background: rgba(255, 255, 255, 0.14);
+    outline: none;
+}
+
+.live-grid-frame {
+    position: relative;
+    overscroll-behavior-y: contain;
+}
+
+.mobile-pull-refresh {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 90;
+    min-height: 36px;
+    padding: 8px 14px;
+    transform: translate(-50%, calc(var(--pull-distance, 0px) - 100%));
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.9);
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+
+.mobile-pull-refresh.ready {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}
+
+.video-cell:fullscreen,
+.video-cell:-webkit-full-screen {
+    touch-action: none !important;
+}
+
+body.pseudo-native-fullscreen-active {
+    overflow: hidden !important;
+}
+
+.video-cell.pseudo-native-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    background: #000;
+    touch-action: none !important;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .video-cell .stream-controls,
+    .video-cell .video-controls,
+    .video-cell .stream-name-overlay,
+    .video-cell .stream-name-label,
+    .video-cell .live-tile-status,
+    .video-cell .mode-indicator {
+        transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .video-cell[data-mobile-chrome="hidden"] .stream-controls,
+    .video-cell[data-mobile-chrome="hidden"] .video-controls,
+    .video-cell[data-mobile-chrome="hidden"] .stream-name-overlay,
+    .video-cell[data-mobile-chrome="hidden"] .stream-name-label,
+    .video-cell[data-mobile-chrome="hidden"] .live-tile-status,
+    .video-cell[data-mobile-chrome="hidden"] .mode-indicator {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .video-cell[data-mobile-chrome="hidden"] .stream-controls,
+    .video-cell[data-mobile-chrome="hidden"] .video-controls {
+        transform: translateY(8px);
+    }
+}
+
 /* iOS specific adjustments */
 @supports (-webkit-touch-callout: none) {
     /* iOS-specific styles */

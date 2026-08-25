@@ -68,7 +68,7 @@ export function LiveTileStatus({ stream, isPlaying, isLoading, error }) {
   const healthLabel = t(`live.health.${health}`);
 
   return (
-    <div className="pointer-events-none absolute right-2 top-2 z-30 flex gap-1 rounded-full bg-black/65 p-1 shadow backdrop-blur-sm">
+    <div className="live-tile-status pointer-events-none absolute right-2 top-2 z-30 flex gap-1 rounded-full bg-black/65 p-1 shadow backdrop-blur-sm">
       <span
         className="flex h-9 w-9 items-center justify-center rounded-full sm:h-7 sm:w-7"
         role="img"
