@@ -72,6 +72,8 @@ function formatTimeAgo(ts) {
 
 function StreamCard({ stream, expanded, onToggle }) {
     const { t } = useI18n();
+    const observedFps = stream.observed_fps ?? stream.fps ?? 0;
+    const expectedFps = stream.expected_fps ?? stream.configured_fps ?? 30;
 
     return (
         <div class="bg-card text-card-foreground rounded-lg shadow p-4 cursor-pointer hover:shadow-md transition-shadow"
@@ -85,10 +87,15 @@ function StreamCard({ stream, expanded, onToggle }) {
             {/* Key metrics */}
             <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <div>
-                    <span class="opacity-60">{t('streamHealth.fps')}:</span>{' '}
+                    <span class="opacity-60" title={t('streamHealth.fpsHelp')}>
+                        {t('streamHealth.observedFps')}:
+                    </span>{' '}
                     <span class="text-foreground font-medium">
-                        {stream.fps?.toFixed(1) || '0'} / {stream.configured_fps || 30}
+                        {observedFps.toFixed(1)}
                     </span>
+                    <div class="opacity-60 mt-0.5">
+                        {t('streamHealth.expectedFps')}: {expectedFps} {t('streamHealth.fps')}
+                    </div>
                 </div>
                 <div>
                     <span class="opacity-60">{t('streamHealth.bitrate')}:</span>{' '}

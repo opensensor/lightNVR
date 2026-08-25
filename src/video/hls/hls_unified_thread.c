@@ -1408,7 +1408,8 @@ void *hls_unified_thread_func(void *arg) {
                 // Process packets based on stream type
                 if (pkt->stream_index == video_stream_idx) {
                     // Record frame for telemetry metrics
-                    metrics_record_frame(stream_name, pkt->size, true);
+                    metrics_record_frame_from_source(stream_name, pkt->size, true,
+                                                     METRICS_SOURCE_HLS);
 
                     // This is a video packet - process it
 

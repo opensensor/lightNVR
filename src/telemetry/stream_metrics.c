@@ -70,6 +70,32 @@ static int find_active_slot(const char *stream_name) {
     return -1;
 }
 
+metrics_counter_delta_t metrics_merge_source_deltas(
+    const uint64_t current_frames[METRICS_SOURCE_COUNT],
+    const uint64_t current_bytes[METRICS_SOURCE_COUNT],
+    uint64_t previous_frames[METRICS_SOURCE_COUNT],
+    uint64_t previous_bytes[METRICS_SOURCE_COUNT]) {
+    metrics_counter_delta_t merged = {0, 0};
+
+    for (int source = 0; source < METRICS_SOURCE_COUNT; source++) {
+        /* Treat a counter reset as a fresh source rather than underflowing. */
+        uint64_t frame_delta = current_frames[source] >= previous_frames[source]
+            ? current_frames[source] - previous_frames[source]
+            : current_frames[source];
+        uint64_t byte_delta = current_bytes[source] >= previous_bytes[source]
+            ? current_bytes[source] - previous_bytes[source]
+            : current_bytes[source];
+
+        if (frame_delta > merged.frames) merged.frames = frame_delta;
+        if (byte_delta > merged.bytes) merged.bytes = byte_delta;
+
+        previous_frames[source] = current_frames[source];
+        previous_bytes[source] = current_bytes[source];
+    }
+
+    return merged;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Sampler thread                                                     */
 /* ------------------------------------------------------------------ */
@@ -96,20 +122,35 @@ static void *sampler_thread_func(void *arg) {
             pthread_rwlock_wrlock(&m->lock);
 
             /* --- Compute FPS and bitrate from counter deltas --- */
-            uint64_t cur_frames = atomic_load(&m->frames_total);
-            uint64_t cur_bytes  = atomic_load(&m->bytes_received);
+            uint64_t cur_source_frames[METRICS_SOURCE_COUNT];
+            uint64_t cur_source_bytes[METRICS_SOURCE_COUNT];
+            for (int source = 0; source < METRICS_SOURCE_COUNT; source++) {
+                cur_source_frames[source] = atomic_load(&m->source_frames_total[source]);
+                cur_source_bytes[source] = atomic_load(&m->source_bytes_received[source]);
+            }
 
             if (m->prev_sample_time > 0) {
                 double dt = difftime(now, m->prev_sample_time);
                 if (dt > 0.0) {
-                    uint64_t df = cur_frames - m->prev_frames_total;
-                    uint64_t db = cur_bytes  - m->prev_bytes_received;
-                    m->current_fps         = 0.5 * m->current_fps + 0.5 * (double)df / dt;
-                    m->current_bitrate_bps = 0.5 * m->current_bitrate_bps + 0.5 * ((double)db * 8.0) / dt;
+                    metrics_counter_delta_t observed = metrics_merge_source_deltas(
+                        cur_source_frames, cur_source_bytes,
+                        m->prev_source_frames, m->prev_source_bytes);
+                    double observed_fps = (double)observed.frames / dt;
+                    double observed_bitrate = ((double)observed.bytes * 8.0) / dt;
+
+                    /* Publish logical stream totals, not totals across consumers. */
+                    atomic_fetch_add(&m->frames_total, observed.frames);
+                    atomic_fetch_add(&m->bytes_received, observed.bytes);
+
+                    /* Avoid a long half-rate ramp when the first sample arrives. */
+                    m->current_fps = m->current_fps > 0.0
+                        ? 0.5 * m->current_fps + 0.5 * observed_fps
+                        : observed_fps;
+                    m->current_bitrate_bps = m->current_bitrate_bps > 0.0
+                        ? 0.5 * m->current_bitrate_bps + 0.5 * observed_bitrate
+                        : observed_bitrate;
                 }
             }
-            m->prev_frames_total  = cur_frames;
-            m->prev_bytes_received = cur_bytes;
             m->prev_sample_time   = now;
 
             /* --- Update uptime --- */
@@ -237,9 +278,10 @@ static int metrics_get_slot(const char *stream_name) {
                 safe_strcpy(m->stream_name, stream_name, MAX_STREAM_NAME, 0);
                 m->active = true;
                 m->stream_start_time = time(NULL);
-                m->prev_sample_time = 0;
-                m->prev_frames_total = 0;
-                m->prev_bytes_received = 0;
+                m->prev_sample_time = m->stream_start_time;
+                m->current_fps = 0.0;
+                m->current_bitrate_bps = 0.0;
+                m->connection_latency_ms = 0.0;
                 m->ring_head = 0;
                 m->ring_count = 0;
                 m->last_segment_end_time = 0;
@@ -260,6 +302,12 @@ static int metrics_get_slot(const char *stream_name) {
                 atomic_store(&m->recording_bytes_written, 0);
                 atomic_store(&m->recording_segments_total, 0);
                 atomic_store(&m->recording_gaps_total, 0);
+                for (int source = 0; source < METRICS_SOURCE_COUNT; source++) {
+                    atomic_store(&m->source_frames_total[source], 0);
+                    atomic_store(&m->source_bytes_received[source], 0);
+                    m->prev_source_frames[source] = 0;
+                    m->prev_source_bytes[source] = 0;
+                }
                 log_info("Metrics slot %d allocated for stream '%s'", idx, stream_name);
                 pthread_rwlock_unlock(&m->lock);
                 return idx;
@@ -290,16 +338,26 @@ void metrics_release_slot(const char *stream_name) {
 }
 
 void metrics_record_frame(const char *stream_name, int bytes, bool is_video) {
+    metrics_record_frame_from_source(stream_name, bytes, is_video, METRICS_SOURCE_GENERIC);
+}
+
+void metrics_record_frame_from_source(const char *stream_name, int bytes,
+                                      bool is_video, metrics_frame_source_t source) {
     if (!g_initialized || !stream_name) return;
+    if (source < 0 || source >= METRICS_SOURCE_COUNT) {
+        source = METRICS_SOURCE_GENERIC;
+    }
 
     int idx = metrics_get_slot(stream_name);
     if (idx < 0) return;
 
     stream_metrics_t *m = &g_metrics[idx];
     if (is_video) {
-        atomic_fetch_add(&m->frames_total, 1);
+        atomic_fetch_add(&m->source_frames_total[source], 1);
     }
-    atomic_fetch_add(&m->bytes_received, (uint64_t)bytes);
+    if (bytes > 0) {
+        atomic_fetch_add(&m->source_bytes_received[source], (uint64_t)bytes);
+    }
     atomic_store(&m->last_frame_ts, (int_fast64_t)time(NULL));
 }
 

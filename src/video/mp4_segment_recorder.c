@@ -960,7 +960,8 @@ int record_segment(const char *rtsp_url, const char *output_file, int duration, 
         if (pkt->stream_index == video_stream_idx) {
             // Record frame for telemetry metrics
             if (segment_info_ptr->stream_name[0] != '\0') {
-                metrics_record_frame(segment_info_ptr->stream_name, pkt->size, true);
+                metrics_record_frame_from_source(segment_info_ptr->stream_name, pkt->size, true,
+                                                 METRICS_SOURCE_RECORDING);
             }
 
             // Check if this is a key frame

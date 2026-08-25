@@ -41,6 +41,26 @@ typedef enum {
 } stream_health_status_t;
 
 /**
+ * Pipeline reporting a frame observation.
+ *
+ * A single camera packet can pass through several LightNVR consumers at once.
+ * Keeping their counters separate lets the sampler select one observation per
+ * interval instead of reporting the sum as the camera's frame rate.
+ */
+typedef enum {
+    METRICS_SOURCE_GENERIC = 0,
+    METRICS_SOURCE_RECORDING,
+    METRICS_SOURCE_HLS,
+    METRICS_SOURCE_DETECTION,
+    METRICS_SOURCE_COUNT
+} metrics_frame_source_t;
+
+typedef struct {
+    uint64_t frames;
+    uint64_t bytes;
+} metrics_counter_delta_t;
+
+/**
  * Single ring buffer sample for sparkline rendering
  */
 typedef struct {
@@ -103,8 +123,10 @@ typedef struct {
     time_t stream_start_time;
 
     /* FPS/bitrate computation state (used internally by sampler) */
-    uint64_t prev_frames_total;
-    uint64_t prev_bytes_received;
+    atomic_uint_fast64_t source_frames_total[METRICS_SOURCE_COUNT];
+    atomic_uint_fast64_t source_bytes_received[METRICS_SOURCE_COUNT];
+    uint64_t prev_source_frames[METRICS_SOURCE_COUNT];
+    uint64_t prev_source_bytes[METRICS_SOURCE_COUNT];
     time_t prev_sample_time;
 
     /* Read-write lock for this slot */
@@ -139,6 +161,30 @@ void metrics_release_slot(const char *stream_name);
  * @param is_video    true for video frames, false for audio
  */
 void metrics_record_frame(const char *stream_name, int bytes, bool is_video);
+
+/**
+ * Record a frame observed by a specific pipeline consumer.
+ *
+ * Parallel consumers of the same stream are de-duplicated by the sampler, so
+ * recording plus HLS does not make a 30 FPS camera appear to run at 60 FPS.
+ *
+ * @param stream_name Stream name
+ * @param bytes       Packet size in bytes
+ * @param is_video    true for video frames, false for audio
+ * @param source      Pipeline reporting the observation
+ */
+void metrics_record_frame_from_source(const char *stream_name, int bytes,
+                                      bool is_video, metrics_frame_source_t source);
+
+/**
+ * Merge per-source counter deltas into one logical stream observation.
+ * Exposed for deterministic regression tests; the sampler uses this directly.
+ */
+metrics_counter_delta_t metrics_merge_source_deltas(
+    const uint64_t current_frames[METRICS_SOURCE_COUNT],
+    const uint64_t current_bytes[METRICS_SOURCE_COUNT],
+    uint64_t previous_frames[METRICS_SOURCE_COUNT],
+    uint64_t previous_bytes[METRICS_SOURCE_COUNT]);
 
 /**
  * Record a dropped frame

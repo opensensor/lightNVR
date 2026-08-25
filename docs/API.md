@@ -1662,7 +1662,14 @@ GET endpoint; arbitrary `strftime` templates are rejected with HTTP 400.
 GET /api/health
 ```
 
-Returns basic health status.
+Returns system health plus per-stream telemetry. Each stream reports
+`observed_fps`, measured by LightNVR, and `expected_fps`, sourced from the
+stream's detected/configured metadata. The legacy `fps` and `configured_fps`
+fields remain available with the same values for compatibility.
+
+When recording, HLS, and detection consume the same camera concurrently,
+their observations are de-duplicated; the reported FPS and bitrate describe
+the logical camera stream rather than the sum of LightNVR consumers.
 
 #### HLS Health Check
 

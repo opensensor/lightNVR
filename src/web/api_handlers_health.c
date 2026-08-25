@@ -261,6 +261,9 @@ void handle_get_health(const http_request_t *req, http_response_t *res) {
             case STREAM_HEALTH_DOWN:     status_str = "down";     break;
         }
         cJSON_AddStringToObject(sd, "status", status_str);
+        cJSON_AddNumberToObject(sd, "observed_fps", snaps[i].current_fps);
+        cJSON_AddNumberToObject(sd, "expected_fps", snaps[i].configured_fps);
+        /* Backward-compatible names for existing API consumers. */
         cJSON_AddNumberToObject(sd, "fps", snaps[i].current_fps);
         cJSON_AddNumberToObject(sd, "configured_fps", snaps[i].configured_fps);
         cJSON_AddNumberToObject(sd, "bitrate_bps", snaps[i].current_bitrate_bps);

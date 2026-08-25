@@ -2149,7 +2149,8 @@ stats_done:
         packet_buffer_add_packet(ctx->packet_buffer, pkt, now);
 
     // Record stream metrics
-    metrics_record_frame(ctx->stream_name, pkt->size, is_video);
+    metrics_record_frame_from_source(ctx->stream_name, pkt->size, is_video,
+                                     METRICS_SOURCE_DETECTION);
 
     // Detection stream path: runs on EVERY packet, no keyframe requirement.
     //
