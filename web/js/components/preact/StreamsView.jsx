@@ -167,6 +167,12 @@ export function StreamsView() {
     retryDelay: 1000
   });
 
+  const { data: clientConfig = {} } = useQuery(
+    ['client-config'],
+    '/api/client-config',
+    { timeout: 5000, retries: 1, retryDelay: 1000 }
+  );
+
   // Process the response to handle both array and object formats
   const streams = Array.isArray(streamsResponse) ? streamsResponse : (streamsResponse.streams || []);
 
@@ -222,6 +228,7 @@ export function StreamsView() {
     adminUrl: '',
     enabled: true,
     streamingEnabled: true,
+    playbackTransport: 'auto',
     width: 1280,
     height: 720,
     fps: 15,
@@ -576,6 +583,7 @@ export function StreamsView() {
       admin_url: currentStream.adminUrl || '',
       enabled: currentStream.enabled,
       streaming_enabled: currentStream.streamingEnabled,
+      playback_transport: currentStream.playbackTransport || 'auto',
       // width/height/fps are read-only (auto-detected). codec is user-settable
       // as a hint (select Auto / H.264 / H.265) — the detection thread still
       // overwrites it with the real value from the source if they differ,
@@ -694,6 +702,7 @@ export function StreamsView() {
       adminUrl: '',
       enabled: true,
       streamingEnabled: true,
+      playbackTransport: clientConfig.default_playback_transport || 'auto',
       width: 0,
       height: 0,
       fps: 0,
@@ -779,6 +788,7 @@ export function StreamsView() {
         // Map API fields to form fields
         adminUrl: stream.admin_url || '',
         streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
+        playbackTransport: stream.playback_transport || 'auto',
         isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
         // ONVIF credentials
         onvifUsername: stream.onvif_username || '',
@@ -869,6 +879,7 @@ export function StreamsView() {
         postBuffer: stream.post_detection_buffer || 30,
         adminUrl: stream.admin_url || '',
         streamingEnabled: stream.streaming_enabled !== undefined ? stream.streaming_enabled : true,
+        playbackTransport: stream.playback_transport || 'auto',
         isOnvif: stream.isOnvif !== undefined ? stream.isOnvif : false,
         onvifUsername: stream.onvif_username || '',
         onvifPassword: stream.onvif_password || '',
@@ -1611,6 +1622,11 @@ export function StreamsView() {
           onClose={closeModal}
           onRefreshModels={loadDetectionModels}
           hideCredentials={shouldHideCredentials}
+          transportOfferings={{
+            webrtc: !clientConfig.webrtc_disabled,
+            mse: !clientConfig.mse_disabled,
+            hls: !clientConfig.hls_disabled,
+          }}
         />
       )}
 

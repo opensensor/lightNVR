@@ -41,6 +41,11 @@ typedef enum {
     STREAM_PROTOCOL_UDP = 1
 } stream_protocol_t;
 
+#define PLAYBACK_TRANSPORT_MAX 24
+
+/** Return true when value is one of the persisted playback transport values. */
+bool playback_transport_is_valid(const char *value);
+
 // Stream configuration structure
 typedef struct {
     char camera_uuid[CAMERA_UUID_STRING_SIZE]; // Immutable fleet identity
@@ -149,6 +154,7 @@ typedef struct {
     // accuracy on the main H.264/H.265 RTSP stream.
     char detection_url[MAX_URL_LENGTH];
     char publish_url[MAX_URL_LENGTH];        // RTMP/RTMPS restream (publish) destination, e.g. YouTube Live ingest URL
+    char playback_transport[PLAYBACK_TRANSPORT_MAX]; // auto, *_only, or an ordered fallback pair
 } stream_config_t;
 
 // Size of recording schedule text buffer: 168 values + 167 commas + null terminator
@@ -215,6 +221,7 @@ typedef struct {
     int default_pre_detection_buffer;      // Default seconds to keep before detection (0-60)
     int default_post_detection_buffer;     // Default seconds to keep after detection (0-300)
     char default_buffer_strategy[32];      // Default buffer strategy: auto, go2rtc, hls_segment, memory_packet, mmap_hybrid
+    char default_playback_transport[PLAYBACK_TRANSPORT_MAX]; // Default for newly-created streams
     int detection_grace_period;            // Seconds after last detection before entering post-buffer (default: 2)
 
     // Database settings

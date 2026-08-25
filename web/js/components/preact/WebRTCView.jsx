@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';
-import { WebRTCVideoCell } from './WebRTCVideoCell.jsx';
+import { PlaybackTransportCell } from './PlaybackTransportCell.jsx';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
@@ -818,8 +818,14 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
                       {t('live.dragToReorder')}
                     </div>
                   )}
-                  <WebRTCVideoCell
+                  <PlaybackTransportCell
                     stream={stream}
+                    offerings={{
+                      webrtc: !isWebRTCDisabled,
+                      mse: !isMseDisabled,
+                      hls: !isHlsDisabled,
+                    }}
+                    defaultTransport="webrtc"
                     useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     fullscreenUpgraded={!isSingleStream && fullscreenCellStream === stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     onToggleFullscreen={toggleStreamFullscreen}

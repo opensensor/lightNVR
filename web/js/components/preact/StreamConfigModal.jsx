@@ -290,7 +290,8 @@ export function StreamConfigModal({
   onSave,
   onClose,
   onRefreshModels,
-  hideCredentials = false
+  hideCredentials = false,
+  transportOfferings = { webrtc: true, mse: true, hls: true }
 }) {
   const { t } = useI18n();
   const [showZoneEditor, setShowZoneEditor] = useState(false);
@@ -560,6 +561,41 @@ export function StreamConfigModal({
                     />
                     <span className="text-sm font-medium">{t('streamsConfig.liveViewEnabled')}</span>
                   </label>
+                </div>
+
+                <div>
+                  <label htmlFor="stream-playback-transport" className="block text-sm font-medium mb-2">
+                    {t('streamsConfig.playbackTransport')}
+                  </label>
+                  <select
+                    id="stream-playback-transport"
+                    name="playbackTransport"
+                    className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground"
+                    value={currentStream.playbackTransport || 'auto'}
+                    onChange={onInputChange}
+                  >
+                    <option value="auto">{t('playbackTransport.auto')}</option>
+                    <option value="webrtc_only" disabled={!transportOfferings.webrtc}>{t('playbackTransport.webrtcOnly')}</option>
+                    <option value="mse_only" disabled={!transportOfferings.mse}>{t('playbackTransport.mseOnly')}</option>
+                    <option value="hls_only" disabled={!transportOfferings.hls}>{t('playbackTransport.hlsOnly')}</option>
+                    <option value="webrtc_then_mse" disabled={!transportOfferings.webrtc || !transportOfferings.mse}>{t('playbackTransport.webrtcThenMse')}</option>
+                    <option value="mse_then_hls" disabled={!transportOfferings.mse || !transportOfferings.hls}>{t('playbackTransport.mseThenHls')}</option>
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t('streamsConfig.playbackTransportHelp')}
+                  </p>
+                  {(() => {
+                    const required = {
+                      webrtc_only: ['webrtc'], mse_only: ['mse'], hls_only: ['hls'],
+                      webrtc_then_mse: ['webrtc', 'mse'], mse_then_hls: ['mse', 'hls'],
+                    }[currentStream.playbackTransport] || [];
+                    const unavailable = required.filter((name) => !transportOfferings[name]);
+                    return unavailable.length > 0 ? (
+                      <p className="mt-1 text-xs text-warning" role="alert">
+                        {t('streamsConfig.playbackTransportUnavailable', { transports: unavailable.join(', ').toUpperCase() })}
+                      </p>
+                    ) : null;
+                  })()}
                 </div>
 
                 <div className="flex items-center">

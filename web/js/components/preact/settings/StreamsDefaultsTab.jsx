@@ -69,6 +69,31 @@ export function StreamsDefaultsTab({ settings, handleInputChange, canModifySetti
             </p>
           </div>
         </div>
+        <div data-setting-label={t('settings.defaultPlaybackTransport')} class="setting grid grid-cols-1 md:grid-cols-3 gap-4 items-center mb-4">
+          <label for="setting-default-playback-transport" class="font-medium">
+            {t('settings.defaultPlaybackTransport')}
+          </label>
+          <div class="col-span-2">
+            <select
+              id="setting-default-playback-transport"
+              name="defaultPlaybackTransport"
+              class="p-2 border border-input rounded bg-background text-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+              value={settings.defaultPlaybackTransport || 'auto'}
+              onChange={handleInputChange}
+              disabled={!canModifySettings}
+            >
+              <option value="auto">{t('playbackTransport.auto')}</option>
+              <option value="webrtc_only" disabled={settings.webrtcDisabled}>{t('playbackTransport.webrtcOnly')}</option>
+              <option value="mse_only" disabled={settings.mseDisabled}>{t('playbackTransport.mseOnly')}</option>
+              <option value="hls_only" disabled={settings.hlsDisabled}>{t('playbackTransport.hlsOnly')}</option>
+              <option value="webrtc_then_mse" disabled={settings.webrtcDisabled || settings.mseDisabled}>{t('playbackTransport.webrtcThenMse')}</option>
+              <option value="mse_then_hls" disabled={settings.mseDisabled || settings.hlsDisabled}>{t('playbackTransport.mseThenHls')}</option>
+            </select>
+            <p class="hint text-sm text-muted-foreground mt-1">
+              {t('settings.defaultPlaybackTransportHelp')}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1439,6 +1439,13 @@ static const char migration_0068_down[] =
     "DROP INDEX IF EXISTS idx_storage_migration_one_active_recording;"
     "DROP TABLE IF EXISTS storage_migration_jobs;";
 
+static const char migration_0069_up[] =
+    "ALTER TABLE streams ADD COLUMN playback_transport TEXT NOT NULL DEFAULT 'auto' "
+    "CHECK(playback_transport IN('auto','webrtc_only','mse_only','hls_only','webrtc_then_mse','mse_then_hls'));";
+
+static const char migration_0069_down[] =
+    "-- SQLite cannot drop a column while retaining compatibility with older builds.";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1916,8 +1923,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0068_down,
         .is_embedded = true
     },
+    {
+        .version = "0069",
+        .description = "add_stream_playback_transport",
+        .sql_up = migration_0069_up,
+        .sql_down = migration_0069_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 68
+#define EMBEDDED_MIGRATIONS_COUNT 69
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

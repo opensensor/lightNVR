@@ -604,6 +604,51 @@ void test_audio_voice_enhancement_in_get_all(void) {
 }
 
 /* ================================================================
+ * per-stream playback transport (UXD02 P1)
+ * ================================================================ */
+
+void test_playback_transport_defaults_to_auto(void) {
+    stream_config_t s = make_stream("cam_transport_default", true);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0,
+                          get_stream_config_by_name("cam_transport_default", &got));
+    TEST_ASSERT_EQUAL_STRING("auto", got.playback_transport);
+}
+
+void test_playback_transport_round_trip_and_update(void) {
+    stream_config_t s = make_stream("cam_transport_update", true);
+    safe_strcpy(s.playback_transport, "webrtc_then_mse",
+                sizeof(s.playback_transport), 0);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    stream_config_t got;
+    TEST_ASSERT_EQUAL_INT(0,
+                          get_stream_config_by_name("cam_transport_update", &got));
+    TEST_ASSERT_EQUAL_STRING("webrtc_then_mse", got.playback_transport);
+
+    safe_strcpy(got.playback_transport, "mse_only",
+                sizeof(got.playback_transport), 0);
+    TEST_ASSERT_EQUAL_INT(0,
+                          update_stream_config("cam_transport_update", &got));
+    TEST_ASSERT_EQUAL_INT(0,
+                          get_stream_config_by_name("cam_transport_update", &got));
+    TEST_ASSERT_EQUAL_STRING("mse_only", got.playback_transport);
+}
+
+void test_playback_transport_is_returned_by_get_all(void) {
+    stream_config_t s = make_stream("cam_transport_all", true);
+    safe_strcpy(s.playback_transport, "mse_then_hls",
+                sizeof(s.playback_transport), 0);
+    TEST_ASSERT_GREATER_THAN(0, add_stream_config(&s));
+
+    stream_config_t out[2];
+    TEST_ASSERT_EQUAL_INT(1, get_all_stream_configs(out, 2));
+    TEST_ASSERT_EQUAL_STRING("mse_then_hls", out[0].playback_transport);
+}
+
+/* ================================================================
  * main
  * ================================================================ */
 
@@ -647,6 +692,9 @@ int main(void) {
     RUN_TEST(test_audio_voice_enhancement_round_trip);
     RUN_TEST(test_audio_voice_enhancement_update);
     RUN_TEST(test_audio_voice_enhancement_in_get_all);
+    RUN_TEST(test_playback_transport_defaults_to_auto);
+    RUN_TEST(test_playback_transport_round_trip_and_update);
+    RUN_TEST(test_playback_transport_is_returned_by_get_all);
 
     int result = UNITY_END();
     shutdown_database();
