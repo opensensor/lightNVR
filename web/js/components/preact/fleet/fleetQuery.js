@@ -127,6 +127,66 @@ export function buildFleetQueryRequest(state, search = state.search) {
   return request;
 }
 
+function selectorRules(selector) {
+  if (selector?.version !== 1 || !selector.expression) return null;
+  if (selector.expression.op === 'all') return [];
+  return selector.expression.op === 'and' && Array.isArray(selector.expression.children)
+    ? selector.expression.children
+    : [selector.expression];
+}
+
+export function fleetStateFromSavedView(view, current = DEFAULT_FLEET_STATE) {
+  const rules = selectorRules(view?.selector);
+  if (!rules) return null;
+  const next = {
+    ...DEFAULT_FLEET_STATE,
+    pageSize: current.pageSize,
+    search: typeof view.search === 'string' ? view.search : '',
+    collectionUuid: typeof view.collection_uuid === 'string' ? view.collection_uuid : '',
+    sortBy: SORT_FIELDS.includes(view.sort_by) ? view.sort_by : DEFAULT_FLEET_STATE.sortBy,
+    sortOrder: view.sort_order === 'desc' ? 'desc' : 'asc',
+  };
+  for (const rule of rules) {
+    if (rule.op === 'location_subtree' && typeof rule.uuid === 'string') {
+      next.locationUuid = rule.uuid;
+    } else if (rule.op === 'tag_any' && Array.isArray(rule.uuids)) {
+      next.tagUuids = uniqueAllowed(rule.uuids);
+    } else if (rule.op === 'health' && Array.isArray(rule.values)) {
+      next.health = uniqueAllowed(rule.values, HEALTH_VALUES);
+    } else if (rule.op === 'enabled' && typeof rule.value === 'boolean') {
+      next.enabled = String(rule.value);
+    } else if (rule.op === 'recording_mode' && Array.isArray(rule.values)) {
+      next.recordingModes = uniqueAllowed(rule.values, RECORDING_VALUES);
+    } else {
+      return null;
+    }
+  }
+  return next;
+}
+
+export function buildFleetSavedViewPayload(name, isShared, state) {
+  return {
+    name: name.trim(),
+    is_shared: Boolean(isShared),
+    selector: buildFleetSelector(state),
+    search: state.search.trim(),
+    collection_uuid: state.collectionUuid || '',
+    columns: ['camera', 'health', 'location', 'tags', 'recording', 'actions'],
+    sort_by: state.sortBy,
+    sort_order: state.sortOrder,
+  };
+}
+
+export function fleetStateFromOperationalQueue(queue, current = DEFAULT_FLEET_STATE) {
+  return fleetStateFromSavedView({
+    selector: queue?.selector,
+    search: '',
+    collection_uuid: '',
+    sort_by: 'health',
+    sort_order: 'desc',
+  }, current);
+}
+
 export function toggleFleetValue(values, value) {
   return values.includes(value)
     ? values.filter((item) => item !== value)

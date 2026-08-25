@@ -1,6 +1,11 @@
 # PRD — Fleet Explorer & Bulk Operations
 
-**Status**: Draft
+**Status**: In progress — the authorized fleet query, paginated responsive table,
+search/facets, health summaries, location/tag/collection filters, selection, and
+direct bulk organization are present; P1 now includes durable personal/shared
+saved views and authorization-scoped offline/degraded queues. True 1,000-camera
+scalability acceptance, the remaining operational queues, durable jobs,
+templates/drift, and discovery staging remain
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 4 — fleet operator experience
@@ -121,8 +126,8 @@ Credentials remain outside templates and job result logs.
 
 | Phase | Scope |
 | --- | --- |
-| P0 | Fleet query API, virtualized table, location tree, facets |
-| P1 | Health queues and saved views |
+| P0 | Partially implemented: authorized query API, pagination/responsive table, search, health/location/tag/collection facets and filters; virtualization, full location-tree experience, and 1,000-camera acceptance remain |
+| P1 | Partially implemented: personal/shared saved selector views and offline/degraded queues with counts, oldest condition, severity, and remediation metadata; authentication-failure, recording-gap, storage-policy, drift, and discovery queues remain |
 | P2 | Durable bulk-job framework and safe initial actions |
 | P3 | Configuration templates, assignments, overrides, drift |
 | P4 | ONVIF discovery staging and batch claim integration |

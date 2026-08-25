@@ -41,6 +41,7 @@
 #include "web/api_handlers_locations.h"
 #include "web/api_handlers_camera_tags.h"
 #include "web/api_handlers_fleet.h"
+#include "web/api_handlers_fleet_views.h"
 #include "web/api_handlers_camera_collections.h"
 #include "web/api_handlers_authorization.h"
 #include "web/api_handlers_audit.h"
@@ -126,6 +127,16 @@ int register_all_libuv_handlers(http_server_handle_t server) {
                                  handle_post_fleet_camera_query);
     http_server_register_handler(server, "/api/fleet/selectors/preview", "POST",
                                  handle_post_fleet_selector_preview);
+    http_server_register_handler(server, "/api/fleet/views", "GET",
+                                 handle_get_fleet_saved_views);
+    http_server_register_handler(server, "/api/fleet/views", "POST",
+                                 handle_post_fleet_saved_view);
+    http_server_register_handler(server, "/api/fleet/views/#", "GET",
+                                 handle_get_fleet_saved_view);
+    http_server_register_handler(server, "/api/fleet/views/#", "PUT",
+                                 handle_put_fleet_saved_view);
+    http_server_register_handler(server, "/api/fleet/views/#", "DELETE",
+                                 handle_delete_fleet_saved_view);
 
     // Saved static and selector-backed smart camera collections
     http_server_register_handler(server, "/api/camera-collections", "GET",

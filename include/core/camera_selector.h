@@ -56,6 +56,7 @@ typedef struct {
     bool ptz_enabled;
     bool backchannel_enabled;
     fleet_health_state_t health;
+    int64_t health_changed_at;
     int64_t last_frame_ts;
     double current_fps;
     bool recording_active;
