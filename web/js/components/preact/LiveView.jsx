@@ -8,8 +8,7 @@ import { showStatusMessage } from './ToastContainer.jsx';
 import { useFullscreenManager, FullscreenManager, useFullscreenGridNav, useFullscreenCellStream } from './FullscreenManager.jsx';
 import { useQuery, useQueryClient } from '../../query-client.js';
 import { SnapshotManager, useSnapshotManager } from './SnapshotManager.jsx';
-import { HLSVideoCell } from './HLSVideoCell.jsx';
-import { MSEVideoCell } from './MSEVideoCell.jsx';
+import { PlaybackTransportCell } from './PlaybackTransportCell.jsx';
 import { isGo2rtcEnabled } from '../../utils/settings-utils.js';
 import { useCameraOrder } from './useCameraOrder.js';
 import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx';
@@ -793,7 +792,8 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
               <a href="streams.html" className="btn-primary">{t('live.configureStreams')}</a>
             </div>
           ) : (
-            // Render video cells using MSEVideoCell (when go2rtc enabled) or HLSVideoCell (fallback)
+            // Render each tile using its persisted playback profile. The active
+            // HLS/MSE tab remains the default for streams set to Auto.
             //
             // Connection concurrency is bounded by the shared stream
             // connection gate (see stream-connection-gate.js), which replaced
@@ -804,7 +804,6 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
             // offline cameras fail fast instead of pinning browser
             // connections while go2rtc dials their unreachable RTSP source.
             streamsToShow.map((stream, index) => {
-              const VideoCell = useMSE ? MSEVideoCell : HLSVideoCell;
               // Global index in orderedStreams for drag-and-drop (pagination offset)
               const globalIndex = currentPage * maxStreams + index;
 
@@ -836,8 +835,14 @@ export function LiveView({isWebRTCDisabled, isHlsDisabled = false, isMseDisabled
                       {t('live.dragToReorder')}
                     </div>
                   )}
-                  <VideoCell
+                  <PlaybackTransportCell
                     stream={stream}
+                    offerings={{
+                      webrtc: !isWebRTCDisabled,
+                      mse: !isMseDisabled,
+                      hls: !isHlsDisabled,
+                    }}
+                    defaultTransport={useMSE ? 'mse' : 'hls'}
                     useSubStream={!isSingleStream && fullscreenCellStream !== stream.name && (stream.has_sub_stream || !!stream.sub_stream_url)}
                     onToggleFullscreen={toggleStreamFullscreen}
                     streamId={stream.name}

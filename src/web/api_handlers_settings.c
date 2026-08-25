@@ -430,6 +430,9 @@ void handle_get_client_config(const http_request_t *req, http_response_t *res) {
     cJSON_AddBoolToObject(config, "webrtc_disabled", g_config.webrtc_disabled);
     cJSON_AddBoolToObject(config, "hls_disabled", g_config.hls_disabled);
     cJSON_AddBoolToObject(config, "mse_disabled", g_config.mse_disabled);
+    cJSON_AddStringToObject(config, "default_playback_transport",
+                            playback_transport_is_valid(g_config.default_playback_transport)
+                                ? g_config.default_playback_transport : "auto");
     cJSON_AddBoolToObject(config, "go2rtc_force_native_hls",
                           g_config.go2rtc_force_native_hls);
     cJSON_AddNumberToObject(config, "webrtc_connection_timeout_ms",
@@ -536,6 +539,9 @@ void handle_get_settings(const http_request_t *req, http_response_t *res) {
     cJSON_AddNumberToObject(settings, "pre_detection_buffer", g_config.default_pre_detection_buffer);
     cJSON_AddNumberToObject(settings, "post_detection_buffer", g_config.default_post_detection_buffer);
     cJSON_AddStringToObject(settings, "buffer_strategy", g_config.default_buffer_strategy);
+    cJSON_AddStringToObject(settings, "default_playback_transport",
+                            playback_transport_is_valid(g_config.default_playback_transport)
+                                ? g_config.default_playback_transport : "auto");
     cJSON_AddNumberToObject(settings, "detection_grace_period", g_config.detection_grace_period);
 
     // In-process LiteRT detection engine settings
@@ -1196,6 +1202,25 @@ void handle_post_settings(const http_request_t *req, http_response_t *res) {
         safe_strcpy(g_config.default_buffer_strategy, buffer_strategy->valuestring, sizeof(g_config.default_buffer_strategy), 0);
         settings_changed = true;
         log_info("Updated default_buffer_strategy: %s", g_config.default_buffer_strategy);
+    }
+
+    // Playback transport profile applied to newly-created streams.
+    cJSON *default_playback_transport =
+        cJSON_GetObjectItem(settings, "default_playback_transport");
+    if (default_playback_transport) {
+        if (!cJSON_IsString(default_playback_transport) ||
+            !playback_transport_is_valid(default_playback_transport->valuestring)) {
+            cJSON_Delete(settings);
+            http_response_set_json_error(res, 400,
+                "default_playback_transport is invalid");
+            return;
+        }
+        safe_strcpy(g_config.default_playback_transport,
+                    default_playback_transport->valuestring,
+                    sizeof(g_config.default_playback_transport), 0);
+        settings_changed = true;
+        log_info("Updated default_playback_transport: %s",
+                 g_config.default_playback_transport);
     }
 
     // Detection grace period

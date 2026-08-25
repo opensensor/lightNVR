@@ -76,7 +76,8 @@ export function WebRTCVideoCell({
   onToggleFullscreen,
   showLabels = true,
   showControls = true,
-  globalShowDetections = true
+  globalShowDetections = true,
+  onTransportFailure
 }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -1107,6 +1108,10 @@ export function WebRTCVideoCell({
   // pending. Clicking the button manually cancels the timer (handleRetry
   // clears `error` which unmounts the effect).
   const autoRetryCountdown = useAutoRetry(error, handleRetry);
+
+  useEffect(() => {
+    if (error && onTransportFailure) onTransportFailure(error);
+  }, [error, onTransportFailure]);
 
   /**
    * Pause stream for privacy — sets privacy_mode=true without touching the enabled flag.

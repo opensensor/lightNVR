@@ -237,6 +237,9 @@ void handle_get_streams(const http_request_t *req, http_response_t *res) {
         cJSON_AddStringToObject(stream_obj, "url", safe_url);
         cJSON_AddBoolToObject(stream_obj, "enabled", db_streams[i].enabled);
         cJSON_AddBoolToObject(stream_obj, "streaming_enabled", db_streams[i].streaming_enabled);
+        cJSON_AddStringToObject(stream_obj, "playback_transport",
+                                playback_transport_is_valid(db_streams[i].playback_transport)
+                                    ? db_streams[i].playback_transport : "auto");
         cJSON_AddNumberToObject(stream_obj, "width", db_streams[i].width);
         cJSON_AddNumberToObject(stream_obj, "height", db_streams[i].height);
         cJSON_AddNumberToObject(stream_obj, "fps", db_streams[i].fps);
@@ -448,6 +451,9 @@ void handle_get_stream(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "url", safe_url);
     cJSON_AddBoolToObject(stream_obj, "enabled", config.enabled);
     cJSON_AddBoolToObject(stream_obj, "streaming_enabled", config.streaming_enabled);
+    cJSON_AddStringToObject(stream_obj, "playback_transport",
+                            playback_transport_is_valid(config.playback_transport)
+                                ? config.playback_transport : "auto");
     cJSON_AddNumberToObject(stream_obj, "width", config.width);
     cJSON_AddNumberToObject(stream_obj, "height", config.height);
     cJSON_AddNumberToObject(stream_obj, "fps", config.fps);
@@ -651,6 +657,9 @@ void handle_get_stream_full(const http_request_t *req, http_response_t *res) {
     cJSON_AddStringToObject(stream_obj, "url", safe_url_full);
     cJSON_AddBoolToObject(stream_obj, "enabled", config.enabled);
     cJSON_AddBoolToObject(stream_obj, "streaming_enabled", config.streaming_enabled);
+    cJSON_AddStringToObject(stream_obj, "playback_transport",
+                            playback_transport_is_valid(config.playback_transport)
+                                ? config.playback_transport : "auto");
     cJSON_AddNumberToObject(stream_obj, "width", config.width);
     cJSON_AddNumberToObject(stream_obj, "height", config.height);
     cJSON_AddNumberToObject(stream_obj, "fps", config.fps);

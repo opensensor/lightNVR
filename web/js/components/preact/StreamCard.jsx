@@ -60,10 +60,8 @@ export function collectRecordingModes(stream, t) {
  * Map an RTSP-transport numeric protocol field to a label.
  *   0 → TCP, 1 → UDP, everything else → AUTO
  *
- * The Streams list exposes this per-stream transport preference; it's
- * the closest thing to a "transport" surface at the list level (live
- * playback transports like HLS/MSE/WebRTC are chosen per-viewer, not
- * per-stream, so they're not available here).
+ * This is the camera-source transport. Browser playback (HLS/MSE/WebRTC)
+ * is stored separately in stream.playback_transport and edited in the modal.
  */
 function protocolLabel(stream) {
   const p = stream.protocol;

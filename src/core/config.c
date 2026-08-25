@@ -23,6 +23,18 @@
 // Global configuration variable
 config_t g_config;
 
+bool playback_transport_is_valid(const char *value) {
+    if (!value) return false;
+    static const char *const valid_values[] = {
+        "auto", "webrtc_only", "mse_only", "hls_only",
+        "webrtc_then_mse", "mse_then_hls"
+    };
+    for (size_t i = 0; i < sizeof(valid_values) / sizeof(valid_values[0]); i++) {
+        if (strcmp(value, valid_values[i]) == 0) return true;
+    }
+    return false;
+}
+
 /**
  * Safe integer conversion from string using strtol.
  * Returns the converted value, or fallback on failure (empty string, non-numeric, overflow).
@@ -359,6 +371,8 @@ void load_default_config(config_t *config) {
     config->default_post_detection_buffer = 10; // 10 seconds after detection
     config->detection_grace_period = 2;         // 2 seconds grace before post-buffer
     safe_strcpy(config->default_buffer_strategy, "auto", 32, 0); // Auto-select buffer strategy
+    safe_strcpy(config->default_playback_transport, "auto",
+                sizeof(config->default_playback_transport), 0);
 
     // In-process LiteRT detection engine defaults
     config->detection_engine.enabled = false;
@@ -844,6 +858,15 @@ static int config_ini_handler(void* user, const char* section, const char* name,
             config->hls_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
         } else if (strcmp(name, "mse_disabled") == 0) {
             config->mse_disabled = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+        } else if (strcmp(name, "default_playback_transport") == 0) {
+            if (playback_transport_is_valid(value)) {
+                safe_strcpy(config->default_playback_transport, value,
+                            sizeof(config->default_playback_transport), 0);
+            } else {
+                log_warn("Unknown default playback transport '%s'; using auto", value);
+                safe_strcpy(config->default_playback_transport, "auto",
+                            sizeof(config->default_playback_transport), 0);
+            }
         } else if (strcmp(name, "auth_timeout_hours") == 0) {
             config->auth_timeout_hours = safe_atoi(value, 0);
             if (config->auth_timeout_hours < 1) {
@@ -1730,6 +1753,8 @@ int save_config(const config_t *config, const char *path) {
     fprintf(file, "webrtc_disabled = %s  ; Hide WebRTC view on dashboard\n", config->webrtc_disabled ? "true" : "false");
     fprintf(file, "hls_disabled = %s     ; Hide HLS view on dashboard\n", config->hls_disabled ? "true" : "false");
     fprintf(file, "mse_disabled = %s     ; Hide MSE view on dashboard\n", config->mse_disabled ? "true" : "false");
+    fprintf(file, "default_playback_transport = %s  ; Default transport profile for new streams\n",
+            config->default_playback_transport);
     fprintf(file, "auth_timeout_hours = %d  ; Session idle timeout in hours (default: 24)\n", config->auth_timeout_hours);
     fprintf(file, "auth_absolute_timeout_hours = %d  ; Absolute session lifetime in hours (default: 168)\n", config->auth_absolute_timeout_hours);
     fprintf(file, "trusted_device_days = %d  ; Remember trusted device for N days (0 disables, default: 30)\n", config->trusted_device_days);

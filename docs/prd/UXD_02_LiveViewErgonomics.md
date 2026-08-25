@@ -1,10 +1,16 @@
 # PRD — Live View Ergonomics
 
-**Status**: Draft
+**Status**: In progress — P1 per-stream playback transport and P2 shared
+cross-renderer camera order are implemented. Recording-mode clarity,
+double-click fullscreen, and digital zoom are also present; the remaining
+gesture set, glyph/PiP polish, fullscreen preferences, and acceptance
+reconciliation remain
 **Created**: 2026-04-22
 **Owner**: TBD
 **Driving signal**: [#326 (CDx4f3kCAf3Y)](https://github.com/opensensor/lightNVR/issues/326), [#397 (AndyIsHereBoi)](https://github.com/opensensor/lightNVR/issues/397), and the Live View / mobile items from [#399](https://github.com/opensensor/lightNVR/issues/399).
-**Scope**: `web/js/components/preact/LiveView.jsx`, `HLSVideoCell.jsx`, `MSEVideoCell.jsx`, `GridPicker.jsx`, `FullscreenManager.jsx`, plus a new per-stream "Playback profile" model.
+**Scope**: `web/js/components/preact/LiveView.jsx`, `PlaybackTransportCell.jsx`,
+`HLSVideoCell.jsx`, `MSEVideoCell.jsx`, `WebRTCVideoCell.jsx`, `GridPicker.jsx`,
+`FullscreenManager.jsx`, and the per-stream playback transport model.
 
 ---
 
@@ -101,6 +107,8 @@ Both glyphs live in a 28×28 pill on desktop, full-size 36×36 on mobile.
 
 ## 5. Data model changes
 
+Implemented in migration `0069_add_stream_playback_transport.sql`:
+
 ```
 ALTER TABLE streams
   ADD COLUMN playback_transport TEXT NOT NULL DEFAULT 'auto'
@@ -109,11 +117,12 @@ ALTER TABLE streams
        'webrtc_then_mse','mse_then_hls'));
 ```
 
-`system_settings` adds:
-- `transport_webrtc_offered` (bool, default true)
-- `transport_mse_offered` (bool, default true)
-- `transport_hls_offered` (bool, default true)
-- `live_view_grid_layout_v2` (JSON, single source of truth)
+The existing `[web]` configuration flags `webrtc_disabled`, `mse_disabled`,
+and `hls_disabled` gate the globally offered transports. The implemented
+`[web] default_playback_transport` setting supplies the initial profile for new
+streams. Shared grid order currently persists client-side through the common
+camera-order store rather than a `system_settings.live_view_grid_layout_v2`
+database key.
 
 Migration: run-once on boot (similar to T14 from the go2rtc work) — merges legacy `grid_layout_webrtc/mse/hls` keys into the new field, last-write-wins.
 
@@ -121,10 +130,10 @@ Migration: run-once on boot (similar to T14 from the go2rtc work) — merges leg
 
 | Phase | Scope | Estimate |
 |---|---|---|
-| P0 — Glyph badges + fullscreen polish | Pure-frontend; no schema work | 2 days |
-| P1 — Per-stream transport (#397) | Schema + migration + UI + LiveView routing | 3–5 days |
-| P2 — Unified grid model (#326) | Migration + LiveView refactor | 3 days |
-| P3 — Mobile gestures | Add gesture library, instrumentation for the tip toasts | 4–5 days |
+| P0 — Glyph badges + fullscreen polish | Partially implemented: recording-mode clarity, double-click fullscreen, and digital zoom are present; the specified glyph/PiP/kiosk preference acceptance remains | 2 days |
+| P1 — Per-stream transport (#397) | Implemented: migration 0069, stream API and defaults UI, global offering gates, mixed per-tile routing, ordered runtime fallback, fallback badges, and unavailable-profile warnings | 3–5 days |
+| P2 — Unified grid model (#326) | Implemented: renderers share one persisted camera order | 3 days |
+| P3 — Mobile gestures | Partially implemented: pinch zoom exists; tap chrome, long-press menu, pull refresh, fullscreen cycling/exit, and discovery tips remain | 4–5 days |
 
 ## 7. Acceptance criteria
 

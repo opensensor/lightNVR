@@ -39,7 +39,8 @@ export function HLSVideoCell({
   onToggleFullscreen,
   showLabels = true,
   showControls = true,
-  globalShowDetections = true
+  globalShowDetections = true,
+  onTransportFailure
 }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -605,6 +606,10 @@ export function HLSVideoCell({
 
   // Auto-retry while the error overlay is visible — see WebRTCVideoCell for rationale.
   const autoRetryCountdown = useAutoRetry(error, handleRetry);
+
+  useEffect(() => {
+    if (error && onTransportFailure) onTransportFailure(error);
+  }, [error, onTransportFailure]);
 
   /**
    * Pause stream for privacy — sets privacy_mode=true without touching the enabled flag.

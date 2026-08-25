@@ -572,6 +572,10 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     config.record_audio = true; // Default to true for new streams
     config.retention_days = -1;
     config.detection_retention_days = -1;
+    safe_strcpy(config.playback_transport,
+                playback_transport_is_valid(g_config.default_playback_transport)
+                    ? g_config.default_playback_transport : "auto",
+                sizeof(config.playback_transport), 0);
     memset(config.recording_schedule, 1, sizeof(config.recording_schedule));
     memset(config.detection_recording_schedule, 1,
            sizeof(config.detection_recording_schedule));
@@ -585,6 +589,20 @@ void handle_post_stream(const http_request_t *req, http_response_t *res) {
     cJSON *streaming_enabled = cJSON_GetObjectItem(stream_json, "streaming_enabled");
     if (streaming_enabled && cJSON_IsBool(streaming_enabled)) {
         config.streaming_enabled = cJSON_IsTrue(streaming_enabled);
+    }
+
+    cJSON *playback_transport =
+        cJSON_GetObjectItem(stream_json, "playback_transport");
+    if (playback_transport) {
+        if (!cJSON_IsString(playback_transport) ||
+            !playback_transport_is_valid(playback_transport->valuestring)) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400,
+                "playback_transport is invalid");
+            return;
+        }
+        safe_strcpy(config.playback_transport, playback_transport->valuestring,
+                    sizeof(config.playback_transport), 0);
     }
 
     // Note: width, height, fps, and codec are auto-detected from the stream
@@ -1226,6 +1244,25 @@ void handle_put_stream(const http_request_t *req, http_response_t *res) {
         config_changed = true;
         has_streaming_enabled = true;
         // streaming_enabled can be toggled dynamically, don't set non_dynamic_config_changed
+    }
+
+    cJSON *playback_transport =
+        cJSON_GetObjectItem(stream_json, "playback_transport");
+    if (playback_transport) {
+        if (!cJSON_IsString(playback_transport) ||
+            !playback_transport_is_valid(playback_transport->valuestring)) {
+            cJSON_Delete(stream_json);
+            http_response_set_json_error(res, 400,
+                "playback_transport is invalid");
+            return;
+        }
+        if (strcmp(config.playback_transport,
+                   playback_transport->valuestring) != 0) {
+            safe_strcpy(config.playback_transport,
+                        playback_transport->valuestring,
+                        sizeof(config.playback_transport), 0);
+            config_changed = true;
+        }
     }
 
     // Note: width, height, fps, and codec are auto-detected from the stream
