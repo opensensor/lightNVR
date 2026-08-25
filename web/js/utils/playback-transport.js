@@ -38,3 +38,27 @@ export function isPlaybackFallback(plan, activeTransport, runtimeFallbackIndex =
   if (runtimeFallbackIndex > 0) return true;
   return plan.profile !== 'auto' && plan.requested.indexOf(activeTransport) > 0;
 }
+
+const SOURCE_UNAVAILABLE_PATTERN = /(?:dial tcp|no route to host|host is unreachable|network is unreachable|connection refused|connect:|i\/o timeout)/i;
+const TERMINAL_STREAM_STATUSES = new Set(['error', 'failed', 'stopped', 'offline']);
+
+/**
+ * Runtime transport fallback is useful for browser/codec/transport failures,
+ * but cannot recover a camera source that is itself offline. In that case the
+ * active player should retain its normal backoff retry instead of probing each
+ * renderer in the transport chain.
+ */
+export function shouldFallbackPlaybackTransport(
+  failure,
+  { streamStatus, sourceUnavailableMessage } = {}
+) {
+  const status = String(streamStatus || '').trim().toLowerCase();
+  if (TERMINAL_STREAM_STATUSES.has(status)) return false;
+
+  if (failure?.kind === 'source-unavailable') return false;
+
+  const message = String(failure?.message || failure || '').trim();
+  if (!message) return false;
+  if (sourceUnavailableMessage && message === sourceUnavailableMessage) return false;
+  return !SOURCE_UNAVAILABLE_PATTERN.test(message);
+}

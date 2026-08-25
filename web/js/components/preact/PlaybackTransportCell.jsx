@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n.js';
 import {
   buildPlaybackTransportPlan,
   isPlaybackFallback,
+  shouldFallbackPlaybackTransport,
 } from '../../utils/playback-transport.js';
 
 const CELLS = {
@@ -47,11 +48,16 @@ export function PlaybackTransportCell({
 
   const activeTransport = plan.available[transportIndex];
   const hasRuntimeFallback = transportIndex + 1 < plan.available.length;
-  const handleTransportFailure = useCallback(() => {
-    if (hasRuntimeFallback) {
+  const sourceUnavailableMessage = t('live.cannotConnectToSource');
+  const handleTransportFailure = useCallback((failure) => {
+    if (hasRuntimeFallback && shouldFallbackPlaybackTransport(failure, {
+      streamStatus: stream?.status || stream?.state,
+      sourceUnavailableMessage,
+    })) {
       setTransportIndex((current) => Math.min(current + 1, plan.available.length - 1));
     }
-  }, [hasRuntimeFallback, plan.available.length]);
+  }, [hasRuntimeFallback, plan.available.length, sourceUnavailableMessage,
+    stream?.status, stream?.state]);
 
   if (!activeTransport) {
     const unavailable = plan.unavailable[0] || plan.requested[0];
