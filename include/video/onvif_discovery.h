@@ -9,6 +9,7 @@
 
 // ONVIF device information structure
 typedef struct {
+    char inventory_uuid[CAMERA_UUID_STRING_SIZE];
     char endpoint[MAX_URL_LENGTH];
     char device_service[MAX_URL_LENGTH];
     char media_service[MAX_URL_LENGTH];
@@ -22,6 +23,12 @@ typedef struct {
     char ip_address[64];
     char mac_address[32];
     time_t discovery_time;
+    time_t first_seen_at;
+    time_t last_seen_at;
+    char last_scan_network[64];
+    char claim_state[16];
+    char claimed_camera_uuid[CAMERA_UUID_STRING_SIZE];
+    bool duplicate_suspected;
     bool online;
 } onvif_device_info_t;
 

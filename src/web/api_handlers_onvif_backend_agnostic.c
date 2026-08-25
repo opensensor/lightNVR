@@ -14,10 +14,38 @@
 #include "core/logger.h"
 #include "core/config.h"
 #include "core/url_utils.h"
+#include "database/db_onvif_discovery_inventory.h"
 #include "utils/strings.h"
 #include "video/onvif_discovery.h"
 #include "video/stream_manager.h"
 #include <cjson/cJSON.h>
+
+static void add_inventory_metadata(cJSON *json,
+                                   const onvif_device_info_t *device) {
+    cJSON_AddStringToObject(json, "inventory_uuid", device->inventory_uuid);
+    cJSON_AddNumberToObject(json, "first_seen_at",
+                            (double)device->first_seen_at);
+    cJSON_AddNumberToObject(json, "last_seen_at",
+                            (double)device->last_seen_at);
+    cJSON_AddStringToObject(json, "last_scan_network",
+                            device->last_scan_network);
+    cJSON_AddStringToObject(json, "claim_state",
+                            device->claim_state[0]
+                                ? device->claim_state : "unclaimed");
+    cJSON_AddStringToObject(json, "claimed_camera_uuid",
+                            device->claimed_camera_uuid);
+    cJSON_AddBoolToObject(json, "duplicate_suspected",
+                          device->duplicate_suspected);
+    cJSON *addresses_json = cJSON_AddArrayToObject(json, "addresses");
+    if (!addresses_json || !device->inventory_uuid[0]) return;
+    char addresses[ONVIF_DISCOVERY_ADDRESS_MAX][MAX_URL_LENGTH];
+    int count = db_onvif_inventory_list_addresses(
+        device->inventory_uuid, addresses, ONVIF_DISCOVERY_ADDRESS_MAX);
+    for (int index = 0; index < count; index++) {
+        cJSON_AddItemToArray(addresses_json,
+                             cJSON_CreateString(addresses[index]));
+    }
+}
 
 /**
  * @brief Backend-agnostic handler for GET /api/onvif/discovery/status
@@ -115,6 +143,7 @@ void handle_get_discovered_onvif_devices(const http_request_t *req, http_respons
         cJSON_AddStringToObject(device, "mac_address", devices[i].mac_address);
         cJSON_AddNumberToObject(device, "discovery_time", (double)devices[i].discovery_time);
         cJSON_AddBoolToObject(device, "online", devices[i].online);
+        add_inventory_metadata(device, &devices[i]);
 
         cJSON_AddItemToArray(devices_array, device);
     }
@@ -224,6 +253,7 @@ void handle_post_discover_onvif_devices(const http_request_t *req, http_response
         cJSON_AddStringToObject(device, "mac_address", devices[i].mac_address);
         cJSON_AddNumberToObject(device, "discovery_time", (double)devices[i].discovery_time);
         cJSON_AddBoolToObject(device, "online", devices[i].online);
+        add_inventory_metadata(device, &devices[i]);
 
         cJSON_AddItemToArray(devices_array, device);
     }
@@ -478,6 +508,43 @@ void handle_post_add_onvif_device_as_stream(const http_request_t *req, http_resp
     free(json_str);
 
     log_info("Successfully handled POST /api/onvif/device/add request");
+}
+
+void handle_post_claim_onvif_device(const http_request_t *req,
+                                    http_response_t *res) {
+    if (!httpd_authorize_global_action(req, res, AUTHZ_CAMERA_CONFIGURE)) return;
+    cJSON *root = httpd_parse_json_body(req);
+    if (!root) {
+        http_response_set_json_error(res, 400, "Invalid JSON request");
+        return;
+    }
+    const cJSON *inventory_uuid = cJSON_GetObjectItem(root, "inventory_uuid");
+    const cJSON *stream_name = cJSON_GetObjectItem(root, "stream_name");
+    if (!cJSON_IsString(inventory_uuid) || !inventory_uuid->valuestring ||
+        !cJSON_IsString(stream_name) || !stream_name->valuestring) {
+        cJSON_Delete(root);
+        http_response_set_json_error(
+            res, 400, "inventory_uuid and stream_name are required");
+        return;
+    }
+    db_onvif_inventory_result_t result =
+        db_onvif_inventory_claim_stream(inventory_uuid->valuestring,
+                                        stream_name->valuestring);
+    cJSON_Delete(root);
+    if (result == DB_ONVIF_INVENTORY_INVALID) {
+        http_response_set_json_error(res, 400, "Invalid claim request");
+        return;
+    }
+    if (result == DB_ONVIF_INVENTORY_NOT_FOUND) {
+        http_response_set_json_error(
+            res, 404, "Inventory device or stream not found");
+        return;
+    }
+    if (result != DB_ONVIF_INVENTORY_OK) {
+        http_response_set_json_error(res, 500, "Failed to claim ONVIF device");
+        return;
+    }
+    http_response_set_json(res, 200, "{\"success\":true}");
 }
 
 /**

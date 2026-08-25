@@ -98,9 +98,35 @@ int parse_device_info(const char *response, onvif_device_info_t *device_info) {
     const char *url = strtok(xaddrs, " \t\n\r");
     if (url) {
         safe_strcpy(device_info->device_service, url, MAX_URL_LENGTH, 0);
-        
-        // Also store as endpoint
-        safe_strcpy(device_info->endpoint, url, MAX_URL_LENGTH, 0);
+
+        /*
+         * EndpointReference/Address is normally a stable URN UUID and remains
+         * unchanged when DHCP moves the device. Preserve it as the discovery
+         * identity while keeping XAddr as the routable device service. Some
+         * minimal responders omit EndpointReference, so retain XAddr as the
+         * conservative fallback.
+         */
+        const char *endpoint_reference = strstr(response, "EndpointReference");
+        const char *address_tag = endpoint_reference
+            ? strstr(endpoint_reference, "Address>") : NULL;
+        char endpoint_reference_address[MAX_URL_LENGTH] = {0};
+        if (address_tag) {
+            const char *address_start = strchr(address_tag, '>');
+            if (address_start) {
+                address_start++;
+                const char *address_end = strstr(address_start, "</");
+                if (address_end) {
+                    copy_trimmed_value(endpoint_reference_address,
+                                       sizeof(endpoint_reference_address),
+                                       address_start,
+                                       (size_t)(address_end - address_start));
+                }
+            }
+        }
+        safe_strcpy(device_info->endpoint,
+                    endpoint_reference_address[0]
+                        ? endpoint_reference_address : url,
+                    MAX_URL_LENGTH, 0);
         
         log_debug("Found device service URL: %s", device_info->device_service);
     } else {
