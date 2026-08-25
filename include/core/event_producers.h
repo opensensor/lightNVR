@@ -1,6 +1,7 @@
 #ifndef LIGHTNVR_CORE_EVENT_PRODUCERS_H
 #define LIGHTNVR_CORE_EVENT_PRODUCERS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
@@ -53,5 +54,13 @@ int event_producer_publish_storage_pressure(
 int event_producer_publish_storage_recovered(
     const char *previous_level, double used_percent, uint64_t free_bytes,
     time_t occurred_at, char *error, size_t error_size);
+
+int event_producer_publish_storage_target_unavailable(
+    const char *target_uuid, const char *previous_state, const char *reason,
+    bool is_default, time_t occurred_at, char *error, size_t error_size);
+
+int event_producer_publish_storage_target_recovered(
+    const char *target_uuid, const char *current_state, int64_t downtime_ms,
+    bool is_default, time_t occurred_at, char *error, size_t error_size);
 
 #endif /* LIGHTNVR_CORE_EVENT_PRODUCERS_H */

@@ -6,8 +6,10 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <pthread.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -24,8 +26,10 @@
 #include "database/db_event_destinations.h"
 #include "database/db_event_routes.h"
 #include "database/db_event_outbox.h"
+#include "database/db_storage_targets.h"
 #include "database/db_streams.h"
 #include "database/db_system_settings.h"
+#include "storage/storage_target_health.h"
 #include "telemetry/stream_metrics.h"
 #include "unity.h"
 #include "utils/strings.h"
@@ -48,11 +52,12 @@ static config_t mqtt_adapter_config;
 
 typedef struct {
     int calls;
-    char types[8][EVENT_TYPE_MAX];
-    char subjects[8][EVENT_SUBJECT_MAX];
+    char types[12][EVENT_TYPE_MAX];
+    char subjects[12][EVENT_SUBJECT_MAX];
 } operational_capture_t;
 
 static operational_capture_t operational_capture;
+static char target_test_root[MAX_PATH_LENGTH];
 
 static int capture_event(const event_envelope_t *event, void *context) {
     capture_t *result = context;
@@ -69,7 +74,7 @@ static int capture_event(const event_envelope_t *event, void *context) {
 static int capture_operational_event(const event_envelope_t *event,
                                      void *context) {
     operational_capture_t *result = context;
-    if (result->calls >= 8) return -1;
+    if (result->calls >= 12) return -1;
     safe_strcpy(result->types[result->calls], event->type,
                 sizeof(result->types[result->calls]), 0);
     safe_strcpy(result->subjects[result->calls], event->subject,
@@ -170,6 +175,9 @@ void setUp(void) {
     event_identity_shutdown();
     event_router_shutdown();
     sqlite3 *db = get_db_handle();
+    sqlite3_exec(db, "DELETE FROM storage_policies;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
+    sqlite3_exec(db, "DELETE FROM storage_targets;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM event_outbox;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM event_routes;", NULL, NULL, NULL);
@@ -180,6 +188,7 @@ void setUp(void) {
                  NULL, NULL, NULL);
     memset(&capture, 0, sizeof(capture));
     memset(&operational_capture, 0, sizeof(operational_capture));
+    target_test_root[0] = '\0';
     memset(&mqtt_adapter_config, 0, sizeof(mqtt_adapter_config));
     mqtt_adapter_config.mqtt_enabled = true;
     safe_strcpy(mqtt_adapter_config.mqtt_topic_prefix, "lightnvr",
@@ -194,6 +203,10 @@ void tearDown(void) {
     mqtt_event_adapter_unregister();
     event_identity_shutdown();
     event_router_shutdown();
+    if (target_test_root[0]) {
+        rmdir(target_test_root);
+        target_test_root[0] = '\0';
+    }
 }
 
 void test_installation_identity_is_persisted_across_reinitialization(void) {
@@ -344,9 +357,18 @@ void test_operational_producers_use_registered_schemas_and_stable_subjects(void)
         0, event_producer_publish_storage_recovered(
                "critical", 72.0, 3221225472ULL, occurred_at,
                error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_storage_target_unavailable(
+               "33333333-3333-4333-8333-333333333333", "healthy",
+               "mount_unavailable", false, occurred_at,
+               error, sizeof(error)));
+    TEST_ASSERT_EQUAL_INT(
+        0, event_producer_publish_storage_target_recovered(
+               "33333333-3333-4333-8333-333333333333", "healthy",
+               60000, false, occurred_at, error, sizeof(error)));
     TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
 
-    TEST_ASSERT_EQUAL_INT(7, operational_capture.calls);
+    TEST_ASSERT_EQUAL_INT(9, operational_capture.calls);
     const char *expected_types[] = {
         "io.lightnvr.camera.offline.v1",
         "io.lightnvr.camera.recovered.v1",
@@ -355,11 +377,13 @@ void test_operational_producers_use_registered_schemas_and_stable_subjects(void)
         "io.lightnvr.stream.recording_gap.v1",
         "io.lightnvr.storage.pressure.v1",
         "io.lightnvr.storage.recovered.v1",
+        "io.lightnvr.storage.target_unavailable.v1",
+        "io.lightnvr.storage.target_recovered.v1",
     };
     char camera_subject[EVENT_SUBJECT_MAX];
     snprintf(camera_subject, sizeof(camera_subject), "camera/%s",
              camera.camera_uuid);
-    for (int index = 0; index < 7; index++) {
+    for (int index = 0; index < 9; index++) {
         TEST_ASSERT_EQUAL_STRING(expected_types[index],
                                  operational_capture.types[index]);
         TEST_ASSERT_EQUAL_STRING(index < 5 ? camera_subject : "system/storage",
@@ -371,6 +395,74 @@ void test_operational_producers_use_registered_schemas_and_stable_subjects(void)
                 camera.name, "unstable", 1.0, 25.0, occurred_at,
                 error, sizeof(error)));
     TEST_ASSERT_NOT_NULL(strstr(error, "stream degraded data is invalid"));
+
+    TEST_ASSERT_EQUAL_INT(
+        -1, event_producer_publish_storage_target_unavailable(
+                "33333333-3333-4333-8333-333333333333", "healthy",
+                "raw_probe_error", false, occurred_at,
+                error, sizeof(error)));
+    TEST_ASSERT_NOT_NULL(strstr(error, "event input is invalid"));
+}
+
+void test_storage_target_health_emits_only_availability_transitions(void) {
+    char root_template[] = "/tmp/lightnvr-event-target-XXXXXX";
+    char *created_root = mkdtemp(root_template);
+    TEST_ASSERT_NOT_NULL(created_root);
+    safe_strcpy(target_test_root, created_root, sizeof(target_test_root), 0);
+
+    storage_target_t target;
+    memset(&target, 0, sizeof(target));
+    safe_strcpy(target.name, "Event target", sizeof(target.name), 0);
+    safe_strcpy(target.target_type, "filesystem",
+                sizeof(target.target_type), 0);
+    safe_strcpy(target.root_path, target_test_root,
+                sizeof(target.root_path), 0);
+    safe_strcpy(target.storage_class, "hot",
+                sizeof(target.storage_class), 0);
+    target.enabled = true;
+    target.high_watermark_pct = 99.0;
+    target.low_watermark_pct = 98.0;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_create(&target));
+
+    TEST_ASSERT_EQUAL_INT(0, event_identity_init());
+    TEST_ASSERT_EQUAL_INT(
+        0, event_bus_subscribe("capture-operational",
+                               capture_operational_event,
+                               &operational_capture));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_init(0, 0));
+
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_TARGET_OK,
+        storage_target_probe_and_publish(target.uuid, false, NULL));
+    TEST_ASSERT_EQUAL_INT(0, rmdir(target_test_root));
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_TARGET_UNAVAILABLE,
+        storage_target_probe_and_publish(target.uuid, false, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_TARGET_UNAVAILABLE,
+        storage_target_probe_and_publish(target.uuid, false, NULL));
+
+    TEST_ASSERT_EQUAL_INT(0, mkdir(target_test_root, 0700));
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_TARGET_OK,
+        storage_target_probe_and_publish(target.uuid, false, NULL));
+    TEST_ASSERT_EQUAL_INT(
+        DB_STORAGE_TARGET_OK,
+        storage_target_probe_and_publish(target.uuid, false, NULL));
+    TEST_ASSERT_EQUAL_INT(0, event_bus_wait_until_idle(2000));
+
+    TEST_ASSERT_EQUAL_INT(2, operational_capture.calls);
+    TEST_ASSERT_EQUAL_STRING(
+        "io.lightnvr.storage.target_unavailable.v1",
+        operational_capture.types[0]);
+    TEST_ASSERT_EQUAL_STRING(
+        "io.lightnvr.storage.target_recovered.v1",
+        operational_capture.types[1]);
+    TEST_ASSERT_EQUAL_STRING("system/storage",
+                             operational_capture.subjects[0]);
+    TEST_ASSERT_EQUAL_STRING("system/storage",
+                             operational_capture.subjects[1]);
 }
 
 void test_operational_event_route_persists_to_outbox(void) {
@@ -595,6 +687,7 @@ int main(void) {
     RUN_TEST(test_detection_producer_uses_camera_uuid_and_dispatches_off_thread);
     RUN_TEST(test_producer_fails_closed_without_identity_or_running_bus);
     RUN_TEST(test_operational_producers_use_registered_schemas_and_stable_subjects);
+    RUN_TEST(test_storage_target_health_emits_only_availability_transitions);
     RUN_TEST(test_operational_event_route_persists_to_outbox);
     RUN_TEST(test_recording_gap_hook_ignores_deliberate_session_boundaries);
     RUN_TEST(test_enabled_routes_gate_the_normalized_outbox);

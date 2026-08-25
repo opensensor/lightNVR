@@ -2,8 +2,10 @@
 
 **Status**: P0/P1/P2 complete; P3 in progress — camera offline/recovered,
 stream degraded/recovered and recording-gap, and storage pressure/recovered
-producers are wired to observed transitions. Target-health, security, ONVIF,
-and media-reference producers remain.
+producers are wired to observed transitions. Storage-target
+unavailable/recovered events are also wired across heartbeat, placement,
+cleanup, and manual-probe paths. Security, ONVIF, and media-reference producers
+remain.
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 3 — integration foundation
@@ -168,8 +170,8 @@ without changing the durable routing and delivery path.
 ## 8. Acceptance criteria
 
 - Detection, camera offline/recovered, stream degraded/recovered and
-  recording-gap, and storage pressure/recovered fixtures validate against
-  documented schemas.
+  recording-gap, storage pressure/recovered, and storage-target
+  unavailable/recovered fixtures validate against documented schemas.
 - A broker outage during 1,000 generated critical events does not block recording;
   eligible events deliver after reconnection with unchanged IDs.
 - Duplicate delivery is safely recognizable by `source + id`.

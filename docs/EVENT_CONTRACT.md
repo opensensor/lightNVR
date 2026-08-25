@@ -53,6 +53,8 @@ Every event uses a CloudEvents-inspired JSON envelope:
 | `io.lightnvr.stream.recording_gap.v1` | warning | operational | 7 days | low | reference allowed |
 | `io.lightnvr.storage.pressure.v1` | critical | internal | 7 days | low | forbidden |
 | `io.lightnvr.storage.recovered.v1` | info | internal | 7 days | low | forbidden |
+| `io.lightnvr.storage.target_unavailable.v1` | error | internal | 7 days | low | forbidden |
+| `io.lightnvr.storage.target_recovered.v1` | info | internal | 7 days | low | forbidden |
 
 Expiry is internal delivery metadata and is intentionally not part of the JSON
 payload. MQTT 5 delivery may carry it as a message-expiry property; the durable
@@ -177,6 +179,37 @@ and 100. `free_bytes` is optional.
 `previous_level` is `warning`, `critical`, or `emergency`. The event is emitted
 when the monitored recording filesystem returns to normal pressure.
 
+### `io.lightnvr.storage.target_unavailable.v1`
+
+```json
+{
+  "target_uuid": "33333333-3333-4333-8333-333333333333",
+  "previous_state": "healthy",
+  "reason": "mount_unavailable",
+  "is_default": false
+}
+```
+
+`previous_state` is `unknown`, `healthy`, or `degraded`. `reason` is one of
+`mount_unavailable`, `directory_unavailable`, `capacity_probe_failed`,
+`not_writable`, `write_probe_failed`, `probe_cleanup_failed`, or `unknown`.
+Probe errors and filesystem paths are intentionally normalized away.
+
+### `io.lightnvr.storage.target_recovered.v1`
+
+```json
+{
+  "target_uuid": "33333333-3333-4333-8333-333333333333",
+  "previous_state": "unavailable",
+  "current_state": "healthy",
+  "downtime_ms": 60000,
+  "is_default": false
+}
+```
+
+`current_state` is `healthy` or `degraded`, and `downtime_ms` is the
+non-negative observed interval since the last successful probe.
+
 ## Producer API
 
 The installation source is a UUID generated once and persisted in
@@ -194,11 +227,12 @@ Both normalize and enqueue only; neither performs MQTT, snapshot, or other
 network work on the caller thread.
 
 The same producer module exposes camera offline/recovered, stream
-degraded/recovered, recording-gap, and storage pressure/recovered facts. Stream
-producers resolve the current stream name to its immutable camera UUID. The
-health sampler and storage heartbeat emit only on observed state transitions;
-the recording producer runs only after the segment continuity detector finds a
-gap greater than five seconds.
+degraded/recovered, recording-gap, storage pressure/recovered, and storage-target
+unavailable/recovered facts. Stream producers resolve the current stream name
+to its immutable camera UUID. The health sampler and all operational target
+probe paths emit only on observed state transitions; the recording producer
+runs only after the segment continuity detector finds a gap greater than five
+seconds.
 
 ## Asynchronous in-process bus
 

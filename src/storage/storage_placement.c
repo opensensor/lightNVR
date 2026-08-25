@@ -15,6 +15,7 @@
 #include "database/db_fleet_query.h"
 #include "database/db_storage_policies.h"
 #include "database/db_storage_targets.h"
+#include "storage/storage_target_health.h"
 #include "utils/strings.h"
 
 #define PLACEMENT_ASSIGNMENT_TTL_SECONDS 60
@@ -203,12 +204,13 @@ static bool target_is_eligible(const char *uuid, storage_target_t *target) {
         if (!db_storage_target_mount_guard_active(target)) {
             /* Persist the transition once without touching the target path. */
             if (!was_missing) {
-                (void)db_storage_target_probe(uuid, false, target);
+                (void)storage_target_probe_and_publish(
+                    uuid, false, target);
             }
             return false;
         }
         if (was_missing &&
-            db_storage_target_probe(uuid, false, target) !=
+            storage_target_probe_and_publish(uuid, false, target) !=
                 DB_STORAGE_TARGET_OK) {
             return false;
         }

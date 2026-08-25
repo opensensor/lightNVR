@@ -24,6 +24,10 @@
 #define RECORDING_GAP_EVENT_TYPE "io.lightnvr.stream.recording_gap.v1"
 #define STORAGE_PRESSURE_EVENT_TYPE "io.lightnvr.storage.pressure.v1"
 #define STORAGE_RECOVERED_EVENT_TYPE "io.lightnvr.storage.recovered.v1"
+#define STORAGE_TARGET_UNAVAILABLE_EVENT_TYPE \
+    "io.lightnvr.storage.target_unavailable.v1"
+#define STORAGE_TARGET_RECOVERED_EVENT_TYPE \
+    "io.lightnvr.storage.target_recovered.v1"
 
 static void set_error(char *error, size_t error_size, const char *message) {
     if (!error || error_size == 0) return;
@@ -98,6 +102,27 @@ static bool valid_pressure_level(const char *level) {
     return level && (strcmp(level, "warning") == 0 ||
                      strcmp(level, "critical") == 0 ||
                      strcmp(level, "emergency") == 0);
+}
+
+static bool valid_storage_target_previous_state(const char *state) {
+    return state && (strcmp(state, "unknown") == 0 ||
+                     strcmp(state, "healthy") == 0 ||
+                     strcmp(state, "degraded") == 0);
+}
+
+static bool valid_storage_target_current_state(const char *state) {
+    return state && (strcmp(state, "healthy") == 0 ||
+                     strcmp(state, "degraded") == 0);
+}
+
+static bool valid_storage_target_reason(const char *reason) {
+    return reason && (strcmp(reason, "mount_unavailable") == 0 ||
+                      strcmp(reason, "directory_unavailable") == 0 ||
+                      strcmp(reason, "capacity_probe_failed") == 0 ||
+                      strcmp(reason, "not_writable") == 0 ||
+                      strcmp(reason, "write_probe_failed") == 0 ||
+                      strcmp(reason, "probe_cleanup_failed") == 0 ||
+                      strcmp(reason, "unknown") == 0);
 }
 
 static bool add_detection_data(cJSON *data, const char *stream_name,
@@ -367,6 +392,63 @@ int event_producer_publish_storage_recovered(
     int result = publish_event(
         STORAGE_RECOVERED_EVENT_TYPE, "system/storage", occurred_at, data,
         error, error_size);
+    cJSON_Delete(data);
+    return result;
+}
+
+int event_producer_publish_storage_target_unavailable(
+    const char *target_uuid, const char *previous_state, const char *reason,
+    bool is_default, time_t occurred_at, char *error, size_t error_size) {
+    if (error && error_size > 0) error[0] = '\0';
+    if (!lightnvr_uuid_is_valid(target_uuid) ||
+        !valid_storage_target_previous_state(previous_state) ||
+        !valid_storage_target_reason(reason)) {
+        set_error(error, error_size,
+                  "storage target unavailable event input is invalid");
+        return -1;
+    }
+    cJSON *data = cJSON_CreateObject();
+    if (!data || !cJSON_AddStringToObject(data, "target_uuid", target_uuid) ||
+        !cJSON_AddStringToObject(data, "previous_state", previous_state) ||
+        !cJSON_AddStringToObject(data, "reason", reason) ||
+        !cJSON_AddBoolToObject(data, "is_default", is_default)) {
+        cJSON_Delete(data);
+        set_error(error, error_size,
+                  "storage target unavailable event allocation failed");
+        return -1;
+    }
+    int result = publish_event(
+        STORAGE_TARGET_UNAVAILABLE_EVENT_TYPE, "system/storage", occurred_at,
+        data, error, error_size);
+    cJSON_Delete(data);
+    return result;
+}
+
+int event_producer_publish_storage_target_recovered(
+    const char *target_uuid, const char *current_state, int64_t downtime_ms,
+    bool is_default, time_t occurred_at, char *error, size_t error_size) {
+    if (error && error_size > 0) error[0] = '\0';
+    if (!lightnvr_uuid_is_valid(target_uuid) ||
+        !valid_storage_target_current_state(current_state) ||
+        downtime_ms < 0) {
+        set_error(error, error_size,
+                  "storage target recovered event input is invalid");
+        return -1;
+    }
+    cJSON *data = cJSON_CreateObject();
+    if (!data || !cJSON_AddStringToObject(data, "target_uuid", target_uuid) ||
+        !cJSON_AddStringToObject(data, "previous_state", "unavailable") ||
+        !cJSON_AddStringToObject(data, "current_state", current_state) ||
+        !cJSON_AddNumberToObject(data, "downtime_ms", (double)downtime_ms) ||
+        !cJSON_AddBoolToObject(data, "is_default", is_default)) {
+        cJSON_Delete(data);
+        set_error(error, error_size,
+                  "storage target recovered event allocation failed");
+        return -1;
+    }
+    int result = publish_event(
+        STORAGE_TARGET_RECOVERED_EVENT_TYPE, "system/storage", occurred_at,
+        data, error, error_size);
     cJSON_Delete(data);
     return result;
 }

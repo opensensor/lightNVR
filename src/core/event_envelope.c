@@ -102,6 +102,28 @@ static const event_type_definition_t EVENT_TYPES[] = {
         .subject_kind = EVENT_SUBJECT_STORAGE,
         .default_expiry_seconds = 604800,
     },
+    {
+        .type = "io.lightnvr.storage.target_unavailable.v1",
+        .family = "storage",
+        .description = "A configured storage target became unavailable",
+        .severity = EVENT_SEVERITY_ERROR,
+        .sensitivity = EVENT_SENSITIVITY_INTERNAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_STORAGE,
+        .default_expiry_seconds = 604800,
+    },
+    {
+        .type = "io.lightnvr.storage.target_recovered.v1",
+        .family = "storage",
+        .description = "An unavailable storage target became usable again",
+        .severity = EVENT_SEVERITY_INFO,
+        .sensitivity = EVENT_SENSITIVITY_INTERNAL,
+        .media_policy = EVENT_MEDIA_FORBIDDEN,
+        .expected_rate = EVENT_RATE_LOW,
+        .subject_kind = EVENT_SUBJECT_STORAGE,
+        .default_expiry_seconds = 604800,
+    },
 };
 
 static void set_error(char *error, size_t error_size, const char *message) {
@@ -428,6 +450,72 @@ static int validate_type_data(const char *type, const cJSON *data,
         if (!valid_previous || used->valuedouble < 0 ||
             used->valuedouble > 100) {
             set_error(error, error_size, "storage recovered data is invalid");
+            return -1;
+        }
+    } else if (strcmp(
+                   type,
+                   "io.lightnvr.storage.target_unavailable.v1") == 0) {
+        const cJSON *target_uuid = required_field(
+            data, "target_uuid", cJSON_String, error, error_size);
+        const cJSON *previous = required_field(
+            data, "previous_state", cJSON_String, error, error_size);
+        const cJSON *reason = required_field(
+            data, "reason", cJSON_String, error, error_size);
+        const cJSON *is_default = cJSON_GetObjectItemCaseSensitive(
+            data, "is_default");
+        if (!target_uuid || !previous || !reason ||
+            !cJSON_IsBool(is_default)) {
+            if (!is_default || !cJSON_IsBool(is_default)) {
+                set_error(error, error_size,
+                          "event data is missing required field 'is_default'");
+            }
+            return -1;
+        }
+        bool valid_previous = strcmp(previous->valuestring, "unknown") == 0 ||
+            strcmp(previous->valuestring, "healthy") == 0 ||
+            strcmp(previous->valuestring, "degraded") == 0;
+        bool valid_reason = strcmp(reason->valuestring,
+                                   "mount_unavailable") == 0 ||
+            strcmp(reason->valuestring, "directory_unavailable") == 0 ||
+            strcmp(reason->valuestring, "capacity_probe_failed") == 0 ||
+            strcmp(reason->valuestring, "not_writable") == 0 ||
+            strcmp(reason->valuestring, "write_probe_failed") == 0 ||
+            strcmp(reason->valuestring, "probe_cleanup_failed") == 0 ||
+            strcmp(reason->valuestring, "unknown") == 0;
+        if (!lightnvr_uuid_is_valid(target_uuid->valuestring) ||
+            !valid_previous || !valid_reason) {
+            set_error(error, error_size,
+                      "storage target unavailable data is invalid");
+            return -1;
+        }
+    } else if (strcmp(
+                   type,
+                   "io.lightnvr.storage.target_recovered.v1") == 0) {
+        const cJSON *target_uuid = required_field(
+            data, "target_uuid", cJSON_String, error, error_size);
+        const cJSON *previous = required_field(
+            data, "previous_state", cJSON_String, error, error_size);
+        const cJSON *current = required_field(
+            data, "current_state", cJSON_String, error, error_size);
+        const cJSON *downtime = required_field(
+            data, "downtime_ms", cJSON_Number, error, error_size);
+        const cJSON *is_default = cJSON_GetObjectItemCaseSensitive(
+            data, "is_default");
+        if (!target_uuid || !previous || !current || !downtime ||
+            !cJSON_IsBool(is_default)) {
+            if (!is_default || !cJSON_IsBool(is_default)) {
+                set_error(error, error_size,
+                          "event data is missing required field 'is_default'");
+            }
+            return -1;
+        }
+        bool valid_current = strcmp(current->valuestring, "healthy") == 0 ||
+            strcmp(current->valuestring, "degraded") == 0;
+        if (!lightnvr_uuid_is_valid(target_uuid->valuestring) ||
+            strcmp(previous->valuestring, "unavailable") != 0 ||
+            !valid_current || downtime->valuedouble < 0) {
+            set_error(error, error_size,
+                      "storage target recovered data is invalid");
             return -1;
         }
     }

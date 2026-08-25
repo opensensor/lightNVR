@@ -14,6 +14,7 @@
 #include "core/authorization.h"
 #include "database/db_storage_targets.h"
 #include "storage/storage_manager.h"
+#include "storage/storage_target_health.h"
 #include "utils/strings.h"
 #include "utils/uuid.h"
 #include "web/audit_log.h"
@@ -501,7 +502,7 @@ void handle_post_storage_target_probe(const http_request_t *req,
     storage_target_t target;
     memset(&target, 0, sizeof(target));
     db_storage_target_result_t result =
-        db_storage_target_probe(uuid, true, &target);
+        storage_target_probe_and_publish(uuid, true, &target);
     if (result != DB_STORAGE_TARGET_OK) {
         set_db_error(res, result,
                      target.last_error[0] ? target.last_error : NULL);
