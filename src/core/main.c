@@ -36,6 +36,7 @@
 #include "video/stream_state_adapter.h"
 #include "storage/storage_manager.h"
 #include "storage/storage_manager_streams_cache.h"
+#include "storage/storage_target_health.h"
 #include "video/streams.h"
 #include "video/hls_streaming.h"
 #include "video/mp4_recording.h"
@@ -771,7 +772,7 @@ int main(int argc, char *argv[]) {
         goto cleanup;
     }
     set_retention_days(config.retention_days);
-    (void)db_storage_target_refresh_health();
+    (void)storage_target_refresh_health_and_publish();
     log_info("Storage manager initialized");
 
     // Start recording sync thread to ensure database file sizes are accurate

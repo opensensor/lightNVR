@@ -3,6 +3,7 @@
  * @brief Versioned event registry, envelope, schema, and privacy tests.
  */
 
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -90,11 +91,32 @@ static cJSON *storage_recovered_fixture(void) {
     return data;
 }
 
+static cJSON *storage_target_unavailable_fixture(void) {
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddStringToObject(data, "target_uuid",
+                            "33333333-3333-4333-8333-333333333333");
+    cJSON_AddStringToObject(data, "previous_state", "healthy");
+    cJSON_AddStringToObject(data, "reason", "mount_unavailable");
+    cJSON_AddBoolToObject(data, "is_default", false);
+    return data;
+}
+
+static cJSON *storage_target_recovered_fixture(void) {
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddStringToObject(data, "target_uuid",
+                            "33333333-3333-4333-8333-333333333333");
+    cJSON_AddStringToObject(data, "previous_state", "unavailable");
+    cJSON_AddStringToObject(data, "current_state", "healthy");
+    cJSON_AddNumberToObject(data, "downtime_ms", 60000);
+    cJSON_AddBoolToObject(data, "is_default", false);
+    return data;
+}
+
 void test_registry_is_stable_and_versioned(void) {
     int count = 0;
     const event_type_definition_t *registry = event_registry_all(&count);
     TEST_ASSERT_NOT_NULL(registry);
-    TEST_ASSERT_EQUAL_INT(8, count);
+    TEST_ASSERT_EQUAL_INT(10, count);
     for (int index = 0; index < count; index++) {
         TEST_ASSERT_NOT_NULL(strstr(registry[index].type, "io.lightnvr."));
         size_t length = strlen(registry[index].type);
@@ -138,6 +160,10 @@ void test_required_fixtures_create_and_validate(void) {
          storage_pressure_fixture},
         {"io.lightnvr.storage.recovered.v1", "system/storage",
          storage_recovered_fixture},
+        {"io.lightnvr.storage.target_unavailable.v1", "system/storage",
+         storage_target_unavailable_fixture},
+        {"io.lightnvr.storage.target_recovered.v1", "system/storage",
+         storage_target_recovered_fixture},
     };
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
         cJSON *data = cases[index].fixture();

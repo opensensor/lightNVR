@@ -13,6 +13,7 @@
 
 #include "storage/storage_manager.h"
 #include "storage/storage_manager_streams_cache.h"
+#include "storage/storage_target_health.h"
 #include "database/db_core.h"
 #include "database/db_auth.h"
 #include "database/db_streams.h"
@@ -219,7 +220,6 @@ int init_storage_manager(const char *storage_path, uint64_t max_size) {
     if (start_storage_manager_thread(3600) != 0) {
         log_warn("Failed to start storage manager thread, automatic tasks will not be performed");
     }
-
     return 0;
 }
 
@@ -1297,7 +1297,7 @@ int storage_cleanup_target_pressure(
     }
 
     storage_target_t target;
-    db_storage_target_result_t probe = db_storage_target_probe(
+    db_storage_target_result_t probe = storage_target_probe_and_publish(
         storage_target_uuid, false, &target);
     if (probe != DB_STORAGE_TARGET_OK || !target.enabled ||
         (target.mount_required &&
@@ -1379,7 +1379,7 @@ int storage_cleanup_target_pressure(
 
     (void)current_free_pct_at(target.root_path, &available, NULL);
     local_result.available_bytes_after = available;
-    (void)db_storage_target_probe(target.uuid, false, NULL);
+    (void)storage_target_probe_and_publish(target.uuid, false, NULL);
     log_info("Target pressure cleanup complete: target=%s, deleted=%d, "
              "freed=%llu MB, remaining=%llu MB",
              target.name, local_result.deleted_recordings,
@@ -1789,7 +1789,7 @@ static void* unified_storage_controller_func(void *arg) {
 
     // Initial heartbeat to establish baseline pressure
     heartbeat_check_disk_pressure();
-    if (db_storage_target_refresh_health() < 0) {
+    if (storage_target_refresh_health_and_publish() < 0) {
         log_warn("Initial storage target health refresh failed");
     }
     cleanup_pressured_targets();
@@ -1827,7 +1827,7 @@ static void* unified_storage_controller_func(void *arg) {
 
         // Always run heartbeat (disk pressure detection)
         heartbeat_check_disk_pressure();
-        if (db_storage_target_refresh_health() < 0) {
+        if (storage_target_refresh_health_and_publish() < 0) {
             log_warn("Storage target health refresh failed");
         }
         cleanup_pressured_targets();
