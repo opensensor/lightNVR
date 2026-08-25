@@ -279,3 +279,7 @@
         height: 26px;
     }
 }
+.timeline-segment.removing {
+    opacity: 0;
+    transition: opacity 100ms ease;
+}

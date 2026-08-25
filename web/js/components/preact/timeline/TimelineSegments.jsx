@@ -8,6 +8,8 @@ import { timelineState } from './TimelinePage.jsx';
 import {
   findContainingSegmentIndex,
   findNearestSegmentIndex,
+  formatPlaybackTimeLabel,
+  getTimelinePreviewFrameIndex,
   getClippedSegmentHourRange
 } from './timelineUtils.js';
 import { formatLocalTime } from '../../../utils/date-utils.js';
@@ -27,6 +29,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
   const [detectionIntervals, setDetectionIntervals] = useState(propIntervals || []);
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
+  const [dragPreview, setDragPreview] = useState(null);
   const currentSegmentIndexRef = useRef(-1);
 
   // Update segments when props change (including when cleared to empty on deletion)
@@ -46,6 +49,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
   // Capture playback state at drag-start so we can preserve it across the seek
   // (standard scrubber UX: clicking/dragging while playing keeps playing).
   const wasPlayingAtDragStartRef = useRef(false);
+  const pendingSeekRef = useRef(null);
   const lastSegmentsRef = useRef([]);
 
   // Subscribe to timeline state changes
@@ -96,8 +100,16 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       ) {
         // Remember whether we were playing so we can resume after the seek.
         wasPlayingAtDragStartRef.current = !!timelineState.isPlaying;
+        const pendingSeek = getTimelineClickTarget(e);
+        if (!pendingSeek) return;
         isDragging.current = true;
-        handleTimelineClick(e);
+        pendingSeekRef.current = pendingSeek;
+        showDragPreview(pendingSeek);
+        timelineState.setState({
+          userControllingCursor: true,
+          preserveCursorPosition: true,
+          cursorPositionLocked: true,
+        });
 
         // Add event listeners for drag
         document.addEventListener('mousemove', handleMouseMove);
@@ -107,39 +119,44 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
 
     const handleMouseMove = (e) => {
       if (!isDragging.current) return;
-      handleTimelineClick(e);
+      const pendingSeek = getTimelineClickTarget(e);
+      if (!pendingSeek) return;
+      pendingSeekRef.current = pendingSeek;
+      showDragPreview(pendingSeek);
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (event) => {
       if (!isDragging.current) {
         return;
       }
+      const finalSeek = getTimelineClickTarget(event) || pendingSeekRef.current;
       isDragging.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      const shouldResume = wasPlayingAtDragStartRef.current;
+      wasPlayingAtDragStartRef.current = false;
+      pendingSeekRef.current = null;
+      setDragPreview(null);
 
-      // Keep the same playback state after the seek; if we were already
-      // playing, TimelinePlayer.handleVideoPlayback drives the actual
-      // video.play() at the new cursor position.
-      if (wasPlayingAtDragStartRef.current) {
-        wasPlayingAtDragStartRef.current = false;
-        const segs = timelineState.timelineSegments || [];
-        const ts = timelineState.currentTime;
-        let targetIndex = timelineState.currentSegmentIndex;
-        if (ts !== null && segs.length > 0) {
-          const containing = findContainingSegmentIndex(segs, ts);
-          if (containing !== -1) {
-            targetIndex = containing;
-          }
-        }
-        if (targetIndex >= 0 && targetIndex < segs.length) {
-          timelineState.setState({
-            isPlaying: true,
-            currentSegmentIndex: targetIndex,
-            forceReload: true
-          });
-        }
+      if (!finalSeek) {
+        timelineState.setState({
+          userControllingCursor: false,
+          preserveCursorPosition: false,
+          cursorPositionLocked: false,
+        });
+        return;
       }
+
+      timelineState.setState({
+        currentTime: finalSeek.timestamp,
+        prevCurrentTime: timelineState.currentTime,
+        isPlaying: shouldResume && finalSeek.targetIndex >= 0,
+        currentSegmentIndex: finalSeek.targetIndex,
+        forceReload: finalSeek.targetIndex >= 0,
+        userControllingCursor: false,
+        preserveCursorPosition: false,
+        cursorPositionLocked: false,
+      });
     };
 
     container.addEventListener('mousedown', handleMouseDown);
@@ -148,16 +165,26 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       container.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (isDragging.current) {
+        isDragging.current = false;
+        pendingSeekRef.current = null;
+        wasPlayingAtDragStartRef.current = false;
+        timelineState.setState({
+          userControllingCursor: false,
+          preserveCursorPosition: false,
+          cursorPositionLocked: false,
+        });
+      }
     };
   }, [startHour, endHour, segments]);
 
-  // Handle click on timeline for seeking
-  const handleTimelineClick = (event) => {
+  const getTimelineClickTarget = (event) => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) return null;
 
     const rect = container.getBoundingClientRect();
-    const clickPercent = (event.clientX - rect.left) / rect.width;
+    if (!rect.width) return null;
+    const clickPercent = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     const clickHour = startHour + clickPercent * (endHour - startHour);
 
     // Convert fractional hour → timestamp using the shared utility
@@ -169,17 +196,22 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       ? foundIndex
       : findNearestSegmentIndex(segments, clickTimestamp);
 
-    // Move cursor to click position and update segment index in a single atomic setState so
-    // that currentTime is never skipped by the "time-only update" batching logic.  When the
-    // two updates were separate, the first one (currentTime only) was sometimes throttled
-    // away within 250 ms of the previous notification, leaving the time display stale while
-    // the segment index had already advanced to the newly-clicked segment.
-    timelineState.setState({
-      currentTime: clickTimestamp,
-      prevCurrentTime: timelineState.currentTime,
-      isPlaying: wasPlayingAtDragStartRef.current && targetIndex >= 0,
-      currentSegmentIndex: targetIndex,
-      forceReload: wasPlayingAtDragStartRef.current && targetIndex >= 0
+    return { timestamp: clickTimestamp, targetIndex, positionPercent: clickPercent * 100 };
+  };
+
+  const showDragPreview = ({ timestamp, targetIndex, positionPercent }) => {
+    const segment = segments[targetIndex];
+    if (!segment || segment.id === null || segment.id === undefined) {
+      setDragPreview(null);
+      return;
+    }
+    const frameIndex = getTimelinePreviewFrameIndex(segment, timestamp, 3);
+    setDragPreview({
+      frameIndex,
+      label: formatPlaybackTimeLabel(timestamp, segment.stream_name || segment.stream || ''),
+      positionPercent,
+      recordingId: segment.id,
+      url: `/api/recordings/thumbnail/${encodeURIComponent(segment.id)}/${frameIndex}`,
     });
   };
 
@@ -209,7 +241,8 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       // (issue #454). Keeping detection and non-detection runs separate preserves the
       // per-period highlighting the timeline is meant to show.
       if (seg.start_timestamp - cur.end_timestamp <= 1 &&
-          !!seg.has_detection === !!cur.has_detection) {
+          !!seg.has_detection === !!cur.has_detection &&
+          !seg._removing && !cur._removing) {
         // extend current merged segment
         cur.end_timestamp = Math.max(cur.end_timestamp, seg.end_timestamp);
       } else {
@@ -254,7 +287,7 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       rendered.push(
         <div
           key={`seg-${i}`}
-          className={`timeline-segment ${seg.has_detection && !hasExactInterval ? 'has-detection' : ''}`}
+          className={`timeline-segment ${seg.has_detection && !hasExactInterval ? 'has-detection' : ''} ${seg._removing ? 'removing' : ''}`}
           style={{
             left: `${leftPct}%`,
             width: `${Math.max(widthPct, 0.15)}%`,   // min width so tiny segments stay visible
@@ -297,6 +330,34 @@ export function TimelineSegments({ segments: propSegments, detectionIntervals: p
       aria-label="Recording timeline"
     >
       {renderSegments()}
+      {dragPreview && (
+        <div
+          className="pointer-events-none absolute top-1 z-[60] rounded bg-black/85 p-1 text-center text-white shadow-lg"
+          style={{
+            left: `clamp(0px, calc(${dragPreview.positionPercent}% - 36px), calc(100% - 72px))`,
+            width: '72px',
+          }}
+          aria-hidden="true"
+        >
+          <img
+            src={dragPreview.url}
+            alt=""
+            className="h-9 w-16 rounded object-cover"
+            onError={(event) => {
+              if (dragPreview.frameIndex !== 0) {
+                setDragPreview((current) => current && ({
+                  ...current,
+                  frameIndex: 0,
+                  url: `/api/recordings/thumbnail/${encodeURIComponent(current.recordingId)}/0`,
+                }));
+              } else {
+                event.currentTarget.style.visibility = 'hidden';
+              }
+            }}
+          />
+          <span className="block truncate text-[9px] leading-3">{dragPreview.label}</span>
+        </div>
+      )}
     </div>
   );
 }

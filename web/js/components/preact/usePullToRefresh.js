@@ -1,5 +1,9 @@
 import { useRef, useState } from 'preact/hooks';
-import { PULL_REFRESH_THRESHOLD_PX, resistedPullDistance } from './mobileLiveGestures.js';
+import {
+  PULL_REFRESH_THRESHOLD_PX,
+  resistedPullDistance,
+  shouldIgnoreTileGestureTarget,
+} from './mobileLiveGestures.js';
 
 export function usePullToRefresh(onRefresh, { disabled = false } = {}) {
   const [distance, setDistance] = useState(0);
@@ -15,7 +19,8 @@ export function usePullToRefresh(onRefresh, { disabled = false } = {}) {
 
   const onTouchStart = (event) => {
     if (disabled || refreshing || event.touches?.length !== 1 || window.scrollY > 0
-        || event.target?.closest?.('[data-zoom-scale]')) return;
+        || event.target?.closest?.('[data-zoom-scale]')
+        || shouldIgnoreTileGestureTarget(event.target)) return;
     startRef.current = event.touches[0].clientY;
   };
 

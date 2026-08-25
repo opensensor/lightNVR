@@ -1,6 +1,6 @@
 # PRD — Recordings & Timeline UX
 
-**Status**: In progress — P0–P3 implementation is present; manual acceptance,
+**Status**: Implementation complete — P0–P3 are present. Manual acceptance,
 large/busy-day behavior, and beta outcome metrics remain to reconcile
 **Created**: 2026-04-22
 **Owner**: TBD
@@ -90,9 +90,9 @@ Every list-mutating action goes through the `<AsyncButton>` / `useAsyncAction` p
 
 | Phase | Scope | Estimate |
 |---|---|---|
-| P0 — Scrub continuity | Implementation present: TimelineCursor + TimelinePlayer | 2 days |
-| P1 — Set-diff sync | Implementation present: TimelinePage data layer | 1–2 days |
-| P2 — Refresh + async feedback | Implementation present: refresh, AsyncButton wiring, and batch progress surfaces | 1 day |
+| P0 — Scrub continuity | Implemented: playback-state preservation, commit-on-release seeking, and cursor-attached thumbnail preview | 2 days |
+| P1 — Set-diff sync | Implemented: 10 s authoritative polling, id/range identity fallback, and 100 ms removal fade | 1–2 days |
+| P2 — Refresh + async feedback | Implemented: AsyncButton refresh/filter wiring, batch progress surfaces, and mobile list pull-to-refresh | 1 day |
 | P3 — Mobile gestures | Implemented: pinch/fling/pan/snap on the ruler | 3–4 days |
 
 Implementation note (2026-08-24): P3 owns touch input explicitly rather than
@@ -101,6 +101,15 @@ scale-aware ruler ticks down to the one-minute view, two-finger pan,
 reduced-motion-aware one-finger inertial fling, a 36×36 px
 cursor hit target, and deterministic 500 ms recording-edge snapping. Desktop
 wheel, mouse, and keyboard paths remain independent.
+
+Implementation note (2026-08-25): reconciliation closed three specification
+gaps that were still open despite the earlier phase labels. Cursor and ruler
+drags now show the nearest of the recording's available thumbnail frames
+without seeking the player on every move. Timeline polling now meets the ≤10 s acceptance
+window, uses the documented range fallback when an id is absent, and fades
+removed bars before applying the authoritative result. Recordings list
+pull-to-refresh reuses the same resisted touch primitive as Live View while
+preserving the active query filters.
 
 ## 6. Acceptance criteria
 

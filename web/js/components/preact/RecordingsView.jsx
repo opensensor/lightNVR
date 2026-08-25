@@ -3,7 +3,7 @@
  * Preact component for the recordings page
  */
 
-import { useState, useEffect, useRef, useContext, useMemo } from 'preact/hooks';
+import { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'preact/hooks';
 import { useQuery, useQueryClient } from '../../query-client.js';
 import { showStatusMessage } from './ToastContainer.jsx';
 import { showVideoModal, DeleteConfirmationModal, ModalContext } from './UI.jsx';
@@ -12,6 +12,7 @@ import { AsyncButton } from './AsyncButton.jsx';
 import { ContentLoader } from './LoadingIndicator.jsx';
 import { clearThumbnailQueue } from '../../request-queue.js';
 import { useI18n } from '../../i18n.js';
+import { usePullToRefresh } from './usePullToRefresh.js';
 
 // Import components
 import { FiltersSidebar } from './recordings/FiltersSidebar.jsx';
@@ -394,6 +395,25 @@ export function RecordingsView() {
     error: recordingsError,
     refetch: refetchRecordings
   } = recordingsAPI.hooks.useRecordings(filters, pagination, sortField, sortDirection);
+
+  const refreshRecordingList = useCallback(async () => {
+    const result = await refetchRecordings();
+    if (result?.error) throw result.error;
+    return result;
+  }, [refetchRecordings]);
+
+  const pullToRefresh = usePullToRefresh(async () => {
+    try {
+      await refreshRecordingList();
+      showStatusMessage(t('recordings.refreshed'), 'success', 2000);
+    } catch (error) {
+      showStatusMessage(
+        t('recordings.refreshFailed', { message: error?.message || t('common.unknown') }),
+        'error',
+        5000
+      );
+    }
+  });
 
   // Update recordings state when data is loaded
   useEffect(() => {
@@ -957,7 +977,7 @@ export function RecordingsView() {
           <AsyncButton
             id="refresh-recordings-btn"
             className="btn-secondary text-sm inline-flex items-center gap-1.5 min-h-11"
-            onClick={() => refetchRecordings()}
+            onClick={refreshRecordingList}
             title={t('recordings.refreshTitle')}
             aria-label={t('recordings.refreshTitle')}
             idleLabel={(
@@ -1049,7 +1069,23 @@ export function RecordingsView() {
         </div>
       </div>
 
-      <div class="recordings-layout flex flex-col md:flex-row gap-4 w-full">
+      <div
+        class="recordings-layout relative flex flex-col md:flex-row gap-4 w-full"
+        {...pullToRefresh.bind}
+      >
+        {(pullToRefresh.distance > 0 || pullToRefresh.refreshing) && (
+          <div
+            className={`mobile-pull-refresh ${pullToRefresh.ready ? 'ready' : ''}`}
+            style={{ '--pull-distance': `${pullToRefresh.distance}px` }}
+            role="status"
+          >
+            {pullToRefresh.refreshing
+              ? t('recordings.refreshing')
+              : pullToRefresh.ready
+                ? t('recordings.releaseToRefresh')
+                : t('recordings.pullToRefresh')}
+          </div>
+        )}
         {!collapsed && (
           <FiltersSidebar
             toggleCollapsed={toggleCollapsed}

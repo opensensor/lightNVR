@@ -65,3 +65,27 @@
     transform: scale(1);
     opacity: 1;
 }
+/* Shared pull-to-refresh feedback used by Live and Recordings. The gesture
+ * owner supplies --pull-distance while this pill stays out of hit testing. */
+.mobile-pull-refresh {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 90;
+    min-height: 36px;
+    padding: 8px 14px;
+    transform: translate(-50%, calc(var(--pull-distance, 0px) - 100%));
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.9);
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+
+.mobile-pull-refresh.ready {
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+}

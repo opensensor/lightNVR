@@ -37,6 +37,7 @@ import {
   getTimelineDayLengthHours,
   localClockTimeToTimestamp,
   panTimelineRange,
+  reconcileTimelineSegments,
   resolveActiveSegmentIndex,
   timelineOffsetToTimestamp,
   timestampToTimelineOffset,
@@ -1225,7 +1226,9 @@ export function TimelinePage() {
   useEffect(() => {
     if (idsMode || !selectedStream || !timelineUrl) return;
 
-    const POLL_INTERVAL_MS = 30000;
+    const POLL_INTERVAL_MS = 10000;
+    let fadeTimeoutId = null;
+    let cancelled = false;
 
     const pollForNewRecordings = async () => {
       try {
@@ -1235,18 +1238,35 @@ export function TimelinePage() {
         const polledSegments = data.segments || [];
         setDetectionIntervals(data.detection_intervals || []);
 
-        const currentSegs = timelineState.timelineSegments || [];
-        const currentIds = new Set(currentSegs.map(s => String(s.id)));
-        const polledIds = new Set(polledSegments.map(s => String(s.id)));
-        const addedSegs = polledSegments.filter(s => !currentIds.has(String(s.id)));
-        const removedSegs = currentSegs.filter(s => !polledIds.has(String(s.id)));
+        const currentSegs = (timelineState.timelineSegments || [])
+          .filter((segment) => !segment._removing);
+        const {
+          added: addedSegs,
+          removed: removedSegs,
+          authoritative,
+        } = reconcileTimelineSegments(currentSegs, polledSegments);
 
         if (addedSegs.length === 0 && removedSegs.length === 0) return;
 
         // Use polled segments as the authoritative list
-        const updated = [...polledSegments].sort((a, b) => a.start_timestamp - b.start_timestamp);
-        setSegments(updated);
-        timelineState.setState({ timelineSegments: updated });
+        const updated = authoritative.sort((a, b) => a.start_timestamp - b.start_timestamp);
+        if (removedSegs.length > 0) {
+          const fading = [
+            ...updated,
+            ...removedSegs.map((segment) => ({ ...segment, _removing: true })),
+          ].sort((a, b) => a.start_timestamp - b.start_timestamp);
+          setSegments(fading);
+          timelineState.setState({ timelineSegments: fading });
+          clearTimeout(fadeTimeoutId);
+          fadeTimeoutId = setTimeout(() => {
+            if (cancelled) return;
+            setSegments(updated);
+            timelineState.setState({ timelineSegments: updated });
+          }, 100);
+        } else {
+          setSegments(updated);
+          timelineState.setState({ timelineSegments: updated });
+        }
 
         if (addedSegs.length > 0) {
           showStatusMessage(
@@ -1268,7 +1288,11 @@ export function TimelinePage() {
     };
 
     const intervalId = setInterval(pollForNewRecordings, POLL_INTERVAL_MS);
-    return () => clearInterval(intervalId);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      clearTimeout(fadeTimeoutId);
+    };
   }, [idsMode, selectedStream, timelineUrl]);
 
   useEffect(() => {
