@@ -386,6 +386,8 @@ static cJSON *camera_to_json(const fleet_camera_t *camera,
                                  fleet_camera_recording_mode(camera)) ||
         !cJSON_AddStringToObject(object, "health",
                                  fleet_health_state_name(camera->health)) ||
+        !cJSON_AddNumberToObject(object, "health_changed_at",
+                                 (double)camera->health_changed_at) ||
         !cJSON_AddNumberToObject(object, "last_frame_ts",
                                  (double)camera->last_frame_ts) ||
         !cJSON_AddNumberToObject(object, "current_fps", camera->current_fps) ||
@@ -474,6 +476,91 @@ static cJSON *camera_to_json(const fleet_camera_t *camera,
 fail:
     cJSON_Delete(object);
     return NULL;
+}
+
+static cJSON *operational_queue_item(
+    const char *key, const char *severity, const char *health,
+    const char *remediation, int count, int64_t oldest) {
+    cJSON *item = cJSON_CreateObject();
+    if (!item ||
+        !cJSON_AddStringToObject(item, "key", key) ||
+        !cJSON_AddStringToObject(item, "severity", severity) ||
+        !cJSON_AddNumberToObject(item, "count", count) ||
+        !cJSON_AddStringToObject(item, "remediation", remediation)) {
+        cJSON_Delete(item);
+        return NULL;
+    }
+    cJSON *selector = cJSON_AddObjectToObject(item, "selector");
+    cJSON *expression = selector
+        ? cJSON_AddObjectToObject(selector, "expression") : NULL;
+    cJSON *values = expression
+        ? cJSON_AddArrayToObject(expression, "values") : NULL;
+    if (!selector || !expression || !values ||
+        !cJSON_AddNumberToObject(selector, "version",
+                                 FLEET_SELECTOR_VERSION) ||
+        !cJSON_AddStringToObject(expression, "op", "health") ||
+        !cJSON_AddItemToArray(values, cJSON_CreateString(health))) {
+        cJSON_Delete(item);
+        return NULL;
+    }
+    if (oldest > 0) {
+        cJSON_AddNumberToObject(item, "oldest_unresolved_at", (double)oldest);
+    } else {
+        cJSON_AddNullToObject(item, "oldest_unresolved_at");
+    }
+    return item;
+}
+
+static cJSON *build_operational_queues(const fleet_camera_t *cameras,
+                                       int count) {
+    int offline_count = 0;
+    int degraded_count = 0;
+    int64_t offline_oldest = 0;
+    int64_t degraded_oldest = 0;
+    for (int index = 0; index < count; index++) {
+        const fleet_camera_t *camera = &cameras[index];
+        int *queue_count = NULL;
+        int64_t *oldest = NULL;
+        if (camera->health == FLEET_HEALTH_DOWN) {
+            queue_count = &offline_count;
+            oldest = &offline_oldest;
+        } else if (camera->health == FLEET_HEALTH_DEGRADED) {
+            queue_count = &degraded_count;
+            oldest = &degraded_oldest;
+        }
+        if (!queue_count) continue;
+        (*queue_count)++;
+        if (camera->health_changed_at > 0 &&
+            (*oldest == 0 || camera->health_changed_at < *oldest)) {
+            *oldest = camera->health_changed_at;
+        }
+    }
+
+    cJSON *queues = cJSON_CreateArray();
+    cJSON *offline = operational_queue_item(
+        "offline", "critical", "down", "inspect_connectivity",
+        offline_count, offline_oldest);
+    cJSON *degraded = operational_queue_item(
+        "degraded", "warning", "degraded", "inspect_stream_health",
+        degraded_count, degraded_oldest);
+    if (!queues || !offline || !degraded) {
+        cJSON_Delete(queues);
+        cJSON_Delete(offline);
+        cJSON_Delete(degraded);
+        return NULL;
+    }
+    if (!cJSON_AddItemToArray(queues, offline)) {
+        cJSON_Delete(queues);
+        cJSON_Delete(offline);
+        cJSON_Delete(degraded);
+        return NULL;
+    }
+    if (!cJSON_AddItemToArray(queues, degraded)) {
+        cJSON_Delete(queues);
+        cJSON_Delete(degraded);
+        return NULL;
+    }
+    return queues;
 }
 
 static void handle_fleet_query(const http_request_t *req, http_response_t *res,
@@ -605,6 +692,7 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
         return;
     }
     cJSON_AddNumberToObject(root, "selector_version", FLEET_SELECTOR_VERSION);
+    cJSON_AddNumberToObject(root, "queue_version", 1);
     cJSON_AddBoolToObject(root, "preview", preview);
     cJSON_AddNumberToObject(root, "page", options.page);
     cJSON_AddNumberToObject(root, "page_size", options.page_size);
@@ -620,6 +708,20 @@ static void handle_fleet_query(const http_request_t *req, http_response_t *res,
                                options.collection_uuid);
     }
     cJSON_AddItemToObject(root, "cameras", items);
+
+    cJSON *queues = build_operational_queues(cameras, camera_count);
+    if (!queues) {
+        cJSON_Delete(root);
+        free(matches);
+        free(cameras);
+        camera_collection_filter_free(&collection_filter);
+        fleet_selector_free(selector);
+        cJSON_Delete(body);
+        http_response_set_json_error(res, 500,
+                                     "Failed to build operational queues");
+        return;
+    }
+    cJSON_AddItemToObject(root, "queues", queues);
 
     if (options.include_facets) {
         cJSON *facets = build_facets(matches, match_count);

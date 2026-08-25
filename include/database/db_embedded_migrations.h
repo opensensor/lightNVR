@@ -1389,6 +1389,27 @@ static const char migration_0066_down[] =
     "DROP INDEX IF EXISTS idx_storage_policies_name;"
     "DROP TABLE IF EXISTS storage_policies;";
 
+static const char migration_0067_up[] =
+    "CREATE TABLE fleet_saved_views("
+    "uuid TEXT PRIMARY KEY,owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,"
+    "name TEXT NOT NULL COLLATE NOCASE,is_shared INTEGER NOT NULL DEFAULT 0 CHECK(is_shared IN(0,1)),"
+    "selector_json TEXT NOT NULL,search_text TEXT NOT NULL DEFAULT '',collection_uuid TEXT,"
+    "columns_json TEXT NOT NULL DEFAULT '[]',"
+    "sort_by TEXT NOT NULL DEFAULT 'name' CHECK(sort_by IN('name','camera_uuid','location','health','enabled','recording_mode','address')),"
+    "sort_order TEXT NOT NULL DEFAULT 'asc' CHECK(sort_order IN('asc','desc')),"
+    "revision INTEGER NOT NULL DEFAULT 1,"
+    "created_at INTEGER NOT NULL DEFAULT(strftime('%s','now')),"
+    "updated_at INTEGER NOT NULL DEFAULT(strftime('%s','now')));"
+    "CREATE UNIQUE INDEX idx_fleet_saved_views_owner_name "
+    "ON fleet_saved_views(COALESCE(owner_user_id,0),name COLLATE NOCASE);"
+    "CREATE INDEX idx_fleet_saved_views_visible "
+    "ON fleet_saved_views(is_shared,owner_user_id,name COLLATE NOCASE,uuid);";
+
+static const char migration_0067_down[] =
+    "DROP INDEX IF EXISTS idx_fleet_saved_views_visible;"
+    "DROP INDEX IF EXISTS idx_fleet_saved_views_owner_name;"
+    "DROP TABLE IF EXISTS fleet_saved_views;";
+
 static const migration_t embedded_migrations_data[] = {
     {
         .version = "0001",
@@ -1852,8 +1873,15 @@ static const migration_t embedded_migrations_data[] = {
         .sql_down = migration_0066_down,
         .is_embedded = true
     },
+    {
+        .version = "0067",
+        .description = "add_fleet_saved_views",
+        .sql_up = migration_0067_up,
+        .sql_down = migration_0067_down,
+        .is_embedded = true
+    },
 };
 
-#define EMBEDDED_MIGRATIONS_COUNT 66
+#define EMBEDDED_MIGRATIONS_COUNT 67
 
 #endif /* DB_EMBEDDED_MIGRATIONS_H */

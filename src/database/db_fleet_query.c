@@ -263,6 +263,8 @@ void fleet_camera_enrich_runtime_health(fleet_camera_t *cameras, int count) {
                     break;
             }
             cameras[i].last_frame_ts = (int64_t)metrics[j].last_frame_ts;
+            cameras[i].health_changed_at =
+                (int64_t)metrics[j].health_changed_at;
             cameras[i].current_fps = metrics[j].current_fps;
             cameras[i].recording_active = metrics[j].recording_active != 0;
             break;

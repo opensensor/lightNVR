@@ -21,11 +21,14 @@
 #include "database/db_camera_tags.h"
 #include "database/db_core.h"
 #include "database/db_fleet_query.h"
+#include "database/db_fleet_saved_views.h"
 #include "database/db_locations.h"
 #include "database/db_recordings.h"
 #include "database/db_streams.h"
+#include "telemetry/stream_metrics.h"
 #include "utils/strings.h"
 #include "web/api_handlers_fleet.h"
+#include "web/api_handlers_fleet_views.h"
 #include "web/api_handlers.h"
 #include "web/request_response.h"
 
@@ -128,6 +131,36 @@ static cJSON *call_handler(void (*handler)(const http_request_t *,
     return json;
 }
 
+static cJSON *call_endpoint(void (*handler)(const http_request_t *,
+                                            http_response_t *),
+                            http_method_t method, const char *method_name,
+                            const char *path, const char *body,
+                            const char *api_key, int expected_status) {
+    http_request_t req;
+    http_response_t res;
+    http_request_init(&req);
+    http_response_init(&res);
+    req.method = method;
+    safe_strcpy(req.method_str, method_name, sizeof(req.method_str), 0);
+    safe_strcpy(req.path, path, sizeof(req.path), 0);
+    safe_strcpy(req.client_ip, "127.0.0.1", sizeof(req.client_ip), 0);
+    req.body = (void *)(body ? body : "");
+    req.body_len = body ? strlen(body) : 0;
+    if (api_key) {
+        safe_strcpy(req.headers[0].name, "X-API-Key",
+                    sizeof(req.headers[0].name), 0);
+        safe_strcpy(req.headers[0].value, api_key,
+                    sizeof(req.headers[0].value), 0);
+        req.num_headers = 1;
+    }
+    handler(&req, &res);
+    TEST_ASSERT_EQUAL_INT(expected_status, res.status_code);
+    cJSON *json = res.body ? cJSON_Parse((const char *)res.body) : NULL;
+    TEST_ASSERT_NOT_NULL(json);
+    http_response_free(&res);
+    return json;
+}
+
 static cJSON *call_get_recordings(const char *query, int expected_status) {
     http_request_t req;
     http_response_t res;
@@ -171,9 +204,11 @@ static void add_test_recording(const char *stream_name, const char *path,
 }
 
 void setUp(void) {
+    metrics_shutdown();
     sqlite3 *db = get_db_handle();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
+    sqlite3_exec(db, "DELETE FROM fleet_saved_views;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM camera_collections;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM recordings;", NULL, NULL, NULL);
     sqlite3_exec(db, "DELETE FROM streams;", NULL, NULL, NULL);
@@ -192,8 +227,20 @@ void setUp(void) {
 }
 
 void tearDown(void) {
+    metrics_shutdown();
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
+}
+
+static cJSON *find_queue(cJSON *response, const char *key) {
+    cJSON *queue = NULL;
+    cJSON_ArrayForEach(queue,
+                       cJSON_GetObjectItemCaseSensitive(response, "queues")) {
+        cJSON *item_key = cJSON_GetObjectItemCaseSensitive(queue, "key");
+        if (cJSON_IsString(item_key) &&
+            strcmp(item_key->valuestring, key) == 0) return queue;
+    }
+    return NULL;
 }
 
 void test_inventory_loads_hierarchy_tags_and_redacts_credentials(void) {
@@ -563,6 +610,123 @@ void test_thousand_camera_fixture_returns_only_requested_page(void) {
     cJSON_Delete(json);
 }
 
+void test_operational_queue_counts_follow_authorized_inventory(void) {
+    stream_config_t visible = create_camera(
+        "Visible Offline", "rtsp://10.0.0.70/live", "Outdoor", true, NULL);
+    create_camera("Hidden Offline", "rtsp://10.0.0.71/live", "Indoor", true,
+                  NULL);
+    TEST_ASSERT_EQUAL_INT(0, metrics_init(4));
+    metrics_record_error("Visible Offline", "timeout");
+    metrics_record_error("Hidden Offline", "timeout");
+
+    int64_t user_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("fleetviewer", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &user_id));
+    TEST_ASSERT_EQUAL_INT(0,
+                          db_authorization_set_user_mode(user_id, "policy"));
+    char selector[512];
+    snprintf(selector, sizeof(selector),
+             "{\"version\":1,\"expression\":{\"op\":\"camera_uuid\","
+             "\"values\":[\"%s\"]}}",
+             visible.camera_uuid);
+    TEST_ASSERT_EQUAL_INT(
+        0, db_authorization_create_user_grant(
+               user_id, "00000000-0000-4000-8000-000000000003",
+               "selector", selector, NULL, NULL));
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(user_id, api_key, sizeof(api_key)));
+    g_config.web_auth_enabled = true;
+
+    cJSON *json = call_handler(handle_post_fleet_camera_query, "{}",
+                               api_key, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "queue_version")->valueint);
+    cJSON *offline = find_queue(json, "offline");
+    TEST_ASSERT_NOT_NULL(offline);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(offline, "count")->valueint);
+    TEST_ASSERT_EQUAL_STRING(
+        "critical",
+        cJSON_GetObjectItemCaseSensitive(offline, "severity")->valuestring);
+    cJSON *queue_selector = cJSON_GetObjectItemCaseSensitive(
+        offline, "selector");
+    TEST_ASSERT_TRUE(cJSON_IsObject(queue_selector));
+    cJSON_Delete(json);
+}
+
+void test_saved_views_are_owner_scoped_shareable_and_revisioned(void) {
+    const char *shared_body =
+        "{\"name\":\"Offline cameras\",\"is_shared\":true,"
+        "\"selector\":{\"version\":1,\"expression\":{\"op\":\"health\","
+        "\"values\":[\"down\"]}},\"search\":\"door\","
+        "\"columns\":[\"camera\",\"health\",\"actions\"],"
+        "\"sort_by\":\"health\",\"sort_order\":\"desc\"}";
+    cJSON *created = call_endpoint(
+        handle_post_fleet_saved_view, HTTP_METHOD_POST, "POST",
+        "/api/fleet/views", shared_body, NULL, 201);
+    char uuid[CAMERA_UUID_STRING_SIZE];
+    safe_strcpy(uuid,
+                cJSON_GetObjectItemCaseSensitive(created, "uuid")->valuestring,
+                sizeof(uuid), 0);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(created, "is_shared")));
+    TEST_ASSERT_TRUE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(created, "owned")));
+    cJSON_Delete(created);
+
+    int64_t viewer_id = 0;
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_create_user("fleetviewer", "password123", NULL,
+                               USER_ROLE_VIEWER, true, &viewer_id));
+    char api_key[128] = {0};
+    TEST_ASSERT_EQUAL_INT(
+        0, db_auth_generate_api_key(viewer_id, api_key, sizeof(api_key)));
+    g_config.web_auth_enabled = true;
+    cJSON *listed = call_endpoint(
+        handle_get_fleet_saved_views, HTTP_METHOD_GET, "GET",
+        "/api/fleet/views", NULL, api_key, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(listed, "count")->valueint);
+    cJSON *shared = cJSON_GetArrayItem(
+        cJSON_GetObjectItemCaseSensitive(listed, "views"), 0);
+    TEST_ASSERT_FALSE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(shared, "owned")));
+    TEST_ASSERT_FALSE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(listed, "can_share")));
+    cJSON_Delete(listed);
+
+    cJSON *denied = call_endpoint(
+        handle_post_fleet_saved_view, HTTP_METHOD_POST, "POST",
+        "/api/fleet/views", shared_body, api_key, 403);
+    cJSON_Delete(denied);
+
+    g_config.web_auth_enabled = false;
+    char path[128];
+    snprintf(path, sizeof(path), "/api/fleet/views/%s", uuid);
+    cJSON *updated = call_endpoint(
+        handle_put_fleet_saved_view, HTTP_METHOD_PUT, "PUT", path,
+        "{\"name\":\"Offline first\",\"is_shared\":true,"
+        "\"selector\":{\"version\":1,\"expression\":{\"op\":\"health\","
+        "\"values\":[\"down\"]}},\"columns\":[\"camera\",\"health\"],"
+        "\"sort_by\":\"name\",\"sort_order\":\"asc\",\"revision\":1}",
+        NULL, 200);
+    TEST_ASSERT_EQUAL_INT(
+        2, cJSON_GetObjectItemCaseSensitive(updated, "revision")->valueint);
+    cJSON_Delete(updated);
+    cJSON *stale = call_endpoint(
+        handle_delete_fleet_saved_view, HTTP_METHOD_DELETE, "DELETE", path,
+        "{\"revision\":1}", NULL, 409);
+    cJSON_Delete(stale);
+    cJSON *deleted = call_endpoint(
+        handle_delete_fleet_saved_view, HTTP_METHOD_DELETE, "DELETE", path,
+        "{\"revision\":2}", NULL, 200);
+    TEST_ASSERT_TRUE(cJSON_IsTrue(
+        cJSON_GetObjectItemCaseSensitive(deleted, "success")));
+    cJSON_Delete(deleted);
+}
+
 int main(void) {
     unlink(TEST_DB_PATH);
     if (init_database(TEST_DB_PATH) != 0) {
@@ -578,6 +742,8 @@ int main(void) {
     RUN_TEST(test_rejects_malformed_selector_and_oversized_page);
     RUN_TEST(test_recordings_filter_by_collection_uuid);
     RUN_TEST(test_thousand_camera_fixture_returns_only_requested_page);
+    RUN_TEST(test_operational_queue_counts_follow_authorized_inventory);
+    RUN_TEST(test_saved_views_are_owner_scoped_shareable_and_revisioned);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);

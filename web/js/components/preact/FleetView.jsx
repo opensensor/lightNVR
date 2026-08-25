@@ -8,6 +8,7 @@ import { CollectionManager } from './fleet/CollectionManager.jsx';
 import { FleetFilters } from './fleet/FleetFilters.jsx';
 import { FleetTable } from './fleet/FleetTable.jsx';
 import { OrganizationManager } from './fleet/OrganizationManager.jsx';
+import { SavedViewsBar } from './fleet/SavedViewsBar.jsx';
 import { buildLocationRows } from './fleet/fleetOrganization.js';
 import {
   DEFAULT_FLEET_STATE,
@@ -16,6 +17,8 @@ import {
   clampFleetPage,
   countFleetFilters,
   facetCount,
+  fleetStateFromOperationalQueue,
+  fleetStateFromSavedView,
   readFleetUrlState,
   writeFleetUrlState,
 } from './fleet/fleetQuery.js';
@@ -41,6 +44,27 @@ function StatCard({ label, value, tone = 'default' }) {
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>
     </div>
+  );
+}
+
+function OperationalQueueCard({ queue, locale, onOpen, t }) {
+  if (!queue) return null;
+  const danger = queue?.severity === 'critical';
+  const oldest = queue?.oldest_unresolved_at
+    ? new Date(queue.oldest_unresolved_at * 1000).toLocaleString(locale)
+    : t('fleet.queues.noneActive');
+  return (
+    <button
+      type="button"
+      className={`rounded-lg border-l-4 bg-card p-4 text-left shadow-sm transition hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] ${danger ? 'border-[hsl(var(--danger)/0.55)]' : 'border-[hsl(var(--warning)/0.65)]'}`}
+      onClick={() => onOpen(queue)}
+    >
+      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t(`fleet.queues.${queue.key}`)}</div>
+      <div className="mt-1 text-2xl font-bold tabular-nums">{queue.count}</div>
+      <div className="mt-1 truncate text-xs text-muted-foreground" title={oldest}>
+        {queue.count > 0 ? t('fleet.queues.oldest', { time: oldest }) : oldest}
+      </div>
+    </button>
   );
 }
 
@@ -143,6 +167,12 @@ export function FleetView() {
   } = useQuery(['camera-collections'], '/api/camera-collections', {}, {
     staleTime: 30000,
   });
+  const {
+    data: savedViewsData,
+    refetch: refetchSavedViews,
+  } = useQuery(['fleet-saved-views'], '/api/fleet/views', {}, {
+    staleTime: 30000,
+  });
 
   const updateState = useCallback((changes, resetPage = true) => {
     setState((current) => ({ ...current, ...changes, page: resetPage ? 1 : (changes.page ?? current.page) }));
@@ -165,6 +195,18 @@ export function FleetView() {
       page: 1,
     }));
   }, []);
+
+  const applySavedView = useCallback((view) => {
+    const next = fleetStateFromSavedView(view, state);
+    if (!next) return false;
+    setState(next);
+    return true;
+  }, [state]);
+
+  const openQueue = useCallback((queue) => {
+    const next = fleetStateFromOperationalQueue(queue, state);
+    if (next) setState(next);
+  }, [state]);
 
   const toggleCamera = useCallback((camera, checked) => {
     setSelectedCameras((current) => {
@@ -224,6 +266,12 @@ export function FleetView() {
   const filterCount = countFleetFilters(state);
   const hasFilter = filterCount > 0 || Boolean(state.search.trim());
   const total = data?.total || 0;
+  const queues = data?.queues || [
+    { key: 'degraded', severity: 'warning', count: facetCount(facets, 'health', 'degraded'), oldest_unresolved_at: null, selector: { version: 1, health: ['degraded'] } },
+    { key: 'offline', severity: 'critical', count: facetCount(facets, 'health', 'down'), oldest_unresolved_at: null, selector: { version: 1, health: ['down'] } },
+  ];
+  const degradedQueue = queues.find((queue) => queue.key === 'degraded') || queues[0];
+  const offlineQueue = queues.find((queue) => queue.key === 'offline') || queues[1];
 
   return (
     <div className="flex-grow py-2" aria-labelledby="fleet-title">
@@ -246,9 +294,17 @@ export function FleetView() {
       <section className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label={t('fleet.summary')}>
         <StatCard label={t('fleet.totalCameras')} value={total} />
         <StatCard label={t('fleet.health.up')} value={facetCount(facets, 'health', 'up')} tone="success" />
-        <StatCard label={t('fleet.needsAttention')} value={facetCount(facets, 'health', 'degraded')} tone="warning" />
-        <StatCard label={t('fleet.health.down')} value={facetCount(facets, 'health', 'down')} tone="danger" />
+        <OperationalQueueCard queue={degradedQueue} locale={locale} onOpen={openQueue} t={t} />
+        <OperationalQueueCard queue={offlineQueue} locale={locale} onOpen={openQueue} t={t} />
       </section>
+
+      <SavedViewsBar
+        data={savedViewsData}
+        state={state}
+        onApply={applySavedView}
+        onRefresh={refetchSavedViews}
+        t={t}
+      />
 
       <div className="mb-4 rounded-lg border border-border bg-card p-3 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center">

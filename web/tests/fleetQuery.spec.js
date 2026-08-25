@@ -1,9 +1,12 @@
 import {
   DEFAULT_FLEET_STATE,
   buildFleetQueryRequest,
+  buildFleetSavedViewPayload,
   buildFleetSelector,
   clampFleetPage,
   countFleetFilters,
+  fleetStateFromOperationalQueue,
+  fleetStateFromSavedView,
   readFleetUrlState,
   toggleFleetValue,
   writeFleetUrlState,
@@ -96,5 +99,45 @@ describe('fleet query state', () => {
     })).toBe(6);
     expect(clampFleetPage(8, 3)).toBe(3);
     expect(clampFleetPage(8, 0)).toBe(1);
+  });
+
+  test('round trips supported filter state through a saved view payload', () => {
+    const state = {
+      ...DEFAULT_FLEET_STATE,
+      search: ' north ',
+      health: ['down'],
+      enabled: 'true',
+      tagUuids: ['tag-a'],
+      pageSize: 100,
+      sortBy: 'health',
+      sortOrder: 'desc',
+    };
+    const payload = buildFleetSavedViewPayload(' Offline ', true, state);
+    expect(payload.name).toBe('Offline');
+    expect(payload.is_shared).toBe(true);
+    expect(payload.search).toBe('north');
+    expect(fleetStateFromSavedView({
+      ...payload,
+      collection_uuid: payload.collection_uuid,
+    }, state)).toMatchObject({
+      search: 'north',
+      health: ['down'],
+      enabled: 'true',
+      tagUuids: ['tag-a'],
+      page: 1,
+      pageSize: 100,
+      sortBy: 'health',
+      sortOrder: 'desc',
+    });
+  });
+
+  test('applies operational queues and rejects selectors the filter UI cannot represent', () => {
+    const queueState = fleetStateFromOperationalQueue({
+      selector: { version: 1, expression: { op: 'health', values: ['down'] } },
+    }, { ...DEFAULT_FLEET_STATE, pageSize: 200, search: 'stale' });
+    expect(queueState).toMatchObject({ health: ['down'], search: '', pageSize: 200 });
+    expect(fleetStateFromSavedView({
+      selector: { version: 1, expression: { op: 'or', children: [] } },
+    })).toBeNull();
   });
 });
