@@ -938,6 +938,13 @@ export function StreamsView() {
     setSelectedDevice(null);
     setSelectedProfile(null);
     setCustomStreamName('');
+    // Reopen the durable staging inbox before the operator starts another scan.
+    try {
+      const inventory = await fetchJSON('/api/onvif/devices', { timeout: 5000 });
+      setDiscoveredDevices(inventory?.devices || []);
+    } catch (e) {
+      console.warn('Could not load persisted ONVIF discovery inventory', e);
+    }
     // Fetch the configured default network from settings
     try {
       const settings = await fetchJSON('/api/settings', { timeout: 5000 });
@@ -1224,7 +1231,31 @@ export function StreamsView() {
 
     // Use mutation to save stream
     saveStreamMutation.mutate(streamData, {
-      onSuccess: () => {
+      onSuccess: async () => {
+        if (selectedDevice.inventory_uuid) {
+          try {
+            await fetchJSON('/api/onvif/device/claim', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                inventory_uuid: selectedDevice.inventory_uuid,
+                stream_name: streamData.name
+              }),
+              timeout: 5000
+            });
+            setDiscoveredDevices(previous => previous.map(device =>
+              device.inventory_uuid === selectedDevice.inventory_uuid
+                ? { ...device, claim_state: 'claimed' }
+                : device
+            ));
+          } catch (error) {
+            showStatusMessage(
+              t('streams.onvifClaimWarning', { message: error.message }),
+              'warning',
+              5000
+            );
+          }
+        }
         setIsAddingStream(false);
         setShowCustomNameInput(false);
         // Keep the discovery modal open with its device list intact so
@@ -1686,13 +1717,14 @@ export function StreamsView() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.ipAddress')}</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.manufacturer')}</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('streams.model')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.status')}</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('common.actions')}</th>
                   </tr>
                   </thead>
                   <tbody className="bg-card divide-y divide-border">
                   {discoveredDevices.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="px-6 py-4 text-center text-muted-foreground">
+                      <td colSpan="5" className="px-6 py-4 text-center text-muted-foreground">
                         {isDiscovering ? (
                           <div className="flex items-center justify-center">
                             <span>{t('streams.discoveringDevices')}</span>
@@ -1709,11 +1741,16 @@ export function StreamsView() {
                     const alreadyAdded = isDeviceAlreadyAdded(device);
                     const isConnecting = isLoadingProfiles && selectedDevice && selectedDevice.ip_address === device.ip_address;
                     const baseRowClass = 'hover:bg-muted/50 transition-opacity';
-                    const rowClassName = alreadyAdded ? `${baseRowClass} opacity-60` : baseRowClass;
+                    const rowClassName = alreadyAdded || !device.online ? `${baseRowClass} opacity-60` : baseRowClass;
                     return (
-                      <tr key={device.ip_address} className={rowClassName}>
+                      <tr key={device.inventory_uuid || device.endpoint || device.ip_address} className={rowClassName}>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span>{device.ip_address}</span>
+                          <div>{device.ip_address}</div>
+                          {device.last_seen_at > 0 && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {t('streams.lastSeen', { time: new Date(device.last_seen_at * 1000).toLocaleString() })}
+                            </div>
+                          )}
                           {alreadyAdded && (
                             <span className="ml-2 inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-muted text-muted-foreground border border-border">
                               {t('streams.alreadyAdded')}
@@ -1722,6 +1759,23 @@ export function StreamsView() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">{device.manufacturer || t('common.unknown')}</td>
                         <td className="px-6 py-4 whitespace-nowrap">{device.model || t('common.unknown')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-wrap gap-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full border ${device.online ? 'border-green-500/40 text-green-600' : 'border-border text-muted-foreground'}`}>
+                              {device.online ? t('common.online') : t('common.offline')}
+                            </span>
+                            {device.claim_state === 'claimed' && (
+                              <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full border border-primary/40 text-primary">
+                                {t('streams.claimed')}
+                              </span>
+                            )}
+                            {device.duplicate_suspected && (
+                              <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full border border-yellow-500/40 text-yellow-600" title={t('streams.duplicateSuspectedHelp')}>
+                                {t('streams.duplicateSuspected')}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
                               className={alreadyAdded ? 'btn-secondary focus:outline-none' : 'btn-primary focus:outline-none'}

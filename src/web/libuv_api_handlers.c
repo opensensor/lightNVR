@@ -365,6 +365,7 @@ int register_all_libuv_handlers(http_server_handle_t server) {
     http_server_register_handler(server, "/api/onvif/discovery/discover", "POST", handle_post_discover_onvif_devices);
     http_server_register_handler(server, "/api/onvif/device/profiles", "GET", handle_get_onvif_device_profiles);
     http_server_register_handler(server, "/api/onvif/device/add", "POST", handle_post_add_onvif_device_as_stream);
+    http_server_register_handler(server, "/api/onvif/device/claim", "POST", handle_post_claim_onvif_device);
     http_server_register_handler(server, "/api/onvif/device/test", "POST", handle_post_test_onvif_connection);
 
     // Recordings API (backend-agnostic handlers)

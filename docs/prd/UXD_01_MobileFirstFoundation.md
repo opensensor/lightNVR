@@ -1,6 +1,7 @@
 # PRD — Mobile-First UX Foundation
 
-**Status**: Draft
+**Status**: In progress — T1–T5 implemented; T6 touch-target and spacing audit
+remains
 **Created**: 2026-04-22
 **Owner**: TBD
 **Driving signal**: [#399 (AndyIsHereBoi)](https://github.com/opensensor/lightNVR/issues/399) plus general usability friction across the web UI.
@@ -99,10 +100,10 @@ Convert the current ~2200-line single-form view into a tabbed layout matching th
 
 | Phase | Scope | Estimate |
 |---|---|---|
-| P0 — primitives | `AsyncButton`/`useAsyncAction`, toast position, logo→home, scrollbar styling | 2–3 days |
-| P1 — Settings | Tab restructure + search + sticky save | 3–5 days |
-| P2 — Streams page | Grid layout + recording-mode badge + mobile collapse | 2 days |
-| P3 — Audit | Touch-target lint + reduce-motion + safe-area pass | 1–2 days |
+| P0 — primitives | Implemented: `AsyncButton`/`useAsyncAction`, toast position, logo→home, scrollbar styling | 2–3 days |
+| P1 — Settings | Implemented: tab restructure + search + sticky save | 3–5 days |
+| P2 — Streams page | Implemented: grid layout + recording-mode badge + mobile collapse | 2 days |
+| P3 — Audit | Partially implemented: reduce-motion and safe-area work landed; T6 touch-target lint/remediation remains | 1–2 days |
 
 ## 7. Acceptance criteria (measurable)
 
