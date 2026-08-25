@@ -404,6 +404,7 @@ static void server_thread_func(void *arg) {
     // CRITICAL: Mark thread as no longer running so restart logic works correctly.
     // Without this, libuv_server_stop would try to join a thread that already exited
     // and the restart mechanism would be stuck.
+    mark_web_server_thread_stopped();
     server->thread_running = false;
 }
 
@@ -701,4 +702,3 @@ int http_server_register_handler(http_server_handle_t server, const char *path,
 }
 
 #endif /* HTTP_BACKEND_LIBUV */
-

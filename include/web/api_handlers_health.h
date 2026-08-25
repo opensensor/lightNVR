@@ -79,6 +79,11 @@ void reset_server_restart_flag(void);
 void set_web_server_thread_id(pthread_t thread_id);
 
 /**
+ * @brief Mark the registered web server event-loop thread as stopped
+ */
+void mark_web_server_thread_stopped(void);
+
+/**
  * @brief Backend-agnostic handler for GET /api/health
  */
 void handle_get_health(const http_request_t *req, http_response_t *res);

@@ -17,7 +17,6 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <pthread.h>
-#include <signal.h>
 #include <curl/curl.h>
 #include "core/shutdown_coordinator.h"
 
@@ -68,6 +67,7 @@ static char g_health_check_url[256] = "http://127.0.0.1:8080/api/health";
 // Web server thread tracking
 static pthread_t g_web_server_thread_id = 0;
 static bool g_web_server_thread_id_set = false;
+static bool g_web_server_thread_running = false;
 static pthread_mutex_t g_web_server_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 double get_process_uptime_seconds(void) {
@@ -322,9 +322,18 @@ void set_web_server_thread_id(pthread_t thread_id) {
     pthread_mutex_lock(&g_web_server_thread_mutex);
     g_web_server_thread_id = thread_id;
     g_web_server_thread_id_set = true;
+    g_web_server_thread_running = true;
     pthread_mutex_unlock(&g_web_server_thread_mutex);
 
     log_info("Web server thread ID set: %lu", (unsigned long)thread_id);
+}
+
+void mark_web_server_thread_stopped(void) {
+    pthread_mutex_lock(&g_web_server_thread_mutex);
+    g_web_server_thread_running = false;
+    pthread_mutex_unlock(&g_web_server_thread_mutex);
+
+    log_info("Web server event-loop thread marked stopped");
 }
 
 /**
@@ -395,20 +404,19 @@ static bool is_web_server_thread_running(void) {
         return true;
     }
 
-    // Use pthread_kill with signal 0 to check if thread exists
-    int result = pthread_kill(g_web_server_thread_id, 0);
-
+    // pthread_t identifiers may be reused immediately after pthread_join(), so
+    // pthread_kill(id, 0) is not a valid liveness test for a finished thread.
+    // The event-loop thread explicitly publishes both transitions instead.
+    bool running = g_web_server_thread_running;
     pthread_mutex_unlock(&g_web_server_thread_mutex);
-
-    // ESRCH means thread doesn't exist, 0 means it exists
-    return (result == 0);
+    return running;
 }
 
 /**
  * @brief Restart the web server
  *
- * This function attempts to restart the web server by stopping and starting it again.
- * This is necessary when the server thread is deadlocked (alive but not responding).
+ * This function attempts to restart the web server after its event-loop thread
+ * has exited. A live but slow event loop is deliberately left intact.
  *
  * @return true if restart succeeded, false otherwise
  */
@@ -446,43 +454,8 @@ static bool restart_web_server(void) {
     log_info("Stopping web server before restart...");
     http_server_stop(http_server);
 
-    // Wait for the event loop thread to exit.
-    //
-    // If it has not exited, the loop is still live and in-flight thread-pool
-    // work still points at the server. Restarting on top of that re-initializes
-    // handles the old loop still owns, and the process dies with SIGSEGV once
-    // that work completes. A restart cannot fix the usual cause anyway -- a
-    // saturated handler pool -- so abandon this attempt and let the next health
-    // interval retry, by which point the pool has normally drained.
-    log_info("Waiting for web server thread to exit...");
-    bool thread_exited = false;
-    for (int i = 0; i < 30; i++) {  // Wait up to 3 seconds
-        usleep(100000);  // 100ms
-
-        if (!is_web_server_thread_running()) {
-            log_info("Web server thread has exited");
-            thread_exited = true;
-            break;
-        }
-    }
-
-    if (!thread_exited) {
-        log_warn("Web server thread still running after 3 seconds - aborting restart. "
-                 "Handlers are most likely blocked on the thread pool; a restart would "
-                 "abandon a live event loop. Will retry on the next health check.");
-        g_restart_attempts--;  // Not a real attempt; do not burn the budget
-        return false;
-    }
-
     // Small delay to ensure resources are released
     usleep(500000);  // 500ms
-
-    // Clear the stale thread ID so is_web_server_thread_running() returns
-    // true (= "starting up") during the brief window between http_server_start()
-    // returning and the new event-loop thread calling set_web_server_thread_id().
-    pthread_mutex_lock(&g_web_server_thread_mutex);
-    g_web_server_thread_id_set = false;
-    pthread_mutex_unlock(&g_web_server_thread_mutex);
 
     // Now start the server again - this will create a new event loop thread
     if (http_server_start(http_server) != 0) {
@@ -539,15 +512,17 @@ static void *health_check_thread_func(void *arg) {
         if (!check_result) {
             log_warn("Health check failed (consecutive failures: %d)", g_failed_health_checks);
 
-            // Check if web server thread is still running
-            if (!is_web_server_thread_running()) {
+            // A slow request must not cause the watchdog to stop a live
+            // listener. In-process restart is only safe and useful after the
+            // event-loop thread itself has exited.
+            bool event_loop_running = is_web_server_thread_running();
+            if (!event_loop_running) {
                 log_error("Web server thread is not running!");
                 g_server_needs_restart = true;
             }
 
-            // If we've had multiple consecutive failures, try to restart
-            if (g_failed_health_checks >= 2 || g_server_needs_restart) {
-                log_warn("Multiple health check failures or server thread dead, attempting restart");
+            if (g_server_needs_restart) {
+                log_warn("Web server event-loop thread exited, attempting restart");
 
                 if (restart_web_server()) {
                     log_info("Web server restart succeeded");
@@ -555,6 +530,9 @@ static void *health_check_thread_func(void *arg) {
                 } else {
                     log_error("Web server restart failed");
                 }
+            } else if (g_failed_health_checks >= 2) {
+                log_warn("Health endpoint remains slow but the web event loop is alive; "
+                         "leaving the listener intact and retrying without an in-process restart");
             }
         } else {
             // Reset restart attempts counter on successful health check

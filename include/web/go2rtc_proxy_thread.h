@@ -29,9 +29,9 @@
 int go2rtc_proxy_thread_init(uv_loop_t *loop);
 
 /**
- * Submit a proxy request.  A detached thread is spawned to perform the
- * blocking curl call.  When complete the event loop is woken and the
- * response is sent from the loop thread.
+ * Submit a proxy request.  A detached thread is spawned to perform both the
+ * potentially blocking authorization work and the curl call.  When complete
+ * the event loop is woken and the response is sent from the loop thread.
  *
  * The caller must have already stopped reading on the connection and
  * paused the HTTP parser.
@@ -58,4 +58,3 @@ bool go2rtc_proxy_path_matches(const char *path);
 
 #endif /* HTTP_BACKEND_LIBUV */
 #endif /* GO2RTC_PROXY_THREAD_H */
-

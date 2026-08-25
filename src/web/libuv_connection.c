@@ -17,7 +17,6 @@
 #include "web/libuv_server.h"
 #include "web/libuv_connection.h"
 #include "web/go2rtc_proxy_thread.h"
-#include "web/api_handlers_go2rtc_proxy.h"
 #include "web/api_handlers_health.h"
 #include "web/httpd_utils.h"
 #include "web/audit_log.h"
@@ -663,15 +662,11 @@ static int on_message_complete(llhttp_t *parser) {
     // Set user_data to point to connection (needed for file serving and proxy)
     conn->request.user_data = conn;
 
-    // Go2rtc proxy paths use dedicated detached threads to avoid starving the
-    // shared libuv thread pool with 30-second blocking curl calls.
+    // Go2rtc proxy paths use dedicated detached threads so both authorization
+    // (which may access SQLite) and the blocking curl call stay off the event
+    // loop and the shared libuv worker pool.
     if (go2rtc_proxy_path_matches(conn->request.path)) {
         uv_read_stop((uv_stream_t *)&conn->handle);
-        if (!go2rtc_proxy_authorize_request(&conn->request,
-                                            &conn->response)) {
-            libuv_send_response_ex(conn, &conn->response, action);
-            return HPE_OK;
-        }
         if (go2rtc_proxy_thread_submit(conn, action) == 0) {
             return HPE_PAUSED;
         }
