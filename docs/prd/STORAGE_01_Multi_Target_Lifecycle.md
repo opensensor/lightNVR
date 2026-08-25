@@ -1,6 +1,7 @@
 # PRD — Multi-Target Storage Lifecycle
 
-**Status**: In progress — P0, P1a, and P1b implemented
+**Status**: In progress — P0, P1a, P1b, and the P2a durable single-recording
+migration slice are implemented
 **Created**: 2026-08-22
 **Owner**: TBD
 **Priority**: 5 — storage scale and resilience
@@ -165,7 +166,7 @@ These are examples, not hard-coded product defaults.
 | P0 | Implemented: target schema/resolver, default-target migration, target health, and administration UI/API |
 | P1a | Implemented: selector-driven per-segment placement, named/default/pause/fail fallback, applied-policy audit metadata, policy administration UI/API, and mount-loss guards |
 | P1b | Implemented: per-target pressure evaluation and cleanup; policy conflict/effective-precedence simulation |
-| P2 | Persistent migration/copy jobs, checksums, bandwidth limits |
+| P2 | Partially implemented (P2a): persistent single-recording move jobs, restart recovery, bounded single-worker execution, temporary destination copy, independent SHA-256 verification, atomic location commit, retry/backoff, post-commit source cleanup, API, audit, and job-status UI. Copy retention/replication, cancellation/manual retry controls, bandwidth limits, and archival windows remain |
 | P3 | Pools, replication, capacity forecast, policy compliance dashboard |
 | P4 | External storage adapter interface, only when a concrete integration is chosen |
 
@@ -231,7 +232,18 @@ The preview reports camera overlap with each enabled policy and shows the
 effective winner using the same priority/name/UUID ordering as recording
 placement.
 
+P2a adds administrator-authorized `POST /api/storage-migrations` and read APIs
+for durable one-recording moves. The database snapshots both storage identities
+and the worker recovers queued or interrupted copy/verify/commit states after a
+restart. It copies to a job-specific temporary file, independently hashes the
+destination with SHA-256, publishes the verified file, atomically changes the
+recording's target/object/path metadata, and only then removes the source. A
+post-commit cleanup failure remains durable and retries without reverting the
+verified destination. The Storage settings page polls and displays job state,
+attempts, byte progress, and actionable errors.
+
 This slice still does not implement target pools, automatic spillover,
-recording migration, policy minimum-retention/copy-count guarantees, or
-capacity forecasting. A named or default fallback is a single explicit
-alternate, and an unavailable alternate safely pauses placement.
+automatic policy-driven migration, retained secondary copies/replication,
+bandwidth or archival-window controls, policy minimum-retention/copy-count
+guarantees, or capacity forecasting. A named or default fallback is a single
+explicit alternate, and an unavailable alternate safely pauses placement.

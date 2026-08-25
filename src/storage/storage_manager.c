@@ -12,6 +12,7 @@
 #include <pthread.h>
 
 #include "storage/storage_manager.h"
+#include "storage/storage_migration.h"
 #include "storage/storage_manager_streams_cache.h"
 #include "storage/storage_target_health.h"
 #include "database/db_core.h"
@@ -220,11 +221,16 @@ int init_storage_manager(const char *storage_path, uint64_t max_size) {
     if (start_storage_manager_thread(3600) != 0) {
         log_warn("Failed to start storage manager thread, automatic tasks will not be performed");
     }
+    if (storage_migration_worker_start() != 0) {
+        log_warn("Failed to start durable storage migration worker");
+    }
     return 0;
 }
 
 // Shutdown the storage manager
 void shutdown_storage_manager(void) {
+    storage_migration_worker_shutdown();
+
     // Stop the storage manager thread
     // cppcheck-suppress knownConditionTrueFalse
     if (stop_storage_manager_thread() != 0) {

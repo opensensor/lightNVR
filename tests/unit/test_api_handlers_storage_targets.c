@@ -15,10 +15,13 @@
 #include "core/config.h"
 #include "database/db_auth.h"
 #include "database/db_core.h"
+#include "database/db_recordings.h"
+#include "database/db_storage_migrations.h"
 #include "database/db_storage_targets.h"
 #include "unity.h"
 #include "utils/strings.h"
 #include "web/api_handlers_storage_targets.h"
+#include "web/api_handlers_storage_migrations.h"
 #include "web/request_response.h"
 
 #define TEST_DB_PATH "/tmp/lightnvr_unit_api_storage_targets.db"
@@ -86,7 +89,8 @@ void setUp(void) {
     g_config.web_auth_enabled = false;
     g_config.demo_mode = false;
     TEST_ASSERT_EQUAL_INT(SQLITE_OK, sqlite3_exec(
-        db, "DELETE FROM detections;DELETE FROM recordings;"
+        db, "DELETE FROM storage_migration_jobs;DELETE FROM detections;"
+            "DELETE FROM recordings;"
             "DELETE FROM storage_targets;DELETE FROM audit_events;",
         NULL, NULL, NULL));
     TEST_ASSERT_EQUAL_INT(
@@ -204,6 +208,81 @@ void test_viewer_cannot_read_storage_target_configuration(void) {
     cJSON_Delete(json);
 }
 
+void test_migration_api_creates_and_lists_durable_job(void) {
+    storage_target_t destination;
+    memset(&destination, 0, sizeof(destination));
+    safe_strcpy(destination.name, "Migration target",
+                sizeof(destination.name), 0);
+    safe_strcpy(destination.target_type, "filesystem",
+                sizeof(destination.target_type), 0);
+    safe_strcpy(destination.root_path, second_root,
+                sizeof(destination.root_path), 0);
+    safe_strcpy(destination.storage_class, "warm",
+                sizeof(destination.storage_class), 0);
+    destination.enabled = true;
+    destination.high_watermark_pct = 90.0;
+    destination.low_watermark_pct = 80.0;
+    TEST_ASSERT_EQUAL_INT(DB_STORAGE_TARGET_OK,
+                          db_storage_target_create(&destination));
+
+    char recording_path[MAX_PATH_LENGTH];
+    snprintf(recording_path, sizeof(recording_path), "%s/api-migrate.mp4",
+             default_root);
+    FILE *file = fopen(recording_path, "wb");
+    TEST_ASSERT_NOT_NULL(file);
+    TEST_ASSERT_EQUAL_size_t(7, fwrite("payload", 1, 7, file));
+    fclose(file);
+    recording_metadata_t recording;
+    memset(&recording, 0, sizeof(recording));
+    safe_strcpy(recording.stream_name, "api-camera",
+                sizeof(recording.stream_name), 0);
+    safe_strcpy(recording.camera_uuid,
+                "11111111-1111-4111-8111-111111111111",
+                sizeof(recording.camera_uuid), 0);
+    safe_strcpy(recording.file_path, recording_path,
+                sizeof(recording.file_path), 0);
+    safe_strcpy(recording.storage_target_uuid, default_uuid,
+                sizeof(recording.storage_target_uuid), 0);
+    safe_strcpy(recording.object_key, "api-migrate.mp4",
+                sizeof(recording.object_key), 0);
+    recording.start_time = 100;
+    recording.end_time = 200;
+    recording.size_bytes = 7;
+    recording.is_complete = true;
+    recording.retention_override_days = -1;
+    uint64_t recording_id = add_recording_metadata(&recording);
+    TEST_ASSERT_NOT_EQUAL_UINT64(0, recording_id);
+
+    char body[256];
+    snprintf(body, sizeof(body),
+             "{\"recording_id\":%llu,\"destination_target_uuid\":\"%s\"}",
+             (unsigned long long)recording_id, destination.uuid);
+    cJSON *json = call(handle_post_storage_migration, HTTP_METHOD_POST,
+                       "/api/storage-migrations", NULL, body, NULL, 202);
+    TEST_ASSERT_EQUAL_STRING(
+        "queued", cJSON_GetObjectItemCaseSensitive(json, "state")->valuestring);
+    char job_uuid[LIGHTNVR_UUID_STRING_SIZE];
+    safe_strcpy(job_uuid,
+                cJSON_GetObjectItemCaseSensitive(json, "uuid")->valuestring,
+                sizeof(job_uuid), 0);
+    cJSON_Delete(json);
+
+    json = call(handle_get_storage_migrations, HTTP_METHOD_GET,
+                "/api/storage-migrations", NULL, NULL, NULL, 200);
+    TEST_ASSERT_EQUAL_INT(
+        1, cJSON_GetObjectItemCaseSensitive(json, "count")->valueint);
+    cJSON_Delete(json);
+
+    char path[128];
+    snprintf(path, sizeof(path), "/api/storage-migrations/%s", job_uuid);
+    json = call(handle_get_storage_migration, HTTP_METHOD_GET, path, NULL,
+                NULL, NULL, 200);
+    TEST_ASSERT_EQUAL_STRING(job_uuid,
+        cJSON_GetObjectItemCaseSensitive(json, "uuid")->valuestring);
+    cJSON_Delete(json);
+    unlink(recording_path);
+}
+
 int main(void) {
     TEST_ASSERT_NOT_NULL(mkdtemp(default_root));
     TEST_ASSERT_NOT_NULL(mkdtemp(second_root));
@@ -216,6 +295,7 @@ int main(void) {
     RUN_TEST(test_storage_target_api_creates_lists_probes_and_deletes);
     RUN_TEST(test_unavailable_target_must_be_staged_disabled);
     RUN_TEST(test_viewer_cannot_read_storage_target_configuration);
+    RUN_TEST(test_migration_api_creates_and_lists_durable_job);
     int result = UNITY_END();
     shutdown_database();
     unlink(TEST_DB_PATH);
