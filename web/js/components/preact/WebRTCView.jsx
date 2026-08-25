@@ -16,6 +16,8 @@ import { GridPicker, computeOptimalGrid, MAX_GRID_CELLS } from './GridPicker.jsx
 import { useI18n } from '../../i18n.js';
 import { buildLiveViewHref } from '../../utils/live-view-url.js';
 import { useCollectionMembership } from './fleet/collectionMembership.js';
+import { AlwaysFullscreenToggle } from './AlwaysFullscreenToggle.jsx';
+import { useAlwaysFullscreenOnTap } from './useAlwaysFullscreenOnTap.js';
 
 /**
  * Convert the old single-string layout value to cols/rows for backward compat.
@@ -38,6 +40,7 @@ function legacyLayoutToColsRowsWebRTC(layout) {
  */
 export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
   const { t } = useI18n();
+  const [alwaysFullscreenOnTap, setAlwaysFullscreenOnTap] = useAlwaysFullscreenOnTap();
 
   // Use the snapshot manager hook
   useSnapshotManager();
@@ -693,6 +696,11 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
             </svg>
           </button>
 
+          <AlwaysFullscreenToggle
+            enabled={alwaysFullscreenOnTap}
+            onChange={setAlwaysFullscreenOnTap}
+          />
+
           {orderedStreams.length > 1 && (
             <button
               className={`p-2 rounded-full focus:outline-none focus:ring-2 focus:ring-primary ${reorderMode ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
@@ -833,6 +841,7 @@ export function WebRTCView({ isWebRTCDisabled, isHlsDisabled, isMseDisabled }) {
                     showLabels={showLabels}
                     showControls={showControls}
                     globalShowDetections={showDetections}
+                    alwaysFullscreenOnTap={alwaysFullscreenOnTap && !reorderMode}
                   />
                 </div>
               );
