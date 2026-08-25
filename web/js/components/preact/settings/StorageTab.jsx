@@ -45,6 +45,13 @@ function pressureClass(pressure) {
   return 'bg-muted text-muted-foreground';
 }
 
+function migrationStateClass(state) {
+  if (state === 'completed') return 'badge-success';
+  if (state === 'failed') return 'badge-danger';
+  if (state === 'retry_wait' || state === 'cleanup_pending') return 'badge-warning';
+  return 'badge-info';
+}
+
 function targetToEditor(target) {
   return {
     uuid: target.uuid,
@@ -252,6 +259,52 @@ function StorageTargetsPanel({ canModifySettings, t }) {
   );
 }
 
+function StorageMigrationJobsPanel({ t }) {
+  const { data, isLoading, isError, error, refetch } = useQuery(
+    ['storage-migrations'],
+    '/api/storage-migrations',
+    { cache: 'no-store', timeout: 15000, retries: 1 },
+    { staleTime: 2000, refetchInterval: 3000 },
+  );
+  const jobs = data?.jobs || [];
+  return (
+    <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4" data-setting-label={t('settings.storageMigrations.title')}>
+      <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-3 border-b border-border">
+        <div>
+          <h3 class="text-lg font-semibold">{t('settings.storageMigrations.title')}</h3>
+          <p class="text-sm text-muted-foreground mt-1">{t('settings.storageMigrations.description')}</p>
+        </div>
+        <button type="button" class="btn-secondary shrink-0" onClick={refetch}>{t('common.refresh')}</button>
+      </div>
+      {isLoading && <p class="py-8 text-center text-sm text-muted-foreground">{t('common.loading')}</p>}
+      {isError && <div class="py-6 text-center"><p class="text-sm text-[hsl(var(--danger))]">{error?.message || t('settings.storageMigrations.loadError')}</p><button type="button" class="btn-secondary mt-3" onClick={refetch}>{t('common.retry')}</button></div>}
+      {!isLoading && !isError && jobs.length === 0 && <p class="py-8 text-center text-sm text-muted-foreground">{t('settings.storageMigrations.empty')}</p>}
+      {!isLoading && !isError && jobs.length > 0 && <div class="divide-y divide-border">
+        {jobs.map((job) => {
+          const progress = Math.max(0, Math.min(100, Math.round((Number(job.progress) || 0) * 100)));
+          return <article key={job.uuid} class="py-4 first:pt-4 last:pb-0">
+            <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-semibold">{t('settings.storageMigrations.recording', { id: job.recording_id })}</span>
+                  <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${migrationStateClass(job.state)}`}>{t(`settings.storageMigrations.state.${job.state}`)}</span>
+                  <span class="text-xs text-muted-foreground">{t('settings.storageMigrations.attempt', { current: job.attempt_count, max: job.max_attempts })}</span>
+                </div>
+                <p class="mt-1 truncate font-mono text-xs text-muted-foreground" title={`${job.source_target_uuid} → ${job.destination_target_uuid}`}>{job.source_target_uuid} → {job.destination_target_uuid}</p>
+                {job.last_error && <p class="mt-1 text-xs text-[hsl(var(--danger))]">{job.last_error}</p>}
+              </div>
+              <div class="w-full lg:w-56">
+                <div class="mb-1 flex justify-between text-xs text-muted-foreground"><span>{formatBytes(job.bytes_copied)} / {formatBytes(job.bytes_total)}</span><span>{progress}%</span></div>
+                <div class="h-2 overflow-hidden rounded-full bg-muted"><div class="h-full bg-[hsl(var(--primary))] transition-[width]" style={{ width: `${progress}%` }} /></div>
+              </div>
+            </div>
+          </article>;
+        })}
+      </div>}
+    </div>
+  );
+}
+
 function StoragePolicyEditor({ value, targets, onChange, onSelectorChange, onCancel, onPreview, onSave, busy, previewing, saving, locations, tags, t }) {
   const set = (key, next) => onChange({ ...value, [key]: next });
   const fallbackTargets = targets.filter((target) => target.uuid !== value.primary_target_uuid);
@@ -365,6 +418,7 @@ export function StorageTab({ settings, handleInputChange, canModifySettings, t }
   return (
     <div class="space-y-6">
       {canModifySettings && <StorageTargetsPanel canModifySettings={canModifySettings} t={t} />}
+      {canModifySettings && <StorageMigrationJobsPanel t={t} />}
       {canModifySettings && <StoragePoliciesPanel canModifySettings={canModifySettings} t={t} />}
       <div class="settings-group bg-card text-card-foreground rounded-lg shadow p-4">
         <h3 class="text-lg font-semibold mb-4 pb-2 border-b border-border">{t('settings.storage')}</h3>
