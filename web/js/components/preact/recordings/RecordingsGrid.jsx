@@ -6,7 +6,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import { formatUtils } from './formatUtils.js';
-import { queueThumbnailLoad, Priority } from '../../../request-queue.js';
+import {
+  invalidateThumbnailLoad,
+  queueThumbnailLoad,
+  Priority,
+} from '../../../request-queue.js';
 import { TagIcon, TagsOverlay, BulkTagsOverlay } from './TagsOverlay.jsx';
 import { useI18n } from '../../../i18n.js';
 
@@ -131,12 +135,17 @@ function RecordingCard({
   // retry once rather than permanently showing "Failed to load".
   const handleImageError = useCallback(() => {
     imgErrorCountRef.current++;
+    const url = `/api/recordings/thumbnail/${recording.id}/${currentFrame}`;
+    invalidateThumbnailLoad(url);
     if (imgErrorCountRef.current <= 1) {
-      loadThumbnail(); // retry once
+      setLoadState('loading');
+      queueThumbnailLoad(url, Priority.HIGH)
+        .then(() => setLoadState('loaded'))
+        .catch(() => setLoadState('error'));
     } else {
       setLoadState('error');
     }
-  }, [loadThumbnail]);
+  }, [currentFrame, recording.id]);
 
   // Preload the middle frame (index 1) on mount with HIGH priority since it's visible
   useEffect(() => {

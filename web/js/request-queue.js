@@ -4,10 +4,9 @@
  * This prevents the frontend from overwhelming the backend with too many
  * simultaneous requests (e.g., thumbnail generation via ffmpeg).
  *
- * Instead of returning 503s and implementing retry logic, we control
- * concurrency at the source - the frontend only sends as many requests
- * as the backend can handle at once. Requests are queued with priority
- * levels so visible content loads first.
+ * We control concurrency at the source so the frontend only sends as many
+ * requests as the backend can handle at once. Transient capacity responses
+ * are retried with backoff and visible content receives priority.
  *
  * Usage:
  *   import { queueThumbnailLoad, Priority } from './request-queue.js';
@@ -160,38 +159,56 @@ export class RequestQueue {
  * Limits concurrent thumbnail generation to prevent overwhelming the server
  *
  * Configuration:
- * - maxConcurrent: 2 (backend event loop is single-threaded and serializes
- *   ffmpeg system() calls; sending more than 2 just queues them on the
- *   server side where they block the event loop and delay other API
- *   traffic including health checks)
+ * - maxConcurrent: 2 (stay below the backend's four-worker thumbnail limit
+ *   so other clients retain generation capacity)
  * - startDelay: 100ms (stagger requests to avoid burst overload)
  * - debug: false (disable logging in production)
  */
 export const thumbnailQueue = new RequestQueue(2, 100, false);
 
-/**
- * Check if an image is already loaded in memory (true cache hit)
- * @param {string} url - Image URL to check
- * @returns {boolean} - True if image is already in memory
- */
-function isImageInMemory(url) {
-  const img = new Image();
-  img.src = url;
-  // If complete is true and naturalWidth > 0, the image is already decoded in memory
-  return img.complete && img.naturalWidth > 0;
+const loadedThumbnailUrls = new Set();
+const pendingThumbnailLoads = new Map();
+const MAX_REMEMBERED_THUMBNAILS = 512;
+let thumbnailQueueGeneration = 0;
+
+function rememberLoadedThumbnail(url) {
+  loadedThumbnailUrls.delete(url);
+  loadedThumbnailUrls.add(url);
+  if (loadedThumbnailUrls.size > MAX_REMEMBERED_THUMBNAILS) {
+    loadedThumbnailUrls.delete(loadedThumbnailUrls.values().next().value);
+  }
 }
 
 /**
- * Load a single thumbnail image via new Image().
- * Returns a promise that resolves with the URL on success.
+ * Load a thumbnail through fetch so HTTP status and Retry-After remain
+ * observable. The successful response is stored in the browser HTTP cache;
+ * rendering the card's img element then reuses that response.
  */
-function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(url);
-    img.onerror = () => reject(new Error(`Failed to load thumbnail: ${url}`));
-    img.src = url;
-  });
+async function loadImage(url) {
+  const response = await fetch(url, { credentials: 'same-origin' });
+  if (!response.ok) {
+    const error = new Error(`Failed to load thumbnail (${response.status}): ${url}`);
+    error.status = response.status;
+    error.retryAfter = response.headers?.get?.('Retry-After') || null;
+    throw error;
+  }
+  await response.blob();
+  return url;
+}
+
+export function parseRetryAfterMilliseconds(value, now = Date.now()) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return null;
+  return Math.max(0, retryAt - now);
+}
+
+export function shouldRetryThumbnailRequest(error) {
+  if (!error?.status) return true;
+  return [408, 429, 502, 503, 504].includes(error.status);
 }
 
 /**
@@ -209,37 +226,59 @@ function loadImage(url) {
  * @returns {Promise<string>}  - Promise that resolves with the URL when loaded
  */
 export function queueThumbnailLoad(url, priority = Priority.NORMAL, maxRetries = 3) {
-  // Check if image is already in memory (true cache hit)
-  // This is synchronous and doesn't trigger a network request
-  if (isImageInMemory(url)) {
+  if (loadedThumbnailUrls.has(url)) {
     return Promise.resolve(url);
+  }
+  if (pendingThumbnailLoads.has(url)) {
+    return pendingThumbnailLoads.get(url);
   }
 
   let attempt = 0;
+  const generation = thumbnailQueueGeneration;
 
   const tryLoad = () => {
+    if (generation !== thumbnailQueueGeneration) {
+      return Promise.reject(new Error('Thumbnail queue cleared'));
+    }
     return thumbnailQueue.enqueue(() => loadImage(url), priority);
   };
 
   const retryWithBackoff = (err) => {
     attempt++;
-    if (attempt > maxRetries) {
+    if (generation !== thumbnailQueueGeneration ||
+        attempt > maxRetries || !shouldRetryThumbnailRequest(err)) {
       return Promise.reject(err);
     }
-    // Exponential back-off: 2s, 4s, 8s  – gives the backend time to
-    // finish in-flight ffmpeg jobs so the thumbnail may be cached by
-    // the next attempt.
-    const delay = Math.min(2000 * Math.pow(2, attempt - 1), 10000);
+    const serverDelay = parseRetryAfterMilliseconds(err.retryAfter);
+    const delay = serverDelay ?? Math.min(2000 * Math.pow(2, attempt - 1), 10000);
     return new Promise((resolve) => setTimeout(resolve, delay)).then(tryLoad).catch(retryWithBackoff);
   };
 
-  return tryLoad().catch(retryWithBackoff);
+  const pending = tryLoad()
+    .catch(retryWithBackoff)
+    .then((loadedUrl) => {
+      rememberLoadedThumbnail(loadedUrl);
+      return loadedUrl;
+    })
+    .finally(() => {
+      if (pendingThumbnailLoads.get(url) === pending) {
+        pendingThumbnailLoads.delete(url);
+      }
+    });
+  pendingThumbnailLoads.set(url, pending);
+  return pending;
+}
+
+/** Forget a successful preload after the rendered img reports a cache miss. */
+export function invalidateThumbnailLoad(url) {
+  loadedThumbnailUrls.delete(url);
 }
 
 /**
  * Clear the thumbnail queue (call when navigating away from recordings page)
  */
 export function clearThumbnailQueue() {
+  thumbnailQueueGeneration++;
   thumbnailQueue.clear();
+  pendingThumbnailLoads.clear();
 }
-
