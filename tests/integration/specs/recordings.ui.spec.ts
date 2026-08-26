@@ -374,6 +374,107 @@ test.describe('Recordings Page @ui @recordings', () => {
       await expect(page.locator('#video-preview-modal')).toBeVisible();
       await expect(page.locator('#recording-playback-position')).toHaveText('cam1 - 00:00:00');
     });
+
+    test('keeps the recording player visible and controls scrollable on mobile', async ({ page }) => {
+      const recordingsPage = new RecordingsPage(page);
+
+      await page.setViewportSize({ width: 360, height: 740 });
+      await page.addInitScript(() => {
+        localStorage.setItem('recordings_view_mode', 'grid');
+        localStorage.setItem('recordings_filters_collapsed', 'true');
+      });
+
+      await page.route('**/api/client-config*', route => route.fulfill({
+        json: { generate_thumbnails: true, thumbnails_per_recording: 1 }
+      }));
+      await page.route('**/api/streams*', route => route.fulfill({ json: [{ name: 'front-door' }] }));
+      await page.route('**/api/recordings/detection-labels*', route => route.fulfill({ json: { labels: [] } }));
+      await page.route('**/api/recordings/tags*', route => route.fulfill({ json: { tags: [] } }));
+      await page.route('**/api/recordings?**', route => route.fulfill({ json: {
+        recordings: [{
+          id: 602,
+          stream: 'front-door-camera-with-a-long-name',
+          capture_method: 'scheduled',
+          tags: [],
+          detection_labels: [],
+          start_time: '2026-08-26T14:23:17Z',
+          start_time_unix: 1787754197,
+          duration: 60,
+          size: '1 MB',
+          protected: false,
+          has_detections: false
+        }],
+        pagination: { total: 1, pages: 1, limit: 20 }
+      } }));
+      await page.route('**/api/recordings/thumbnail/602/**', route => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#111827"/></svg>'
+      }));
+      await page.route('**/api/recordings/play/602*', route => route.fulfill({ status: 204, body: '' }));
+      await page.route('**/api/recordings/602', route => route.fulfill({ json: {
+        id: 602,
+        stream: 'front-door-camera-with-a-long-name',
+        start_time: '2026-08-26T14:23:17Z',
+        end_time: '2026-08-26T14:24:17Z',
+        protected: false,
+        has_detection: false,
+        detection_labels: []
+      } }));
+
+      await recordingsPage.goto();
+
+      const card = page.locator('.recording-card').first();
+      await expect(card).toBeVisible();
+      const cardBounds = await card.boundingBox();
+      expect(cardBounds).not.toBeNull();
+      expect(cardBounds!.x).toBeGreaterThanOrEqual(0);
+      expect(cardBounds!.x + cardBounds!.width).toBeLessThanOrEqual(360);
+
+      await card.getByTitle('Play').click();
+      await expect(page.locator('#video-preview-modal')).toBeVisible();
+
+      const layout = await page.evaluate(() => {
+        const modal = document.querySelector('#video-preview-modal .modal-content');
+        const video = document.querySelector('[data-testid="recording-video-container"]');
+        const controls = document.querySelector('#recordings-controls');
+        if (!modal || !video || !controls) return null;
+
+        const modalRect = modal.getBoundingClientRect();
+        const videoRect = video.getBoundingClientRect();
+        const controlsRect = controls.getBoundingClientRect();
+        return {
+          modalTop: modalRect.top,
+          modalBottom: modalRect.bottom,
+          modalRight: modalRect.right,
+          videoHeight: videoRect.height,
+          controlsBottom: controlsRect.bottom,
+          controlsOverflowY: getComputedStyle(controls).overflowY,
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth
+        };
+      });
+
+      expect(layout).not.toBeNull();
+      expect(layout!.modalTop).toBeGreaterThanOrEqual(0);
+      expect(layout!.modalBottom).toBeLessThanOrEqual(layout!.viewportHeight);
+      expect(layout!.modalRight).toBeLessThanOrEqual(layout!.viewportWidth);
+      expect(layout!.videoHeight).toBeGreaterThanOrEqual(140);
+      expect(layout!.controlsBottom).toBeLessThanOrEqual(layout!.modalBottom);
+      expect(layout!.controlsOverflowY).toBe('auto');
+
+      const controls = page.locator('#recordings-controls');
+      await controls.evaluate(element => element.scrollTo(0, element.scrollHeight));
+      const deleteButton = controls.getByRole('button', { name: 'Delete' });
+      await expect(deleteButton).toBeVisible();
+      const actionIsReachable = await deleteButton.evaluate(button => {
+        const controlsElement = button.closest('#recordings-controls');
+        if (!controlsElement) return false;
+        const buttonRect = button.getBoundingClientRect();
+        const controlsRect = controlsElement.getBoundingClientRect();
+        return buttonRect.top >= controlsRect.top && buttonRect.bottom <= controlsRect.bottom;
+      });
+      expect(actionIsReachable).toBe(true);
+    });
   });
 
   test.describe('Recording Actions', () => {
