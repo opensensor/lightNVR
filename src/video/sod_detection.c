@@ -223,6 +223,10 @@ detection_model_t load_sod_model(const char *model_path, float threshold) {
         arch = ":voc";
         log_info("Detected VOC model by exact filename match, using :voc architecture: %s", filename);
     }
+    else if (strcmp(filename, "tiny80.sod") == 0) {
+        arch = ":tiny80";
+        log_info("Detected COCO-80 model by exact filename match, using :tiny80 architecture: %s", filename);
+    }
     else {
         // If we couldn't determine the architecture, default to face for .sod files
         // This is a fallback to ensure face detection works even if the filename doesn't contain "face"
